@@ -322,6 +322,17 @@ class OddsSyncService:
                     results["preserved"] = True
                     return results
                 
+                # Phase 6 Step 5 — snapshot pre-wipe canonical_keys so
+                # we can emit a `new_props` delta event after the
+                # reinsert. Captured via the NBA board adapter to stay
+                # consistent with the universal engine's key format.
+                pre_keys: set = set()
+                try:
+                    from services.board.delta_publisher import capture_live_props_keys
+                    pre_keys = await capture_live_props_keys(self.db, "nba")
+                except Exception as _e:
+                    logger.warning(f"[DELTA_PUB] NBA pre-snapshot skipped: {_e}")
+
                 deleted = await self.live_props.delete_many({})
                 logger.info(f"[CLEANUP] Wiped {deleted.deleted_count} old records")
                 
@@ -346,6 +357,24 @@ class OddsSyncService:
                         pass
                     
                     await self.live_props.insert_many(props_list)
+
+                # Phase 6 Step 5 — post-insert snapshot + delta publish
+                # (non-blocking; fire-and-forget so odds_sync latency
+                # is unchanged). Guardrailed internally to skip if the
+                # delta is absurdly large (full wipe-reinsert).
+                try:
+                    from services.board.delta_publisher import (
+                        capture_live_props_keys, publish_new_props_delta,
+                    )
+                    post_keys = await capture_live_props_keys(self.db, "nba")
+                    await publish_new_props_delta(
+                        sport="nba",
+                        pre_keys=pre_keys,
+                        post_keys=post_keys,
+                        source="odds_sync_service",
+                    )
+                except Exception as _e:
+                    logger.warning(f"[DELTA_PUB] NBA delta emit skipped: {_e}")
                 
                 results["total_props"] = len(props_list)
                 results["standard_count"] = sum(1 for p in props_list if p.get("prop_type") == "standard")

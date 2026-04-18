@@ -467,3 +467,50 @@ async def board_engine_stats(
     return {"by_sport": stats_snapshot()}
 
 
+@router.get("/board-drift-audit")
+async def board_drift_audit(
+    sport: str | None = None,
+    limit: int | None = None,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Live A/B drift report for the 48h Step 6 observation window.
+
+    For every real-time upsert captured in the in-memory ledger
+    (`services/board/drift_audit.py`), compares the RT snapshot
+    (tier, vision_score, quality_source) against the CURRENT doc in
+    `{sport}_prop_scores`. Classifies each as converged / tier_changed
+    / vision_score_drift / missing / inactive. Zero persistence.
+
+    Query params:
+      - ?sport=nba         → audit NBA only
+      - ?sport=mlb         → audit MLB only
+      - (no sport)         → audit every registered sport
+      - ?limit=N           → audit only the most-recent N ledger entries
+
+    Auth: identical to /injury-rescore-stats.
+    """
+    _require_admin_debug_token(x_admin_token)
+
+    # Local imports so the module can be reloaded without restarting
+    # the whole server.
+    from services.board.drift_audit import audit, snapshot
+    from services.board.adapters import registered_sports
+
+    if _db is None:
+        raise HTTPException(status_code=500, detail="db not initialised")
+
+    if sport:
+        return {
+            "ledger": snapshot(sport),
+            "audit": await audit(_db, sport, limit=limit),
+        }
+    out = {"by_sport": {}}
+    for s in registered_sports():
+        out["by_sport"][s] = {
+            "ledger": snapshot(s),
+            "audit": await audit(_db, s, limit=limit),
+        }
+    return out
+
+
+

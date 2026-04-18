@@ -248,6 +248,15 @@ async def recompute_sport(
     top_samples = [{k: v for k, v in d.items() if k != "_id"} for d in top_samples]
 
     duration_ms = int((time.monotonic() - t0) * 1000)
+    # Expose the FULL list of score_docs ONLY when we're in the small-
+    # batch upsert path — the real-time engine uses this to feed the
+    # drift audit ledger without re-reading from Mongo. For "replace"
+    # mode (full rebuild, thousands of docs) we keep the payload
+    # compact to avoid ballooning the response.
+    full_score_docs = (
+        [{k: v for k, v in d.items() if k != "_id"} for d in score_docs]
+        if write_mode == "upsert" else None
+    )
     return {
         "sport": sport,
         "processed": len(props),
@@ -269,6 +278,7 @@ async def recompute_sport(
         "tier_canonical_keys": tier_canonical_keys,
         "samples": samples,
         "top_samples": top_samples,
+        "score_docs": full_score_docs,
     }
 
 

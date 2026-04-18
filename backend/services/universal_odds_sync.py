@@ -787,6 +787,18 @@ class UniversalOddsSyncService:
                 collection_name = get_collection_name("live_props", sport)
                 collection = self.db[collection_name]
                 
+                # Phase 6 Step 5 — pre-wipe snapshot for `new_props`
+                # delta emission. Uses the universal board adapter to
+                # reconstruct canonical_keys in the engine's format.
+                pre_keys: set = set()
+                try:
+                    from services.board.delta_publisher import capture_live_props_keys
+                    pre_keys = await capture_live_props_keys(self.db, sport)
+                except Exception as _e:
+                    logger.warning(
+                        f"[DELTA_PUB] {sport} pre-snapshot skipped: {_e}"
+                    )
+
                 # Purge ALL old data and insert fresh — no zombies
                 stale_count = await collection.count_documents({})
                 await collection.delete_many({})
@@ -802,6 +814,24 @@ class UniversalOddsSyncService:
                 results["collection"] = collection_name
                 
                 logger.info(f"[UNIVERSAL_ODDS] Replaced {collection_name}: purged {stale_count} stale, inserted {inserted} fresh")
+
+                # Phase 6 Step 5 — post-insert snapshot + delta publish
+                try:
+                    from services.board.delta_publisher import (
+                        capture_live_props_keys, publish_new_props_delta,
+                    )
+                    post_keys = await capture_live_props_keys(self.db, sport)
+                    emit_summary = await publish_new_props_delta(
+                        sport=sport,
+                        pre_keys=pre_keys,
+                        post_keys=post_keys,
+                        source="universal_odds_sync",
+                    )
+                    results["new_props_delta"] = emit_summary
+                except Exception as _e:
+                    logger.warning(
+                        f"[DELTA_PUB] {sport} delta emit skipped: {_e}"
+                    )
             
             # Log summary
             duration = (datetime.now(timezone.utc) - sync_start).total_seconds()

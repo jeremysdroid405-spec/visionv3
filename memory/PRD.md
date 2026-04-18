@@ -773,14 +773,114 @@ warm batches (248 ms NBA, 548 ms MLB). The remaining latency is pure
 scoring work (VK model / MLB HF model inference on matched props) —
 there is no filter overhead left to cut.
 
+## Step 5 A/B Observation — `odds_sync` → `new_props` Emission + Drift Audit (Apr 18, 2026)
+
+### What shipped
+Wired real-time `new_props` emission into every sport's odds-sync
+path and added a drift-audit ledger that lets the 48h Step 6
+observation window run as a live A/B between the real-time path and
+the legacy full-rebuild coordinator.
+
+### Components
+1. `services/board/delta_publisher.py`
+   - `capture_live_props_keys(db, sport)` — reads the current
+     canonical_keys from `{sport}_live_props` via the board adapter's
+     hot-path `canonical_key()`. Same identity function the engine
+     uses — zero format divergence.
+   - `publish_new_props_delta(sport, pre_keys, post_keys, source)` —
+     computes `post - pre`, emits `BoardEvent('new_props', ...)` only
+     when the delta is non-empty AND smaller than the guardrail
+     (`_MAX_DELTA_FOR_REALTIME=500`). Full wipe-reinserts are logged
+     with `reason='delta_too_large'` and skipped; the legacy
+     coordinator handles them.
+
+2. `services/board/drift_audit.py`
+   - Per-sport bounded ring buffer (500 entries / sport, ~100 KB RAM).
+   - `record_realtime_upsert(sport, score_docs, source)` — engine
+     appends one snapshot per upsert capturing
+     (canonical_key, tier_rt, vision_score_rt, quality_source_rt,
+      computed_at_rt, active_rt, recorded_at, source).
+   - `audit(db, sport, limit)` — one round-trip `find({version_tag,
+     canonical_key: $in})`, classifies each ledger entry as
+     `converged | tier_changed | vision_score_drift | missing |
+     inactive`. Vision-score drift threshold: 1.0 points on the
+     0-100 scale.
+   - `snapshot(sport)` — raw ledger dump for observability.
+
+3. `services/scoring/recompute.py` — `recompute_sport` now returns
+   `score_docs` in its payload when `write_mode="upsert"` so the
+   engine can feed the ledger without a second read.
+
+4. `services/board/engine.py::on_new_props()` — post-upsert hook
+   calls `drift_audit.record_realtime_upsert(...)`. Failures are
+   logged, never raised.
+
+5. `services/odds_sync_service.py` (NBA path) — snapshots
+   `capture_live_props_keys(db, 'nba')` BEFORE `delete_many`, then
+   `publish_new_props_delta(...)` AFTER `insert_many`. Circuit-breaker
+   branch still short-circuits before the hook so a preserved-data
+   early-return doesn't emit stray events.
+
+6. `services/universal_odds_sync.py` (MLB + future sports via
+   `MLBMasterSync.STEP 1 → odds_service.sync_sport_props(sport)`) —
+   same pre/post snapshot + delta publish, embedded inside the
+   sport-agnostic universal sync. Adding NFL ingest automatically
+   inherits `new_props` emission.
+
+7. `routes/admin.py::GET /api/board-drift-audit` — admin-gated
+   observability endpoint. `?sport=nba|mlb` scopes to one sport; no
+   param returns both. Returns `{ledger: {...}, audit: {...}}` per
+   sport. Zero DB writes.
+
+### Hard verification
+(`/app/backend/tests/step5_ab_observation_verify.py` — run end-to-end
+for NBA + MLB)
+
+| Check | NBA | MLB | Result |
+|---|---|---|---|
+| [1] Delta publisher — 3 synthetic keys added to pre-set | emitted=True, added=3 | emitted=True, added=3 | ✅ |
+| [2] Guardrail — 600-key synthetic delta | emitted=False, reason=`delta_too_large` | emitted=False, reason=`delta_too_large` | ✅ |
+| [3] E2E chain — publish → event_bus → engine.on_new_props → upsert | 924 ms, 3 upserts, `computed_at` advanced, `active=True`, 3 ledger entries with `source='verify_e2e'` | 415 ms, same | ✅ |
+| [4a] Audit right after RT upsert | converged=3, divergent=0 | converged=3, divergent=0 | ✅ |
+| [4b] Simulated legacy divergence (direct Mongo write on 2/3 keys) | key[0] tier: unqualified → safe_haven; key[1] vs: 0.0 → 42.0; key[2] untouched | same | ✅ |
+| [4c] Audit detects drift | converged=1, tier_changed=1, vision_score_drift=1, divergence_ratio=0.667 | converged=1, tier_changed=1, vision_score_drift=1, divergence_ratio=0.667 | ✅ |
+
+Detected `divergence_samples` include the raw RT vs current
+payloads (tier, vision_score, quality_source, computed_at) so
+divergences are actionable without further queries.
+
+### What this gives us
+- The 48h observation window is now a live A/B: legacy coordinator
+  overwrites real-time writes, drift_audit reports exactly how often
+  they disagree and on which keys / fields.
+- No user-visible change: readers still go through
+  `services/board/reader.py::get_board()`; frontend untouched.
+- No Step 6 retirement: legacy writers (`_atomic_publish` elite_*,
+  `mlb_safe_haven/front_lines/war_zone`) still firing. Phase 5 Steps
+  2-7 untouched. Nothing retired this pass.
+- Safety guardrails:
+  - `delta_too_large` skip prevents full wipe-reinsert floods.
+  - Engine's per-sport asyncio.Lock serialises scoped recomputes.
+  - All delta-publisher + drift-audit code paths use try/except
+    around the event bus and log-only on failures — odds_sync
+    latency and correctness are unchanged if any of this fails.
+
+### Observability
+- `/api/board-engine-stats` — real-time ingest counters per sport.
+- `/api/board-drift-audit?sport=nba|mlb` — A/B convergence report.
+- Structured log prefixes: `[DELTA_PUB]`, `[BOARD_ENGINE]`,
+  `[DRIFT_AUDIT]` — greppable independently.
+
 ## Remaining Roadmap
-- **P1**: Step 5 follow-ups listed above (latency + vision_score
-  normalization + odds_sync event emission).
-- **P1**: Step 6 — retire legacy per-sport board writers
-  (`_atomic_publish` elite_*, `mlb_safe_haven/front_lines/war_zone`)
-  after 48h observation window starting Apr 18 2026 19:53 UTC.
-- **P1**: Phase 5 Step 2 — migrate `market_moves_engine` + `injury_advantage`
-  readers off `elite_*` (read `nba_prop_scores` grouped by tier).
+- **P1**: Step 6 — retire legacy per-sport board writers after the
+  48h observation window (started Apr 18 2026 20:02 UTC). Acceptance
+  criterion: `/api/board-drift-audit` reports divergence_ratio ≤ 0.05
+  across 24+ h of organic odds-sync + coordinator runs for both sports.
+- **P1**: `vision_score` pool-wide percentile normalization in
+  upsert mode (rank against existing pool distribution instead of
+  single-batch).
+- **P1**: Phase 5 Step 2 — migrate `market_moves_engine` +
+  `injury_advantage` readers off `elite_*`.
 - **P1**: Phase 5 Step 3 — retire `_atomic_publish` elite_* writer.
 - **P1**: Phase 5 Step 4 — drop `live_injuries` + reroute
   `/api/v3/injuries/live` to `injuries_normalized`.

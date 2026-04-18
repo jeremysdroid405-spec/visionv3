@@ -219,6 +219,20 @@ async def on_new_props(
             _STATS[sport_key]["last_error"] = str(e)
             return {**result, "reason": "recompute_failed", "error": str(e)}
 
+    # Feed the drift-audit ledger: every real-time upsert captured as
+    # a snapshot of tier / vision_score so the 48h Step 6 A/B window
+    # can prove the full-rebuild coordinator converges on the same
+    # scores. Zero persistence — in-memory ring buffer only.
+    try:
+        from services.board.drift_audit import record_realtime_upsert
+        record_realtime_upsert(
+            sport=sport_key,
+            score_docs=rc.get("score_docs") or [],
+            source=source,
+        )
+    except Exception as e:
+        logger.warning(f"[BOARD_ENGINE] drift-audit record skipped: {e}")
+
     return await _finalize_result(
         result, rc, sport_key, started_at, source
     )
