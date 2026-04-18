@@ -475,7 +475,7 @@ export const BADGE_REGISTRY = {
     }
   },
   high_fidelity_model: {
-    label: "High Confidence",
+    label: "Clear Read",
     icon: BarChart3,
     glowColor: "#06b6d4",  // Cyan
     bgClass: "bg-cyan-500/20",
@@ -485,8 +485,8 @@ export const BADGE_REGISTRY = {
     trigger: "Model fits this stat reliably on held-out games",
     category: "scout",
     tooltip: {
-      title: "High Confidence Projection",
-      description: "Our model is especially reliable for this stat type, meaning past predictions have matched real game results closely. The projection you see is more trustworthy than usual.",
+      title: "Clear Read",
+      description: "This projection comes from a tighter model selection with consistent signal, low noise, and a cleaner read on the outcome.",
       impact: "When you see this badge, lean into the projection. The model's track record on this stat is strong.",
       sentiment: "positive"
     }

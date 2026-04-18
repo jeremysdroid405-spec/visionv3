@@ -1,6 +1,6 @@
 {
   "sport": "MLB",
-  "last_updated": "2026-04-18T03:52:38.480289+00:00",
+  "last_updated": "2026-04-18T04:10:50.109381+00:00",
   "prop_count": 30,
   "props": {
     "brett_baty|batter_strikeouts|0.5|prizepicks": {
@@ -2583,293 +2583,6 @@
       "_enriched": true,
       "_enriched_at": "2026-04-18T02:00:28.997056+00:00",
       "_cache_updated": "2026-04-18T02:00:28.997058+00:00"
-    },
-    "yordan_alvarez|hits|0.5|prizepicks": {
-      "player_name": "Yordan Alvarez",
-      "stat_type": "Hits",
-      "line": 0.5,
-      "recommendation": "OVER",
-      "odds": -137,
-      "market_key": "batter_hits_alternate",
-      "bookmaker": "prizepicks",
-      "event_id": "261a880b71d678f267d194c3e11c1880",
-      "home_team": "Houston Astros",
-      "away_team": "St. Louis Cardinals",
-      "commence_time": "2026-04-18T00:11:00Z",
-      "pp_line": 0.5,
-      "pp_odds": -137,
-      "dk_line": 0.5,
-      "dk_odds": -274,
-      "dk_line_mismatch": false,
-      "mgm_line": 0.5,
-      "mgm_odds": -275,
-      "mgm_line_mismatch": false,
-      "sharp_line": null,
-      "sharp_odds": null,
-      "sharp_book": null,
-      "pp_dk_edge": 0.0,
-      "pp_sharp_edge": null,
-      "all_lines": {
-        "prizepicks": 0.5,
-        "betmgm": 0.5,
-        "draftkings": 0.5
-      },
-      "all_odds": {
-        "prizepicks": -137,
-        "betmgm": -275,
-        "draftkings": -274
-      },
-      "sharp_edge": null,
-      "dk_edge": 0.0,
-      "dfs_line": 0.5,
-      "dfs_book": "prizepicks",
-      "is_goblin": true,
-      "is_demon": false,
-      "is_alternate_market": true,
-      "sport": "mlb",
-      "fetched_at": "2026-04-17T13:39:11.718173+00:00",
-      "source": "prizepicks",
-      "bookmakers_available": [
-        "prizepicks",
-        "betmgm",
-        "draftkings"
-      ],
-      "team": null,
-      "player_id": 596,
-      "team_name": null,
-      "position": "Left Fielder",
-      "lineup_status": "PROJECTED",
-      "stat_field": "hits",
-      "season_average": 1.0,
-      "cv": 0.761,
-      "cv_grade": "VOLATILE",
-      "hit_rate_l10": 70.0,
-      "hit_rate_l5": 80.0,
-      "last_10_games": [
-        {
-          "date": "2026-04-17T00:10:00.000Z",
-          "value": 1,
-          "opponent": "COL"
-        },
-        {
-          "date": "2026-04-16T00:10:00.000Z",
-          "value": 2,
-          "opponent": "COL"
-        },
-        {
-          "date": "2026-04-15T00:10:00.000Z",
-          "value": 1,
-          "opponent": "COL"
-        },
-        {
-          "date": "2026-04-13T20:10:00.000Z",
-          "value": 0,
-          "opponent": "SEA"
-        },
-        {
-          "date": "2026-04-12T20:10:00.000Z",
-          "value": 0,
-          "opponent": "SEA"
-        },
-        {
-          "date": "2026-04-12T01:40:00.000Z",
-          "value": 3,
-          "opponent": "SEA"
-        },
-        {
-          "date": "2026-04-11T01:40:00.000Z",
-          "value": 2,
-          "opponent": "SEA"
-        },
-        {
-          "date": "2026-04-08T19:10:00.000Z",
-          "value": 1,
-          "opponent": "COL"
-        },
-        {
-          "date": "2026-04-08T00:40:00.000Z",
-          "value": 0,
-          "opponent": "COL"
-        },
-        {
-          "date": "2026-04-07T00:40:00.000Z",
-          "value": 0,
-          "opponent": "COL"
-        }
-      ],
-      "games_played": 10,
-      "edge": 100.0,
-      "enriched_at": "2026-04-17T19:29:12.055723+00:00",
-      "is_enriched": true,
-      "dk_odds_raw": -274,
-      "mgm_odds_raw": -275,
-      "p_dk": 0.7326,
-      "p_mgm": 0.7333,
-      "p_dk_raw": 0.7326,
-      "p_mgm_raw": 0.7333,
-      "p_market_consensus": 0.7329,
-      "books_available_count": 2,
-      "consensus_source": "dk+mgm",
-      "disagreement": 0.0007,
-      "low_confidence": false,
-      "agreement_factor": 0.9993,
-      "true_probability": 73.3,
-      "edge_pct": 12.1,
-      "pre_model_edge": 1.7,
-      "post_model_edge": 12.1,
-      "edge_source": "post_model",
-      "legacy_vision_score": 0.077064,
-      "vision_score_100": 92.6,
-      "p_true": 0.854,
-      "stability": 0.7463,
-      "confidence": 1.0,
-      "vision_score": 82.0,
-      "vision_score_raw": 0.077185,
-      "quality_source": "consensus",
-      "fair_prob": 0.7329,
-      "edge_vs_fair": 0.1211,
-      "tier": "safe_haven",
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "dk",
-      "tier_reference_odds": -274,
-      "tier_gate_results": {
-        "gate1_cv": {
-          "threshold": 1.1,
-          "value": 0.761,
-          "passed": true
-        },
-        "gate2_hit_rate": {
-          "threshold": 75,
-          "value": 75.0,
-          "passed": true
-        },
-        "gate3_edge": {
-          "threshold": -9999,
-          "value": 12.1,
-          "passed": true
-        },
-        "gate4_tp": {
-          "threshold": 60,
-          "value": 73.3,
-          "passed": true
-        }
-      },
-      "pp_utility": 75.0,
-      "pp_utility_category": "pp_fair",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.7572,
-        "edge_confidence": 0.3035,
-        "multiplier_value": null,
-        "weights": {
-          "availability": 0.18749999999999997,
-          "line_fairness": 0.25,
-          "model_alignment": 0.3125,
-          "edge_confidence": 0.25
-        },
-        "pp_utility_raw": 75.0,
-        "category_raw": "pp_fair"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": null,
-      "pp_multiplier_source": "none",
-      "pp_reference_source": "dk",
-      "canonical_key": null,
-      "anomaly_line_mismatch_dk": false,
-      "anomaly_line_mismatch_mgm": false,
-      "anomaly_true_disagreement": false,
-      "anomaly_missing_ref": false,
-      "anomaly_stale_ref": false,
-      "dk_outlier": false,
-      "mgm_outlier": false,
-      "market_disagreement_high": false,
-      "consensus_strong": true,
-      "hit_rate": 75.0,
-      "h5_rate": 80.0,
-      "h10_rate": 70.0,
-      "h20_rate": 75.0,
-      "l10_avg": 1.1,
-      "l5_avg": 1.0,
-      "season_avg": 1.0,
-      "ceiling_rate": 75.0,
-      "vk_predicted": 1.04,
-      "vk_prob_over": 75.3,
-      "vk_z_score": -1.0528,
-      "vk_edge": 0.54,
-      "board_score": 92.9,
-      "synced_at": "2026-04-18T01:58:39.972383+00:00",
-      "validation": {
-        "has_market_data": true,
-        "has_hit_rates": true,
-        "has_context": true,
-        "has_mlr": true,
-        "has_gemini": true,
-        "has_consensus": true,
-        "is_fully_validated": true
-      },
-      "safe_haven_gate_results": {
-        "gate1_cv": {
-          "threshold": 1.1,
-          "value": 0.761,
-          "passed": true
-        },
-        "gate2_hit_rate": {
-          "threshold": 75,
-          "value": 75.0,
-          "passed": true
-        },
-        "gate3_edge": {
-          "threshold": -9999,
-          "value": 12.1,
-          "passed": true
-        },
-        "gate4_tp": {
-          "threshold": 60,
-          "value": 73.3,
-          "passed": true
-        }
-      },
-      "safe_haven_reason": "All gates passed for HITS",
-      "ferrari_tier": "safe_haven",
-      "tier_label": "Safe Haven",
-      "volatility_score": 76.1,
-      "volatility_label": "moderate",
-      "volatility_family": "mlb_binary",
-      "scout_badges": [],
-      "l5_hits": 3,
-      "l10_hits": 6,
-      "l20_avg": 1.0,
-      "l20_hits": 6,
-      "hit_rate_l20": 75.0,
-      "vk_source": "weighted_avg",
-      "vk_probability": 75.3,
-      "vk_prob_under": 24.7,
-      "vk_recommendation": "STRONG OVER",
-      "vision_intel": "The books are literally handing out gifts with Yordan\u2019s hit line at 0.5, especially considering he\u2019s cleared this in 75% of his last 20 games while averaging over a knock per night. He\u2019s definitely a high-variance rollercoaster with that 0.76 CV, but a massive 70.6% edge tells us the math is overwhelmingly on our side to cash this ticket before the fifth inning.",
-      "vision_summary": "The books are literally handing out gifts with Yordan\u2019s hit line at 0.5, especially considering he\u2019s cleared this in 75% of his last 20 games while averaging over a knock per night. He\u2019s definitely a high-variance rollercoaster with that 0.76 CV, but a massive 70.6% edge tells us the math is overwhelmingly on our side to cash this ticket before the fifth inning.",
-      "oracle_apex_qualified": true,
-      "game_time": "2026-04-18T00:11:00Z",
-      "intel_suite": {
-        "lasso": {
-          "projection": 0.853,
-          "confidence_tier": "HIGH_VARIANCE",
-          "r_squared": 0.021,
-          "top_drivers": [
-            "L10_avg_plate_appearances",
-            "L5_std_fielding_chances"
-          ]
-        }
-      },
-      "vk_data": {
-        "predicted": 0.853,
-        "projection": 0.853,
-        "edge": 0.353,
-        "source": "lasso_v2"
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-18T02:00:57.515322+00:00",
-      "_cache_updated": "2026-04-18T02:00:57.515325+00:00"
     },
     "connor_norby|batter_strikeouts|0.5|prizepicks": {
       "player_name": "Connor Norby",
@@ -6726,283 +6439,6 @@
       "_enriched_at": "2026-04-18T03:45:41.062182+00:00",
       "_cache_updated": "2026-04-18T03:45:41.062185+00:00"
     },
-    "ben_rice|rbis|0.5|prizepicks": {
-      "player_name": "Ben Rice",
-      "stat_type": "RBIs",
-      "line": 0.5,
-      "recommendation": "OVER",
-      "odds": 100,
-      "market_key": "batter_rbis_alternate",
-      "bookmaker": "prizepicks",
-      "event_id": "a1ab635fdacdca4f7d8f471d141a873f",
-      "home_team": "New York Yankees",
-      "away_team": "Kansas City Royals",
-      "commence_time": "2026-04-17T23:06:00Z",
-      "pp_line": 0.5,
-      "pp_odds": 100,
-      "dk_line": 0.5,
-      "dk_odds": 164,
-      "dk_line_mismatch": false,
-      "mgm_line": 0.5,
-      "mgm_odds": 175,
-      "mgm_line_mismatch": false,
-      "sharp_line": null,
-      "sharp_odds": null,
-      "sharp_book": null,
-      "pp_dk_edge": 0.0,
-      "pp_sharp_edge": null,
-      "all_lines": {
-        "prizepicks": 0.5,
-        "draftkings": 0.5,
-        "betmgm": 0.5
-      },
-      "all_odds": {
-        "prizepicks": 100,
-        "draftkings": 164,
-        "betmgm": 175
-      },
-      "sharp_edge": null,
-      "dk_edge": 0.0,
-      "dfs_line": 0.5,
-      "dfs_book": "prizepicks",
-      "is_goblin": false,
-      "is_demon": true,
-      "is_alternate_market": true,
-      "sport": "mlb",
-      "fetched_at": "2026-04-17T13:39:10.920934+00:00",
-      "source": "prizepicks",
-      "bookmakers_available": [
-        "prizepicks",
-        "draftkings",
-        "betmgm"
-      ],
-      "team": null,
-      "player_id": 4480,
-      "team_name": null,
-      "position": "First Baseman",
-      "lineup_status": "PROJECTED",
-      "stat_field": "rbis",
-      "season_average": 0.3,
-      "cv": 1.224,
-      "cv_grade": "VOLATILE",
-      "hit_rate_l10": 40.0,
-      "hit_rate_l5": 60.0,
-      "last_10_games": [
-        {
-          "date": "2026-04-16T17:35:00.000Z",
-          "value": 1,
-          "opponent": "LAA"
-        },
-        {
-          "date": "2026-04-15T23:05:00.000Z",
-          "value": 0,
-          "opponent": "LAA"
-        },
-        {
-          "date": "2026-04-14T23:05:00.000Z",
-          "value": 1,
-          "opponent": "LAA"
-        },
-        {
-          "date": "2026-04-13T23:05:00.000Z",
-          "value": 0,
-          "opponent": "LAA"
-        },
-        {
-          "date": "2026-04-12T17:40:00.000Z",
-          "value": 0,
-          "opponent": "TB"
-        },
-        {
-          "date": "2026-04-11T22:10:00.000Z",
-          "value": 0,
-          "opponent": "TB"
-        },
-        {
-          "date": "2026-04-10T23:10:00.000Z",
-          "value": 1,
-          "opponent": "TB"
-        },
-        {
-          "date": "2026-04-09T17:35:00.000Z",
-          "value": 0,
-          "opponent": "OAK"
-        },
-        {
-          "date": "2026-04-08T23:05:00.000Z",
-          "value": 0,
-          "opponent": "OAK"
-        },
-        {
-          "date": "2026-04-07T23:05:00.000Z",
-          "value": 0,
-          "opponent": "OAK"
-        }
-      ],
-      "games_played": 10,
-      "edge": -40.0,
-      "enriched_at": "2026-04-17T19:29:11.842337+00:00",
-      "is_enriched": true,
-      "dk_odds_raw": 164,
-      "mgm_odds_raw": 175,
-      "p_dk": 0.3788,
-      "p_mgm": 0.3636,
-      "p_dk_raw": 0.3788,
-      "p_mgm_raw": 0.3636,
-      "p_market_consensus": 0.3712,
-      "books_available_count": 2,
-      "consensus_source": "dk+mgm",
-      "disagreement": 0.0152,
-      "low_confidence": false,
-      "agreement_factor": 0.9848,
-      "true_probability": 37.1,
-      "edge_pct": 56.7,
-      "pre_model_edge": 12.9,
-      "post_model_edge": 56.7,
-      "edge_source": "post_model",
-      "legacy_vision_score": 0.310067,
-      "vision_score_100": 99.8,
-      "p_true": 0.938,
-      "stability": 0.592,
-      "confidence": 1.0,
-      "vision_score": 99.5,
-      "vision_score_raw": 0.314742,
-      "quality_source": "consensus",
-      "fair_prob": 0.3712,
-      "edge_vs_fair": 0.5668,
-      "tier": "war_zone",
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "dk",
-      "tier_reference_odds": 164,
-      "tier_gate_results": {
-        "gate1_cv": {
-          "threshold": ">= 1.0",
-          "value": 1.224,
-          "passed": true
-        },
-        "gate2_ceiling": {
-          "threshold": 35,
-          "value": 50.0,
-          "passed": true
-        },
-        "gate3_edge": {
-          "threshold": 30,
-          "value": 56.7,
-          "passed": true
-        }
-      },
-      "pp_utility": 68.8,
-      "pp_utility_category": "pp_fair",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.0,
-        "edge_confidence": 1.0,
-        "multiplier_value": null,
-        "weights": {
-          "availability": 0.18749999999999997,
-          "line_fairness": 0.25,
-          "model_alignment": 0.3125,
-          "edge_confidence": 0.25
-        },
-        "pp_utility_raw": 68.8,
-        "category_raw": "pp_fair"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": null,
-      "pp_multiplier_source": "none",
-      "pp_reference_source": "dk",
-      "canonical_key": null,
-      "anomaly_line_mismatch_dk": false,
-      "anomaly_line_mismatch_mgm": false,
-      "anomaly_true_disagreement": false,
-      "anomaly_missing_ref": false,
-      "anomaly_stale_ref": false,
-      "dk_outlier": false,
-      "mgm_outlier": false,
-      "market_disagreement_high": false,
-      "consensus_strong": true,
-      "hit_rate": 50.0,
-      "h5_rate": 60.0,
-      "h10_rate": 40.0,
-      "h20_rate": 50.0,
-      "l10_avg": 0.5,
-      "l5_avg": 0.8,
-      "season_avg": 0.3,
-      "ceiling_rate": 50.0,
-      "vk_predicted": 0.57,
-      "vk_prob_over": 40.7,
-      "vk_z_score": -1.5362,
-      "vk_edge": 0.07,
-      "board_score": 98.8,
-      "synced_at": "2026-04-18T03:19:05.368743+00:00",
-      "validation": {
-        "has_market_data": true,
-        "has_hit_rates": true,
-        "has_context": true,
-        "has_mlr": true,
-        "has_gemini": false,
-        "has_consensus": true,
-        "is_fully_validated": true
-      },
-      "war_zone_gate_results": {
-        "gate1_cv": {
-          "threshold": ">= 1.0",
-          "value": 1.224,
-          "passed": true
-        },
-        "gate2_ceiling": {
-          "threshold": 35,
-          "value": 50.0,
-          "passed": true
-        },
-        "gate3_edge": {
-          "threshold": 30,
-          "value": 56.7,
-          "passed": true
-        }
-      },
-      "war_zone_reason": "Moonshot qualified: High volatility + ceiling upside",
-      "ferrari_tier": "war_zone",
-      "tier_label": "War Zone",
-      "vision_intel": "We are fading Ben Rice tonight because his 1.22 coefficient of variation proves he is the definition of a boom-or-bust headache who rarely strings together consistent production. The books have this line at a coin flip, but our data shows a massive 18% edge on the under since he\u2019s failed to drive anyone home in 60% of his last ten outings.",
-      "vision_summary": "We are fading Ben Rice tonight because his 1.22 coefficient of variation proves he is the definition of a boom-or-bust headache who rarely strings together consistent production. The books have this line at a coin flip, but our data shows a massive 18% edge on the under since he\u2019s failed to drive anyone home in 60% of his last ten outings.",
-      "intel_suite": {
-        "lasso": {
-          "projection": 0.41,
-          "confidence_tier": "HIGH_VARIANCE",
-          "r_squared": 0.0131,
-          "top_drivers": [
-            "L5_std_fielding_chances",
-            "L10_avg_slg"
-          ]
-        }
-      },
-      "volatility_score": 100.0,
-      "volatility_label": "extreme",
-      "volatility_family": "mlb_binary",
-      "scout_badges": [],
-      "l5_hits": 2,
-      "l10_hits": 3,
-      "l20_avg": 0.3,
-      "l20_hits": 3,
-      "hit_rate_l20": 50.0,
-      "vk_source": "weighted_avg",
-      "vk_probability": 40.7,
-      "vk_prob_under": 59.3,
-      "vk_recommendation": "HOLD",
-      "oracle_apex_qualified": false,
-      "game_time": "2026-04-17T23:06:00Z",
-      "vk_data": {
-        "predicted": 0.41,
-        "projection": 0.41,
-        "edge": -0.09000000000000002,
-        "source": "lasso_v2"
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-18T03:45:47.809814+00:00",
-      "_cache_updated": "2026-04-18T03:45:47.809816+00:00"
-    },
     "nico_hoerner|rbis|0.5|prizepicks": {
       "player_name": "Nico Hoerner",
       "stat_type": "RBIs",
@@ -8708,6 +8144,604 @@
       "_enriched": true,
       "_enriched_at": "2026-04-18T03:46:03.675890+00:00",
       "_cache_updated": "2026-04-18T03:46:03.675892+00:00"
+    },
+    "tyler_heineman|singles|0.5|prizepicks": {
+      "player_name": "Tyler Heineman",
+      "stat_type": "Singles",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "odds": 100,
+      "market_key": "batter_singles_alternate",
+      "bookmaker": "prizepicks",
+      "event_id": "ed205a37de8d35d5fe44ef82f8644637",
+      "home_team": "Arizona Diamondbacks",
+      "away_team": "Toronto Blue Jays",
+      "commence_time": "2026-04-18T01:41:00Z",
+      "pp_line": 0.5,
+      "pp_odds": 100,
+      "dk_line": 0.5,
+      "dk_odds": 790,
+      "dk_line_mismatch": false,
+      "mgm_line": null,
+      "mgm_odds": null,
+      "mgm_line_mismatch": false,
+      "sharp_line": null,
+      "sharp_odds": null,
+      "sharp_book": null,
+      "pp_dk_edge": 0.0,
+      "pp_sharp_edge": null,
+      "all_lines": {
+        "prizepicks": 0.5,
+        "draftkings": 1.5
+      },
+      "all_odds": {
+        "prizepicks": 100,
+        "draftkings": 790
+      },
+      "sharp_edge": null,
+      "dk_edge": 0.0,
+      "dfs_line": 0.5,
+      "dfs_book": "prizepicks",
+      "is_goblin": false,
+      "is_demon": true,
+      "is_alternate_market": true,
+      "sport": "mlb",
+      "fetched_at": "2026-04-17T13:39:12.352378+00:00",
+      "source": "prizepicks",
+      "bookmakers_available": [
+        "prizepicks",
+        "draftkings"
+      ],
+      "team": null,
+      "player_id": 871,
+      "team_name": null,
+      "position": "Catcher",
+      "lineup_status": "PROJECTED",
+      "stat_field": "singles",
+      "season_average": 0.56,
+      "cv": 1.048,
+      "cv_grade": "VOLATILE",
+      "hit_rate_l10": 50.0,
+      "hit_rate_l5": 40.0,
+      "last_10_games": [
+        {
+          "date": "2026-04-16T17:40:00.000Z",
+          "value": 0,
+          "opponent": "MIL"
+        },
+        {
+          "date": "2026-04-14T23:40:00.000Z",
+          "value": 0,
+          "opponent": "MIL"
+        },
+        {
+          "date": "2026-04-08T19:07:00.000Z",
+          "value": 1,
+          "opponent": "LAD"
+        },
+        {
+          "date": "2026-04-07T23:07:00.000Z",
+          "value": 0,
+          "opponent": "LAD"
+        },
+        {
+          "date": "2026-04-06T23:07:00.000Z",
+          "value": 1,
+          "opponent": "LAD"
+        },
+        {
+          "date": "2026-04-04T18:10:00.000Z",
+          "value": 1,
+          "opponent": "CHW"
+        },
+        {
+          "date": "2026-04-03T18:10:00.000Z",
+          "value": 0,
+          "opponent": "CHW"
+        },
+        {
+          "date": "2026-04-01T17:07:00.000Z",
+          "value": 0,
+          "opponent": "COL"
+        },
+        {
+          "date": "2026-03-31T23:07:00.000Z",
+          "value": 2,
+          "opponent": "COL"
+        }
+      ],
+      "games_played": 9,
+      "edge": 12.0,
+      "enriched_at": "2026-04-17T19:29:12.260832+00:00",
+      "is_enriched": true,
+      "dk_odds_raw": 790,
+      "mgm_odds_raw": null,
+      "p_dk": 0.1124,
+      "p_mgm": null,
+      "p_dk_raw": 0.1124,
+      "p_mgm_raw": null,
+      "p_market_consensus": 0.1124,
+      "books_available_count": 1,
+      "consensus_source": "dk_only",
+      "disagreement": 0.0,
+      "low_confidence": false,
+      "agreement_factor": 1.0,
+      "true_probability": 11.2,
+      "edge_pct": 44.8,
+      "pre_model_edge": 41.4,
+      "post_model_edge": 44.8,
+      "edge_source": "post_model",
+      "legacy_vision_score": 0.142842,
+      "vision_score_100": 96.5,
+      "p_true": 0.56,
+      "stability": 0.6507,
+      "confidence": 0.875,
+      "vision_score": 59.2,
+      "vision_score_raw": 0.032033,
+      "quality_source": "dk",
+      "fair_prob": 0.4545,
+      "edge_vs_fair": 0.1055,
+      "tier": "unqualified",
+      "tier_reason": "front_lines_failed: Failed gates: gate1_cv, gate2_hit_rate, gate4_tp",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 120,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.85,
+          "value": 1.048,
+          "passed": false
+        },
+        "gate2_hit_rate": {
+          "threshold": 65,
+          "value": 52.6,
+          "passed": false
+        },
+        "gate3_edge": {
+          "threshold": 10,
+          "value": 44.8,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 11.2,
+          "passed": false
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.789,
+        "edge_confidence": 0.2638,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "canonical_key": null,
+      "anomaly_line_mismatch_dk": false,
+      "anomaly_line_mismatch_mgm": false,
+      "anomaly_true_disagreement": false,
+      "anomaly_missing_ref": false,
+      "anomaly_stale_ref": false,
+      "dk_outlier": false,
+      "mgm_outlier": false,
+      "market_disagreement_high": false,
+      "consensus_strong": false,
+      "hit_rate": 52.6,
+      "h5_rate": 40.0,
+      "h10_rate": 50.0,
+      "h20_rate": 52.6,
+      "l10_avg": 0.6,
+      "l5_avg": 0.4,
+      "season_avg": 0.56,
+      "ceiling_rate": 52.6,
+      "vk_predicted": 0.51,
+      "vk_prob_over": 50.1,
+      "vk_z_score": -0.1504,
+      "vk_edge": 0.01,
+      "board_score": 61.26,
+      "synced_at": "2026-04-18T03:53:34.137370+00:00",
+      "validation": {
+        "has_market_data": true,
+        "has_hit_rates": true,
+        "has_context": true,
+        "has_mlr": true,
+        "has_gemini": true,
+        "has_consensus": false,
+        "is_fully_validated": true
+      },
+      "war_zone_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.048,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 52.6,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 44.8,
+          "passed": true
+        }
+      },
+      "war_zone_reason": "Moonshot qualified: High volatility + ceiling upside",
+      "ferrari_tier": "war_zone",
+      "tier_label": "War Zone",
+      "volatility_score": 100.0,
+      "volatility_label": "extreme",
+      "volatility_family": "mlb_binary",
+      "scout_badges": [
+        {
+          "badge_key": "volatility_extreme",
+          "id": "volatility_extreme"
+        }
+      ],
+      "l5_hits": 2,
+      "l10_hits": 4,
+      "l20_avg": 0.56,
+      "l20_hits": 4,
+      "hit_rate_l20": 52.6,
+      "vk_source": "weighted_avg",
+      "vk_probability": 50.1,
+      "vk_prob_under": 49.9,
+      "vk_recommendation": "HOLD",
+      "vision_intel": "Tyler Heineman is the definition of a rollercoaster with that 1.048 coefficient of variation, but we only need one single to cash and he's been hovering right around that 0.6 average lately. The books are giving us a coin-flip price on a guy who has found wood in half of his last twenty starts, making this a calculated gamble for the Front Lines crew.",
+      "vision_summary": "Tyler Heineman is the definition of a rollercoaster with that 1.048 coefficient of variation, but we only need one single to cash and he's been hovering right around that 0.6 average lately. The books are giving us a coin-flip price on a guy who has found wood in half of his last twenty starts, making this a calculated gamble for the Front Lines crew.",
+      "oracle_apex_qualified": false,
+      "game_time": "2026-04-18T01:41:00Z",
+      "intel_suite": {
+        "sport": "mlb",
+        "context_badges": [],
+        "vision_insight": {
+          "primary": "Demon alert: Tyler Heineman Singles @ 0.5 - ceiling play",
+          "reasons": [
+            "L10 average of 0.6 exceeds 0.5 line",
+            "High variance (CV 105%, mlb_binary) - boom/bust potential",
+            "Demon line - high risk, high reward play",
+            "Matchup vs Arizona Diamondbacks"
+          ],
+          "confidence": "SPECULATIVE"
+        },
+        "stability_index": {
+          "display": "30%",
+          "score": 30,
+          "consistency": "Volatile",
+          "std_dev": 1.048
+        },
+        "matchup_dvp": {
+          "display": "vs Arizona Diamondbacks",
+          "opponent": "Arizona Diamondbacks",
+          "opponent_abbr": "Ari",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Singles"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-18T03:54:09.922285+00:00",
+      "_cache_updated": "2026-04-18T03:54:09.922287+00:00"
+    },
+    "julio_rodriguez|batter_strikeouts|0.5|prizepicks": {
+      "player_name": "Julio Rodriguez",
+      "stat_type": "Batter Strikeouts",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "odds": -137,
+      "market_key": "batter_strikeouts_alternate",
+      "bookmaker": "prizepicks",
+      "event_id": "0d33220f9d453b16cf8525818ee29051",
+      "home_team": "Seattle Mariners",
+      "away_team": "Texas Rangers",
+      "commence_time": "2026-04-18T01:41:00Z",
+      "pp_line": 0.5,
+      "pp_odds": -137,
+      "dk_line": 0.5,
+      "dk_odds": -399,
+      "dk_line_mismatch": false,
+      "mgm_line": null,
+      "mgm_odds": null,
+      "mgm_line_mismatch": false,
+      "sharp_line": null,
+      "sharp_odds": null,
+      "sharp_book": null,
+      "pp_dk_edge": 0.0,
+      "pp_sharp_edge": null,
+      "all_lines": {
+        "prizepicks": 0.5,
+        "draftkings": 0.5
+      },
+      "all_odds": {
+        "prizepicks": -137,
+        "draftkings": -399
+      },
+      "sharp_edge": null,
+      "dk_edge": 0.0,
+      "dfs_line": 0.5,
+      "dfs_book": "prizepicks",
+      "is_goblin": true,
+      "is_demon": false,
+      "is_alternate_market": true,
+      "sport": "mlb",
+      "fetched_at": "2026-04-17T13:39:12.755055+00:00",
+      "source": "prizepicks",
+      "bookmakers_available": [
+        "prizepicks",
+        "draftkings"
+      ],
+      "team": null,
+      "player_id": 677,
+      "team_name": null,
+      "position": "Center Fielder",
+      "lineup_status": "PROJECTED",
+      "stat_field": "strikeouts",
+      "season_average": 1.0,
+      "cv": 0.723,
+      "cv_grade": "VOLATILE",
+      "hit_rate_l10": 80.0,
+      "hit_rate_l5": 80.0,
+      "last_10_games": [
+        {
+          "date": "2026-04-17T00:40:00.000Z",
+          "value": 2,
+          "opponent": "SD"
+        },
+        {
+          "date": "2026-04-16T01:40:00.000Z",
+          "value": 1,
+          "opponent": "SD"
+        },
+        {
+          "date": "2026-04-15T01:40:00.000Z",
+          "value": 1,
+          "opponent": "SD"
+        },
+        {
+          "date": "2026-04-13T20:10:00.000Z",
+          "value": 0,
+          "opponent": "HOU"
+        },
+        {
+          "date": "2026-04-12T20:10:00.000Z",
+          "value": 1,
+          "opponent": "HOU"
+        },
+        {
+          "date": "2026-04-12T01:40:00.000Z",
+          "value": 1,
+          "opponent": "HOU"
+        },
+        {
+          "date": "2026-04-11T01:40:00.000Z",
+          "value": 1,
+          "opponent": "HOU"
+        },
+        {
+          "date": "2026-04-08T18:35:00.000Z",
+          "value": 2,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-08T00:05:00.000Z",
+          "value": 0,
+          "opponent": "TEX"
+        },
+        {
+          "date": "2026-04-07T00:05:00.000Z",
+          "value": 1,
+          "opponent": "TEX"
+        }
+      ],
+      "games_played": 10,
+      "edge": 100.0,
+      "enriched_at": "2026-04-17T19:29:12.389570+00:00",
+      "is_enriched": true,
+      "dk_odds_raw": -399,
+      "mgm_odds_raw": null,
+      "p_dk": 0.7996,
+      "p_mgm": null,
+      "p_dk_raw": 0.7996,
+      "p_mgm_raw": null,
+      "p_market_consensus": 0.7996,
+      "books_available_count": 1,
+      "consensus_source": "dk_only",
+      "disagreement": 0.0,
+      "low_confidence": false,
+      "agreement_factor": 1.0,
+      "true_probability": 80.0,
+      "edge_pct": 7.3,
+      "pre_model_edge": -5.0,
+      "post_model_edge": 7.3,
+      "edge_source": "post_model",
+      "legacy_vision_score": 0.042324,
+      "vision_score_100": 84.3,
+      "p_true": 0.873,
+      "stability": 0.759,
+      "confidence": 0.875,
+      "vision_score": 65.8,
+      "vision_score_raw": 0.040528,
+      "quality_source": "dk",
+      "fair_prob": 0.7996,
+      "edge_vs_fair": 0.0734,
+      "tier": "safe_haven",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -399,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.723,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 75.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": -9999,
+          "value": 7.3,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 80.0,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.8532,
+        "edge_confidence": 0.1835,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "canonical_key": null,
+      "anomaly_line_mismatch_dk": false,
+      "anomaly_line_mismatch_mgm": false,
+      "anomaly_true_disagreement": false,
+      "anomaly_missing_ref": false,
+      "anomaly_stale_ref": false,
+      "dk_outlier": false,
+      "mgm_outlier": false,
+      "market_disagreement_high": false,
+      "consensus_strong": false,
+      "hit_rate": 75.0,
+      "h5_rate": 80.0,
+      "h10_rate": 80.0,
+      "h20_rate": 75.0,
+      "l10_avg": 1.0,
+      "l5_avg": 1.0,
+      "season_avg": 1.0,
+      "ceiling_rate": 75.0,
+      "vk_predicted": 1.0,
+      "vk_prob_over": 85.0,
+      "vk_z_score": -1.139,
+      "vk_edge": 0.5,
+      "board_score": 94.8,
+      "synced_at": "2026-04-18T03:53:37.778572+00:00",
+      "validation": {
+        "has_market_data": true,
+        "has_hit_rates": true,
+        "has_context": true,
+        "has_mlr": true,
+        "has_gemini": true,
+        "has_consensus": false,
+        "is_fully_validated": true
+      },
+      "safe_haven_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.723,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 75.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": -9999,
+          "value": 7.3,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 80.0,
+          "passed": true
+        }
+      },
+      "safe_haven_reason": "All gates passed for BATTER_STRIKEOUTS",
+      "ferrari_tier": "safe_haven",
+      "tier_label": "Safe Haven",
+      "volatility_score": 85.1,
+      "volatility_label": "high",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [
+        {
+          "badge_key": "soft_matchup",
+          "id": "soft_matchup"
+        }
+      ],
+      "l5_hits": 4,
+      "l10_hits": 8,
+      "l20_avg": 1.0,
+      "l20_hits": 8,
+      "hit_rate_l20": 75.0,
+      "vk_source": "weighted_avg",
+      "vk_probability": 85.0,
+      "vk_prob_under": 15.0,
+      "vk_recommendation": "STRONG OVER",
+      "vision_intel": "Julio has been handing out air conditioners like it's a heatwave lately, punching out in 8 of his last 10 games while maintaining a heavy 1.0 average over that stretch. The books are giving us a gift with this 0.5 line because even though he's a rollercoaster, his 75% hit rate over the last 20 tells us he\u2019s almost guaranteed to chase at least one today.",
+      "vision_summary": "Julio has been handing out air conditioners like it's a heatwave lately, punching out in 8 of his last 10 games while maintaining a heavy 1.0 average over that stretch. The books are giving us a gift with this 0.5 line because even though he's a rollercoaster, his 75% hit rate over the last 20 tells us he\u2019s almost guaranteed to chase at least one today.",
+      "oracle_apex_qualified": true,
+      "game_time": "2026-04-18T01:41:00Z",
+      "intel_suite": {
+        "sport": "mlb",
+        "context_badges": [
+          "pure_contact",
+          "split_advantage",
+          "bvp_dominator"
+        ],
+        "vision_insight": {
+          "primary": "Julio Rodriguez is locked in - 80% hit rate with 1.0 avg vs 0.5 line",
+          "reasons": [
+            "Hitting at 80% over last 10 games",
+            "L10 average of 1.0 exceeds 0.5 line",
+            "High variance (CV 72%, mlb_counting) - boom/bust potential",
+            "Sharp money favors this line (-399)"
+          ],
+          "confidence": "SPECULATIVE"
+        },
+        "stability_index": {
+          "display": "30%",
+          "score": 30,
+          "consistency": "Volatile",
+          "std_dev": 0.723
+        },
+        "matchup_dvp": {
+          "display": "vs Seattle Mariners",
+          "opponent": "Seattle Mariners",
+          "opponent_abbr": "Sea",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Batter Strikeouts"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-18T03:54:14.806349+00:00",
+      "_cache_updated": "2026-04-18T03:54:14.806351+00:00"
     }
   }
 }
