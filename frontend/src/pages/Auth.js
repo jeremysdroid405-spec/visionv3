@@ -462,31 +462,31 @@ export const Auth = () => {
           <div className="bg-gradient-to-b from-zinc-900/50 to-zinc-950 rounded-2xl border border-zinc-800/50 p-4 sm:p-6 md:p-8">
             <SpecRow
               spec="CORE"
-              title="VISION CORE 3.0, Multi-Layer Regression"
+              title="VISION CORE 3.0 — Multi-Layer Regression"
               edge="Calculates true outcome probability independent of the line. Built on 186 features across five seasons, with rolling metrics that capture form, role, and consistency, not averages."
               icon={<Cpu className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
             <SpecRow
               spec="INTEL"
-              title="VISION INTEL, Intelligence Layer"
+              title="VISION INTEL — Intelligence Layer"
               edge="Every play is processed for projection, hit profile, volatility, and structural fit. Environmental signals, heat streaks, and system badges surface the context the line doesn't show."
               icon={<Layers className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
             <SpecRow
               spec="LIVE"
-              title="VISION LIVE, Injury & Role Detection"
+              title="VISION LIVE — Injury & Role Detection"
               edge="Detects lineup and role changes as they happen and recalculates projections immediately. Value shifts are surfaced as they form, not after the market adjusts."
               icon={<Radio className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
             <SpecRow
               spec="SIGNAL"
-              title="VISION SIGNAL, Tiered Scoring"
+              title="VISION SIGNAL — Tiered Scoring"
               edge="Separates strength, risk, and confirmation into three independent tiers. Plays are classified on probability, volatility, and market alignment, never on a single blended score."
               icon={<BarChart3 className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
             <SpecRow
               spec="GUARD"
-              title="VISION GUARD, Playability Filter"
+              title="VISION GUARD — Playability Filter"
               edge="Enforces structural constraints and removes non-playable configurations at the scoring layer. Only plays that meet execution criteria reach the board."
               icon={<ShieldCheck className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
