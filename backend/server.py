@@ -20,6 +20,7 @@ import httpx
 from thefuzz import fuzz
 import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.jobstores.mongodb import MongoDBJobStore
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from services.stats_manager_bdl import StatsManager
@@ -1406,8 +1407,39 @@ async def startup_event():
         "get_master_hub": lambda: get_master_hub(db)
     }
     
-    # Initialize APScheduler for daily and weekly syncs
-    scheduler = AsyncIOScheduler(timezone=SCHEDULER_TIMEZONE)
+    # Initialize APScheduler for daily and weekly syncs.
+    #
+    # Job persistence: use MongoDBJobStore so interval jobs survive backend
+    # restarts. Without it, every restart resets `next_run_time` on every
+    # interval job to (now + interval), which in production can delay
+    # hourly syncs by up to 60 minutes after a redeploy.
+    #
+    # All `scheduler.add_job(...)` calls already pass `replace_existing=True`
+    # which keeps the persisted job's state when present AND upgrades the
+    # trigger/func when code changes — preventing duplicate registrations.
+    try:
+        _scheduler_mongo_client = MongoClient(
+            os.environ.get("MONGO_URL"),
+            serverSelectionTimeoutMS=10000,
+        )
+        _scheduler_jobstores = {
+            "default": MongoDBJobStore(
+                database=os.environ.get("DB_NAME", "pick_vision"),
+                collection="scheduler_jobs",
+                client=_scheduler_mongo_client,
+            )
+        }
+        scheduler = AsyncIOScheduler(
+            jobstores=_scheduler_jobstores,
+            timezone=SCHEDULER_TIMEZONE,
+        )
+        logger.info("[SCHEDULER] MongoDBJobStore enabled (collection=scheduler_jobs)")
+    except Exception as e:
+        logger.warning(
+            f"[SCHEDULER] MongoDBJobStore init failed ({e}); falling back to "
+            "in-memory jobstore. Restarts will skew next_run times."
+        )
+        scheduler = AsyncIOScheduler(timezone=SCHEDULER_TIMEZONE)
     
     # Initialize photo storage service (for base64 photo caching)
     # Use synchronous client with same Atlas-compatible settings
@@ -1761,6 +1793,13 @@ async def startup_event():
             sports=["nba", "mlb"],
         )
         await injury_sensor.start()
+
+        # Targeted injury-triggered re-score (Phase 3).
+        # Subscribes to BoardEvent(injury_change) on the central event bus
+        # and rescopes `nba_prop_scores` for the affected player set only
+        # (rather than the hourly full-slate recompute). NBA-scoped.
+        from services.injury_triggered_rescore import get_rescore_service
+        get_rescore_service().start(db)
 
         # Game Clock + Odds Delta watchers
         game_clock_watcher = GameClockWatcher(db)

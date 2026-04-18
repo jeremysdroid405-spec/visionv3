@@ -46,17 +46,31 @@ class LiveInjuryMicroSync:
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._last_sync: Optional[datetime] = None
-        
+
     async def start_micro_loop(self):
         """Start the micro-sync polling loop."""
         if self._running:
             logger.warning("[INJURY-MICRO] Already running")
             return
-            
+
+        # One-time cleanup of legacy NBA rows in `live_injuries`. NBA
+        # canonical source is now `injuries_normalized`; stale rows here
+        # must not linger because some legacy display paths still query
+        # the collection.
+        try:
+            r = await self.live_injuries.delete_many({"sport": "nba"})
+            if r.deleted_count:
+                logger.info(
+                    f"[INJURY-MICRO] Cleaned {r.deleted_count} deprecated "
+                    "NBA rows from live_injuries (canonical: injuries_normalized)"
+                )
+        except Exception as e:
+            logger.warning(f"[INJURY-MICRO] Legacy NBA cleanup failed: {e}")
+
         self._running = True
         self._task = asyncio.create_task(self._polling_loop())
         logger.info(f"[INJURY-MICRO] Started with {POLLING_INTERVAL_SECONDS}s interval")
-        
+
     async def stop_micro_loop(self):
         """Stop the micro-sync polling loop."""
         self._running = False
@@ -67,7 +81,7 @@ class LiveInjuryMicroSync:
             except asyncio.CancelledError:
                 pass
         logger.info("[INJURY-MICRO] Stopped")
-        
+
     async def _polling_loop(self):
         """Main polling loop - runs every 60 seconds."""
         while self._running:
@@ -75,7 +89,7 @@ class LiveInjuryMicroSync:
                 await self.fetch_live_injuries()
             except Exception as e:
                 logger.error(f"[INJURY-MICRO] Poll failed: {e}")
-            
+
             await asyncio.sleep(POLLING_INTERVAL_SECONDS)
     
     async def fetch_live_injuries(self) -> Dict[str, Any]:
@@ -100,12 +114,24 @@ class LiveInjuryMicroSync:
             # Fetch MLB injuries
             mlb_injuries = await self._fetch_mlb_injuries()
             injuries_fetched["mlb"] = mlb_injuries
-            
-            # Write to live_injuries collection with timestamp
+
+            # Write to live_injuries collection with timestamp.
+            #
+            # DEPRECATION NOTE (2026-04-18):
+            # NBA runtime decision paths have migrated to `injuries_normalized`
+            # (written by InjurySensor, merges BDL + ESPN + NBA Official).
+            # The `live_injuries` collection is retained here as a legacy
+            # write target for MLB-side code that still reads from it; NBA
+            # rows are skipped to stop building up stale data that no NBA
+            # code path consults. See ROADMAP: drop live_injuries entirely
+            # after MLB readers migrate.
             now = datetime.now(timezone.utc)
-            
-            # Upsert each injury record
+
             for sport, injuries in injuries_fetched.items():
+                if sport == "nba":
+                    # NBA: canonical source is `injuries_normalized` (see
+                    # services.injury_sensor). Skip stale legacy writes.
+                    continue
                 for injury in injuries:
                     await self.live_injuries.update_one(
                         {
@@ -122,8 +148,9 @@ class LiveInjuryMicroSync:
                         },
                         upsert=True
                     )
-            
-            # Clean up expired entries
+
+            # Clean up expired entries (affects MLB + any legacy NBA rows
+            # lingering from before the deprecation cut-over).
             await self.live_injuries.delete_many({
                 "expires_at": {"$lt": now}
             })
