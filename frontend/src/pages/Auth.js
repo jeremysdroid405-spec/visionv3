@@ -4,10 +4,10 @@ import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { 
-  Eye, Zap, Target, Shield, ChevronDown, 
+import {
+  Eye, Zap, Target, Shield, ChevronDown,
   Play, Lock, Crosshair, Radio, Cpu, Newspaper,
-  TrendingUp, AlertTriangle
+  TrendingUp, AlertTriangle, Layers, BarChart3, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -440,58 +440,52 @@ export const Auth = () => {
         </div>
       </section>
 
-      {/* ==================== SECTION 2: MISSION OBJECTIVES ==================== */}
+      {/* ==================== SECTION 2: THE VISION STACK ==================== */}
       <section className="py-12 sm:py-20 px-4 bg-zinc-950 border-y border-zinc-900">
         <div className="max-w-3xl mx-auto">
           {/* Section Header */}
           <div className="text-center mb-6 sm:mb-10">
             <span className="text-zinc-600 font-mono text-[9px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.3em]">TECHNICAL SPECIFICATIONS</span>
             <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mt-2 tracking-tight">
-              DEPLOYMENT: <span className="text-emerald-400">MISSION OBJECTIVES™</span>
+              DEPLOYMENT: <span className="text-emerald-400">VISION STACK™</span>
             </h2>
             <div className="flex items-center justify-center gap-2 mt-2 sm:mt-3">
               <span className="text-zinc-600 font-mono text-[10px] sm:text-xs">SYSTEM STATUS:</span>
-              <span className="text-emerald-400 font-mono text-[10px] sm:text-xs font-bold animate-pulse">[OPERATIONAL // INTEL_SYNC_ACTIVE]</span>
+              <span className="text-emerald-400 font-mono text-[10px] sm:text-xs font-bold animate-pulse">[CORE_3.0 // INTEL_LAYER_ACTIVE // LIVE_FEED_SYNCED]</span>
             </div>
           </div>
-          
+
           {/* Spec Table */}
           <div className="bg-gradient-to-b from-zinc-900/50 to-zinc-950 rounded-2xl border border-zinc-800/50 p-4 sm:p-6 md:p-8">
-            <SpecRow 
-              spec="MODEL"
-              title="PropVision AI (Flash Architecture)"
-              edge="Built on zero-latency infrastructure. While legacy models refresh on a delay, Flash Architecture processes the entry in real-time. No lag, no slippage—just synchronized speed."
-              icon={<BrainCircuitIcon className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" />}
+            <SpecRow
+              spec="CORE"
+              title="VISION CORE 3.0, Multi-Layer Regression"
+              edge="Calculates true outcome probability independent of the line. Built on 186 features across five seasons, with rolling metrics that capture form, role, and consistency, not averages."
+              icon={<Cpu className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
-            <SpecRow 
-              spec="LOGIC"
-              title="Anomaly Detection"
-              edge="We hunt for Systemic Glitches. Our AI scans millions of data points to isolate the 1% of lines where the sportsbooks' mathematical models have objectively fractured."
-              icon={<RadarSweepIcon className="w-6 h-6 sm:w-7 sm:h-7 text-yellow-500" />}
-            />
-            <SpecRow 
+            <SpecRow
               spec="INTEL"
-              title="Usage Ripple™"
-              edge="Automated roster recalculation. When injury news drops or a roster shift occurs, the Ripple re-maps the floor and ceiling for the entire squad within 60s. You get the value before the market can adjust."
-              icon={<WaveformIcon className="w-6 h-6 sm:w-7 sm:h-7 text-cyan-400" />}
+              title="VISION INTEL, Intelligence Layer"
+              edge="Every play is processed for projection, hit profile, volatility, and structural fit. Environmental signals, heat streaks, and system badges surface the context the line doesn't show."
+              icon={<Layers className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
-            <SpecRow 
-              spec="SENTIMENT"
-              title="Social Signal™"
-              edge="Beyond the box score. We track high-impact external factors. From personal disruptions and off-court volatility to Revenge Game narratives. If a player's focus is fractured or their motivation is peaked, the Objectives are re-prioritized in real-time."
-              icon={<NetworkPulseIcon className="w-6 h-6 sm:w-7 sm:h-7 text-purple-400" />}
+            <SpecRow
+              spec="LIVE"
+              title="VISION LIVE, Injury & Role Detection"
+              edge="Detects lineup and role changes as they happen and recalculates projections immediately. Value shifts are surfaced as they form, not after the market adjusts."
+              icon={<Radio className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
-            <SpecRow 
-              spec="TARGETING"
-              title="Sharp Edges"
-              edge={<>High-alpha exploits where line movement favors you. Sharp vs. DFS delta analysis identifies when the books have mispriced a line.</>}
-              icon={<TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 text-blue-400" />}
+            <SpecRow
+              spec="SIGNAL"
+              title="VISION SIGNAL, Tiered Scoring"
+              edge="Separates strength, risk, and confirmation into three independent tiers. Plays are classified on probability, volatility, and market alignment, never on a single blended score."
+              icon={<BarChart3 className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
-            <SpecRow 
-              spec="SAFETY"
-              title="Trap Detection"
-              edge={<>Avoid the minefield. Our trap risk algorithm identifies lines that look too good—because they often are. Statistical certainty over false confidence.</>}
-              icon={<AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 text-orange-400" />}
+            <SpecRow
+              spec="GUARD"
+              title="VISION GUARD, Playability Filter"
+              edge="Enforces structural constraints and removes non-playable configurations at the scoring layer. Only plays that meet execution criteria reach the board."
+              icon={<ShieldCheck className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
           </div>
         </div>
