@@ -30,7 +30,7 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
 # =========================================================================
 SYSTEM_PROMPT = """You are the voice of Prop Vision — a sharp, witty betting partner who talks like he's texting his inner circle from the back of the sportsbook. You did the homework. You found the edge. Now you're telling your crew why you're on this play.
 
-CRITICAL: Every response must feel UNIQUE. Do NOT start multiple summaries with the same pattern. Vary your openings — start with the matchup, a question, the punchline, roast the defense, hype the streak, call out the books. Surprise us every time.
+CRITICAL: Every response must feel UNIQUE. Do NOT start multiple summaries with the same pattern. Vary your openings — start with the matchup, a question, the punchline, roast the defense, hype the streak, highlight a usage shift, or call out a pace mismatch. Surprise us every time.
 
 VOICE RULES:
 - Always "we" and "us" — we're in this together
@@ -38,7 +38,7 @@ VOICE RULES:
 - NO AI-speak. No "unleash," "vital," "crucial," "notable," "significant." No "model projects." Talk like a human who bets.
 - If the edge is massive (>20%), talk like you found free money on the sidewalk
 - If the edge is thin (<5%), be honest — "this is a lean, not a lock"
-- If CV is low (<0.30), this guy is a metronome — say that
+- If CV is low (<0.30), this guy is consistent — say that without using the word "metronome"
 - If CV is high (>0.70), own the volatility — "yeah he's a rollercoaster, but tonight the track is tilted our way"
 - If hit rate is 80%+, treat it like a cheat code
 - If there's vacuum_data (teammate out), that's the headline — someone's minutes/usage just got handed to our guy on a silver platter
@@ -46,11 +46,30 @@ VOICE RULES:
 - If DvP rank is <8 (elite defense), respect it but explain why we're still in
 
 TIER-SPECIFIC ENERGY:
-- Safe Haven picks: Calm confidence. "This is the rent money play."
-- Front Lines picks: Calculated aggression. "The books are sleeping on this one."
+- Safe Haven picks: Calm confidence. "This is the rent-money play — volume's there, matchup's there, ride it."
+- Front Lines picks: Calculated aggression. "We're not reaching — the numbers back this up from every angle."
 - War Zone picks: Controlled chaos. "This is a heater-or-heartbreak spot and we're strapping in."
 
-Each summary MUST be exactly 2 full sentences, each at least 15 words long. Be data-heavy but "in the trenches." Never sound robotic."""
+Each summary MUST be exactly 2 full sentences, each at least 15 words long. Be data-heavy but "in the trenches." Never sound robotic.
+
+ABSOLUTE RULES — MUST BE OBEYED ON EVERY SUMMARY
+These are hard constraints. Output that violates them will be rejected.
+
+1. BANNED PHRASES. Never use any of the following, in any tense or variation:
+   - "the books", "books are", "books have", "the book is", "the book has", "the book set"
+   - "the sportsbook is", "sportsbooks are", "bookies"
+   - "the oddsmakers", "oddsmakers are"
+   - "printing money", "screaming at us", "line is a gift", "begging us to", "practically handing us"
+   - "disrespecting" (when used about the line/market)
+   - "metronome" (find a fresher way to describe consistency, e.g. "rock-steady", "lock-step", "dialed in", "automatic")
+
+2. DO NOT frame the play as "the market is wrong" or "the book messed up". You may reference the line ONCE, factually (e.g. "the line sits at 7.5"), but the thesis of each summary must be about the PLAYER, MATCHUP, USAGE, PACE, or VOLATILITY — never about what the book did or didn't do.
+
+3. VARIETY. Across the props in a single batch, you MUST vary the opening sentence structure and angle. If prop #1 opens with a player-form angle, prop #2 should open with a matchup, pace, usage, or volatility angle. Never open two summaries in the same batch the same way.
+
+4. NO STOCK METAPHORS USED MORE THAN ONCE PER BATCH. Rotate through your imagery — do not reuse "printing money", "clerical error", "feasting", "sprinting to the window", "free money", "cheat code" across different props.
+
+If any summary you draft contains a banned phrase, discard it and rewrite from a different angle before returning."""
 
 
 def _get_client():
@@ -113,7 +132,7 @@ async def generate_gemini_scout_intel(payload: Dict, max_retries: int = 3) -> st
             )
 
             if len(text) >= 50:
-                return text
+                return await _rewrite_if_banned(text, payload)
 
         except asyncio.TimeoutError:
             logger.warning(f"[GEMINI] Timeout for {player} (attempt {attempt+1}/{max_retries})")
@@ -257,6 +276,25 @@ async def _process_batch(batch: List[Dict], batch_num: int, total_batches: int) 
         if payload_key and len(summary) >= 50:
             results[payload_key] = summary
 
+    # Safety-net: run banned-phrase validator on every summary. One retry
+    # per offender in parallel so the batch cost stays bounded.
+    rewrite_targets = []
+    for pid, pkey in key_map.items():
+        if pkey in results and _contains_banned(results[pkey]):
+            rewrite_targets.append((pkey, batch[int(pid)] if pid.isdigit() and int(pid) < len(batch) else None))
+    if rewrite_targets:
+        logger.info(
+            f"[GEMINI_BATCH] Batch {batch_num}: {len(rewrite_targets)} summaries "
+            f"contain banned phrases, running targeted rewrites"
+        )
+        rewritten = await asyncio.gather(
+            *[_rewrite_if_banned(results[pk], pl or {}) for pk, pl in rewrite_targets],
+            return_exceptions=True,
+        )
+        for (pk, _), new in zip(rewrite_targets, rewritten):
+            if isinstance(new, str) and new:
+                results[pk] = new
+
     # Fill missing with fallback
     for pid, pkey in key_map.items():
         if pkey not in results:
@@ -268,6 +306,122 @@ async def _process_batch(batch: List[Dict], batch_num: int, total_batches: int) 
 
 def _payload_key(payload: Dict) -> str:
     return f"{payload.get('player', '?')}|{payload.get('stat', '?')}|{payload.get('line', 0)}"
+
+
+# =========================================================================
+# BANNED-PHRASE VALIDATOR + ONE-SHOT RE-PROMPT
+# =========================================================================
+# Gemini sometimes ignores strong negative constraints in SYSTEM_PROMPT.
+# This post-hoc validator is the safety net: if any banned phrase survives
+# into the output, we run ONE targeted rewrite. If that also fails, we
+# fall back to a deterministic text-level sanitizer rather than serving
+# the offending text. Cost: zero on clean outputs, +1 Gemini call per
+# offending prop when it triggers.
+BANNED_PHRASES = (
+    "the books", "books are", "books have", "the book is", "the book has",
+    "the book set", "book is sleeping", "book hung", "the book ",
+    "the sportsbook", "sportsbooks are", "bookies",
+    "the oddsmakers", "oddsmakers are",
+    "printing money", "screaming at us", "line is a gift",
+    "begging us", "practically handing us", "disrespecting",
+    "metronome",
+)
+
+
+def _contains_banned(text: str) -> Optional[str]:
+    """Return the FIRST banned phrase found, or None."""
+    if not text:
+        return None
+    tl = text.lower()
+    for p in BANNED_PHRASES:
+        if p in tl:
+            return p
+    return None
+
+
+def _sanitize_banned(text: str) -> str:
+    """Last-resort deterministic scrub. Replaces banned phrases with
+    neutral paraphrases so the served text never leaks the blocklist.
+    Only used when the one-shot rewrite also fails."""
+    import re as _re
+    replacements = {
+        r"\bthe books are\b": "the line is",
+        r"\bbooks are\b": "the line is",
+        r"\bthe books\b": "the line",
+        r"\bthe sportsbook is\b": "the line is",
+        r"\bsportsbooks are\b": "the line is",
+        r"\bbookies\b": "the market",
+        r"\bthe oddsmakers\b": "the market",
+        r"\boddsmakers are\b": "the market is",
+        r"\bprinting money\b": "cashing in",
+        r"\bscreaming at us\b": "standing out",
+        r"\bline is a gift\b": "line looks soft",
+        r"\bbegging us\b": "inviting us",
+        r"\bpractically handing us\b": "giving us",
+        r"\bdisrespecting\b": "undervaluing",
+        r"\bmetronome\b": "lock-step",
+    }
+    out = text
+    for pat, repl in replacements.items():
+        out = _re.sub(pat, repl, out, flags=_re.IGNORECASE)
+    return out
+
+
+async def _rewrite_if_banned(summary: str, payload: Dict) -> str:
+    """If summary contains banned phrase, ask Gemini to rewrite it ONCE.
+    If the rewrite still fails, apply deterministic sanitizer."""
+    hit = _contains_banned(summary)
+    if not hit:
+        return summary
+    if not GOOGLE_API_KEY:
+        return _sanitize_banned(summary)
+
+    from google.genai import types
+    retry_instruction = (
+        f"The previous summary used the banned phrase '{hit}'. "
+        "Rewrite it in 2 sentences (15+ words each), keeping the same stats "
+        "but opening with a DIFFERENT angle (player form, matchup, usage, "
+        "pace, or volatility). Do NOT reference 'the books', 'bookies', "
+        "'oddsmakers', 'printing money', 'metronome', 'begging us', "
+        "'disrespecting', or any equivalent market-blaming framing. "
+        "Return ONLY the rewritten 2-sentence summary, plain text."
+    )
+    user_text = (
+        f"PREVIOUS DRAFT (contains banned phrase):\n{summary}\n\n"
+        f"PROP DATA:\n{json.dumps(payload, default=str)}\n\n"
+        f"{retry_instruction}"
+    )
+    try:
+        client = _get_client()
+        response = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: client.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=user_text,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        max_output_tokens=512,
+                        temperature=0.9,
+                        thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    ),
+                ),
+            ),
+            timeout=10.0,
+        )
+        new_text = (response.text or "").strip()
+        if len(new_text) >= 50 and _contains_banned(new_text) is None:
+            logger.info(f"[GEMINI_REWRITE] Cleared '{hit}' for {payload.get('player')}")
+            return new_text
+        logger.warning(
+            f"[GEMINI_REWRITE] Rewrite still contains banned phrase for "
+            f"{payload.get('player')}, applying deterministic sanitizer"
+        )
+    except Exception as e:
+        logger.warning(
+            f"[GEMINI_REWRITE] Retry call failed for {payload.get('player')}: {str(e)[:80]}"
+        )
+    return _sanitize_banned(summary)
 
 
 # =========================================================================
@@ -331,7 +485,7 @@ def _fallback(payload: Dict) -> str:
     parts = []
     if proj and edge:
         if abs(edge_pct) >= 15:
-            parts.append(f"We're looking at {player} {stat} projecting to {proj} against a {line} line — that's a {edge_pct:+.1f}% edge the books haven't priced in.")
+            parts.append(f"We're looking at {player} {stat} projecting to {proj} against a {line} line — that's a {edge_pct:+.1f}% edge on the {direction.lower()} side.")
         else:
             parts.append(f"{player} {stat} projects to {proj} vs a {line} line ({direction} {edge:+.1f}), a modest edge worth watching.")
     else:

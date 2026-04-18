@@ -418,6 +418,47 @@ Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
   header ⇒ **401**. Off-by-default in any environment where the operator
   hasn't opted in.
 
+## Vision Intel Prompt Refresh — "The books" Ban (COMPLETE Apr 18, 2026)
+- **Problem**: every Gemini-generated summary leaned on "the books" / "books are" /
+  "printing money" / "metronome" / "begging us" openers. Feedback was unanimous
+  that every prop read the same.
+- **Fix (3 surgical edits)**:
+  - `services/gemini_scout_engine.py::SYSTEM_PROMPT` — removed "call out the books"
+    directive, replaced "The books are sleeping" example, dropped "metronome" RL
+    hook, added a tail-block of ABSOLUTE RULES listing every banned phrase + a
+    mandatory-variety clause. (Placement at the END of the prompt matters —
+    Gemini's RL weights the tail-most constraints heaviest.)
+  - `services/gemini_scout_engine.py::_fallback()` — removed the hard-coded
+    "edge the books haven't priced in" sentence; now uses a neutral edge
+    framing.
+  - `services/gemini_scout_engine.py` — added `_contains_banned()`,
+    `_sanitize_banned()`, `_rewrite_if_banned()` as a safety net: every returned
+    summary is scanned; offenders get ONE targeted Gemini rewrite, then a
+    deterministic text-level sanitizer as the final fallback. Wired into BOTH
+    single-prop and batch generation paths.
+  - `services/vision_intel_service.py::VISION_INTEL_BATCH_PROMPT` — matching
+    ABSOLUTE RULES block added for the NBA UNDER path.
+  - `services/mlb_vision_intel.py::MLB_VISION_INTEL_BATCH_PROMPT` — matching
+    ABSOLUTE RULES block added (removed "the line is disrespectful", "book is
+    sleeping", "printing money" hooks).
+- **Hard verification** — after clearing both the JSON cache file and all
+  `vision_intel` fields on `dg_cached_board` + `nba_prop_scores`, then
+  restarting backend to flush the rolling_cache_manager's in-memory dict and
+  forcing a fresh rebuild:
+  - 9/9 unique NBA summaries contain **zero banned phrases** (was 9/9 before).
+  - Opening 3-word frequency shows maximum distribution (1x or 2x per opener,
+    no opener dominating).
+  - All three Ferrari tier endpoints return 200 with populated vision_intel.
+  - GEMINI_ENRICH log shows `success=30 failed=0` every rebuild (pipeline
+    itself unchanged).
+- **Operator note**: cache invalidation is required to flip existing props.
+  The safety-net validator covers FUTURE generations; stale entries in the
+  file are preserved until the rolling_cache_manager sees a new prop_id. If
+  you ever need to force a wholesale refresh, remove
+  `/app/backend/data/nba_master_active_cache.json` + clear `vision_intel` on
+  `dg_cached_board` + restart backend + trigger a coordinator rebuild. This
+  is documented here for repeatability.
+
 ## Phase 5 Step 1 — Kill dead Gemini writes to `elite_*` (COMPLETE Apr 18, 2026)
 - **Problem**: `unified_pipeline._run_gemini_enrichment` was doing ~32 UPDATE
   ops per full rebuild into `elite_safe_haven/front_lines/war_zone` to stamp
