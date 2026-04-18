@@ -376,10 +376,34 @@ Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
   its preserved timestamp `05:36:19.597429` (confirmed by APScheduler's own
   "scheduled at" log line) and auto-advanced one interval.
 
+## Phase 3 — Targeted Injury-Triggered Rescore (COMPLETE Apr 18, 2026)
+- **Problem**: without targeted rescore, any single injury change had to wait
+  for the next hourly full sync (up to 60 min + full-slate recompute of 2185
+  props) before the Dashboard reacted.
+- **Fix**: `services/injury_triggered_rescore.py` now subscribes to
+  `BoardEvent(injury_change)` on the event bus and, for each high-severity
+  NBA change, executes a scoped recompute:
+    1. resolves impacted players = injured player(s) + same-team teammates
+       via `dg_cached_board` (canonical "players with props today" source;
+       `dg_live_props` has no `team` field)
+    2. monkey-patches `NBAScoringAdapter.load_live_props` to return ONLY the
+       impacted player set, then calls `services.scoring.recompute.recompute()`
+       — identical scoring stack, identical gate logic, just scoped
+    3. patches `dg_cached_board` for each impacted player: refreshes
+       `injury_status` (self) + `injured_teammates` (OUT/DOUBTFUL same-team)
+       + `synced_at` / `last_injury_rescore_at`
+  Fixed pre-existing latent bugs in the service:
+  `NBAScoring` → `NBAScoringAdapter` (import), missing `db=` / stray
+  `config={}` kwarg in `recompute()` call.
+- **Hard verification** (Fred VanVleet HOU trigger): all 4 assertions
+  passed — 7/7 HOU board docs patched, 158/158 HOU prop_scores advanced
+  `computed_at`, 0 ATL control leakage on either collection. End-to-end
+  latency 2.2 s vs ~60 min full-sync wait. Live `/api/v3/ferrari/*`
+  endpoints return HOU picks with the exact fresh `computed_at`
+  timestamp — no hourly sync required.
+- **Regression harness**: `/app/backend/tests/phase3_injury_rescore_verify.py`.
+
 ## Remaining Roadmap
-- **P1**: Phase 3 Targeted Injury-Triggered Rescore
-  (`services/injury_triggered_rescore.py` — flesh out impacted-prop selector
-  and patch only affected rows in `nba_prop_scores` + `dg_cached_board`).
 - **P1**: Phase 4 — rip deprecated writers out of `live_injuries`,
   `dg_injuries`, `bdl_injuries` pipelines.
 - **P1**: Phase 5 — drop legacy collections (`elite_safe_haven`,
@@ -387,6 +411,8 @@ Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
   `bdl_injuries`) once no readers remain.
 - **P1**: Google/Apple OAuth (Emergent-managed).
 - **P1**: Stripe payments (pod test keys).
+- **P2**: Phase 3.5 — extend injury rescore scope to opponent-team props
+  (defensive assignment changes).
 - **P2**: Wind Tunnel weather integration for MLB friction.
 
 ---
