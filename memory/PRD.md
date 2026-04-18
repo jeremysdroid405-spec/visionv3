@@ -418,6 +418,42 @@ Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
   header ⇒ **401**. Off-by-default in any environment where the operator
   hasn't opted in.
 
+## Phase 6.5 Step A — Canonical-Naming Config Layer (Apr 18, 2026)
+- **New module**: `config/collections.py` — single source of truth for
+  collection names across the universal board engine. Exports
+  `resolve(sport, concept)`, `canonical_name(sport, concept)`,
+  `has_legacy_override()`, `migration_status()`, plus the full
+  `SUPPORTED_SPORTS` / `CANONICAL_CONCEPTS` / `SPORT_OVERRIDES` dicts.
+  Each legacy collection (NBA `dg_*`, `bdl_*`, `ferrari_*`) is declared
+  once in `SPORT_OVERRIDES`; the resolver transparently returns the
+  legacy name so no reader breaks. A migration retires a collection by
+  deleting one line from `SPORT_OVERRIDES`.
+- **Wiring**: `services/board/adapters/base.py::SportBoardAdapter` now
+  uses `resolve()` internally for `live_props_collection`,
+  `scores_collection`, `cached_board_collection`. NBA + MLB adapters no
+  longer hardcode any collection name — they set only `sport` +
+  `version_tag`. Adding NFL is literally a 3-field class declaration.
+- **Observability**: `GET /api/collection-migration-status` (same
+  `X-Admin-Token` gate) reports the state of all 54 (sport, concept)
+  pairs — `current` vs `canonical`, `migrated: bool`, plus a rollup
+  summary. Drives Phase B/C/D migrations collection-by-collection.
+- **Coexistence**: the older `config/db_config.py::get_collection_name`
+  (50+ existing callers) is UNCHANGED. `config/collections.py` is the
+  NEW authoritative layer for the universal board engine; the two will
+  converge once Phase B/C/D complete.
+- **Hard verification**:
+  1. `resolve()` returns correct current names for every pair —
+     NBA `live_props` → `dg_live_props` (LEGACY), NBA `prop_scores` →
+     `nba_prop_scores` (CANONICAL), MLB all three → canonical.
+  2. All 6 tier reader routes serve 200 with identical pick counts
+     before and after the adapter rewire.
+  3. Migration endpoint returns `{total_pairs: 54, migrated: 32,
+     pending: 22}` — zero DB I/O, zero side-effects.
+- **Current migration state**: 32/54 pairs already on canonical names.
+  22 pending across NBA's `dg_*`, `bdl_*`, `ferrari_*` legacy namespaces
+  — each to be retired via the Phase B/C/D dual-write playbook
+  documented in `/app/memory/COLLECTION_NAMING_AUDIT.md`.
+
 ## Universal Multi-Sport Board Engine — Phase 6 Steps 1-4 (COMPLETE Apr 18, 2026)
 - **Engine vs adapter split**: `services/board/` introduced as the
   universal layer. Sport-agnostic modules (`reader.py`, `scanner.py`,

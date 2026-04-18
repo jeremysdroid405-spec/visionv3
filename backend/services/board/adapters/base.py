@@ -4,6 +4,13 @@ SportBoardAdapter — the plug-in contract.
 Everything the universal engine needs to know about a sport lives here.
 The engine never branches on `if sport == "nba"`; it calls
 `get_adapter(sport).<method>()`.
+
+Collection names are resolved through `config.collections` so the
+universal engine uses the canonical `{sport}_<concept>` name everywhere
+it's available, and seamlessly falls back to legacy names (e.g. NBA's
+`dg_live_props` / `dg_cached_board`) until Phase B/C/D migrations
+complete. Each adapter only sets `self.sport` + `self.version_tag`; all
+collection properties are derived.
 """
 from __future__ import annotations
 
@@ -11,16 +18,35 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+from config.collections import resolve
+
 
 class SportBoardAdapter(ABC):
     """Abstract base. Each sport implements this in one file."""
 
-    # ---- Identity ----
+    # ---- Identity (adapters set these two only) ----
     sport: str                   # 'nba', 'mlb', 'nfl', …
     version_tag: str             # 'final-nba', 'final-mlb', …
-    live_props_collection: str   # raw-inventory collection
-    scores_collection: str       # master pool
-    cached_board_collection: str # enrichment overlay
+
+    # ---- Collection properties (resolved through config.collections) ----
+    # These are properties (not class attributes) so that the resolver is
+    # the single source of truth and migrations happen via one config
+    # file, not by touching every adapter.
+    @property
+    def live_props_collection(self) -> str:
+        """Raw odds-API inventory collection for this sport."""
+        return resolve(self.sport, "live_props")
+
+    @property
+    def scores_collection(self) -> str:
+        """Master pool collection for this sport."""
+        return resolve(self.sport, "prop_scores")
+
+    @property
+    def cached_board_collection(self) -> str:
+        """Enrichment overlay collection for this sport."""
+        return resolve(self.sport, "cached_board")
+
     tier_names: Tuple[str, ...]  # e.g. ('safe_haven','front_lines','war_zone')
 
     @abstractmethod

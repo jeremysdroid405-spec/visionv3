@@ -16,9 +16,8 @@ _MLB_SORT_KEYS = {
 class MLBBoardAdapter(SportBoardAdapter):
     sport = "mlb"
     version_tag = "final-mlb"
-    live_props_collection = "mlb_live_props"
-    scores_collection = "mlb_prop_scores"
-    cached_board_collection = "mlb_cached_board"
+    # live_props_collection, scores_collection, cached_board_collection
+    # are resolved via config.collections (the base class resolves them).
     tier_names = ("safe_haven", "front_lines", "war_zone")
 
     def sort_key_for_tier(self, tier: str) -> str:

@@ -417,3 +417,32 @@ async def full_sync_stats(
         raise HTTPException(status_code=400, detail="sport must be 'nba' or 'mlb'")
     return _format(publish_counts.get(s) or {})
 
+
+@router.get("/collection-migration-status")
+async def collection_migration_status(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Read-only report of the Phase-A canonical-naming migration.
+
+    For each (sport, concept) pair managed by `config.collections`,
+    reports the CURRENT storage collection name, the CANONICAL target
+    name, and whether the pair has already migrated. Drives migration
+    dashboards and regression audits — zero DB I/O, no side-effects.
+
+    Auth: identical to /injury-rescore-stats and /full-sync-stats.
+    """
+    _require_admin_debug_token(x_admin_token)
+
+    from config.collections import migration_status, SUPPORTED_SPORTS
+
+    full = migration_status()
+    summary = {"sports": SUPPORTED_SPORTS, "total_pairs": 0, "migrated": 0, "pending": 0}
+    for _, by_concept in full.items():
+        for _, info in by_concept.items():
+            summary["total_pairs"] += 1
+            if info["migrated"]:
+                summary["migrated"] += 1
+            else:
+                summary["pending"] += 1
+    return {"summary": summary, "by_sport": full}
+

@@ -18,9 +18,8 @@ _NBA_SORT_KEYS = {
 class NBABoardAdapter(SportBoardAdapter):
     sport = "nba"
     version_tag = "final-nba"
-    live_props_collection = "dg_live_props"
-    scores_collection = "nba_prop_scores"
-    cached_board_collection = "dg_cached_board"
+    # live_props_collection, scores_collection, cached_board_collection
+    # are resolved via config.collections (the base class resolves them).
     tier_names = ("safe_haven", "front_lines", "war_zone")
 
     def sort_key_for_tier(self, tier: str) -> str:
