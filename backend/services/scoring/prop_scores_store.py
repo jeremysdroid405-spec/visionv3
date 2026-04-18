@@ -35,6 +35,8 @@ _SCORE_OUTPUT_FIELDS = (
     "model_projection", "model_sigma",
     # VK2 (5-year adv-stat) diagnostics — parallel to legacy VK model_*
     "p_true_vk2", "vk2_projection", "vk2_sigma", "vk2_error",
+    # Side-aware hit-rate diagnostics (the side passed to gates is in hit_rate)
+    "hit_rate_over", "hit_rate_under",
 )
 
 _IDENTITY_FIELDS = (

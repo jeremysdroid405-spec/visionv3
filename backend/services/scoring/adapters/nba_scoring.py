@@ -365,18 +365,30 @@ class NBAScoringAdapter(ScoringAdapter):
         logger.info(f"[NBA_SCORING] Cached game logs for {count} players")
 
     def _compute_cv_and_hit_rate(
-        self, player_name: str, stat_type: str, line: float, window: int = 20
+        self, player_name: str, stat_type: str, line: float,
+        direction: str = "OVER", window: int = 20,
     ):
         """
-        Compute (cv, hit_rate, ceiling_rate) from the player's last-N game logs.
-        Returns (None, None, None) if unavailable.
+        Compute (cv, hit_rate, ceiling_rate, hit_rate_over, hit_rate_under)
+        from the player's last-N game logs.
+
+        hit_rate is SIDE-AWARE:
+          - direction == OVER  → % games where stat > line
+          - direction == UNDER → % games where stat <= line  (i.e., 100 - over_rate)
+        hit_rate_over / hit_rate_under are always returned for diagnostics.
+
+        ceiling_rate is direction-aware too:
+          - OVER:  % games where stat >= max(1.5*line, line+0.5)   (tail up)
+          - UNDER: % games where stat <= max(0.5*line, line-0.5)   (tail down)
+
+        Returns (None, None, None, None, None) if unavailable.
         """
         field = self._STAT_FIELD_MAP.get(stat_type)
         if field is None:
-            return None, None, None
+            return None, None, None, None, None
         logs = self._logs_cache.get((player_name or "").lower()) or []
         if not logs:
-            return None, None, None
+            return None, None, None, None, None
 
         # Newest-first order is NOT guaranteed; sort by date desc for the window.
         try:
@@ -401,7 +413,7 @@ class NBAScoringAdapter(ScoringAdapter):
             vals = [g.get(field) for g in window_logs if g.get(field) is not None]
         vals = [float(v) for v in vals if v is not None]
         if len(vals) < 5:
-            return None, None, None
+            return None, None, None, None, None
 
         arr = np.array(vals)
         mean = float(arr.mean())
@@ -409,13 +421,26 @@ class NBAScoringAdapter(ScoringAdapter):
             cv = None
         else:
             cv = round(float(arr.std(ddof=1) / mean), 4)
-        hits = int(sum(1 for v in vals if v > line))
-        hit_rate = round((hits / len(vals)) * 100.0, 1)
-        # Ceiling: hit rate vs 2x line (or line + 50% mean) — use 1.5x for NBA
-        ceiling_thresh = max(line * 1.5, line + 0.5)
-        ceiling_hits = int(sum(1 for v in vals if v >= ceiling_thresh))
-        ceiling_rate = round((ceiling_hits / len(vals)) * 100.0, 1)
-        return cv, hit_rate, ceiling_rate
+
+        # Side-aware hit rate
+        over_hits = int(sum(1 for v in vals if v > line))
+        under_hits = int(sum(1 for v in vals if v <= line))
+        hit_rate_over = round((over_hits / len(vals)) * 100.0, 1)
+        hit_rate_under = round((under_hits / len(vals)) * 100.0, 1)
+
+        side = (direction or "OVER").upper()
+        hit_rate = hit_rate_under if "UNDER" in side else hit_rate_over
+
+        # Side-aware ceiling: tail probability in the direction of the bet
+        if "UNDER" in side:
+            floor_thresh = min(line * 0.5, line - 0.5)
+            tail_hits = int(sum(1 for v in vals if v <= floor_thresh))
+        else:
+            ceiling_thresh = max(line * 1.5, line + 0.5)
+            tail_hits = int(sum(1 for v in vals if v >= ceiling_thresh))
+        ceiling_rate = round((tail_hits / len(vals)) * 100.0, 1)
+
+        return cv, hit_rate, ceiling_rate, hit_rate_over, hit_rate_under
 
     async def build_context(
         self, db, prop: Dict[str, Any], config: Dict[str, Any]
@@ -487,6 +512,9 @@ class NBAScoringAdapter(ScoringAdapter):
         )
 
         # Hit rates (embedded in prop as fallback)
+        # NOTE: embedded upstream values are assumed to represent the SIDE of
+        # the prop row (PP ships side-specific hit_rates). If that ever
+        # changes, revisit here.
         hr = (prop.get("hit_rates") or {})
         season = hr.get("season") or {}
         l10 = hr.get("l10") or {}
@@ -496,11 +524,13 @@ class NBAScoringAdapter(ScoringAdapter):
             round(season_rate * 100.0, 1) if season_rate is not None else None
         )
 
-        # CV + recomputed hit_rate + ceiling_rate from master-hub game logs.
+        # CV + SIDE-AWARE hit_rate + ceiling_rate from master-hub game logs.
         # Prefer computed over embedded; fall back to embedded if logs missing.
-        cv, computed_hit_rate, ceiling_rate = self._compute_cv_and_hit_rate(
-            player_name, stat_type, float(line), window=20
-        )
+        cv, computed_hit_rate, ceiling_rate, hit_rate_over, hit_rate_under = \
+            self._compute_cv_and_hit_rate(
+                player_name, stat_type, float(line),
+                direction=side, window=20,
+            )
         hit_rate = computed_hit_rate if computed_hit_rate is not None else embedded_hit_rate
 
         # -----------------------------------------------------------
@@ -614,4 +644,6 @@ class NBAScoringAdapter(ScoringAdapter):
             vk2_projection=vk2_projection,
             vk2_sigma=vk2_sigma,
             vk2_error=vk2_error,
+            hit_rate_over=hit_rate_over,
+            hit_rate_under=hit_rate_under,
         )

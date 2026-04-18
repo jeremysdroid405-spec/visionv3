@@ -46,6 +46,9 @@ class ScoringContext:
     vk2_projection: Optional[float] = None
     vk2_sigma: Optional[float] = None
     vk2_error: Optional[str] = None
+    # Side-aware hit-rate diagnostics (the one passed to gates is stored in hit_rate)
+    hit_rate_over: Optional[float] = None
+    hit_rate_under: Optional[float] = None
 
 
 class ScoringAdapter(ABC):

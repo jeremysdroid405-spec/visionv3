@@ -141,6 +141,8 @@ async def recompute_sport(
             "vk2_projection": ctx.vk2_projection,
             "vk2_sigma": ctx.vk2_sigma,
             "vk2_error": ctx.vk2_error,
+            "hit_rate_over": ctx.hit_rate_over,
+            "hit_rate_under": ctx.hit_rate_under,
             **stack,
         }
         score_docs.append(doc)
