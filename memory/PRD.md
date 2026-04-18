@@ -418,12 +418,47 @@ Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
   header ⇒ **401**. Off-by-default in any environment where the operator
   hasn't opted in.
 
+## Phase 5 Step 1 — Kill dead Gemini writes to `elite_*` (COMPLETE Apr 18, 2026)
+- **Problem**: `unified_pipeline._run_gemini_enrichment` was doing ~32 UPDATE
+  ops per full rebuild into `elite_safe_haven/front_lines/war_zone` to stamp
+  `vision_intel` / `vision_summary` fields. The Dashboard never reads
+  `vision_intel` from these collections — OVER-side comes from the
+  `nba_master_active_cache.json` overlay, UNDER-side from `nba_prop_scores`
+  (written by `routes/ferrari_tiers._enrich_under_picks_with_gemini`).
+  Every one of these DB writes was dead weight.
+- **Fix**: removed the `update_one` loop in `_run_gemini_enrichment` while
+  preserving the success/failed stats counter and the JSON cache write
+  (which is what the Dashboard actually reads). No reader changes,
+  `_atomic_publish` elite_* writer left intact (Steps 2-3 scope).
+- **Hard verification** (post-fix rebuild):
+  - MongoDB profiler level 2, clean capture window → elite_safe_haven
+    UPDATE=0, elite_front_lines UPDATE=0, elite_war_zone UPDATE=0
+    (previously 12/10/10).
+  - `/api/v3/ferrari/{safe-haven, front-lines, war-zone}` all return 200
+    with picks; every pick carries non-empty `vision_intel` (320-408 chars
+    on first-3-per-tier sample).
+  - GEMINI_ENRICH log still shows `success=30 failed=0 cache=...json` per
+    rebuild (no regressions in the enrichment pipeline itself).
+  - `/api/full-sync-stats` reflects latest rebuild with 30 props written
+    across tier collections; `event-bus/stats` shows market_moves subscriber
+    still attached.
+- **Cleanup**: profiler restored to level 0, `system.profile` back to 1MB
+  default cap, `orphan_audit_capture` one-shot snapshot dropped. Audit
+  document preserved at `/app/memory/PHASE5_ORPHAN_AUDIT.md`.
+
 ## Remaining Roadmap
-- **P1**: Phase 4 — rip deprecated writers out of `live_injuries`,
-  `dg_injuries`, `bdl_injuries` pipelines.
-- **P1**: Phase 5 — drop legacy collections (`elite_safe_haven`,
-  `elite_front_lines`, `elite_war_zone`, `live_injuries`, `dg_injuries`,
-  `bdl_injuries`) once no readers remain.
+- **P1**: Phase 5 Step 2 — migrate `market_moves_engine` + `injury_advantage`
+  readers off `elite_*` (read `nba_prop_scores` grouped by tier) — needs
+  48-hour observation window since Step 1 before starting.
+- **P1**: Phase 5 Step 3 — retire `_atomic_publish` elite_* writer.
+- **P1**: Phase 5 Step 4 — drop `live_injuries` + reroute
+  `/api/v3/injuries/live` to `injuries_normalized`.
+- **P1**: Phase 5 Step 5 — migrate `usage_spike_detector` + legacy readers
+  off `dg_injuries`; stop the injury_service dual-write.
+- **P1**: Phase 5 Step 6 — migrate 10 `bdl_injuries` readers to
+  `injuries_normalized`; stop `bdl_enhanced_data.sync_injuries()` write.
+- **P1**: Phase 5 Step 7 — final collection drops (48-hour observation per
+  collection).
 - **P1**: Google/Apple OAuth (Emergent-managed).
 - **P1**: Stripe payments (pod test keys).
 - **P2**: Phase 3.5 — extend injury rescore scope to opponent-team props

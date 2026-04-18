@@ -477,9 +477,11 @@ class UnifiedPipeline:
         """
         Run batch Gemini enrichment AFTER publish.
         
-        Writes vision_intel directly to the live tier collections.
+        Writes vision_intel ONLY to the enrichment cache JSON
+        (`<sport>_master_active_cache.json`). The elite_* collection
+        updates were removed in Phase 5 Step 1 (2026-04-18) — the Dashboard
+        never read vision_intel from those collections.
         Non-blocking: failures are logged but never crash the pipeline.
-        Also updates the sport-specific cache JSON for serve-time overlay.
         """
         from services.gemini_scout_engine import batch_generate_scout_intel
 
@@ -526,25 +528,22 @@ class UnifiedPipeline:
         # Batch call Gemini
         results = await batch_generate_scout_intel(payloads, batch_size=10)
 
-        # Write summaries directly to published collections
-        for i, (col_name, player, stat, line) in enumerate(pick_refs):
+        # Count write eligibility (success / short-response / empty) for
+        # logging and stats parity with the legacy flow. We DO NOT persist
+        # vision_intel into the tier collections (elite_safe_haven /
+        # elite_front_lines / elite_war_zone) anymore — the Dashboard never
+        # reads vision_intel from those collections; it reads from the
+        # enrichment cache JSON (written below) and, for UNDER picks, from
+        # nba_prop_scores (written by routes/ferrari_tiers._enrich_under_picks_with_gemini).
+        # Killing this DB write removes ~30 wasted UPDATE ops/rebuild with
+        # zero reader impact (Phase 5 Step 1 — 2026-04-18).
+        for i, _ref in enumerate(pick_refs):
             key = f"{payloads[i]['player']}|{payloads[i]['stat']}|{payloads[i]['line']}"
             text = results.get(key, "")
-
             if not text or len(text) < 50:
                 stats["failed"] += 1
                 continue
-
-            try:
-                await self.db[col_name].update_one(
-                    {"player_name": player, "stat_type": stat, "line": line},
-                    {"$set": {"vision_intel": text, "vision_summary": text,
-                              "validation.has_gemini": True}},
-                )
-                stats["success"] += 1
-            except Exception as e:
-                logger.warning(f"[GEMINI_ENRICH] Failed to write {player} {stat}: {e}")
-                stats["failed"] += 1
+            stats["success"] += 1
 
         # Update cache JSON for serve-time overlay
         cache_path = os.path.join(CACHE_DIR, f"{sport}_master_active_cache.json")
