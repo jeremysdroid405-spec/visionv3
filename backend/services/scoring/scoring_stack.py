@@ -345,10 +345,30 @@ def compute_pp_utility(
             "pp_multiplier": None,
             "pp_multiplier_source": "none",
             "pp_reference_source": None,
+            "pp_playable": False,
+            "pp_playability_reason": "no_pp_layer",
         }
 
     pp_line = _safe_float(pp_layer.get("line"))
     mult_value, mult_label, mult_source = _extract_pp_multiplier(prop)
+
+    # -----------------------------------------------------------------
+    # PP playability constraint (does NOT touch vision_score or tier)
+    #
+    # PrizePicks rule: UNDER selections are only playable on STANDARD
+    # lines. UNDERs on demon / goblin alternate lines are NOT playable.
+    # This is a PP-surface-only concern — core scoring (vision_score,
+    # tier, p_true, edge) MUST remain populated regardless.
+    # -----------------------------------------------------------------
+    direction = (prop.get("direction") or prop.get("recommendation") or "").upper()
+    is_under = "UNDER" in direction
+    nonstandard_label = mult_label in ("demon", "goblin")
+    if is_under and nonstandard_label:
+        pp_playable = False
+        pp_playability_reason = "under_nonstandard_not_playable"
+    else:
+        pp_playable = True
+        pp_playability_reason = "playable"
 
     # Reference line / fair prob: DK first, then MGM.
     ref_line = None
@@ -452,9 +472,18 @@ def compute_pp_utility(
         # Default: fair. Do NOT guess premium/discount from odds.
         category = "pp_fair"
 
+    # When the prop is not PP-playable, zero out PP-surface outputs but
+    # keep the component diagnostics intact for audit / debugging.
+    if not pp_playable:
+        pp_utility_out = None
+        category_out = "pp_not_playable"
+    else:
+        pp_utility_out = pp_utility
+        category_out = category
+
     return {
-        "pp_utility": pp_utility,
-        "pp_utility_category": category,
+        "pp_utility": pp_utility_out,
+        "pp_utility_category": category_out,
         "pp_utility_components": {
             "availability": round(availability, 4),
             "line_fairness": round(line_fairness, 4),
@@ -464,11 +493,16 @@ def compute_pp_utility(
                 round(multiplier_value, 4) if multiplier_value is not None else None
             ),
             "weights": weights,
+            # Raw pp_utility before playability masking (for diagnostics)
+            "pp_utility_raw": pp_utility,
+            "category_raw": category,
         },
         "pp_multiplier": mult_value,
         "pp_multiplier_label": mult_label,
         "pp_multiplier_source": mult_source,
         "pp_reference_source": ref_source,
+        "pp_playable": pp_playable,
+        "pp_playability_reason": pp_playability_reason,
     }
 
 
