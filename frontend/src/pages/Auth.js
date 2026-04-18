@@ -447,9 +447,12 @@ export const Auth = () => {
           <div className="text-center mb-6 sm:mb-10">
             <span className="text-zinc-600 font-mono text-[9px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.3em]">TECHNICAL SPECIFICATIONS</span>
             <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mt-2 tracking-tight">
-              DEPLOYMENT: <span className="text-emerald-400">PROPVISION™</span>
+              DEPLOYMENT: <span className="text-emerald-400">PROPVISION AI™</span>
             </h2>
-            <div className="flex items-center justify-center gap-2 mt-2 sm:mt-3">
+            <p className="text-zinc-400 text-sm sm:text-base mt-3 sm:mt-4">
+              The books have the edge. <span className="text-white font-semibold">Now you have the weapon.</span>
+            </p>
+            <div className="flex items-center justify-center gap-2 mt-3 sm:mt-4">
               <span className="text-zinc-600 font-mono text-[10px] sm:text-xs">SYSTEM STATUS:</span>
               <span className="text-emerald-400 font-mono text-[10px] sm:text-xs font-bold animate-pulse">[CORE_3.0 // INTEL_LAYER_ACTIVE // LIVE_FEED_SYNCED]</span>
             </div>
