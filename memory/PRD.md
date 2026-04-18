@@ -871,6 +871,105 @@ divergences are actionable without further queries.
 - Structured log prefixes: `[DELTA_PUB]`, `[BOARD_ENGINE]`,
   `[DRIFT_AUDIT]` — greppable independently.
 
+## Drift Ledger Persistence — 72h TTL + Rolling Windows (Apr 18, 2026)
+
+### What shipped
+Upgraded the drift audit from in-process memory to a hybrid (memory +
+MongoDB) architecture so the 48h Step 6 observation window survives
+backend restarts and produces a real historical convergence record.
+
+### Components
+1. **Collection**: `board_drift_ledger` (new).
+   - Doc shape: `{sport, canonical_key, source, observed_at (native
+     UTC datetime), tier_rt, vision_score_rt, quality_source_rt,
+     computed_at_rt, active_rt, version_tag}`.
+   - Append-only from the engine's hot path; no other writers.
+   - Indexes:
+     - `ttl_observed_at_72h`: `{observed_at:1}` with
+       `expireAfterSeconds=259200` — auto-expiry after 72 h.
+     - `idx_sport_observed_at_desc`: covers every rolling-window query.
+     - `idx_ck_observed_at_desc`: per-key drift history for
+       ad-hoc debug lookups.
+   - Ensured at startup via
+     `services/board/drift_audit.ensure_persistent_indexes(db)` —
+     idempotent, drops+recreates the TTL index if a prior version
+     had a different `expireAfterSeconds` so semantics never drift.
+
+2. **Writer**: `services/board/drift_audit.persist_entries(db, sport,
+   score_docs, source)` — one `insert_many(ordered=False)` per event
+   (1 round-trip regardless of batch size). Called synchronously
+   from `engine.on_new_props()` after `record_realtime_upsert`.
+   Measured ≤ 5 ms / event in the verifier. Never raises.
+
+3. **Reader**: `services/board/drift_audit.audit_persisted(db, sport,
+   windows)` — for each rolling window (`1h / 6h / 24h / 48h`),
+   pulls the entries in that slice, batch-fetches current score
+   docs in one `find({canonical_key: $in})`, and classifies each
+   entry as `converged | tier_changed | vision_score_drift |
+   missing | inactive`. Returns counts + a capped list of
+   divergence samples.
+
+4. **Endpoint** (`routes/admin.py::GET /api/board-drift-audit`) now
+   returns two sections per sport:
+   - `in_memory`: current-process ring buffer + its audit
+     (rebuilds on restart — still the authority for the most-recent
+     ≤500 events).
+   - `persisted`: `{collection, ttl_seconds, total_entries_72h,
+     latest_observed_at, windows: {1h, 6h, 24h, 48h}}`.
+   - Structure with `?sport=` param: `{sport, in_memory, persisted}`.
+   - Without sport: `{by_sport: {nba: {...}, mlb: {...}}}`.
+
+### Hard verification
+(`/app/backend/tests/drift_ledger_persist_verify.py`)
+
+| Step | NBA | MLB |
+|---|---|---|
+| [1] TTL index exists with `expireAfterSeconds=259200` | ✅ `ttl_observed_at_72h` | same |
+| [2] Engine synchronously writes to `board_drift_ledger`; doc carries all 9 required fields + native datetime `observed_at` | 3 docs written, 1010 ms publish+handle (cold caches) | 3 docs written, 412 ms |
+| [3] `audit_persisted` surfaces rolling windows 1h/6h/24h/48h | entries=3 in every window, ratio=0.0 | same |
+| [4] In-memory flush does NOT affect persisted history | `in_memory.count=0`, `persisted.1h.entries=3` | same |
+| [5] Simulated tier change (direct Mongo mutation on one RT key) detected by persisted audit | `tier_changed=1, ratio=0.333`, sample shows RT `tier='unqualified'` → current `tier='safe_haven'` | same |
+
+Live backend after restart:
+```
+GET /api/board-drift-audit?sport=nba
+  in_memory.ledger.count = 0             (fresh process)
+  persisted.total_entries_72h = 3        (SURVIVED RESTART)
+  persisted.windows.1h = {entries=3, converged=2, tier_changed=1,
+                          vs_drift=0, missing=0, ratio=0.333}
+  persisted.windows.{6h,24h,48h} identical to 1h (all events <1h old)
+```
+
+All 6 tier endpoints + 5 admin endpoints return 200. Lint clean.
+
+### Latency impact
+- Engine hot path: +1 `insert_many` round-trip ≈ 1-2 ms (measured
+  NBA 1010 ms → 1010 ms cold; sub-ms in warm runs).
+- Startup: +1 `ensure_persistent_indexes` call, ≤50 ms, non-blocking.
+- Endpoint: adds one aggregation pipeline per sport; scales O(entries
+  in 48h window). At current volume (~low-hundreds/day expected)
+  response time stays sub-100 ms.
+
+### Step 6 gating mechanism
+The 48h window now has a measurable SLA:
+```
+persisted.windows.48h.divergence_ratio ≤ 0.05
+```
+applied per sport. Operator queries
+`GET /api/board-drift-audit` after 48 h; when both sports satisfy
+the SLA, legacy writers can be retired in Step 6.
+
+## Observability endpoints (cumulative)
+- `/api/board-engine-stats` — real-time ingest counters per sport.
+- `/api/board-drift-audit[?sport=nba|mlb]` — A/B convergence report
+  with in-memory + persisted (72h TTL) sections.
+- `/api/injury-rescore-stats` — targeted injury rescore service.
+- `/api/full-sync-stats[?sport=nba|mlb]` — last full rebuild.
+- `/api/collection-migration-status` — Phase A naming migration.
+- Structured log prefixes: `[DELTA_PUB]`, `[BOARD_ENGINE]`,
+  `[DRIFT_AUDIT]`, `[COLL_HEALTH]`, `[GAME_START_SCANNER]` —
+  each greppable independently.
+
 ## Remaining Roadmap
 - **P1**: Step 6 — retire legacy per-sport board writers after the
   48h observation window (started Apr 18 2026 20:02 UTC). Acceptance

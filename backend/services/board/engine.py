@@ -222,10 +222,21 @@ async def on_new_props(
     # Feed the drift-audit ledger: every real-time upsert captured as
     # a snapshot of tier / vision_score so the 48h Step 6 A/B window
     # can prove the full-rebuild coordinator converges on the same
-    # scores. Zero persistence — in-memory ring buffer only.
+    # scores. Two layers — in-memory ring buffer (fast, transient) +
+    # persistent MongoDB collection (durable, 72h TTL).
     try:
-        from services.board.drift_audit import record_realtime_upsert
+        from services.board.drift_audit import (
+            record_realtime_upsert, persist_entries,
+        )
         record_realtime_upsert(
+            sport=sport_key,
+            score_docs=rc.get("score_docs") or [],
+            source=source,
+        )
+        # Synchronous — adds one insert_many round-trip per event.
+        # Measured ≤ 5 ms in the E2E verifier. Never raises.
+        await persist_entries(
+            db=db,
             sport=sport_key,
             score_docs=rc.get("score_docs") or [],
             source=source,

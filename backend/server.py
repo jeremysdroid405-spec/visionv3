@@ -1592,6 +1592,19 @@ async def startup_event():
         subscribe_new_props_handler(db)
     except Exception as _e:
         logger.error(f"[BOARD_ENGINE] Failed to subscribe new_props handler: {_e}")
+
+    # ==========================================================================
+    # DRIFT AUDIT PERSISTENT LEDGER — 72h TTL on board_drift_ledger
+    # =========================================================================
+    # Ensures TTL + secondary indexes on the persistent drift ledger so
+    # 48h Step 6 A/B convergence reports survive backend restarts.
+    # Idempotent — safe to call on every boot.
+    # ==========================================================================
+    try:
+        from services.board.drift_audit import ensure_persistent_indexes
+        await ensure_persistent_indexes(db)
+    except Exception as _e:
+        logger.error(f"[DRIFT_AUDIT] Failed to ensure persistent indexes: {_e}")
     
     # ==========================================================================
     # WEEKEND-READY SCHEDULER: High-Performance Interval System

@@ -475,17 +475,22 @@ async def board_drift_audit(
 ):
     """Live A/B drift report for the 48h Step 6 observation window.
 
-    For every real-time upsert captured in the in-memory ledger
-    (`services/board/drift_audit.py`), compares the RT snapshot
-    (tier, vision_score, quality_source) against the CURRENT doc in
-    `{sport}_prop_scores`. Classifies each as converged / tier_changed
-    / vision_score_drift / missing / inactive. Zero persistence.
+    Returns TWO sections per sport:
+
+      `in_memory`: current-process ring buffer snapshot. Rebuilds on
+        restart. Classifies each of the last ≤500 real-time upserts
+        against the CURRENT score doc.
+      `persisted`: rolling-window (1h / 6h / 24h / 48h) classification
+        sourced from the MongoDB `board_drift_ledger` collection
+        (72h TTL, restart-safe). Surfaces a historical convergence
+        record for Step 6 gating.
 
     Query params:
       - ?sport=nba         → audit NBA only
       - ?sport=mlb         → audit MLB only
       - (no sport)         → audit every registered sport
-      - ?limit=N           → audit only the most-recent N ledger entries
+      - ?limit=N           → in-memory only: audit only the N most
+                             recent ring-buffer entries
 
     Auth: identical to /injury-rescore-stats.
     """
@@ -493,24 +498,26 @@ async def board_drift_audit(
 
     # Local imports so the module can be reloaded without restarting
     # the whole server.
-    from services.board.drift_audit import audit, snapshot
+    from services.board.drift_audit import (
+        audit, audit_persisted, snapshot,
+    )
     from services.board.adapters import registered_sports
 
     if _db is None:
         raise HTTPException(status_code=500, detail="db not initialised")
 
-    if sport:
+    async def _per_sport(s: str) -> dict:
         return {
-            "ledger": snapshot(sport),
-            "audit": await audit(_db, sport, limit=limit),
+            "in_memory": {
+                "ledger": snapshot(s),
+                "audit": await audit(_db, s, limit=limit),
+            },
+            "persisted": await audit_persisted(_db, s),
         }
-    out = {"by_sport": {}}
-    for s in registered_sports():
-        out["by_sport"][s] = {
-            "ledger": snapshot(s),
-            "audit": await audit(_db, s, limit=limit),
-        }
-    return out
+
+    if sport:
+        return {"sport": sport, **await _per_sport(sport)}
+    return {"by_sport": {s: await _per_sport(s) for s in registered_sports()}}
 
 
 
