@@ -938,103 +938,171 @@ async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache,
     
     logger.info(f"[OPTIMIZED_SYNC] Persisting enrichment data for {len(picks)} {target_sport.upper()} picks to {cached_board_collection}")
     
-    # Group picks by player to avoid duplicate updates
-    players_processed = set()
-    persisted_count = 0
-    
+    # Group picks by player — collect ALL picks per player (don't dedupe).
+    # Each pick's board/ferrari_power_score must land on its own matched prop
+    # (stat_type, line, direction). Player-level context (momentum/whistle/
+    # vacuum) is identical across a player's picks in one game, so the last
+    # write wins harmlessly.
+    picks_by_player: Dict[str, List[Dict[str, Any]]] = {}
     for pick in picks:
-        player_name = pick.get("player_name")
-        if not player_name or player_name in players_processed:
+        pn = pick.get("player_name")
+        if not pn:
             continue
-        
-        players_processed.add(player_name)
-        
+        picks_by_player.setdefault(pn, []).append(pick)
+
+    persisted_count = 0
+
+    for player_name, player_picks in picks_by_player.items():
         try:
-            # Get the player document from sport-specific collection
+            # Get the FULL props list so we can match picks to prop indices
+            # by identity (stat_type, line, direction) — this is the fix for
+            # the board cross-pollution where a safe_haven pick's board was
+            # being stamped onto every one of a player's prop rows.
             player_doc = await db[cached_board_collection].find_one(
                 {"player_name": player_name},
-                {"_id": 0, "props": 1}
+                {"_id": 0, "props": 1},
             )
-            
             if not player_doc or not player_doc.get("props"):
                 logger.debug(f"[PERSIST] Player {player_name} not in {cached_board_collection}, skipping")
                 continue
-            
-            # Build player-level update with shared enrichment data
+
+            props_list = player_doc["props"]
+            num_props = len(props_list)
+
+            # Build an identity-keyed lookup so each pick finds its own row
+            prop_idx_by_identity: Dict[Tuple[str, float, str], int] = {}
+            for idx, pr in enumerate(props_list):
+                if not isinstance(pr, dict):
+                    continue
+                try:
+                    line_f = float(pr.get("line")) if pr.get("line") is not None else None
+                except (TypeError, ValueError):
+                    line_f = None
+                key = (
+                    (pr.get("stat_type") or "").strip().upper(),
+                    line_f,
+                    (pr.get("direction") or "").strip().lower(),
+                )
+                if key[0] and key[1] is not None and key[2]:
+                    prop_idx_by_identity[key] = idx
+
+            # Player-level fields shared across ALL picks of this player.
+            # Use the first pick for these (momentum/whistle/vacuum are keyed
+            # by game context which is identical across a player's picks).
+            primary = player_picks[0]
+
             player_update = {
                 "enriched_at": datetime.now(timezone.utc).isoformat(),
-                "board_member": pick.get("board"),
-                "sport": target_sport,  # Tag sport on player document
+                # board_member: retained at player level as a hint that the
+                # player has AT LEAST one board placement; the authoritative
+                # per-prop tier lives in props.{idx}.board and intel_suite.board
+                "board_member": primary.get("board"),
+                "sport": target_sport,
             }
-            
-            # Add momentum data at player level
-            if pick.get("momentum_data"):
-                player_update["momentum_data"] = pick["momentum_data"]
-                player_update["momentum_modifier"] = pick.get("momentum_modifier", 0)
-            
-            # Add whistle data at player level
-            if pick.get("crew_chief"):
-                player_update["crew_chief"] = pick["crew_chief"]
-                player_update["ref_ou_pct"] = pick.get("ref_ou_pct")
-                player_update["ref_ppg"] = pick.get("ref_ppg")
-                player_update["whistle_class"] = pick.get("whistle_class")
-                player_update["whistle_modifier"] = pick.get("whistle_modifier", 0)
-                player_update["point_lift"] = pick.get("point_lift", 0)
-                player_update["lift_label"] = pick.get("lift_label")
-                player_update["lift_type"] = pick.get("lift_type")
-            
-            # Add vacuum data at player level
-            if pick.get("vacuum_data"):
-                player_update["vacuum_data"] = pick["vacuum_data"]
-                player_update["vacuum_modifier"] = pick.get("vacuum_modifier", 0)
-            
-            # Build prop-level updates for ALL props of this player
-            props_update = {}
-            num_props = len(player_doc.get("props", []))
-            
+
+            if primary.get("momentum_data"):
+                player_update["momentum_data"] = primary["momentum_data"]
+                player_update["momentum_modifier"] = primary.get("momentum_modifier", 0)
+            if primary.get("crew_chief"):
+                player_update["crew_chief"] = primary["crew_chief"]
+                player_update["ref_ou_pct"] = primary.get("ref_ou_pct")
+                player_update["ref_ppg"] = primary.get("ref_ppg")
+                player_update["whistle_class"] = primary.get("whistle_class")
+                player_update["whistle_modifier"] = primary.get("whistle_modifier", 0)
+                player_update["point_lift"] = primary.get("point_lift", 0)
+                player_update["lift_label"] = primary.get("lift_label")
+                player_update["lift_type"] = primary.get("lift_type")
+            if primary.get("vacuum_data"):
+                player_update["vacuum_data"] = primary["vacuum_data"]
+                player_update["vacuum_modifier"] = primary.get("vacuum_modifier", 0)
+
+            # Build prop-level updates. Two passes:
+            #   1) BROADCAST player-level context (momentum/whistle/vacuum) to
+            #      all prop indices — these describe the GAME, not the prop.
+            #   2) STAMP tier-specific fields (board, ferrari_power_score,
+            #      derived intel_suite) onto the SINGLE matching prop index.
+            #   3) CLEAR tier-specific fields on every other prop index so
+            #      previous syncs can't leave a stale tier tag behind.
+            props_update: Dict[str, Any] = {}
+
+            # Pre-compute which indices are "matched" by at least one pick
+            matched_indices: Dict[int, Dict[str, Any]] = {}
+            for pick in player_picks:
+                try:
+                    line_f = float(pick.get("line")) if pick.get("line") is not None else None
+                except (TypeError, ValueError):
+                    line_f = None
+                key = (
+                    (pick.get("stat_type") or "").strip().upper(),
+                    line_f,
+                    (pick.get("direction") or pick.get("recommendation") or "").strip().lower(),
+                )
+                idx = prop_idx_by_identity.get(key)
+                if idx is None:
+                    logger.debug(
+                        f"[PERSIST] no prop match for {player_name} {key} — "
+                        f"player has {list(prop_idx_by_identity.keys())[:5]}..."
+                    )
+                    continue
+                matched_indices[idx] = pick
+
             for idx in range(num_props):
-                # Copy enrichment data to each prop
-                if pick.get("momentum_data"):
-                    props_update[f"props.{idx}.momentum_data"] = pick["momentum_data"]
-                    props_update[f"props.{idx}.momentum_modifier"] = pick.get("momentum_modifier", 0)
-                    props_update[f"props.{idx}.has_momentum_modifier"] = pick.get("has_momentum_modifier", False)
-                
-                if pick.get("crew_chief"):
-                    props_update[f"props.{idx}.crew_chief"] = pick["crew_chief"]
-                    props_update[f"props.{idx}.ref_ou_pct"] = pick.get("ref_ou_pct")
-                    props_update[f"props.{idx}.ref_ppg"] = pick.get("ref_ppg")
-                    props_update[f"props.{idx}.whistle_class"] = pick.get("whistle_class")
-                    props_update[f"props.{idx}.whistle_modifier"] = pick.get("whistle_modifier", 0)
-                    props_update[f"props.{idx}.has_whistle_modifier"] = pick.get("has_whistle_modifier", False)
-                    props_update[f"props.{idx}.point_lift"] = pick.get("point_lift", 0)
-                    props_update[f"props.{idx}.lift_label"] = pick.get("lift_label")
-                    props_update[f"props.{idx}.lift_type"] = pick.get("lift_type")
-                
-                if pick.get("vacuum_data"):
-                    props_update[f"props.{idx}.vacuum_data"] = pick["vacuum_data"]
-                    props_update[f"props.{idx}.vacuum_modifier"] = pick.get("vacuum_modifier", 0)
-                    props_update[f"props.{idx}.has_vacuum_modifier"] = pick.get("has_vacuum_modifier", False)
-                
-                # Build comprehensive intel_suite for each prop
-                # This includes all fields the frontend Vision Intel Suite expects
-                opponent = pick.get("opponent") or pick.get("opponent_abbr")
-                stat_type = pick.get("stat_type", "PTS")
-                
-                # Get blowout risk data
-                blowout_level = pick.get("blowout_risk", "UNKNOWN")
+                # -- Broadcast: player-level game context on every prop --
+                if primary.get("momentum_data"):
+                    props_update[f"props.{idx}.momentum_data"] = primary["momentum_data"]
+                    props_update[f"props.{idx}.momentum_modifier"] = primary.get("momentum_modifier", 0)
+                    props_update[f"props.{idx}.has_momentum_modifier"] = primary.get("has_momentum_modifier", False)
+                if primary.get("crew_chief"):
+                    props_update[f"props.{idx}.crew_chief"] = primary["crew_chief"]
+                    props_update[f"props.{idx}.ref_ou_pct"] = primary.get("ref_ou_pct")
+                    props_update[f"props.{idx}.ref_ppg"] = primary.get("ref_ppg")
+                    props_update[f"props.{idx}.whistle_class"] = primary.get("whistle_class")
+                    props_update[f"props.{idx}.whistle_modifier"] = primary.get("whistle_modifier", 0)
+                    props_update[f"props.{idx}.has_whistle_modifier"] = primary.get("has_whistle_modifier", False)
+                    props_update[f"props.{idx}.point_lift"] = primary.get("point_lift", 0)
+                    props_update[f"props.{idx}.lift_label"] = primary.get("lift_label")
+                    props_update[f"props.{idx}.lift_type"] = primary.get("lift_type")
+                if primary.get("vacuum_data"):
+                    props_update[f"props.{idx}.vacuum_data"] = primary["vacuum_data"]
+                    props_update[f"props.{idx}.vacuum_modifier"] = primary.get("vacuum_modifier", 0)
+                    props_update[f"props.{idx}.has_vacuum_modifier"] = primary.get("has_vacuum_modifier", False)
+
+                # -- Per-prop: tier-specific stamps applied ONLY to matched idx --
+                matched_pick = matched_indices.get(idx)
+                if matched_pick is not None:
+                    pick_for_intel = matched_pick
+                else:
+                    # Non-matched prop: clear any stale tier tag from prior syncs.
+                    props_update[f"props.{idx}.board"] = None
+                    props_update[f"props.{idx}.is_vision_enriched"] = False
+                    # Wipe tier-specific intel_suite fields. Keep player-level
+                    # context (momentum/whistle/vacuum) alive in intel_suite by
+                    # building a reduced suite below.
+                    pick_for_intel = None
+
+                # Assemble intel_suite. For matched props include full
+                # tier-specific context; for unmatched build the base
+                # (player-level) shape only.
+                intel_pick = pick_for_intel or primary
+                opponent = intel_pick.get("opponent") or intel_pick.get("opponent_abbr")
+                stat_type = (
+                    props_list[idx].get("stat_type")
+                    if idx < num_props and isinstance(props_list[idx], dict)
+                    else intel_pick.get("stat_type", "PTS")
+                )
+
+                blowout_level = intel_pick.get("blowout_risk", "UNKNOWN")
                 blowout_data = {
                     "risk_level": blowout_level,
-                    "player_team_record": pick.get("team_record", ""),
-                    "opponent_team_record": pick.get("opponent_record", ""),
-                    "warning": f"Blowout risk {blowout_level}" if blowout_level in ["HIGH", "MEDIUM"] else None
+                    "player_team_record": intel_pick.get("team_record", ""),
+                    "opponent_team_record": intel_pick.get("opponent_record", ""),
+                    "warning": f"Blowout risk {blowout_level}" if blowout_level in ["HIGH", "MEDIUM"] else None,
                 }
-                
-                # Build matchup_dvp from momentum_data if available
-                momentum = pick.get("momentum_data", {})
+
+                momentum = primary.get("momentum_data", {}) or {}
                 dvp_rank = momentum.get("composite_rank", 15) if momentum else 15
                 friction_level = "Low" if dvp_rank <= 10 else "Medium" if dvp_rank <= 20 else "High"
                 friction_color = "green" if dvp_rank <= 10 else "yellow" if dvp_rank <= 20 else "red"
-                
                 matchup_dvp = {
                     "display": f"vs {opponent}",
                     "opponent": opponent,
@@ -1043,10 +1111,9 @@ async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache,
                     "friction_label": f"Rank #{int(dvp_rank)}" if dvp_rank else "Unknown",
                     "color": friction_color,
                     "dvp_rank": dvp_rank,
-                    "stat_type": stat_type
+                    "stat_type": stat_type,
                 }
-                
-                # Build pace_delta 
+
                 pace_delta_val = 0
                 pace_delta = {
                     "display": f"+{abs(pace_delta_val):.1f}" if pace_delta_val > 0 else f"{pace_delta_val:.1f}",
@@ -1055,59 +1122,57 @@ async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache,
                     "expected_game_pace": "98.0",
                     "team_pace": 98.0,
                     "opp_pace": 98.0,
-                    "league_avg": 98.0
+                    "league_avg": 98.0,
                 }
-                
-                # Build stability_index from hit rates
-                l10_rate = pick.get("l10_rate", 0) or 0
-                l5_rate = pick.get("l5_rate", 0) or 0
+
+                l10_rate = intel_pick.get("l10_rate", 0) or 0
+                l5_rate = intel_pick.get("l5_rate", 0) or 0
                 stability_score = int((l10_rate + l5_rate) / 2) if (l10_rate or l5_rate) else 50
-                
                 stability_index = {
                     "display": f"{stability_score}%",
                     "score": stability_score,
                     "consistency": "Consistent" if stability_score >= 70 else "Variable" if stability_score >= 50 else "Volatile",
-                    "std_dev": None
+                    "std_dev": None,
                 }
-                
-                # Build usage_ripple from vacuum_data
-                vacuum = pick.get("vacuum_data")
+
+                vacuum = primary.get("vacuum_data")
                 usage_ripple = {
                     "display": "Elevated Usage" if vacuum else "Standard Volume",
                     "reasoning": vacuum.get("reason", "Based on team role") if vacuum else "Based on team role and recent minutes",
                     "bump_percent": int(vacuum.get("usage_bump", 0)) if vacuum else 0,
                     "shift_label": f"+{int(vacuum.get('usage_bump', 0))}% Usage" if vacuum else "Normal",
-                    "injuries_affecting": [vacuum.get("injured_player")] if vacuum and vacuum.get("injured_player") else []
+                    "injuries_affecting": [vacuum.get("injured_player")] if vacuum and vacuum.get("injured_player") else [],
                 }
-                
-                # Build context_badges from available data
-                context_badges = []
+
+                context_badges: List[str] = []
                 if blowout_level == "HIGH":
                     context_badges.append("blowout_risk")
-                if pick.get("trap_risk"):
+                if intel_pick.get("trap_risk"):
                     context_badges.append("trap_risk")
-                if pick.get("sharp_movement"):
+                if intel_pick.get("sharp_movement"):
                     context_badges.append("sharp_movement")
                 if vacuum:
                     context_badges.append("usage_boost")
                 if momentum and momentum.get("is_weak"):
                     context_badges.append("soft_matchup")
-                
+
                 intel_suite = {
-                    "momentum_data": pick.get("momentum_data"),
+                    "momentum_data": primary.get("momentum_data"),
                     "whistle_data": {
-                        "crew_chief": pick.get("crew_chief"),
-                        "ref_ou_pct": pick.get("ref_ou_pct"),
-                        "ref_ppg": pick.get("ref_ppg"),
-                        "whistle_class": pick.get("whistle_class"),
-                        "point_lift": pick.get("point_lift"),
-                        "lift_label": pick.get("lift_label"),
-                        "lift_type": pick.get("lift_type")
-                    } if pick.get("crew_chief") else None,
-                    "vacuum_data": pick.get("vacuum_data"),
-                    "board": pick.get("board"),
-                    "ferrari_power_score": pick.get("ferrari_power_score"),
-                    # NEW: Full Vision Intel Suite fields
+                        "crew_chief": primary.get("crew_chief"),
+                        "ref_ou_pct": primary.get("ref_ou_pct"),
+                        "ref_ppg": primary.get("ref_ppg"),
+                        "whistle_class": primary.get("whistle_class"),
+                        "point_lift": primary.get("point_lift"),
+                        "lift_label": primary.get("lift_label"),
+                        "lift_type": primary.get("lift_type"),
+                    } if primary.get("crew_chief") else None,
+                    "vacuum_data": primary.get("vacuum_data"),
+                    # Per-prop tier stamps — nulled for non-matched props
+                    "board": matched_pick.get("board") if matched_pick else None,
+                    "ferrari_power_score": (
+                        matched_pick.get("ferrari_power_score") if matched_pick else None
+                    ),
                     "blowout_risk": blowout_data,
                     "matchup_dvp": matchup_dvp,
                     "pace_delta": pace_delta,
@@ -1115,28 +1180,30 @@ async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache,
                     "usage_ripple": usage_ripple,
                     "context_badges": context_badges,
                     "vision_insight": {
-                        "primary": f"Analyzing {pick.get('player_name', 'player')} {stat_type} @ {pick.get('line', 0)}",
+                        "primary": f"Analyzing {intel_pick.get('player_name', 'player')} {stat_type} @ {intel_pick.get('line', 0)}",
                         "reasons": [],
-                        "confidence": "STANDARD"
+                        "confidence": "STANDARD",
                     },
-                    "sport": target_sport  # Tag sport in intel_suite
+                    "sport": target_sport,
                 }
                 props_update[f"props.{idx}.intel_suite"] = intel_suite
-                props_update[f"props.{idx}.is_vision_enriched"] = True
-                props_update[f"props.{idx}.board"] = pick.get("board")  # Set board at prop level too
-                props_update[f"props.{idx}.sport"] = target_sport  # Tag sport on prop
-            
+
+                if matched_pick is not None:
+                    props_update[f"props.{idx}.is_vision_enriched"] = True
+                    props_update[f"props.{idx}.board"] = matched_pick.get("board")
+                    props_update[f"props.{idx}.sport"] = target_sport
+
             # Combine all updates
             full_update = {**player_update, **props_update}
-            
+
             result = await db[cached_board_collection].update_one(
                 {"player_name": player_name},
-                {"$set": full_update}
+                {"$set": full_update},
             )
-            
+
             if result.modified_count > 0:
                 persisted_count += 1
-            
+
         except Exception as e:
             logger.warning(f"[PERSIST] Error updating {player_name}: {e}")
     
