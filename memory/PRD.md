@@ -403,6 +403,17 @@ Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
   timestamp — no hourly sync required.
 - **Regression harness**: `/app/backend/tests/phase3_injury_rescore_verify.py`.
 
+## Injury Rescore Observability Endpoint (Internal, Apr 18, 2026)
+- `GET /api/injury-rescore-stats` — read-only snapshot of
+  `InjuryTriggeredRescore.stats()`. Returns `events_received`, `recomputes`,
+  `last_latency_ms`, `last_players_patched_count`, `last_trigger`.
+- Protection: requires `X-Admin-Token` header matching env
+  `ADMIN_DEBUG_TOKEN`. If the env var is unset the endpoint returns **503
+  (disabled)**; if the header is missing/wrong it returns **401**. No DB I/O,
+  no recompute side-effects; pulls directly from the service's in-memory
+  counters. Off-by-default in any environment where the operator hasn't
+  opted in.
+
 ## Remaining Roadmap
 - **P1**: Phase 4 — rip deprecated writers out of `live_injuries`,
   `dg_injuries`, `bdl_injuries` pipelines.

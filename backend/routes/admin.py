@@ -3,7 +3,8 @@ Admin Routes
 =============
 Administrative and cache management endpoints.
 """
-from fastapi import APIRouter, HTTPException
+import os
+from fastapi import APIRouter, Header, HTTPException
 import logging
 
 logger = logging.getLogger(__name__)
@@ -286,3 +287,57 @@ async def download_backend_code_json():
         filename="propvision_backend_code.json",
         media_type="application/json"
     )
+
+# ---------------------------------------------------------------------------
+# Injury-Triggered Rescore Observability (internal / debug)
+# ---------------------------------------------------------------------------
+# Read-only snapshot of the in-process InjuryTriggeredRescore service so we
+# can verify injury reactions without tailing logs. Protected by a shared
+# secret env var (`ADMIN_DEBUG_TOKEN`): if unset the endpoint returns 503
+# so it's off-by-default in any environment where the operator hasn't
+# explicitly opted in. No DB I/O, no recompute side-effects — just the
+# service's own in-memory counters.
+# ---------------------------------------------------------------------------
+def _require_admin_debug_token(provided: str | None) -> None:
+    expected = os.environ.get("ADMIN_DEBUG_TOKEN")
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="ADMIN_DEBUG_TOKEN not configured; debug endpoint disabled",
+        )
+    if not provided or provided != expected:
+        raise HTTPException(status_code=401, detail="invalid admin token")
+
+
+@router.get("/injury-rescore-stats")
+async def injury_rescore_stats(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Read-only snapshot of the injury-triggered rescore service.
+
+    Minimal exposure (no DB I/O):
+      - events_received
+      - recomputes
+      - last_trigger         (last event handled, incl. player / team / latency)
+      - last_latency_ms
+      - last_players_patched_count  (board_players_patched from last_trigger)
+
+    Auth: `X-Admin-Token` must match env `ADMIN_DEBUG_TOKEN`. If the env var
+    is unset the endpoint responds 503 (disabled by default).
+    """
+    _require_admin_debug_token(x_admin_token)
+
+    from services.injury_triggered_rescore import get_rescore_service
+
+    svc = get_rescore_service()
+    stats = svc.stats()
+    last = stats.get("last_trigger") or {}
+
+    return {
+        "events_received": stats.get("events_received", 0),
+        "recomputes": stats.get("recomputes", 0),
+        "last_latency_ms": stats.get("last_latency_ms", 0),
+        "last_players_patched_count": last.get("board_players_patched", 0),
+        "last_trigger": last or None,
+    }
+
