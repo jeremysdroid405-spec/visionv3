@@ -44,6 +44,13 @@ _IDENTITY_FIELDS = (
     "stat_type", "line", "recommendation",
 )
 
+# Universal pool lifecycle fields — present on every {sport}_prop_scores
+# document regardless of sport. Used by the universal board engine
+# (services/board/*) and the 60-second game-start scanner.
+_UNIVERSAL_POOL_FIELDS = (
+    "active", "inactive_reason", "active_changed_at", "game_start_utc",
+)
+
 # Retained for backward compatibility with services.scoring.prop_scores_store callers
 SCORE_FIELDS = _IDENTITY_FIELDS + _SCORE_OUTPUT_FIELDS
 SCORES_COLLECTION = "mlb_prop_scores"  # legacy default; now sport-specific
@@ -56,6 +63,17 @@ def _project_score_doc(
     for k in _SCORE_OUTPUT_FIELDS:
         if k in context_out:
             doc[k] = context_out[k]
+    # Universal pool lifecycle fields — default to "active=True" with no
+    # inactivation reason. scoring/recompute.py sets game_start_utc from
+    # the raw prop's commence_time so the universal scanner can flip
+    # tipped-off props to active=False.
+    for k in _UNIVERSAL_POOL_FIELDS:
+        if k in context_out:
+            doc[k] = context_out[k]
+    doc.setdefault("active", True)
+    doc.setdefault("inactive_reason", None)
+    doc.setdefault("active_changed_at", None)
+    doc.setdefault("game_start_utc", None)
     doc["version_tag"] = version_tag
     doc["computed_at"] = computed_at
     return doc
@@ -82,6 +100,19 @@ async def ensure_indexes(db, sport: str) -> None:
         await coll.create_index([("tier", 1)], name="idx_tier")
         await coll.create_index([("pp_utility", -1)], name="idx_pp_utility_desc")
         await coll.create_index([("computed_at", -1)], name="idx_computed_at_desc")
+        # Universal board-engine indexes (multi-sport lifecycle).
+        # idx_tier_active_vision: covers the universal board query
+        #   find({version_tag, tier, active, game_start_utc}).sort(vision_score DESC).limit(N)
+        # idx_game_start_active: powers the 60-second game-start scanner
+        #   update_many({active:True, game_start_utc:{$lte: now}})
+        await coll.create_index(
+            [("version_tag", 1), ("tier", 1), ("active", 1), ("vision_score", -1)],
+            name="idx_tier_active_vision",
+        )
+        await coll.create_index(
+            [("active", 1), ("game_start_utc", 1)],
+            name="idx_game_start_active",
+        )
     except Exception as e:
         logger.warning(f"[SCORES_STORE:{sport}] index create warning: {e}")
 

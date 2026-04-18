@@ -125,6 +125,24 @@ async def recompute_sport(
             books_available_count=ctx.books_available_count,
             sorter=sorter,
         )
+        # -------- Universal pool fields (multi-sport lifecycle) --------
+        # Every {sport}_prop_scores document carries the same universal
+        # lifecycle fields so the board engine and scanner can operate on
+        # any sport without sport-specific branches. `game_start_utc` is
+        # pulled from the raw prop's commence_time so the 60s scanner can
+        # flip tipped-off props to active=False via an indexed update.
+        raw = ctx.raw_prop or {}
+        commence = raw.get("commence_time") or raw.get("event_start_utc") or raw.get("game_time")
+        if isinstance(commence, str):
+            try:
+                game_start_utc = datetime.fromisoformat(commence.replace("Z", "+00:00"))
+            except Exception:
+                game_start_utc = None
+        elif isinstance(commence, datetime):
+            game_start_utc = commence if commence.tzinfo else commence.replace(tzinfo=timezone.utc)
+        else:
+            game_start_utc = None
+
         doc = {
             "canonical_key": ctx.canonical_key,
             "sport": ctx.sport,
@@ -133,6 +151,11 @@ async def recompute_sport(
             "stat_type": ctx.stat_type,
             "line": ctx.line,
             "recommendation": ctx.recommendation,
+            # ---- Universal pool lifecycle fields ----
+            "active": True,
+            "inactive_reason": None,
+            "active_changed_at": None,
+            "game_start_utc": game_start_utc,
             # p_true diagnostic panel (all paths always computed)
             "p_true_active": ctx.p_model,
             "p_true_method": ctx.p_true_method,

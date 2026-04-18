@@ -418,6 +418,51 @@ Key helper: `_get_nba_tier_picks_from_scores(tier, limit)` +
   header ⇒ **401**. Off-by-default in any environment where the operator
   hasn't opted in.
 
+## Universal Multi-Sport Board Engine — Phase 6 Steps 1-4 (COMPLETE Apr 18, 2026)
+- **Engine vs adapter split**: `services/board/` introduced as the
+  universal layer. Sport-agnostic modules (`reader.py`, `scanner.py`,
+  `adapters/__init__.py` registry) never branch on sport. Each sport lives
+  in `services/board/adapters/<sport>.py` implementing `SportBoardAdapter`
+  (sport/version_tag/collection names, tier sort key, capacity, canonical
+  identity, game-start extraction, score_batch reserved for Step 5).
+- **Universal pool schema additions**: every `{sport}_prop_scores`
+  document now carries `active`, `inactive_reason`, `active_changed_at`,
+  `game_start_utc` — set at scoring time in `services/scoring/recompute.py`
+  + persisted by `services/scoring/prop_scores_store.py`. Two new
+  compound indexes added automatically on every scores collection:
+  `idx_tier_active_vision` (covers the universal board query) and
+  `idx_game_start_active` (covers the 60s scanner update).
+- **Universal reader**: `services/board/reader.get_board(db, sport, tier,
+  limit)` is the ONE read path every tier endpoint now uses. NBA's helper
+  `_get_nba_tier_picks_from_scores` delegates to it; MLB's three tier
+  handlers in `routes/ferrari_tiers.py` query it directly (replacing their
+  reads from `mlb_safe_haven/front_lines/war_zone` storage collections).
+  All 6 tier endpoints — `/api/v3/ferrari/*` (NBA) and
+  `/api/v3/mlb/ferrari/*` (MLB) — return 200 with the same JSON shape as
+  before (hard-verified).
+- **Universal 60s game-start scanner**: `services/board/scanner.scan_all`
+  iterates `registered_sports()` and flips every `active=True` prop whose
+  `game_start_utc <= now` to `active=False` with `inactive_reason=
+  'game_started'`. Single indexed update_many per sport per tick.
+  Registered in `server.py` as interval job `universal_game_start_scanner`
+  (60 seconds); survives restarts via MongoDBJobStore.
+- **Hard verification (all 5 checks)**:
+  1. All 6 reader routes (3 NBA + 3 MLB) return 200 + populated picks
+     through `get_board()` — confirmed by log trace + direct HTTP probes.
+  2. Response JSON shape unchanged pre/post — identical top-level keys.
+  3. Simulated synthetic tipped-off prop on both NBA + MLB → scanner
+     flipped both to `active=False`, `inactive_reason=game_started`,
+     `active_changed_at` timestamped. Universal reader excluded both in
+     a follow-up query.
+  4. Scanner worked for BOTH registered sports in the same tick
+     (`{nba: {last_flips: 1}, mlb: {last_flips: 1}}`).
+  5. Post-restore board counts + top-3 orderings unchanged for every
+     sport × tier (NBA 3/5/1 from prior Phase 3 HOU-only state, MLB
+     10/10/10 limit=10; 20/20/20 limit=20).
+- **Future sport enablement**: adding NFL = 2 files
+  (`services/board/adapters/nfl.py` + one line in the registry). Scanner,
+  reader, observability loop automatically cover it. No engine changes.
+
 ## MLB Hourly Refresh Job — Shipped (Apr 18, 2026)
 - **New scheduled job**: `scheduled_hourly_mlb_full_sync()` in `server.py`
   mirrors `scheduled_hourly_full_sync` but publishes `sport='mlb'`. Registered

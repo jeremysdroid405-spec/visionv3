@@ -1108,8 +1108,9 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
 
 
 async def _get_nba_tier_picks_from_scores(tier: str, limit: int) -> List[Dict[str, Any]]:
-    """Read the top-N final-nba scores for a given tier, enrich with board
-    data, and return a list of UI-ready picks sorted by vision_score DESC.
+    """Read the top-N final-nba scores for a given tier via the UNIVERSAL
+    BOARD READER (services/board/reader.py), enrich with board data, and
+    return a list of UI-ready picks sorted by the adapter's tier sort key.
     Also stashes the score doc on each pick as `_nba_score_doc` so that
     downstream post-overlay passes (e.g. UNDER badge rewire) can re-read
     authoritative side-aware fields after cache overlays inject OVER-side
@@ -1119,11 +1120,9 @@ async def _get_nba_tier_picks_from_scores(tier: str, limit: int) -> List[Dict[st
     if _db is None:
         return []
 
-    cursor = _db.nba_prop_scores.find(
-        {"version_tag": "final-nba", "tier": tier},
-        {"_id": 0},
-    ).sort("vision_score", -1).limit(limit)
-    scores = await cursor.to_list(length=limit)
+    from services.board.reader import get_board
+
+    scores = await get_board(_db, sport="nba", tier=tier, limit=limit)
 
     if not scores:
         return []
@@ -3404,36 +3403,28 @@ async def get_mlb_safe_haven_picks(
 ):
     """
     Get MLB Safe Haven picks.
-    
-    Safe Haven criteria:
-    - VK Edge > 20%
-    - R-Squared > 0.75
-    - L10 Hit Rate > 70%
-    - Vision Intel: CONFIRMED (not TRAP)
+    Board = live query against mlb_prop_scores via the universal board reader
+    (services/board/reader.py). Top N active props in tier 'safe_haven'.
+    No stored mlb_safe_haven collection is consulted.
     """
-    from config.db_config import get_collection_name
-    
+    from services.board.reader import get_board
+
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    
+
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
-    
-    collection = _db[get_collection_name("safe_haven", "mlb")]
-    picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
-    
-    # Filter out TRAP picks (vision_intel can be a string now or dict for legacy)
+
+    picks = await get_board(_db, sport="mlb", tier="safe_haven", limit=limit)
+
+    # Filter out TRAP verdicts for legacy-format vision_intel dicts.
     confirmed = []
     for p in picks:
         vi = p.get("vision_intel")
-        # If vision_intel is a string (new format), include it
-        # If it's a dict (legacy format), check verdict
-        if isinstance(vi, str):
+        if isinstance(vi, str) or vi is None:
             confirmed.append(p)
         elif isinstance(vi, dict) and vi.get("verdict") != "TRAP":
             confirmed.append(p)
-        elif vi is None:
-            confirmed.append(p)
-    
+
     # Overlay enrichment cache (Gemini + Lasso)
     confirmed = overlay_enrichment_cache(confirmed, "mlb")
 
@@ -3462,21 +3453,17 @@ async def get_mlb_front_lines_picks(
 ):
     """
     Get MLB Front Lines picks.
-    
-    Front Lines criteria:
-    - VK Edge > 15%
-    - R-Squared > 0.60
+    Board = live query against mlb_prop_scores via the universal board reader.
     """
-    from config.db_config import get_collection_name
-    
+    from services.board.reader import get_board
+
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    
+
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
-    
-    collection = _db[get_collection_name("front_lines", "mlb")]
-    picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
-    
+
+    picks = await get_board(_db, sport="mlb", tier="front_lines", limit=limit)
+
     # Overlay enrichment cache (Gemini + Lasso)
     picks = overlay_enrichment_cache(picks, "mlb")
 
@@ -3504,21 +3491,17 @@ async def get_mlb_war_zone_picks(
 ):
     """
     Get MLB War Zone picks.
-    
-    War Zone criteria:
-    - VK Edge > 25%
-    - R-Squared < 0.40 (High variance = high risk/reward)
+    Board = live query against mlb_prop_scores via the universal board reader.
     """
-    from config.db_config import get_collection_name
-    
+    from services.board.reader import get_board
+
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    
+
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
-    
-    collection = _db[get_collection_name("war_zone", "mlb")]
-    picks = await collection.find({}, {"_id": 0}).limit(limit).to_list(length=limit)
-    
+
+    picks = await get_board(_db, sport="mlb", tier="war_zone", limit=limit)
+
     # Overlay enrichment cache (Gemini + Lasso)
     picks = overlay_enrichment_cache(picks, "mlb")
 

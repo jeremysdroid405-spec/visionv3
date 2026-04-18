@@ -1280,6 +1280,18 @@ async def scheduled_hourly_referee_sync():
         logger.error(f"[SCHEDULER] Hourly referee sync failed: {e}")
 
 
+async def scheduled_game_start_scan():
+    """Universal game-start scanner — every 60s, flips tipped-off props to
+    active=False across every registered sport. Sport-agnostic: iterates
+    `registered_sports()`. New sports are auto-covered when their adapter
+    is registered in services/board/adapters/__init__.py."""
+    try:
+        from services.board.scanner import scan_all
+        await scan_all(db)
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Game-start scan failed: {e}")
+
+
 @app.on_event("startup")
 async def startup_event():
     global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, intel_briefing_engine, live_scores_engine, game_lock_engine, scheduler
@@ -1685,6 +1697,19 @@ async def startup_event():
         IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
         job_id='hourly_referee_sync',
         name='Hourly Referee Sync (60 min interval)',
+    )
+    
+    # 7. UNIVERSAL GAME-START SCANNER — Every 60 seconds
+    # Flips tipped-off props to active=False across every registered sport.
+    # Sport-agnostic by design (iterates registered_sports() inside).
+    # The universal board reader filters active=False rows, so game-started
+    # props disappear from the board within ~1 minute of tip-off with
+    # zero rebuild / publish work.
+    _register_interval_job(
+        scheduled_game_start_scan,
+        IntervalTrigger(seconds=60, timezone=SCHEDULER_TIMEZONE),
+        job_id='universal_game_start_scanner',
+        name='Universal Game-Start Scanner (60s interval)',
     )
     
     # ==========================================================================
