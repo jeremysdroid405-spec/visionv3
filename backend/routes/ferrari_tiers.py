@@ -807,6 +807,71 @@ def get_vegas_killer():
 _NBA_BOARD_CACHE: Dict[str, Any] = {"lookup": None, "built_at": 0.0}
 
 
+# Badges that only make sense as OVER signals (trigger language asserts
+# "player is producing MORE than usual" in some form). For UNDER picks these
+# describe the wrong side — they must be stripped.
+_OVER_ONLY_BADGES = {
+    "hot_streak", "floor_lock", "lasso_high_edge", "soft_matchup",
+    "locked_in", "pay_day", "usage_spike", "barrel_master",
+    "pure_contact", "bvp_dominator", "split_advantage",
+    "hitters_haven", "wind_boost", "workhorse", "milestone",
+    "high_heat_trap", "revenge", "home_cookin",
+}
+
+
+def _badge_key(b) -> str | None:
+    """Normalize a badge list entry to its key string."""
+    if isinstance(b, dict):
+        return b.get("badge_key") or b.get("id")
+    return b
+
+
+def _apply_under_badge_rewire(prop: Dict[str, Any], score: Dict[str, Any]) -> None:
+    """Mutate `prop` in place so its badge lists are UNDER-correct.
+
+    Strips `_OVER_ONLY_BADGES` from `context_badges`, `scout_badges`,
+    `active_badges`, and `intel_suite.context_badges`. Then re-derives the
+    side-agnostic scouts (`floor_lock` from `hit_rate_under`,
+    `lasso_high_edge` from `edge_vs_fair`) using score-doc authoritative
+    fields.
+    """
+    # Strip OVER-only keys from every badge list on the pick
+    prop["context_badges"] = [
+        b for b in (prop.get("context_badges") or [])
+        if _badge_key(b) not in _OVER_ONLY_BADGES
+    ]
+    prop["scout_badges"] = [
+        b for b in (prop.get("scout_badges") or [])
+        if _badge_key(b) not in _OVER_ONLY_BADGES
+    ]
+    prop["active_badges"] = [
+        b for b in (prop.get("active_badges") or [])
+        if _badge_key(b) not in _OVER_ONLY_BADGES
+    ]
+    if isinstance(prop.get("intel_suite"), dict):
+        ctx = prop["intel_suite"].get("context_badges")
+        if isinstance(ctx, list):
+            prop["intel_suite"]["context_badges"] = [
+                b for b in ctx if _badge_key(b) not in _OVER_ONLY_BADGES
+            ]
+
+    # Re-derive side-correct scouts from authoritative score fields
+    scout: List[Dict[str, Any]] = list(prop.get("scout_badges") or [])
+    present = {_badge_key(b) for b in scout}
+
+    hu = score.get("hit_rate_under")
+    if hu is not None and float(hu) >= 90 and "floor_lock" not in present:
+        scout.append({"badge_key": "floor_lock", "id": "floor_lock"})
+        present.add("floor_lock")
+
+    ev = score.get("edge_vs_fair")
+    if ev is not None and float(ev) >= 0.15 and "lasso_high_edge" not in present:
+        scout.append({"badge_key": "lasso_high_edge", "id": "lasso_high_edge"})
+        present.add("lasso_high_edge")
+
+    prop["scout_badges"] = scout
+
+
 async def _build_nba_board_lookup() -> Dict[tuple, Dict[str, Any]]:
     """Flatten `dg_cached_board` (player-grain) into a prop-grain lookup keyed
     by (event_id, player_name_lower, STAT_UPPER, line_float, DIR_UPPER).
@@ -991,6 +1056,18 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     # Canonical key for client-side de-dupe / highlight tracking
     prop["canonical_key"] = score.get("canonical_key")
 
+    # =========================================================================
+    # SIDE-AWARE BADGE REWIRE (UNDER picks only)
+    # Board props are OVER-semantic — badges baked in there (hot_streak,
+    # floor_lock, soft_matchup, etc.) describe why the OVER is attractive.
+    # For UNDER picks we strip those OVER-signaling badges and recompute the
+    # badges that are TRUE for the UNDER side from the score doc itself.
+    # OVER picks pass through unchanged. This also runs in a post-overlay
+    # pass (see _apply_under_badge_rewire) to catch cache-injected badges.
+    # =========================================================================
+    if is_under:
+        _apply_under_badge_rewire(prop, score)
+
     # Validation flag — data completeness
     prop["validation"] = {
         "has_market_data": bool(board_entry and prop.get("draftkings_price")),
@@ -1009,6 +1086,11 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
 async def _get_nba_tier_picks_from_scores(tier: str, limit: int) -> List[Dict[str, Any]]:
     """Read the top-N final-nba scores for a given tier, enrich with board
     data, and return a list of UI-ready picks sorted by vision_score DESC.
+    Also stashes the score doc on each pick as `_nba_score_doc` so that
+    downstream post-overlay passes (e.g. UNDER badge rewire) can re-read
+    authoritative side-aware fields after cache overlays inject OVER-side
+    enrichment. The helper is cleared before the pick is returned to the
+    client.
     """
     if _db is None:
         return []
@@ -1045,9 +1127,31 @@ async def _get_nba_tier_picks_from_scores(tier: str, limit: int) -> List[Dict[st
             opp = "UNDER" if direction_upper == "OVER" else "OVER"
             key_opp = (key_exact[0], key_exact[1], key_exact[2], key_exact[3], opp)
             entry = lookup.get(key_opp)
-        picks.append(_merge_score_with_board(sc, entry))
+        merged = _merge_score_with_board(sc, entry)
+        # Stash the score doc so downstream post-overlay passes can rewire
+        # side-aware fields (UNDER badges, UNDER vision_intel) after the
+        # enrichment cache overlay injects OVER-side data.
+        merged["_nba_score_doc"] = sc
+        picks.append(merged)
 
     return picks
+
+
+def _finalize_nba_picks_side_aware(picks: List[Dict[str, Any]]) -> None:
+    """Post-overlay side-aware finalization for NBA picks.
+
+    Runs AFTER `overlay_enrichment_cache` (which re-injects OVER-side
+    `scout_badges` from the master enrichment cache). For UNDER picks,
+    re-applies the UNDER badge rewire using the stashed score doc.
+    Mutates picks in place; strips internal helper fields before return.
+    """
+    for pick in picks:
+        score = pick.pop("_nba_score_doc", None)
+        if score is None:
+            continue
+        direction_upper = (pick.get("direction") or pick.get("recommendation") or "OVER").strip().upper()
+        if direction_upper == "UNDER":
+            _apply_under_badge_rewire(pick, score)
 
 
 
@@ -1320,6 +1424,11 @@ async def get_ferrari_safe_haven(
     # Overlay enrichment cache data (vision_intel, scout_badges, Lasso)
     picks = overlay_enrichment_cache(picks, sport)
 
+    # NBA: side-aware finalization — strip OVER-only badges from UNDER picks
+    # after the enrichment cache overlays OVER-biased scout_badges onto them.
+    if sport == "nba" and picks:
+        _finalize_nba_picks_side_aware(picks)
+
     # MLB: Enrich with averages, tempo, and full intel_suite
     if sport == "mlb" and picks:
         for pick in picks:
@@ -1425,6 +1534,11 @@ async def get_ferrari_front_lines(
     # Overlay enrichment cache data (vision_intel, scout_badges, Lasso)
     picks = overlay_enrichment_cache(picks, sport)
 
+    # NBA: side-aware finalization — strip OVER-only badges from UNDER picks
+    # after the enrichment cache overlays OVER-biased scout_badges onto them.
+    if sport == "nba" and picks:
+        _finalize_nba_picks_side_aware(picks)
+
     # MLB: Enrich with averages, tempo, and full intel_suite
     if sport == "mlb" and picks:
         for pick in picks:
@@ -1527,6 +1641,11 @@ async def get_ferrari_war_zone(
     
     # Overlay enrichment cache data (vision_intel, scout_badges, Lasso)
     picks = overlay_enrichment_cache(picks, sport)
+
+    # NBA: side-aware finalization — strip OVER-only badges from UNDER picks
+    # after the enrichment cache overlays OVER-biased scout_badges onto them.
+    if sport == "nba" and picks:
+        _finalize_nba_picks_side_aware(picks)
 
     # MLB: Enrich with averages, tempo, and full intel_suite
     if sport == "mlb" and picks:
