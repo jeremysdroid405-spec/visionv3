@@ -428,6 +428,70 @@ const EmptyStateMessage = ({ icon, title, message }) => (
   </div>
 );
 
+// -----------------------------------------------------------------------------
+// DirectionSplitRows — presentation-only helper
+// -----------------------------------------------------------------------------
+// Splits a tier's picks into Over / Under subsections using ONLY universal
+// prop fields (`direction` with `recommendation` as fallback). Sport-agnostic.
+// Does not alter scoring, ordering, card design, or backend data.
+// -----------------------------------------------------------------------------
+const _normalizeSide = (pick) => {
+  const raw = (pick?.direction ?? pick?.recommendation ?? '').toString().toUpperCase();
+  if (raw.includes('UNDER')) return 'UNDER';
+  return 'OVER';
+};
+
+const DirectionSubheader = memo(({ label, count }) => (
+  <div
+    className="flex items-center gap-2 px-1 pt-3 pb-2 text-[11px] font-semibold tracking-wider uppercase text-zinc-400"
+    data-testid={`direction-subheader-${label.toLowerCase()}`}
+  >
+    <span>{label}</span>
+    <span className="text-zinc-600">({count})</span>
+    <div className="flex-1 h-px bg-zinc-800/80" />
+  </div>
+));
+
+const DirectionSplitRows = memo(({
+  picks,
+  keyPrefix,
+  renderCard,
+  limitPerSide = 10,
+}) => {
+  if (!picks?.length) return null;
+
+  const overPicks = [];
+  const underPicks = [];
+  for (const p of picks) {
+    (_normalizeSide(p) === 'UNDER' ? underPicks : overPicks).push(p);
+  }
+
+  return (
+    <div data-testid={`direction-split-${keyPrefix}`}>
+      {overPicks.length > 0 && (
+        <>
+          <DirectionSubheader label="Over" count={overPicks.length} />
+          <SwipeContainer>
+            {overPicks.slice(0, limitPerSide).map((pick, idx) =>
+              renderCard(pick, 'over', idx)
+            )}
+          </SwipeContainer>
+        </>
+      )}
+      {underPicks.length > 0 && (
+        <>
+          <DirectionSubheader label="Under" count={underPicks.length} />
+          <SwipeContainer>
+            {underPicks.slice(0, limitPerSide).map((pick, idx) =>
+              renderCard(pick, 'under', idx)
+            )}
+          </SwipeContainer>
+        </>
+      )}
+    </div>
+  );
+});
+
 // War Zone Section with Loading/Empty States
 const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
   if (isLoading) {
@@ -466,9 +530,11 @@ const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
         badgeText={`TOP ${Math.min(10, picks.length)} SHARP`}
         badgeColor="red"
       />
-      <SwipeContainer>
-        {picks.slice(0, 10).map((pick, idx) => (
-          <div key={`warzone-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
+      <DirectionSplitRows
+        picks={picks}
+        keyPrefix="warzone"
+        renderCard={(pick, side, idx) => (
+          <div key={`warzone-${side}-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
             <UniversalPlayerCard 
               player={pick} 
               onClick={() => onPickClick(pick)} 
@@ -481,8 +547,8 @@ const WarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) => {
               isBoardPick={true}
             />
           </div>
-        ))}
-      </SwipeContainer>
+        )}
+      />
     </div>
   );
 });
@@ -525,9 +591,11 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =>
         badgeText="TOP 10 SAFEST PLAYS"
         badgeColor="green"
       />
-      <SwipeContainer>
-        {picks.slice(0, 10).map((pick, idx) => (
-          <div key={`safehaven-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
+      <DirectionSplitRows
+        picks={picks}
+        keyPrefix="safehaven"
+        renderCard={(pick, side, idx) => (
+          <div key={`safehaven-${side}-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
             <UniversalPlayerCard 
               player={pick} 
               onClick={() => onPickClick(pick)} 
@@ -540,8 +608,8 @@ const SafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =>
               isBoardPick={true}
             />
           </div>
-        ))}
-      </SwipeContainer>
+        )}
+      />
     </div>
   );
 });
@@ -584,9 +652,11 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
         badgeText={`${Math.min(10, picks.length)} PICKS`}
         badgeColor="amber"
       />
-      <SwipeContainer>
-        {picks.slice(0, 10).map((pick, idx) => (
-          <div key={`frontlines-${pick.player_name}-${pick.stat_type}-${pick.photo_url || 'nophoto'}-${idx}`} className="swipe-card">
+      <DirectionSplitRows
+        picks={picks}
+        keyPrefix="frontlines"
+        renderCard={(pick, side, idx) => (
+          <div key={`frontlines-${side}-${pick.player_name}-${pick.stat_type}-${pick.photo_url || 'nophoto'}-${idx}`} className="swipe-card">
             <UniversalPlayerCard 
               player={pick} 
               onClick={() => onPickClick(pick)} 
@@ -599,8 +669,8 @@ const FrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
               isBoardPick={true}
             />
           </div>
-        ))}
-      </SwipeContainer>
+        )}
+      />
     </div>
   );
 });
@@ -654,9 +724,11 @@ const MLBSafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading })
         badgeText={`${picks.length} PICKS`}
         badgeColor="green"
       />
-      <SwipeContainer>
-        {picks.slice(0, 10).map((pick, idx) => (
-          <div key={`mlb-safe-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
+      <DirectionSplitRows
+        picks={picks}
+        keyPrefix="mlb-safe"
+        renderCard={(pick, side, idx) => (
+          <div key={`mlb-safe-${side}-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
             <UniversalPlayerCard 
               player={pick} 
               onClick={() => onPickClick(pick)} 
@@ -669,8 +741,8 @@ const MLBSafeHavenSection = memo(({ picks, onPickClick, onQuickAdd, isLoading })
               isBoardPick={true}
             />
           </div>
-        ))}
-      </SwipeContainer>
+        )}
+      />
     </div>
   );
 });
@@ -722,9 +794,11 @@ const MLBFrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }
         badgeText={`${Math.min(10, picks.length)} PICKS`}
         badgeColor="amber"
       />
-      <SwipeContainer>
-        {picks.slice(0, 10).map((pick, idx) => (
-          <div key={`mlb-front-${pick.player_name}-${idx}`} className="swipe-card">
+      <DirectionSplitRows
+        picks={picks}
+        keyPrefix="mlb-front"
+        renderCard={(pick, side, idx) => (
+          <div key={`mlb-front-${side}-${pick.player_name}-${idx}`} className="swipe-card">
             <UniversalPlayerCard 
               player={pick} 
               onClick={() => onPickClick(pick)} 
@@ -737,8 +811,8 @@ const MLBFrontLinesSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }
               isBoardPick={true}
             />
           </div>
-        ))}
-      </SwipeContainer>
+        )}
+      />
     </div>
   );
 });
@@ -790,9 +864,11 @@ const MLBWarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
         badgeText={`${Math.min(10, picks.length)} PICKS`}
         badgeColor="red"
       />
-      <SwipeContainer>
-        {picks.slice(0, 10).map((pick, idx) => (
-          <div key={`mlb-war-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
+      <DirectionSplitRows
+        picks={picks}
+        keyPrefix="mlb-war"
+        renderCard={(pick, side, idx) => (
+          <div key={`mlb-war-${side}-${pick.player_name}-${pick.stat_type}-${idx}`} className="swipe-card">
             <UniversalPlayerCard 
               player={pick} 
               onClick={() => onPickClick(pick)} 
@@ -805,8 +881,8 @@ const MLBWarZoneSection = memo(({ picks, onPickClick, onQuickAdd, isLoading }) =
               isBoardPick={true}
             />
           </div>
-        ))}
-      </SwipeContainer>
+        )}
+      />
     </div>
   );
 });
