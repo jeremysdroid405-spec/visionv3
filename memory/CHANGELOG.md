@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-04-18 — Priority realignment (user directive)
+- Per user: next priority is Universal Board Migration + Legacy Writer
+  Retirement (Step 6). No new features until that lands.
+- New file `/app/memory/ROADMAP.md` created with P0/P1/P2 and explicit
+  acceptance gates for Step 6.
+- 48h observation clock deferred pending decision on blocker 1a (A/B
+  comparator race between `write_versioned_scores(mode="replace")` in the
+  legacy rebuild and `mode="upsert"` in the real-time engine, both sharing
+  `version_tag=final-nba`). Raw evidence captured in ROADMAP.md §1a.
+
+
+
 ## 2026-04-18 — Canonical Stat-Window Contract (Ferrari h10_rate Clobber Fix)
 - **Root cause**: `ferrari_tiers.py:1059-1072` was overwriting `prop["h10_rate"]`
   with `score.hit_rate_over` (L20/p_true-derived, 20-game window). Chart binding
