@@ -59,6 +59,12 @@ _STABLE_KEY: Dict[str, Union[str, Sequence[str]]] = {
     # that this is NOT the same field as `bdl_player_id` used by
     # master_roster.
     "odds_mapping": "bdl_id",
+    # player_stats_agg documents are uniquely keyed on `normalized_name`
+    # (101/101 distinct, 0 nulls, backed by a `unique=True` index).
+    # Proposed candidates `bdl_player_id`, `player_id`, and `season`
+    # do NOT exist on these documents — this concept is an archival
+    # snapshot with no active writer.
+    "player_stats_agg": "normalized_name",
 }
 
 

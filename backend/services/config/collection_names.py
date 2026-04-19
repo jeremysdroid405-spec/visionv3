@@ -75,6 +75,19 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # The old primary (`odds_api_mapping_master`) has been renamed to
     # `odds_api_mapping_master_backup` and is eligible for drop after
     # the observation window closes.
+
+    # Wave 1 (frozen-archive migration) in progress for
+    # player_stats_agg · NBA. The live codebase has no active writer
+    # for this concept — the primary `dg_player_stats` was last
+    # written 2026-04-05 and the only referencing handle
+    # (`RosterService.player_stats`) was never assigned. This shadow
+    # entry is registered for MONITOR observability only. Backfill
+    # is the migration mechanism; there is no fan-out because there
+    # are no live writes. Stable key is `normalized_name` (the only
+    # field with a `unique=True` index and 100% coverage on the 101
+    # live docs — none of `bdl_player_id`, `player_id`, or `season`
+    # exist on these documents).
+    ("player_stats_agg", "nba"): "nba_player_stats",
 }
 
 
