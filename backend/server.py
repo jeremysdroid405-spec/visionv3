@@ -919,6 +919,28 @@ async def scheduled_forward_test_capture():
         logger.error(traceback.format_exc())
 
 
+async def scheduled_shadow_divergence_check():
+    """
+    Wave 1 — Shadow-Write Divergence Monitor (60s interval).
+
+    Runs every 60 seconds. Compares primary vs shadow collections for
+    every concept registered in
+    `services.config.collection_names._SHADOW_WRITES` and appends a
+    snapshot row to the shared `board_drift_ledger`. Self-disables
+    silently when no concepts are shadow-mapped.
+    """
+    try:
+        from services.observability.shadow_divergence_monitor import (
+            run_shadow_divergence_check,
+        )
+        await run_shadow_divergence_check(db)
+    except Exception as e:
+        logger.error(f"[SCHEDULER] shadow_divergence_monitor failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+
+
 async def scheduled_bdl_game_logs_sync():
     """
     Scheduled job that runs at 4:25 AM EST (09:25 UTC) daily.
@@ -1895,7 +1917,22 @@ async def startup_event():
         name='Forward-Test: Daily Prop Capture (6:30 PM ET)',
         replace_existing=True
     )
-    
+
+    # Wave 1 — Shadow-Write Divergence Monitor (every 60 seconds).
+    # Compares primary vs shadow collections for every concept registered
+    # in `services.config.collection_names._SHADOW_WRITES`. Writes
+    # snapshots to `board_drift_ledger` and logs alerts on divergence.
+    # Self-disables when the shadow map is empty — no behavior change.
+    scheduler.add_job(
+        scheduled_shadow_divergence_check,
+        IntervalTrigger(seconds=60, timezone=SCHEDULER_TIMEZONE),
+        id='shadow_divergence_monitor',
+        name='Wave 1 Shadow-Write Divergence Monitor (60s)',
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+
     scheduler.start()
     logger.info(f"[SCHEDULER] APScheduler started - WEEKEND-READY MODE")
     logger.info(f"[SCHEDULER] === INTERVAL JOBS (High-Performance) ===")

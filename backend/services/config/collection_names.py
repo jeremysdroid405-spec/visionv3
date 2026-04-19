@@ -29,7 +29,34 @@ the current collection name (e.g. "live_props", not "dg_live_props").
 """
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, List, Tuple
+
+
+# ---------------------------------------------------------------------------
+# Wave 1 SHADOW-WRITE PILOT
+# ---------------------------------------------------------------------------
+# Concepts listed here get DUAL-written during the Wave 1 shadow phase.
+# Reads remain on the primary (current physical name). Writes fan out to
+# BOTH the primary AND the named shadow collection so the shadow fills up
+# for verification before Wave 2 flips reads.
+#
+# Format: (concept, sport) -> shadow_physical_name
+#
+# To add a concept to shadow-write:
+#   1. Add a row here.
+#   2. Restart backend. The scheduler's shadow_divergence_monitor job will
+#      pick it up automatically and start logging divergence to
+#      `board_drift_ledger` every 60s.
+#   3. Observe for the configured duration.
+#   4. On greenlight, flip the primary in `_SPORT_COLLECTIONS` below, then
+#      remove the row from this map.
+# ---------------------------------------------------------------------------
+_SHADOW_WRITES: Dict[Tuple[str, str], str] = {
+    # Pilot: NBA events cache (read-only downstream, full-refresh pattern,
+    # lowest blast radius).
+    ("events_cache", "nba"): "nba_events_cache",
+}
+
 
 # ---------------------------------------------------------------------------
 # Sport-specific concept map. Each concept maps `{sport: current_name}`.
@@ -159,6 +186,42 @@ class _CollectionResolver:
             "sport_specific": {k: dict(v) for k, v in _SPORT_COLLECTIONS.items()},
             "shared": dict(_SHARED_COLLECTIONS),
         }
+
+    # -----------------------------------------------------------------
+    # Wave 1 shadow-write support
+    # -----------------------------------------------------------------
+    def writes_to(self, concept: str, sport: str) -> List[str]:
+        """Return the list of physical collection names a write to
+        (concept, sport) must fan out to.
+
+        During normal operation this is a single-element list [primary].
+        During the Wave 1 shadow phase, concepts registered in
+        `_SHADOW_WRITES` return [primary, shadow].
+        """
+        primary = self(concept, sport)
+        shadow = _SHADOW_WRITES.get((concept, (sport or "").lower()))
+        if shadow and shadow != primary:
+            return [primary, shadow]
+        return [primary]
+
+    def handle(self, db, concept: str, sport: str):
+        """Return a collection-like object suitable for both reads AND
+        writes. If the (concept, sport) pair is NOT shadow-mapped, returns
+        the raw Motor collection (zero overhead). If it IS shadow-mapped,
+        returns a `ShadowWriter` that fans mutations out to [primary,
+        shadow] and delegates reads to the primary.
+        """
+        names = self.writes_to(concept, sport)
+        if len(names) == 1:
+            return db[names[0]]
+        # Import lazily to avoid a module-load cycle during test collection.
+        from services.config.shadow_writer import ShadowWriter
+        return ShadowWriter(db[names[0]], [db[n] for n in names[1:]])
+
+    @staticmethod
+    def active_shadows() -> Dict[Tuple[str, str], str]:
+        """Return a copy of the currently-active shadow-write mapping."""
+        return dict(_SHADOW_WRITES)
 
 
 COLL = _CollectionResolver()
