@@ -55,7 +55,7 @@ class OddsApiService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.events_cache = COLL.handle(db, "events_cache", "nba")
-        self.odds_cache = db[COLL("odds_cache", "nba")]
+        self.odds_cache = COLL.handle(db, "odds_cache", "nba")
         
         # In-memory caches
         self._player_popularity: Dict[str, int] = {}

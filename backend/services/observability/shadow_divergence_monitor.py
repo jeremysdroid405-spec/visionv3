@@ -25,7 +25,7 @@ import json
 import logging
 import random
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -40,12 +40,16 @@ DELTA_PCT_ALERT = 1.0        # absolute %
 HASH_MATCH_ALERT = 0.99      # rate in [0, 1]
 VOLATILE_FIELDS = {"_id", "fetched_at", "updated_at", "last_synced_at"}
 
-# Concept → stable-identifier field used to pair primary docs to shadow
-# docs during hash sampling. If a concept isn't listed, we fall back to
-# `_id`.
-_STABLE_KEY: Dict[str, str] = {
+# Concept → stable-identifier field(s) used to pair primary docs to shadow
+# docs during hash sampling. A value may be either a single field name
+# (scalar key) or a list of field names (compound key). If a concept
+# isn't listed, we fall back to `_id`.
+_STABLE_KEY: Dict[str, Union[str, Sequence[str]]] = {
     # Odds-API event documents carry the sportsbook's event id under `id`.
     "events_cache": "id",
+    # odds_cache stores 2 docs per event_id (source={prizepicks,sharp_books})
+    # so pairing REQUIRES a compound key.
+    "odds_cache": ("event_id", "source"),
 }
 
 
@@ -64,28 +68,37 @@ def _stable_hash(doc: Dict[str, Any]) -> str:
 async def _sample_hash_rate(
     primary_coll,
     shadow_coll,
-    stable_key: str,
+    stable_key: Union[str, Sequence[str]],
     sample_size: int,
 ) -> Tuple[int, int]:
     """Return (matched, sampled) counts comparing up to `sample_size`
     primary docs against their shadow counterparts.
 
-    If the primary is empty OR a sampled doc has no stable key, the pair
-    is skipped (not counted as a mismatch).
+    `stable_key` may be a single field name or a sequence of field names
+    (compound key). A sampled doc missing any component of the stable
+    key is skipped and not counted against the match rate.
     """
     pipeline = [{"$sample": {"size": sample_size}}]
     samples = await primary_coll.aggregate(pipeline).to_list(length=sample_size)
     sampled = 0
     matched = 0
+    is_compound = not isinstance(stable_key, str)
+    key_fields: Sequence[str] = tuple(stable_key) if is_compound else (stable_key,)
+
     for doc in samples:
-        # Pick the lookup key/value. Prefer the configured stable key; if
-        # that field is missing on the doc, we cannot pair it against the
-        # shadow reliably (shadow docs have independent `_id`s), so skip.
-        key_value = doc.get(stable_key) if stable_key != "_id" else doc.get("_id")
-        if key_value is None:
-            # Can't pair this doc; don't count against match rate.
+        # Build the shadow lookup query from the configured stable-key
+        # field(s). Missing any component → skip.
+        query: Dict[str, Any] = {}
+        missing = False
+        for field in key_fields:
+            value = doc.get(field) if field != "_id" else doc.get("_id")
+            if value is None:
+                missing = True
+                break
+            query[field] = value
+        if missing or not query:
             continue
-        query = {stable_key: key_value}
+
         shadow_doc = await shadow_coll.find_one(query)
         sampled += 1
         if shadow_doc is None:
@@ -125,6 +138,13 @@ async def _snapshot_concept(
 
     hash_match_rate = round(matched / sampled, 4) if sampled else 1.0
 
+    # Normalise the stable_key for ledger serialisation (tuples -> lists).
+    stable_key_for_ledger: Union[str, List[str]]
+    if isinstance(stable_key, str):
+        stable_key_for_ledger = stable_key
+    else:
+        stable_key_for_ledger = list(stable_key)
+
     snapshot = {
         "observed_at": datetime.now(timezone.utc),
         "wave": 1,
@@ -140,7 +160,7 @@ async def _snapshot_concept(
         "sampled": sampled,
         "hash_matched": matched,
         "hash_match_rate": hash_match_rate,
-        "stable_key": stable_key,
+        "stable_key": stable_key_for_ledger,
     }
 
     alerts: List[str] = []

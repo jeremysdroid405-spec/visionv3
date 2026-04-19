@@ -57,6 +57,11 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # primary (`dg_events_cache`) has been renamed to
     # `dg_events_cache_backup` and is eligible for drop after the
     # observation window closes.
+
+    # Wave 1 pilot in progress (odds_cache · NBA). Shadow-writing to
+    # `nba_odds_cache`. Reads remain on `dg_odds_cache`. Stable key is
+    # compound (event_id, source) — configured in the monitor.
+    ("odds_cache", "nba"): "nba_odds_cache",
 }
 
 
