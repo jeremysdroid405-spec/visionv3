@@ -1198,7 +1198,7 @@ async def _persist_enriched_picks(db, picks: List[Dict], cache: GlobalSyncCache,
             # Combine all updates
             full_update = {**player_update, **props_update}
 
-            result = await db[cached_board_collection].update_one(
+            result = await COLL.handle(db, "board_cache", target_sport).update_one(
                 {"player_name": player_name},
                 {"$set": full_update},
             )

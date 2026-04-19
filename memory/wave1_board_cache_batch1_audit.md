@@ -463,4 +463,161 @@ writers are flipped.
 mirrored exactly. FULL-DOC hash sweep 107/107 matched. Regression clean.
 Halted pending greenlight for Batch 4.**
 
+---
+
+# Batch 4 (optimized_sync_engine single writer) — applied 2026-04-19 19:46 UTC
+
+## Scope
+
+Surgical one-line flip of the `_persist_enriched_picks` writer in
+`services/optimized_sync_engine.py:1201`. No other lines touched. No
+changes to `cached_board_collection` string caching, `SPORT_COLLECTION_MAP`,
+`validate_sport_isolation`, log strings, or readers. `COLL` import already
+present at line 24; no import changes.
+
+### File changed
+- `services/optimized_sync_engine.py`
+
+### Diff
+```diff
+-            result = await db[cached_board_collection].update_one(
++            result = await COLL.handle(db, "board_cache", target_sport).update_one(
+                 {"player_name": player_name},
+                 {"$set": full_update},
+             )
+```
+
+## Post-Batch-4 Evidence
+
+### Runtime exercise of the flipped writer
+A manual `POST /api/v3/ferrari/rebuild?sport=nba&use_optimized=true` was
+dispatched to the backend to trigger the optimized_sync_engine pipeline.
+Logs show the full pipeline ran to completion:
+
+```
+[OPTIMIZED_SYNC] 🔒 SPORT-EXCLUSIVE MODE: NBA
+[OPTIMIZED_SYNC] Step 0 (Game Logs): 59.21s - synced 550 players
+[OPTIMIZED_SYNC] Step 1 (Global Cache): 0.24s
+[OPTIMIZED_SYNC] Step 2 (Ferrari Pipeline): 68.27s — 30 picks
+[OPTIMIZED_SYNC] Step 3 (Collect & Enrich): 0.00s
+[OPTIMIZED_SYNC] Collected 0 NBA picks for AI summary generation
+[OPTIMIZED_SYNC] Step 4 (Vision Intel Check): 0.00s
+[OPTIMIZED_SYNC] Step 5 (Persist Enriched): 0.00s
+[OPTIMIZED_SYNC] Step 6 (Tier Update): SKIPPED — handled by ferrari_tier_service
+[OPTIMIZED_SYNC] 🏁 NBA Pipeline complete in 127.73s
+```
+
+Step 5 (the step containing the flipped writer) exited at 0.00s because
+`Collected 0 NBA picks for AI summary generation` — the enrichment
+collector returned an empty list, so the `update_one` call at line 1201
+was not iterated. This is runtime behavior, not a code-path issue.
+
+**Strict-refactor invariant**: the flip is a pure target-expression
+replacement (from `db[name_string]` to `COLL.handle(db, "board_cache",
+target_sport)`), both of which return objects that expose `update_one(...)`
+with identical filter/payload semantics. The ShadowWriter returned by
+`COLL.handle` is the same instance used by Batch 1-3 writers, which have
+already exercised `update_one`, `update_many`, `insert_many`, `delete_many`,
+and `bulk_write` successfully through this migration. When this writer
+next fires (on a Ferrari rebuild that yields non-empty enrichment), it
+will fan out by the same mechanism.
+
+Additional safety note on sport routing: the flipped expression uses
+`target_sport` (not hardcoded "nba"), preserving cross-sport correctness.
+- `target_sport="nba"` → `COLL.handle` returns ShadowWriter →
+  fans to `dg_cached_board` + `nba_cached_board`.
+- `target_sport="mlb"` → `COLL.handle` returns raw `mlb_cached_board`
+  collection (no shadow map for MLB) → unchanged MLB behavior.
+
+### Field-level parity samples (post-main-build at 19:50:11)
+
+| player | synced_at | intel_briefing | vision_summary | is_vision_enriched | rank | props-array length | keys |
+|---|---|---|---|---|---|---|---|
+| Aaron Gordon | identical | None/None | None/None | None/None | 33/33 | 27/27 match | 36/36 same set |
+| Ajay Mitchell | identical | None/None | None/None | None/None | 46/46 | 25/25 match | 36/36 same set |
+
+All field values match. Field-count and key-set identical. Props-array length identical.
+
+### FULL-DOC HASH SWEEP
+```
+matched = 107
+missed  =   0
+skipped =   0
+```
+
+### Ledger — 6 consecutive clean ticks post-Batch-4
+| observed_at (UTC) | primary | shadow | delta_pct | sampled | matched | hash_match_rate |
+|---|---|---|---|---|---|---|
+| 19:49:04 | 107 | 107 | 0.0 % | 50 | 50 | 1.0 |
+| 19:50:04 | 107 | 107 | 0.0 % | 50 | 50 | 1.0 |
+| 19:51:03 | 107 | 107 | 0.0 % | 50 | 50 | 1.0 |
+| 19:52:04 | 107 | 107 | 0.0 % | 50 | 50 | 1.0 |
+| 19:53:03 | 107 | 107 | 0.0 % | 50 | 50 | 1.0 |
+| 19:54:03 | 107 | 107 | 0.0 % | 50 | 50 | 1.0 |
+
+### Endpoint smoke (all 200)
+- `/api/v3/ferrari/safe-haven`, `/front-lines`, `/war-zone`
+- `/api/v3/scheduler-status`
+- `/api/live/scores`
+- `/api/v3/odds/props?sport=nba&limit=1`
+
+### Regression
+```
+mlb_cached_board : 306 docs  (unaffected)
+nba_live_props   : 2502 docs (prior-wave primary — unaffected)
+mlb_live_props   : 4944 docs (unaffected)
+```
+
+## Next-step recommendation
+
+Two distinct clusters remain in the Wave 1 writer surface:
+
+### Option A — Batch 5: `propvision_oracle_service` (requires audit first)
+`services/propvision_oracle_service.py:713` uses `self._get_collection("cached_board")`
+— an adapter method. The pre-flight blocker is: does this adapter plumb
+sport context per-instance, or is it shared cross-sport? If shared,
+flipping to `COLL.handle(db, "board_cache", "nba")` would break MLB
+callers, and we would need per-call sport resolution.
+
+### Option B — Batch 6: `adaptive_sync_engine` (name-string cache refactor)
+`services/engines/adaptive_sync_engine.py` caches `COLL("board_cache","nba")`
+as a STRING at `__init__` (line 116) and uses it via
+`self.db[self.cached_board_collection]` in 6+ writer/reader call-sites
+(lines 949, 1056, 1089, 1164, 1373). To route through the ShadowWriter,
+either:
+1. Add a parallel `self.cached_board_handle = COLL.handle(db, "board_cache","nba")`
+   and rewrite the 6+ call-sites from `self.db[self.cached_board_collection]`
+   to `self.cached_board_handle`, OR
+2. Keep the name-cache and rewrite each call-site to resolve
+   `COLL.handle(...)` inline.
+
+Option 1 is cleaner. Either way, a 6+-site rewrite in one file is a
+"medium" mini-batch — larger than Batch 2 and 3 but still single-file.
+
+### Recommended order
+**Batch 5 first** — but ONLY after running a 10-minute read-only audit
+of `_get_collection` in `propvision_oracle_service.py` (check its
+definition, all its call-sites, and whether it's a mixin shared with MLB
+services). This audit is explicitly read-only and does not change any
+code.
+
+If the audit reveals a safe shared/sport-aware adapter: Batch 5 is a
+single-handle flip.
+
+If the audit reveals unsafe cross-sport mixing: defer Batch 5 and go to
+Batch 6 instead (adaptive_sync_engine).
+
+### Out of scope (deferred)
+- `routes/qa_testing.py` (Batch 7 — QA endpoints, low priority)
+- All reader hardcodes + registry cleanups (Wave 2)
+
+## Status
+
+**Batch 4 complete. Surgical 1-line flip applied. Pipeline ran end-to-end
+without errors; persist-writer path not exercised in this window due to
+empty enrichment collector (runtime behavior, not code-path issue).
+6 consecutive clean ledger ticks. FULL-DOC HASH SWEEP 107/107. Regression
+clean. Halted pending greenlight for Batch 5 audit or Batch 6.**
+
+
 
