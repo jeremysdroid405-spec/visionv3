@@ -697,60 +697,6 @@ Only return valid JSON. No markdown code blocks.
             results["success"] = False
         
         return results
-    
-    async def update_cached_board_with_oracle(self) -> Dict[str, Any]:
-        """
-        Update cached board with Oracle scores.
-        
-        Adds oracle_score, oracle_verdict, and tier_eligible fields to props.
-        """
-        results = {
-            "updated": 0,
-            "errors": []
-        }
-        
-        try:
-            cached_board = self._get_collection("cached_board")
-            
-            # Get all players
-            players = await cached_board.find({}, {"_id": 0}).to_list(length=None)
-            
-            for player_doc in players:
-                player_name = player_doc.get("player_name")
-                updated_props = []
-                
-                for prop in player_doc.get("props", []):
-                    # Synthesize and score
-                    synth = await self.oracle_data_synthesis(prop)
-                    verdict = await self.oracle_final_verdict(
-                        vk_projection=synth.get("vk_projection"),
-                        pinnacle_devig_prob=synth.get("pinnacle_devig_prob"),
-                        dk_ladder=synth.get("dk_ladder"),
-                        prop=prop
-                    )
-                    
-                    # Add Oracle fields to prop
-                    prop["oracle_score"] = verdict["oracle_score"]
-                    prop["oracle_verdict"] = verdict["verdict"]
-                    prop["oracle_tier_eligible"] = verdict["tier_eligible"]
-                    prop["oracle_reasoning"] = verdict["reasoning"]
-                    
-                    updated_props.append(prop)
-                
-                # Update player document
-                await cached_board.update_one(
-                    {"player_name": player_name},
-                    {"$set": {"props": updated_props, "oracle_processed_at": datetime.now(timezone.utc).isoformat()}}
-                )
-                results["updated"] += 1
-            
-            logger.info(f"[ORACLE] Updated {results['updated']} players with Oracle scores")
-            
-        except Exception as e:
-            logger.error(f"[ORACLE] Error updating cached board: {e}")
-            results["errors"].append(str(e))
-        
-        return results
 
 
 # Singleton instance
