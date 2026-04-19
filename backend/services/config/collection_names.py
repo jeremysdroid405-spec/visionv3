@@ -100,6 +100,21 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # stable key `(player_name, stat_type, line, recorded_at)`;
     # convergence was verified via bucket-aware multiset hash compare
     # (708,570/708,570 key-level matches across 801,955 docs).
+
+    # Wave 1 ACTIVE: live_props · NBA shadow-writes to `nba_live_props`.
+    # Primary today: `dg_live_props` (2,518 docs, 0.93 MiB storage).
+    # Stable key: `_composite_key` (100% coverage, 100% unique, unique+sparse
+    # index on primary). Backfill strategy: Option A (natural odds-sync tick
+    # — live_props is a drop-and-replace hot cache, so the first
+    # delete_many+insert_many after wiring populates the shadow atomically).
+    # Writer call-sites flipped to COLL.handle(...):
+    #   - services/odds_sync_service.py
+    #   - services/universal_odds_sync.py
+    #   - repositories/board_repo.py
+    # Reader hardcodes to migrate at Wave 2 (still read primary today):
+    #   - services/watchers.py:204
+    #   - services/scoring/calibration_store.py:31
+    ("live_props", "nba"): "nba_live_props",
 }
 
 

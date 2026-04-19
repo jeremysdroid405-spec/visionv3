@@ -28,6 +28,7 @@ import httpx
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from config.db_config import get_collection_name, validate_sport, SPORT_CONFIG
+from services.config.collection_names import COLL
 
 logger = logging.getLogger(__name__)
 
@@ -785,7 +786,12 @@ class UniversalOddsSyncService:
             # event_id changes every game day, so old records were never matched.
             if all_props:
                 collection_name = get_collection_name("live_props", sport)
-                collection = self.db[collection_name]
+                # Wave 1 shadow-writes: COLL.handle returns a ShadowWriter
+                # for (concept, sport) pairs registered in _SHADOW_WRITES
+                # (currently: live_props·NBA → nba_live_props). For pairs
+                # not registered it returns the raw Motor collection, so
+                # MLB behavior is unchanged.
+                collection = COLL.handle(self.db, "live_props", sport)
                 
                 # Phase 6 Step 5 — pre-wipe snapshot for `new_props`
                 # delta emission. Uses the universal board adapter to

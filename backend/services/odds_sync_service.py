@@ -31,7 +31,9 @@ class OddsSyncService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.live_props = db[COLL("live_props", "nba")]
+        # Wave 1 shadow-writes: route through COLL.handle so mutations fan
+        # out to the registered shadow (`nba_live_props`) during migration.
+        self.live_props = COLL.handle(db, "live_props", "nba")
         self.master_roster = db[COLL("master_roster", "nba")]
         
         # Cache for master roster
