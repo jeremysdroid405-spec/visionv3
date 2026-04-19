@@ -70,11 +70,11 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # `dg_master_roster_backup` and is eligible for drop after the
     # observation window closes.
 
-    # Wave 1 pilot in progress (odds_mapping · NBA). Shadow-writing to
-    # `nba_odds_api_mapping_master`. Reads remain on
-    # `odds_api_mapping_master`. Stable key is `bdl_id` (BallDontLie id,
-    # 100%-unique on 548 live docs; backed by a unique index).
-    ("odds_mapping", "nba"): "nba_odds_api_mapping_master",
+    # Wave 2 complete: odds_mapping · NBA has been flipped to
+    # `nba_odds_api_mapping_master` and the shadow phase is retired.
+    # The old primary (`odds_api_mapping_master`) has been renamed to
+    # `odds_api_mapping_master_backup` and is eligible for drop after
+    # the observation window closes.
 }
 
 
@@ -114,7 +114,7 @@ _SPORT_COLLECTIONS: Dict[str, Dict[str, str]] = {
                              "mlb": "mlb_odds_cache"},
     "events_cache":         {"nba": "nba_events_cache",
                              "mlb": "mlb_events_cache"},
-    "odds_mapping":         {"nba": "odds_api_mapping_master",  # NBA-only today
+    "odds_mapping":         {"nba": "nba_odds_api_mapping_master",  # NBA-only today
                              "mlb": "mlb_odds_api_mapping_master"},  # future
 
     # ---- Contextual caches (currently NBA-only in code) --------------------
