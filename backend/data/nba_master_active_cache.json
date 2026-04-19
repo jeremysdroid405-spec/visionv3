@@ -1,6 +1,6 @@
 {
   "sport": "NBA",
-  "last_updated": "2026-04-19T21:24:35.848836+00:00",
+  "last_updated": "2026-04-19T21:36:54.721887+00:00",
   "prop_count": 3,
   "props": {
     "nickeil_alexander-walker|pts|14.5|prizepicks": {
@@ -296,295 +296,6 @@
       "_enriched_at": "2026-04-19T21:18:20.081144+00:00",
       "_cache_updated": "2026-04-19T21:18:20.081146+00:00"
     },
-    "dyson_daniels|pra|23.5|prizepicks": {
-      "event_id": "a1b444bd00a27cbae3cf7ca3bf75a3f0",
-      "home_team": "NYK",
-      "away_team": "ATL",
-      "commence_time": "2026-04-21T00:10:00Z",
-      "player_name": "Dyson Daniels",
-      "market": "player_points_rebounds_assists",
-      "direction": "Over",
-      "line": 23.5,
-      "price": -137,
-      "multiplier": null,
-      "bookmaker": "prizepicks",
-      "is_alternate_market": false,
-      "is_demon": false,
-      "is_goblin": false,
-      "prop_type": "STANDARD",
-      "last_update": "2026-04-19T21:00:02Z",
-      "popularity_order": 3,
-      "fetched_at": "2026-04-19T21:09:49.281227+00:00",
-      "sharp_market": {
-        "draftkings_price": null,
-        "fanduel_price": -122,
-        "betonline_price": null,
-        "sort_price": -122,
-        "sort_source": "fanduel",
-        "is_alternate": false
-      },
-      "draftkings_price": null,
-      "fanduel_price": -122,
-      "betonline_price": null,
-      "sort_price": -122,
-      "sort_source": "fanduel",
-      "home_team_full": "New York Knicks",
-      "away_team_full": "Atlanta Hawks",
-      "player_name_raw": "Dyson Daniels",
-      "_composite_key": "Dyson Daniels|PRA|23.5|Over|2026-04-19",
-      "stat_type_extracted": "PRA",
-      "game_date": "2026-04-19",
-      "synced_at": "2026-04-19T21:09:49.091996+00:00",
-      "hit_rates": {
-        "l10_rate": 70,
-        "l5_rate": 80,
-        "l10_hit_count": 7,
-        "l5_hit_count": 4,
-        "l5_avg": 26.2,
-        "season_avg": 24.6,
-        "l10_avg": 26.2
-      },
-      "oracle_apex_qualified": false,
-      "apex_reason": "GATE1_HIT_RATE: 15/20 < 18/20",
-      "vk_predicted": 25.4,
-      "vk_edge": 1.9,
-      "vk_prob_over": 75.0,
-      "vk_prob_under": 25.0,
-      "vk_recommendation": "STRONG_OVER",
-      "cv": 0.222,
-      "h5_rate": 80,
-      "h10_rate": 70,
-      "h20_rate": 75.0,
-      "l5_hits": 4,
-      "l10_hits": 7,
-      "l20_hits": 15,
-      "l5_avg": 26.2,
-      "l10_avg": 26.2,
-      "l20_avg": 26.4,
-      "sharp_movement": true,
-      "movement_delta": 2.7,
-      "movement_direction": "over_value",
-      "movement_strength": "moderate",
-      "trap_risk": false,
-      "hook_risk": false,
-      "suspect_line_bait": false,
-      "trap_reasons": [],
-      "sidecar": {
-        "hook_risk": false,
-        "suspect_line_bait": false
-      },
-      "tier_label": "FRONT_LINE",
-      "stat_type": "PRA",
-      "h10_hit_rate": 70,
-      "h5_hit_rate": 80,
-      "season_avg": 24.6,
-      "l10_hit_count": 7,
-      "l5_hit_count": 4,
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 15,
-          "display": "Rank #15 vs. All-Around",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Below Average Defense",
-          "opponent": "NYK",
-          "stat_category": "PRA"
-        },
-        "pace_delta": {
-          "possessions": 1.2,
-          "display": "+1.2 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 102.8,
-          "opponent_pace": 94.5,
-          "expected_game_pace": 98.7
-        },
-        "stability_index": {
-          "score": 25,
-          "label": "Low",
-          "display": "25/100 (Low)",
-          "std_dev": 7.39,
-          "consistency": "High Variance",
-          "variance_level": "High"
-        },
-        "vision_insight": {
-          "primary": "Daniels has cleared this 23.5 PRA mark in seven of his last ten outings and his rock-steady floor makes him a prime target against this middle-of-the-pack Knicks defense. We are backing his 26.2 average over the last ten games because his high-level activity on both ends ensures he stays on the floor regardless of the game script.",
-          "summary": "Daniels has cleared this 23.5 PRA mark in seven of his last ten outings and his rock-steady floor makes him a prime target against this middle-of-the-pack Knicks defense. We are backing his 26.2 average over the last ten games because his high-level activity on both ends ensures he stays on the floor regardless of the game script.",
-          "projection": 25.4,
-          "canonical_projection": 25.4,
-          "canonical_edge": 1.9,
-          "lasso_projection": 27.776,
-          "lasso_edge": 4.28,
-          "models_disagree": false,
-          "confidence": "HIGH_FIDELITY",
-          "tactical_note": "Baseline projection favorable"
-        },
-        "blowout_risk": {
-          "player_team_record": "46-36",
-          "opponent_team_record": "53-29",
-          "player_win_pct": 0.561,
-          "opponent_win_pct": 0.646,
-          "win_pct_diff": 0.085,
-          "favored_team": "NYK",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: ATL (46-36) vs NYK (53-29)",
-          "warning": null
-        },
-        "scout_badges": [
-          "volatility_extreme",
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 27.776,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.6081,
-          "top_drivers": [
-            "prev_fga",
-            "L10_avg_fgm"
-          ]
-        },
-        "calculated_at": "2026-04-19T21:18:21.486893+00:00"
-      },
-      "is_vision_enriched": true,
-      "is_anomaly": false,
-      "is_demon_anomaly": false,
-      "is_goblin_anomaly": false,
-      "season_margin": 1.1,
-      "margin": 2.7,
-      "vision_summary": "Dyson Daniels has transformed into a nightly stat-sheet stuffer, clearing this 23.5 PRA mark in seven of his last ten games while averaging a beefy 26.2 over that span. With the Knicks defense playing middle-of-the-pack ball lately, we are banking on his elite consistency and 18.2% edge to carry us through another productive night in New York.",
-      "vision_enriched_at": null,
-      "vision_score": 89.7,
-      "board": null,
-      "active_badges": null,
-      "player_id": "38017677",
-      "nba_id": 1630700,
-      "bdl_id": 38017677,
-      "nba_com_id": 1630700,
-      "headshot_url": "/static/player-headshots/1630700.png",
-      "photo_url": "/static/player-headshots/1630700.png",
-      "team": "ATL",
-      "team_name": "Atlanta Hawks",
-      "position": "G",
-      "opponent": "NYK",
-      "opponent_abbr": "NYK",
-      "injured_teammates": [
-        "Jock Landale"
-      ],
-      "recommendation": "Over",
-      "sport": "nba",
-      "tier": "front_lines",
-      "vision_score_raw": 0.136586,
-      "tier_gate_results": {
-        "gate_cv": {
-          "threshold": 0.75,
-          "value": 0.2751,
-          "passed": true
-        },
-        "gate_hit_rate": {
-          "threshold": 60,
-          "value": 75.0,
-          "passed": true
-        },
-        "gate_edge": {
-          "threshold": 5,
-          "value": 20.0,
-          "passed": true
-        },
-        "gate_tp": {
-          "threshold": 55,
-          "value": 55.0,
-          "passed": true,
-          "source": "market_implied_over"
-        }
-      },
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "mgm",
-      "tier_reference_odds": -122,
-      "edge_vs_fair": 0.2005,
-      "fair_prob": 0.5495,
-      "quality_source": "mgm",
-      "stability": 0.9083,
-      "confidence_score": 1.0,
-      "version_tag": "final-nba",
-      "computed_at": "2026-04-19T21:17:19.345762+00:00",
-      "pp_utility": 70.0,
-      "pp_utility_category": "pp_fair",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.599,
-        "edge_confidence": 0.5012,
-        "multiplier_value": 0.5,
-        "weights": {
-          "availability": 0.15,
-          "line_fairness": 0.2,
-          "model_alignment": 0.25,
-          "edge_confidence": 0.2,
-          "multiplier_value": 0.2
-        },
-        "pp_utility_raw": 70.0,
-        "category_raw": "pp_fair"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": "standard",
-      "pp_multiplier_source": "pp_label",
-      "pp_reference_source": "mgm",
-      "pp_playable": true,
-      "pp_playability_reason": "playable",
-      "is_standard": true,
-      "vk2_projection": null,
-      "vk2_sigma": null,
-      "model_projection": 25.42,
-      "model_sigma": 7.92,
-      "p_true_active": 0.75,
-      "p_true_method": "hit_rate",
-      "p_true_vk2": null,
-      "p_true_hit_rate": 0.75,
-      "hit_rate_over": 75.0,
-      "model_hit_rate_over": 75.0,
-      "hit_rate_under": 25.0,
-      "model_hit_rate_under": 25.0,
-      "model_hit_rate_active": 75.0,
-      "canonical_key": "nba|a1b444bd00a27cbae3cf7ca3bf75a3f0|Dyson Daniels|PRA|23.5|OVER",
-      "validation": {
-        "has_market_data": false,
-        "has_hit_rates": true,
-        "has_context": true,
-        "has_mlr": false,
-        "has_gemini": false,
-        "is_fully_validated": false
-      },
-      "volatility_score": 31.7,
-      "volatility_label": "low",
-      "volatility_family": "nba_high_line",
-      "scout_badges": [
-        "volatility_extreme",
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "vision_intel": "Dyson Daniels has transformed into a nightly stat-sheet stuffer, clearing this 23.5 PRA mark in seven of his last ten games while averaging a beefy 26.2 over that span. With the Knicks defense playing middle-of-the-pack ball lately, we are banking on his elite consistency and 18.2% edge to carry us through another productive night in New York.",
-      "vk_data": {
-        "projection": 27.776,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.6081,
-        "top_drivers": [
-          "prev_fga",
-          "L10_avg_fgm"
-        ]
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-19T21:18:22.944618+00:00",
-      "_cache_updated": "2026-04-19T21:18:22.944620+00:00"
-    },
     "nickeil_alexander-walker|pts|17.5|prizepicks": {
       "event_id": "a1b444bd00a27cbae3cf7ca3bf75a3f0",
       "home_team": "NYK",
@@ -877,6 +588,200 @@
       "_enriched": true,
       "_enriched_at": "2026-04-19T21:18:25.995954+00:00",
       "_cache_updated": "2026-04-19T21:18:25.995956+00:00"
+    },
+    "dyson_daniels|pra|23.5|dk": {
+      "player_name": "Dyson Daniels",
+      "stat_type": "PRA",
+      "line": 23.5,
+      "direction": "Over",
+      "recommendation": "Over",
+      "sport": "nba",
+      "tier": "front_lines",
+      "tier_label": "FRONT_LINE",
+      "vision_score": 89.7,
+      "vision_score_raw": 0.136586,
+      "tier_gate_results": {
+        "gate_cv": {
+          "threshold": 0.75,
+          "value": 0.2751,
+          "passed": true
+        },
+        "gate_hit_rate": {
+          "threshold": 60,
+          "value": 75.0,
+          "passed": true
+        },
+        "gate_edge": {
+          "threshold": 5,
+          "value": 20.0,
+          "passed": true
+        },
+        "gate_tp": {
+          "threshold": 55,
+          "value": 55.0,
+          "passed": true,
+          "source": "market_implied_over"
+        }
+      },
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "mgm",
+      "tier_reference_odds": -122,
+      "edge_vs_fair": 0.2005,
+      "fair_prob": 0.5495,
+      "quality_source": "mgm",
+      "stability": 0.9083,
+      "confidence_score": 1.0,
+      "version_tag": "final-nba",
+      "computed_at": "2026-04-19T21:17:19.345762+00:00",
+      "pp_utility": 70.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.599,
+        "edge_confidence": 0.5012,
+        "multiplier_value": 0.5,
+        "weights": {
+          "availability": 0.15,
+          "line_fairness": 0.2,
+          "model_alignment": 0.25,
+          "edge_confidence": 0.2,
+          "multiplier_value": 0.2
+        },
+        "pp_utility_raw": 70.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": "standard",
+      "pp_multiplier_source": "pp_label",
+      "pp_reference_source": "mgm",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "is_goblin": false,
+      "is_demon": false,
+      "is_standard": true,
+      "prop_type": "STANDARD",
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "model_projection": 25.42,
+      "model_sigma": 7.92,
+      "p_true_active": 0.75,
+      "p_true_method": "hit_rate",
+      "p_true_vk2": null,
+      "p_true_hit_rate": 0.75,
+      "vk_prob_over": 75.0,
+      "vk_prob_under": 25.0,
+      "hit_rate_over": 75.0,
+      "model_hit_rate_over": 75.0,
+      "hit_rate_under": 25.0,
+      "model_hit_rate_under": 25.0,
+      "model_hit_rate_active": 75.0,
+      "vk_recommendation": "STRONG_OVER",
+      "canonical_key": "nba|a1b444bd00a27cbae3cf7ca3bf75a3f0|Dyson Daniels|PRA|23.5|OVER",
+      "validation": {
+        "has_market_data": false,
+        "has_hit_rates": false,
+        "has_context": false,
+        "has_mlr": false,
+        "has_gemini": false,
+        "is_fully_validated": false
+      },
+      "vision_intel": "With Trae Young shelved, we are looking at a massive usage vacuum that puts Dyson Daniels in the driver's seat to crush this 23.5 PRA mark against a Knicks defense that isn't nearly as scary as their reputation suggests. Our guy is projected to flirt with 28 tonight because the volume is guaranteed, making this 18.2% edge feel like we're getting a massive head start on the field.",
+      "vision_summary": "With Trae Young shelved, we are looking at a massive usage vacuum that puts Dyson Daniels in the driver's seat to crush this 23.5 PRA mark against a Knicks defense that isn't nearly as scary as their reputation suggests. Our guy is projected to flirt with 28 tonight because the volume is guaranteed, making this 18.2% edge feel like we're getting a massive head start on the field.",
+      "scout_badges": [
+        "volatility_extreme",
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. All-Around",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "NYK",
+          "stat_category": "PRA"
+        },
+        "pace_delta": {
+          "possessions": 1.2,
+          "display": "+1.2 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 102.8,
+          "opponent_pace": 94.5,
+          "expected_game_pace": 98.7
+        },
+        "stability_index": {
+          "score": 25,
+          "label": "Low",
+          "display": "25/100 (Low)",
+          "std_dev": 7.39,
+          "consistency": "High Variance",
+          "variance_level": "High"
+        },
+        "vision_insight": {
+          "primary": "Dyson Daniels is quietly transforming into a usage monster lately, and this 23.5 PRA line looks light considering he's seeing heavy minutes and consistent touches in this rotation. The Knicks' defense isn't the brick wall it used to be, so we are banking on his ability to fill the stat sheet across all three categories to clear this hurdle comfortably.",
+          "summary": "Dyson Daniels is quietly transforming into a usage monster lately, and this 23.5 PRA line looks light considering he's seeing heavy minutes and consistent touches in this rotation. The Knicks' defense isn't the brick wall it used to be, so we are banking on his ability to fill the stat sheet across all three categories to clear this hurdle comfortably.",
+          "projection": null,
+          "canonical_projection": null,
+          "canonical_edge": null,
+          "lasso_projection": 27.776,
+          "lasso_edge": 4.28,
+          "models_disagree": false,
+          "confidence": "HIGH_FIDELITY",
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "player_team_record": "46-36",
+          "opponent_team_record": "53-29",
+          "player_win_pct": 0.561,
+          "opponent_win_pct": 0.646,
+          "win_pct_diff": 0.085,
+          "favored_team": "NYK",
+          "player_is_favored": false,
+          "risk_level": "NONE",
+          "risk_reason": "Competitive matchup: ATL (46-36) vs NYK (53-29)",
+          "warning": null
+        },
+        "scout_badges": [
+          "volatility_extreme",
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 27.776,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.6081,
+          "top_drivers": [
+            "prev_fga",
+            "L10_avg_fgm"
+          ]
+        },
+        "calculated_at": "2026-04-19T21:27:48.982969+00:00"
+      },
+      "volatility_score": 0.0,
+      "volatility_label": "unknown",
+      "volatility_family": "unknown",
+      "vk_data": {
+        "projection": 27.776,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.6081,
+        "top_drivers": [
+          "prev_fga",
+          "L10_avg_fgm"
+        ]
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-19T21:27:50.430777+00:00",
+      "_cache_updated": "2026-04-19T21:27:50.430779+00:00"
     }
   }
 }
