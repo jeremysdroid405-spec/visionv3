@@ -904,17 +904,21 @@ const UniversalPlayerCard = memo(({
           sidecarData={player.sidecar}
         />
 
-        {/* FLAT STAT STRIP — Edge / Hit Rate / Avg (terminal label style) */}
+        {/* FLAT STAT STRIP — Projection / Hit Rate / Avg (terminal label style) */}
         <div className="flex items-stretch gap-3 pt-1.5 border-t border-zinc-800/70 text-left">
           <div className="flex-1 min-w-0">
-            <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Edge</div>
-            <div className={`text-sm md:text-[15px] font-bold font-mono tabular-nums ${
-              dispEdge == null ? 'text-zinc-400'
-                : dispEdge >= 10 ? 'text-emerald-400'
-                : dispEdge >= 0 ? 'text-zinc-200'
-                : 'text-red-400'
-            }`}>
-              {dispEdge != null ? `${dispEdge > 0 ? '+' : ''}${dispEdge.toFixed(1)}%` : '—'}
+            <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Projection</div>
+            <div
+              className={`text-sm md:text-[15px] font-bold font-mono tabular-nums ${
+                player.vk_predicted == null ? 'text-zinc-400'
+                  : dispEdge != null && dispEdge >= 1 ? 'text-emerald-400'
+                  : dispEdge != null && dispEdge <= -1 ? 'text-red-400'
+                  : 'text-zinc-200'
+              }`}
+              title={dispEdge != null ? `Edge vs line: ${dispEdge > 0 ? '+' : ''}${dispEdge.toFixed(2)}` : undefined}
+              data-testid={`player-projection-${playerSlug}`}
+            >
+              {player.vk_predicted != null ? Number(player.vk_predicted).toFixed(1) : '—'}
             </div>
           </div>
           <div className="flex-1 min-w-0">
