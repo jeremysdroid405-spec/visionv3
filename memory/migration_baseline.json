@@ -1,16 +1,15 @@
 {
-  "snapshot_at": "2026-04-19T06:12:04.047758+00:00",
+  "snapshot_at": "2026-04-19T06:16:42.017455+00:00",
   "active_db": "pick_vision",
-  "mongo_host": "unknown",
-  "wave": 0,
-  "purpose": "Pre-rename baseline for NBA rebuild",
+  "wave": "wave-1-readiness (post Tasks 2+3)",
+  "purpose": "Pre-rename truth reference for NBA rebuild",
   "databases": {
     "pick_vision": {
       "nba_prop_scores": {
         "exists": true,
-        "count": 1150,
-        "size_bytes": 1932602,
-        "storage_bytes": 389120,
+        "count": 1166,
+        "size_bytes": 1959051,
+        "storage_bytes": 499712,
         "avg_doc_bytes": 1680,
         "index_count": 8,
         "indexes": {
@@ -511,9 +510,9 @@
       "dg_cached_board": {
         "exists": true,
         "count": 115,
-        "size_bytes": 17619268,
-        "storage_bytes": 6463488,
-        "avg_doc_bytes": 153211,
+        "size_bytes": 17614101,
+        "storage_bytes": 3227648,
+        "avg_doc_bytes": 153166,
         "index_count": 5,
         "indexes": {
           "_id_": {
@@ -582,7 +581,6 @@
           "bdl_game_logs",
           "bdl_id",
           "bdl_player_id",
-          "context_badges",
           "demons",
           "espn_id",
           "games_played",
@@ -620,9 +618,9 @@
       "dg_cached_board_temp": {
         "exists": true,
         "count": 115,
-        "size_bytes": 17575717,
-        "storage_bytes": 6205440,
-        "avg_doc_bytes": 152832,
+        "size_bytes": 17614101,
+        "storage_bytes": 6430720,
+        "avg_doc_bytes": 153166,
         "index_count": 1,
         "indexes": {
           "_id_": {
@@ -679,9 +677,9 @@
       },
       "dg_live_props": {
         "exists": true,
-        "count": 2614,
-        "size_bytes": 3130121,
-        "storage_bytes": 872448,
+        "count": 2610,
+        "size_bytes": 3125768,
+        "storage_bytes": 917504,
         "avg_doc_bytes": 1197,
         "index_count": 2,
         "indexes": {
@@ -748,9 +746,9 @@
       "dg_odds_cache": {
         "exists": true,
         "count": 182,
-        "size_bytes": 5593477,
-        "storage_bytes": 1392640,
-        "avg_doc_bytes": 30733,
+        "size_bytes": 5588047,
+        "storage_bytes": 1445888,
+        "avg_doc_bytes": 30703,
         "index_count": 1,
         "indexes": {
           "_id_": {
@@ -1029,7 +1027,7 @@
         "exists": true,
         "count": 270,
         "size_bytes": 273783,
-        "storage_bytes": 266240,
+        "storage_bytes": 258048,
         "avg_doc_bytes": 1014,
         "index_count": 1,
         "indexes": {
@@ -1137,9 +1135,9 @@
       },
       "board_drift_ledger": {
         "exists": true,
-        "count": 989,
-        "size_bytes": 290867,
-        "storage_bytes": 86016,
+        "count": 1005,
+        "size_bytes": 295599,
+        "storage_bytes": 102400,
         "avg_doc_bytes": 294,
         "index_count": 4,
         "indexes": {
@@ -1291,9 +1289,9 @@
       "ticker_cache": {
         "exists": true,
         "count": 4,
-        "size_bytes": 8710,
+        "size_bytes": 8802,
         "storage_bytes": 36864,
-        "avg_doc_bytes": 2177,
+        "avg_doc_bytes": 2200,
         "index_count": 1,
         "indexes": {
           "_id_": {
@@ -1313,6 +1311,7 @@
           "date",
           "games",
           "games_count",
+          "sport_scope",
           "synced_at",
           "type"
         ]
@@ -1320,9 +1319,9 @@
       "ticker_headlines": {
         "exists": true,
         "count": 6,
-        "size_bytes": 2700,
+        "size_bytes": 2838,
         "storage_bytes": 36864,
-        "avg_doc_bytes": 450,
+        "avg_doc_bytes": 473,
         "index_count": 1,
         "indexes": {
           "_id_": {
@@ -1347,15 +1346,16 @@
           "link",
           "source",
           "sources",
+          "sport_scope",
           "title"
         ]
       },
       "breaking_news_cache": {
         "exists": true,
         "count": 1,
-        "size_bytes": 2188,
+        "size_bytes": 2211,
         "storage_bytes": 36864,
-        "avg_doc_bytes": 2188,
+        "avg_doc_bytes": 2211,
         "index_count": 1,
         "indexes": {
           "_id_": {
@@ -1373,6 +1373,7 @@
         },
         "top_level_fields_sample": [
           "news",
+          "sport_scope",
           "type",
           "updated_at"
         ]
@@ -1380,9 +1381,9 @@
       "live_scores_cache": {
         "exists": true,
         "count": 1,
-        "size_bytes": 3294,
+        "size_bytes": 3317,
         "storage_bytes": 20480,
-        "avg_doc_bytes": 3294,
+        "avg_doc_bytes": 3317,
         "index_count": 1,
         "indexes": {
           "_id_": {
@@ -1400,6 +1401,7 @@
         },
         "top_level_fields_sample": [
           "games",
+          "sport_scope",
           "type",
           "updated_at"
         ]
@@ -1407,9 +1409,9 @@
       "spotrac_contracts_cache": {
         "exists": true,
         "count": 1,
-        "size_bytes": 33055,
+        "size_bytes": 33070,
         "storage_bytes": 53248,
-        "avg_doc_bytes": 33055,
+        "avg_doc_bytes": 33070,
         "index_count": 1,
         "indexes": {
           "_id_": {
@@ -1429,6 +1431,7 @@
           "cached_at",
           "contracts",
           "players_count",
+          "sport",
           "type"
         ]
       },

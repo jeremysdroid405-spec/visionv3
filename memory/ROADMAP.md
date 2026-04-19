@@ -1,3 +1,88 @@
+# Rollback Procedure (Pre-Rename Phase)
+
+Applies to Wave 0 and Wave 1 of the NBA rebuild, BEFORE any live collection
+rename has occurred. The indirection layer
+(`services/config/collection_names.py`) is the single reversal surface.
+
+## When to roll back
+Any of the following, observed within 15 minutes of a Wave 0/1 step landing:
+
+- Regression suite failure (any test in
+  `tests/test_hit_rate_canonical.py`, `tests/test_tier_integrity.py`,
+  `tests/test_decision_layer_sengun.py`, `tests/test_collection_names.py`).
+- Any live collection document-count delta > 1% vs
+  `/app/memory/migration_baseline.json` that isn't explained by an
+  ingest cycle (odds_sync, injury refresh, game_start_scan).
+- Any Ferrari board endpoint returning HTTP 5xx or `picks: []` where the
+  baseline had picks.
+
+## Procedure
+
+1. **Revert `collection_names.py`** — restore the exact mapping from the last
+   known-good git commit. Use a single diff; no partial reverts.
+   ```bash
+   git checkout HEAD~1 -- backend/services/config/collection_names.py
+   ```
+   (Substitute the offending commit if it is older.)
+
+2. **Restart backend** via supervisor (not uvicorn):
+   ```bash
+   sudo supervisorctl restart backend
+   ```
+
+3. **Verify collection counts vs baseline**:
+   ```bash
+   python3 -c "
+   import json, os
+   from pymongo import MongoClient
+   from dotenv import load_dotenv
+   load_dotenv('/app/backend/.env')
+   db = MongoClient(os.environ['MONGO_URL'])[os.environ['DB_NAME']]
+   base = json.load(open('/app/memory/migration_baseline.json'))
+   for c, entry in base['databases'][os.environ['DB_NAME']].items():
+       if not entry.get('exists'): continue
+       live = db[c].estimated_document_count()
+       drift = abs(live - entry['count']) / max(entry['count'], 1)
+       flag = '!!' if drift > 0.01 else 'ok'
+       print(f'{flag:2} {c:<40} baseline={entry[\"count\"]:>6}  live={live:>6}  drift={drift*100:.2f}%')
+   "
+   ```
+   All rows must be `ok`.
+
+4. **Confirm endpoints return identical results** (smoke test):
+   ```bash
+   API_URL=$(grep REACT_APP_BACKEND_URL /app/frontend/.env | cut -d= -f2 | tr -d '"')
+   for tier in safe-haven front-lines war-zone oracle-apex; do
+     echo -n "  nba/$tier: "
+     curl -sS "$API_URL/api/v3/ferrari/$tier?sport=nba" \
+       | python3 -c "import json,sys; d=json.load(sys.stdin); print('picks='+str(len(d.get('picks') or d.get('apex_picks') or [])))"
+   done
+   ```
+   Pick counts must match the pre-deploy counts.
+
+5. **Re-run regression suite**:
+   ```bash
+   cd /app/backend && REACT_APP_BACKEND_URL=http://localhost:8001 \
+     python -m pytest tests/test_collection_names.py \
+       tests/test_hit_rate_canonical.py \
+       tests/test_tier_integrity.py \
+       tests/test_decision_layer_sengun.py -q
+   ```
+   All tests must pass.
+
+6. **Log the rollback** in `/app/memory/CHANGELOG.md` with:
+   - UTC timestamp
+   - Trigger (test failure / count drift / endpoint 5xx / other)
+   - Commit reverted
+   - Counts-after-rollback (attach the diff from step 3)
+
+## What this procedure does NOT cover
+- Post-rename waves (Wave 2 onward) need a separate rollback that also
+  handles dual-write / dual-read reversal. Document when that wave lands.
+- Orphan-DB deletion (Wave 7) is one-way by design; requires a separate
+  backup/restore plan.
+
+
 # PropVision — Priority Roadmap
 
 Source of truth: user directive 2026-04-18 — “make the next priority the universal
