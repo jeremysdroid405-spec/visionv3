@@ -1676,7 +1676,7 @@ async def get_ferrari_safe_haven(
     # NBA: read from the VK2 `nba_prop_scores` (version_tag='final-nba')
     # pipeline, not the legacy `elite_*` collections.
     if sport == "nba":
-        collection_name = "nba_prop_scores[tier=safe_haven,version=final-nba]"
+        collection_name = "nba_prop_scores[tier=safe_haven,version=final-nba-rt]"
         picks = await _get_nba_tier_picks_from_scores("safe_haven", limit)
     else:
         collection_name = "mlb_safe_haven"
@@ -1794,7 +1794,7 @@ async def get_ferrari_front_lines(
     # VAULT ISOLATION: NBA reads from `nba_prop_scores` (VK2 pipeline);
     # MLB still uses legacy collection.
     if sport == "nba":
-        collection_name = "nba_prop_scores[tier=front_lines,version=final-nba]"
+        collection_name = "nba_prop_scores[tier=front_lines,version=final-nba-rt]"
         picks = await _get_nba_tier_picks_from_scores("front_lines", limit)
     else:
         collection_name = "mlb_front_lines"
@@ -1907,7 +1907,7 @@ async def get_ferrari_war_zone(
     # VAULT ISOLATION: NBA reads from `nba_prop_scores` (VK2 pipeline);
     # MLB still uses legacy collection.
     if sport == "nba":
-        collection_name = "nba_prop_scores[tier=war_zone,version=final-nba]"
+        collection_name = "nba_prop_scores[tier=war_zone,version=final-nba-rt]"
         picks = await _get_nba_tier_picks_from_scores("war_zone", limit)
     else:
         collection_name = "mlb_war_zone"
