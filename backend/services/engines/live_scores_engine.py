@@ -32,6 +32,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
@@ -82,9 +84,9 @@ class LiveScoresEngine:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.scores_cache = db.live_scores_cache
-        self.news_cache = db.breaking_news_cache
-        self.headlines_col = db.ticker_headlines  # Per-headline lifecycle tracking
+        self.scores_cache = db[COLL.shared("live_scores_cache")]
+        self.news_cache = db[COLL.shared("breaking_news_cache")]
+        self.headlines_col = db[COLL.shared("ticker_headlines")]  # Per-headline lifecycle tracking
         self._api_available = bool(ODDS_API_KEY)
         self._last_scores_fetch = None
         self._last_news_fetch = None

@@ -42,6 +42,8 @@ from services.normalize_to_intel_mapping import (
 )
 from services.filter_logic import StrictBoardFilter
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Cache file path
@@ -484,7 +486,7 @@ class DeltaManager:
         # Derive opponent from board if not on prop
         opponent = prop.get('opponent') or prop.get('opponent_abbr')
         if not opponent and player_name:
-            board_doc = await self.db.mlb_cached_board.find_one(
+            board_doc = await self.db[COLL("board_cache", "mlb")].find_one(
                 {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
                 {"_id": 0, "opponent": 1, "opponent_abbr": 1}
             )
@@ -498,7 +500,7 @@ class DeltaManager:
             engine = get_lasso_engine()
             target = STAT_ALIASES.get(stat_type, stat_type.lower().replace(" ", "_"))
 
-            hub = self.db.mlb_master_hub_2026
+            hub = self.db[COLL("master_hub", "mlb")]
             player_doc = await hub.find_one(
                 {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
                 {"_id": 0, "bdl_game_logs": 1}
@@ -627,7 +629,7 @@ class DeltaManager:
             # Derive opponent: check prop, then look up from board
             opponent = prop.get('opponent') or prop.get('opponent_abbr')
             if not opponent and player_name:
-                board_doc = await self.db.dg_cached_board.find_one(
+                board_doc = await self.db[COLL("board_cache", "nba")].find_one(
                     {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
                     {"_id": 0, "opponent": 1, "opponent_abbr": 1}
                 )
@@ -649,7 +651,7 @@ class DeltaManager:
                 target = STAT_ALIASES.get(stat_type, stat_type.lower().replace(" ", "_"))
 
                 # Fetch player game logs for Lasso
-                hub = self.db.nba_master_hub_2026
+                hub = self.db[COLL("master_hub", "nba")]
                 player_doc = await hub.find_one(
                     {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
                     {"_id": 0, "history.2025_season": 1}
@@ -778,9 +780,9 @@ async def run_cache_refresh_loop(
         try:
             # Fetch live props from database
             if sport.upper() == "MLB":
-                collection = db.mlb_cached_board
+                collection = db[COLL("board_cache", "mlb")]
             else:
-                collection = db.dg_cached_board
+                collection = db[COLL("board_cache", "nba")]
             
             cursor = collection.find({}, {"_id": 0})
             live_props = await cursor.to_list(length=None)

@@ -18,6 +18,8 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Keyword Lists for Volatility Detection
@@ -78,7 +80,7 @@ class SocialSignalEngine:
             if player_names:
                 players_to_check = player_names
             else:
-                cursor = self.db.dg_cached_board.find({}, {"player_name": 1})
+                cursor = self.db[COLL("board_cache", "nba")].find({}, {"player_name": 1})
                 docs = await cursor.to_list(length=500)
                 players_to_check = [d["player_name"] for d in docs]
             
@@ -130,7 +132,7 @@ class SocialSignalEngine:
         
         try:
             # Get player from master hub
-            hub_player = await self.db.nba_master_hub_2026.find_one({
+            hub_player = await self.db[COLL("master_hub", "nba")].find_one({
                 "display_name": player_name
             })
             
@@ -148,7 +150,7 @@ class SocialSignalEngine:
             
             # Check for revenge game
             # Get today's opponent from cached board
-            board_player = await self.db.dg_cached_board.find_one({
+            board_player = await self.db[COLL("board_cache", "nba")].find_one({
                 "player_name": player_name
             })
             

@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-04-19 — Wave 0 Batch 6 plumbing (injury/live/social/cache/integrity)
+- 5 files routed through `services/config/collection_names.py::COLL`:
+  `services/injury_vacuum_service.py`, `services/engines/live_scores_engine.py`,
+  `services/engines/social_signal_engine.py`, `services/rolling_cache_manager.py`,
+  `services/data_integrity_service.py`.
+- In-scope concepts: `star_usage_cache`, `master_hub` (NBA + MLB), `board_cache`
+  (NBA + MLB), `injuries` (shared), `live_scores_cache` (shared), `ticker_cache`
+  (shared), `ticker_headlines` (shared), `breaking_news_cache` (shared).
+- 23 code-level literals removed → 23 `COLL(...)` call-sites added. 5 imports added.
+- Cross-driver pattern validated: `db[COLL(...)]` subscript works identically
+  on both PyMongo sync (`sync_db`) and Motor async (`self.db`) clients.
+- Out-of-scope refs reported and intentionally left: `dg_master_roster` +
+  `dg_sync_log` in data_integrity_service.py (concepts not in Batch 6 priority list),
+  plus `injury_log`, `vacuum_alerts`, `bdl_injuries`, `dg_social_signals`,
+  `dg_player_news_cache`, `dg_verification_failures` (not in registry).
+- In-scope hardcoded-ref count in these files: **23 → 0**.
+- Regression suite: 80 passed / 1 skipped / 0 failed — matches baseline.
+- Live smoke after full restart: all Ferrari endpoints + live-scores + vacuum/updates
+  HTTP 200. Backend uptime clean. 0 new errors.
+- Global code-level residual (broad pattern incl. MLB variants): 103 refs across 66 files.
+- Audit: `/app/memory/wave0_batch6_audit.md`.
+
+
 ## 2026-04-19 — Wave 0 Batch 5 plumbing (intel/enrichment/repos)
 - 5 files routed through `services/config/collection_names.py::COLL`:
   `services/market_moves_engine.py`, `services/oracle_apex_service.py`,

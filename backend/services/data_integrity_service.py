@@ -14,6 +14,8 @@ import logging
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,7 +31,7 @@ class DataIntegrityService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.cached_board = db.dg_cached_board
+        self.cached_board = db[COLL("board_cache", "nba")]
         self.master_roster = db.dg_master_roster
         self.sync_log = db.dg_sync_log
         self.verification_failures = db.dg_verification_failures

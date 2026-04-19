@@ -35,6 +35,8 @@ import json
 import re
 import hashlib
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -192,7 +194,7 @@ class InjuryVacuumService:
             sync_db = sync_client['pick_vision']
             
             # Query star_usage_cache for player
-            db_star = sync_db.star_usage_cache.find_one(
+            db_star = sync_db[COLL("star_usage_cache", "nba")].find_one(
                 {'$or': [
                     {'player_name': {'$regex': f'^{re.escape(normalized)}', '$options': 'i'}},
                     {'player_name': player_name}
@@ -243,7 +245,7 @@ class InjuryVacuumService:
             sync_client = MongoClient(os.environ.get('MONGO_URL'))
             sync_db = sync_client['pick_vision']
             
-            hub_player = sync_db.nba_master_hub_2026.find_one(
+            hub_player = sync_db[COLL("master_hub", "nba")].find_one(
                 {'$or': [
                     {'normalized_name': normalized},
                     {'display_name': {'$regex': f'^{re.escape(player_name)}', '$options': 'i'}}
@@ -307,7 +309,7 @@ class InjuryVacuumService:
             
             # Query star_usage_cache for teammates (excluding injured player)
             # Sort by usage_percentage DESC to get highest usage teammates
-            teammates = list(sync_db.star_usage_cache.find(
+            teammates = list(sync_db[COLL("star_usage_cache", "nba")].find(
                 {
                     'team': injured_team,
                     'player_name': {'$ne': injured_player, '$not': {'$regex': f'^{re.escape(normalized)}', '$options': 'i'}}
@@ -318,7 +320,7 @@ class InjuryVacuumService:
             # Enrich teammates with baseline_stats from nba_master_hub_2026
             for teammate in teammates:
                 player_name = teammate.get('player_name', '')
-                hub_data = sync_db.nba_master_hub_2026.find_one(
+                hub_data = sync_db[COLL("master_hub", "nba")].find_one(
                     {'$or': [
                         {'display_name': player_name},
                         {'normalized_name': player_name.lower()}
@@ -333,7 +335,7 @@ class InjuryVacuumService:
             
             # If not enough in star_usage_cache, also check nba_master_hub_2026
             if len(teammates) < 3:
-                hub_teammates = list(sync_db.nba_master_hub_2026.find(
+                hub_teammates = list(sync_db[COLL("master_hub", "nba")].find(
                     {
                         'team': injured_team,
                         'display_name': {'$ne': injured_player},
@@ -460,7 +462,7 @@ class InjuryVacuumService:
             sync_client = MongoClient(os.environ.get('MONGO_URL'))
             sync_db = sync_client['pick_vision']
             
-            player = sync_db.nba_master_hub_2026.find_one(
+            player = sync_db[COLL("master_hub", "nba")].find_one(
                 {'$or': [
                     {'normalized_name': normalized},
                     {'display_name': {'$regex': f'^{re.escape(player_name)}', '$options': 'i'}}
@@ -593,7 +595,7 @@ class InjuryVacuumService:
             # Fallback: check live_scores_cache in DB (populated by live scores engine)
             if not teams and hasattr(self, 'db') and self.db is not None:
                 try:
-                    cached = await self.db.live_scores_cache.find_one({})
+                    cached = await self.db[COLL.shared("live_scores_cache")].find_one({})
                     if cached and cached.get("games"):
                         for game in cached.get("games", []):
                             if game.get("home_team"):
@@ -606,7 +608,7 @@ class InjuryVacuumService:
             # Fallback: check ticker_cache in DB
             if not teams and hasattr(self, 'db') and self.db is not None:
                 try:
-                    cached = await self.db.ticker_cache.find_one({"type": "games"})
+                    cached = await self.db[COLL.shared("ticker_cache")].find_one({"type": "games"})
                     if cached and cached.get("games"):
                         for game in cached.get("games", []):
                             if game.get("home_team"):
@@ -644,7 +646,7 @@ class InjuryVacuumService:
                     if todays_teams:
                         query["team"] = {"$in": list(todays_teams)}
                     
-                    cursor = self.db.injuries_normalized.find(query, {"_id": 0})
+                    cursor = self.db[COLL.shared("injuries")].find(query, {"_id": 0})
                     norm_injuries = await cursor.to_list(length=200)
                 except Exception as db_err:
                     logger.warning(f"[VacuumService] injuries_normalized query failed: {db_err}")
@@ -1067,7 +1069,7 @@ class InjuryVacuumService:
             sync_db = sync_client['pick_vision']
             
             # Load all players with usage >= Secondary Alpha threshold (22%)
-            stars = list(sync_db.star_usage_cache.find(
+            stars = list(sync_db[COLL("star_usage_cache", "nba")].find(
                 {'usage_percentage': {'$gte': SECONDARY_ALPHA_THRESHOLD}},
                 {'_id': 0}
             ).sort('usage_percentage', -1))
