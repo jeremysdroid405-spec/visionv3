@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # ==================== CONFIGURATION ====================
@@ -87,7 +89,7 @@ class OddsApiMapper:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.mapping_collection = db[COLLECTION_NAME]
+        self.mapping_collection = COLL.handle(db, "odds_mapping", "nba")
         self.master_hub = db[MASTER_HUB_COLLECTION]
         
         # In-memory lookup tables (loaded on initialization)

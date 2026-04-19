@@ -54,6 +54,11 @@ _STABLE_KEY: Dict[str, Union[str, Sequence[str]]] = {
     # unique identifier is `bdl_player_id` (100%-unique on production data;
     # `player_name` and `normalized_name` have real collisions).
     "master_roster": "bdl_player_id",
+    # odds_mapping documents are uniquely keyed on `bdl_id` (548/548
+    # distinct, 0 nulls/missing, backed by a `unique=True` index). Note
+    # that this is NOT the same field as `bdl_player_id` used by
+    # master_roster.
+    "odds_mapping": "bdl_id",
 }
 
 
