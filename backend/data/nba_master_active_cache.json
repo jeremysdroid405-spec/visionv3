@@ -1,6 +1,6 @@
 {
   "sport": "NBA",
-  "last_updated": "2026-04-19T22:50:03.079995+00:00",
+  "last_updated": "2026-04-19T23:20:12.681391+00:00",
   "prop_count": 24,
   "props": {
     "nickeil_alexander-walker|pts|14.5|prizepicks": {
@@ -169,7 +169,7 @@
       "is_goblin_anomaly": true,
       "season_margin": 6.3,
       "margin": 8.9,
-      "vision_summary": "Nickeil Alexander-Walker is currently operating on a different planet after clearing this 14.5 line in ten straight games while averaging a massive 23.4 points over that scorching stretch. Even with the Knicks bringing a top-tier defensive reputation to the floor tonight, his rock-steady floor and 41.4% projected edge make this over feel like we are catching a heater that hasn't cooled off.",
+      "vision_summary": "",
       "vision_enriched_at": "2026-04-19T02:16:24.543922+00:00",
       "vision_score": 100.0,
       "board": "safe_haven",
@@ -282,7 +282,7 @@
         "lasso_high_edge",
         "high_fidelity_model"
       ],
-      "vision_intel": "Nickeil Alexander-Walker is currently operating on a different planet after clearing this 14.5 line in ten straight games while averaging a massive 23.4 points over that scorching stretch. Even with the Knicks bringing a top-tier defensive reputation to the floor tonight, his rock-steady floor and 41.4% projected edge make this over feel like we are catching a heater that hasn't cooled off.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 20.505,
         "confidence_tier": "HIGH_FIDELITY",
@@ -462,7 +462,7 @@
       "is_goblin_anomaly": false,
       "season_margin": 3.3,
       "margin": 5.9,
-      "vision_summary": "Nickeil Alexander-Walker has been on an absolute tear lately, clearing this 17.5 mark in eight of his last ten games while averaging a massive 23.4 points per night. Even against a disciplined New York defense, his rock-steady consistency and 17.2% edge make this a play we have to back while he\u2019s seeing this kind of volume.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 82.8,
       "board": null,
@@ -575,7 +575,7 @@
         "lasso_high_edge",
         "high_fidelity_model"
       ],
-      "vision_intel": "Nickeil Alexander-Walker has been on an absolute tear lately, clearing this 17.5 mark in eight of his last ten games while averaging a massive 23.4 points per night. Even against a disciplined New York defense, his rock-steady consistency and 17.2% edge make this a play we have to back while he\u2019s seeing this kind of volume.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 20.505,
         "confidence_tier": "HIGH_FIDELITY",
@@ -686,8 +686,8 @@
         "has_gemini": false,
         "is_fully_validated": false
       },
-      "vision_intel": "With Trae Young shelved, we are looking at a massive usage vacuum that puts Dyson Daniels in the driver's seat to crush this 23.5 PRA mark against a Knicks defense that isn't nearly as scary as their reputation suggests. Our guy is projected to flirt with 28 tonight because the volume is guaranteed, making this 18.2% edge feel like we're getting a massive head start on the field.",
-      "vision_summary": "With Trae Young shelved, we are looking at a massive usage vacuum that puts Dyson Daniels in the driver's seat to crush this 23.5 PRA mark against a Knicks defense that isn't nearly as scary as their reputation suggests. Our guy is projected to flirt with 28 tonight because the volume is guaranteed, making this 18.2% edge feel like we're getting a massive head start on the field.",
+      "vision_intel": "",
+      "vision_summary": "",
       "scout_badges": [
         "volatility_extreme",
         "lasso_high_edge",
@@ -948,7 +948,7 @@
       "is_goblin_anomaly": false,
       "season_margin": 3.7,
       "margin": 4.2,
-      "vision_summary": "Sandro has cleared this 7.5 mark in eight of his last ten outings while averaging a healthy 11.7 points, showing us he's found a rhythm regardless of the rotation. Even though Cleveland brings an elite interior defense to the floor tonight, his nearly 30% projected edge is too massive to ignore given his recent scoring floor and expanded role.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 97.9,
       "board": null,
@@ -1076,7 +1076,7 @@
         "lasso_high_edge",
         "high_fidelity_model"
       ],
-      "vision_intel": "Sandro has cleared this 7.5 mark in eight of his last ten outings while averaging a healthy 11.7 points, showing us he's found a rhythm regardless of the rotation. Even though Cleveland brings an elite interior defense to the floor tonight, his nearly 30% projected edge is too massive to ignore given his recent scoring floor and expanded role.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 9.7,
         "confidence_tier": "HIGH_FIDELITY",
@@ -1252,7 +1252,7 @@
       "is_goblin_anomaly": false,
       "season_margin": 2.8,
       "margin": -3.6,
-      "vision_summary": "Why are we expecting Mikal to suddenly wake up when he\u2019s stayed under this 19.5 line in eight of his last ten outings? He is averaging a lowly 15.9 PRA over that stretch and even a mediocre Atlanta defense won't fix his current lack of aggressive shot-hunting.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 92.2,
       "board": null,
@@ -1360,7 +1360,7 @@
       "volatility_score": 62.1,
       "volatility_label": "moderate",
       "volatility_family": "nba_high_line",
-      "vision_intel": "Why are we expecting Mikal to suddenly wake up when he\u2019s stayed under this 19.5 line in eight of his last ten outings? He is averaging a lowly 15.9 PRA over that stretch and even a mediocre Atlanta defense won't fix his current lack of aggressive shot-hunting.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 19.357,
         "confidence_tier": "HIGH_FIDELITY",
@@ -1538,7 +1538,7 @@
       "is_goblin_anomaly": true,
       "season_margin": 5.1,
       "margin": 7.8,
-      "vision_summary": "Jabari Smith Jr. is playing at a completely different level right now, clearing this 19.5 PRA mark in every single one of his last ten games while averaging a massive 27.3. Facing a Lakers defense that sits right in the middle of the pack, we expect his rock-steady floor and 14% edge to carry us home comfortably once again.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 99.3,
       "board": null,
@@ -1666,7 +1666,7 @@
         "floor_lock",
         "high_fidelity_model"
       ],
-      "vision_intel": "Jabari Smith Jr. is playing at a completely different level right now, clearing this 19.5 PRA mark in every single one of his last ten games while averaging a massive 27.3. Facing a Lakers defense that sits right in the middle of the pack, we expect his rock-steady floor and 14% edge to carry us home comfortably once again.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 22.252,
         "confidence_tier": "HIGH_FIDELITY",
@@ -1845,7 +1845,7 @@
       "is_goblin_anomaly": true,
       "season_margin": 9.2,
       "margin": 10.3,
-      "vision_summary": "Jaylen Brown has been absolutely surgical lately, clearing this 19.5 mark in every single one of his last ten games while averaging nearly 30 points per night. Philly\u2019s perimeter defense is a complete sieve right now, and we expect Brown to exploit that 28th-ranked unit easily given how rock-steady his scoring floor has stayed all month.",
+      "vision_summary": "",
       "vision_enriched_at": "2026-04-19T21:36:41.879708+00:00",
       "vision_score": 73.9,
       "board": "front_lines",
@@ -1977,7 +1977,7 @@
         "lasso_high_edge",
         "high_fidelity_model"
       ],
-      "vision_intel": "Jaylen Brown has been absolutely surgical lately, clearing this 19.5 mark in every single one of his last ten games while averaging nearly 30 points per night. Philly\u2019s perimeter defense is a complete sieve right now, and we expect Brown to exploit that 28th-ranked unit easily given how rock-steady his scoring floor has stayed all month.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 28.371,
         "confidence_tier": "HIGH_FIDELITY",
@@ -2157,7 +2157,7 @@
       "is_goblin_anomaly": true,
       "season_margin": 6.9,
       "margin": 8.8,
-      "vision_summary": "Amen Thompson hasn\u2019t even blinked at this 24.5 line lately, clearing it in ten straight games while averaging a massive 33.3 PRA during this scorched-earth run. We are looking at a 35% edge against a middle-of-the-pack Lakers defense that simply doesn't have the lateral quickness to keep him off the glass or out of the paint tonight.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 98.5,
       "board": null,
@@ -2287,7 +2287,7 @@
         "lasso_high_edge",
         "high_fidelity_model"
       ],
-      "vision_intel": "Amen Thompson hasn\u2019t even blinked at this 24.5 line lately, clearing it in ten straight games while averaging a massive 33.3 PRA during this scorched-earth run. We are looking at a 35% edge against a middle-of-the-pack Lakers defense that simply doesn't have the lateral quickness to keep him off the glass or out of the paint tonight.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 33.135,
         "confidence_tier": "HIGH_FIDELITY",
@@ -2467,7 +2467,7 @@
       "is_goblin_anomaly": true,
       "season_margin": 7.5,
       "margin": 10.0,
-      "vision_summary": "Payton Pritchard has been absolutely torching the nets with a 100% hit rate over his last ten games, averaging nearly double this 9.5 line during that blistering stretch. Facing a Philadelphia perimeter defense that ranks a dismal 28th in the league, we are expecting him to capitalize on every open look and easily clear this mark for the eleventh straight time.",
+      "vision_summary": "",
       "vision_enriched_at": "2026-04-19T21:36:41.883868+00:00",
       "vision_score": 75.0,
       "board": "front_lines",
@@ -2636,7 +2636,7 @@
         "lasso_high_edge",
         "high_fidelity_model"
       ],
-      "vision_intel": "Payton Pritchard has been absolutely torching the nets with a 100% hit rate over his last ten games, averaging nearly double this 9.5 line during that blistering stretch. Facing a Philadelphia perimeter defense that ranks a dismal 28th in the league, we are expecting him to capitalize on every open look and easily clear this mark for the eleventh straight time.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 14.483,
         "confidence_tier": "HIGH_FIDELITY",
@@ -2813,7 +2813,7 @@
       "is_goblin_anomaly": false,
       "season_margin": -0.6,
       "margin": -0.8,
-      "vision_summary": "Jabari is stepping into a fast-paced track against a Lakers squad that lets the ball move, and we are leaning on his high stability score to carry us past this 2.5 line. Even though his recent hit rate is shaky, the 15% edge suggests he's due for a massive regression toward his season averages in a game where every possession counts.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 40.1,
       "board": null,
@@ -2934,7 +2934,7 @@
         "lasso_high_edge",
         "high_fidelity_model"
       ],
-      "vision_intel": "Jabari is stepping into a fast-paced track against a Lakers squad that lets the ball move, and we are leaning on his high stability score to carry us past this 2.5 line. Even though his recent hit rate is shaky, the 15% edge suggests he's due for a massive regression toward his season averages in a game where every possession counts.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 2.876,
         "confidence_tier": "HIGH_FIDELITY",
@@ -3111,7 +3111,7 @@
       "is_goblin_anomaly": false,
       "season_margin": -0.5,
       "margin": 0.3,
-      "vision_summary": "Jake Laravia is stepping into a larger role with the Grizzlies' rotation thinned out, and we're looking at a 17.8% edge on his 4.5 rebounding line tonight. While Houston brings a tough interior presence, Laravia\u2019s 4.8 average over his last ten outings and his 85 stability score suggest he'll find enough scrap opportunities to clear this mark.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 54.2,
       "board": null,
@@ -3213,7 +3213,7 @@
         "lasso_high_edge",
         "high_fidelity_model"
       ],
-      "vision_intel": "Jake Laravia is stepping into a larger role with the Grizzlies' rotation thinned out, and we're looking at a 17.8% edge on his 4.5 rebounding line tonight. While Houston brings a tough interior presence, Laravia\u2019s 4.8 average over his last ten outings and his 85 stability score suggest he'll find enough scrap opportunities to clear this mark.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 5.299,
         "confidence_tier": "HIGH_FIDELITY",
@@ -3389,7 +3389,7 @@
       "is_goblin_anomaly": false,
       "season_margin": 0.5,
       "margin": -0.4,
-      "vision_summary": "Julius Randle is stepping into a track meet against Denver tonight where the pace delta is up 2.7 possessions and his ultra-low 0.292 CV tells us he is locked into his role. Even though the raw hit rate looks sluggish, our projection of 5.0 assists against an average Nuggets defense shows he has the facilitating volume to clear this 4.5 line in a high-tempo environment.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 100.0,
       "board": null,
@@ -3497,7 +3497,7 @@
       "volatility_score": 32.4,
       "volatility_label": "low",
       "volatility_family": "nba_low_line",
-      "vision_intel": "Julius Randle is stepping into a track meet against Denver tonight where the pace delta is up 2.7 possessions and his ultra-low 0.292 CV tells us he is locked into his role. Even though the raw hit rate looks sluggish, our projection of 5.0 assists against an average Nuggets defense shows he has the facilitating volume to clear this 4.5 line in a high-tempo environment.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 4.957,
         "confidence_tier": "HIGH_FIDELITY",
@@ -3676,7 +3676,7 @@
       "is_goblin_anomaly": true,
       "season_margin": 2.5,
       "margin": 3.1,
-      "vision_summary": "Sandro hasn't missed this 2.5 line in ten straight games and his 5.6 rebound average over that span makes this number look like a complete typo. While Cleveland brings a physical frontcourt to the floor, our guy is consistently cleaning up glass regardless of the opponent and his rock-steady 0.29 volatility score gives us all the confidence we need.",
+      "vision_summary": "",
       "vision_enriched_at": "2026-04-19T21:36:41.875869+00:00",
       "vision_score": 83.0,
       "board": "safe_haven",
@@ -3804,7 +3804,7 @@
         "lasso_high_edge",
         "high_fidelity_model"
       ],
-      "vision_intel": "Sandro hasn't missed this 2.5 line in ten straight games and his 5.6 rebound average over that span makes this number look like a complete typo. While Cleveland brings a physical frontcourt to the floor, our guy is consistently cleaning up glass regardless of the opponent and his rock-steady 0.29 volatility score gives us all the confidence we need.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 4.661,
         "confidence_tier": "HIGH_FIDELITY",
@@ -3924,7 +3924,7 @@
         "lasso_high_edge",
         "high_fidelity_model"
       ],
-      "vision_intel": "Jerami Grant is stepping into a massive workload tonight against a San Antonio squad that lacks the wing depth to keep him away from his spots. While the 15.5 PRA line feels low, our projection of 25.2 suggests we are looking at a 62.5% edge against a defense that consistently gives up clean looks.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 25.194,
         "confidence_tier": "HIGH_FIDELITY",
@@ -3934,7 +3934,7 @@
           "L10_avg_fgm"
         ]
       },
-      "vision_summary": "Jerami Grant is stepping into a massive workload tonight against a San Antonio squad that lacks the wing depth to keep him away from his spots. While the 15.5 PRA line feels low, our projection of 25.2 suggests we are looking at a 62.5% edge against a defense that consistently gives up clean looks.",
+      "vision_summary": "",
       "intel_suite": {
         "usage_ripple": {
           "bump_percent": 0,
@@ -4179,7 +4179,7 @@
       "is_goblin_anomaly": false,
       "season_margin": 3.5,
       "margin": 6.0,
-      "vision_summary": "Pritchard is currently riding a massive heater with an 80% hit rate over his last 10 games, and that 19.5 average makes this 13.5 line look like a massive oversight. We are looking at a Philadelphia defense that ranks 28th against opposing guards, so expect him to continue hunting his shot with zero hesitation off the bench tonight.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 90.2,
       "board": null,
@@ -4299,7 +4299,7 @@
         "volatility_extreme",
         "high_fidelity_model"
       ],
-      "vision_intel": "Pritchard is currently riding a massive heater with an 80% hit rate over his last 10 games, and that 19.5 average makes this 13.5 line look like a massive oversight. We are looking at a Philadelphia defense that ranks 28th against opposing guards, so expect him to continue hunting his shot with zero hesitation off the bench tonight.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 14.483,
         "confidence_tier": "HIGH_FIDELITY",
@@ -4478,7 +4478,7 @@
       "is_goblin_anomaly": true,
       "season_margin": 1.8,
       "margin": 1.2,
-      "vision_summary": "Paul George is treating this 3.5 rebound line like a total afterthought lately, clearing it in every single one of his last ten games while averaging 4.7 boards. We aren't sweating the elite Boston defense because PG's floor is incredibly high right now, and his rock-steady 0.14 variation suggests he'll find his way to four rebounds purely through his standard positioning and heavy minutes.",
+      "vision_summary": "",
       "vision_enriched_at": "2026-04-19T21:36:41.883409+00:00",
       "vision_score": 85.9,
       "board": "front_lines",
@@ -4610,7 +4610,7 @@
         "lasso_high_edge",
         "high_fidelity_model"
       ],
-      "vision_intel": "Paul George is treating this 3.5 rebound line like a total afterthought lately, clearing it in every single one of his last ten games while averaging 4.7 boards. We aren't sweating the elite Boston defense because PG's floor is incredibly high right now, and his rock-steady 0.14 variation suggests he'll find his way to four rebounds purely through his standard positioning and heavy minutes.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 4.552,
         "confidence_tier": "HIGH_FIDELITY",
@@ -4786,7 +4786,7 @@
       "is_goblin_anomaly": false,
       "season_margin": 1.3,
       "margin": 0.6,
-      "vision_summary": "Sam Merrill is looking at a slow night in Toronto because this pace delta of -1.6 suggests fewer possessions for a guy who lives and dies by the transition triple. While the Raptors' defense is soft on paper, Merrill's 50% hit rate over the last ten games shows he is far too streaky to trust at this 11.5 line.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 79.4,
       "board": null,
@@ -4897,7 +4897,7 @@
       "scout_badges": [
         "high_fidelity_model"
       ],
-      "vision_intel": "Sam Merrill is looking at a slow night in Toronto because this pace delta of -1.6 suggests fewer possessions for a guy who lives and dies by the transition triple. While the Raptors' defense is soft on paper, Merrill's 50% hit rate over the last ten games shows he is far too streaky to trust at this 11.5 line.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 10.184,
         "confidence_tier": "HIGH_FIDELITY",
@@ -5075,7 +5075,7 @@
       "is_goblin_anomaly": true,
       "season_margin": 8.9,
       "margin": 4.4,
-      "vision_summary": "Tyrese Maxey has turned into a flat-out machine lately, clearing this 19.5 mark in nine of his last ten games while averaging nearly 24 points per night. Even against a Boston defense that usually locks windows and doors, his rock-steady 0.22 variation coefficient proves he\u2019s getting his buckets regardless of who is standing in his path.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 91.3,
       "board": null,
@@ -5194,7 +5194,7 @@
         "floor_lock",
         "high_fidelity_model"
       ],
-      "vision_intel": "Tyrese Maxey has turned into a flat-out machine lately, clearing this 19.5 mark in nine of his last ten games while averaging nearly 24 points per night. Even against a Boston defense that usually locks windows and doors, his rock-steady 0.22 variation coefficient proves he\u2019s getting his buckets regardless of who is standing in his path.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 21.412,
         "confidence_tier": "HIGH_FIDELITY",
@@ -5373,7 +5373,7 @@
       "is_goblin_anomaly": true,
       "season_margin": 5.5,
       "margin": 5.9,
-      "vision_summary": "KAT has been playing like he\u2019s got a flight to catch lately, but we\u2019re looking at a total of 29.5 PRA that feels just a hair too high given how the rotations are shaking out. Even against a mediocre Atlanta defense, his usage hasn't been explosive enough to warrant this number when he\u2019s cleared this specific mark in only one of his last ten outings.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 77.3,
       "board": null,
@@ -5493,7 +5493,7 @@
         "volatility_extreme",
         "high_fidelity_model"
       ],
-      "vision_intel": "KAT has been playing like he\u2019s got a flight to catch lately, but we\u2019re looking at a total of 29.5 PRA that feels just a hair too high given how the rotations are shaking out. Even against a mediocre Atlanta defense, his usage hasn't been explosive enough to warrant this number when he\u2019s cleared this specific mark in only one of his last ten outings.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 27.752,
         "confidence_tier": "HIGH_FIDELITY",
@@ -5671,7 +5671,7 @@
       "is_goblin_anomaly": false,
       "season_margin": 0.8,
       "margin": 2.3,
-      "vision_summary": "Tari Eason has been a bucket lately with a 70% hit rate over his last ten, and tonight he only needs 10 points to clear a line that feels way too low for his current 11.8 average. Even against a respectable Lakers defense, we are looking at a massive 46% edge because his high-motor playstyle thrives in these standard tempo matchups where transition points are up for grabs.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 58.4,
       "board": null,
@@ -5785,7 +5785,7 @@
         "lasso_high_edge",
         "high_fidelity_model"
       ],
-      "vision_intel": "Tari Eason has been a bucket lately with a 70% hit rate over his last ten, and tonight he only needs 10 points to clear a line that feels way too low for his current 11.8 average. Even against a respectable Lakers defense, we are looking at a massive 46% edge because his high-motor playstyle thrives in these standard tempo matchups where transition points are up for grabs.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 13.911,
         "confidence_tier": "HIGH_FIDELITY",
@@ -5964,7 +5964,7 @@
       "is_goblin_anomaly": true,
       "season_margin": 4.3,
       "margin": 6.5,
-      "vision_summary": "Jabari has cleared this 11.5 mark in ten straight games while averaging a massive 18 points per night, making this line feel like a total oversight for a guy who hasn't missed lately. Even with the Lakers playing decent defense, his rock-steady 0.18 volatility score tells us he's going to find his shots and capitalize on that 33.8% edge we're seeing.",
+      "vision_summary": "",
       "vision_enriched_at": "2026-04-19T21:36:41.871010+00:00",
       "vision_score": 90.5,
       "board": "safe_haven",
@@ -6093,7 +6093,7 @@
         "lasso_high_edge",
         "high_fidelity_model"
       ],
-      "vision_intel": "Jabari has cleared this 11.5 mark in ten straight games while averaging a massive 18 points per night, making this line feel like a total oversight for a guy who hasn't missed lately. Even with the Lakers playing decent defense, his rock-steady 0.18 volatility score tells us he's going to find his shots and capitalize on that 33.8% edge we're seeing.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 15.383,
         "confidence_tier": "HIGH_FIDELITY",
@@ -6269,7 +6269,7 @@
       "is_goblin_anomaly": false,
       "season_margin": -3.4,
       "margin": -2.9,
-      "vision_summary": "Marcus Smart is stepping into a standard tempo environment against a Houston unit that doesn't exactly strike fear into anyone's heart with their middle-of-the-pack defensive rating. While his recent floor hasn't been ideal, we are banking on a bounce-back toward his 19.9 projection because the usage remains steady enough to clear this 18.5 total in a competitive game script.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 100.0,
       "board": null,
@@ -6377,7 +6377,7 @@
       "volatility_score": 61.9,
       "volatility_label": "moderate",
       "volatility_family": "nba_high_line",
-      "vision_intel": "Marcus Smart is stepping into a standard tempo environment against a Houston unit that doesn't exactly strike fear into anyone's heart with their middle-of-the-pack defensive rating. While his recent floor hasn't been ideal, we are banking on a bounce-back toward his 19.9 projection because the usage remains steady enough to clear this 18.5 total in a competitive game script.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 19.897,
         "confidence_tier": "HIGH_FIDELITY",
@@ -6554,7 +6554,7 @@
       "is_goblin_anomaly": false,
       "season_margin": -3.5,
       "margin": -3.9,
-      "vision_summary": "LeBron is looking at a real grind against a Houston defense that ranks 3rd in the league, but his rock-steady 0.295 consistency rating suggests he\u2019ll find a way to his spots. While his recent hit rate is low, the projection of 25.6 points gives us a thin 4.5% edge that feels like a calculated gamble on greatness in a standard tempo environment.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 97.1,
       "board": null,
@@ -6663,7 +6663,7 @@
       "volatility_score": 42.1,
       "volatility_label": "low",
       "volatility_family": "nba_high_line",
-      "vision_intel": "LeBron is looking at a real grind against a Houston defense that ranks 3rd in the league, but his rock-steady 0.295 consistency rating suggests he\u2019ll find a way to his spots. While his recent hit rate is low, the projection of 25.6 points gives us a thin 4.5% edge that feels like a calculated gamble on greatness in a standard tempo environment.",
+      "vision_intel": "",
       "vk_data": {
         "projection": 25.598,
         "confidence_tier": "HIGH_FIDELITY",
@@ -6843,7 +6843,7 @@
       "is_goblin_anomaly": true,
       "season_margin": 5.1,
       "margin": 6.7,
-      "vision_summary": "Dyson Daniels has transformed into an absolute counting-stat machine lately, clearing this 19.5 PRA line in nine of his last ten outings while averaging a massive 26.2 per game. With a low 0.222 volatility score and a projected 42% edge, we are backing his rock-steady floor against a Knicks defense that isn't nearly as suffocating as their reputation suggests.",
+      "vision_summary": "",
       "vision_enriched_at": null,
       "vision_score": 80.1,
       "board": null,
@@ -6954,7 +6954,7 @@
         "has_gemini": false,
         "is_fully_validated": false
       },
-      "vision_intel": "Dyson Daniels has transformed into an absolute counting-stat machine lately, clearing this 19.5 PRA line in nine of his last ten outings while averaging a massive 26.2 per game. With a low 0.222 volatility score and a projected 42% edge, we are backing his rock-steady floor against a Knicks defense that isn't nearly as suffocating as their reputation suggests.",
+      "vision_intel": "",
       "scout_badges": [
         "hot_streak",
         "floor_lock",

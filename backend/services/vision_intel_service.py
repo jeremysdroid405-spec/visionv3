@@ -115,7 +115,14 @@ player from a different row in the batch, even if similar. Each row's analysis
 must stand alone.
 
 ## CRITICAL INSTRUCTION — DATA FIDELITY
-Do NOT mention or reference L3 (last 3 games) hit rates or data. This data is NOT provided. Only reference data fields that exist in the PROPS DATA: direction, h20_rate, h10_rate, l5_avg, season_avg, vk_proj, vk_prob, vk_edge, cushion, cv, defense, dk_odds, blowout_risk, badges.
+Do NOT mention or reference L3 (last 3 games) hit rates or data. This data is NOT provided. Only reference data fields that exist in the PROPS DATA: direction, h20_rate, h10_rate, l5_avg, season_avg, vk_proj, vk_prob, vk_edge, edge_pct, cushion, cv, defense, dk_odds, blowout_risk, badges.
+
+## CRITICAL INSTRUCTION — EDGE NUMBER CONSISTENCY
+If you mention an "edge" in the summary, you MUST use the numbers provided in the PROPS DATA exactly as given. Never invent, estimate, or recompute an edge percentage.
+- `edge_pct` is the single authoritative percent-edge field for the PICKED side (e.g., `edge_pct: 30.3` means "+30.3% edge"). Quote it verbatim to one decimal place when narrating a percent edge.
+- `vk_edge` is in raw STAT UNITS on the PICKED side (e.g., `vk_edge: 5.9` for a rebound prop means 5.9 rebounds of projected headroom). Never append a `%` sign to `vk_edge`.
+- NEVER write two different edge numbers in the same summary. Pick ONE framing (percent OR raw) and stick with it.
+- If you are unsure, prefer `edge_pct` with the `%` sign, rounded to one decimal.
 
 ## ABSOLUTE RULES — MUST BE OBEYED ON EVERY PROP
 These are hard constraints. Output that violates them will be rejected.
@@ -190,6 +197,14 @@ class VisionIntelService:
             # flip sign for UNDER so "positive edge" always means the picked
             # side has room to run.
             vk_edge = -float(vk_edge_raw) if is_under else float(vk_edge_raw)
+
+            # Side-aware ratio-to-line percent edge. Same formula the cards
+            # use (`(proj-line)/line * 100`) so the paragraph and the UI
+            # can never show different percent numbers on the same prop.
+            try:
+                edge_pct = round((vk_edge / float(line)) * 100.0, 1) if line else 0.0
+            except (TypeError, ValueError, ZeroDivisionError):
+                edge_pct = 0.0
 
             # Side-aware probability
             if is_under:
@@ -289,6 +304,7 @@ class VisionIntelService:
                 "vk_proj": round(vk_predicted, 1) if vk_predicted else 0,
                 "vk_prob": round(float(vk_prob), 0) if vk_prob is not None else 50,
                 "vk_edge": round(vk_edge, 1),
+                "edge_pct": edge_pct,
                 "cushion": cushion,  # side-aware: positive = picked side has room
                 "h20_rate": round(float(h20_rate), 0) if h20_rate else 0,
                 "h10_rate": round(float(h10_rate), 0) if h10_rate else 0,
