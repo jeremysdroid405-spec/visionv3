@@ -52,9 +52,11 @@ from typing import Dict, List, Tuple
 #      remove the row from this map.
 # ---------------------------------------------------------------------------
 _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
-    # Pilot: NBA events cache (read-only downstream, full-refresh pattern,
-    # lowest blast radius).
-    ("events_cache", "nba"): "nba_events_cache",
+    # Wave 2 complete: events_cache · NBA has been flipped to
+    # `nba_events_cache` and the shadow phase is retired. The old
+    # primary (`dg_events_cache`) has been renamed to
+    # `dg_events_cache_backup` and is eligible for drop after the
+    # observation window closes.
 }
 
 
@@ -92,7 +94,7 @@ _SPORT_COLLECTIONS: Dict[str, Dict[str, str]] = {
                              "mlb": "mlb_live_props"},
     "odds_cache":           {"nba": "dg_odds_cache",
                              "mlb": "mlb_odds_cache"},
-    "events_cache":         {"nba": "dg_events_cache",
+    "events_cache":         {"nba": "nba_events_cache",
                              "mlb": "mlb_events_cache"},
     "odds_mapping":         {"nba": "odds_api_mapping_master",  # NBA-only today
                              "mlb": "mlb_odds_api_mapping_master"},  # future

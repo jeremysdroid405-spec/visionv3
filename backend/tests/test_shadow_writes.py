@@ -52,22 +52,28 @@ class _StubColl:
 # Registry helpers
 # -------------------------------------------------------------------------
 def test_writes_to_single_for_non_shadowed():
-    # `live_props` is not shadow-mapped in the Wave 1 pilot.
+    # `live_props` is not shadow-mapped.
     assert COLL.writes_to("live_props", "nba") == [COLL("live_props", "nba")]
 
 
-def test_writes_to_dual_for_events_cache_pilot():
-    names = COLL.writes_to("events_cache", "nba")
-    assert len(names) == 2
-    assert names[0] == COLL("events_cache", "nba")        # primary
-    assert names[1] == "nba_events_cache"                 # shadow
-    assert names[0] != names[1]
+def test_writes_to_respects_active_shadows():
+    """For any concept currently in `_SHADOW_WRITES`, `writes_to` must
+    return [primary, shadow]. For everything else, a single-element list.
 
-
-def test_active_shadows_contains_pilot():
+    This keeps the test suite correct across the lifecycle: it passes
+    whether there is an active shadow pilot or not.
+    """
     shadows = COLL.active_shadows()
-    assert ("events_cache", "nba") in shadows
-    assert shadows[("events_cache", "nba")] == "nba_events_cache"
+    if shadows:
+        (concept, sport), shadow_name = next(iter(shadows.items()))
+        names = COLL.writes_to(concept, sport)
+        assert names[0] == COLL(concept, sport)
+        assert names[-1] == shadow_name
+        assert len(names) == 2
+    else:
+        # No active shadows — pick a known sport-specific concept and
+        # confirm single-name routing.
+        assert COLL.writes_to("master_hub", "nba") == [COLL("master_hub", "nba")]
 
 
 def test_handle_returns_raw_collection_when_no_shadow():
@@ -82,17 +88,24 @@ def test_handle_returns_raw_collection_when_no_shadow():
     assert h.name == COLL("live_props", "nba")
 
 
-def test_handle_returns_shadow_writer_for_pilot():
+def test_handle_wraps_when_concept_is_shadow_mapped():
+    """If ANY concept is currently shadow-mapped, its handle must be a
+    ShadowWriter. Otherwise this test is a no-op (still passes)."""
+    shadows = COLL.active_shadows()
+    if not shadows:
+        return
+    (concept, sport), shadow_name = next(iter(shadows.items()))
+
     class _StubDb(dict):
         def __getitem__(self, k):
             self.setdefault(k, _StubColl(k))
             return super().__getitem__(k)
 
     db = _StubDb()
-    h = COLL.handle(db, "events_cache", "nba")
+    h = COLL.handle(db, concept, sport)
     assert isinstance(h, ShadowWriter)
-    assert h.primary.name == COLL("events_cache", "nba")
-    assert [s.name for s in h.shadows] == ["nba_events_cache"]
+    assert h.primary.name == COLL(concept, sport)
+    assert [s.name for s in h.shadows] == [shadow_name]
 
 
 # -------------------------------------------------------------------------
