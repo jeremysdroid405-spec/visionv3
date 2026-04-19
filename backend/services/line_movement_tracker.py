@@ -16,6 +16,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +26,7 @@ class LineMovementTracker:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.line_history = db["line_history"]  # Stores historical lines
+        self.line_history = db[COLL("line_history", "nba")]  # Stores historical lines
         self.line_movements = db["line_movements"]  # Stores detected movements
     
     async def setup_indexes(self):

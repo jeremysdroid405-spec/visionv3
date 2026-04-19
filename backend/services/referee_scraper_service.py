@@ -19,6 +19,8 @@ from datetime import datetime, timezone, timedelta
 import logging
 import re
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -91,7 +93,7 @@ class RefereeScraperService:
         self.last_assignments_fetch: Optional[datetime] = None
         
         if db is not None:
-            self.referee_assignments = db.referee_assignments
+            self.referee_assignments = db[COLL("referee_assignments", "nba")]
             self.referee_stats = db.referee_stats
     
     async def _fetch_html(self, url: str, timeout: int = 30) -> Optional[str]:
@@ -640,6 +642,6 @@ def get_referee_service(db=None) -> RefereeScraperService:
         _referee_service = RefereeScraperService(db)
     elif db is not None and _referee_service.db is None:
         _referee_service.db = db
-        _referee_service.referee_assignments = db.referee_assignments
+        _referee_service.referee_assignments = db[COLL("referee_assignments", "nba")]
         _referee_service.referee_stats = db.referee_stats
     return _referee_service

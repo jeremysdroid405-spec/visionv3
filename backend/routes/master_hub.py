@@ -646,7 +646,7 @@ async def get_contract_year_players():
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
-    cache_doc = await _db.spotrac_contracts_cache.find_one(
+    cache_doc = await _db[COLL.shared("spotrac_contracts_cache")].find_one(
         {"type": "contracts_cache"},
         {"_id": 0}
     )
@@ -655,7 +655,7 @@ async def get_contract_year_players():
         # Trigger sync if no cache
         from services.spotrac_contract_service import sync_contract_data
         await sync_contract_data(_db)
-        cache_doc = await _db.spotrac_contracts_cache.find_one(
+        cache_doc = await _db[COLL.shared("spotrac_contracts_cache")].find_one(
             {"type": "contracts_cache"},
             {"_id": 0}
         )

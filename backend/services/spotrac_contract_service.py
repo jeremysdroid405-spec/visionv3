@@ -11,6 +11,7 @@ import re
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from services.config.collection_names import COLL
 import requests
 from bs4 import BeautifulSoup
 import time
@@ -81,7 +82,7 @@ async def get_cached_contracts(db: AsyncIOMotorDatabase) -> Optional[Dict]:
     Get cached contract data if it exists and is fresh.
     Returns None if cache is stale or doesn't exist.
     """
-    cache_collection = db["spotrac_contracts_cache"]
+    cache_collection = db[COLL.shared("spotrac_contracts_cache")]
     cache_doc = await cache_collection.find_one(
         {"type": "contracts_cache"},
         {"_id": 0}
@@ -383,7 +384,7 @@ async def sync_contract_data(db: Optional[AsyncIOMotorDatabase] = None) -> Dict:
     if db is None:
         db = get_db()
     
-    cache_collection = db["spotrac_contracts_cache"]
+    cache_collection = db[COLL.shared("spotrac_contracts_cache")]
     
     # Check if we already have fresh cache
     existing = await get_cached_contracts(db)
@@ -453,7 +454,7 @@ async def get_contract_year_info(player_name: str, db: Optional[AsyncIOMotorData
     if db is None:
         db = get_db()
     
-    cache_collection = db["spotrac_contracts_cache"]
+    cache_collection = db[COLL.shared("spotrac_contracts_cache")]
     
     # Get cached data
     cache_doc = await cache_collection.find_one(
@@ -510,7 +511,7 @@ async def get_all_contract_year_players(db: Optional[AsyncIOMotorDatabase] = Non
     if db is None:
         db = get_db()
     
-    cache_collection = db["spotrac_contracts_cache"]
+    cache_collection = db[COLL.shared("spotrac_contracts_cache")]
     cache_doc = await cache_collection.find_one(
         {"type": "contracts_cache"},
         {"_id": 0, "contracts": 1}

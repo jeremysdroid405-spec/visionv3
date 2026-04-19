@@ -317,7 +317,7 @@ async def _collect_nba_tier_picks_from_scores(
     the Ferrari<>VK2 split-brain that stranded props on the legacy
     intel_suite shape.
     """
-    cursor = db.nba_prop_scores.find(
+    cursor = db[COLL("prop_scores", "nba")].find(
         {"version_tag": "final-nba", "tier": board_name},
         {"_id": 0},
     ).sort("vision_score", -1).limit(limit)
