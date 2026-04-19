@@ -2261,7 +2261,7 @@ class FerrariTierService:
             
             # ===== 6-10: Context engine flags (jet_lag, legal_noise, distraction, revenge, milestone) =====
             try:
-                context_engine = self.db['nba_context_engine']
+                context_engine = self.db[COLL("context_flags", "nba")]
                 context_query = {"active": True, "player_name": {"$regex": f"^{player_name}$", "$options": "i"}}
                 
                 async for flag in context_engine.find(context_query, {"_id": 0, "flag_type": 1, "travel_miles": 1}):

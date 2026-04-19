@@ -20,6 +20,8 @@ from typing import Dict, List, Optional, Any
 from pymongo import MongoClient, UpdateOne
 import time
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 BDL_API_KEY = os.environ.get("BDL_API_KEY", "")
@@ -41,7 +43,7 @@ class HistoricalDataFetcher:
     
     def __init__(self, db):
         self.db = db
-        self.hub = db['nba_master_hub_2026']
+        self.hub = db[COLL("master_hub", "nba")]
         self.historical_logs = db['historical_game_logs']
         self.request_count = 0
         self.last_request_time = 0

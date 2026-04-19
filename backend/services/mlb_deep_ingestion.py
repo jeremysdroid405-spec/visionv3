@@ -30,6 +30,8 @@ from collections import defaultdict
 import httpx
 import numpy as np
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -67,7 +69,7 @@ class MLBDeepIngestion:
         Initialize with async Motor database.
         """
         self.db = db
-        self.master_hub = db.mlb_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "mlb")]
         self.historical_logs = db.mlb_historical_logs
         self.splits_cache = db.mlb_splits_cache
         self.pvp_cache = db.mlb_pvp_cache

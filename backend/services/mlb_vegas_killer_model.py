@@ -29,6 +29,8 @@ from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime, timezone
 from scipy import stats
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -119,7 +121,7 @@ class MLBVegasKillerModel:
             db: PyMongo database instance (SYNC, not async)
         """
         self.db = db
-        self.master_hub = db.mlb_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "mlb")]
         self.historical_logs = db.mlb_historical_logs
         
         # Trained models storage

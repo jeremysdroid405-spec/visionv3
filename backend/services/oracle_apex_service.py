@@ -428,7 +428,7 @@ class OracleApexService:
     def __init__(self, db, vegas_killer_model=None):
         self.db = db
         self.cached_board = db[COLL("board_cache", "nba")]
-        self.live_props = db.dg_live_props
+        self.live_props = db[COLL("live_props", "nba")]
         self.master_hub = db[COLL("master_hub", "nba")]
         self.oracle_apex_collection = db.oracle_apex_picks
         

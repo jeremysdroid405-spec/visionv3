@@ -12,12 +12,14 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 import os
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 class PhotoStorageService:
     def __init__(self, db):
         self.db = db
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         self.photo_cache = db.player_photos  # New collection for photos
         
     async def download_and_store_photo(self, bdl_id: int, player_name: str) -> Optional[str]:

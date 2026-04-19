@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Prop categories to track
@@ -45,7 +47,7 @@ class MasterHubSyncService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
     
     async def run_full_sync(self) -> Dict[str, Any]:
         """

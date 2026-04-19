@@ -13,6 +13,8 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Badge modifiers - positive boosts probability, negative hurts it
@@ -281,7 +283,7 @@ class ProbabilityScoreService:
     
     def __init__(self, db):
         self.db = db
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         self.dvp_rankings = db.dvp_rankings
     
     async def _preload_dvp_cache(self):

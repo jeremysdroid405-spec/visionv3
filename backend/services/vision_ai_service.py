@@ -17,6 +17,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Configuration - Use Google Gemini API Key
@@ -63,7 +65,7 @@ Examples of good insights:
         """Initialize with MongoDB database connection."""
         self.db = db
         self.daily_insights = db.dg_daily_insights
-        self.cached_board = db.dg_cached_board
+        self.cached_board = db[COLL("board_cache", "nba")]
         
         if not GOOGLE_API_KEY:
             logger.warning("[VISION] GOOGLE_API_KEY not found - AI insights will be disabled")

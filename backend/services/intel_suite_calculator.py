@@ -10,6 +10,8 @@ import numpy as np
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 TEAM_PACE_DEFAULTS = {
@@ -112,7 +114,7 @@ class IntelSuiteCalculator:
 
     def __init__(self, db):
         self.db = db
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         self.injury_data = db.dg_injury_data
 
     async def calculate_intel_suite(

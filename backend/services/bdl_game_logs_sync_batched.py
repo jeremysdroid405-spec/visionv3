@@ -24,6 +24,8 @@ from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import os
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
@@ -40,7 +42,7 @@ class BDLGameLogsSyncBatched:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.hub = db["nba_master_hub_2026"]
+        self.hub = db[COLL("master_hub", "nba")]
         self.api_key = os.environ.get("BDL_API_KEY", "ad5544be-9969-434b-9389-2b7cf658c8e0")
         self._client: Optional[httpx.AsyncClient] = None
         

@@ -18,6 +18,8 @@ import logging
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from thefuzz import fuzz
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # API Configuration - BDL ONLY (BDL Only)
@@ -55,7 +57,7 @@ class StatsEnrichmentService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         # BDL is the ONLY source for player stats
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         
         # In-memory cache for player ID mapping
         self._player_name_map: Dict[str, Dict] = {}

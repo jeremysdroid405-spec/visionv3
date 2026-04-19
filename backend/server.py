@@ -1316,9 +1316,9 @@ async def startup_event():
         await db[COLL("master_hub", "nba")].create_index([("team", ASCENDING)], background=True)
         
         # odds_api_mapping_master - Player name mapping
-        await db.odds_api_mapping_master.create_index([("odds_api_name", ASCENDING)], background=True)
-        await db.odds_api_mapping_master.create_index([("hub_player_name", ASCENDING)], background=True)
-        await db.odds_api_mapping_master.create_index([("bdl_id", ASCENDING)], sparse=True, background=True)
+        await db[COLL("odds_mapping", "nba")].create_index([("odds_api_name", ASCENDING)], background=True)
+        await db[COLL("odds_mapping", "nba")].create_index([("hub_player_name", ASCENDING)], background=True)
+        await db[COLL("odds_mapping", "nba")].create_index([("bdl_id", ASCENDING)], sparse=True, background=True)
         
         # dg_stats_cache - Stats cache with TTL
         await db.dg_stats_cache.create_index([("player_name", ASCENDING), ("stat_type", ASCENDING)], unique=True, background=True)

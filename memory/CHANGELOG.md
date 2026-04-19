@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-04-19 — Wave 0 Batch 12 plumbing (long-tail sweep + odds_mapping closure)
+- Registry reconciliation: `odds_mapping` was **already** present in registry at
+  `collection_names.py:70` as per-sport NBA concept. Batch 11 mis-used
+  `COLL.shared("odds_mapping")` — correct call is `COLL("odds_mapping","nba")`.
+  **No code change to registry needed.**
+- Routed 3 deferred refs in `server.py:1316-1318` (boot-time odds_mapping indexes).
+- 14 Batch 12 files + server.py routed through `COLL(...)`:
+  `services/historical_data_fetcher.py`, `services/mlb_vegas_killer_model.py`,
+  `services/optimized_sync_engine.py`, `services/bdl_game_logs_sync_batched.py`,
+  `services/photo_storage_service.py`, `services/master_hub_sync.py`,
+  `services/vision_ai_service.py`, `services/oracle_apex_service.py` (2nd-pass),
+  `services/bdl_game_logs_sync.py`, `services/stats_enrichment_service.py`,
+  `services/intel_suite_calculator.py`, `services/probability_score_service.py`,
+  `services/mlb_deep_ingestion.py`, `services/ferrari_tier_service.py` (2nd-pass).
+- 17 code-level literals removed → 17 `COLL(...)` call-sites added (3 server.py
+  + 14 Batch 12). 12 imports added (2 files already had imports from prior batches).
+- In-scope hardcoded-ref count in these files: **17 → 0**.
+- Regression suite: 80 passed / 1 skipped / 0 failed — matches baseline.
+- Live smoke after restart: all 10 endpoints HTTP 200. Boot-time odds_mapping
+  index creation (3 calls) executed cleanly via new COLL routing.
+  Backend uptime clean. 0 new errors.
+- Global broader-scanner residual: **43 → 29 refs across 28 files**.
+- Breakdown: 14 runtime (Batch 13 candidates), 13 scripts/* (non-runtime),
+  2 `scripts/layer_audit.py` (user excluded), 1 registry self-reference.
+- **Wave 0 progress: 56 files plumbed, 93% of baseline refs eliminated.**
+- Audit: `/app/memory/wave0_batch12_audit.md`.
+
+
 ## 2026-04-19 — Wave 0 Batch 11 plumbing (second-pass + long-tail)
 - 14 files routed through `services/config/collection_names.py::COLL`:
   `server.py` (second-pass), `services/mlb_tier_sorter.py`,

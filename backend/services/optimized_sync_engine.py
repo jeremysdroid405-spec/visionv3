@@ -21,6 +21,8 @@ from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional, Tuple, Literal
 from dataclasses import dataclass, field
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Batch processing limits
@@ -325,7 +327,7 @@ async def _collect_nba_tier_picks_from_scores(
 
     # One-pass build of player-name -> player-doc context map
     player_lookup: Dict[str, Dict[str, Any]] = {}
-    async for pd in db.dg_cached_board.find(
+    async for pd in db[COLL("board_cache", "nba")].find(
         {},
         {"_id": 0, "player_name": 1, "team": 1, "team_name": 1, "team_logo_url": 1,
          "opponent": 1, "opponent_abbr": 1, "headshot_url": 1, "photo_url": 1,
