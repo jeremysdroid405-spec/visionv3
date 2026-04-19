@@ -19,6 +19,8 @@ import logging
 from typing import Dict, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Global caches
@@ -37,7 +39,7 @@ async def _build_caches(db: AsyncIOMotorDatabase) -> None:
     _player_name_cache = {}
     
     # Load from master hub with all necessary fields
-    players = await db.nba_master_hub_2026.find(
+    players = await db[COLL("master_hub", "nba")].find(
         {},
         {
             "_id": 0, 

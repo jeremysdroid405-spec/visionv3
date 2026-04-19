@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 from .game_utils import clean_object_ids
 
 logger = logging.getLogger(__name__)
@@ -25,7 +27,7 @@ class BoardFormatter:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.cached_board = db.dg_cached_board
+        self.cached_board = db[COLL("board_cache", "nba")]
         self.sync_status = db.dg_sync_status
     
     async def get_cached_board(self) -> Dict[str, Any]:

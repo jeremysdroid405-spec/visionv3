@@ -38,6 +38,8 @@ import numpy as np
 import pandas as pd
 import pickle
 import os
+
+from services.config.collection_names import COLL
 import json
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime, timezone
@@ -202,7 +204,7 @@ class MLBPhysicalEngine:
             db: PyMongo database instance (SYNC)
         """
         self.db = db
-        self.master_hub = db.mlb_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "mlb")]
         self.historical_logs = db.mlb_historical_logs
         
         # Trained XGBoost models

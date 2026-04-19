@@ -9,6 +9,8 @@ import logging
 from typing import Dict, List, Optional, Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,7 +27,7 @@ class PhotoService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.photos_collection = db.player_photos
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         self._photo_cache: Dict[str, str] = {}
         self._cache_loaded = False
     

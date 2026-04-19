@@ -35,6 +35,8 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from enum import Enum
 import httpx
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -111,10 +113,10 @@ class AdaptiveSyncEngine:
         self.main_task: Optional[asyncio.Task] = None
         
         # Collections
-        self.cached_board_collection = "dg_cached_board"
+        self.cached_board_collection = COLL("board_cache", "nba")
         self.sync_status_collection = "dg_sync_status"
         self.game_schedule_collection = "dg_game_schedule"
-        self.master_hub_collection = "nba_master_hub_2026"
+        self.master_hub_collection = COLL("master_hub", "nba")
         
         # Player stats cache (refreshed each sync cycle)
         self._player_stats_cache: Dict[str, Dict] = {}
@@ -1304,7 +1306,7 @@ class AdaptiveSyncEngine:
                     continue
                 
                 # Check if player is in confirmed lineup
-                player = await self.db["mlb_master_hub_2026"].find_one(
+                player = await self.db[COLL("master_hub", "mlb")].find_one(
                     {"display_name": player_name},
                     {"_id": 0, "lineup_confirmed": 1, "lineup_position": 1}
                 )

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from services.unified_pipeline import SportAdapter
+from services.config.collection_names import COLL
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ class MLBAdapter(SportAdapter):
 
     async def load_board(self, db) -> List[Dict]:
         """Load MLB props from mlb_cached_board, flatten props+goblins+demons, deduplicate."""
-        board = db["mlb_cached_board"]
+        board = db[COLL("board_cache", "mlb")]
         cursor = board.find({}, {"_id": 0})
         players = await cursor.to_list(length=None)
 

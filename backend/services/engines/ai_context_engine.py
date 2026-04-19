@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai_context_engine")
@@ -41,7 +43,7 @@ class AiContextEngine:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         self.news_cache = db.ai_news_cache
         self._api_available = bool(GOOGLE_API_KEY)
         

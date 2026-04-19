@@ -29,6 +29,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 from enum import Enum
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -78,7 +80,7 @@ class BoardIntelligenceEngine:
         # Collections
         self.sync_status = self.db["board_sync_status"]
         self.player_vision_log = self.db["player_vision_log"]  # Track who has Vision
-        self.dg_cached_board = self.db["dg_cached_board"]
+        self.dg_cached_board = self.db[COLL("board_cache", "nba")]
         self.live_ticker = self.db["live_ticker"]
         self.scouting_projections = self.db["scouting_projections"]  # Projection cards
         

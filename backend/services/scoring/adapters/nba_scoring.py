@@ -14,6 +14,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from services.scoring.adapters.base import ScoringAdapter, ScoringContext
+from services.config.collection_names import COLL
 
 logger = logging.getLogger(__name__)
 
@@ -170,15 +171,15 @@ class NBAScoringAdapter(ScoringAdapter):
 
     @property
     def live_props_collection(self) -> str:
-        return "dg_live_props"
+        return COLL("live_props", "nba")
 
     @property
     def scores_collection(self) -> str:
-        return "nba_prop_scores"
+        return COLL("prop_scores", "nba")
 
     @property
     def cached_board_collection(self) -> str:
-        return "dg_cached_board"
+        return COLL("board_cache", "nba")
 
     async def load_live_props(self, db, limit: Optional[int] = None):
         cursor = db[self.live_props_collection].find({}, {"_id": 0})
@@ -387,7 +388,7 @@ class NBAScoringAdapter(ScoringAdapter):
         """Pull NBA game logs from master hub once per recompute."""
         if self._logs_loaded:
             return
-        hub = db["nba_master_hub_2026"]
+        hub = db[COLL("master_hub", "nba")]
         cursor = hub.find(
             {"bdl_game_logs_count": {"$gt": 0}},
             {"display_name": 1, "bdl_game_logs": 1, "_id": 0},

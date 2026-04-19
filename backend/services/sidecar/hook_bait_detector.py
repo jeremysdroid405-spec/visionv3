@@ -17,6 +17,8 @@ from statistics import median, mode, StatisticsError
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import os
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Feature Flag - can be toggled via environment variable
@@ -54,7 +56,7 @@ class HookBaitDetector:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         self.game_logs = db.nba_game_logs_2026
         self.enabled = ENABLE_HOOK_BAIT_DETECTOR
         

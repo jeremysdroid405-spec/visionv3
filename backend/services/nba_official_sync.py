@@ -29,6 +29,8 @@ from typing import Any, Dict, List, Optional, Set
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 # NBA Official API
 from nba_api.stats.static import players as nba_players
 from nba_api.stats.static import teams as nba_teams
@@ -98,7 +100,7 @@ class NBAOfficialSyncService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.hub = db.nba_master_hub_2026
+        self.hub = db[COLL("master_hub", "nba")]
         self._last_request_time = 0
         self._active_players_cache: Optional[Set[int]] = None
     

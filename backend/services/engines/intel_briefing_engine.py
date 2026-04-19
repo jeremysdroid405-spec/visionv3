@@ -31,6 +31,8 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Google Gemini API Key from environment
@@ -50,7 +52,7 @@ class IntelBriefingEngine:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.cached_board = db.dg_cached_board
+        self.cached_board = db[COLL("board_cache", "nba")]
         self.intel_cache = db.dg_intel_briefings
         self.radar_picks = db.dg_radar_picks
         self.goblin_vault = db.dg_goblin_vault

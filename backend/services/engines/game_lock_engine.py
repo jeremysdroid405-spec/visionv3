@@ -23,6 +23,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Set
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Lock buffer - games are locked 60 seconds before tip (to account for early tips)
@@ -46,7 +48,7 @@ class GameLockEngine:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.cached_board = db.dg_cached_board
+        self.cached_board = db[COLL("board_cache", "nba")]
         self.locked_games = db.dg_locked_games
         self._lock_check_task: Optional[asyncio.Task] = None
         self._running = False
