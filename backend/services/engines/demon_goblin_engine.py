@@ -433,7 +433,7 @@ class DemonGoblinEngine:
         self.front_lines = db.dg_front_lines  # Front Lines - middle tier picks
         self.parlay_builder = db.dg_parlay_builder  # Big Money Builder parlays
         self.goblin_recon = db.dg_goblin_recon  # Goblin Recon parlays (high-consistency)
-        self.cached_board = db[COLL("board_cache", "nba")]  # Full cached board for frontend
+        self.cached_board = COLL.handle(db, "board_cache", "nba")  # Full cached board for frontend
         self.master_roster = db[COLL("master_roster", "nba")]  # SOURCE OF TRUTH: Player-to-team mapping
         self.flagged_players = db.dg_flagged_players  # Players not in master roster (manual review)
         self.master_hub = db[COLL("master_hub", "nba")]  # BDL SSOT for all player stats

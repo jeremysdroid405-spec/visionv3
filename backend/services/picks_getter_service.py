@@ -245,7 +245,7 @@ class PicksGetterService:
         self.front_lines = db.dg_front_lines
         self.parlay_builder = db.dg_parlay_builder
         self.goblin_recon = db.dg_goblin_recon
-        self.cached_board = db[COLL("board_cache", "nba")]  # Active Lines
+        self.cached_board = COLL.handle(db, "board_cache", "nba")  # Active Lines
         self.player_data = db.dg_player_data
         self.daily_insights = db.dg_daily_insights
         self.sync_log = db[COLL.shared("sync_log")]

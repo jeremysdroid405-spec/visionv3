@@ -33,7 +33,7 @@ class SyncOrchestrationService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.dg_cached_board = db[COLL("board_cache", "nba")]
+        self.dg_cached_board = COLL.handle(db, "board_cache", "nba")
         self.verification_failures = db.dg_verification_failures
         self.player_data = db.dg_player_data
         self.trending_cache = db.dg_trending

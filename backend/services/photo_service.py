@@ -30,7 +30,7 @@ class PhotoService:
     def __init__(self, db):
         self.db = db
         self.master_hub = db[COLL("master_hub", "nba")]
-        self.cached_board = db[COLL("board_cache", "nba")]
+        self.cached_board = COLL.handle(db, "board_cache", "nba")
         self._espn_id_cache: Dict[str, Dict] = {}
     
     # ==================== PHOTO URL GENERATION ====================

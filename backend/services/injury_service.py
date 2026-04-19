@@ -35,7 +35,7 @@ class InjuryIntelligenceService:
     def __init__(self, db):
         self.db = db
         self.injuries_collection = db.dg_injuries  # legacy name kept for downstream compat
-        self.cached_board = db[COLL("board_cache", "nba")]
+        self.cached_board = COLL.handle(db, "board_cache", "nba")
         self.daily_insights = db.dg_daily_insights
         self.breaking_news = db.dg_breaking_news
         

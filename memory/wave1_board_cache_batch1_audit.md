@@ -318,3 +318,149 @@ Deferred beyond Batch 3:
 **Batch 2 complete. 6 consecutive clean ledger ticks, FULL-DOC hash sweep
 121/121 matched, regression clean. Halted pending greenlight for Batch 3.**
 
+---
+
+# Batch 3 (Secondary writers + 1 shared-module writer + 1 engine) — applied 2026-04-19 19:39 UTC
+
+## Scope
+
+Flipped 5 single-handle `__init__` assignments and 6 inline call-sites (4 in
+`board_intelligence_service`, 2 in `social_signal_engine`). No logic, filters,
+or payloads touched. No adapters, legacy registries, `SPORT_COLLECTION_MAP`,
+`propvision_oracle_service`, or `optimized_sync_engine` touched.
+
+### Files changed
+1. `services/injury_service.py` (handle)
+2. `services/photo_service.py` (handle)
+3. `services/board_intelligence_service.py` (4 inline usages)
+4. `services/sync_orchestration_service.py` (handle, attribute name `dg_cached_board`)
+5. `services/engines/demon_goblin_engine.py` (handle, inline trailing comment preserved)
+6. `services/picks_getter_service.py` (handle, inline trailing comment preserved)
+7. `services/engines/social_signal_engine.py` (2 inline usages)
+
+### Diff (consistent pattern across all sites)
+```diff
+-db[COLL("board_cache", "nba")]
++COLL.handle(db, "board_cache", "nba")
+```
+
+## Post-Batch-3 Evidence
+
+### Stale-cleanup fan-out proof — STRONGEST SIGNAL YET
+The natural odds-sync at 19:42:43 caused a legitimate player-set churn:
+121 → 107 (14 players stale-deleted via
+`delete_many({"player_name": {"$nin": …}, "synced_at": {"$lt": …}})`).
+
+| side | count before sync | count after sync | delta |
+|---|---|---|---|
+| primary `dg_cached_board` | 121 | **107** | -14 |
+| shadow  `nba_cached_board` | 121 | **107** | -14 |
+| only-primary players | — | **0** | — |
+| only-shadow players | — | **0** | — |
+
+The stale-cleanup fanned out identically via `ShadowWriter._make_fanout →
+asyncio.gather(primary.delete_many, shadow.delete_many)`. This is the first
+observation tick in the entire migration program that exercised a DELETE
+fan-out on a non-trivial doc count.
+
+### Field-level parity samples (3 random post-sync survivors)
+
+| player | synced_at | headshot_url | photo_url | rank | injured_teammates |
+|---|---|---|---|---|---|
+| Donovan Mitchell | primary/shadow identical | `.../1628378.png` matched | `.../1628378.png` matched | 30/30 | [] / [] |
+| Luke Kornet | primary/shadow identical | `.../1628436.png` matched | `.../1628436.png` matched | 96/96 | [] / [] |
+| Shaedon Sharpe | primary/shadow identical | `.../1631101.png` matched | `.../1631101.png` matched | 69/69 | [] / [] |
+
+All fields (Batch-3-relevant and otherwise) matched exactly on both sides.
+
+### FULL-DOC HASH SWEEP (all 107 post-churn players)
+```
+matched = 107
+missed  =   0
+skipped =   0
+```
+
+### Ledger — 6 consecutive clean ticks spanning the player-set churn
+| observed_at (UTC) | primary | shadow | delta_pct | sampled | matched | hash_match_rate |
+|---|---|---|---|---|---|---|
+| 19:37:35 | 121 | 121 | 0.0 % | 50 | 50 | 1.0 |
+| 19:38:35 | 121 | 121 | 0.0 % | 50 | 50 | 1.0 |
+| 19:40:42 | 121 | 121 | 0.0 % | 50 | 50 | 1.0 |
+| 19:41:42 | 121 | 121 | 0.0 % | 50 | 50 | 1.0 |
+| 19:42:42 | 121 | 121 | 0.0 % | 50 | 50 | 1.0 |
+| **19:43:42 (post-sync + stale-clean)** | **107** | **107** | **0.0 %** | **50** | **50** | **1.0** |
+
+No `SHADOW_DIVERGENCE` warnings at any point.
+
+### Endpoint smoke (all 200)
+- `/api/v3/ferrari/safe-haven`
+- `/api/v3/ferrari/front-lines`
+- `/api/v3/ferrari/war-zone`
+- `/api/v3/scheduler-status`
+- `/api/live/scores`
+- `/api/v3/odds/props?sport=nba&limit=1`
+
+### Regression
+```
+mlb_cached_board : 306 docs  (unaffected)
+nba_live_props   : 2502 docs (prior-wave primary — fresh sync, still primary-only, no regression)
+mlb_live_props   : 4944 docs (unaffected)
+```
+
+## Batch 4 recommendation (NOT yet approved)
+
+Three independent clusters remain. Recommend one at a time in the following
+priority order:
+
+### Batch 4 (proposed)
+`services/optimized_sync_engine.py:1201` — writer using `db[cached_board_collection]`
+where `cached_board_collection` is the string returned by the engine's INTERNAL
+`get_collection_name(target_sport, "cached_board")` (which reads from
+`SPORT_COLLECTION_MAP` at line 41, still `"dg_cached_board"` today).
+
+The surgical flip: replace the single `db[cached_board_collection].update_one(...)`
+call at line 1201 with `COLL.handle(db, "board_cache", target_sport).update_one(...)`.
+
+Leave `SPORT_COLLECTION_MAP` as-is — it will be flipped at Wave 2. The
+`cached_board_collection` local variable can remain for use in log-strings and
+the existing `validate_sport_isolation` check (it's used as a STRING, not a
+handle, in those contexts).
+
+- Blast radius: 1 call-site in 1 file.
+- Risk: low. Same `update_one({"player_name":…}, {"$set": enrichment_payload})`
+  shape already validated in Batch 2 and Batch 3.
+
+### Batch 5 (deferred, requires audit first)
+`services/propvision_oracle_service.py:713` — the handle comes from
+`self._get_collection("cached_board")` adapter. Needs pre-flight audit of
+whether this adapter is shared across NBA and MLB, and how its sport context
+is plumbed. Should NOT be attempted without that audit.
+
+### Batch 6 (deferred, refactor-heavier)
+`services/engines/adaptive_sync_engine.py` — caches a collection-name STRING
+at `__init__` (line 116: `self.cached_board_collection = COLL("board_cache", "nba")`)
+and uses `self.db[self.cached_board_collection]` across 6+ sites (lines 949,
+1056, 1089, 1164, 1373). To shadow-route, the cache must be changed from a
+string to a handle, and each call-site from `self.db[self.cached_board_collection]`
+to `self.cached_board_handle`. Higher-risk refactor — recommend its own batch
+with a pre-change static audit.
+
+### Batch 7 (low priority)
+`routes/qa_testing.py` — QA-only endpoints. Defer until all production
+writers are flipped.
+
+### Wave 2 housekeeping (not in Wave 1 scope)
+- Reader hardcodes: `services/watchers.py:311`, `routes/ferrari_tiers.py:4094` (f-string)
+- Legacy registry: `config/db_config.py::NBA_LEGACY_NAMES["cached_board"]`
+- Sport-isolation registry: `services/optimized_sync_engine.py::SPORT_COLLECTION_MAP["nba"]["cached_board"]`
+- Canonical registry flip: `_SPORT_COLLECTIONS["board_cache"]["nba"]` → `"nba_cached_board"`
+- Shadow retirement: remove `("board_cache","nba")` from `_SHADOW_WRITES`
+- DB rename: `dg_cached_board` → `dg_cached_board_backup`
+
+## Status
+
+**Batch 3 complete. Stale-cleanup DELETE fan-out validated. 121→107 churn
+mirrored exactly. FULL-DOC hash sweep 107/107 matched. Regression clean.
+Halted pending greenlight for Batch 4.**
+
+

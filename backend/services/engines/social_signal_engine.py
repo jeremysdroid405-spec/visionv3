@@ -80,7 +80,7 @@ class SocialSignalEngine:
             if player_names:
                 players_to_check = player_names
             else:
-                cursor = self.db[COLL("board_cache", "nba")].find({}, {"player_name": 1})
+                cursor = COLL.handle(self.db, "board_cache", "nba").find({}, {"player_name": 1})
                 docs = await cursor.to_list(length=500)
                 players_to_check = [d["player_name"] for d in docs]
             
@@ -150,7 +150,7 @@ class SocialSignalEngine:
             
             # Check for revenge game
             # Get today's opponent from cached board
-            board_player = await self.db[COLL("board_cache", "nba")].find_one({
+            board_player = await COLL.handle(self.db, "board_cache", "nba").find_one({
                 "player_name": player_name
             })
             
