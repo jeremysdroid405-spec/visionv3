@@ -17,10 +17,12 @@ class BoardRepository:
     
     def __init__(self, db):
         self.db = db
-        self.cached_board = BaseRepository(db[COLL("board_cache", "nba")])
-        # Wave 1 shadow-writes: COLL.handle returns a ShadowWriter that
-        # fans mutations out to `nba_live_props` while delegating reads
-        # to the current primary (`dg_live_props`).
+        # Wave 1 shadow-writes (board_cache · NBA): COLL.handle returns a
+        # ShadowWriter that fans mutations out to `nba_cached_board`
+        # while delegating reads to the current primary
+        # (`dg_cached_board`). The live_props handle below is already
+        # post-Wave-2 (writes/reads direct to `nba_live_props`).
+        self.cached_board = BaseRepository(COLL.handle(db, "board_cache", "nba"))
         self.live_props = BaseRepository(COLL.handle(db, "live_props", "nba"))
     
     # ==================== CACHED BOARD ====================

@@ -116,6 +116,28 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # and retired hardcoded reader names in:
     #   - services/watchers.py
     #   - services/scoring/calibration_store.py
+
+    # Wave 1 ACTIVE (Batch 1/N): board_cache · NBA shadow-writes to
+    # `nba_cached_board`. Primary today: `dg_cached_board` (121 docs,
+    # 3.04 MiB storage, fat docs ~140 KiB each). Stable key:
+    # `player_name` (100% coverage, 100% unique on live data; no
+    # pre-existing unique index on primary — a `player_name_unique`
+    # index was created on the shadow during pre-populate).
+    # Backfill strategy: Option B (explicit one-shot pre-populate of
+    # 121 docs before wiring, to guarantee clean 0-tick convergence).
+    # Writer call-sites flipped to COLL.handle(...) in THIS batch:
+    #   - services/cached_board_builder_service.py  (main builder)
+    #   - repositories/board_repo.py                (BoardRepository facade)
+    # Other writers remain on `db[COLL(...)]` and DO NOT fan out to the
+    # shadow yet — they will be flipped in subsequent mini-batches. The
+    # main builder is authoritative for bulk-replace semantics, so
+    # convergence will hold for the player-level doc shape while the
+    # peripheral enrichers stay primary-only.
+    # IMPORTANT: the atomic-rename path in cached_board_builder_service
+    # (lines ~387-394) bypasses ShadowWriter. It currently always fails
+    # in this environment (admin-only perms); if it ever succeeds during
+    # Wave 1, the shadow will diverge — flag immediately.
+    ("board_cache", "nba"): "nba_cached_board",
 }
 
 

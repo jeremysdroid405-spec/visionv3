@@ -48,7 +48,13 @@ class CachedBoardBuilderService:
         self.parlay_builder_service = parlay_builder_service
         
         # Collection references
-        self.cached_board = db[COLL("board_cache", "nba")]
+        # Wave 1 (Batch 1) shadow-writes: COLL.handle returns a ShadowWriter
+        # that fans board_cache mutations out to `nba_cached_board`. The
+        # atomic-rename path below (lines ~387-394) bypasses this handle
+        # via `self.db.command(...)` and currently always fails in this
+        # env, so the bulk-upsert fallback (which DOES go through the
+        # handle) is the active convergence path.
+        self.cached_board = COLL.handle(db, "board_cache", "nba")
         self.cached_board_temp = db[COLL("board_cache_temp", "nba")]  # Shadow table
         self.sync_log = db[COLL.shared("sync_log")]
         self.master_roster = db[COLL("master_roster", "nba")]

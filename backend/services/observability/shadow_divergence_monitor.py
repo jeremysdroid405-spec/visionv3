@@ -83,6 +83,12 @@ _STABLE_KEY: Dict[str, Union[str, Sequence[str]]] = {
     # mirrored onto the shadow). Pairing on this key makes the monitor
     # independent of pymongo's client-side `_id` mutation ordering.
     "live_props": "_composite_key",
+    # board_cache is the UI-facing enriched player-level cache. The
+    # natural business key is `player_name` (100%/100% coverage+unique
+    # on live data, used as the filter in every UpdateOne writer).
+    # A `player_name_unique` index was created on the shadow during
+    # Wave 1 Batch 1 pre-populate. No compound-key workaround needed.
+    "board_cache": "player_name",
 }
 
 
