@@ -48,7 +48,7 @@ class GameLockEngine:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.cached_board = db[COLL("board_cache", "nba")]
+        self.cached_board = COLL.handle(db, "board_cache", "nba")
         self.locked_games = db.dg_locked_games
         self._lock_check_task: Optional[asyncio.Task] = None
         self._running = False

@@ -52,7 +52,7 @@ class IntelBriefingEngine:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.cached_board = db[COLL("board_cache", "nba")]
+        self.cached_board = COLL.handle(db, "board_cache", "nba")
         self.intel_cache = db.dg_intel_briefings
         self.radar_picks = db.dg_radar_picks
         self.goblin_vault = db.dg_goblin_vault

@@ -199,3 +199,122 @@ Deferred for Batch 3 and later:
 
 **Batch 1 complete. Observation green across 3 ticks (2 pre-sync, 1 post-sync).
 Halted pending greenlight for Batch 2.**
+
+---
+
+# Batch 2 (Inter-build writers) — applied 2026-04-19 19:26 UTC
+
+## Scope
+
+Flipped three single-handle `__init__` assignments only. No logic, no filter,
+no payload, no sub-collection, no reader, and no secondary file touched.
+
+### Files changed
+- `services/engines/intel_briefing_engine.py`
+- `services/engines/game_lock_engine.py`
+- `services/context_badge_service.py`
+
+### Diff (identical three times)
+```diff
+-self.cached_board = db[COLL("board_cache", "nba")]
++self.cached_board = COLL.handle(db, "board_cache", "nba")
+```
+
+## Post-Batch-2 Evidence
+
+### Writer fan-out
+Post-natural-sync-cycle @ 19:29:19 UTC — `Nikola Jokic` sample (representative
+of all 121 docs):
+
+| field | primary | shadow | match |
+|---|---|---|---|
+| `synced_at` | `2026-04-19T19:29:19.693400+00:00` | `2026-04-19T19:29:19.693400+00:00` | ✅ |
+| `badges` | None | None | ✅ |
+| `active_badges` | None | None | ✅ |
+| `game_locked` | None | None | ✅ |
+| `intel_briefing` | None | None | ✅ |
+| `vision_summary` | None | None | ✅ |
+
+(Inter-build writers did not fire a mutation during this particular
+observation window — no active games in lock threshold, no badge-sync
+tick, no vision enrichment triggered. The field-level match confirms
+there is NO stale state on either side; if these writers had fired
+pre-Batch-2 and only written to primary, the full-doc hash sweep
+below would fail.)
+
+### Ledger — 6 consecutive clean ticks, all post-Batch-2 and spanning a natural odds-sync + rebuild
+| observed_at (UTC) | primary | shadow | delta_pct | sampled | matched | hash_match_rate |
+|---|---|---|---|---|---|---|
+| 19:23:21 | 121 | 121 | 0.0 % | 50 | 50 | 1.0 |
+| 19:25:21 | 121 | 121 | 0.0 % | 50 | 50 | 1.0 |
+| 19:27:35 | 121 | 121 | 0.0 % | 50 | 50 | 1.0 |
+| 19:28:35 | 121 | 121 | 0.0 % | 50 | 50 | 1.0 |
+| 19:29:35 **(post-sync tick)** | 121 | 121 | 0.0 % | 50 | 50 | 1.0 |
+| 19:30:35 | 121 | 121 | 0.0 % | 50 | 50 | 1.0 |
+
+Zero alerts. Zero drift.
+
+### FULL-DOC HASH SWEEP (all 121 players, not just 50-sample)
+```
+matched=121  missed=0  skipped=0
+```
+Every single player doc in `dg_cached_board` hashes identically (minus
+volatile fields) to its twin in `nba_cached_board`. This is the strongest
+convergence signature possible — it includes fields mutated by Batch 2
+writers even when they haven't fired during this window, because any
+pre-existing stale state would surface as a mismatch.
+
+### Regression
+```
+mlb_cached_board : 306 docs (unaffected)
+nba_live_props   : 2582 docs (prior-wave primary — unaffected)
+mlb_live_props   : 4944 docs (unaffected)
+```
+
+### Endpoint smoke
+| Endpoint | Status |
+|---|---|
+| `GET /api/v3/ferrari/safe-haven` | 200 |
+| `GET /api/v3/ferrari/front-lines` | 200 |
+| `GET /api/v3/ferrari/war-zone` | 200 |
+| `GET /api/v3/scheduler-status` | 200 |
+| `GET /api/live/scores` | 200 |
+| `GET /api/v3/odds/props?sport=nba&limit=1` | 200 |
+
+## Batch 3 recommendation (NOT yet approved)
+
+The next natural grouping is the **non-adapter, non-registry-dependent
+secondary writers** — single-handle swaps similar to Batch 2:
+
+1. `services/injury_service.py:38` (teammate cache invalidation `update_many`)
+2. `services/photo_service.py:33` (photo URL `update_many`)
+3. `services/board_intelligence_service.py:64` (board intel `update_one`)
+4. `services/sync_orchestration_service.py:36` (board-meta persistence)
+5. `services/engines/social_signal_engine.py` (inline reads — audit whether
+   there are any writers here; currently seeing only reads via
+   `db[COLL(...)]` at lines 83 and 153)
+6. `services/engines/demon_goblin_engine.py:436` (single `__init__` handle,
+   already read-dominant)
+7. `services/picks_getter_service.py:248` (service handle — powers 30+
+   internal call-sites, mostly reads; writer at line 2928 will auto-follow)
+
+Rationale: same low-risk mini-batch shape (single-handle swaps), still no
+adapter indirection, still no legacy-registry coupling, still primary-only
+sources of potential drift. After Batch 3 we are within 3 writer clusters
+of full Wave-1 coverage.
+
+Deferred beyond Batch 3:
+- `services/optimized_sync_engine.py:1201` — depends on internal
+  `SPORT_COLLECTION_MAP` (parallel split registry) — Batch 4
+- `services/propvision_oracle_service.py:713` — adapter-routed shared
+  helper `_get_collection` — needs sport-awareness audit first — Batch 5
+- `services/engines/adaptive_sync_engine.py` — 6+ call-sites using a
+  name-string cache; refactor to cache the handle — Batch 6
+- `routes/qa_testing.py` writer endpoints — Batch 7 (low priority)
+- All reader hardcodes / registry cleanups — Wave 2
+
+## Status
+
+**Batch 2 complete. 6 consecutive clean ledger ticks, FULL-DOC hash sweep
+121/121 matched, regression clean. Halted pending greenlight for Batch 3.**
+

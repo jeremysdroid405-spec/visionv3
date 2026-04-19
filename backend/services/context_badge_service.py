@@ -143,7 +143,7 @@ class ContextBadgeService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.master_hub = db[COLL("master_hub", "nba")]
-        self.cached_board = db[COLL("board_cache", "nba")]
+        self.cached_board = COLL.handle(db, "board_cache", "nba")
         self.schedule_cache = db.schedule_cache
     
     async def get_todays_games(self) -> List[Dict]:
