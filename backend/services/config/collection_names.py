@@ -64,11 +64,11 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # `dg_odds_cache_backup` and is eligible for drop after the
     # observation window closes.
 
-    # Wave 1 pilot in progress (master_roster · NBA). Shadow-writing to
-    # `nba_master_roster`. Reads remain on `dg_master_roster`. Stable key
-    # is `bdl_player_id` (the BallDontLie player id — 100%-unique on
-    # 5000 docs; the BDL-sourced `id` surfaces here as `bdl_player_id`).
-    ("master_roster", "nba"): "nba_master_roster",
+    # Wave 2 complete: master_roster · NBA has been flipped to
+    # `nba_master_roster` and the shadow phase is retired. The old
+    # primary (`dg_master_roster`) has been renamed to
+    # `dg_master_roster_backup` and is eligible for drop after the
+    # observation window closes.
 }
 
 
@@ -86,7 +86,7 @@ _SPORT_COLLECTIONS: Dict[str, Dict[str, str]] = {
     # ---- Player identity / hub ---------------------------------------------
     "master_hub":           {"nba": "nba_master_hub_2026",
                              "mlb": "mlb_master_hub_2026"},
-    "master_roster":        {"nba": "dg_master_roster",
+    "master_roster":        {"nba": "nba_master_roster",
                              "mlb": "mlb_master_roster"},
     "context_flags":        {"nba": "nba_context_engine",
                              "mlb": "mlb_context_engine"},
