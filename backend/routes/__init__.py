@@ -10,7 +10,6 @@ from .live_scores import router as live_scores_router, command_center_router, se
 from .ai_context import router as ai_context_router, set_ai_context_deps
 from .master_hub import router as master_hub_router, set_master_hub_deps
 from .odds_mapper import router as odds_mapper_router, set_odds_mapper_deps
-from .demon_tracker import router as demon_tracker_router, set_demon_tracker
 from .payouts import router as payouts_router
 from .social import router as social_router, set_social_signal_engine
 from .roster_sync import router as roster_sync_router, set_demon_goblin_engine as set_roster_engine
@@ -55,7 +54,7 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
                         injury_service=None, vision_service=None, 
                         live_scores_engine=None, ai_context_engine_class=None,
                         master_hub_funcs=None, get_odds_mapper_func=None,
-                        demon_tracker=None, raw_stat_fetcher=None,
+                        raw_stat_fetcher=None,
                         social_signal_engine=None, demon_goblin_engine_class=None,
                         stats_manager=None, scheduler=None, photo_service=None):
     """Register all route modules and set engine"""
@@ -95,8 +94,6 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
         set_master_hub_deps(db, master_hub_funcs)
     if get_odds_mapper_func is not None and db is not None:
         set_odds_mapper_deps(db, get_odds_mapper_func)
-    if demon_tracker is not None:
-        set_demon_tracker(demon_tracker)
     if social_signal_engine is not None:
         set_social_signal_engine(social_signal_engine)
     if db is not None and demon_goblin_engine_class is not None:
@@ -129,7 +126,6 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     app.include_router(command_center_router, prefix="/api")
     app.include_router(master_hub_router, prefix="/api")
     app.include_router(odds_mapper_router, prefix="/api")
-    app.include_router(demon_tracker_router, prefix="/api")
     
     # Social/Roster routes
     app.include_router(payouts_router, prefix="/api")

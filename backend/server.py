@@ -24,7 +24,6 @@ from apscheduler.jobstores.mongodb import MongoDBJobStore
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from services.stats_manager_bdl import StatsManager
-from services.engines.demon_tracker_engine import DeepIngestionEngine
 from services.engines.demon_goblin_engine import DemonGoblinEngine
 from services.config.collection_names import COLL
 from services.vision_ai_service import VisionAIService, get_vision_service
@@ -400,7 +399,6 @@ else:
 logger.info("[MIDDLEWARE] Request tracing ENABLED (X-Request-ID)")
 
 stats_manager = None
-demon_tracker = None
 demon_goblin_engine = None
 vision_ai_service = None  # Vision AI service instance
 injury_service = None  # Injury Intelligence service instance
@@ -1317,7 +1315,7 @@ async def scheduled_game_start_scan():
 
 @app.on_event("startup")
 async def startup_event():
-    global stats_manager, demon_tracker, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, intel_briefing_engine, live_scores_engine, game_lock_engine, scheduler
+    global stats_manager, demon_goblin_engine, vision_ai_service, injury_service, raw_stat_fetcher, social_signal_engine, adaptive_sync, intel_briefing_engine, live_scores_engine, game_lock_engine, scheduler
     
     # ==========================================================================
     # PERFORMANCE: Create MongoDB indexes for fast queries
@@ -1392,10 +1390,6 @@ async def startup_event():
     from utils.player_lookup import invalidate_cache as invalidate_player_cache
     invalidate_player_cache()
     logger.info("Player lookup cache invalidated (will rebuild on first request)")
-    
-    # Initialize Deep Ingestion Engine (v2 - legacy)
-    demon_tracker = DeepIngestionEngine(db)
-    logger.info("Deep Ingestion Engine initialized (v2)")
     
     # Initialize Demon & Goblin Engine (v3 - NEW)
     demon_goblin_engine = DemonGoblinEngine(db)
@@ -1534,7 +1528,6 @@ async def startup_event():
         ai_context_engine_class=AiContextEngine,
         master_hub_funcs=master_hub_funcs,
         get_odds_mapper_func=get_odds_api_mapper,
-        demon_tracker=demon_tracker,
         raw_stat_fetcher=raw_stat_fetcher,
         social_signal_engine=social_signal_engine,
         demon_goblin_engine_class=DemonGoblinEngine,
