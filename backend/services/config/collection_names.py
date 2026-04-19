@@ -76,18 +76,14 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # `odds_api_mapping_master_backup` and is eligible for drop after
     # the observation window closes.
 
-    # Wave 1 (frozen-archive migration) in progress for
-    # player_stats_agg · NBA. The live codebase has no active writer
-    # for this concept — the primary `dg_player_stats` was last
-    # written 2026-04-05 and the only referencing handle
-    # (`RosterService.player_stats`) was never assigned. This shadow
-    # entry is registered for MONITOR observability only. Backfill
-    # is the migration mechanism; there is no fan-out because there
-    # are no live writes. Stable key is `normalized_name` (the only
-    # field with a `unique=True` index and 100% coverage on the 101
-    # live docs — none of `bdl_player_id`, `player_id`, or `season`
-    # exist on these documents).
-    ("player_stats_agg", "nba"): "nba_player_stats",
+    # Wave 2 complete (frozen-archive): player_stats_agg · NBA has
+    # been flipped to `nba_player_stats` and the shadow phase is
+    # retired. The old primary (`dg_player_stats`) has been renamed
+    # to `dg_player_stats_backup` and is eligible for drop after the
+    # observation window closes. NOTE: this concept has no active
+    # writer in the current codebase (the `RosterService.player_stats`
+    # handle was never assigned) — the rename merely finalises an
+    # archival snapshot under its correctly-prefixed name.
 }
 
 
@@ -117,7 +113,7 @@ _SPORT_COLLECTIONS: Dict[str, Dict[str, str]] = {
     # this; Wave 3 migrates the heavy history payload out of the hub.
     "historical_data":      {"nba": "nba_master_hub_2026",   # TEMP: still in hub
                              "mlb": "mlb_master_hub_2026"},
-    "player_stats_agg":     {"nba": "dg_player_stats",
+    "player_stats_agg":     {"nba": "nba_player_stats",
                              "mlb": "mlb_player_stats"},
 
     # ---- Ingest caches -----------------------------------------------------

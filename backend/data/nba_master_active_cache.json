@@ -1,6 +1,6 @@
 {
   "sport": "NBA",
-  "last_updated": "2026-04-19T17:28:10.424052+00:00",
+  "last_updated": "2026-04-19T17:34:11.314164+00:00",
   "prop_count": 8,
   "props": {
     "paolo_banchero|ast|3.5|prizepicks": {
@@ -2096,9 +2096,9 @@
       "is_demon": true,
       "is_goblin": false,
       "prop_type": "DEMON",
-      "last_update": "2026-04-19T16:24:09Z",
-      "popularity_order": 13,
-      "fetched_at": "2026-04-19T16:32:54.680666+00:00",
+      "last_update": "2026-04-19T17:28:52Z",
+      "popularity_order": 14,
+      "fetched_at": "2026-04-19T17:29:32.938954+00:00",
       "sharp_market": {
         "draftkings_price": 257,
         "fanduel_price": null,
@@ -2118,7 +2118,7 @@
       "_composite_key": "Tristan Da Silva|PTS|7.5|Over|2026-04-19",
       "stat_type_extracted": "PTS",
       "game_date": "2026-04-19",
-      "synced_at": "2026-04-19T16:32:54.500012+00:00",
+      "synced_at": "2026-04-19T17:29:32.607775+00:00",
       "hit_rates": {
         "l10_rate": 60,
         "l5_rate": 40,
@@ -2199,8 +2199,8 @@
           "variance_level": "High"
         },
         "vision_insight": {
-          "primary": "Tristan Da Silva is quietly carving out a consistent role in this rotation, and tonight he draws a Detroit squad that ranks 21st in defensive efficiency against his position. While his 0.645 coefficient of variation shows he can be a bit of a rollercoaster, his 70% hit rate over the last twenty games makes this 7.5 line feel like a major oversight given his 8.7 projection.",
-          "summary": "Tristan Da Silva is quietly carving out a consistent role in this rotation, and tonight he draws a Detroit squad that ranks 21st in defensive efficiency against his position. While his 0.645 coefficient of variation shows he can be a bit of a rollercoaster, his 70% hit rate over the last twenty games makes this 7.5 line feel like a major oversight given his 8.7 projection.",
+          "primary": "Tristan Da Silva is quietly carving out a consistent role in this rotation, clearing this 7.5 mark in seven of his last ten games while averaging 8.2 points over that span. Detroit is currently sitting at 21st in defensive efficiency against his position, giving us a perfect window to capitalize on his 16% edge before he becomes a household name.",
+          "summary": "Tristan Da Silva is quietly carving out a consistent role in this rotation, clearing this 7.5 mark in seven of his last ten games while averaging 8.2 points over that span. Detroit is currently sitting at 21st in defensive efficiency against his position, giving us a perfect window to capitalize on his 16% edge before he becomes a household name.",
           "projection": 8.7,
           "canonical_projection": 8.7,
           "canonical_edge": 1.2,
@@ -2235,7 +2235,7 @@
             "L10_avg_fgm"
           ]
         },
-        "calculated_at": "2026-04-19T16:34:52.180422+00:00"
+        "calculated_at": "2026-04-19T17:31:24.837515+00:00"
       },
       "is_vision_enriched": true,
       "is_anomaly": true,
@@ -2243,7 +2243,7 @@
       "is_goblin_anomaly": false,
       "season_margin": 2.5,
       "margin": 0.7,
-      "vision_summary": "Tristan Da Silva is quietly finding his rhythm in this rotation, clearing this 7.5 mark in seven of his last ten outings while averaging a solid 8.2 points over that span. Detroit's defensive unit ranks a lowly 21st in the league, so we\u2019re banking on the rookie to capitalize on those soft rotations and secure us a winner in a low-stakes spot.",
+      "vision_summary": "Detroit\u2019s wing defense is a total sieve lately, so we\u2019re banking on Da Silva finding his spots and continuing his steady climb over this 7.5 total. While he\u2019s definitely a high-variance rookie, he\u2019s cleared this mark in 70% of his last twenty games and should have plenty of clean looks against a bottom-ten Pistons unit.",
       "vision_enriched_at": null,
       "vision_score": 96.9,
       "board": null,
@@ -2338,7 +2338,7 @@
         "has_gemini": false,
         "is_fully_validated": false
       },
-      "vision_intel": "Tristan Da Silva is quietly finding his rhythm in this rotation, clearing this 7.5 mark in seven of his last ten outings while averaging a solid 8.2 points over that span. Detroit's defensive unit ranks a lowly 21st in the league, so we\u2019re banking on the rookie to capitalize on those soft rotations and secure us a winner in a low-stakes spot.",
+      "vision_intel": "Detroit\u2019s wing defense is a total sieve lately, so we\u2019re banking on Da Silva finding his spots and continuing his steady climb over this 7.5 total. While he\u2019s definitely a high-variance rookie, he\u2019s cleared this mark in 70% of his last twenty games and should have plenty of clean looks against a bottom-ten Pistons unit.",
       "scout_badges": [
         "hot_streak",
         "high_fidelity_model"
@@ -2356,8 +2356,8 @@
         ]
       },
       "_enriched": true,
-      "_enriched_at": "2026-04-19T16:34:57.662157+00:00",
-      "_cache_updated": "2026-04-19T16:34:57.662161+00:00"
+      "_enriched_at": "2026-04-19T17:31:33.375284+00:00",
+      "_cache_updated": "2026-04-19T17:31:33.375286+00:00"
     }
   }
 }
