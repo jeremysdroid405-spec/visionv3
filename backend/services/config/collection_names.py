@@ -91,16 +91,15 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # `referee_assignments_backup` and is eligible for drop after
     # the observation window closes.
 
-    # Wave 1 pilot in progress (line_history · NBA). Shadow-writing
-    # to `nba_line_history`. Reads remain on `line_history`. This is
-    # an APPEND-ONLY audit log (insert_only, no unique constraint).
-    # Stable key is the compound `(player_name, stat_type, line,
-    # recorded_at)` — ~99.75% unique; the 0.25% duplicate groups are
-    # byte-identical payloads (verified on 5 sampled groups), so
-    # hash-based sampling remains accurate. None of `event_id`,
-    # `source`, `bookmaker`, `market`, or `timestamp` exist as fields
-    # on these documents.
-    ("line_history", "nba"): "nba_line_history",
+    # Wave 2 complete: line_history · NBA has been flipped to
+    # `nba_line_history` and the shadow phase is retired. The old
+    # primary (`line_history`) has been renamed to
+    # `line_history_backup` and is eligible for drop after the
+    # observation window closes. NOTE: this is an append-only audit
+    # log with true-duplicate-payload groups under the compound
+    # stable key `(player_name, stat_type, line, recorded_at)`;
+    # convergence was verified via bucket-aware multiset hash compare
+    # (708,570/708,570 key-level matches across 801,955 docs).
 }
 
 
@@ -166,7 +165,7 @@ _SPORT_COLLECTIONS: Dict[str, Dict[str, str]] = {
                              "mlb": None},
 
     # ---- Misc sport-specific -----------------------------------------------
-    "line_history":         {"nba": "line_history",          # currently in hub DB
+    "line_history":         {"nba": "nba_line_history",
                              "mlb": "mlb_line_history"},
     "referee_assignments":  {"nba": "nba_referee_assignments",
                              "mlb": "mlb_referee_assignments"},
