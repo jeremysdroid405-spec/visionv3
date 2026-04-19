@@ -67,7 +67,7 @@ BASE_COLLECTIONS = {
 # with existing data. New sports (MLB) use consistent prefixing.
 NBA_LEGACY_NAMES = {
     "cached_board": "dg_cached_board",
-    "live_props": "dg_live_props",
+    "live_props": "nba_live_props",
     "injuries": "dg_injuries",
     "safe_haven": "ferrari_safe_haven",
     "front_lines": "ferrari_front_lines",

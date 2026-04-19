@@ -39,7 +39,7 @@ SPORT_COLLECTION_MAP = {
     "nba": {
         "master_hub": "nba_master_hub_2026",
         "cached_board": "dg_cached_board",  # Legacy NBA naming (no prefix for backwards compat)
-        "live_props": "dg_live_props",
+        "live_props": "nba_live_props",
         "safe_haven": "ferrari_safe_haven",
         "front_lines": "ferrari_front_lines",
         "war_zone": "ferrari_war_zone",

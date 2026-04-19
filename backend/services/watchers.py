@@ -19,6 +19,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Set
 
 from services.event_bus import BoardEvent, get_event_bus
+from services.config.collection_names import COLL
 
 logger = logging.getLogger(__name__)
 
@@ -201,7 +202,8 @@ class GameClockWatcher:
         lock_threshold = now + timedelta(minutes=self.LOCK_WINDOW_MINUTES)
         bus = get_event_bus()
 
-        for sport, col_name in [("nba", "dg_live_props"), ("mlb", "mlb_live_props")]:
+        for sport in ("nba", "mlb"):
+            col_name = COLL("live_props", sport)
             # Find distinct commence_times
             pipeline = [
                 {"$match": {"commence_time": {"$exists": True, "$ne": None}}},

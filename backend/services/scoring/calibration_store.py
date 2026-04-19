@@ -26,9 +26,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import logging
 
-logger = logging.getLogger(__name__)
+from services.config.collection_names import COLL
 
-_LIVE_PROPS_BY_SPORT = {"mlb": "mlb_live_props", "nba": "dg_live_props"}
+logger = logging.getLogger(__name__)
 
 
 def _lean_top_samples(variant_data: Dict[str, Any], k: int = 3) -> List[Dict[str, Any]]:
@@ -82,7 +82,10 @@ def _lean_war_zone_movers(war_zone_movers: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _source_timestamps(db, sport: str) -> Dict[str, Any]:
-    live_coll = _LIVE_PROPS_BY_SPORT.get(sport)
+    try:
+        live_coll = COLL("live_props", sport)
+    except KeyError:
+        live_coll = None
     lp_fetched = None
     if live_coll:
         d = await db[live_coll].find_one({}, {"fetched_at": 1, "_id": 0})

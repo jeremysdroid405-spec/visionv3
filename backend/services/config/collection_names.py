@@ -101,20 +101,21 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # convergence was verified via bucket-aware multiset hash compare
     # (708,570/708,570 key-level matches across 801,955 docs).
 
-    # Wave 1 ACTIVE: live_props · NBA shadow-writes to `nba_live_props`.
-    # Primary today: `dg_live_props` (2,518 docs, 0.93 MiB storage).
-    # Stable key: `_composite_key` (100% coverage, 100% unique, unique+sparse
-    # index on primary). Backfill strategy: Option A (natural odds-sync tick
-    # — live_props is a drop-and-replace hot cache, so the first
-    # delete_many+insert_many after wiring populates the shadow atomically).
-    # Writer call-sites flipped to COLL.handle(...):
-    #   - services/odds_sync_service.py
-    #   - services/universal_odds_sync.py
-    #   - repositories/board_repo.py
-    # Reader hardcodes to migrate at Wave 2 (still read primary today):
-    #   - services/watchers.py:204
-    #   - services/scoring/calibration_store.py:31
-    ("live_props", "nba"): "nba_live_props",
+    # Wave 2 complete: live_props · NBA has been flipped to
+    # `nba_live_props` and the shadow phase is retired. The old
+    # primary (`dg_live_props`) has been renamed to
+    # `dg_live_props_backup` and is eligible for drop after the
+    # observation window closes. NOTE: this is a drop-and-replace
+    # hot cache with the unique+sparse `_composite_key_1` index;
+    # Wave 1 convergence was verified via `_composite_key` pairing
+    # (delta_pct=0.0, hash_match_rate=1.0 across 9 consecutive
+    # ticks, including a confirmed post-natural-sync tick).
+    # Additional Wave 2 housekeeping flipped the split registries:
+    #   - config/db_config.py::NBA_LEGACY_NAMES["live_props"]
+    #   - services/optimized_sync_engine.py::SPORT_COLLECTION_MAP
+    # and retired hardcoded reader names in:
+    #   - services/watchers.py
+    #   - services/scoring/calibration_store.py
 }
 
 
@@ -148,7 +149,7 @@ _SPORT_COLLECTIONS: Dict[str, Dict[str, str]] = {
                              "mlb": "mlb_player_stats"},
 
     # ---- Ingest caches -----------------------------------------------------
-    "live_props":           {"nba": "dg_live_props",
+    "live_props":           {"nba": "nba_live_props",
                              "mlb": "mlb_live_props"},
     "odds_cache":           {"nba": "nba_odds_cache",
                              "mlb": "mlb_odds_cache"},
