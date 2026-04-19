@@ -84,6 +84,13 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # writer in the current codebase (the `RosterService.player_stats`
     # handle was never assigned) — the rename merely finalises an
     # archival snapshot under its correctly-prefixed name.
+
+    # Wave 1 pilot in progress (referee_assignments · NBA).
+    # Shadow-writing to `nba_referee_assignments`. Reads remain on
+    # `referee_assignments`. Stable key is compound `(date, game)` —
+    # 118/118 unique on live data; none of `game_id`, `event_id`,
+    # `crew_role`, or `referee_name` exist as fields in these docs.
+    ("referee_assignments", "nba"): "nba_referee_assignments",
 }
 
 

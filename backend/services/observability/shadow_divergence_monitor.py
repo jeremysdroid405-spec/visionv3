@@ -65,6 +65,11 @@ _STABLE_KEY: Dict[str, Union[str, Sequence[str]]] = {
     # do NOT exist on these documents — this concept is an archival
     # snapshot with no active writer.
     "player_stats_agg": "normalized_name",
+    # referee_assignments documents do NOT carry `game_id`,
+    # `event_id`, `crew_role`, or `referee_name`. They key cleanly
+    # on the compound `(date, game)` — 118/118 unique on live data
+    # (one referee crew per game per date).
+    "referee_assignments": ("date", "game"),
 }
 
 
