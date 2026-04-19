@@ -12,6 +12,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from .game_utils import normalize_name, normalize_stat_key
 from .hit_rate_service import HitRateCalculator
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,8 +29,8 @@ class PlayerStatsResolver:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.master_hub = db.nba_master_hub_2026
-        self.master_roster = db.dg_master_roster
+        self.master_hub = db[COLL("master_hub", "nba")]
+        self.master_roster = db[COLL("master_roster", "nba")]
         self._player_cache: Dict[str, Dict] = {}
     
     async def get_player(self, player_name: str) -> Optional[Dict]:

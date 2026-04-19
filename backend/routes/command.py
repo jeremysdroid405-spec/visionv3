@@ -25,6 +25,8 @@ from services.intel_suite_calculator import get_intel_calculator
 from services.stats_service import calculate_coupled_stats  # CRITICAL: For hit rate math
 from utils.player_lookup import build_player_lookup, get_player_by_name
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/command", tags=["Command Post"])
@@ -121,7 +123,7 @@ async def search_players(
         
         if sport_lower == "mlb":
             # Search MLB Master Hub
-            collection = _db["mlb_master_hub_2026"]
+            collection = _db[COLL("master_hub", "mlb")]
             results = []
             
             cursor = collection.find(
@@ -229,7 +231,7 @@ async def get_tactical_profile(
         
         # ===== STEP 1: Fetch ALL available props from dg_cached_board =====
         # Props include provider-based tier classification (is_demon, is_goblin, tier_label)
-        all_props = await db.dg_cached_board.find(
+        all_props = await db[COLL("board_cache", "nba")].find(
             {"player_name": player_name_regex},
             {"_id": 0}
         ).to_list(200)

@@ -19,6 +19,8 @@ import logging
 
 from services.mlb_lineup_ripple_service import get_mlb_ripple_service
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["mlb-ripple"])
 
@@ -164,7 +166,7 @@ async def get_lineup_anchors(response: Response, team: str = None):
         if team:
             query['team_abbr'] = team
         
-        anchors = list(sync_db.mlb_master_hub_2026.find(
+        anchors = list(sync_db[COLL("master_hub", "mlb")].find(
             query,
             {'_id': 0, 'display_name': 1, 'team_abbr': 1, 'primary_position': 1,
              'advanced_stats.season_stats.2026.batting': 1}

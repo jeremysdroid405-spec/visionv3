@@ -21,6 +21,8 @@ from services.dvp_service import calculate_dvp_modifier, get_dvp_label
 from services.insights_service import calculate_confidence_rating
 from services.utils_service import sanitize_player_name
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # PrizePicks Classification Constants
@@ -71,7 +73,7 @@ class PropsService:
     def __init__(self, db):
         self.db = db
         # BDL is the ONLY source for player stats
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         self.daily_insights = db.dg_daily_insights
     
     # ==================== STAT TYPE EXTRACTION ====================

@@ -17,6 +17,8 @@ from typing import Dict, Any, List, Optional, Set, Tuple
 from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Configuration
@@ -81,7 +83,7 @@ class UsageSpikeDetector:
         """
         try:
             # Fetch from nba_master_hub_2026 or daily_insights
-            players = await self.db.nba_master_hub_2026.find(
+            players = await self.db[COLL("master_hub", "nba")].find(
                 {"is_active": True},
                 {
                     "_id": 0,

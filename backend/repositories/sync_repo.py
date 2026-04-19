@@ -6,6 +6,7 @@ Handles sync status and logging operations.
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 from .base import BaseRepository
+from services.config.collection_names import COLL
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class SyncRepository:
     
     def __init__(self, db):
         self.db = db
-        self.sync_log = BaseRepository(db.dg_sync_log)
+        self.sync_log = BaseRepository(db[COLL.shared("sync_log")])
     
     # ==================== SYNC STATUS ====================
     

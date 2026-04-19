@@ -19,6 +19,8 @@ import httpx
 
 load_dotenv()
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 ESPN_NEWS_URL = "http://site.api.espn.com/apis/site/v2/sports/basketball/nba/news"
@@ -33,7 +35,7 @@ class InjuryIntelligenceService:
     def __init__(self, db):
         self.db = db
         self.injuries_collection = db.dg_injuries  # legacy name kept for downstream compat
-        self.cached_board = db.dg_cached_board
+        self.cached_board = db[COLL("board_cache", "nba")]
         self.daily_insights = db.dg_daily_insights
         self.breaking_news = db.dg_breaking_news
         

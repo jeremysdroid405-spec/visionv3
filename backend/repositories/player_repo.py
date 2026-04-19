@@ -6,6 +6,7 @@ Handles player roster and identity operations.
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 from .base import BaseRepository
+from services.config.collection_names import COLL
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class PlayerRepository:
     
     def __init__(self, db):
         self.db = db
-        self.master_roster = BaseRepository(db.dg_master_roster)
+        self.master_roster = BaseRepository(db[COLL("master_roster", "nba")])
         self.daily_insights = BaseRepository(db.dg_daily_insights)
         
         # In-memory cache for fast lookups

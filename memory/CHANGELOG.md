@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-04-19 — Wave 0 Batch 9 plumbing (resolvers/repos/routes/utility services)
+- 10 files routed through `services/config/collection_names.py::COLL`:
+  `services/picks/player_stats_resolver.py`, `advanced_analytics.py`,
+  `repositories/player_repo.py`, `repositories/sync_repo.py`,
+  `routes/command.py`, `routes/mlb_ripple.py`,
+  `services/usage_spike_detector.py`, `services/props_service.py`,
+  `services/injury_service.py`, `services/injury_advantage.py`.
+- In-scope concepts: `master_hub` (NBA+MLB), `master_roster`, `board_cache`,
+  `sync_log` (shared), `injuries` (shared), `live_scores_cache` (shared).
+- 13 code-level literals removed → 13 `COLL(...)` call-sites added. 10 imports added.
+- First-time routing of bracket-access pattern `_db["mlb_master_hub_2026"]` and
+  `db["injuries_normalized"]` — both handled correctly via `COLL(...)`.
+- In-scope hardcoded-ref count in these files: **13 → 0**.
+- Regression suite: 80 passed / 1 skipped / 0 failed — matches baseline.
+- Live smoke after restart: NBA + MLB Ferrari, NBA + MLB player search,
+  MLB ripple alerts all HTTP 200. Backend uptime clean. 0 new errors.
+- Global code-level residual (apples-to-apples attr-access pattern): 59 → **48 refs**.
+- Broader scanner added (now covers `db["..."]` bracket-access and `_db` variable
+  patterns that were invisible before) — surfaces 107 total refs across 65 files
+  as honest accounting for Batch 10 scope. This is not a regression; it's
+  newly-surfaced visibility.
+- Audit: `/app/memory/wave0_batch9_audit.md`.
+
+
 ## 2026-04-19 — Wave 0 Batch 8 plumbing (adapter/writer/sync orchestration)
 - 9 files routed through `services/config/collection_names.py::COLL`:
   `services/odds_api_service.py`, `services/sync_service.py`,

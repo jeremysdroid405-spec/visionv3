@@ -32,6 +32,8 @@ from typing import Dict, List, Optional
 
 from services.injury_normalization import STRUCTURAL_FIELDS
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Minimum projected minutes increase to qualify
@@ -82,7 +84,7 @@ async def _get_recency_window(db, sport: str) -> int:
     Returns hours as int.
     """
     try:
-        cached = await db.live_scores_cache.find_one({})
+        cached = await db[COLL.shared("live_scores_cache")].find_one({})
         if not cached:
             return RECENCY_DEFAULT_HOURS
 
@@ -151,7 +153,7 @@ async def _get_meaningful_injuries(db, sport: str) -> List[dict]:
     for f in STRUCTURAL_FIELDS:
         projection[f] = 1
 
-    cursor = db["injuries_normalized"].find(
+    cursor = db[COLL.shared("injuries")].find(
         {
             "sport": sport,
             "tier_level": {"$gte": 3},

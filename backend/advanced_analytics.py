@@ -24,6 +24,8 @@ from typing import Dict, List, Any, Optional, Tuple
 import statistics
 import httpx
 
+from services.config.collection_names import COLL
+
 # NBA API imports
 try:
     from nba_api.stats.endpoints import (
@@ -357,7 +359,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_insights_team ON public.daily_insights (tea
         """
         try:
             # Get injuries from master hub (populated by BDL sync)
-            cursor = self.db.nba_master_hub_2026.find({
+            cursor = self.db[COLL("master_hub", "nba")].find({
                 "team": team,
                 "injury.status": {"$in": ["Out", "Doubtful", "Questionable"]}
             }, {"display_name": 1, "injury": 1})
