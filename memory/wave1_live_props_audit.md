@@ -139,6 +139,28 @@ Deferred and flagged; current convergence proof remains strong because
 every post-sync ledger tick shows `delta_pct == 0.0` and
 `hash_match_rate == 1.0`.
 
+### Update — `_STABLE_KEY` hardening applied (isolated micro-batch, post-Wave-1)
+
+The fragile `_id`-fallback noted above has been eliminated. Added to
+`services/observability/shadow_divergence_monitor.py::_STABLE_KEY`:
+
+```python
+"live_props": "_composite_key",
+```
+
+After restart, three consecutive monitor ticks confirm the new stable key
+is active and convergence remains perfect:
+
+| observed_at (UTC) | primary | shadow | delta_pct | sampled | matched | hash_match_rate | stable_key |
+|---|---|---|---|---|---|---|---|
+| 18:39:16 | 2560 | 2560 | 0.0 % | 50 | 50 | 1.0 | `_composite_key` |
+| 18:40:16 | 2560 | 2560 | 0.0 % | 50 | 50 | 1.0 | `_composite_key` |
+| 18:41:16 | 2560 | 2560 | 0.0 % | 50 | 50 | 1.0 | `_composite_key` |
+
+A fresh natural odds-sync tick ran at 18:40:58 UTC (2,560 props stored),
+so the 18:41:16 ledger row is a confirmed post-sync measurement under
+the new stable key. MLB `mlb_live_props` remains at 4,944 docs — unaffected.
+
 ## Wave 2 readiness checklist (pending)
 
 - [ ] Observation window remains clean (delta_pct == 0, hash_match_rate ≥ 0.99) for the operator-chosen duration.

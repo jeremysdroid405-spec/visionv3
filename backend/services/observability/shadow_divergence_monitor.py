@@ -77,6 +77,12 @@ _STABLE_KEY: Dict[str, Union[str, Sequence[str]]] = {
     # `source`, `bookmaker`, or `market` exist as fields on these
     # documents.
     "line_history": ("player_name", "stat_type", "line", "recorded_at"),
+    # live_props is the hot drop-and-replace prop cache. `_composite_key`
+    # is 100% populated and 100% unique on live data (2,518/2,518),
+    # backed by a `unique=True, sparse=True` index on the primary (and
+    # mirrored onto the shadow). Pairing on this key makes the monitor
+    # independent of pymongo's client-side `_id` mutation ordering.
+    "live_props": "_composite_key",
 }
 
 
