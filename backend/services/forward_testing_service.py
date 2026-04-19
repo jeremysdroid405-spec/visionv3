@@ -25,6 +25,8 @@ from datetime import datetime, timezone, timedelta
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import asyncio
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Collection names
@@ -359,9 +361,9 @@ class ForwardTestingService:
         
         if sport == "nba":
             # Check dg_cached_board for game logs
-            collection = self.db["dg_cached_board"]
+            collection = self.db[COLL("board_cache", "nba")]
         else:
-            collection = self.db["mlb_cached_board"]
+            collection = self.db[COLL("board_cache", "mlb")]
         
         async for player in collection.find(
             {},

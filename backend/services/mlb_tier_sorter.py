@@ -14,6 +14,8 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -80,7 +82,7 @@ class MLBTierSorter:
         current_season = current_year
         
         # Load player logs from master hub - FILTER TO CURRENT SEASON ONLY
-        master_hub = self.db["mlb_master_hub_2026"]
+        master_hub = self.db[COLL("master_hub", "mlb")]
         players = await master_hub.find(
             {"bdl_game_logs": {"$exists": True, "$ne": []}},
             {"_id": 0, "display_name": 1, "bdl_game_logs": 1, "vk_baselines": 1}
@@ -681,7 +683,7 @@ class MLBTierSorter:
         await self._load_caches()
         
         # Load props from cached board
-        cached_board = self.db["mlb_cached_board"]
+        cached_board = self.db[COLL("board_cache", "mlb")]
         players = await cached_board.find({}, {"_id": 0}).to_list(length=None)
         
         # Flatten props - combine props, goblins, and demons arrays, then deduplicate

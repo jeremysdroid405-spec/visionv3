@@ -20,6 +20,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 import aiohttp
 import os
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Collection name for live injuries (separate from main injuries)
@@ -312,7 +314,7 @@ class LiveInjuryMicroSync:
         Reads from injuries_normalized (authoritative BDL-derived source).
         Only structural fields are used for the check (tier_level >= 4 = OUT/OFS).
         """
-        injury = await self.db.injuries_normalized.find_one(
+        injury = await self.db[COLL.shared("injuries")].find_one(
             {
                 "player_name": {"$regex": f"^{player_name}$", "$options": "i"},
                 "sport": sport,

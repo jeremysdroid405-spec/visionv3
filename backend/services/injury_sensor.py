@@ -41,6 +41,8 @@ from services.injury_normalization import (
     extract_display,
 )
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Dynamic cadence settings (seconds)
@@ -134,7 +136,7 @@ class InjurySensor:
         """Determine polling interval based on game proximity."""
         try:
             now = datetime.now(timezone.utc)
-            cached = await self.db.live_scores_cache.find_one({})
+            cached = await self.db[COLL.shared("live_scores_cache")].find_one({})
             if not cached:
                 return CADENCE_IDLE
 

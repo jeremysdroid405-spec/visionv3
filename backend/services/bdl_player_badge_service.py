@@ -36,6 +36,8 @@ from typing import Dict, List, Optional, Any, Tuple
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import httpx
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # BDL Configuration
@@ -132,7 +134,7 @@ class BDLPlayerBadgeService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.badges_collection = db.bdl_player_badges
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         self._cache = {}
     
     async def _make_request(

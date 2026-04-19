@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-04-19 — Wave 0 Batch 11 plumbing (second-pass + long-tail)
+- 14 files routed through `services/config/collection_names.py::COLL`:
+  `server.py` (second-pass), `services/mlb_tier_sorter.py`,
+  `services/vegas_killer_model.py` (second-pass),
+  `services/forward_testing_service.py`,
+  `services/vegas_pro_model.py` (second-pass), `services/mlb_badge_system.py`,
+  `services/vegas_regression_model.py` (second-pass),
+  `services/bdl_enhanced_data.py` (second-pass),
+  `services/mlb_tier_service.py` (second-pass),
+  `services/live_injury_micro_sync.py`, `services/bdl_player_badge_service.py`,
+  `services/injury_sensor.py`, `routes/vision.py`,
+  `repositories/board_repo.py` (second-pass).
+- In-scope concepts: `master_hub` (NBA+MLB), `board_cache` (NBA+MLB), `live_props`
+  (NBA+MLB), `context_flags` (NBA), `injuries` (shared), `live_scores_cache` (shared).
+- 20 code-level literals removed → 20 `COLL(...)` call-sites added. 7 imports added
+  (7 files already had import from prior batches).
+- **Stop & Report**: `odds_mapping` concept NOT in registry. Per strict-refactor
+  rules, did not add registry entry. 3 `odds_api_mapping_master` refs in
+  `server.py:1316-1318` deferred pending user approval to add
+  `"odds_mapping": "odds_api_mapping_master"` to `_SHARED_COLLECTIONS`.
+- Batch 11 in-scope residuals in these files: **20 → 0**.
+- Regression suite: 80 passed / 1 skipped / 0 failed — matches baseline.
+- Live smoke after restart: NBA + MLB Ferrari, master-hub lookup, live scores,
+  vision/status all HTTP 200. Backend uptime clean. 0 new errors.
+  (Pre-existing 404 on `/v3/vision/player/{slug}` — `player_router` not mounted
+  in `server.py`; NOT a regression from this batch.)
+- Global in-scope broader-scanner residual: **66 → 43 refs across 42 files**.
+- Deferred refs awaiting registry entry: 3 (`odds_api_mapping_master`).
+- Audit: `/app/memory/wave0_batch11_audit.md`.
+
+
 ## 2026-04-19 — Wave 0 Batch 10 plumbing (broader scanner sweep)
 - 9 files routed through `services/config/collection_names.py::COLL`:
   `routes/master_hub.py`, `routes/ai_context.py`, `routes/live.py`,

@@ -594,7 +594,7 @@ def calculate_vegas_edge(
     Returns:
         Dictionary with predicted value, edge, and recommendation
     """
-    hub = db['nba_master_hub_2026']
+    hub = db[COLL("master_hub", "nba")]
     
     # Find player
     player_doc = hub.find_one({

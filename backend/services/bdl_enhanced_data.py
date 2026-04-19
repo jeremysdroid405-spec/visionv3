@@ -137,7 +137,7 @@ class BDLEnhancedDataService:
         context_updates = 0
         for injured in players_with_injuries:
             # Set "deep_water" badge for injured players
-            result = await self.db.nba_context_engine.update_one(
+            result = await self.db[COLL("context_flags", "nba")].update_one(
                 {"player_name": injured["name"]},
                 {
                     "$set": {

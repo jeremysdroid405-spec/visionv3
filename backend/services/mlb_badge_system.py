@@ -25,6 +25,8 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Current season for filtering
@@ -246,7 +248,7 @@ class MLBBadgeService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.master_hub = db.mlb_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "mlb")]
         self.historical_logs = db.mlb_historical_logs
     
     async def evaluate_pure_contact(self, player_name: str) -> Optional[Dict]:
@@ -659,7 +661,7 @@ class MLBBadgeService:
         """
         try:
             # Get pitcher from master hub
-            master_hub = self.db["mlb_master_hub_2026"]
+            master_hub = self.db[COLL("master_hub", "mlb")]
             pitcher = await master_hub.find_one(
                 {"display_name": {"$regex": f"^{pitcher_name}$", "$options": "i"}},
                 {"_id": 0, "k_per_9": 1, "whip": 1, "bdl_game_logs": 1, "vk_baselines": 1}

@@ -18,7 +18,7 @@ class BoardRepository:
     def __init__(self, db):
         self.db = db
         self.cached_board = BaseRepository(db[COLL("board_cache", "nba")])
-        self.live_props = BaseRepository(db.dg_live_props)
+        self.live_props = BaseRepository(db[COLL("live_props", "nba")])
     
     # ==================== CACHED BOARD ====================
     

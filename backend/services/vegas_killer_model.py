@@ -1186,7 +1186,7 @@ class VegasFeatureEngineer:
         # =====================================================================
         # SOURCE 1: Current Season (nba_master_hub_2026)
         # =====================================================================
-        hub = self.db['nba_master_hub_2026']
+        hub = self.db[COLL("master_hub", "nba")]
         
         players = hub.find({
             'bdl_game_logs': {'$exists': True},
@@ -1694,7 +1694,7 @@ class VegasKillerModel:
         feature_cols = self.feature_cols[stat_type]
         
         # Get player
-        hub = self.db['nba_master_hub_2026']
+        hub = self.db[COLL("master_hub", "nba")]
         player = hub.find_one({
             '$or': [
                 {'player_name': player_name},

@@ -154,7 +154,7 @@ class FeatureEngineer:
         
         This simulates real prediction conditions.
         """
-        hub = self.db['nba_master_hub_2026']
+        hub = self.db[COLL("master_hub", "nba")]
         all_rows = []
         
         # Get all players with game logs
@@ -559,7 +559,7 @@ class VegasProModel:
         feature_cols = self.models[f"{stat_type}_features"]
         
         # Get player's game logs
-        hub = self.db['nba_master_hub_2026']
+        hub = self.db[COLL("master_hub", "nba")]
         player = hub.find_one({
             '$or': [
                 {'player_name': player_name},

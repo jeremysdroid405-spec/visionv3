@@ -9,6 +9,8 @@ from typing import Optional
 import logging
 import os
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v3/vision", tags=["vision"])
@@ -169,7 +171,7 @@ async def get_player_vision(player_slug: str):
     name_pattern = slug_to_name(player_slug)
     
     # Find player by name (handle special characters like Dončić)
-    player = await _db.nba_master_hub_2026.find_one(
+    player = await _db[COLL("master_hub", "nba")].find_one(
         {"display_name": {"$regex": name_pattern, "$options": "i"}},
         {"nba_player_id": 1, "display_name": 1}
     )

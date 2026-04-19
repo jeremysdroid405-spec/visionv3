@@ -435,8 +435,8 @@ async def run_mlb_startup_health_check():
     
     try:
         # Check MLB collection counts
-        mlb_live_props_count = await db.mlb_live_props.count_documents({})
-        mlb_cached_board_count = await db.mlb_cached_board.count_documents({})
+        mlb_live_props_count = await db[COLL("live_props", "mlb")].count_documents({})
+        mlb_cached_board_count = await db[COLL("board_cache", "mlb")].count_documents({})
         mlb_war_zone_count = await db.mlb_war_zone.count_documents({})
         
         logger.info(f"[MLB_HEALTH] mlb_live_props: {mlb_live_props_count} docs")
