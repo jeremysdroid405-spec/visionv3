@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-04-19 — Tier Integrity + Post-Dedup Backfill Verified
+- **Bug fix**: player duplicates across a single tier (same player ×N on
+  alternate lines or across stat families). Confirmed on NBA Safe Haven
+  (Amen Thompson ×3) and MLB War Zone (James Wood ×2).
+- **Fix at two levels**:
+  - `services/board/reader.py::get_board` — over-fetch `cap*6`, walk sorted
+    stream, keep first per normalized `player_name`, stop at `cap` distinct
+    players. Reader is the single entry point for NBA boards.
+  - `routes/ferrari_tiers.py::_dedupe_picks_by_player` — route-level
+    fallback wired into all 5 tier exit points; covers MLB legacy
+    collections (`mlb_safe_haven` / `mlb_front_lines` / `mlb_war_zone`)
+    that bypass the reader. Ranks by `(vision_score, pp_utility, |edge|)`.
+- **Post-dedup backfill audit** (2026-04-19 00:00 UTC):
+  | Tier (sport)     | pool rows | distinct | surfaced | reason if <cap          |
+  |------------------|----------:|---------:|---------:|-------------------------|
+  | NBA safe_haven   |         3 |        1 |        1 | pool exhausted          |
+  | NBA front_lines  |         9 |        4 |        3 | 1 × JIT injury (Durant) |
+  | NBA war_zone     |         2 |        2 |        2 | pool exhausted          |
+  | MLB safe_haven   |        10 |       10 |       10 | FULL                    |
+  | MLB front_lines  |        10 |       10 |       10 | FULL                    |
+  | MLB war_zone     |        10 |        9 |        9 | 1 × dedup (James Wood)  |
+  Invariant `surfaced == min(cap, distinct − injury_excluded)` holds for
+  every tier. No hidden exclusions.
+- **Regression suite**: `/app/backend/tests/test_tier_integrity.py`
+  (8 tests). Total backend regression surface now 13 passing.
+
+
 ## 2026-04-18 — Priority realignment (user directive)
 
 ## 2026-04-19 — Step 6 A/B Comparator Isolation + Prop-Scores Hygiene

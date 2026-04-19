@@ -1,6 +1,6 @@
 {
   "sport": "NBA",
-  "last_updated": "2026-04-18T23:48:49.606569+00:00",
+  "last_updated": "2026-04-19T00:01:19.585531+00:00",
   "prop_count": 6,
   "props": {
     "amen_thompson|pts|16.5|prizepicks": {
@@ -852,291 +852,90 @@
       "_enriched_at": "2026-04-18T23:13:31.653102+00:00",
       "_cache_updated": "2026-04-18T23:13:31.653105+00:00"
     },
-    "jabari_smith_jr.|pra|19.5|dk": {
-      "player_name": "Jabari Smith Jr.",
-      "stat_type": "PRA",
-      "line": 19.5,
+    "reed_sheppard|pts|10.5|prizepicks": {
+      "event_id": "1a9383105929a09e5662227ad45554b8",
+      "home_team": "LAL",
+      "away_team": "HOU",
+      "commence_time": "2026-04-19T00:40:00Z",
+      "player_name": "Reed Sheppard",
+      "market": "player_points_alternate",
       "direction": "Over",
-      "recommendation": "Over",
-      "sport": "nba",
-      "tier": "front_lines",
-      "tier_label": "FRONT_LINE",
-      "vision_score": 98.4,
-      "vision_score_raw": 0.181186,
-      "tier_gate_results": {
-        "gate_cv": {
-          "threshold": 0.75,
-          "value": 0.2485,
-          "passed": true
-        },
-        "gate_hit_rate": {
-          "threshold": 60,
-          "value": 90.0,
-          "passed": true
-        },
-        "gate_edge": {
-          "threshold": 5,
-          "value": 21.9,
-          "passed": true
-        },
-        "gate_tp": {
-          "threshold": 55,
-          "value": 68.1,
-          "passed": true,
-          "source": "market_implied_over"
-        }
-      },
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "dk",
-      "tier_reference_odds": -213,
-      "edge_vs_fair": 0.2195,
-      "fair_prob": 0.6805,
-      "quality_source": "dk",
-      "stability": 0.9172,
-      "confidence_score": 1.0,
-      "version_tag": "final-nba",
-      "computed_at": "2026-04-18T23:11:48.183695+00:00",
-      "pp_utility": 65.0,
-      "pp_utility_category": "pp_discount",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.561,
-        "edge_confidence": 0.5488,
-        "multiplier_value": 0.25,
-        "weights": {
-          "availability": 0.15,
-          "line_fairness": 0.2,
-          "model_alignment": 0.25,
-          "edge_confidence": 0.2,
-          "multiplier_value": 0.2
-        },
-        "pp_utility_raw": 65.0,
-        "category_raw": "pp_discount"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": "goblin",
-      "pp_multiplier_source": "pp_label",
-      "pp_reference_source": "dk",
-      "pp_playable": true,
-      "pp_playability_reason": "playable",
-      "is_goblin": true,
+      "line": 10.5,
+      "price": -137,
+      "multiplier": null,
+      "bookmaker": "prizepicks",
+      "is_alternate_market": true,
       "is_demon": false,
-      "is_standard": false,
+      "is_goblin": true,
       "prop_type": "GOBLIN",
-      "vk2_projection": null,
-      "vk2_sigma": null,
-      "model_projection": 24.04,
-      "model_sigma": 7.92,
-      "p_true_active": 0.9,
-      "p_true_method": "hit_rate",
-      "p_true_vk2": null,
-      "p_true_hit_rate": 0.9,
-      "vk_prob_over": 90.0,
-      "vk_prob_under": 10.0,
-      "hit_rate_over": 90.0,
-      "model_hit_rate_over": 90.0,
-      "hit_rate_under": 10.0,
-      "model_hit_rate_under": 10.0,
-      "model_hit_rate_active": 90.0,
+      "last_update": "2026-04-18T23:51:32Z",
+      "popularity_order": 5,
+      "fetched_at": "2026-04-18T23:51:57.574149+00:00",
+      "sharp_market": {
+        "draftkings_price": null,
+        "fanduel_price": -420,
+        "betonline_price": null,
+        "sort_price": -420,
+        "sort_source": "fanduel",
+        "is_alternate": true
+      },
+      "draftkings_price": null,
+      "fanduel_price": -420,
+      "betonline_price": null,
+      "sort_price": -420,
+      "sort_source": "fanduel",
+      "home_team_full": "Los Angeles Lakers",
+      "away_team_full": "Houston Rockets",
+      "player_name_raw": "Reed Sheppard",
+      "_composite_key": "Reed Sheppard|PTS|10.5|Over|2026-04-18",
+      "stat_type_extracted": "PTS",
+      "game_date": "2026-04-18",
+      "synced_at": "2026-04-18T23:51:57.239064+00:00",
+      "hit_rates": {
+        "l10_rate": 80,
+        "l5_rate": 80,
+        "l10_hit_count": 8,
+        "l5_hit_count": 4,
+        "l5_avg": 12.0,
+        "season_avg": 13.6,
+        "l10_avg": 14.0
+      },
+      "oracle_apex_qualified": false,
+      "apex_reason": "GATE1_HIT_RATE: 15/20 < 18/20",
+      "vk_predicted": 13.9,
+      "vk_edge": 3.4,
+      "vk_prob_over": 75.0,
+      "vk_prob_under": 25.0,
       "vk_recommendation": "STRONG_OVER",
-      "canonical_key": "nba|1a9383105929a09e5662227ad45554b8|Jabari Smith Jr.|PRA|19.5|OVER",
-      "validation": {
-        "has_market_data": false,
-        "has_hit_rates": false,
-        "has_context": false,
-        "has_mlr": false,
-        "has_gemini": false,
-        "is_fully_validated": false
+      "cv": 0.464,
+      "h5_rate": 80,
+      "h10_rate": 80,
+      "h20_rate": 75.0,
+      "l5_hits": 4,
+      "l10_hits": 8,
+      "l20_hits": 15,
+      "l5_avg": 12.0,
+      "l10_avg": 14.0,
+      "l20_avg": 13.6,
+      "sharp_movement": true,
+      "movement_delta": 1.5,
+      "movement_direction": "over_value",
+      "movement_strength": "moderate",
+      "trap_risk": false,
+      "hook_risk": false,
+      "suspect_line_bait": false,
+      "trap_reasons": [],
+      "sidecar": {
+        "hook_risk": false,
+        "suspect_line_bait": false
       },
-      "vision_intel": "Jabari Smith Jr. walks into a matchup against a Lakers frontcourt that struggles to contain stretch forwards, giving us a clear path to clear this 19.5 PRA line. With a projected 22.3 output and a solid 14.1% edge, we are banking on his ability to exploit a defense that is middle-of-the-pack at best when defending the glass and the perimeter.",
-      "vision_summary": "Jabari Smith Jr. walks into a matchup against a Lakers frontcourt that struggles to contain stretch forwards, giving us a clear path to clear this 19.5 PRA line. With a projected 22.3 output and a solid 14.1% edge, we are banking on his ability to exploit a defense that is middle-of-the-pack at best when defending the glass and the perimeter.",
-      "scout_badges": [
-        "volatility_extreme",
-        "high_fidelity_model"
-      ],
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 15,
-          "display": "Rank #15 vs. All-Around",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Below Average Defense",
-          "opponent": "LAL",
-          "stat_category": "PRA"
-        },
-        "pace_delta": {
-          "possessions": 0.8,
-          "display": "+0.8 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 97.0,
-          "opponent_pace": 99.5,
-          "expected_game_pace": 98.2
-        },
-        "stability_index": {
-          "score": 40,
-          "label": "Medium-Low",
-          "display": "40/100 (Medium-Low)",
-          "std_dev": 6.53,
-          "consistency": "Below Average",
-          "variance_level": "High"
-        },
-        "vision_insight": {
-          "primary": "Jabari Smith Jr. steps into a prime spot against a Lakers interior that\u2019s been giving up plenty of room for versatile forwards to rack up stats. We are looking at a 14.1% edge here because his 22.3 projection comfortably clears this 19.5 line while the pace gets a slight bump tonight. This isn't a play built on a recent heater but rather a calculated bet on his consistent involvement against a defense that ranks right in the middle of the pack. If he stays aggressive on the glass and knocks down a couple of looks from deep, we should see him cruise past this total with plenty of room to spare.",
-          "summary": "Jabari Smith Jr. steps into a prime spot against a Lakers interior that\u2019s been giving up plenty of room for versatile forwards to rack up stats. We are looking at a 14.1% edge here because his 22.3 projection comfortably clears this 19.5 line while the pace gets a slight bump tonight. This isn't a play built on a recent heater but rather a calculated bet on his consistent involvement against a defense that ranks right in the middle of the pack. If he stays aggressive on the glass and knocks down a couple of looks from deep, we should see him cruise past this total with plenty of room to spare.",
-          "lasso_projection": 22.252,
-          "lasso_edge": 2.75,
-          "confidence": "HIGH_FIDELITY",
-          "tactical_note": "Baseline projection favorable"
-        },
-        "blowout_risk": {
-          "player_team_record": "52-30",
-          "opponent_team_record": "53-29",
-          "player_win_pct": 0.634,
-          "opponent_win_pct": 0.646,
-          "win_pct_diff": 0.012,
-          "favored_team": "LAL",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: HOU (52-30) vs LAL (53-29)",
-          "warning": null
-        },
-        "scout_badges": [
-          "volatility_extreme",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 22.252,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.6081,
-          "top_drivers": [
-            "L10_avg_fgm",
-            "prev_fga"
-          ]
-        },
-        "calculated_at": "2026-04-18T23:30:30.779086+00:00"
-      },
-      "volatility_score": 0.0,
-      "volatility_label": "unknown",
-      "volatility_family": "unknown",
-      "vk_data": {
-        "projection": 22.252,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.6081,
-        "top_drivers": [
-          "L10_avg_fgm",
-          "prev_fga"
-        ]
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-18T23:30:32.059599+00:00",
-      "_cache_updated": "2026-04-18T23:30:32.059601+00:00"
-    },
-    "jabari_smith_jr.|ast|2.5|dk": {
-      "player_name": "Jabari Smith Jr.",
-      "stat_type": "AST",
-      "line": 2.5,
-      "direction": "Over",
-      "recommendation": "Over",
-      "sport": "nba",
-      "tier": "war_zone",
-      "tier_label": "WAR_ZONE",
-      "vision_score": 48.4,
-      "vision_score_raw": 0.031755,
-      "tier_gate_results": {
-        "gate_cv": {
-          "threshold": 0.45,
-          "value": 0.6616,
-          "passed": true
-        },
-        "gate_ceiling": {
-          "threshold": 20,
-          "value": 20.0,
-          "passed": true
-        },
-        "gate_edge": {
-          "threshold": 10,
-          "value": 11.6,
-          "passed": true
-        }
-      },
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "dk",
-      "tier_reference_odds": 328,
-      "edge_vs_fair": 0.1164,
-      "fair_prob": 0.2336,
-      "quality_source": "dk",
-      "stability": 0.7795,
-      "confidence_score": 1.0,
-      "version_tag": "final-nba",
-      "computed_at": "2026-04-18T23:11:48.183695+00:00",
-      "pp_utility": 78.0,
-      "pp_utility_category": "pp_premium",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.7672,
-        "edge_confidence": 0.291,
-        "multiplier_value": 0.9,
-        "weights": {
-          "availability": 0.15,
-          "line_fairness": 0.2,
-          "model_alignment": 0.25,
-          "edge_confidence": 0.2,
-          "multiplier_value": 0.2
-        },
-        "pp_utility_raw": 78.0,
-        "category_raw": "pp_premium"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": "demon",
-      "pp_multiplier_source": "pp_label",
-      "pp_reference_source": "dk",
-      "pp_playable": true,
-      "pp_playability_reason": "playable",
-      "is_goblin": false,
-      "is_demon": true,
-      "is_standard": false,
-      "prop_type": "DEMON",
-      "vk2_projection": null,
-      "vk2_sigma": null,
-      "model_projection": 2.09,
-      "model_sigma": 1.7,
-      "p_true_active": 0.35,
-      "p_true_method": "hit_rate",
-      "p_true_vk2": null,
-      "p_true_hit_rate": 0.35,
-      "vk_prob_over": 35.0,
-      "vk_prob_under": 65.0,
-      "hit_rate_over": 35.0,
-      "model_hit_rate_over": 35.0,
-      "hit_rate_under": 65.0,
-      "model_hit_rate_under": 65.0,
-      "model_hit_rate_active": 35.0,
-      "vk_recommendation": "LEAN_OVER",
-      "canonical_key": "nba|1a9383105929a09e5662227ad45554b8|Jabari Smith Jr.|AST|2.5|OVER",
-      "validation": {
-        "has_market_data": false,
-        "has_hit_rates": false,
-        "has_context": false,
-        "has_mlr": false,
-        "has_gemini": false,
-        "is_fully_validated": false
-      },
-      "vision_intel": "Jabari is stepping into a playmaking vacuum tonight against a Lakers squad that funnels action toward the wings, making this 2.5 line look like a massive oversight for a guy seeing this much floor time. We've got a 15% edge on our side because the ball movement in this Houston offense has spiked lately, and with a stability score of 85, we aren't sweating the minor details here.",
-      "vision_summary": "Jabari is stepping into a playmaking vacuum tonight against a Lakers squad that funnels action toward the wings, making this 2.5 line look like a massive oversight for a guy seeing this much floor time. We've got a 15% edge on our side because the ball movement in this Houston offense has spiked lately, and with a stability score of 85, we aren't sweating the minor details here.",
-      "scout_badges": [
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
+      "tier_label": "FRONT_LINE",
+      "stat_type": "PTS",
+      "h10_hit_rate": 80,
+      "h5_hit_rate": 80,
+      "season_avg": 13.6,
+      "l10_hit_count": 8,
+      "l5_hit_count": 4,
       "intel_suite": {
         "usage_ripple": {
           "bump_percent": 0,
@@ -1147,12 +946,12 @@
         },
         "matchup_dvp": {
           "rank": 11,
-          "display": "Rank #11 vs. Playmakers",
+          "display": "Rank #11 vs. Scorers",
           "color": "yellow",
           "friction_level": "Med-High",
           "friction_label": "Above Average Defense",
           "opponent": "LAL",
-          "stat_category": "AST"
+          "stat_category": "PTS"
         },
         "pace_delta": {
           "possessions": 0.8,
@@ -1164,18 +963,18 @@
           "expected_game_pace": 98.2
         },
         "stability_index": {
-          "score": 85,
-          "label": "High",
-          "display": "85/100 (High)",
-          "std_dev": 1.62,
-          "consistency": "Very Consistent",
-          "variance_level": "Low"
+          "score": 55,
+          "label": "Medium",
+          "display": "55/100 (Medium)",
+          "std_dev": 4.87,
+          "consistency": "Average",
+          "variance_level": "Medium"
         },
         "vision_insight": {
-          "primary": "Jabari is stepping into a playmaking vacuum tonight against a Lakers squad that funnels action toward the wings, making this 2.5 assist line look like a massive oversight for our bankroll. Even with a decent defensive rank, Los Angeles is giving up a 0.8 pace increase that should provide plenty of extra kick-out opportunities for the big man to clear this mark with ease.",
-          "summary": "Jabari is stepping into a playmaking vacuum tonight against a Lakers squad that funnels action toward the wings, making this 2.5 assist line look like a massive oversight for our bankroll. Even with a decent defensive rank, Los Angeles is giving up a 0.8 pace increase that should provide plenty of extra kick-out opportunities for the big man to clear this mark with ease.",
-          "lasso_projection": 2.876,
-          "lasso_edge": 0.38,
+          "primary": "We're looking at Reed Sheppard PTS projecting to 13.7 against a 10.5 line \u2014 that's a +30.9% edge on the over side. With an 80% hit rate over the last 10, this is about as close to a cheat code as we get.",
+          "summary": "We're looking at Reed Sheppard PTS projecting to 13.7 against a 10.5 line \u2014 that's a +30.9% edge on the over side. With an 80% hit rate over the last 10, this is about as close to a cheat code as we get.",
+          "lasso_projection": 13.749,
+          "lasso_edge": 3.25,
           "confidence": "HIGH_FIDELITY",
           "tactical_note": "Baseline projection favorable"
         },
@@ -1196,41 +995,37 @@
           "high_fidelity_model"
         ],
         "lasso": {
-          "projection": 2.876,
+          "projection": 13.749,
           "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.5469,
+          "r_squared": 0.544,
           "top_drivers": [
-            "target_L10_avg",
-            "L10_avg_fg3a"
+            "prev_fga",
+            "L10_avg_fgm"
           ]
         },
-        "calculated_at": "2026-04-18T23:30:40.790334+00:00"
+        "calculated_at": "2026-04-18T23:53:55.126266+00:00"
       },
-      "volatility_score": 0.0,
-      "volatility_label": "unknown",
-      "volatility_family": "unknown",
-      "vk_data": {
-        "projection": 2.876,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.5469,
-        "top_drivers": [
-          "target_L10_avg",
-          "L10_avg_fg3a"
-        ]
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-18T23:30:43.187753+00:00",
-      "_cache_updated": "2026-04-18T23:30:43.187756+00:00"
-    },
-    "reed_sheppard|pts|10.5|dk": {
-      "player_name": "Reed Sheppard",
-      "stat_type": "PTS",
-      "line": 10.5,
-      "direction": "Over",
+      "is_vision_enriched": true,
+      "is_anomaly": false,
+      "is_demon_anomaly": false,
+      "is_goblin_anomaly": false,
+      "season_margin": 3.1,
+      "margin": 3.5,
+      "player_id": "1028028519",
+      "nba_id": 1642263,
+      "bdl_id": 1028028519,
+      "nba_com_id": 1642263,
+      "headshot_url": "/static/player-headshots/1642263.png",
+      "photo_url": "/static/player-headshots/1642263.png",
+      "team": "HOU",
+      "team_name": "Houston Rockets",
+      "position": "G",
+      "opponent": "LAL",
+      "opponent_abbr": "LAL",
+      "injured_teammates": [],
       "recommendation": "Over",
       "sport": "nba",
       "tier": "front_lines",
-      "tier_label": "FRONT_LINE",
       "vision_score": 82.3,
       "vision_score_raw": 0.076172,
       "tier_gate_results": {
@@ -1290,10 +1085,7 @@
       "pp_reference_source": "mgm",
       "pp_playable": true,
       "pp_playability_reason": "playable",
-      "is_goblin": true,
-      "is_demon": false,
       "is_standard": false,
-      "prop_type": "GOBLIN",
       "vk2_projection": null,
       "vk2_sigma": null,
       "model_projection": 13.92,
@@ -1302,29 +1094,126 @@
       "p_true_method": "hit_rate",
       "p_true_vk2": null,
       "p_true_hit_rate": 0.75,
-      "vk_prob_over": 75.0,
-      "vk_prob_under": 25.0,
       "hit_rate_over": 75.0,
       "model_hit_rate_over": 75.0,
       "hit_rate_under": 25.0,
       "model_hit_rate_under": 25.0,
       "model_hit_rate_active": 75.0,
-      "vk_recommendation": "STRONG_OVER",
       "canonical_key": "nba|1a9383105929a09e5662227ad45554b8|Reed Sheppard|PTS|10.5|OVER",
       "validation": {
         "has_market_data": false,
-        "has_hit_rates": false,
-        "has_context": false,
+        "has_hit_rates": true,
+        "has_context": true,
         "has_mlr": false,
         "has_gemini": false,
         "is_fully_validated": false
       },
-      "vision_intel": "Reed Sheppard is stepping into a massive opportunity tonight with his projection of 13.7 points suggesting he clears this 10.5 line with plenty of room to spare. While the Lakers bring a decent defensive front, the 30.9% edge we've identified makes this a high-value play that relies on his pure scoring talent rather than just volume.",
-      "vision_summary": "Reed Sheppard is stepping into a massive opportunity tonight with his projection of 13.7 points suggesting he clears this 10.5 line with plenty of room to spare. While the Lakers bring a decent defensive front, the 30.9% edge we've identified makes this a high-value play that relies on his pure scoring talent rather than just volume.",
+      "vision_intel": "Reed Sheppard has been a flamethrower lately with an 80% hit rate over his last ten games, averaging a cool 14 points while finding his rhythm in this rotation. Even against a disciplined Lakers defense, we are looking at a massive 30.9% edge because his scoring floor is consistently higher than this 10.5 line suggests.",
+      "vision_summary": "Reed Sheppard has been a flamethrower lately with an 80% hit rate over his last ten games, averaging a cool 14 points while finding his rhythm in this rotation. Even against a disciplined Lakers defense, we are looking at a massive 30.9% edge because his scoring floor is consistently higher than this 10.5 line suggests.",
       "scout_badges": [
         "lasso_high_edge",
         "high_fidelity_model"
       ],
+      "volatility_score": 58.0,
+      "volatility_label": "moderate",
+      "volatility_family": "nba_mid_line",
+      "vk_data": {
+        "projection": 13.749,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.544,
+        "top_drivers": [
+          "prev_fga",
+          "L10_avg_fgm"
+        ]
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-18T23:54:01.447487+00:00",
+      "_cache_updated": "2026-04-18T23:54:01.447489+00:00"
+    },
+    "jabari_smith_jr.|pra|19.5|prizepicks": {
+      "event_id": "1a9383105929a09e5662227ad45554b8",
+      "home_team": "LAL",
+      "away_team": "HOU",
+      "commence_time": "2026-04-19T00:40:00Z",
+      "player_name": "Jabari Smith Jr.",
+      "market": "player_points_rebounds_assists_alternate",
+      "direction": "Over",
+      "line": 19.5,
+      "price": -137,
+      "multiplier": null,
+      "bookmaker": "prizepicks",
+      "is_alternate_market": true,
+      "is_demon": false,
+      "is_goblin": true,
+      "prop_type": "GOBLIN",
+      "last_update": "2026-04-18T23:51:32Z",
+      "popularity_order": 8,
+      "fetched_at": "2026-04-18T23:51:57.574365+00:00",
+      "sharp_market": {
+        "draftkings_price": -392,
+        "fanduel_price": null,
+        "betonline_price": null,
+        "sort_price": -392,
+        "sort_source": "draftkings",
+        "is_alternate": true
+      },
+      "draftkings_price": -392,
+      "fanduel_price": null,
+      "betonline_price": null,
+      "sort_price": -392,
+      "sort_source": "draftkings",
+      "home_team_full": "Los Angeles Lakers",
+      "away_team_full": "Houston Rockets",
+      "player_name_raw": "Jabari Smith Jr",
+      "_composite_key": "Jabari Smith Jr.|PRA|19.5|Over|2026-04-18",
+      "stat_type_extracted": "PRA",
+      "game_date": "2026-04-18",
+      "synced_at": "2026-04-18T23:51:57.239064+00:00",
+      "hit_rates": {
+        "l10_rate": 100,
+        "l5_rate": 100,
+        "l10_hit_count": 10,
+        "l5_hit_count": 5,
+        "l5_avg": 26.2,
+        "season_avg": 24.6,
+        "l10_avg": 27.4
+      },
+      "oracle_apex_qualified": false,
+      "apex_reason": "GATE2_CV: 0.211 > 0.2",
+      "vk_predicted": 24.0,
+      "vk_edge": 4.5,
+      "vk_prob_over": 90.0,
+      "vk_prob_under": 10.0,
+      "vk_recommendation": "STRONG_OVER",
+      "cv": 0.211,
+      "h5_rate": 100,
+      "h10_rate": 100,
+      "h20_rate": 90.0,
+      "l5_hits": 5,
+      "l10_hits": 10,
+      "l20_hits": 18,
+      "l5_avg": 26.2,
+      "l10_avg": 27.4,
+      "l20_avg": 25.6,
+      "sharp_movement": true,
+      "movement_delta": 6.7,
+      "movement_direction": "over_value",
+      "movement_strength": "significant",
+      "trap_risk": false,
+      "hook_risk": false,
+      "suspect_line_bait": false,
+      "trap_reasons": [],
+      "sidecar": {
+        "hook_risk": false,
+        "suspect_line_bait": false
+      },
+      "tier_label": "FRONT_LINE",
+      "stat_type": "PRA",
+      "h10_hit_rate": 100,
+      "h5_hit_rate": 100,
+      "season_avg": 24.6,
+      "l10_hit_count": 10,
+      "l5_hit_count": 5,
       "intel_suite": {
         "usage_ripple": {
           "bump_percent": 0,
@@ -1334,13 +1223,13 @@
           "reasoning": "No significant lineup changes"
         },
         "matchup_dvp": {
-          "rank": 11,
-          "display": "Rank #11 vs. Scorers",
+          "rank": 15,
+          "display": "Rank #15 vs. All-Around",
           "color": "yellow",
-          "friction_level": "Med-High",
-          "friction_label": "Above Average Defense",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
           "opponent": "LAL",
-          "stat_category": "PTS"
+          "stat_category": "PRA"
         },
         "pace_delta": {
           "possessions": 0.8,
@@ -1352,18 +1241,296 @@
           "expected_game_pace": 98.2
         },
         "stability_index": {
-          "score": 55,
-          "label": "Medium",
-          "display": "55/100 (Medium)",
-          "std_dev": 4.87,
-          "consistency": "Average",
-          "variance_level": "Medium"
+          "score": 40,
+          "label": "Medium-Low",
+          "display": "40/100 (Medium-Low)",
+          "std_dev": 6.53,
+          "consistency": "Below Average",
+          "variance_level": "High"
         },
         "vision_insight": {
-          "primary": "Reed Sheppard is stepping into a massive opportunity tonight with his projection of 13.7 points sitting nearly a full bucket and a half clear of this 10.5 line. Even though the Lakers' perimeter defense is respectable, the 30.9% edge we're holding makes this a volume play where we expect the rookie to find his rhythm and clear this hurdle comfortably.",
-          "summary": "Reed Sheppard is stepping into a massive opportunity tonight with his projection of 13.7 points sitting nearly a full bucket and a half clear of this 10.5 line. Even though the Lakers' perimeter defense is respectable, the 30.9% edge we're holding makes this a volume play where we expect the rookie to find his rhythm and clear this hurdle comfortably.",
-          "lasso_projection": 13.749,
-          "lasso_edge": 3.25,
+          "primary": "Jabari Smith Jr. hasn't missed this 19.5 line once in his last ten games, and he's walking into a matchup against a Lakers defense that struggles to contain stretch bigs. With his average sitting at 27.4 over that span and a rock-steady consistency, we are looking at a 14% edge that feels way more substantial than a simple lean.",
+          "summary": "Jabari Smith Jr. hasn't missed this 19.5 line once in his last ten games, and he's walking into a matchup against a Lakers defense that struggles to contain stretch bigs. With his average sitting at 27.4 over that span and a rock-steady consistency, we are looking at a 14% edge that feels way more substantial than a simple lean.",
+          "lasso_projection": 22.252,
+          "lasso_edge": 2.75,
+          "confidence": "HIGH_FIDELITY",
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "player_team_record": "52-30",
+          "opponent_team_record": "53-29",
+          "player_win_pct": 0.634,
+          "opponent_win_pct": 0.646,
+          "win_pct_diff": 0.012,
+          "favored_team": "LAL",
+          "player_is_favored": false,
+          "risk_level": "NONE",
+          "risk_reason": "Competitive matchup: HOU (52-30) vs LAL (53-29)",
+          "warning": null
+        },
+        "scout_badges": [
+          "volatility_extreme",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 22.252,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.6081,
+          "top_drivers": [
+            "L10_avg_fgm",
+            "prev_fga"
+          ]
+        },
+        "calculated_at": "2026-04-18T23:54:08.220077+00:00"
+      },
+      "is_vision_enriched": true,
+      "is_anomaly": true,
+      "is_demon_anomaly": false,
+      "is_goblin_anomaly": true,
+      "season_margin": 5.1,
+      "margin": 7.9,
+      "player_id": "38017684",
+      "nba_id": 1631095,
+      "bdl_id": 38017684,
+      "nba_com_id": 1631095,
+      "headshot_url": "/static/player-headshots/1631095.png",
+      "photo_url": "/static/player-headshots/1631095.png",
+      "team": "HOU",
+      "team_name": "Houston Rockets",
+      "position": "F",
+      "opponent": "LAL",
+      "opponent_abbr": "LAL",
+      "injured_teammates": [],
+      "recommendation": "Over",
+      "sport": "nba",
+      "tier": "front_lines",
+      "vision_score": 98.4,
+      "vision_score_raw": 0.181186,
+      "tier_gate_results": {
+        "gate_cv": {
+          "threshold": 0.75,
+          "value": 0.2485,
+          "passed": true
+        },
+        "gate_hit_rate": {
+          "threshold": 60,
+          "value": 90.0,
+          "passed": true
+        },
+        "gate_edge": {
+          "threshold": 5,
+          "value": 21.9,
+          "passed": true
+        },
+        "gate_tp": {
+          "threshold": 55,
+          "value": 68.1,
+          "passed": true,
+          "source": "market_implied_over"
+        }
+      },
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -213,
+      "edge_vs_fair": 0.2195,
+      "fair_prob": 0.6805,
+      "quality_source": "dk",
+      "stability": 0.9172,
+      "confidence_score": 1.0,
+      "version_tag": "final-nba",
+      "computed_at": "2026-04-18T23:11:48.183695+00:00",
+      "pp_utility": 65.0,
+      "pp_utility_category": "pp_discount",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.561,
+        "edge_confidence": 0.5488,
+        "multiplier_value": 0.25,
+        "weights": {
+          "availability": 0.15,
+          "line_fairness": 0.2,
+          "model_alignment": 0.25,
+          "edge_confidence": 0.2,
+          "multiplier_value": 0.2
+        },
+        "pp_utility_raw": 65.0,
+        "category_raw": "pp_discount"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": "goblin",
+      "pp_multiplier_source": "pp_label",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "is_standard": false,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "model_projection": 24.04,
+      "model_sigma": 7.92,
+      "p_true_active": 0.9,
+      "p_true_method": "hit_rate",
+      "p_true_vk2": null,
+      "p_true_hit_rate": 0.9,
+      "hit_rate_over": 90.0,
+      "model_hit_rate_over": 90.0,
+      "hit_rate_under": 10.0,
+      "model_hit_rate_under": 10.0,
+      "model_hit_rate_active": 90.0,
+      "canonical_key": "nba|1a9383105929a09e5662227ad45554b8|Jabari Smith Jr.|PRA|19.5|OVER",
+      "validation": {
+        "has_market_data": true,
+        "has_hit_rates": true,
+        "has_context": true,
+        "has_mlr": false,
+        "has_gemini": false,
+        "is_fully_validated": false
+      },
+      "vision_intel": "Jabari Smith Jr. hasn't just been clearing this 19.5 PRA line lately; he's been absolutely obliterating it with a massive 27.4 average over his last ten appearances. Considering he\u2019s hit this mark in nine of his last ten games with rock-steady consistency, we\u2019re backing him to exploit a middle-of-the-pack Lakers defense that struggles to contain versatile forwards.",
+      "vision_summary": "Jabari Smith Jr. hasn't just been clearing this 19.5 PRA line lately; he's been absolutely obliterating it with a massive 27.4 average over his last ten appearances. Considering he\u2019s hit this mark in nine of his last ten games with rock-steady consistency, we\u2019re backing him to exploit a middle-of-the-pack Lakers defense that struggles to contain versatile forwards.",
+      "scout_badges": [
+        "volatility_extreme",
+        "high_fidelity_model"
+      ],
+      "volatility_score": 30.1,
+      "volatility_label": "low",
+      "volatility_family": "nba_high_line",
+      "vk_data": {
+        "projection": 22.252,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.6081,
+        "top_drivers": [
+          "L10_avg_fgm",
+          "prev_fga"
+        ]
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-18T23:54:15.858111+00:00",
+      "_cache_updated": "2026-04-18T23:54:15.858113+00:00"
+    },
+    "jabari_smith_jr.|ast|2.5|prizepicks": {
+      "event_id": "1a9383105929a09e5662227ad45554b8",
+      "home_team": "LAL",
+      "away_team": "HOU",
+      "commence_time": "2026-04-19T00:40:00Z",
+      "player_name": "Jabari Smith Jr.",
+      "market": "player_assists_alternate",
+      "direction": "Over",
+      "line": 2.5,
+      "price": 100,
+      "multiplier": null,
+      "bookmaker": "prizepicks",
+      "is_alternate_market": true,
+      "is_demon": true,
+      "is_goblin": false,
+      "prop_type": "DEMON",
+      "last_update": "2026-04-18T23:51:32Z",
+      "popularity_order": 8,
+      "fetched_at": "2026-04-18T23:51:57.573929+00:00",
+      "sharp_market": {
+        "draftkings_price": 256,
+        "fanduel_price": null,
+        "betonline_price": null,
+        "sort_price": 256,
+        "sort_source": "draftkings",
+        "is_alternate": true
+      },
+      "draftkings_price": 256,
+      "fanduel_price": null,
+      "betonline_price": null,
+      "sort_price": 256,
+      "sort_source": "draftkings",
+      "home_team_full": "Los Angeles Lakers",
+      "away_team_full": "Houston Rockets",
+      "player_name_raw": "Jabari Smith Jr",
+      "_composite_key": "Jabari Smith Jr.|AST|2.5|Over|2026-04-18",
+      "stat_type_extracted": "AST",
+      "game_date": "2026-04-18",
+      "synced_at": "2026-04-18T23:51:57.239064+00:00",
+      "hit_rates": {
+        "l10_rate": 30,
+        "l5_rate": 0,
+        "l10_hit_count": 3,
+        "l5_hit_count": 0,
+        "l5_avg": 0.8,
+        "season_avg": 1.9,
+        "l10_avg": 1.8
+      },
+      "oracle_apex_qualified": false,
+      "apex_reason": "GATE1_HIT_RATE: 7/20 < 15/20",
+      "vk_predicted": 2.1,
+      "vk_edge": -0.4,
+      "vk_prob_over": 35.0,
+      "vk_prob_under": 65.0,
+      "vk_recommendation": "LEAN_OVER",
+      "cv": 0.82,
+      "h5_rate": 0,
+      "h10_rate": 30,
+      "h20_rate": 35.0,
+      "l5_hits": 0,
+      "l10_hits": 3,
+      "l20_hits": 7,
+      "l5_avg": 0.8,
+      "l10_avg": 1.8,
+      "l20_avg": 2.0,
+      "sharp_movement": true,
+      "movement_delta": -1.7,
+      "movement_direction": "under_value",
+      "movement_strength": "moderate",
+      "trap_risk": false,
+      "hook_risk": false,
+      "suspect_line_bait": false,
+      "trap_reasons": [],
+      "sidecar": {
+        "hook_risk": false,
+        "suspect_line_bait": false
+      },
+      "tier_label": "WAR_ZONE",
+      "stat_type": "AST",
+      "h10_hit_rate": 30,
+      "h5_hit_rate": 0,
+      "season_avg": 1.9,
+      "l10_hit_count": 3,
+      "l5_hit_count": 0,
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 11,
+          "display": "Rank #11 vs. Playmakers",
+          "color": "yellow",
+          "friction_level": "Med-High",
+          "friction_label": "Above Average Defense",
+          "opponent": "LAL",
+          "stat_category": "AST"
+        },
+        "pace_delta": {
+          "possessions": 0.8,
+          "display": "+0.8 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 97.0,
+          "opponent_pace": 99.5,
+          "expected_game_pace": 98.2
+        },
+        "stability_index": {
+          "score": 85,
+          "label": "High",
+          "display": "85/100 (High)",
+          "std_dev": 1.62,
+          "consistency": "Very Consistent",
+          "variance_level": "Low"
+        },
+        "vision_insight": {
+          "primary": "Why is Jabari Smith Jr. being asked to facilitate tonight when he's historically struggled to clear 2.5 assists against a defense as disciplined as the Lakers? The 15% edge looks tempting on paper, but his high 0.82 volatility and basement-level 30% hit rate over the last ten games suggest we are purely chasing a variance swing here.",
+          "summary": "Why is Jabari Smith Jr. being asked to facilitate tonight when he's historically struggled to clear 2.5 assists against a defense as disciplined as the Lakers? The 15% edge looks tempting on paper, but his high 0.82 volatility and basement-level 30% hit rate over the last ten games suggest we are purely chasing a variance swing here.",
+          "lasso_projection": 2.876,
+          "lasso_edge": 0.38,
           "confidence": "HIGH_FIDELITY",
           "tactical_note": "Baseline projection favorable"
         },
@@ -1384,31 +1551,134 @@
           "high_fidelity_model"
         ],
         "lasso": {
-          "projection": 13.749,
+          "projection": 2.876,
           "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.544,
+          "r_squared": 0.5469,
           "top_drivers": [
-            "prev_fga",
-            "L10_avg_fgm"
+            "target_L10_avg",
+            "L10_avg_fg3a"
           ]
         },
-        "calculated_at": "2026-04-18T23:30:45.483951+00:00"
+        "calculated_at": "2026-04-18T23:54:24.586555+00:00"
       },
-      "volatility_score": 0.0,
-      "volatility_label": "unknown",
-      "volatility_family": "unknown",
+      "is_vision_enriched": true,
+      "is_anomaly": false,
+      "is_demon_anomaly": false,
+      "is_goblin_anomaly": false,
+      "season_margin": -0.6,
+      "margin": -0.7,
+      "player_id": "38017684",
+      "nba_id": 1631095,
+      "bdl_id": 38017684,
+      "nba_com_id": 1631095,
+      "headshot_url": "/static/player-headshots/1631095.png",
+      "photo_url": "/static/player-headshots/1631095.png",
+      "team": "HOU",
+      "team_name": "Houston Rockets",
+      "position": "F",
+      "opponent": "LAL",
+      "opponent_abbr": "LAL",
+      "injured_teammates": [],
+      "recommendation": "Over",
+      "sport": "nba",
+      "tier": "war_zone",
+      "vision_score": 48.4,
+      "vision_score_raw": 0.031755,
+      "tier_gate_results": {
+        "gate_cv": {
+          "threshold": 0.45,
+          "value": 0.6616,
+          "passed": true
+        },
+        "gate_ceiling": {
+          "threshold": 20,
+          "value": 20.0,
+          "passed": true
+        },
+        "gate_edge": {
+          "threshold": 10,
+          "value": 11.6,
+          "passed": true
+        }
+      },
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 328,
+      "edge_vs_fair": 0.1164,
+      "fair_prob": 0.2336,
+      "quality_source": "dk",
+      "stability": 0.7795,
+      "confidence_score": 1.0,
+      "version_tag": "final-nba",
+      "computed_at": "2026-04-18T23:11:48.183695+00:00",
+      "pp_utility": 78.0,
+      "pp_utility_category": "pp_premium",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.7672,
+        "edge_confidence": 0.291,
+        "multiplier_value": 0.9,
+        "weights": {
+          "availability": 0.15,
+          "line_fairness": 0.2,
+          "model_alignment": 0.25,
+          "edge_confidence": 0.2,
+          "multiplier_value": 0.2
+        },
+        "pp_utility_raw": 78.0,
+        "category_raw": "pp_premium"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": "demon",
+      "pp_multiplier_source": "pp_label",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "is_standard": false,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "model_projection": 2.09,
+      "model_sigma": 1.7,
+      "p_true_active": 0.35,
+      "p_true_method": "hit_rate",
+      "p_true_vk2": null,
+      "p_true_hit_rate": 0.35,
+      "hit_rate_over": 35.0,
+      "model_hit_rate_over": 35.0,
+      "hit_rate_under": 65.0,
+      "model_hit_rate_under": 65.0,
+      "model_hit_rate_active": 35.0,
+      "canonical_key": "nba|1a9383105929a09e5662227ad45554b8|Jabari Smith Jr.|AST|2.5|OVER",
+      "validation": {
+        "has_market_data": true,
+        "has_hit_rates": true,
+        "has_context": true,
+        "has_mlr": false,
+        "has_gemini": false,
+        "is_fully_validated": false
+      },
+      "vision_intel": "Why are we looking at Jabari to play point-forward against a Lakers squad that funnels everything toward the perimeter while AD camps in the paint? Even with his wild game-to-game volatility, the 15.0% edge on a low 2.5 line suggests he's due for a few kick-out dimes in what should be a high-possession track.",
+      "vision_summary": "Why are we looking at Jabari to play point-forward against a Lakers squad that funnels everything toward the perimeter while AD camps in the paint? Even with his wild game-to-game volatility, the 15.0% edge on a low 2.5 line suggests he's due for a few kick-out dimes in what should be a high-possession track.",
+      "scout_badges": [
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "volatility_score": 91.1,
+      "volatility_label": "high",
+      "volatility_family": "nba_low_line",
       "vk_data": {
-        "projection": 13.749,
+        "projection": 2.876,
         "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.544,
+        "r_squared": 0.5469,
         "top_drivers": [
-          "prev_fga",
-          "L10_avg_fgm"
+          "target_L10_avg",
+          "L10_avg_fg3a"
         ]
       },
       "_enriched": true,
-      "_enriched_at": "2026-04-18T23:30:46.807143+00:00",
-      "_cache_updated": "2026-04-18T23:30:46.807146+00:00"
+      "_enriched_at": "2026-04-18T23:54:32.840214+00:00",
+      "_cache_updated": "2026-04-18T23:54:32.840216+00:00"
     }
   }
 }
