@@ -7,6 +7,8 @@ from fastapi import APIRouter, HTTPException
 from datetime import datetime, timezone
 import logging
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Scheduler"])
 
@@ -122,9 +124,9 @@ async def init_database():
     # Step 5: Create Indexes
     logger.info("[INIT] Step 5: Creating Indexes...")
     try:
-        await db.nba_master_hub_2026.create_index("display_name")
-        await db.nba_master_hub_2026.create_index("bdl_id")
-        await db.dg_cached_board.create_index("player_name")
+        await db[COLL("master_hub", "nba")].create_index("display_name")
+        await db[COLL("master_hub", "nba")].create_index("bdl_id")
+        await db[COLL("board_cache", "nba")].create_index("player_name")
         await db.dvp_rankings.create_index("type")
         results["steps"]["indexes"] = {"success": True}
     except Exception as e:
@@ -137,8 +139,8 @@ async def init_database():
     
     # Verify data counts
     results["data_counts"] = {
-        "nba_master_hub_2026": await db.nba_master_hub_2026.count_documents({}),
-        "dg_cached_board": await db.dg_cached_board.count_documents({}),
+        "nba_master_hub_2026": await db[COLL("master_hub", "nba")].count_documents({}),
+        "dg_cached_board": await db[COLL("board_cache", "nba")].count_documents({}),
         "dvp_rankings": await db.dvp_rankings.count_documents({})
     }
     
@@ -348,7 +350,7 @@ async def sync_nba_l5l10(limit: int = 200):
         bdl_service = get_bdl_sync_service(db)
         
         # Find players needing enrichment
-        players = await db.nba_master_hub_2026.find({
+        players = await db[COLL("master_hub", "nba")].find({
             "nba_id": {"$exists": True, "$ne": None},
             "$or": [
                 {"baseline_stats.PTS.l5_avg": {"$exists": False}},
@@ -372,7 +374,7 @@ async def sync_nba_l5l10(limit: int = 200):
                 logger.debug(f"[MANUAL SYNC] Failed to enrich {player.get('display_name')}: {e}")
                 failed += 1
         
-        remaining = await db.nba_master_hub_2026.count_documents({
+        remaining = await db[COLL("master_hub", "nba")].count_documents({
             "nba_id": {"$exists": True, "$ne": None},
             "$or": [
                 {"baseline_stats.PTS.l5_avg": {"$exists": False}},

@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-04-19 — Wave 0 Batch 4 plumbing (boot/indexes/scheduler/legacy engine)
+- 4 files routed through `services/config/collection_names.py::COLL`:
+  `server.py`, `scripts/init_database.py`, `routes/scheduler.py`,
+  `services/engines/demon_goblin_engine.py`.
+- In-scope concepts: `board_cache`, `board_cache_temp`, `master_hub`,
+  `master_roster`, `live_props`, `odds_cache`, `events_cache`, `sync_log`,
+  `ticker_headlines` (shared).
+- 44 code-level literals removed → 44 `COLL(...)` call-sites added. 4 imports added.
+- Boot-time index creation block (22 `create_index` calls in `server.py`) fully
+  routed through `COLL(...)` — confirmed healthy on full `supervisorctl restart`.
+- Response-shape preserved: JSON response keys in `/v3/init-database` left
+  unchanged (labels only, not DB access).
+- `routes_archive/roster.py` excluded per scope.
+- In-scope hardcoded-ref count in these files: **44 → 0**.
+- Regression suite: 80 passed / 1 skipped / 0 failed — matches baseline.
+- Live smoke after restart: all Ferrari endpoints + `/v3/scheduler-status` HTTP 200,
+  scheduler running with 22 jobs, 0 errors in backend.err.log.
+- Global code-level residual: 153 → **109 refs across 70 files**.
+- Audit: `/app/memory/wave0_batch4_audit.md`.
+
+
 ## 2026-04-19 — Wave 0 Batch 3 plumbing (core pipeline, no renames)
 - 3 files routed through `services/config/collection_names.py::COLL`:
   `services/ferrari_tier_service.py`, `services/picks_getter_service.py`,

@@ -26,6 +26,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from services.stats_manager_bdl import StatsManager
 from services.engines.demon_tracker_engine import DeepIngestionEngine
 from services.engines.demon_goblin_engine import DemonGoblinEngine
+from services.config.collection_names import COLL
 from services.vision_ai_service import VisionAIService, get_vision_service
 from services.injury_service import InjuryIntelligenceService, get_injury_service
 from services.raw_stat_fetcher import RawStatFetcher
@@ -711,7 +712,7 @@ async def scheduled_nba_l5l10_batch(batch_num: int, limit: int = 125):
         bdl_service = get_bdl_sync_service(db)
         
         # Find players needing enrichment
-        players_needing = await db.nba_master_hub_2026.count_documents({
+        players_needing = await db[COLL("master_hub", "nba")].count_documents({
             "nba_id": {"$exists": True, "$ne": None},
             "$or": [
                 {"baseline_stats.PTS.l5_avg": {"$exists": False}},
@@ -726,7 +727,7 @@ async def scheduled_nba_l5l10_batch(batch_num: int, limit: int = 125):
             return
         
         # Get players to enrich
-        players = await db.nba_master_hub_2026.find({
+        players = await db[COLL("master_hub", "nba")].find({
             "nba_id": {"$exists": True, "$ne": None},
             "$or": [
                 {"baseline_stats.PTS.l5_avg": {"$exists": False}},
@@ -1303,16 +1304,16 @@ async def startup_event():
     
     try:
         # dg_cached_board - Main board with player props
-        await db.dg_cached_board.create_index([("player_name", ASCENDING)], background=True)
-        await db.dg_cached_board.create_index([("team", ASCENDING)], background=True)
-        await db.dg_cached_board.create_index([("synced_at", DESCENDING)], background=True)
-        await db.dg_cached_board.create_index([("props.stat_type", ASCENDING)], background=True)
+        await db[COLL("board_cache", "nba")].create_index([("player_name", ASCENDING)], background=True)
+        await db[COLL("board_cache", "nba")].create_index([("team", ASCENDING)], background=True)
+        await db[COLL("board_cache", "nba")].create_index([("synced_at", DESCENDING)], background=True)
+        await db[COLL("board_cache", "nba")].create_index([("props.stat_type", ASCENDING)], background=True)
         
         # nba_master_hub_2026 - Player stats vault
-        await db.nba_master_hub_2026.create_index([("display_name", ASCENDING)], background=True)
-        await db.nba_master_hub_2026.create_index([("bdl_id", ASCENDING)], unique=True, sparse=True, background=True)
-        await db.nba_master_hub_2026.create_index([("nba_id", ASCENDING)], sparse=True, background=True)
-        await db.nba_master_hub_2026.create_index([("team", ASCENDING)], background=True)
+        await db[COLL("master_hub", "nba")].create_index([("display_name", ASCENDING)], background=True)
+        await db[COLL("master_hub", "nba")].create_index([("bdl_id", ASCENDING)], unique=True, sparse=True, background=True)
+        await db[COLL("master_hub", "nba")].create_index([("nba_id", ASCENDING)], sparse=True, background=True)
+        await db[COLL("master_hub", "nba")].create_index([("team", ASCENDING)], background=True)
         
         # odds_api_mapping_master - Player name mapping
         await db.odds_api_mapping_master.create_index([("odds_api_name", ASCENDING)], background=True)
@@ -1329,28 +1330,28 @@ async def startup_event():
         await db.dg_goblin_vault.create_index([("synced_at", DESCENDING)], background=True)
         
         # COMPOUND INDEXES for high-performance queries
-        await db.dg_cached_board.create_index([("player_name", ASCENDING), ("nba_id", ASCENDING)], background=True)
-        await db.dg_cached_board.create_index([("is_active", ASCENDING), ("props.stat_type", ASCENDING)], background=True)
-        await db.nba_master_hub_2026.create_index([("player_name", ASCENDING), ("nba_id", ASCENDING)], background=True)
-        await db.nba_master_hub_2026.create_index([("is_active", ASCENDING), ("team", ASCENDING)], background=True)
+        await db[COLL("board_cache", "nba")].create_index([("player_name", ASCENDING), ("nba_id", ASCENDING)], background=True)
+        await db[COLL("board_cache", "nba")].create_index([("is_active", ASCENDING), ("props.stat_type", ASCENDING)], background=True)
+        await db[COLL("master_hub", "nba")].create_index([("player_name", ASCENDING), ("nba_id", ASCENDING)], background=True)
+        await db[COLL("master_hub", "nba")].create_index([("is_active", ASCENDING), ("team", ASCENDING)], background=True)
         
         # TIER INDEXES - Optimized for static tier queries (is_demon, is_goblin, h10_rate)
-        await db.dg_cached_board.create_index([
+        await db[COLL("board_cache", "nba")].create_index([
             ("props.is_demon", ASCENDING), 
             ("props.is_goblin", ASCENDING),
             ("props.commence_time", ASCENDING)
         ], background=True)
-        await db.dg_cached_board.create_index([
+        await db[COLL("board_cache", "nba")].create_index([
             ("props.h10_rate", DESCENDING),
             ("props.is_goblin", ASCENDING)
         ], background=True)
         
         # dg_cached_board_temp - Shadow table for zero-downtime sync
-        await db.dg_cached_board_temp.create_index([("player_name", ASCENDING)], background=True)
+        await db[COLL("board_cache_temp", "nba")].create_index([("player_name", ASCENDING)], background=True)
         
         # ticker_headlines - Per-headline lifecycle tracking
-        await db.ticker_headlines.create_index([("fingerprint", ASCENDING)], unique=True, background=True)
-        await db.ticker_headlines.create_index([("first_seen_at", DESCENDING)], background=True)
+        await db[COLL.shared("ticker_headlines")].create_index([("fingerprint", ASCENDING)], unique=True, background=True)
+        await db[COLL.shared("ticker_headlines")].create_index([("first_seen_at", DESCENDING)], background=True)
         
         logger.info("[INDEXES] MongoDB indexes created successfully (including compound indexes)")
     except Exception as e:
@@ -1994,8 +1995,8 @@ async def check_and_run_initial_sync(db):
         await asyncio.sleep(5)  # Wait for server to fully start
         
         # Check if master hub is empty
-        master_hub_count = await db.nba_master_hub_2026.count_documents({})
-        cached_board_count = await db.dg_cached_board.count_documents({})
+        master_hub_count = await db[COLL("master_hub", "nba")].count_documents({})
+        cached_board_count = await db[COLL("board_cache", "nba")].count_documents({})
         
         logger.info(f"[INITIAL_SYNC] Database check: master_hub={master_hub_count}, cached_board={cached_board_count}")
         
@@ -2053,7 +2054,7 @@ async def check_and_run_initial_sync(db):
         else:
             # Database has data, but check if game logs are stale
             # Game logs should be refreshed if they haven't been updated in 12+ hours
-            sample_player = await db.nba_master_hub_2026.find_one(
+            sample_player = await db[COLL("master_hub", "nba")].find_one(
                 {"bdl_game_logs": {"$exists": True, "$ne": []}},
                 {"bdl_game_logs_updated_at": 1}
             )

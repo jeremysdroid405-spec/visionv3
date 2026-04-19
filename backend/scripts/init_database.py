@@ -29,6 +29,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 load_dotenv()
 
+from services.config.collection_names import COLL
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -179,14 +181,14 @@ async def create_indexes(db):
     
     try:
         # nba_master_hub_2026 indexes
-        await db.nba_master_hub_2026.create_index("display_name")
-        await db.nba_master_hub_2026.create_index("bdl_id")
-        await db.nba_master_hub_2026.create_index("team")
+        await db[COLL("master_hub", "nba")].create_index("display_name")
+        await db[COLL("master_hub", "nba")].create_index("bdl_id")
+        await db[COLL("master_hub", "nba")].create_index("team")
         logger.info("✓ nba_master_hub_2026 indexes created")
         
         # dg_cached_board indexes
-        await db.dg_cached_board.create_index("player_name")
-        await db.dg_cached_board.create_index([("player_name", 1), ("commence_time", 1)])
+        await db[COLL("board_cache", "nba")].create_index("player_name")
+        await db[COLL("board_cache", "nba")].create_index([("player_name", 1), ("commence_time", 1)])
         logger.info("✓ dg_cached_board indexes created")
         
         # dvp_rankings indexes
@@ -208,15 +210,15 @@ async def verify_data(db):
     checks = []
     
     # Check master hub
-    hub_count = await db.nba_master_hub_2026.count_documents({})
+    hub_count = await db[COLL("master_hub", "nba")].count_documents({})
     checks.append(("nba_master_hub_2026", hub_count, hub_count > 0))
     
     # Check players with game logs
-    with_logs = await db.nba_master_hub_2026.count_documents({"bdl_game_logs": {"$exists": True, "$ne": []}})
+    with_logs = await db[COLL("master_hub", "nba")].count_documents({"bdl_game_logs": {"$exists": True, "$ne": []}})
     checks.append(("Players with game logs", with_logs, with_logs > 0))
     
     # Check cached board
-    board_count = await db.dg_cached_board.count_documents({})
+    board_count = await db[COLL("board_cache", "nba")].count_documents({})
     checks.append(("dg_cached_board", board_count, board_count > 0))
     
     # Check DvP

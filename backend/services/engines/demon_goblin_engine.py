@@ -92,6 +92,8 @@ from services.engines.nba_master_hub import fetchPlayerIntel, fetchPlayerIntelBy
 # Odds API Mapper - Permanent player name to ID mapping
 from services.odds_api_mapper import get_odds_api_mapper, init_odds_api_mapper
 
+from services.config.collection_names import COLL
+
 # NBA.com API fallback for players missing from BallDontLie
 try:
     from nba_api.stats.endpoints import playergamelog
@@ -416,25 +418,25 @@ class DemonGoblinEngine:
         self.ferrari_tier_service = FerrariTierService(db)
         
         # Legacy direct collection access (gradually migrating to repo)
-        self.events_cache = db.dg_events_cache
-        self.odds_cache = db.dg_odds_cache
+        self.events_cache = db[COLL("events_cache", "nba")]
+        self.odds_cache = db[COLL("odds_cache", "nba")]
         self.player_data = db.dg_player_data
         self.stats_cache = db.dg_stats_cache
-        self.sync_log = db.dg_sync_log
+        self.sync_log = db[COLL.shared("sync_log")]
         self.trending_cache = db.dg_trending
         self.line_history = db.dg_line_history
         
         # WAREHOUSE MODEL COLLECTIONS (migrating to repo.picks, repo.board)
-        self.live_props = db.dg_live_props  # Master props collection (deduplicated)
+        self.live_props = db[COLL("live_props", "nba")]  # Master props collection (deduplicated)
         self.radar_picks = db.dg_radar_picks  # War Zone top 10 picks
         self.goblin_vault = db.dg_goblin_vault  # Goblin Vault top 10 safe picks
         self.front_lines = db.dg_front_lines  # Front Lines - middle tier picks
         self.parlay_builder = db.dg_parlay_builder  # Big Money Builder parlays
         self.goblin_recon = db.dg_goblin_recon  # Goblin Recon parlays (high-consistency)
-        self.cached_board = db.dg_cached_board  # Full cached board for frontend
-        self.master_roster = db.dg_master_roster  # SOURCE OF TRUTH: Player-to-team mapping
+        self.cached_board = db[COLL("board_cache", "nba")]  # Full cached board for frontend
+        self.master_roster = db[COLL("master_roster", "nba")]  # SOURCE OF TRUTH: Player-to-team mapping
         self.flagged_players = db.dg_flagged_players  # Players not in master roster (manual review)
-        self.master_hub = db.nba_master_hub_2026  # BDL SSOT for all player stats
+        self.master_hub = db[COLL("master_hub", "nba")]  # BDL SSOT for all player stats
         
         # Legacy caching collections
         self.static_shell_cache = db.dg_static_shell
