@@ -1,0 +1,2507 @@
+{
+  "snapshot_at": "2026-04-19T06:12:04.047758+00:00",
+  "active_db": "pick_vision",
+  "mongo_host": "unknown",
+  "wave": 0,
+  "purpose": "Pre-rename baseline for NBA rebuild",
+  "databases": {
+    "pick_vision": {
+      "nba_prop_scores": {
+        "exists": true,
+        "count": 1150,
+        "size_bytes": 1932602,
+        "storage_bytes": 389120,
+        "avg_doc_bytes": 1680,
+        "index_count": 8,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "uniq_canonical_version": {
+            "key": [
+              [
+                "canonical_key",
+                1
+              ],
+              [
+                "version_tag",
+                1
+              ]
+            ],
+            "unique": true,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "idx_vision_score_desc": {
+            "key": [
+              [
+                "vision_score",
+                -1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "idx_tier": {
+            "key": [
+              [
+                "tier",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "idx_pp_utility_desc": {
+            "key": [
+              [
+                "pp_utility",
+                -1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "idx_computed_at_desc": {
+            "key": [
+              [
+                "computed_at",
+                -1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "idx_tier_active_vision": {
+            "key": [
+              [
+                "version_tag",
+                1
+              ],
+              [
+                "tier",
+                1
+              ],
+              [
+                "active",
+                1
+              ],
+              [
+                "vision_score",
+                -1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "idx_game_start_active": {
+            "key": [
+              [
+                "active",
+                1
+              ],
+              [
+                "game_start_utc",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "active",
+          "active_changed_at",
+          "canonical_key",
+          "computed_at",
+          "confidence",
+          "edge_vs_fair",
+          "event_id",
+          "fair_prob",
+          "game_start_utc",
+          "hit_rate_over",
+          "hit_rate_under",
+          "inactive_reason",
+          "line",
+          "model_projection",
+          "model_sigma",
+          "p_true_active",
+          "p_true_hit_rate",
+          "p_true_method",
+          "p_true_model",
+          "p_true_vk2",
+          "player_name",
+          "pp_multiplier",
+          "pp_multiplier_label",
+          "pp_multiplier_source",
+          "pp_playability_reason",
+          "pp_playable",
+          "pp_reference_source",
+          "pp_utility",
+          "pp_utility_category",
+          "pp_utility_components",
+          "quality_source",
+          "recommendation",
+          "sport",
+          "stability",
+          "stat_type",
+          "tier",
+          "tier_gate_results",
+          "tier_reason",
+          "tier_reference_book",
+          "tier_reference_odds"
+        ]
+      },
+      "nba_prop_scores_archive_stale_tags": {
+        "exists": true,
+        "count": 41793,
+        "size_bytes": 60145606,
+        "storage_bytes": 8826880,
+        "avg_doc_bytes": 1439,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "_archived_at",
+          "_archived_reason",
+          "canonical_key",
+          "computed_at",
+          "confidence",
+          "edge_vs_fair",
+          "event_id",
+          "fair_prob",
+          "line",
+          "model_projection",
+          "model_sigma",
+          "p_true_active",
+          "p_true_hit_rate",
+          "p_true_method",
+          "p_true_model",
+          "p_true_vk2",
+          "player_name",
+          "pp_multiplier",
+          "pp_multiplier_label",
+          "pp_multiplier_source",
+          "pp_reference_source",
+          "pp_utility",
+          "pp_utility_category",
+          "pp_utility_components",
+          "quality_source",
+          "recommendation",
+          "sport",
+          "stability",
+          "stat_type",
+          "tier",
+          "tier_gate_results",
+          "tier_reason",
+          "tier_reference_book",
+          "tier_reference_odds",
+          "version_tag",
+          "vision_score",
+          "vision_score_raw",
+          "vk2_error",
+          "vk2_projection",
+          "vk2_sigma"
+        ]
+      },
+      "nba_master_hub_2026": {
+        "exists": true,
+        "count": 559,
+        "size_bytes": 79079849,
+        "storage_bytes": 44679168,
+        "avg_doc_bytes": 141466,
+        "index_count": 6,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "bdl_id_1": {
+            "key": [
+              [
+                "bdl_id",
+                1
+              ]
+            ],
+            "unique": true,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "nba_id_1": {
+            "key": [
+              [
+                "nba_id",
+                1
+              ]
+            ],
+            "unique": true,
+            "sparse": true,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "display_name_1": {
+            "key": [
+              [
+                "display_name",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": true
+          },
+          "team_abbreviation_1": {
+            "key": [
+              [
+                "team_abbreviation",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": true
+          },
+          "espn_id_1": {
+            "key": [
+              [
+                "espn_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": true
+          }
+        },
+        "top_level_fields_sample": [
+          "advanced_overlay_at",
+          "advanced_stats",
+          "ai_context_reason",
+          "ai_context_score",
+          "ai_context_updated_at",
+          "badges_synced_at",
+          "baseline_stats",
+          "baseline_stats_source",
+          "baseline_stats_updated_at",
+          "bdl_game_logs",
+          "bdl_game_logs_count",
+          "bdl_game_logs_source",
+          "bdl_game_logs_updated_at",
+          "bdl_id",
+          "bdl_last_sync",
+          "bdl_player_id",
+          "bdl_raw_stats",
+          "bdl_sync_at",
+          "bdl_sync_source",
+          "college",
+          "context_badges",
+          "country",
+          "data_source_3yr",
+          "display_name",
+          "display_name_bdl",
+          "draft_number",
+          "draft_round",
+          "draft_year",
+          "espn_id",
+          "first_name",
+          "game_logs",
+          "game_logs_source",
+          "game_logs_updated_at",
+          "games_played_3yr",
+          "headshot_url",
+          "height",
+          "history",
+          "history_stats",
+          "history_updated_at",
+          "injury"
+        ]
+      },
+      "nba_context_engine": {
+        "exists": true,
+        "count": 98,
+        "size_bytes": 17798,
+        "storage_bytes": 45056,
+        "avg_doc_bytes": 181,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "active",
+          "flag_type",
+          "headline_reference",
+          "metadata",
+          "player_id",
+          "severity",
+          "source",
+          "timestamp",
+          "travel_miles"
+        ]
+      },
+      "nba_career_stats": {
+        "exists": true,
+        "count": 164,
+        "size_bytes": 47946,
+        "storage_bytes": 69632,
+        "avg_doc_bytes": 292,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "career_3pm",
+          "career_ast",
+          "career_blk",
+          "career_min",
+          "career_pts",
+          "career_reb",
+          "career_stl",
+          "career_tov",
+          "fetched_at",
+          "games_played",
+          "is_active",
+          "nba_id",
+          "player_name",
+          "source"
+        ]
+      },
+      "nba_calibration_runs": {
+        "exists": true,
+        "count": 2,
+        "size_bytes": 14334,
+        "storage_bytes": 36864,
+        "avg_doc_bytes": 7167,
+        "index_count": 4,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "idx_created_desc": {
+            "key": [
+              [
+                "created_at",
+                -1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "idx_label": {
+            "key": [
+              [
+                "label",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "uniq_snap_id": {
+            "key": [
+              [
+                "snapshot_id",
+                1
+              ]
+            ],
+            "unique": true,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "baseline_variant",
+          "created_at",
+          "label",
+          "limit_applied",
+          "notes",
+          "snapshot_id",
+          "source_timestamps",
+          "sport",
+          "summary",
+          "tier_canonical_key_overlap_vs_baseline",
+          "tier_counts_table",
+          "tier_deltas_vs_baseline",
+          "top_sample_overlap_vs_baseline",
+          "variants_meta",
+          "war_zone_movers_vs_baseline"
+        ]
+      },
+      "dg_cached_board": {
+        "exists": true,
+        "count": 115,
+        "size_bytes": 17619268,
+        "storage_bytes": 6463488,
+        "avg_doc_bytes": 153211,
+        "index_count": 5,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "player_name_1": {
+            "key": [
+              [
+                "player_name",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": true
+          },
+          "team_1": {
+            "key": [
+              [
+                "team",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": true
+          },
+          "synced_at_-1": {
+            "key": [
+              [
+                "synced_at",
+                -1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": true
+          },
+          "props.stat_type_1": {
+            "key": [
+              [
+                "props.stat_type",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": true
+          }
+        },
+        "top_level_fields_sample": [
+          "baseline_stats",
+          "bdl_game_logs",
+          "bdl_id",
+          "bdl_player_id",
+          "context_badges",
+          "demons",
+          "espn_id",
+          "games_played",
+          "goblins",
+          "headshot_url",
+          "injured_teammates",
+          "injury_status",
+          "is_mapper_matched",
+          "is_verified",
+          "jersey_number",
+          "nba_com_id",
+          "nba_id",
+          "opponent",
+          "opponent_abbr",
+          "photo_source",
+          "photo_url",
+          "player_id",
+          "player_name",
+          "position",
+          "props",
+          "rank",
+          "revenge_game",
+          "ripple_detected",
+          "season_avg",
+          "standard",
+          "synced_at",
+          "team",
+          "team_logo_url",
+          "team_name",
+          "usage_bump_percent",
+          "usage_bump_reason",
+          "volatility_flag"
+        ]
+      },
+      "dg_cached_board_temp": {
+        "exists": true,
+        "count": 115,
+        "size_bytes": 17575717,
+        "storage_bytes": 6205440,
+        "avg_doc_bytes": 152832,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "baseline_stats",
+          "bdl_game_logs",
+          "bdl_id",
+          "bdl_player_id",
+          "demons",
+          "espn_id",
+          "games_played",
+          "goblins",
+          "headshot_url",
+          "injured_teammates",
+          "injury_status",
+          "is_mapper_matched",
+          "is_verified",
+          "jersey_number",
+          "nba_com_id",
+          "nba_id",
+          "opponent",
+          "opponent_abbr",
+          "photo_source",
+          "photo_url",
+          "player_id",
+          "player_name",
+          "position",
+          "props",
+          "rank",
+          "revenge_game",
+          "ripple_detected",
+          "season_avg",
+          "standard",
+          "synced_at",
+          "team",
+          "team_logo_url",
+          "team_name",
+          "usage_bump_percent",
+          "usage_bump_reason",
+          "volatility_flag"
+        ]
+      },
+      "dg_live_props": {
+        "exists": true,
+        "count": 2614,
+        "size_bytes": 3130121,
+        "storage_bytes": 872448,
+        "avg_doc_bytes": 1197,
+        "index_count": 2,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "_composite_key_1": {
+            "key": [
+              [
+                "_composite_key",
+                1
+              ]
+            ],
+            "unique": true,
+            "sparse": true,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "_composite_key",
+          "away_team",
+          "away_team_full",
+          "betonline_price",
+          "bookmaker",
+          "commence_time",
+          "direction",
+          "draftkings_price",
+          "event_id",
+          "fanduel_price",
+          "fetched_at",
+          "game_date",
+          "hit_rates",
+          "home_team",
+          "home_team_full",
+          "is_alternate_market",
+          "is_demon",
+          "is_goblin",
+          "last_update",
+          "line",
+          "market",
+          "multiplier",
+          "player_name",
+          "player_name_raw",
+          "popularity_order",
+          "price",
+          "prop_type",
+          "sharp_market",
+          "sort_price",
+          "sort_source",
+          "stat_type_extracted",
+          "synced_at"
+        ]
+      },
+      "dg_odds_cache": {
+        "exists": true,
+        "count": 182,
+        "size_bytes": 5593477,
+        "storage_bytes": 1392640,
+        "avg_doc_bytes": 30733,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "away_team",
+          "bookmakers",
+          "commence_time",
+          "event_id",
+          "fetched_at",
+          "home_team",
+          "id",
+          "source",
+          "sport_key",
+          "sport_title"
+        ]
+      },
+      "dg_events_cache": {
+        "exists": true,
+        "count": 1,
+        "size_bytes": 267,
+        "storage_bytes": 36864,
+        "avg_doc_bytes": 267,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "away_team",
+          "commence_time",
+          "fetched_at",
+          "home_team",
+          "id",
+          "sport_key",
+          "sport_title"
+        ]
+      },
+      "dg_master_roster": {
+        "exists": true,
+        "count": 5000,
+        "size_bytes": 1985560,
+        "storage_bytes": 491520,
+        "avg_doc_bytes": 397,
+        "index_count": 4,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "player_name_1": {
+            "key": [
+              [
+                "player_name",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "normalized_name_1": {
+            "key": [
+              [
+                "normalized_name",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "team_abbreviation_1": {
+            "key": [
+              [
+                "team_abbreviation",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "bdl_player_id",
+          "college",
+          "country",
+          "draft_number",
+          "draft_round",
+          "draft_year",
+          "height",
+          "jersey_number",
+          "normalized_name",
+          "player_name",
+          "position",
+          "source",
+          "synced_at",
+          "team_abbreviation",
+          "team_full_name",
+          "weight"
+        ]
+      },
+      "dg_player_stats": {
+        "exists": true,
+        "count": 101,
+        "size_bytes": 8841821,
+        "storage_bytes": 2338816,
+        "avg_doc_bytes": 87542,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "games",
+          "normalized_name",
+          "player_name",
+          "source",
+          "synced_at",
+          "total_games"
+        ]
+      },
+      "elite_safe_haven": {
+        "exists": true,
+        "count": 10,
+        "size_bytes": 48466,
+        "storage_bytes": 28672,
+        "avg_doc_bytes": 4846,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "active_badges",
+          "avg_mins",
+          "blowout_risk",
+          "board_score",
+          "casino_req_rate",
+          "cv",
+          "direction",
+          "dk_odds",
+          "dk_tier",
+          "draftkings_price",
+          "fanduel_price",
+          "ferrari_power_score",
+          "fl_board_score",
+          "game_time",
+          "h10_rate",
+          "h5_rate",
+          "headshot_url",
+          "hook_risk",
+          "intel_suite",
+          "is_demon",
+          "is_goblin",
+          "is_standard",
+          "is_vision_enriched",
+          "l10_avg",
+          "l10_median",
+          "l10_rate",
+          "l10_std_dev",
+          "l5_avg",
+          "l5_rate",
+          "line",
+          "market",
+          "market_prob",
+          "mlr_features_used",
+          "mlr_friction",
+          "mlr_matchup",
+          "mlr_raw_prediction",
+          "momentum_data",
+          "momentum_modifier",
+          "nba_id",
+          "opponent"
+        ]
+      },
+      "defensive_momentum_cache": {
+        "exists": true,
+        "count": 30,
+        "size_bytes": 14174,
+        "storage_bytes": 20480,
+        "avg_doc_bytes": 472,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "composite_rank",
+          "is_elite",
+          "is_weak",
+          "l10_allowed",
+          "l10_pts_allowed",
+          "l10_rank",
+          "l5_allowed",
+          "l5_pts_allowed",
+          "l5_rank",
+          "momentum",
+          "proxy_description",
+          "proxy_label",
+          "proxy_type",
+          "season_allowed",
+          "season_def_rating",
+          "season_rank",
+          "stat_type",
+          "team",
+          "trend_alert",
+          "updated_at",
+          "using_proxy"
+        ]
+      },
+      "injuries_normalized": {
+        "exists": true,
+        "count": 270,
+        "size_bytes": 273783,
+        "storage_bytes": 266240,
+        "avg_doc_bytes": 1014,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "bdl_id",
+          "color",
+          "display_only",
+          "first_seen_at",
+          "injury_date",
+          "player_name",
+          "position",
+          "return_date",
+          "risk",
+          "source",
+          "sport",
+          "status",
+          "status_changed_at",
+          "synced_at",
+          "team",
+          "team_id",
+          "tier_level"
+        ]
+      },
+      "live_injuries": {
+        "exists": true,
+        "count": 308,
+        "size_bytes": 161597,
+        "storage_bytes": 139264,
+        "avg_doc_bytes": 524,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "description",
+          "expires_at",
+          "injury_type",
+          "is_out",
+          "player_name",
+          "severity",
+          "sport",
+          "status",
+          "team",
+          "updated_at"
+        ]
+      },
+      "star_usage_cache": {
+        "exists": true,
+        "count": 163,
+        "size_bytes": 40791,
+        "storage_bytes": 28672,
+        "avg_doc_bytes": 250,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "bdl_id",
+          "cached_at",
+          "is_star",
+          "net_rating",
+          "off_rating",
+          "pie",
+          "player_name",
+          "position",
+          "team",
+          "usage_pct",
+          "usage_percentage"
+        ]
+      },
+      "board_drift_ledger": {
+        "exists": true,
+        "count": 989,
+        "size_bytes": 290867,
+        "storage_bytes": 86016,
+        "avg_doc_bytes": 294,
+        "index_count": 4,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "ttl_observed_at_72h": {
+            "key": [
+              [
+                "observed_at",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": 259200,
+            "background": false
+          },
+          "idx_sport_observed_at_desc": {
+            "key": [
+              [
+                "sport",
+                1
+              ],
+              [
+                "observed_at",
+                -1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "idx_ck_observed_at_desc": {
+            "key": [
+              [
+                "canonical_key",
+                1
+              ],
+              [
+                "observed_at",
+                -1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "active_rt",
+          "canonical_key",
+          "computed_at_rt",
+          "observed_at",
+          "quality_source_rt",
+          "source",
+          "sport",
+          "tier_rt",
+          "version_tag",
+          "vision_score_rt"
+        ]
+      },
+      "odds_api_mapping_master": {
+        "exists": true,
+        "count": 548,
+        "size_bytes": 716282,
+        "storage_bytes": 212992,
+        "avg_doc_bytes": 1307,
+        "index_count": 4,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "bdl_id_1": {
+            "key": [
+              [
+                "bdl_id",
+                1
+              ]
+            ],
+            "unique": true,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "odds_api_name_lower_1": {
+            "key": [
+              [
+                "odds_api_name_lower",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "odds_api_name_1": {
+            "key": [
+              [
+                "odds_api_name",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "baseline_stats",
+          "bdl_id",
+          "created_at",
+          "display_name",
+          "headshot_url",
+          "nba_id",
+          "normalized_name",
+          "odds_api_name",
+          "odds_api_name_lower",
+          "photo_url",
+          "player_id",
+          "position",
+          "source",
+          "team",
+          "team_full_name"
+        ]
+      },
+      "ticker_cache": {
+        "exists": true,
+        "count": 4,
+        "size_bytes": 8710,
+        "storage_bytes": 36864,
+        "avg_doc_bytes": 2177,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "date",
+          "games",
+          "games_count",
+          "synced_at",
+          "type"
+        ]
+      },
+      "ticker_headlines": {
+        "exists": true,
+        "count": 6,
+        "size_bytes": 2700,
+        "storage_bytes": 36864,
+        "avg_doc_bytes": 450,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "category",
+          "fingerprint",
+          "first_seen_at",
+          "is_custom",
+          "last_seen_at",
+          "link",
+          "source",
+          "sources",
+          "title"
+        ]
+      },
+      "breaking_news_cache": {
+        "exists": true,
+        "count": 1,
+        "size_bytes": 2188,
+        "storage_bytes": 36864,
+        "avg_doc_bytes": 2188,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "news",
+          "type",
+          "updated_at"
+        ]
+      },
+      "live_scores_cache": {
+        "exists": true,
+        "count": 1,
+        "size_bytes": 3294,
+        "storage_bytes": 20480,
+        "avg_doc_bytes": 3294,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "games",
+          "type",
+          "updated_at"
+        ]
+      },
+      "spotrac_contracts_cache": {
+        "exists": true,
+        "count": 1,
+        "size_bytes": 33055,
+        "storage_bytes": 53248,
+        "avg_doc_bytes": 33055,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "cached_at",
+          "contracts",
+          "players_count",
+          "type"
+        ]
+      },
+      "dg_sync_log": {
+        "exists": true,
+        "count": 26,
+        "size_bytes": 15510,
+        "storage_bytes": 36864,
+        "avg_doc_bytes": 596,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "lookup_method",
+          "mapper_matched_count",
+          "players_count",
+          "synced_at",
+          "total_props",
+          "type",
+          "unverified_count",
+          "verified_count"
+        ]
+      }
+    },
+    "nba_master_hub_2026": {
+      "line_history": {
+        "exists": true,
+        "count": 1846,
+        "size_bytes": 223824,
+        "storage_bytes": 61440,
+        "avg_doc_bytes": 121,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "line",
+          "player_name",
+          "recorded_at",
+          "stat_type",
+          "team"
+        ]
+      },
+      "referee_assignments": {
+        "exists": true,
+        "count": 6,
+        "size_bytes": 1556,
+        "storage_bytes": 36864,
+        "avg_doc_bytes": 259,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "away_team",
+          "crew_chief",
+          "date",
+          "fetched_at",
+          "game",
+          "home_team",
+          "referee",
+          "umpire"
+        ]
+      },
+      "ferrari_scored": {
+        "exists": true,
+        "count": 1096,
+        "size_bytes": 1808423,
+        "storage_bytes": 536576,
+        "avg_doc_bytes": 1650,
+        "index_count": 3,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "power_score_desc": {
+            "key": [
+              [
+                "ferrari_power_score",
+                -1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "tier_power_score": {
+            "key": [
+              [
+                "tier",
+                1
+              ],
+              [
+                "ferrari_power_score",
+                -1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "anchor_line",
+          "base_power_score",
+          "bovada_price",
+          "consistency_component",
+          "crew_chief",
+          "cushion_component",
+          "direction",
+          "draftkings_price",
+          "edge_component",
+          "fanduel_price",
+          "ferrari_power_score",
+          "foul_rate_diff",
+          "game_time",
+          "h10_rate",
+          "h5_rate",
+          "has_momentum_modifier",
+          "has_vacuum_modifier",
+          "has_whistle_modifier",
+          "headshot_url",
+          "is_alternate",
+          "is_demon",
+          "is_goblin",
+          "l10_avg",
+          "l10_hits",
+          "l10_mean",
+          "l10_median",
+          "l10_mode",
+          "l10_rate",
+          "l5_avg",
+          "l5_rate",
+          "lift_label",
+          "lift_type",
+          "line",
+          "line_delta",
+          "market",
+          "momentum_data",
+          "momentum_modifier",
+          "nba_id",
+          "opponent",
+          "opponent_abbr"
+        ]
+      },
+      "ferrari_discarded": {
+        "exists": true,
+        "count": 376,
+        "size_bytes": 44609,
+        "storage_bytes": 53248,
+        "avg_doc_bytes": 118,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "player_name",
+          "reason",
+          "separation",
+          "sharp_price"
+        ]
+      },
+      "ferrari_safe_haven": {
+        "exists": true,
+        "count": 10,
+        "size_bytes": 17076,
+        "storage_bytes": 36864,
+        "avg_doc_bytes": 1707,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "anchor_line",
+          "base_power_score",
+          "bovada_price",
+          "consistency_component",
+          "crew_chief",
+          "cushion_component",
+          "direction",
+          "draftkings_price",
+          "edge_component",
+          "fanduel_price",
+          "ferrari_power_score",
+          "foul_rate_diff",
+          "game_time",
+          "h10_rate",
+          "h5_rate",
+          "has_momentum_modifier",
+          "has_vacuum_modifier",
+          "has_whistle_modifier",
+          "headshot_url",
+          "is_alternate",
+          "is_demon",
+          "is_goblin",
+          "l10_avg",
+          "l10_hits",
+          "l10_mean",
+          "l10_median",
+          "l10_mode",
+          "l10_rate",
+          "l5_avg",
+          "l5_rate",
+          "lift_label",
+          "lift_type",
+          "line",
+          "line_delta",
+          "market",
+          "momentum_data",
+          "momentum_modifier",
+          "nba_id",
+          "opponent",
+          "opponent_abbr"
+        ]
+      },
+      "ferrari_front_lines": {
+        "exists": true,
+        "count": 10,
+        "size_bytes": 15667,
+        "storage_bytes": 36864,
+        "avg_doc_bytes": 1566,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "anchor_line",
+          "base_power_score",
+          "bovada_price",
+          "consistency_component",
+          "crew_chief",
+          "cushion_component",
+          "direction",
+          "draftkings_price",
+          "edge_component",
+          "fanduel_price",
+          "ferrari_power_score",
+          "foul_rate_diff",
+          "game_time",
+          "h10_rate",
+          "h5_rate",
+          "has_momentum_modifier",
+          "has_vacuum_modifier",
+          "has_whistle_modifier",
+          "headshot_url",
+          "is_alternate",
+          "is_demon",
+          "is_goblin",
+          "l10_avg",
+          "l10_hits",
+          "l10_mean",
+          "l10_median",
+          "l10_mode",
+          "l10_rate",
+          "l5_avg",
+          "l5_rate",
+          "lift_label",
+          "lift_type",
+          "line",
+          "line_delta",
+          "market",
+          "momentum_data",
+          "momentum_modifier",
+          "nba_id",
+          "opponent",
+          "opponent_abbr"
+        ]
+      },
+      "ferrari_war_zone": {
+        "exists": true,
+        "count": 10,
+        "size_bytes": 15520,
+        "storage_bytes": 36864,
+        "avg_doc_bytes": 1552,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "anchor_line",
+          "base_power_score",
+          "bovada_price",
+          "consistency_component",
+          "crew_chief",
+          "cushion_component",
+          "direction",
+          "draftkings_price",
+          "edge_component",
+          "fanduel_price",
+          "ferrari_power_score",
+          "foul_rate_diff",
+          "game_time",
+          "h10_rate",
+          "h5_rate",
+          "has_momentum_modifier",
+          "has_vacuum_modifier",
+          "has_whistle_modifier",
+          "headshot_url",
+          "is_alternate",
+          "is_demon",
+          "is_goblin",
+          "l10_avg",
+          "l10_hits",
+          "l10_mean",
+          "l10_median",
+          "l10_mode",
+          "l10_rate",
+          "l5_avg",
+          "l5_rate",
+          "lift_label",
+          "lift_type",
+          "line",
+          "line_delta",
+          "market",
+          "momentum_data",
+          "momentum_modifier",
+          "nba_id",
+          "opponent",
+          "opponent_abbr"
+        ]
+      },
+      "dg_cached_board": {
+        "exists": true,
+        "count": 88,
+        "size_bytes": 6184903,
+        "storage_bytes": 1458176,
+        "avg_doc_bytes": 70282,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "bdl_id",
+          "bdl_player_id",
+          "demons",
+          "espn_id",
+          "goblins",
+          "headshot_url",
+          "is_mapper_matched",
+          "is_verified",
+          "nba_com_id",
+          "opponent",
+          "opponent_abbr",
+          "photo_url",
+          "player_id",
+          "player_name",
+          "position",
+          "props",
+          "rank",
+          "standard",
+          "synced_at",
+          "team"
+        ]
+      },
+      "dg_live_props": {
+        "exists": true,
+        "count": 1846,
+        "size_bytes": 1924376,
+        "storage_bytes": 294912,
+        "avg_doc_bytes": 1042,
+        "index_count": 2,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "_composite_key_1": {
+            "key": [
+              [
+                "_composite_key",
+                1
+              ]
+            ],
+            "unique": true,
+            "sparse": true,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "_composite_key",
+          "away_team",
+          "away_team_full",
+          "bookmaker",
+          "bovada_price",
+          "commence_time",
+          "direction",
+          "draftkings_price",
+          "event_id",
+          "fanduel_price",
+          "fetched_at",
+          "game_date",
+          "hit_rates",
+          "home_team",
+          "home_team_full",
+          "is_alternate_market",
+          "is_demon",
+          "is_goblin",
+          "last_update",
+          "line",
+          "market",
+          "multiplier",
+          "player_name",
+          "player_name_raw",
+          "popularity_order",
+          "price",
+          "prop_type",
+          "sharp_market",
+          "sharp_price",
+          "sharp_source",
+          "stat_type_extracted",
+          "synced_at"
+        ]
+      }
+    },
+    "nba_props": {
+      "nba_context_engine": {
+        "exists": true,
+        "count": 3,
+        "size_bytes": 952,
+        "storage_bytes": 20480,
+        "avg_doc_bytes": 317,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "active",
+          "flag_type",
+          "headline_reference",
+          "metadata",
+          "player_id",
+          "severity",
+          "source",
+          "timestamp",
+          "travel_miles"
+        ]
+      },
+      "nba_master_hub_2026": {
+        "exists": true,
+        "count": 534,
+        "size_bytes": 8560292,
+        "storage_bytes": 4526080,
+        "avg_doc_bytes": 16030,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "baseline_stats",
+          "baseline_stats_source",
+          "display_name",
+          "game_logs",
+          "game_logs_source",
+          "game_logs_updated_at",
+          "headshot_url",
+          "nba_player_id",
+          "photo_url",
+          "roster_status",
+          "team"
+        ]
+      },
+      "spotrac_contracts_cache": {
+        "exists": true,
+        "count": 1,
+        "size_bytes": 32817,
+        "storage_bytes": 53248,
+        "avg_doc_bytes": 32817,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "cached_at",
+          "contracts",
+          "players_count",
+          "type"
+        ]
+      }
+    },
+    "propvision": {
+      "dg_cached_board": {
+        "exists": true,
+        "count": 66,
+        "size_bytes": 5896137,
+        "storage_bytes": 1564672,
+        "avg_doc_bytes": 89335,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "bdl_id",
+          "bdl_player_id",
+          "demons",
+          "espn_id",
+          "goblins",
+          "headshot_url",
+          "is_mapper_matched",
+          "is_verified",
+          "nba_com_id",
+          "opponent",
+          "opponent_abbr",
+          "photo_url",
+          "player_id",
+          "player_name",
+          "position",
+          "props",
+          "rank",
+          "standard",
+          "synced_at",
+          "team"
+        ]
+      },
+      "dg_live_props": {
+        "exists": true,
+        "count": 1439,
+        "size_bytes": 1646615,
+        "storage_bytes": 487424,
+        "avg_doc_bytes": 1144,
+        "index_count": 2,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "_composite_key_1": {
+            "key": [
+              [
+                "_composite_key",
+                1
+              ]
+            ],
+            "unique": true,
+            "sparse": true,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "_composite_key",
+          "away_team",
+          "away_team_full",
+          "betonline_price",
+          "bookmaker",
+          "commence_time",
+          "direction",
+          "dk_odds",
+          "draftkings_price",
+          "event_id",
+          "fetched_at",
+          "game_date",
+          "hit_rates",
+          "home_team",
+          "home_team_full",
+          "is_alternate_market",
+          "is_demon",
+          "is_goblin",
+          "last_update",
+          "line",
+          "market",
+          "multiplier",
+          "pinnacle_price",
+          "player_name",
+          "player_name_raw",
+          "popularity_order",
+          "price",
+          "prop_type",
+          "sharp_market",
+          "sort_price",
+          "sort_source",
+          "stat_type_extracted",
+          "synced_at"
+        ]
+      },
+      "nba_master_hub_2026": {
+        "exists": true,
+        "count": 326,
+        "size_bytes": 5891027,
+        "storage_bytes": 3674112,
+        "avg_doc_bytes": 18070,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "baseline_stats",
+          "bdl_game_logs",
+          "bdl_game_logs_count",
+          "bdl_game_logs_source",
+          "bdl_game_logs_updated_at",
+          "bdl_id",
+          "bdl_raw_stats",
+          "display_name",
+          "last_bdl_sync",
+          "nba_id",
+          "nba_stats_raw",
+          "normalized_name",
+          "profile",
+          "season",
+          "team",
+          "team_full_name",
+          "team_id"
+        ]
+      },
+      "spotrac_contracts_cache": {
+        "exists": true,
+        "count": 1,
+        "size_bytes": 32819,
+        "storage_bytes": 28672,
+        "avg_doc_bytes": 32819,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "cached_at",
+          "contracts",
+          "players_count",
+          "type"
+        ]
+      }
+    },
+    "prop_finder": {
+      "defensive_momentum_cache": {
+        "exists": true,
+        "count": 25,
+        "size_bytes": 11991,
+        "storage_bytes": 20480,
+        "avg_doc_bytes": 479,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "composite_rank",
+          "is_elite",
+          "is_weak",
+          "l10_allowed",
+          "l10_pts_allowed",
+          "l10_rank",
+          "l5_allowed",
+          "l5_pts_allowed",
+          "l5_rank",
+          "momentum",
+          "proxy_description",
+          "proxy_label",
+          "proxy_type",
+          "season_allowed",
+          "season_def_rating",
+          "season_rank",
+          "stat_type",
+          "team",
+          "trend_alert",
+          "updated_at",
+          "using_proxy"
+        ]
+      },
+      "dg_cached_board": {
+        "exists": true,
+        "count": 0,
+        "size_bytes": 0,
+        "storage_bytes": 12288,
+        "avg_doc_bytes": 0,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": []
+      }
+    },
+    "test_database": {
+      "dg_cached_board": {
+        "exists": true,
+        "count": 6845,
+        "size_bytes": 4333080,
+        "storage_bytes": 1060864,
+        "avg_doc_bytes": 633,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "away_team",
+          "bookmaker",
+          "commence_time",
+          "direction",
+          "game_id",
+          "home_team",
+          "is_alternate_market",
+          "is_demon",
+          "is_goblin",
+          "last_updated",
+          "last_updated_iso",
+          "line",
+          "market",
+          "name",
+          "player_name",
+          "price",
+          "prizepicks_type",
+          "stat_type_extracted",
+          "sync_source",
+          "tier_label",
+          "tier_style"
+        ]
+      },
+      "dg_live_props": {
+        "exists": true,
+        "count": 5558,
+        "size_bytes": 5314255,
+        "storage_bytes": 1482752,
+        "avg_doc_bytes": 956,
+        "index_count": 2,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          },
+          "_composite_key_1": {
+            "key": [
+              [
+                "_composite_key",
+                1
+              ]
+            ],
+            "unique": true,
+            "sparse": true,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "_composite_key",
+          "away_team",
+          "away_team_full",
+          "bookmaker",
+          "commence_time",
+          "direction",
+          "event_id",
+          "fetched_at",
+          "game_date",
+          "hit_rates",
+          "home_team",
+          "home_team_full",
+          "is_alternate_market",
+          "is_demon",
+          "is_goblin",
+          "last_update",
+          "line",
+          "market",
+          "player_name",
+          "player_name_raw",
+          "popularity_order",
+          "price",
+          "prop_type",
+          "stat_type_extracted",
+          "synced_at"
+        ]
+      },
+      "nba_master_hub_2026": {
+        "exists": true,
+        "count": 1124,
+        "size_bytes": 9225940,
+        "storage_bytes": 4755456,
+        "avg_doc_bytes": 8208,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "ai_context_reason",
+          "ai_context_score",
+          "ai_context_updated_at",
+          "baseline_stats",
+          "baseline_stats_source",
+          "baseline_stats_updated_at",
+          "bdl_player_id",
+          "college",
+          "display_name",
+          "espn_id",
+          "game_logs",
+          "game_logs_source",
+          "game_logs_updated_at",
+          "headshot_url",
+          "height",
+          "injury",
+          "jersey",
+          "last_updated",
+          "nba_id",
+          "nba_player_id",
+          "odds_api_mapped_at",
+          "odds_api_name",
+          "on_active_roster",
+          "photo_locked",
+          "photo_url",
+          "player_id",
+          "position",
+          "roster_status",
+          "stats",
+          "stats_source",
+          "status",
+          "tank01_id",
+          "team",
+          "team_id",
+          "team_name",
+          "weight"
+        ]
+      },
+      "dg_events_cache": {
+        "exists": true,
+        "count": 9,
+        "size_bytes": 2404,
+        "storage_bytes": 36864,
+        "avg_doc_bytes": 267,
+        "index_count": 1,
+        "indexes": {
+          "_id_": {
+            "key": [
+              [
+                "_id",
+                1
+              ]
+            ],
+            "unique": false,
+            "sparse": false,
+            "ttl_seconds": null,
+            "background": false
+          }
+        },
+        "top_level_fields_sample": [
+          "away_team",
+          "commence_time",
+          "fetched_at",
+          "home_team",
+          "id",
+          "sport_key",
+          "sport_title"
+        ]
+      }
+    }
+  }
+}
