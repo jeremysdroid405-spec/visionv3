@@ -10,6 +10,8 @@ from fastapi import APIRouter, HTTPException
 from typing import Optional
 import logging
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v3/master-hub", tags=["master-hub"])
@@ -290,7 +292,7 @@ async def enrich_player_nba_stats(bdl_id: int):
         raise HTTPException(status_code=404, detail=f"Could not enrich player {bdl_id} - check nba_id exists")
     
     # Return updated player
-    player = await _db.nba_master_hub_2026.find_one({"bdl_id": bdl_id}, {"_id": 0})
+    player = await _db[COLL("master_hub", "nba")].find_one({"bdl_id": bdl_id}, {"_id": 0})
     return player
 
 
@@ -312,7 +314,7 @@ async def get_nba_last_n_stats(bdl_id: int):
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     # Get player's nba_id
-    player = await _db.nba_master_hub_2026.find_one({"bdl_id": bdl_id}, {"nba_id": 1, "display_name": 1})
+    player = await _db[COLL("master_hub", "nba")].find_one({"bdl_id": bdl_id}, {"nba_id": 1, "display_name": 1})
     if not player:
         raise HTTPException(status_code=404, detail=f"Player {bdl_id} not found")
     
@@ -356,7 +358,7 @@ async def enrich_all_players_nba_stats(limit: int = 100):
     service = get_bdl_sync_service(_db)
     
     # Find players needing enrichment
-    players = await _db.nba_master_hub_2026.find({
+    players = await _db[COLL("master_hub", "nba")].find({
         "nba_id": {"$exists": True, "$ne": None},
         "$or": [
             {"baseline_stats.PTS.l5_avg": {"$exists": False}},
@@ -384,7 +386,7 @@ async def enrich_all_players_nba_stats(limit: int = 100):
         "total_processed": len(players),
         "success": success,
         "failed": failed,
-        "remaining": await _db.nba_master_hub_2026.count_documents({
+        "remaining": await _db[COLL("master_hub", "nba")].count_documents({
             "nba_id": {"$exists": True, "$ne": None},
             "$or": [
                 {"baseline_stats.PTS.l5_avg": {"$exists": False}},
@@ -484,7 +486,7 @@ async def sync_single_player_bdl(player_name: str):
     
     if success:
         # Fetch the synced document
-        doc = await _db.nba_master_hub_2026.find_one(
+        doc = await _db[COLL("master_hub", "nba")].find_one(
             {"bdl_id": player_id},
             {"_id": 0}
         )
@@ -519,7 +521,7 @@ async def sync_player_game_logs(player_name: str):
     success = await service.sync_player_to_master_hub(player_id)
     
     if success:
-        doc = await _db.nba_master_hub_2026.find_one(
+        doc = await _db[COLL("master_hub", "nba")].find_one(
             {"bdl_id": player_id},
             {"_id": 0, "display_name": 1, "game_logs": 1}
         )
@@ -548,14 +550,14 @@ async def get_bdl_sample(player_name: str):
     from services.bdl_comprehensive_sync import _normalize_name
     normalized = _normalize_name(player_name)
     
-    doc = await _db.nba_master_hub_2026.find_one(
+    doc = await _db[COLL("master_hub", "nba")].find_one(
         {"normalized_name": normalized},
         {"_id": 0}
     )
     
     if not doc:
         # Try display_name match
-        doc = await _db.nba_master_hub_2026.find_one(
+        doc = await _db[COLL("master_hub", "nba")].find_one(
             {"display_name": {"$regex": player_name, "$options": "i"}},
             {"_id": 0}
         )

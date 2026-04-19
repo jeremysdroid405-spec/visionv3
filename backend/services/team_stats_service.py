@@ -21,6 +21,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 from pymongo import MongoClient
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # NBA Team abbreviations mapping
@@ -197,7 +199,7 @@ class TeamStatsService:
         
         Uses aggregate player stats to estimate team performance.
         """
-        hub = self.db['nba_master_hub_2026']
+        hub = self.db[COLL("master_hub", "nba")]
         
         # Find players on this team
         team_players = list(hub.find({'team': team_abbr}))
@@ -309,7 +311,7 @@ class VegasTotalsService:
         
         # Try to find from cached board
         try:
-            cached_board = self.db['dg_cached_board']
+            cached_board = self.db[COLL("board_cache", "nba")]
             
             # Find any prop for this game
             prop = cached_board.find_one({
@@ -359,7 +361,7 @@ class VegasTotalsService:
         
         Uses player's usage rate and historical share.
         """
-        hub = self.db['nba_master_hub_2026']
+        hub = self.db[COLL("master_hub", "nba")]
         
         player = hub.find_one({
             '$or': [

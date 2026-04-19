@@ -313,11 +313,11 @@ async def get_enrichment_status():
             }}
         ]
         board_counts = {}
-        async for doc in engine.db.dg_cached_board.aggregate(pipeline):
+        async for doc in engine.db[COLL("board_cache", "nba")].aggregate(pipeline):
             board_counts[doc["_id"] or "unassigned"] = doc["count"]
         
         # Get latest enrichment timestamp
-        latest = await engine.db.dg_cached_board.find_one(
+        latest = await engine.db[COLL("board_cache", "nba")].find_one(
             {"props.vision_enriched_at": {"$exists": True}},
             {"props.vision_enriched_at": 1, "_id": 0},
             sort=[("props.vision_enriched_at", -1)]
@@ -938,7 +938,7 @@ async def get_cached_player(player_name: str):
         # ========== FIX TEAM/OPPONENT FROM MASTER HUB ==========
         # The cached_board has incorrect team data - get correct team from master hub
         db = engine.db
-        master_hub = db.nba_master_hub_2026
+        master_hub = db[COLL("master_hub", "nba")]
         
         # Look up correct team and photo from master hub
         hub_player = await master_hub.find_one(
@@ -961,7 +961,7 @@ async def get_cached_player(player_name: str):
         # Derive correct opponent from game info
         # Get home_team/away_team from raw cached_board documents
         game_id = player.get("game_id")
-        raw_doc = await db.dg_cached_board.find_one(
+        raw_doc = await db[COLL("board_cache", "nba")].find_one(
             {"game_id": game_id, "home_team": {"$exists": True}},
             {"_id": 0, "home_team": 1, "away_team": 1}
         ) if game_id else None
@@ -1035,7 +1035,7 @@ async def get_cached_player(player_name: str):
         # ========== FETCH PRE-CACHED INTEL FROM dg_cached_board ==========
         # The Board Intelligence Service enriches props with full intel_suite
         # Fetch these pre-computed values instead of recalculating
-        cached_player = await db.dg_cached_board.find_one(
+        cached_player = await db[COLL("board_cache", "nba")].find_one(
             {"player_name": {"$regex": f"^{pname}$", "$options": "i"}},
             {"_id": 0, "props": 1}
         )

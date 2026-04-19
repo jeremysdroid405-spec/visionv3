@@ -7,6 +7,8 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 import logging
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v3/ai-context", tags=["ai-context"])
@@ -58,14 +60,14 @@ async def get_ai_context_status():
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
     
-    total = await _db.nba_master_hub_2026.count_documents({})
-    with_context = await _db.nba_master_hub_2026.count_documents({"ai_context_score": {"$exists": True}})
+    total = await _db[COLL("master_hub", "nba")].count_documents({})
+    with_context = await _db[COLL("master_hub", "nba")].count_documents({"ai_context_score": {"$exists": True}})
     
-    positive = await _db.nba_master_hub_2026.count_documents({"ai_context_score": {"$gt": 0.6}})
-    neutral = await _db.nba_master_hub_2026.count_documents({"ai_context_score": {"$gte": 0.4, "$lte": 0.6}})
-    negative = await _db.nba_master_hub_2026.count_documents({"ai_context_score": {"$lt": 0.4}})
+    positive = await _db[COLL("master_hub", "nba")].count_documents({"ai_context_score": {"$gt": 0.6}})
+    neutral = await _db[COLL("master_hub", "nba")].count_documents({"ai_context_score": {"$gte": 0.4, "$lte": 0.6}})
+    negative = await _db[COLL("master_hub", "nba")].count_documents({"ai_context_score": {"$lt": 0.4}})
     
-    latest = await _db.nba_master_hub_2026.find_one(
+    latest = await _db[COLL("master_hub", "nba")].find_one(
         {"ai_context_updated_at": {"$exists": True}},
         {"_id": 0, "player_name": 1, "ai_context_updated_at": 1},
         sort=[("ai_context_updated_at", -1)]
@@ -92,7 +94,7 @@ async def get_player_context(player_name: str):
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
     
-    player = await _db.nba_master_hub_2026.find_one(
+    player = await _db[COLL("master_hub", "nba")].find_one(
         {"$or": [
             {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
             {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}}

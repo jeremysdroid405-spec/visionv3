@@ -17,6 +17,8 @@ from services.ferrari_tier_service import get_ferrari_tier_service
 from services.referee_scraper_service import get_referee_service
 from services.mlb_matchup_math import get_mlb_matchup_analysis
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Ferrari Tiers"])
 
@@ -1014,7 +1016,7 @@ async def _build_nba_board_lookup() -> Dict[tuple, Dict[str, Any]]:
     lookup: Dict[tuple, Dict[str, Any]] = {}
     if _db is None:
         return lookup
-    async for player_doc in _db.dg_cached_board.find({}):
+    async for player_doc in _db[COLL("board_cache", "nba")].find({}):
         for p in (player_doc.get("props") or []):
             if not isinstance(p, dict):
                 continue
@@ -2839,7 +2841,7 @@ async def get_mlb_player_props(
     
     # SSOT: Fetch game logs AND vk_baselines from mlb_master_hub_2026
     # This ensures consistency between pick cards and player detail views
-    master_hub = _db["mlb_master_hub_2026"]
+    master_hub = _db[COLL("master_hub", "mlb")]
     player_hub = await master_hub.find_one(
         {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
         {"_id": 0, "bdl_game_logs": 1, "vk_baselines": 1, "vk_baseline_games": 1, "is_pitcher": 1, "is_batter": 1}
@@ -4204,7 +4206,7 @@ async def analyze_single_prop_four_gate(
     stat_type = unquote(stat_type)
     
     # Find prop in cached board
-    cached_board = _db["mlb_cached_board"]
+    cached_board = _db[COLL("board_cache", "mlb")]
     player_doc = await cached_board.find_one(
         {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
         {"_id": 0}

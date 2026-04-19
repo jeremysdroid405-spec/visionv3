@@ -61,7 +61,7 @@ async def run_board_intelligence_enrichment(db: AsyncIOMotorDatabase) -> Dict[st
     start = datetime.now(timezone.utc)
     logger.info("[BOARD_INTEL] Starting Phase 2: Predictive Market Edge Enrichment...")
     
-    cached_board = db.dg_cached_board
+    cached_board = db[COLL("board_cache", "nba")]
     ferrari_scored = db.ferrari_scored
     now_iso = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     
@@ -271,7 +271,7 @@ async def _load_market_edge_data(
         # Fetch events from odds_cache (more reliable than events_cache)
         # Get unique event_ids from cached board props
         event_ids = set()
-        async for player in db.dg_cached_board.find({}, {"props.event_id": 1}):
+        async for player in db[COLL("board_cache", "nba")].find({}, {"props.event_id": 1}):
             for prop in player.get("props", []):
                 eid = prop.get("event_id")
                 if eid:
@@ -531,7 +531,7 @@ def _select_board_players(
 
 async def _find_prop_index(db: AsyncIOMotorDatabase, pick: Dict) -> int:
     """Find the index of this prop in the player's props array."""
-    player = await db.dg_cached_board.find_one(
+    player = await db[COLL("board_cache", "nba")].find_one(
         {"player_name": pick["player_name"]},
         {"_id": 0, "props": 1}
     )
@@ -677,7 +677,7 @@ async def _enrich_pick_full(
             update_data[f"props.{idx}.is_shootout"] = True
             update_data[f"props.{idx}.shootout_total"] = pick.get("shootout_total")
         
-        update_result = await db.dg_cached_board.update_one(
+        update_result = await db[COLL("board_cache", "nba")].update_one(
             {"player_name": player_name},
             {"$set": update_data}
         )

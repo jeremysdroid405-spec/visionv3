@@ -20,6 +20,8 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/live", tags=["Live Data"])
@@ -215,7 +217,7 @@ async def sync_mlb_todays_games():
         
         # Store in database
         if _db is not None:
-            await _db.ticker_cache.update_one(
+            await _db[COLL.shared("ticker_cache")].update_one(
                 {"type": "mlb_games"},
                 {"$set": {
                     "type": "mlb_games",
@@ -316,7 +318,7 @@ async def sync_mlb_news_headlines():
         
         # Store in database
         if _db is not None:
-            await _db.ticker_cache.update_one(
+            await _db[COLL.shared("ticker_cache")].update_one(
                 {"type": "mlb_news"},
                 {"$set": {
                     "type": "mlb_news",
@@ -418,7 +420,7 @@ async def sync_todays_games():
         
         # Store in database
         if _db is not None:
-            await _db.ticker_cache.update_one(
+            await _db[COLL.shared("ticker_cache")].update_one(
                 {"type": "games"},
                 {"$set": {
                     "type": "games",
@@ -527,7 +529,7 @@ async def sync_news_headlines():
         
         # Store in database
         if _db is not None:
-            await _db.ticker_cache.update_one(
+            await _db[COLL.shared("ticker_cache")].update_one(
                 {"type": "news"},
                 {"$set": {
                     "type": "news",
@@ -644,7 +646,7 @@ async def get_live_scores(sport: str = Query("nba", description="Sport: nba or m
         
         # Fallback to DB cache if BDL fails
         if _db is not None:
-            cached = await _db.ticker_cache.find_one(
+            cached = await _db[COLL.shared("ticker_cache")].find_one(
                 {"type": "games"},
                 {"_id": 0}
             )
@@ -678,7 +680,7 @@ async def get_breaking_news(sport: str = Query("nba", description="Sport: nba or
         
         # Get from DB cache
         if _db is not None:
-            cached = await _db.ticker_cache.find_one(
+            cached = await _db[COLL.shared("ticker_cache")].find_one(
                 {"type": cache_type},
                 {"_id": 0}
             )
@@ -872,7 +874,7 @@ async def get_mlb_live_scores():
 async def _get_mlb_cache_fallback():
     """Fallback to DB cache if BDL API fails."""
     if _db is not None:
-        cached = await _db.ticker_cache.find_one(
+        cached = await _db[COLL.shared("ticker_cache")].find_one(
             {"type": "mlb_games"},
             {"_id": 0}
         )

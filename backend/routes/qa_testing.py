@@ -7,6 +7,8 @@ from fastapi import APIRouter, HTTPException
 from typing import Optional
 import logging
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/qa", tags=["QA Testing"])
 
@@ -36,7 +38,7 @@ async def inject_line_move(
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
-    cached_board = _db.dg_cached_board
+    cached_board = _db[COLL("board_cache", "nba")]
     
     # Find the player document
     player_doc = await cached_board.find_one({
@@ -120,7 +122,7 @@ async def revert_line_move():
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
-    cached_board = _db.dg_cached_board
+    cached_board = _db[COLL("board_cache", "nba")]
     
     # Find all docs with QA injection marker
     injected = cached_board.find({"_qa_injection": {"$exists": True}})

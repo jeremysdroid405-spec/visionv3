@@ -52,6 +52,8 @@ from typing import Any, Dict, List, Optional, Set
 from services.event_bus import BoardEvent, get_event_bus
 from services.scoring import recompute as _recompute_mod
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -174,7 +176,7 @@ class InjuryTriggeredRescore:
             teams: Set[str] = set()
             if hint_team:
                 teams.add(hint_team)
-            async for doc in self._db.dg_cached_board.find(
+            async for doc in self._db[COLL("board_cache", "nba")].find(
                 {"player_name": {"$in": list(impacted)}},
                 {"_id": 0, "team": 1},
             ):
@@ -187,7 +189,7 @@ class InjuryTriggeredRescore:
 
             # 2) Pull all players on those teams that have an entry in
             #    dg_cached_board (= have props on today's slate).
-            async for doc in self._db.dg_cached_board.find(
+            async for doc in self._db[COLL("board_cache", "nba")].find(
                 {"team": {"$in": list(teams)}},
                 {"_id": 0, "player_name": 1},
             ):
@@ -319,7 +321,7 @@ class InjuryTriggeredRescore:
             teams.add(team_hint)
 
         player_docs: Dict[str, Dict[str, Any]] = {}
-        async for doc in self._db.dg_cached_board.find(
+        async for doc in self._db[COLL("board_cache", "nba")].find(
             {"player_name": {"$in": impacted_players}},
             {"_id": 0, "player_name": 1, "team": 1},
         ):
@@ -334,7 +336,7 @@ class InjuryTriggeredRescore:
         injuries_by_team: Dict[str, List[Dict[str, Any]]] = {}
         injury_by_key: Dict[tuple, Dict[str, Any]] = {}
         if teams:
-            async for rec in self._db.injuries_normalized.find(
+            async for rec in self._db[COLL.shared("injuries")].find(
                 {"sport": "nba", "team": {"$in": list(teams)}},
                 {
                     "_id": 0,
@@ -395,7 +397,7 @@ class InjuryTriggeredRescore:
                         teammates.insert(0, ep)
                         break
 
-            result = await self._db.dg_cached_board.update_one(
+            result = await self._db[COLL("board_cache", "nba")].update_one(
                 {"player_name": pn},
                 {
                     "$set": {

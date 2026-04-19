@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-04-19 — Wave 0 Batch 10 plumbing (broader scanner sweep)
+- 9 files routed through `services/config/collection_names.py::COLL`:
+  `routes/master_hub.py`, `routes/ai_context.py`, `routes/live.py`,
+  `routes/cached_data.py`, `services/injury_triggered_rescore.py`,
+  `services/board_intelligence_service.py`, `routes/ferrari_tiers.py`,
+  `services/team_stats_service.py`, `routes/qa_testing.py`.
+- In-scope concepts: `master_hub` (NBA+MLB), `board_cache` (NBA+MLB),
+  `ticker_cache` (shared), `injuries` (shared).
+- 44 code-level literals removed → 44 `COLL(...)` call-sites added. 7 imports added
+  (2 files already had import from prior batches).
+- Broader scanner now authoritative (covers `db.X`, `db["X"]`, `_db.X`, `_db["X"]`,
+  `engine.db.X`, `self.db[...]` variants).
+- Second-pass completed on `board_intelligence_service.py` (4 refs added since Batch 2).
+- In-scope hardcoded-ref count in these files: **44 → 0**.
+- Regression suite: 80 passed / 1 skipped / 0 failed — matches baseline.
+- Live smoke after restart: NBA + MLB Ferrari + master-hub player lookup +
+  ai-context + live scores/news + command search all HTTP 200.
+  `master-hub/player/name/Luka Doncic` returned real 8-key document via new
+  bracket-access COLL routing. Backend uptime clean. 0 new errors.
+- Global broader-scanner residual: **107 → 66 refs across 56 files** (41-ref
+  reduction, 38% drop). Remaining refs are long-tail (mostly 1–2 per file).
+- Audit: `/app/memory/wave0_batch10_audit.md`.
+
+
 ## 2026-04-19 — Wave 0 Batch 9 plumbing (resolvers/repos/routes/utility services)
 - 10 files routed through `services/config/collection_names.py::COLL`:
   `services/picks/player_stats_resolver.py`, `advanced_analytics.py`,
