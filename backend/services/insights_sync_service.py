@@ -17,6 +17,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 if TYPE_CHECKING:
     from services.engines.demon_goblin_engine import DemonGoblinEngine
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,8 +32,8 @@ class InsightsSyncService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.cached_board = db.dg_cached_board
-        self.master_hub = db.nba_master_hub_2026  # BDL SSOT
+        self.cached_board = db[COLL("board_cache", "nba")]
+        self.master_hub = db[COLL("master_hub", "nba")]  # BDL SSOT
         self.daily_insights = db.dg_daily_insights
         self._engine = None
     

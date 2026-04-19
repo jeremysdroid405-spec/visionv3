@@ -19,6 +19,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 if TYPE_CHECKING:
     from services.engines.demon_goblin_engine import DemonGoblinEngine
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,11 +33,11 @@ class SyncOrchestrationService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.dg_cached_board = db.dg_cached_board
+        self.dg_cached_board = db[COLL("board_cache", "nba")]
         self.verification_failures = db.dg_verification_failures
         self.player_data = db.dg_player_data
         self.trending_cache = db.dg_trending
-        self.sync_log = db.dg_sync_log
+        self.sync_log = db[COLL.shared("sync_log")]
         self._engine = None
     
     def set_engine(self, engine: "DemonGoblinEngine"):

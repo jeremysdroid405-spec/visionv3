@@ -20,6 +20,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Badge definitions with their trigger conditions
@@ -163,8 +165,8 @@ class BadgeResolverService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.context_engine = db.nba_context_engine
-        self.master_hub = db.nba_master_hub_2026
+        self.context_engine = db[COLL("context_flags", "nba")]
+        self.master_hub = db[COLL("master_hub", "nba")]
     
     async def get_player_flags(
         self, 

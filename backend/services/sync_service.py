@@ -18,6 +18,8 @@ from repositories import RepositoryManager
 from services.props_service import PropsService
 from services.parlay_service import build_parlay_tickets, interleave_pick_arrays
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,13 +32,13 @@ class SyncService:
         self.props_service = PropsService(db)
         
         # Direct collection access (legacy)
-        self.cached_board = db.dg_cached_board
+        self.cached_board = db[COLL("board_cache", "nba")]
         self.radar_picks = db.dg_radar_picks
         self.goblin_vault = db.dg_goblin_vault
         self.front_lines = db.dg_front_lines
         self.parlay_builder = db.dg_parlay_builder
         self.goblin_recon = db.dg_goblin_recon
-        self.sync_log = db.dg_sync_log
+        self.sync_log = db[COLL.shared("sync_log")]
         self.daily_insights = db.dg_daily_insights
     
     # ==================== WAR ZONE BUILDER ====================

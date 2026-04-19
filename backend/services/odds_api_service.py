@@ -16,6 +16,8 @@ import logging
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # API Configuration
@@ -52,8 +54,8 @@ class OddsApiService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.events_cache = db.dg_events_cache
-        self.odds_cache = db.dg_odds_cache
+        self.events_cache = db[COLL("events_cache", "nba")]
+        self.odds_cache = db[COLL("odds_cache", "nba")]
         
         # In-memory caches
         self._player_popularity: Dict[str, int] = {}

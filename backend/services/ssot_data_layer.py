@@ -36,6 +36,8 @@ from typing import Dict, Any, List, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import logging
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,8 +75,8 @@ class SSOTDataLayer:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.master_hub = db.nba_master_hub_2026
-        self.active_lines = db.dg_cached_board
+        self.master_hub = db[COLL("master_hub", "nba")]
+        self.active_lines = db[COLL("board_cache", "nba")]
         self._player_cache: Optional[Dict[str, Dict]] = None
     
     async def get_player_stats(self, player_name: str) -> Optional[Dict[str, Any]]:

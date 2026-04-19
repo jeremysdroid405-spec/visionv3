@@ -31,6 +31,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from nba_api.stats.static import players as nba_players_static
 from nba_api.stats.endpoints import playerdashboardbylastngames
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # BallDontLie API Configuration
@@ -95,7 +97,7 @@ class BDLComprehensiveSyncService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         self.teams_cache: Dict[int, Dict] = {}
         self.players_cache: Dict[int, Dict] = {}
         
@@ -1412,7 +1414,7 @@ class BDLComprehensiveSyncService:
         2. Are missing l10_values in baseline_stats
         """
         # Get players with active props
-        active_players = await self.db.dg_cached_board.distinct("player_name")
+        active_players = await self.db[COLL("board_cache", "nba")].distinct("player_name")
         logger.info(f"[BDL] Found {len(active_players)} players with active props")
         
         # Find their bdl_ids from master hub

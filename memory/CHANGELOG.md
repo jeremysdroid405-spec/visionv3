@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-04-19 — Wave 0 Batch 8 plumbing (adapter/writer/sync orchestration)
+- 9 files routed through `services/config/collection_names.py::COLL`:
+  `services/odds_api_service.py`, `services/sync_service.py`,
+  `services/badge_resolver.py`, `services/mlb_high_friction_model.py`,
+  `services/tier_builder_service.py`, `services/ssot_data_layer.py`,
+  `services/sync_orchestration_service.py`, `services/bdl_comprehensive_sync.py`,
+  `services/insights_sync_service.py`.
+- In-scope concepts: `master_hub` (NBA+MLB), `board_cache`, `live_props` (MLB),
+  `events_cache`, `odds_cache`, `sync_log` (shared), `context_flags` (new this batch).
+- 18 code-level literals removed → 18 `COLL(...)` call-sites added. 9 imports added.
+- `context_flags` concept first used this batch — registry resolves it to
+  `nba_context_engine` for NBA sport.
+- `_archive_mlb_v1/` not touched per exclusion.
+- Out-of-scope refs reported and left: `dg_radar_picks`, `dg_goblin_vault`,
+  `dg_front_lines`, `dg_parlay_builder`, `dg_goblin_recon`, `dg_daily_insights`,
+  `mlb_historical_logs`, `dg_verification_failures`, `dg_player_data`,
+  `dg_trending` (none in registry).
+- In-scope hardcoded-ref count in these files: **18 → 0**.
+- Regression suite: 80 passed / 1 skipped / 0 failed — matches baseline.
+- Live smoke after restart: all 9 NBA + MLB endpoints HTTP 200.
+  Backend uptime clean. 0 new errors.
+- Global code-level residual: 81 → **59 refs across 47 files**.
+- Audit: `/app/memory/wave0_batch8_audit.md`.
+
+
 ## 2026-04-19 — Wave 0 Batch 7 plumbing (MLB pipeline + roster services)
 - 8 files routed through `services/config/collection_names.py::COLL`:
   `services/mlb_tier_service.py`, `services/mlb_lineup_ripple_service.py`,

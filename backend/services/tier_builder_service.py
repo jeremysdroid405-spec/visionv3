@@ -32,6 +32,8 @@ from services.dvp_service import (
 from services.parlay_service import build_parlay_tickets, interleave_pick_arrays
 from services.prop_processor_service import apply_social_boost
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Tier-specific scoring weights
@@ -73,7 +75,7 @@ class TierBuilderService:
         self.front_lines = db.dg_front_lines
         self.parlay_builder = db.dg_parlay_builder
         self.goblin_recon = db.dg_goblin_recon
-        self.sync_log = db.dg_sync_log
+        self.sync_log = db[COLL.shared("sync_log")]
     
     # ==================== UTILITY METHODS ====================
     
@@ -104,7 +106,7 @@ class TierBuilderService:
         """Pre-fetch AI context scores for all players"""
         ai_context_cache = {}
         try:
-            cursor = self.db.nba_master_hub_2026.find(
+            cursor = self.db[COLL("master_hub", "nba")].find(
                 {"ai_context_score": {"$exists": True}},
                 {"_id": 0, "display_name": 1, "player_name": 1, "ai_context_score": 1}
             )
