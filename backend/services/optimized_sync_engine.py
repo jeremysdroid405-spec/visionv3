@@ -38,7 +38,7 @@ DEFAULT_SPORT = "nba"
 SPORT_COLLECTION_MAP = {
     "nba": {
         "master_hub": "nba_master_hub_2026",
-        "cached_board": "dg_cached_board",  # Legacy NBA naming (no prefix for backwards compat)
+        "cached_board": "nba_cached_board",  # Canonical NBA cached board (post-Wave-2)
         "live_props": "nba_live_props",
         "safe_haven": "ferrari_safe_haven",
         "front_lines": "ferrari_front_lines",

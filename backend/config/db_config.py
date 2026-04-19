@@ -66,7 +66,7 @@ BASE_COLLECTIONS = {
 # NBA uses some legacy names without the nba_ prefix for backwards compatibility
 # with existing data. New sports (MLB) use consistent prefixing.
 NBA_LEGACY_NAMES = {
-    "cached_board": "dg_cached_board",
+    "cached_board": "nba_cached_board",
     "live_props": "nba_live_props",
     "injuries": "dg_injuries",
     "safe_haven": "ferrari_safe_haven",

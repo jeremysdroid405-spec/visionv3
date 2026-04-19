@@ -140,7 +140,7 @@ async def init_database():
     # Verify data counts
     results["data_counts"] = {
         "nba_master_hub_2026": await db[COLL("master_hub", "nba")].count_documents({}),
-        "dg_cached_board": await db[COLL("board_cache", "nba")].count_documents({}),
+        "nba_cached_board": await db[COLL("board_cache", "nba")].count_documents({}),
         "dvp_rankings": await db.dvp_rankings.count_documents({})
     }
     

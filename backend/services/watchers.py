@@ -308,7 +308,7 @@ class OddsDeltaWatcher:
 
     async def _snapshot(self, sport: str) -> Dict[str, float]:
         """Read current board lines from cached board."""
-        col = "dg_cached_board" if sport == "nba" else "mlb_cached_board"
+        col = COLL("board_cache", sport)
         snap = {}
         cursor = self.db[col].find({}, {"_id": 0, "player_name": 1, "stat_type": 1, "line": 1})
         async for doc in cursor:

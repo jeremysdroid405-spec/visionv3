@@ -117,27 +117,23 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     #   - services/watchers.py
     #   - services/scoring/calibration_store.py
 
-    # Wave 1 ACTIVE (Batch 1/N): board_cache · NBA shadow-writes to
-    # `nba_cached_board`. Primary today: `dg_cached_board` (121 docs,
-    # 3.04 MiB storage, fat docs ~140 KiB each). Stable key:
-    # `player_name` (100% coverage, 100% unique on live data; no
-    # pre-existing unique index on primary — a `player_name_unique`
-    # index was created on the shadow during pre-populate).
-    # Backfill strategy: Option B (explicit one-shot pre-populate of
-    # 121 docs before wiring, to guarantee clean 0-tick convergence).
-    # Writer call-sites flipped to COLL.handle(...) in THIS batch:
-    #   - services/cached_board_builder_service.py  (main builder)
-    #   - repositories/board_repo.py                (BoardRepository facade)
-    # Other writers remain on `db[COLL(...)]` and DO NOT fan out to the
-    # shadow yet — they will be flipped in subsequent mini-batches. The
-    # main builder is authoritative for bulk-replace semantics, so
-    # convergence will hold for the player-level doc shape while the
-    # peripheral enrichers stay primary-only.
-    # IMPORTANT: the atomic-rename path in cached_board_builder_service
-    # (lines ~387-394) bypasses ShadowWriter. It currently always fails
-    # in this environment (admin-only perms); if it ever succeeds during
-    # Wave 1, the shadow will diverge — flag immediately.
-    ("board_cache", "nba"): "nba_cached_board",
+    # Wave 2 complete (Phase 1 — code cutover): board_cache · NBA has
+    # been flipped to `nba_cached_board`. Phase 2 (atomic DB rename
+    # `dg_cached_board` → `dg_cached_board_backup`) is pending operator
+    # greenlight after the Phase-1 observation cycle confirms writes
+    # land on the new primary only. Wave 1 convergence was verified
+    # across 6 writer-flip batches (main builder, inter-build engines,
+    # secondary writers, optimized_sync persist, and adaptive_sync_engine
+    # handle-cache refactor) with 65 consecutive clean ledger ticks under
+    # stable_key=`player_name` (delta_pct=0.0, hash_match_rate=1.0,
+    # spanning three natural churns 121/107/114 players).
+    # Additional Wave 2 housekeeping flipped the split registries:
+    #   - config/db_config.py::NBA_LEGACY_NAMES["cached_board"]
+    #   - services/optimized_sync_engine.py::SPORT_COLLECTION_MAP
+    # and retired hardcoded reader / stale response-label strings in:
+    #   - services/watchers.py:311
+    #   - routes/ferrari_tiers.py:4094  (f-string)
+    #   - routes/scheduler.py:143       (response label)
 }
 
 
@@ -187,7 +183,7 @@ _SPORT_COLLECTIONS: Dict[str, Dict[str, str]] = {
                                  "mlb": "mlb_star_usage_cache"},
 
     # ---- Board caches (UI-facing) ------------------------------------------
-    "board_cache":          {"nba": "dg_cached_board",
+    "board_cache":          {"nba": "nba_cached_board",
                              "mlb": "mlb_cached_board"},
     "board_cache_temp":     {"nba": "dg_cached_board_temp",
                              "mlb": "mlb_cached_board_temp"},

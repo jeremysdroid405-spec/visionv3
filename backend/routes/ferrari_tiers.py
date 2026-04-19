@@ -4091,7 +4091,7 @@ async def get_oracle_verdict(
     service.sport = sport
     
     # Get prop from cached board
-    cached_board = _db[f"{sport}_cached_board"]
+    cached_board = _db[COLL("board_cache", sport)]
     player_doc = await cached_board.find_one(
         {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
         {"_id": 0}
