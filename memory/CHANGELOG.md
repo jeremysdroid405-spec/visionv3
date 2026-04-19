@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-04-19 — Wave 0 Batch 3 plumbing (core pipeline, no renames)
+- 3 files routed through `services/config/collection_names.py::COLL`:
+  `services/ferrari_tier_service.py`, `services/picks_getter_service.py`,
+  `services/cached_board_builder_service.py`.
+- In-scope concepts: `board_cache`, `board_cache_temp`, `master_hub`,
+  `master_roster`, `events_cache`, `odds_cache`, `sync_log`.
+- 18 code-level literals removed → 18 `COLL(...)` call-sites added. 3 imports added.
+- Includes atomic `renameCollection` admin command (cached_board_builder L390-391)
+  now routed through `COLL(...)` — behavior preserved.
+- In-scope hardcoded-ref count in these files: **18 → 0** (docstring/log prose untouched).
+- Out-of-scope refs reported and intentionally left: `ferrari_*` legacy collections
+  (no registry concept), `nba_context_engine` (excluded from user's priority list),
+  `dg_radar_picks/goblin_vault/front_lines/parlay_builder/goblin_recon/player_data/`
+  `daily_insights/flagged_players` (not in registry).
+- Regression suite: 80 passed / 1 skipped / 0 failed — matches baseline.
+- Live smoke: `/api/v3/ferrari/{safe-haven,front-lines,war-zone}` all HTTP 200.
+  Backend hot-reloaded cleanly; 0 new errors in supervisor log.
+- Global code-level residual count: 170 refs across 75 files (down from ~188 pre-Batch-3).
+- Audit: `/app/memory/wave0_batch3_audit.md`.
+
+
 ## 2026-04-19 — Wave 0 Batch 2 plumbing (ingest layer, no renames)
 - 5 files routed through `services/config/collection_names.py::COLL`:
   `services/odds_sync_service.py`, `services/sharp_edge_calculator.py`,

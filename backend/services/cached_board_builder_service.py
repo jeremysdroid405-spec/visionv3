@@ -20,6 +20,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from services.utils_service import sanitize_player_name
 from services.anchor_classification_service import classify_props_by_anchor, _normalize_name as anchor_normalize_name
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,10 +48,10 @@ class CachedBoardBuilderService:
         self.parlay_builder_service = parlay_builder_service
         
         # Collection references
-        self.cached_board = db.dg_cached_board
-        self.cached_board_temp = db.dg_cached_board_temp  # Shadow table
-        self.sync_log = db.dg_sync_log
-        self.master_roster = db.dg_master_roster
+        self.cached_board = db[COLL("board_cache", "nba")]
+        self.cached_board_temp = db[COLL("board_cache_temp", "nba")]  # Shadow table
+        self.sync_log = db[COLL.shared("sync_log")]
+        self.master_roster = db[COLL("master_roster", "nba")]
         self.flagged_players = db.dg_flagged_players
         
         # Mapper reference - must be set externally
@@ -387,8 +389,8 @@ class CachedBoardBuilderService:
                     # First drop old collection, then rename temp to live
                     await self.cached_board.drop()
                     await self.db.command({
-                        "renameCollection": f"{self.db.name}.dg_cached_board_temp",
-                        "to": f"{self.db.name}.dg_cached_board"
+                        "renameCollection": f"{self.db.name}.{COLL('board_cache_temp', 'nba')}",
+                        "to": f"{self.db.name}.{COLL('board_cache', 'nba')}"
                     })
                     logger.info(f"[CACHED_BOARD] Atomic swap completed - vision intel preserved")
                 except Exception as rename_error:
@@ -757,7 +759,7 @@ class CachedBoardBuilderService:
         # Load from nba_master_hub_2026 (SSOT for player stats)
         # All records have bdl_id - this is the primary key
         # CRITICAL: Include bdl_game_logs for per-line hit rate calculation
-        hub_cursor = self.db.nba_master_hub_2026.find(
+        hub_cursor = self.db[COLL("master_hub", "nba")].find(
             {"bdl_id": {"$exists": True}},
             {"_id": 0, "bdl_id": 1, "display_name": 1, "baseline_stats": 1, "team": 1, "bdl_game_logs": 1}
         )

@@ -26,6 +26,8 @@ from bson import ObjectId
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 # CONSOLIDATED: Use shared player lookup utility
 from utils.player_lookup import get_player_by_id, get_player_by_name as shared_get_player_by_name
 
@@ -243,15 +245,15 @@ class PicksGetterService:
         self.front_lines = db.dg_front_lines
         self.parlay_builder = db.dg_parlay_builder
         self.goblin_recon = db.dg_goblin_recon
-        self.cached_board = db.dg_cached_board  # Active Lines
+        self.cached_board = db[COLL("board_cache", "nba")]  # Active Lines
         self.player_data = db.dg_player_data
         self.daily_insights = db.dg_daily_insights
-        self.sync_log = db.dg_sync_log
-        self.events_cache = db.dg_events_cache
-        self.odds_cache = db.dg_odds_cache
+        self.sync_log = db[COLL.shared("sync_log")]
+        self.events_cache = db[COLL("events_cache", "nba")]
+        self.odds_cache = db[COLL("odds_cache", "nba")]
         
         # PIPE 1: Stats Vault (BDL CRON destination)
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         
         # Cache for game info (home_team, away_team) by game_id
         self._game_info_cache = {}
@@ -298,7 +300,7 @@ class PicksGetterService:
                 }
         
         # Also load from master roster as backup
-        roster_cursor = self.db.dg_master_roster.find(
+        roster_cursor = self.db[COLL("master_roster", "nba")].find(
             {},
             {"_id": 0, "full_name": 1, "team_abbreviation": 1, "nba_id": 1}
         )

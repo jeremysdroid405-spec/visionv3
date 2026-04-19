@@ -55,6 +55,8 @@ from services.propvision_v7_engine import (
 )
 from services.oracle_apex_service import get_oracle_apex_service, ORACLE_APEX_CONFIG
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # ========== TEAM PACE DEFAULTS (possessions per game) ==========
@@ -181,9 +183,9 @@ class FerrariTierService:
     
     def __init__(self, db):
         self.db = db
-        self.cached_board = db.dg_cached_board
+        self.cached_board = db[COLL("board_cache", "nba")]
         # BDL is the SSOT for all player stats and game logs
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         
         # Output collections
         self.ferrari_safe_haven = db.ferrari_safe_haven
@@ -516,7 +518,7 @@ class FerrariTierService:
         context_data = {}
         
         try:
-            master_hub = self.db.nba_master_hub_2026
+            master_hub = self.db[COLL("master_hub", "nba")]
             cursor = master_hub.find(
                 {},
                 {"_id": 0, "display_name": 1, "bdl_game_logs": 1, "game_logs": 1, "baseline_stats": 1}
@@ -1390,7 +1392,7 @@ class FerrariTierService:
             # BUILD DK ODDS LOOKUP FROM dg_cached_board
             # =================================================================
             dk_odds_lookup = {}  # {(player_name, stat_type, line): dk_odds}
-            cached_board = self.db.dg_cached_board
+            cached_board = self.db[COLL("board_cache", "nba")]
             async for player_doc in cached_board.find({}, {"_id": 0, "player_name": 1, "props": 1}):
                 player_name = player_doc.get("player_name", "")
                 for prop in player_doc.get("props", []):
@@ -2334,7 +2336,7 @@ class FerrariTierService:
         player_names = list(set(p.get('player_name') for p in picks if p.get('player_name')))
         
         hub_data = {}
-        async for player in self.db.nba_master_hub_2026.find(
+        async for player in self.db[COLL("master_hub", "nba")].find(
             {"display_name": {"$in": player_names}},
             {"_id": 0, "display_name": 1, "bdl_game_logs": 1}
         ):
