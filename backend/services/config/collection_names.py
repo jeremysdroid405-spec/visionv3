@@ -63,6 +63,12 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # primary (`dg_odds_cache`) has been renamed to
     # `dg_odds_cache_backup` and is eligible for drop after the
     # observation window closes.
+
+    # Wave 1 pilot in progress (master_roster · NBA). Shadow-writing to
+    # `nba_master_roster`. Reads remain on `dg_master_roster`. Stable key
+    # is `bdl_player_id` (the BallDontLie player id — 100%-unique on
+    # 5000 docs; the BDL-sourced `id` surfaces here as `bdl_player_id`).
+    ("master_roster", "nba"): "nba_master_roster",
 }
 
 

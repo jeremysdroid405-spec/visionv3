@@ -70,7 +70,7 @@ class RosterService:
         self._roster_loaded = False
         
         # BDL is the ONLY source for player data
-        self.master_roster = db[COLL("master_roster", "nba")]
+        self.master_roster = COLL.handle(db, "master_roster", "nba")
         self.master_hub = db[COLL("master_hub", "nba")]  # BDL SSOT
         self.flagged_players = db.dg_flagged_players
     

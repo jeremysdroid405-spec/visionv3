@@ -17,7 +17,7 @@ class PlayerRepository:
     
     def __init__(self, db):
         self.db = db
-        self.master_roster = BaseRepository(db[COLL("master_roster", "nba")])
+        self.master_roster = BaseRepository(COLL.handle(db, "master_roster", "nba"))
         self.daily_insights = BaseRepository(db.dg_daily_insights)
         
         # In-memory cache for fast lookups

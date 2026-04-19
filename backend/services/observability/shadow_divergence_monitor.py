@@ -50,6 +50,10 @@ _STABLE_KEY: Dict[str, Union[str, Sequence[str]]] = {
     # odds_cache stores 2 docs per event_id (source={prizepicks,sharp_books})
     # so pairing REQUIRES a compound key.
     "odds_cache": ("event_id", "source"),
+    # master_roster documents have NO `player_id` field. The canonical
+    # unique identifier is `bdl_player_id` (100%-unique on production data;
+    # `player_name` and `normalized_name` have real collisions).
+    "master_roster": "bdl_player_id",
 }
 
 
