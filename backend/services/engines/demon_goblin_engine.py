@@ -424,7 +424,6 @@ class DemonGoblinEngine:
         self.stats_cache = db.dg_stats_cache
         self.sync_log = db[COLL.shared("sync_log")]
         self.trending_cache = db.dg_trending
-        self.line_history = db.dg_line_history
         
         # WAREHOUSE MODEL COLLECTIONS (migrating to repo.picks, repo.board)
         self.live_props = db[COLL("live_props", "nba")]  # Master props collection (deduplicated)

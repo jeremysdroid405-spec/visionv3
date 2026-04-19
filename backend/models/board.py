@@ -97,7 +97,7 @@ class TierPicks(BaseModel):
     
     # Metadata
     generated_at: Optional[datetime] = None
-    source: str = "dg_cached_board"
+    source: str = "nba_cached_board"
     
     class Config:
         extra = "allow"

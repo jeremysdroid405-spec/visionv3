@@ -91,7 +91,7 @@ def get_collection_name(base_name: str, sport: str = DEFAULT_SPORT) -> str:
         Full collection name with sport prefix
         
     Examples:
-        get_collection_name('cached_board', 'nba')  -> 'dg_cached_board'
+        get_collection_name('cached_board', 'nba')  -> 'nba_cached_board'
         get_collection_name('cached_board', 'mlb')  -> 'mlb_cached_board'
         get_collection_name('safe_haven', 'nba')    -> 'ferrari_safe_haven'
         get_collection_name('safe_haven', 'mlb')    -> 'mlb_ferrari_safe_haven'
