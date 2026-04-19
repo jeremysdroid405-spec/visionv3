@@ -51,23 +51,6 @@ MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
 API_RATE_LIMIT = 100  # requests per minute
 
-# ==================== COLLECTION NAMES ====================
-COLLECTIONS = {
-    "players": "players",
-    "odds_cache": "dg_odds_cache",
-    "cached_board": "dg_cached_board",
-    "war_zone": "dg_radar_picks",
-    "goblin_vault": "dg_goblin_vault",
-    "front_lines": "dg_front_lines",
-    "parlay_builder": "dg_parlay_builder",
-    "goblin_recon": "dg_goblin_recon",
-    "player_insights": "dg_player_insights",
-    "sync_status": "dg_sync_status",
-    "master_roster": "master_nba_roster",
-    "users": "users",
-    "static_shell": "dg_static_shell"
-}
-
 # ==================== SCORING WEIGHTS ====================
 SCORING_WEIGHTS = {
     "war_zone": {
