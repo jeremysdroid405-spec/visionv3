@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-04-19 — Wave 0 Batch 5 plumbing (intel/enrichment/repos)
+- 5 files routed through `services/config/collection_names.py::COLL`:
+  `services/market_moves_engine.py`, `services/oracle_apex_service.py`,
+  `services/vision_intel_enrichment_service.py`, `services/headshot_service.py`,
+  `repositories/board_repo.py`.
+- In-scope concepts: `board_cache`, `master_hub`, `injuries` (shared),
+  `live_scores_cache` (shared).
+- 13 code-level literals removed → 13 `COLL(...)` call-sites added. 5 imports added.
+- Out-of-scope refs reported and intentionally left: 2× `dg_live_props`
+  (oracle_apex L429 + board_repo L20 — `live_props` not in Batch 5 priority list),
+  plus `ferrari_scored`, `oracle_apex_picks` (not in registry).
+- In-scope hardcoded-ref count in these files: **13 → 0**.
+- Regression suite: 80 passed / 1 skipped / 0 failed — matches baseline.
+- Live smoke after restart: all Ferrari endpoints + market-moves read path HTTP 200,
+  supervisor clean, 0 new errors in backend.err.log.
+- Global code-level residual (broader pattern incl. live_scores_cache/ticker/news):
+  **85 refs across 53 files**.
+- Audit: `/app/memory/wave0_batch5_audit.md`.
+
+
 ## 2026-04-19 — Wave 0 Batch 4 plumbing (boot/indexes/scheduler/legacy engine)
 - 4 files routed through `services/config/collection_names.py::COLL`:
   `server.py`, `scripts/init_database.py`, `routes/scheduler.py`,

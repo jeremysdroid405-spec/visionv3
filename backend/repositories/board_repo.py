@@ -6,6 +6,7 @@ Handles cached board and live props operations.
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 from .base import BaseRepository
+from services.config.collection_names import COLL
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class BoardRepository:
     
     def __init__(self, db):
         self.db = db
-        self.cached_board = BaseRepository(db.dg_cached_board)
+        self.cached_board = BaseRepository(db[COLL("board_cache", "nba")])
         self.live_props = BaseRepository(db.dg_live_props)
     
     # ==================== CACHED BOARD ====================

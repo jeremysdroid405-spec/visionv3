@@ -28,6 +28,8 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 EVENT_TTL_MINUTES = 20
@@ -188,7 +190,7 @@ async def _classify_exits(
 
     # 1. Injury lookup
     injury_by_name = {}
-    inj_cursor = db.injuries_normalized.find(
+    inj_cursor = db[COLL.shared("injuries")].find(
         {"sport": sport, "tier_level": {"$gte": 3}},
         {"_id": 0, "player_name": 1, "status": 1, "tier_level": 1},
     )
@@ -197,7 +199,7 @@ async def _classify_exits(
 
     # 2. Game-lock lookup
     locked_teams = set()
-    cached_scores = await db.live_scores_cache.find_one({})
+    cached_scores = await db[COLL.shared("live_scores_cache")].find_one({})
     if cached_scores:
         for game in cached_scores.get("games", []):
             ct = game.get("commence_time")
@@ -218,7 +220,7 @@ async def _classify_exits(
     #    This is the EXACT source — per-book, per-market, per-line
     book_props_by_player: Dict[str, List[dict]] = {}
     exited_names = list({old_snapshot[pid]["player_name"] for pid in exited_pids})
-    board_cursor = db.dg_cached_board.find(
+    board_cursor = db[COLL("board_cache", "nba")].find(
         {"player_name": {"$in": exited_names}},
         {"_id": 0, "player_name": 1, "team": 1, "props": 1},
     )
@@ -241,7 +243,7 @@ async def _classify_exits(
     # Fallback to master hub for team
     missing_teams = [n for n in exited_names if n.lower() not in player_team]
     if missing_teams:
-        hub_cursor = db.nba_master_hub_2026.find(
+        hub_cursor = db[COLL("master_hub", "nba")].find(
             {"display_name": {"$in": missing_teams}},
             {"_id": 0, "display_name": 1, "team": 1},
         )

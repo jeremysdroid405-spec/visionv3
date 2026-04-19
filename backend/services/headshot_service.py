@@ -20,6 +20,8 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # ==================== CONFIGURATION ====================
@@ -207,7 +209,7 @@ class HeadshotService:
         
         # Get NBA IDs from master hub if not provided
         if nba_ids is None and self.db is not None:
-            cursor = self.db.nba_master_hub_2026.find(
+            cursor = self.db[COLL("master_hub", "nba")].find(
                 {"nba_id": {"$exists": True, "$ne": None}},
                 {"nba_id": 1, "display_name": 1}
             )
@@ -283,7 +285,7 @@ class HeadshotService:
         
         try:
             # Get all players with nba_id
-            cursor = self.db.nba_master_hub_2026.find(
+            cursor = self.db[COLL("master_hub", "nba")].find(
                 {"nba_id": {"$exists": True, "$ne": None}},
                 {"_id": 1, "nba_id": 1, "display_name": 1, "photo_url": 1}
             )
@@ -299,7 +301,7 @@ class HeadshotService:
                 
                 # Only update if different and local file exists
                 if current_url != local_url and self.headshot_exists(nba_id):
-                    await self.db.nba_master_hub_2026.update_one(
+                    await self.db[COLL("master_hub", "nba")].update_one(
                         {"_id": player["_id"]},
                         {"$set": {
                             "photo_url": local_url,

@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 GEMINI_CONCURRENT_LIMIT = 5
@@ -23,7 +25,7 @@ async def run_vision_intel_enrichment(db: AsyncIOMotorDatabase) -> Dict[str, Any
     start = datetime.now(timezone.utc)
     logger.info("[VISION_INTEL] Starting enrichment...")
     
-    cached_board = db.dg_cached_board
+    cached_board = db[COLL("board_cache", "nba")]
     now_iso = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     
     # ========== WAR ZONE: is_demon=True ==========
@@ -157,7 +159,7 @@ def _dedupe_by_player(picks: List[Dict], limit: int) -> List[Dict]:
 
 async def _find_prop_index(db: AsyncIOMotorDatabase, pick: Dict) -> int:
     """Find the index of this prop in the player's props array."""
-    player = await db.dg_cached_board.find_one(
+    player = await db[COLL("board_cache", "nba")].find_one(
         {"player_name": pick["player_name"]},
         {"_id": 0, "props": 1}
     )
@@ -204,7 +206,7 @@ async def _enrich_pick(db: AsyncIOMotorDatabase, pick: Dict, semaphore: asyncio.
             "cached_at": datetime.now(timezone.utc).isoformat()
         }
         
-        update_result = await db.dg_cached_board.update_one(
+        update_result = await db[COLL("board_cache", "nba")].update_one(
             {"player_name": player_name},
             {"$set": {
                 f"props.{idx}.vision_summary": ai_summary,

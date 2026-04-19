@@ -38,6 +38,8 @@ from services.vk_model_enforcement import (
 )
 from services.vegas_killer_model import VegasKillerModel
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -425,9 +427,9 @@ class OracleApexService:
     
     def __init__(self, db, vegas_killer_model=None):
         self.db = db
-        self.cached_board = db.dg_cached_board
+        self.cached_board = db[COLL("board_cache", "nba")]
         self.live_props = db.dg_live_props
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         self.oracle_apex_collection = db.oracle_apex_picks
         
         # v2.1: Initialize VegasKillerModel for TRUE MLR predictions
