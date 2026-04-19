@@ -114,6 +114,13 @@ class AdaptiveSyncEngine:
         
         # Collections
         self.cached_board_collection = COLL("board_cache", "nba")
+        # Wave 1 (Batch 6) shadow-writes: parallel handle that routes
+        # `board_cache` operations through ShadowWriter. The string cache
+        # above is preserved (unused externally today but retained for
+        # logs/introspection). Only the 3 DB call-sites below now go
+        # through `cached_board_handle` — readers delegate to primary,
+        # the single writer fans out to both primary and shadow.
+        self.cached_board_handle = COLL.handle(db, "board_cache", "nba")
         self.sync_status_collection = "dg_sync_status"
         self.game_schedule_collection = "dg_game_schedule"
         self.master_hub_collection = COLL("master_hub", "nba")
@@ -946,7 +953,7 @@ class AdaptiveSyncEngine:
                 }
                 
                 # Upsert to collection
-                await self.db[self.cached_board_collection].update_one(
+                await self.cached_board_handle.update_one(
                     {
                         "game_id": prop["game_id"],
                         "player_name": player_name,
@@ -1053,7 +1060,7 @@ class AdaptiveSyncEngine:
         
         for game in critical_games:
             # Check if any data for this game is stale
-            stale_count = await self.db[self.cached_board_collection].count_documents({
+            stale_count = await self.cached_board_handle.count_documents({
                 "game_id": game["id"],
                 "last_updated": {"$lt": threshold}
             })
@@ -1370,7 +1377,7 @@ class AdaptiveSyncEngine:
         now = datetime.now(timezone.utc)
         
         # Get board entries
-        cursor = self.db[self.cached_board_collection].find(
+        cursor = self.cached_board_handle.find(
             {},
             {"_id": 0}
         ).sort("last_updated", -1).limit(limit)

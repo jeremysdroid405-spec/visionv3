@@ -619,5 +619,179 @@ empty enrichment collector (runtime behavior, not code-path issue).
 6 consecutive clean ledger ticks. FULL-DOC HASH SWEEP 107/107. Regression
 clean. Halted pending greenlight for Batch 5 audit or Batch 6.**
 
+---
+
+# Batch 5 — SKIPPED per user direction.
+
+Audit confirmed `update_cached_board_with_oracle` is dead code (zero
+callers) and its writer path is safe but not urgent. Deferred to a
+future cleanup batch alongside other dead-code items.
+
+---
+
+# Batch 6 (adaptive_sync_engine handle-cache refactor) — applied 2026-04-19 20:14 UTC
+
+## Scope
+
+Added a parallel handle cache `self.cached_board_handle` next to the
+existing `self.cached_board_collection` string cache, and rewrote the
+three `self.db[self.cached_board_collection]` call-sites to use
+`self.cached_board_handle`. The string cache is intentionally preserved
+(not deleted) to keep any latent log/introspection references stable
+during Wave 1; it will be cleaned up in a future housekeeping pass.
+
+### File changed
+- `services/engines/adaptive_sync_engine.py`
+
+### Diffs
+
+```diff
+# line 116 — __init__: add parallel handle cache
+         # Collections
+         self.cached_board_collection = COLL("board_cache", "nba")
++        self.cached_board_handle = COLL.handle(db, "board_cache", "nba")
+         self.sync_status_collection = "dg_sync_status"
+```
+
+```diff
+# line 949 — writer (update_one upsert) — THE actual shadow fan-out site
+                 # Upsert to collection
+-                await self.db[self.cached_board_collection].update_one(
++                await self.cached_board_handle.update_one(
+                     {"game_id": prop["game_id"], ...},
+                     {"$set": update_doc},
+                     upsert=True
+                 )
+```
+
+```diff
+# line 1056 — reader (count_documents)
+-            stale_count = await self.db[self.cached_board_collection].count_documents({
++            stale_count = await self.cached_board_handle.count_documents({
+```
+
+```diff
+# line 1373 — reader (find + sort + limit)
+-        cursor = self.db[self.cached_board_collection].find(
++        cursor = self.cached_board_handle.find(
+             {},
+             {"_id": 0}
+         ).sort("last_updated", -1).limit(limit)
+```
+
+Verification grep: **0 remaining `self.db[self.cached_board_collection]`**
+usages in the file after the refactor. 3 new `self.cached_board_handle`
+call-sites match expected lines (956, 1063, 1380 post-edit).
+
+## Post-Batch-6 Evidence
+
+### Boot cleanliness
+```
+[ADAPTIVE_SYNC] Engine initialized          ← new cached_board_handle assigned
+[ADAPTIVE_SYNC] Sync callback registered
+[ADAPTIVE_SYNC] Callback wired to DemonGoblinEngine.sync_odds_to_mongo
+[ADAPTIVE_SYNC] Engine started
+[ADAPTIVE_SYNC] Background polling STARTED
+[ADAPTIVE_SYNC] Refreshing NBA BDL game logs (BATCHED)...
+[ADAPTIVE_SYNC] NBA game logs: 550 players, 26514 games
+[ADAPTIVE_SYNC] MLB game logs: 0 games synced
+[ADAPTIVE_SYNC] Triggering multi-sport sync...
+[SYNC_ODDS_TO_MONGO] Stored 2351 clean, deduplicated props
+[CACHED_BOARD] Bulk upsert completed - 114 players
+```
+
+No errors. Engine started and triggered a full sync cycle within the
+observation window.
+
+### Natural churn validation — 107 → 114 mirrored exactly
+| side | count pre-sync | count post-sync | delta |
+|---|---|---|---|
+| primary `dg_cached_board` | 107 | **114** | +7 |
+| shadow `nba_cached_board` | 107 | **114** | +7 |
+| only-primary players | — | **0** | — |
+| only-shadow players | — | **0** | — |
+
+### Field-level parity samples (post-sync at 20:18:14)
+
+| Player | keys | synced_at | rank | headshot | injury_status | injured_teammates | intel_briefing | is_vision_enriched | oracle_score | props_len |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Kevin Durant | 36/36 same set | identical | 37/37 | identical | None/None | []/[] | None/None | None/None | None/None | 26/26 |
+| Jakob Poeltl | 36/36 same set | identical | 52/52 | identical | None/None | []/[] | None/None | None/None | None/None | 24/24 |
+
+### FULL-DOC HASH SWEEP (all 114 post-churn players)
+```
+matched = 114
+missed  =   0
+skipped =   0
+```
+
+### Ledger — 6 consecutive clean ticks spanning Batch-6 restart and the churn
+| observed_at (UTC) | primary | shadow | delta_pct | sampled | matched | hash_match_rate |
+|---|---|---|---|---|---|---|
+| 20:13:03 | 107 | 107 | 0.0 % | 50 | 50 | 1.0 |
+| 20:14:04 | 107 | 107 | 0.0 % | 50 | 50 | 1.0 |
+| 20:15:49 | 107 | 107 | 0.0 % | 50 | 50 | 1.0 |
+| 20:16:49 | 107 | 107 | 0.0 % | 50 | 50 | 1.0 |
+| 20:17:49 | 107 | 107 | 0.0 % | 50 | 50 | 1.0 |
+| **20:18:49 (post-sync, churn)** | **114** | **114** | **0.0 %** | **50** | **50** | **1.0** |
+
+### Endpoint smoke (all 200)
+- `/api/v3/ferrari/safe-haven`, `/front-lines`, `/war-zone`
+- `/api/v3/scheduler-status`
+- `/api/live/scores`
+- `/api/v3/odds/props?sport=nba&limit=1`
+
+### Regression
+```
+mlb_cached_board : 306 docs  (unaffected)
+nba_live_props   : 2351 docs (prior-wave primary — unaffected)
+mlb_live_props   : 4944 docs (unaffected)
+```
+
+## Writer-surface coverage summary after Batch 6
+
+| Concept-writer | Status |
+|---|---|
+| main builder (`cached_board_builder_service`) | ✅ Batch 1 |
+| repository facade (`board_repo`) | ✅ Batch 1 |
+| inter-build (`intel_briefing`, `game_lock`, `context_badge`) | ✅ Batch 2 |
+| secondary writers (`injury`, `photo`, `board_intel`, `sync_orchestration`, `demon_goblin_engine`, `picks_getter`, `social_signal`) | ✅ Batch 3 |
+| `optimized_sync_engine._persist_enriched_picks` | ✅ Batch 4 |
+| `propvision_oracle_service.update_cached_board_with_oracle` | ⏭️ Batch 5 skipped (dead code) |
+| `adaptive_sync_engine` (3 sites: 1 writer + 2 readers) | ✅ Batch 6 |
+| `routes/qa_testing.py` (QA-only endpoints) | ⏭️ low priority, Wave 1 not required |
+
+**Wave 1 writer-surface coverage is now functionally complete** for
+`board_cache·NBA`. All production writer paths fan out through
+ShadowWriter. The only remaining primary-only writers are:
+1. The dead-code `update_cached_board_with_oracle` (0 callers).
+2. `routes/qa_testing.py` writers (developer-facing only).
+
+Neither is exercised during normal Wave 1 observation, so neither can
+introduce drift.
+
+## Recommended next step
+
+**Wave 1 observation window.** Writer-surface flipping is complete; the
+value of additional mini-batches is diminishing. Recommend:
+
+1. Observe the ledger for a longer window (operator's call — suggest
+   ≥ 30 min or overnight) to build confidence at the longest churn
+   cadences.
+2. During observation, an optional **`qa_testing.py` cleanup**
+   (7 sites, all trivial single-line flips) can be batched as Batch 7
+   if the operator wants zero remaining `db[COLL(...)]` patterns before
+   Wave 2.
+3. Otherwise, proceed directly to **Wave 2 pre-flight** for
+   `board_cache·NBA` (reader hardcodes, split registries, DB rename).
+
+## Status
+
+**Batch 6 complete. Writer-surface coverage functionally complete.
+Natural churn 107→114 mirrored exactly. FULL-DOC HASH SWEEP 114/114.
+Regression clean. Halted pending operator direction on observation
+window or Wave 2 pre-flight.**
+
+
 
 
