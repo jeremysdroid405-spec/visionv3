@@ -58,10 +58,11 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # `dg_events_cache_backup` and is eligible for drop after the
     # observation window closes.
 
-    # Wave 1 pilot in progress (odds_cache · NBA). Shadow-writing to
-    # `nba_odds_cache`. Reads remain on `dg_odds_cache`. Stable key is
-    # compound (event_id, source) — configured in the monitor.
-    ("odds_cache", "nba"): "nba_odds_cache",
+    # Wave 2 complete: odds_cache · NBA has been flipped to
+    # `nba_odds_cache` and the shadow phase is retired. The old
+    # primary (`dg_odds_cache`) has been renamed to
+    # `dg_odds_cache_backup` and is eligible for drop after the
+    # observation window closes.
 }
 
 
@@ -97,7 +98,7 @@ _SPORT_COLLECTIONS: Dict[str, Dict[str, str]] = {
     # ---- Ingest caches -----------------------------------------------------
     "live_props":           {"nba": "dg_live_props",
                              "mlb": "mlb_live_props"},
-    "odds_cache":           {"nba": "dg_odds_cache",
+    "odds_cache":           {"nba": "nba_odds_cache",
                              "mlb": "mlb_odds_cache"},
     "events_cache":         {"nba": "nba_events_cache",
                              "mlb": "mlb_events_cache"},
