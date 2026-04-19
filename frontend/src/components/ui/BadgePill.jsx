@@ -475,20 +475,20 @@ export const BADGE_REGISTRY = {
     }
   },
   high_fidelity_model: {
-    label: "Clear Read",
+    label: "Model Fit",
     icon: BarChart3,
     glowColor: "#06b6d4",  // Cyan
     bgClass: "bg-cyan-500/20",
     borderClass: "border-cyan-500/40",
     textClass: "text-cyan-400",
     glowClass: "shadow-cyan-500/30",
-    trigger: "Model fits this stat reliably on held-out games",
+    trigger: "Lasso model R² ≥ 0.35 — a tight fit on held-out games",
     category: "scout",
     tooltip: {
-      title: "Clear Read",
-      description: "This projection comes from a tighter model selection with consistent signal, low noise, and a cleaner read on the outcome.",
-      impact: "When you see this badge, lean into the projection. The model's track record on this stat is strong.",
-      sentiment: "positive"
+      title: "Model Fit",
+      description: "The Lasso model's out-of-sample R² on this stat is ≥ 0.35. This only tells you the model's historical accuracy on this stat — it is NOT a recommendation on this specific prop. Check the canonical projection and Vision Intel for the actual lean.",
+      impact: "A strong fit means the Lasso projection is more reliable, but it can still disagree with the canonical VK projection shown on the card. When it does, the Vision Intel narrative will say so explicitly.",
+      sentiment: "neutral"
     }
   },
   soft_matchup: {

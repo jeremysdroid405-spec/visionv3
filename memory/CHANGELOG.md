@@ -1,5 +1,48 @@
 # Changelog
 
+## 2026-04-19 — Decision-Layer Integrity (Sengun AST 6.5 audit response)
+Five ordered fixes after the user-flagged Sengun card exposed systemic
+decision-layer contradictions between badges / tile / narrative / direction:
+
+1. **Floor Lock window + tooltip honesty** (`services/intel_suite_calculator.py`)
+   - Switched `values[-10:]` → `values[:10]` in both `_generate_scout_badges`
+     and `_calculate_stability_index`. `history.2025_season` is stored
+     newest-first, so the prior index took the OLDEST 10 games.
+   - Floor Lock now requires `hit_rate >= 90` (matches its public tooltip).
+     Previously fired on `std<=2.0 AND mean>line` at 70% hit rates.
+2. **Canonical projection contract** (`services/intel_suite_calculator.py::_generate_vision_insight`)
+   - Narrative now quotes `board_pick.vk_predicted` (the same field the UI
+     tile binds to in `UniversalPlayerCard.jsx:508`) instead of
+     `lasso.projection`. Lasso projection exposed as a separate
+     `lasso_projection` field — never conflated.
+3. **Model-disagreement flag**
+   - `vision_insight.models_disagree = True` when `|vk−lasso|/line > 0.10`
+     and the two models sit on opposite sides of the line. Narrative
+     explicitly calls out disagreement instead of writing a one-sided thesis.
+4. **PP-anchor direction veto** (`services/scoring/scoring_stack.py`)
+   - New `_model_contradicts_anchor(prop, side)` runs inside `compute_tier`
+     BEFORE tier dispatch. Rejects an OVER when all three contradict the
+     anchor side: `vk_edge<0`, `hit_rate_over<50`, `l10_avg<line` (symmetric
+     for UNDER). Sets `tier="unqualified"`,
+     `tier_reason="model_contradicts_anchor: …"`.
+5. **"Clear Read" → "Model Fit"** (`components/ui/BadgePill.jsx`)
+   - Relabelled to precisely reflect the gate (Lasso R² ≥ 0.35 on held-out
+     games). Tooltip sentiment changed from "positive / lean in" to
+     "neutral / model-fit quality only — NOT a prop recommendation".
+6. **War Zone gate review** (`services/scoring/adapters/nba_scoring.py`)
+   - Documented comment: war_zone gates stay market-facing; directional
+     evidence handled by Fix #4. Separation of concerns enforced in code
+     comments; no threshold changes.
+
+**Expected live effect**: on the next scoring pass (next `odds_sync` or
+hourly rebuild), the Sengun AST 6.5 OVER pick drops from `war_zone` to
+`unqualified` and vanishes from the board. No retroactive mutation of
+existing score docs.
+
+**Regression suite added**: `tests/test_decision_layer_sengun.py` (7 tests).
+Total passing: 19 (12 pre-existing + 7 new).
+
+
 ## 2026-04-19 — Tier Integrity + Post-Dedup Backfill Verified
 - **Bug fix**: player duplicates across a single tier (same player ×N on
   alternate lines or across stat families). Confirmed on NBA Safe Haven

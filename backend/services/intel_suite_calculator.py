@@ -272,14 +272,21 @@ class IntelSuiteCalculator:
         return {"possessions": round(delta, 1), "display": f"{'+' if delta>=0 else ''}{delta:.1f} Possessions", "pace_factor": round(pace_factor, 2), "tempo_label": label, "team_pace": round(team_pace, 1), "opponent_pace": round(opp_pace, 1), "expected_game_pace": round(expected, 1)}
 
     def _calculate_stability_index(self, active_logs: List[Dict], stat_type: str, board_pick: Optional[Dict]) -> Dict:
-        """Compute stability from LIVE game logs — no baseline_stats."""
+        """Compute stability from LIVE game logs — no baseline_stats.
+
+        NEWEST-L10 CONTRACT:
+        `active_logs` is sorted DESC (newest first) by `_get_active_logs`.
+        Use values[:10] (newest 10) — not values[-10:] which was the oldest
+        10 games of the season and produced contradictory "L10" windows
+        across tile vs. badge (root-caused 2026-04-19 on Sengun AST 6.5).
+        """
         values = _extract_stat_values(active_logs, stat_type)
 
         # Use board_pick std_dev if available
         std_dev = board_pick.get("std_dev") if board_pick else None
 
         if std_dev is None and len(values) >= 5:
-            recent = values[-10:] if len(values) >= 10 else values
+            recent = values[:10] if len(values) >= 10 else values
             std_dev = float(np.std(recent, ddof=1))
         elif std_dev is None:
             std_dev = 3.0
@@ -309,9 +316,42 @@ class IntelSuiteCalculator:
             return {"risk_level": "UNKNOWN", "risk_reason": str(e), "warning": None}
 
     async def _generate_vision_insight(self, player_name, stat_type, line, direction, usage_ripple, matchup_dvp, pace_delta, stability_index, board_pick, lasso_result, use_llm=False):
-        """Generate vision_insight — Gemini for batch enrichment, fast baseline for inline."""
+        """Generate vision_insight — Gemini for batch enrichment, fast baseline for inline.
+
+        CANONICAL PROJECTION CONTRACT (2026-04-19):
+        The card's "projection" pixel binds to `board_pick["vk_predicted"]`
+        (see UniversalPlayerCard.jsx:508, 802). The narrative must quote the
+        SAME number. Previously this method used `lasso_result.projection`,
+        which silently diverged from the tile (Sengun: tile=6.3, narrative=7.4).
+
+        Model-disagreement policy:
+          - If |vk_predicted - lasso_projection| / line > 0.10 AND the two
+            models lean opposite sides of the line, the narrative reflects
+            the disagreement instead of emitting a one-sided bullish thesis.
+          - Canonical figure quoted in the narrative stays VK (ties the
+            narrative to the visible tile).
+        """
+        # Canonical projection = whatever the UI tile shows (vk_predicted).
+        canonical_proj = board_pick.get("vk_predicted") if board_pick else None
+        canonical_edge = (
+            canonical_proj - line
+            if isinstance(canonical_proj, (int, float)) and line else None
+        )
         lasso_proj = lasso_result.get("projection") if lasso_result else None
-        lasso_edge = (lasso_proj - line) if lasso_proj and line else None
+        lasso_edge = (
+            lasso_proj - line
+            if isinstance(lasso_proj, (int, float)) and line else None
+        )
+
+        # Model disagreement flag (used by LLM payload + baseline text).
+        models_disagree = False
+        if (isinstance(canonical_proj, (int, float))
+                and isinstance(lasso_proj, (int, float))
+                and line):
+            diff_pct = abs(float(canonical_proj) - float(lasso_proj)) / float(line)
+            vk_over = canonical_proj > line
+            lasso_over = lasso_proj > line
+            models_disagree = diff_pct > 0.10 and (vk_over != lasso_over)
 
         if use_llm:
             from services.gemini_scout_engine import generate_gemini_scout_intel, build_scout_payload
@@ -319,43 +359,93 @@ class IntelSuiteCalculator:
                 "matchup_dvp": matchup_dvp, "pace_delta": pace_delta,
                 "stability_index": stability_index, "usage_ripple": usage_ripple,
             }
+            # Pass the CANONICAL projection to the scout payload so the LLM
+            # narrative quotes the same number as the card tile. Lasso is
+            # passed separately so the LLM can note disagreement.
+            payload_lasso = dict(lasso_result) if isinstance(lasso_result, dict) else {}
+            payload_lasso["projection"] = canonical_proj  # canonical
+            payload_lasso["canonical_projection"] = canonical_proj
+            payload_lasso["lasso_projection"] = lasso_proj
+            payload_lasso["models_disagree"] = models_disagree
             payload = build_scout_payload(
                 player_name=player_name, stat_type=stat_type, line=line,
-                lasso_result=lasso_result, board_pick=board_pick,
+                lasso_result=payload_lasso, board_pick=board_pick,
                 intel_suite=intel_suite_data, sport="nba",
             )
             scout_text = await generate_gemini_scout_intel(payload)
         else:
             # Fast baseline — no LLM call
-            direction_word = "OVER" if (lasso_edge and lasso_edge > 0) else "UNDER"
-            proj_str = f"{lasso_proj:.1f}" if lasso_proj else "N/A"
-            edge_str = f"{lasso_edge:+.1f}" if lasso_edge else ""
-            scout_text = f"{player_name} {stat_type} — Projection: {proj_str} vs Line: {line} ({direction_word} {edge_str} edge)."
+            canon_str = (
+                f"{canonical_proj:.1f}" if isinstance(canonical_proj, (int, float))
+                else "N/A"
+            )
+            edge_str = (
+                f"{canonical_edge:+.1f}" if isinstance(canonical_edge, (int, float))
+                else ""
+            )
+            side_word = (
+                "OVER" if isinstance(canonical_edge, (int, float)) and canonical_edge > 0
+                else "UNDER"
+            )
+            if models_disagree and isinstance(lasso_proj, (int, float)):
+                scout_text = (
+                    f"{player_name} {stat_type} — Canonical projection "
+                    f"{canon_str} vs line {line} ({side_word} {edge_str} edge). "
+                    f"Model disagreement: Lasso model projects {lasso_proj:.1f} "
+                    f"(opposite side). Lean cautiously."
+                )
+            else:
+                scout_text = (
+                    f"{player_name} {stat_type} — Projection: {canon_str} "
+                    f"vs Line: {line} ({side_word} {edge_str} edge)."
+                )
 
         return {
             "primary": scout_text,
             "summary": scout_text,
+            # Canonical projection (matches card tile).
+            "projection": canonical_proj,
+            "canonical_projection": canonical_proj,
+            "canonical_edge": round(canonical_edge, 2) if canonical_edge is not None else None,
+            # Lasso kept as a SEPARATE labeled field — never conflated with
+            # the canonical number.
             "lasso_projection": lasso_proj,
             "lasso_edge": round(lasso_edge, 2) if lasso_edge is not None else None,
+            "models_disagree": models_disagree,
             "confidence": lasso_result.get("confidence_tier", "STANDARD") if lasso_result else "STANDARD",
             "tactical_note": self._get_tactical_note_from_data(usage_ripple, matchup_dvp, pace_delta, lasso_result),
         }
 
     def _generate_scout_badges(self, active_logs, stat_type, line, board_pick, lasso_result):
-        """Generate scout badges from live data + Lasso."""
+        """Generate scout badges from live data + Lasso.
+
+        NEWEST-L10 CONTRACT (2026-04-19):
+        `active_logs` is sorted DESC (newest first) by `_get_active_logs`.
+        Use values[:10] — the most recent 10 games — so the badge window
+        matches the `L10 Hit` tile the user sees on the card.
+
+        FLOOR_LOCK HONESTY:
+        The frontend tooltip advertises "90%+ hit rate over L10 games".
+        Require exactly that — `hit_rate >= 90` — before firing the badge.
+        Stability-only firing (std<=2.0 AND avg>line) produced badges at
+        70% hit rates, contradicting the tooltip and the visible tile.
+        """
         badges = []
         values = _extract_stat_values(active_logs, stat_type)
         if not values:
             return badges
 
-        l10 = values[-10:] if len(values) >= 10 else values
+        l10 = values[:10] if len(values) >= 10 else values
         l10_avg = float(np.mean(l10))
-        l10_std = float(np.std(l10, ddof=1))
-        hit_rate = sum(1 for v in l10 if v > line) / len(l10) * 100 if l10 else 0
+        l10_std = float(np.std(l10, ddof=1)) if len(l10) > 1 else 0.0
+        hit_rate = (
+            sum(1 for v in l10 if v > line) / len(l10) * 100 if l10 else 0
+        )
 
         if hit_rate >= 80:
             badges.append("hot_streak")
-        if l10_std <= 2.0 and l10_avg > line:
+        # Floor Lock: matches its public tooltip — newest-L10 hit rate >= 90.
+        if hit_rate >= 90:
             badges.append("floor_lock")
         if l10_std >= 6.0:
             badges.append("volatility_extreme")

@@ -33,6 +33,14 @@ class _NBAGateSorter:
     # varA produces ~1.5% slate-share legitimate moonshots with zero cannibalization
     # of safe_haven/front_lines; all entrants migrate from unqualified only.
     WAR_ZONE = {"min_cv": 0.45, "min_ceiling_rate": 20, "min_edge": 10}
+    # WAR_ZONE gate review (2026-04-19): these three gates are intentionally
+    # market-facing only (CV, ceiling_rate, market edge). Model-side veto
+    # (negative vk_edge + weak hit_rate_over + wrong-side l10_avg) is a
+    # SEPARATE concern handled by scoring_stack._model_contradicts_anchor,
+    # which runs BEFORE tier dispatch and can eject a pick from any tier.
+    # Duplicating it here would weaken legitimate long-odds moonshots whose
+    # ceiling/CV profile qualifies even when short-term VK trails. The two
+    # layers compose cleanly: gates decide bucket, veto decides side.
 
     # Path (c) — side-aware tp gate: UNDER picks replace market-implied tp with
     # a model-confidence floor (p_model * 100) at BALANCED thresholds locked
