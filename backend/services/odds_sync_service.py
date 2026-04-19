@@ -16,6 +16,8 @@ import logging
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,8 +31,8 @@ class OddsSyncService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.live_props = db.dg_live_props
-        self.master_roster = db.dg_master_roster
+        self.live_props = db[COLL("live_props", "nba")]
+        self.master_roster = db[COLL("master_roster", "nba")]
         
         # Cache for master roster
         self._master_roster_cache: Dict[str, str] = {}

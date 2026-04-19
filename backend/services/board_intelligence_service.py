@@ -33,6 +33,8 @@ from services.sharp_edge_calculator import SharpEdgeCalculator, PRIMARY_EDGE_THR
 from services.game_script_service import GameScriptService, apply_blowout_filter, apply_dvp_veto, apply_shootout_boost
 from services.usage_spike_detector import UsageSpikeDetector, apply_usage_spike_boost
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 GEMINI_CONCURRENT_LIMIT = 3  # Reduced from 5 to avoid rate limiting
@@ -278,7 +280,7 @@ async def _load_market_edge_data(
         # Build event info from odds_cache
         events = []
         for event_id in event_ids:
-            odds_doc = await db.dg_odds_cache.find_one({"event_id": event_id})
+            odds_doc = await db[COLL("odds_cache", "nba")].find_one({"event_id": event_id})
             if odds_doc:
                 events.append({
                     "id": event_id,
@@ -357,7 +359,7 @@ async def _select_front_lines_sharp(
             events = []
             for event_id in event_ids:
                 # Check if we have sharp_books cached for this event
-                cached = await db.dg_odds_cache.find_one({
+                cached = await db[COLL("odds_cache", "nba")].find_one({
                     "event_id": event_id,
                     "source": "sharp_books"
                 })

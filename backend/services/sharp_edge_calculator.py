@@ -22,6 +22,8 @@ import asyncio
 import httpx
 import os
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Configuration
@@ -186,7 +188,7 @@ class SharpEdgeCalculator:
         then falls back to API if needed.
         """
         # Check MongoDB cache first (populated by sync)
-        cached = await self.db.dg_odds_cache.find_one({
+        cached = await self.db[COLL("odds_cache", "nba")].find_one({
             "event_id": event_id,
             "source": "sharp_books"
         })

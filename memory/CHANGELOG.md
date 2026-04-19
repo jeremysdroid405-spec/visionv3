@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-04-19 — Wave 0 Batch 2 plumbing (ingest layer, no renames)
+- 5 files routed through `services/config/collection_names.py::COLL`:
+  `services/odds_sync_service.py`, `services/sharp_edge_calculator.py`,
+  `services/board_intelligence_service.py`, `services/bdl_enhanced_data.py`,
+  `services/bdl_stats_calculator.py`.
+- In-scope concepts: `live_props`, `master_roster`, `odds_cache`, `master_hub`.
+- 9 code-level literals removed → 9 `COLL(...)` call-sites added. 5 imports added.
+- In-scope hardcoded-ref count in these files: **9 → 0** (docstring prose untouched).
+- Regression suite: 80 passed / 1 skipped / 0 failed — matches baseline.
+- Live smoke: `/api/v3/ferrari/{safe-haven,front-lines,war-zone}` all HTTP 200.
+- Resolver parity verified: physical names unchanged → zero behavior change.
+- Audit: `/app/memory/wave0_batch2_audit.md`.
+
+
 ## 2026-04-19 — Wave 0 Batch 1 plumbing (no renames)
 - 9 files routed through `services/config/collection_names.py::COLL`:
   `db/collections.py`, `config/collections.py`, `services/nba_career_service.py`,

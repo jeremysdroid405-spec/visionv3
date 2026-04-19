@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,7 +58,7 @@ async def recalculate_all_baseline_stats(db: AsyncIOMotorDatabase) -> Dict[str, 
     logger.info("[BDL_CALC] Starting baseline stats recalculation from game logs...")
     
     # Get all players with game logs (primary) or BDL game logs (fallback)
-    players = await db.nba_master_hub_2026.find(
+    players = await db[COLL("master_hub", "nba")].find(
         {'$or': [
             {'game_logs': {'$exists': True, '$ne': []}},
             {'bdl_game_logs': {'$exists': True, '$ne': []}}
@@ -208,7 +210,7 @@ async def recalculate_all_baseline_stats(db: AsyncIOMotorDatabase) -> Dict[str, 
         }
         
         # Update the player
-        await db.nba_master_hub_2026.update_one(
+        await db[COLL("master_hub", "nba")].update_one(
             {'_id': player['_id']},
             {'$set': {'baseline_stats': new_stats}}
         )

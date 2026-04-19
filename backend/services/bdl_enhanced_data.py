@@ -18,6 +18,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 import httpx
 import os
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 BDL_API_KEY = os.environ.get("BDL_API_KEY")
@@ -199,7 +201,7 @@ class BDLEnhancedDataService:
         
         # Get player IDs from master hub if not provided
         if not player_ids:
-            players = await self.db.nba_master_hub_2026.find(
+            players = await self.db[COLL("master_hub", "nba")].find(
                 {"bdl_id": {"$exists": True}},
                 {"bdl_id": 1}
             ).to_list(500)
@@ -253,7 +255,7 @@ class BDLEnhancedDataService:
                         "synced_at": datetime.now(timezone.utc).isoformat()
                     }
                     
-                    await self.db.nba_master_hub_2026.update_one(
+                    await self.db[COLL("master_hub", "nba")].update_one(
                         {"bdl_id": pid},
                         {"$set": {"advanced_stats": advanced}}
                     )
