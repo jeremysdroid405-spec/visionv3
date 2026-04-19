@@ -48,6 +48,8 @@ from collections import defaultdict
 import logging
 import math
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -93,7 +95,7 @@ class FeatureExtractor:
     def _load_defensive_rankings(self):
         """Load defensive momentum cache into memory."""
         try:
-            cursor = self.db['defensive_momentum_cache'].find({})
+            cursor = self.db[COLL("defensive_momentum_cache", "nba")].find({})
             for doc in cursor:
                 team = doc.get('team')
                 stat_type = doc.get('stat_type', 'DRTG')

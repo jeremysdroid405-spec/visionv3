@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-04-19 — Wave 0 Batch 1 plumbing (no renames)
+- 9 files routed through `services/config/collection_names.py::COLL`:
+  `db/collections.py`, `config/collections.py`, `services/nba_career_service.py`,
+  `services/defensive_momentum_service.py`, `services/vegas_killer_model.py`,
+  `services/vegas_regression_model.py`, `services/vegas_pro_model.py`,
+  `services/context_badge_service.py`, `routes/cached_data.py` (context_engine only).
+- Regression suite: 80 passed / 1 skipped / 0 failed (incl. `test_collection_names.py` 61/61).
+- Live `/api/v3/ferrari/front-lines?sport=nba` returns HTTP 200 post-restart.
+- No renames, no data migrations, no behavior changes. Indirection only.
+- Residual scan: `/app/memory/wave0_batch1_residuals.md`.
+
+
+
 ## 2026-04-19 — Decision-Layer Integrity (Sengun AST 6.5 audit response)
 Five ordered fixes after the user-flagged Sengun card exposed systemic
 decision-layer contradictions between badges / tile / narrative / direction:

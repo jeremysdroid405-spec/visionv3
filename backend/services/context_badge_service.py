@@ -26,6 +26,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Team city coordinates for travel distance calculation (lat, lon)
@@ -140,8 +142,8 @@ class ContextBadgeService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.master_hub = db.nba_master_hub_2026
-        self.cached_board = db.dg_cached_board
+        self.master_hub = db[COLL("master_hub", "nba")]
+        self.cached_board = db[COLL("board_cache", "nba")]
         self.schedule_cache = db.schedule_cache
     
     async def get_todays_games(self) -> List[Dict]:

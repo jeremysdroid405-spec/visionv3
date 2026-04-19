@@ -6,6 +6,13 @@ Centralized constants for MongoDB collection names.
 This module provides a single source of truth for collection names
 to prevent hardcoding and ensure consistency across the codebase.
 
+Wave 0 plumbing (2026-04-19):
+The authoritative source for every sport-specific concept is now
+`services/config/collection_names.py::COLL`. The `Collections` enum is
+kept for backwards compatibility but each value is resolved THROUGH
+`COLL` at import time. Rename waves flip the mapping in `COLL` and
+every consumer (enum, alias, direct call) updates automatically.
+
 Usage:
     from db.collections import Collections
     
@@ -19,6 +26,8 @@ Usage:
 
 from enum import Enum
 from typing import TYPE_CHECKING
+
+from services.config.collection_names import COLL
 
 if TYPE_CHECKING:
     from motor.motor_asyncio import AsyncIOMotorDatabase, AsyncIOMotorCollection
@@ -41,10 +50,10 @@ class Collections(str, Enum):
     # =========================================================================
     
     # Player master data - SSOT for player identity, stats, game logs
-    MASTER_HUB = "nba_master_hub_2026"
+    MASTER_HUB = COLL("master_hub", "nba")
     
     # Active roster - SSOT for player-team mapping
-    MASTER_ROSTER = "dg_master_roster"
+    MASTER_ROSTER = COLL("master_roster", "nba")
     
     # Player photos - headshot URLs
     PLAYER_PHOTOS = "player_photos"
@@ -53,17 +62,17 @@ class Collections(str, Enum):
     DVP_RANKINGS = "dvp_rankings"
     
     # User accounts
-    USERS = "users"
+    USERS = COLL.shared("users")
     
     # =========================================================================
     # DERIVED COLLECTIONS (Rebuilt on Sync)
     # =========================================================================
     
     # Frontend-ready player/props data
-    CACHED_BOARD = "dg_cached_board"
+    CACHED_BOARD = COLL("board_cache", "nba")
     
     # Live betting props from Odds API
-    LIVE_PROPS = "dg_live_props"
+    LIVE_PROPS = COLL("live_props", "nba")
     
     # Pre-built parlay combinations
     PARLAY_BUILDER = "dg_parlay_builder"
@@ -81,10 +90,10 @@ class Collections(str, Enum):
     FRONT_LINES = "dg_front_lines"
     
     # AI context analysis results
-    CONTEXT_ENGINE = "nba_context_engine"
+    CONTEXT_ENGINE = COLL("context_flags", "nba")
     
     # Career milestones for badges
-    CAREER_STATS = "nba_career_stats"
+    CAREER_STATS = COLL("career_backstop", "nba")
     
     # Daily player insights
     DAILY_INSIGHTS = "dg_daily_insights"
@@ -97,10 +106,10 @@ class Collections(str, Enum):
     # =========================================================================
     
     # Raw Odds API responses
-    ODDS_CACHE = "dg_odds_cache"
+    ODDS_CACHE = COLL("odds_cache", "nba")
     
     # NBA events/games
-    EVENTS_CACHE = "dg_events_cache"
+    EVENTS_CACHE = COLL("events_cache", "nba")
     
     # Player stats cache
     STATS_CACHE = "dg_stats_cache"
@@ -109,10 +118,10 @@ class Collections(str, Enum):
     STATIC_SHELL = "dg_static_shell"
     
     # News ticker
-    TICKER_CACHE = "ticker_cache"
+    TICKER_CACHE = COLL.shared("ticker_cache")
     
     # Spotrac contract data
-    CONTRACTS_CACHE = "spotrac_contracts_cache"
+    CONTRACTS_CACHE = COLL.shared("spotrac_contracts_cache")
     
     # Breaking news
     BREAKING_NEWS = "dg_breaking_news"
@@ -125,7 +134,7 @@ class Collections(str, Enum):
     SYNC_STATUS = "dg_sync_status"
     
     # Sync history log
-    SYNC_LOG = "dg_sync_log"
+    SYNC_LOG = COLL.shared("sync_log")
     
     # Flagged/suspended players
     FLAGGED_PLAYERS = "dg_flagged_players"
@@ -141,7 +150,7 @@ class Collections(str, Enum):
     BDL_PLAYER_MAPPING = "bdl_player_mapping"
     
     # Odds API name normalization
-    ODDS_API_MAPPING = "odds_api_mapping_master"
+    ODDS_API_MAPPING = COLL("odds_mapping", "nba")
     
     # =========================================================================
     # INJURY COLLECTIONS

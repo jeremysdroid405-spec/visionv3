@@ -29,6 +29,8 @@ from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 import asyncio
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -189,7 +191,7 @@ class DefensiveMomentumService:
     
     def __init__(self, db):
         self.db = db
-        self.momentum_cache = db.defensive_momentum_cache
+        self.momentum_cache = db[COLL("defensive_momentum_cache", "nba")]
         
         # In-memory cache
         self._cache: Dict[str, Dict[str, DefensiveMomentumProfile]] = {}

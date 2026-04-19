@@ -10,6 +10,7 @@ import sys
 from datetime import datetime, timezone
 
 # Import DvP service and config for real matchup data
+from services.config.collection_names import COLL
 from services.dvp_service import (
     get_dvp_rank, 
     get_dvp_rank_color, 
@@ -550,7 +551,7 @@ async def resolve_context_badges(engine, player_name: str, player_data: dict) ->
     try:
         master_hub = engine.picks_getter_service.master_hub
         db = master_hub.database
-        context_engine = db['nba_context_engine']
+        context_engine = db[COLL("context_flags", "nba")]
         
         # Get master hub data for stats-based badges
         hub_player = await master_hub.find_one(

@@ -20,6 +20,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 import time
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # Rate limiting - NBA API is sensitive
@@ -144,7 +146,7 @@ async def get_career_stats(db, player_name: str, force_refresh: bool = False) ->
     Returns:
         Dict with career stats or None if not found
     """
-    collection = db['nba_career_stats']
+    collection = db[COLL("career_backstop", "nba")]
     
     # Check cache first
     if not force_refresh:

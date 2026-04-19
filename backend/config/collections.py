@@ -33,6 +33,8 @@ from __future__ import annotations
 
 from typing import Dict, List
 
+from services.config.collection_names import COLL as _COLL
+
 
 # ---------------------------------------------------------------------------
 # Registered sports (must match services/board/adapters/__init__.py::REGISTRY)
@@ -94,33 +96,36 @@ CANONICAL_CONCEPTS: List[str] = [
 # codebase needs to change.
 SPORT_OVERRIDES: Dict[str, Dict[str, str]] = {
     "nba": {
-        # Core board collections — still on legacy dg_* names
-        "live_props":              "dg_live_props",
-        "cached_board":             "dg_cached_board",
-        "breaking_news":            "dg_breaking_news",
-        "social_signals":           "dg_social_signals",
-        "flagged_players":          "dg_flagged_players",
-        "daily_insights":           "dg_daily_insights",
-        "events_cache":             "dg_events_cache",
-        "odds_cache":               "dg_odds_cache",
-        "locked_games":             "dg_locked_games",
-        "master_roster":            "dg_master_roster",
-        "player_stats":             "dg_player_stats",
-        "parlay_builder":           "dg_parlay_builder",
+        # Core board collections — routed through the canonical registry in
+        # `services/config/collection_names.py::COLL`. The literals below
+        # are intentionally imported at module-load time so Wave 1 renames
+        # flip in exactly one place (`COLL`) and propagate here.
+        "live_props":              _COLL("live_props", "nba"),
+        "cached_board":            _COLL("board_cache", "nba"),
+        "breaking_news":           "dg_breaking_news",
+        "social_signals":          "dg_social_signals",
+        "flagged_players":         "dg_flagged_players",
+        "daily_insights":          "dg_daily_insights",
+        "events_cache":            _COLL("events_cache", "nba"),
+        "odds_cache":              _COLL("odds_cache", "nba"),
+        "locked_games":            "dg_locked_games",
+        "master_roster":           _COLL("master_roster", "nba"),
+        "player_stats":            _COLL("player_stats_agg", "nba"),
+        "parlay_builder":          "dg_parlay_builder",
         # Ferrari-branded un-prefixed legacy writers (still being written
         # by unified_pipeline._atomic_publish; drops are Phase 5 Step 6)
-        "scoring_scored":           "ferrari_scored",
-        "scoring_discarded":        "ferrari_discarded",
+        "scoring_scored":          "ferrari_scored",
+        "scoring_discarded":       "ferrari_discarded",
         # BDL-sourced NBA-only data — scheduled to dual-write in Phase C
-        "advanced_stats":           "bdl_advanced_stats",
-        "historical_logs":          "bdl_historical_game_logs",
-        "player_mapping":           "bdl_player_mapping",
-        "player_badges":            "bdl_player_badges",
+        "advanced_stats":          "bdl_advanced_stats",
+        "historical_logs":         "bdl_historical_game_logs",
+        "player_mapping":          "bdl_player_mapping",
+        "player_badges":           "bdl_player_badges",
         # Un-prefixed NBA-only collections
-        "oracle_apex_analyzed":     "oracle_apex_analyzed",
-        "referee_assignments":      "referee_assignments",
-        "ticker_cache":             "ticker_cache",
-        "ticker_headlines":         "ticker_headlines",
+        "oracle_apex_analyzed":    "oracle_apex_analyzed",
+        "referee_assignments":     _COLL("referee_assignments", "nba"),
+        "ticker_cache":            _COLL.shared("ticker_cache"),
+        "ticker_headlines":        _COLL.shared("ticker_headlines"),
         # prop_scores is already canonical — nba_prop_scores (no override needed)
     },
     "mlb": {

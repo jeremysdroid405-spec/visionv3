@@ -44,6 +44,8 @@ import logging
 import pickle
 import os
 
+from services.config.collection_names import COLL
+
 # XGBoost for better non-linear modeling
 try:
     import xgboost as xgb
@@ -169,7 +171,7 @@ class VegasFeatureEngineer:
         """Load team pace and defensive ratings."""
         try:
             # Load from defensive momentum cache
-            for doc in self.db['defensive_momentum_cache'].find({}):
+            for doc in self.db[COLL("defensive_momentum_cache", "nba")].find({}):
                 team = doc.get('team')
                 if team:
                     self._def_rating_cache[team] = {
