@@ -19,6 +19,8 @@ import logging
 from repositories import RepositoryManager
 from services.utils_service import sanitize_player_name, normalize_team_name
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # API Configuration - BDL ONLY (BDL Only)
@@ -68,8 +70,8 @@ class RosterService:
         self._roster_loaded = False
         
         # BDL is the ONLY source for player data
-        self.master_roster = db.dg_master_roster
-        self.master_hub = db.nba_master_hub_2026  # BDL SSOT
+        self.master_roster = db[COLL("master_roster", "nba")]
+        self.master_hub = db[COLL("master_hub", "nba")]  # BDL SSOT
         self.flagged_players = db.dg_flagged_players
     
     def set_api_keys(self, bdl_key: str = None):
@@ -228,7 +230,7 @@ class RosterService:
         try:
             if player_names is None:
                 # Get players from cached board
-                cached_board = self.db.dg_cached_board
+                cached_board = self.db[COLL("board_cache", "nba")]
                 players = await cached_board.distinct("player_name")
                 player_names = list(players) if players else []
             

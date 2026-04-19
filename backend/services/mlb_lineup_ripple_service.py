@@ -26,6 +26,8 @@ from datetime import datetime, timezone, timedelta
 import logging
 import re
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -110,7 +112,7 @@ class MLBLineupRippleService:
             if team:
                 query['team_abbr'] = team
             
-            player = sync_db.mlb_master_hub_2026.find_one(query, {'_id': 0})
+            player = sync_db[COLL("master_hub", "mlb")].find_one(query, {'_id': 0})
             sync_client.close()
             
             if player:
@@ -163,7 +165,7 @@ class MLBLineupRippleService:
             sync_db = sync_client['pick_vision']
             
             # Find all players with high OPS on this team
-            anchors = list(sync_db.mlb_master_hub_2026.find(
+            anchors = list(sync_db[COLL("master_hub", "mlb")].find(
                 {
                     'team_abbr': team,
                     'advanced_stats.season_stats.2026.batting.ops': {'$gt': LINEUP_ANCHOR_OPS_THRESHOLD}
@@ -215,7 +217,7 @@ class MLBLineupRippleService:
             sync_db = sync_client['pick_vision']
             
             # Get all batters on this team (excluding pitchers)
-            teammates = list(sync_db.mlb_master_hub_2026.find(
+            teammates = list(sync_db[COLL("master_hub", "mlb")].find(
                 {
                     'team_abbr': team,
                     'primary_position': {'$nin': ['Relief Pitcher', 'Starting Pitcher', 'Pitcher', 'RP', 'SP']},
@@ -228,7 +230,7 @@ class MLBLineupRippleService:
             # Also get baseline stats for projections
             for teammate in teammates:
                 name = teammate.get('display_name', '')
-                baseline = sync_db.mlb_cached_board.find_one(
+                baseline = sync_db[COLL("board_cache", "mlb")].find_one(
                     {'player_name': name, 'team': team},
                     {'_id': 0, 'props': 1}
                 )
@@ -438,7 +440,7 @@ class MLBLineupRippleService:
         try:
             if self.db is not None:
                 # Check mlb_cached_board for today's players
-                cursor = self.db.mlb_cached_board.find({}, {"team": 1})
+                cursor = self.db[COLL("board_cache", "mlb")].find({}, {"team": 1})
                 async for doc in cursor:
                     team = doc.get("team")
                     if team:
@@ -544,7 +546,7 @@ class MLBLineupRippleService:
             sync_db = sync_client['pick_vision']
             
             # Get all high-OPS players
-            anchors = list(sync_db.mlb_master_hub_2026.find(
+            anchors = list(sync_db[COLL("master_hub", "mlb")].find(
                 {'advanced_stats.season_stats.2026.batting.ops': {'$gt': LINEUP_ANCHOR_OPS_THRESHOLD}},
                 {'_id': 0, 'display_name': 1, 'team_abbr': 1, 'primary_position': 1,
                  'advanced_stats.season_stats.2026.batting': 1}

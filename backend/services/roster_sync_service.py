@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 BDL_BASE_URL = "https://api.balldontlie.io/v1"
@@ -38,7 +40,7 @@ def _normalize_name(name: str) -> str:
 class RosterSyncService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.master_hub = db.nba_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "nba")]
         self.api_key = os.environ.get("BDL_API_KEY", "")
         self.headers = {"Authorization": self.api_key}
     
@@ -194,7 +196,7 @@ class RosterSyncService:
         Sync roster data for all unique players currently in the cached board.
         """
         # Get unique player names from cached board
-        player_names = await self.db.dg_cached_board.distinct("player_name")
+        player_names = await self.db[COLL("board_cache", "nba")].distinct("player_name")
         
         logger.info(f"[ROSTER_SYNC] Found {len(player_names)} unique players in cached board")
         

@@ -32,8 +32,8 @@ class DataIntegrityService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.cached_board = db[COLL("board_cache", "nba")]
-        self.master_roster = db.dg_master_roster
-        self.sync_log = db.dg_sync_log
+        self.master_roster = db[COLL("master_roster", "nba")]
+        self.sync_log = db[COLL.shared("sync_log")]
         self.verification_failures = db.dg_verification_failures
     
     async def log_verification_failure(

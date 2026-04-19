@@ -74,6 +74,8 @@ from services.mlb_physical_engine import MLBPhysicalEngine, get_mlb_physical_eng
 import numpy as np
 import asyncio
 
+from services.config.collection_names import COLL
+
 from services.mlb_matchup_math import get_mlb_matchup_analysis
 from services.mlb_tempo_math import (
     calculate_hitter_tempo,
@@ -320,9 +322,9 @@ class MLBOracleApexService:
     
     def __init__(self, db, mlb_vegas_killer_model=None):
         self.db = db
-        self.cached_board = db.mlb_cached_board
-        self.live_props = db.mlb_live_props
-        self.master_hub = db.mlb_master_hub_2026
+        self.cached_board = db[COLL("board_cache", "mlb")]
+        self.live_props = db[COLL("live_props", "mlb")]
+        self.master_hub = db[COLL("master_hub", "mlb")]
         self.oracle_apex_collection = db.mlb_oracle_apex_analyzed
         
         # v2.0: Initialize MLB Physical Engine (64-feature XGBoost)

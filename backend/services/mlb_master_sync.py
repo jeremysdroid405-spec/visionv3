@@ -20,6 +20,8 @@ from services.universal_odds_sync import get_universal_odds_service
 from services.bdl_splits_cache import prefetch_all_splits, clear_cache, _splits_cache
 from services.mlb_oracle_apex_service import get_mlb_oracle_apex_service
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,8 +55,8 @@ class MLBMasterSync:
             step1_start = datetime.now(timezone.utc)
             
             # CLEAR OLD PROPS FIRST - ensures fresh data only
-            old_count = await self.db.mlb_live_props.count_documents({})
-            await self.db.mlb_live_props.delete_many({})
+            old_count = await self.db[COLL("live_props", "mlb")].count_documents({})
+            await self.db[COLL("live_props", "mlb")].delete_many({})
             logger.info(f"[MLB_MASTER] Cleared {old_count} old props from mlb_live_props")
             
             odds_service = get_universal_odds_service(self.db)
@@ -191,7 +193,7 @@ class MLBMasterSync:
         from services.mlb_cached_board_builder import get_mlb_board_builder
         
         # Get all PrizePicks props
-        pp_props = await self.db.mlb_live_props.find({
+        pp_props = await self.db[COLL("live_props", "mlb")].find({
             "bookmaker": "prizepicks"
         }).to_list(None)
         
@@ -202,7 +204,7 @@ class MLBMasterSync:
                 pp_players.add(player_name)
         
         # Get all odds (DraftKings/Pinnacle)
-        odds_props = await self.db.mlb_live_props.find({
+        odds_props = await self.db[COLL("live_props", "mlb")].find({
             "bookmaker": {"$in": ["draftkings", "pinnacle"]}
         }).to_list(None)
         
@@ -240,7 +242,7 @@ class MLBMasterSync:
         """
         player_ids = set()
         
-        cursor = self.db.mlb_cached_board.find({}, {"bdl_id": 1, "player_id": 1, "props": 1})
+        cursor = self.db[COLL("board_cache", "mlb")].find({}, {"bdl_id": 1, "player_id": 1, "props": 1})
         async for doc in cursor:
             # Get player ID
             pid = doc.get("bdl_id") or doc.get("player_id")
@@ -275,7 +277,7 @@ class MLBMasterSync:
         
         # Get all props from cached_board
         all_props = []
-        cursor = self.db.mlb_cached_board.find({})
+        cursor = self.db[COLL("board_cache", "mlb")].find({})
         async for doc in cursor:
             props = doc.get("props", [])
             for prop in props:

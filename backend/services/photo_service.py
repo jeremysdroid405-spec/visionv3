@@ -19,6 +19,8 @@ import logging
 
 from config.settings import TEAM_LOGOS, NBA_PLAYER_IDS
 
+from services.config.collection_names import COLL
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,8 +29,8 @@ class PhotoService:
     
     def __init__(self, db):
         self.db = db
-        self.master_hub = db.nba_master_hub_2026
-        self.cached_board = db.dg_cached_board
+        self.master_hub = db[COLL("master_hub", "nba")]
+        self.cached_board = db[COLL("board_cache", "nba")]
         self._espn_id_cache: Dict[str, Dict] = {}
     
     # ==================== PHOTO URL GENERATION ====================

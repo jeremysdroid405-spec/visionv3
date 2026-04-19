@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-04-19 — Wave 0 Batch 7 plumbing (MLB pipeline + roster services)
+- 8 files routed through `services/config/collection_names.py::COLL`:
+  `services/mlb_tier_service.py`, `services/mlb_lineup_ripple_service.py`,
+  `services/mlb_master_sync.py`, `services/mlb_oracle_apex_service.py`,
+  `services/roster_service.py`, `services/roster_sync_service.py`,
+  `services/data_integrity_service.py`, `services/photo_service.py`.
+- In-scope concepts: `master_hub` (NBA + MLB), `master_roster` (NBA),
+  `board_cache` (NBA + MLB), `live_props` (MLB), `sync_log` (shared).
+- 30 code-level literals removed → 30 `COLL(...)` call-sites added. 8 imports added.
+- This batch closes the 2 out-of-scope residuals from Batch 6 in
+  `data_integrity_service.py` (`master_roster` + `sync_log`).
+- Full MLB pipeline now plumbed end-to-end: mlb_master_sync (writer) +
+  mlb_tier_service + mlb_oracle_apex_service + mlb_lineup_ripple_service (readers).
+- Out-of-scope refs reported and left: `nba_context_engine` in mlb_tier_service
+  (not in priority list/registry), `dg_flagged_players`, `dg_verification_failures`
+  (not in registry).
+- In-scope hardcoded-ref count in these files: **30 → 0**.
+- Regression suite: 80 passed / 1 skipped / 0 failed — matches baseline.
+- Live smoke after restart: NBA Ferrari endpoints + MLB tier endpoints all HTTP 200,
+  MLB endpoints returned 60KB+ payloads (real data through COLL routing).
+  Backend uptime clean. 0 new errors.
+- Global code-level residual: 103 → **81 refs across 58 files**.
+- Audit: `/app/memory/wave0_batch7_audit.md`.
+
+
 ## 2026-04-19 — Wave 0 Batch 6 plumbing (injury/live/social/cache/integrity)
 - 5 files routed through `services/config/collection_names.py::COLL`:
   `services/injury_vacuum_service.py`, `services/engines/live_scores_engine.py`,

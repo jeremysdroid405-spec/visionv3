@@ -29,6 +29,8 @@ from collections import Counter
 import logging
 import math
 
+from services.config.collection_names import COLL
+
 # Import MLB Matchup Math for split matchup analysis
 from services.mlb_matchup_math import get_mlb_matchup_analysis
 
@@ -192,9 +194,9 @@ class MLBTierService:
     
     def __init__(self, db):
         self.db = db
-        self.cached_board = db.mlb_cached_board
+        self.cached_board = db[COLL("board_cache", "mlb")]
         # BDL is the SSOT for all player stats and game logs
-        self.master_hub = db.mlb_master_hub_2026
+        self.master_hub = db[COLL("master_hub", "mlb")]
         
         # Output collections
         self.mlb_safe_haven = db.mlb_safe_haven
@@ -522,7 +524,7 @@ class MLBTierService:
         context_data = {}
         
         try:
-            master_hub = self.db.mlb_master_hub_2026
+            master_hub = self.db[COLL("master_hub", "mlb")]
             cursor = master_hub.find(
                 {},
                 {"_id": 0, "display_name": 1, "bdl_game_logs": 1, "game_logs": 1, "baseline_stats": 1}
@@ -1436,7 +1438,7 @@ class MLBTierService:
             
             # Pre-load VK baselines from mlb_master_hub_2026 for model projections
             vk_baselines_lookup = {}
-            master_hub = self.db.mlb_master_hub_2026
+            master_hub = self.db[COLL("master_hub", "mlb")]
             async for hub_doc in master_hub.find({}, {"_id": 0, "display_name": 1, "vk_baselines": 1}):
                 display_name = hub_doc.get("display_name", "")
                 if display_name and hub_doc.get("vk_baselines"):
@@ -1445,7 +1447,7 @@ class MLBTierService:
             
             # Flatten all props from mlb_cached_board directly
             all_mlb_props = []
-            cached_board = self.db.mlb_cached_board
+            cached_board = self.db[COLL("board_cache", "mlb")]
             
             # Team abbreviation map for opponent derivation
             TEAM_ABBREV_MAP = {
@@ -2558,7 +2560,7 @@ class MLBTierService:
         player_names = list(set(p.get('player_name') for p in picks if p.get('player_name')))
         
         hub_data = {}
-        async for player in self.db.mlb_master_hub_2026.find(
+        async for player in self.db[COLL("master_hub", "mlb")].find(
             {"display_name": {"$in": player_names}},
             {"_id": 0, "display_name": 1, "bdl_game_logs": 1}
         ):
