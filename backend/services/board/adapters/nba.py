@@ -29,7 +29,7 @@ _NBA_STAT_TYPE_MAP = {
 
 class NBABoardAdapter(SportBoardAdapter):
     sport = "nba"
-    version_tag = "final-nba"
+    version_tag = "final-nba-rt"
     # live_props_collection, scores_collection, cached_board_collection
     # are resolved via config.collections (the base class resolves them).
     tier_names = ("safe_haven", "front_lines", "war_zone")

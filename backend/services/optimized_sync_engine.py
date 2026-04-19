@@ -318,7 +318,7 @@ async def _collect_nba_tier_picks_from_scores(
     intel_suite shape.
     """
     cursor = db[COLL("prop_scores", "nba")].find(
-        {"version_tag": "final-nba", "tier": board_name},
+        {"version_tag": "final-nba-rt", "tier": board_name},
         {"_id": 0},
     ).sort("vision_score", -1).limit(limit)
     scores = await cursor.to_list(length=limit)

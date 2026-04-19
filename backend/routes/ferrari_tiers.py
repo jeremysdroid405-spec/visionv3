@@ -1326,7 +1326,7 @@ async def _enrich_under_picks_with_gemini(
     # that's still fresh (generated AFTER the current computed_at).
     ckeys = [p.get("canonical_key") for p in under_picks if p.get("canonical_key")]
     cache_docs = await _db[COLL("prop_scores", "nba")].find(
-        {"canonical_key": {"$in": ckeys}, "version_tag": "final-nba",
+        {"canonical_key": {"$in": ckeys}, "version_tag": "final-nba-rt",
          "vision_intel": {"$ne": None}},
         {"_id": 0, "canonical_key": 1, "vision_intel": 1,
          "vision_intel_generated_at": 1, "computed_at": 1},
@@ -1397,7 +1397,7 @@ async def _enrich_under_picks_with_gemini(
         if ck:
             persist_ops.append(
                 _db[COLL("prop_scores", "nba")].update_one(
-                    {"canonical_key": ck, "version_tag": "final-nba"},
+                    {"canonical_key": ck, "version_tag": "final-nba-rt"},
                     {"$set": {
                         "vision_intel": vi,
                         "vision_intel_generated_at": now,
