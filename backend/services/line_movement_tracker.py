@@ -26,7 +26,7 @@ class LineMovementTracker:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.line_history = db[COLL("line_history", "nba")]  # Stores historical lines
+        self.line_history = COLL.handle(db, "line_history", "nba")  # Stores historical lines
         self.line_movements = db["line_movements"]  # Stores detected movements
     
     async def setup_indexes(self):

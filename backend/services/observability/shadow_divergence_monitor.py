@@ -70,6 +70,13 @@ _STABLE_KEY: Dict[str, Union[str, Sequence[str]]] = {
     # on the compound `(date, game)` — 118/118 unique on live data
     # (one referee crew per game per date).
     "referee_assignments": ("date", "game"),
+    # line_history is an append-only audit log keyed on the compound
+    # (player_name, stat_type, line, recorded_at). ~99.75% unique
+    # on 801k docs; the 0.25% duplicate groups are byte-identical
+    # payloads so sampling remains accurate. None of `event_id`,
+    # `source`, `bookmaker`, or `market` exist as fields on these
+    # documents.
+    "line_history": ("player_name", "stat_type", "line", "recorded_at"),
 }
 
 

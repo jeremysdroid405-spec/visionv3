@@ -90,6 +90,17 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # old primary (`referee_assignments`) has been renamed to
     # `referee_assignments_backup` and is eligible for drop after
     # the observation window closes.
+
+    # Wave 1 pilot in progress (line_history · NBA). Shadow-writing
+    # to `nba_line_history`. Reads remain on `line_history`. This is
+    # an APPEND-ONLY audit log (insert_only, no unique constraint).
+    # Stable key is the compound `(player_name, stat_type, line,
+    # recorded_at)` — ~99.75% unique; the 0.25% duplicate groups are
+    # byte-identical payloads (verified on 5 sampled groups), so
+    # hash-based sampling remains accurate. None of `event_id`,
+    # `source`, `bookmaker`, `market`, or `timestamp` exist as fields
+    # on these documents.
+    ("line_history", "nba"): "nba_line_history",
 }
 
 
