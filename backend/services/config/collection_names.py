@@ -85,12 +85,11 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
     # handle was never assigned) — the rename merely finalises an
     # archival snapshot under its correctly-prefixed name.
 
-    # Wave 1 pilot in progress (referee_assignments · NBA).
-    # Shadow-writing to `nba_referee_assignments`. Reads remain on
-    # `referee_assignments`. Stable key is compound `(date, game)` —
-    # 118/118 unique on live data; none of `game_id`, `event_id`,
-    # `crew_role`, or `referee_name` exist as fields in these docs.
-    ("referee_assignments", "nba"): "nba_referee_assignments",
+    # Wave 2 complete: referee_assignments · NBA has been flipped to
+    # `nba_referee_assignments` and the shadow phase is retired. The
+    # old primary (`referee_assignments`) has been renamed to
+    # `referee_assignments_backup` and is eligible for drop after
+    # the observation window closes.
 }
 
 
@@ -158,7 +157,7 @@ _SPORT_COLLECTIONS: Dict[str, Dict[str, str]] = {
     # ---- Misc sport-specific -----------------------------------------------
     "line_history":         {"nba": "line_history",          # currently in hub DB
                              "mlb": "mlb_line_history"},
-    "referee_assignments":  {"nba": "referee_assignments",   # currently in hub DB
+    "referee_assignments":  {"nba": "nba_referee_assignments",
                              "mlb": "mlb_referee_assignments"},
     "calibration_snapshots": {"nba": "nba_calibration_runs",
                               "mlb": "mlb_calibration_runs"},
