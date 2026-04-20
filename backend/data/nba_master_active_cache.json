@@ -1,6 +1,6 @@
 {
   "sport": "NBA",
-  "last_updated": "2026-04-20T06:04:34.341278+00:00",
+  "last_updated": "2026-04-20T16:07:23.495110+00:00",
   "prop_count": 24,
   "props": {
     "nickeil_alexander-walker|pts|14.5|prizepicks": {
@@ -782,290 +782,6 @@
       "_enriched": true,
       "_enriched_at": "2026-04-19T21:27:50.430777+00:00",
       "_cache_updated": "2026-04-19T21:27:50.430779+00:00"
-    },
-    "mikal_bridges|pra|19.5|prizepicks": {
-      "event_id": "a1b444bd00a27cbae3cf7ca3bf75a3f0",
-      "home_team": "NYK",
-      "away_team": "ATL",
-      "commence_time": "2026-04-21T00:10:00Z",
-      "player_name": "Mikal Bridges",
-      "market": "player_points_rebounds_assists",
-      "direction": "Under",
-      "line": 19.5,
-      "price": -137,
-      "multiplier": null,
-      "bookmaker": "prizepicks",
-      "is_alternate_market": false,
-      "is_demon": false,
-      "is_goblin": false,
-      "prop_type": "STANDARD",
-      "last_update": "2026-04-19T21:25:25Z",
-      "popularity_order": 8,
-      "fetched_at": "2026-04-19T21:26:08.949024+00:00",
-      "sharp_market": {
-        "draftkings_price": -111,
-        "fanduel_price": -120,
-        "betonline_price": -114,
-        "sort_price": -111,
-        "sort_source": "draftkings",
-        "is_alternate": false
-      },
-      "draftkings_price": -111,
-      "fanduel_price": -120,
-      "betonline_price": -114,
-      "sort_price": -111,
-      "sort_source": "draftkings",
-      "home_team_full": "New York Knicks",
-      "away_team_full": "Atlanta Hawks",
-      "player_name_raw": "Mikal Bridges",
-      "_composite_key": "Mikal Bridges|PRA|19.5|Under|2026-04-19",
-      "stat_type_extracted": "PRA",
-      "game_date": "2026-04-19",
-      "synced_at": "2026-04-19T21:26:08.616381+00:00",
-      "hit_rates": {
-        "l10_rate": 20,
-        "l5_rate": 20,
-        "l10_hit_count": 2,
-        "l5_hit_count": 1,
-        "l5_avg": 14.2,
-        "season_avg": 22.3,
-        "l10_avg": 15.9
-      },
-      "oracle_apex_qualified": false,
-      "apex_reason": "GATE1_HIT_RATE: 4/20 < 18/20",
-      "vk_predicted": 15.8,
-      "vk_edge": -3.7,
-      "vk_prob_over": 20.0,
-      "vk_prob_under": 80.0,
-      "vk_recommendation": "STRONG_UNDER",
-      "cv": 0.435,
-      "h5_rate": 20,
-      "h10_rate": 20,
-      "h20_rate": 20.0,
-      "l5_hits": 1,
-      "l10_hits": 2,
-      "l20_hits": 4,
-      "l5_avg": 14.2,
-      "l10_avg": 15.9,
-      "l20_avg": 16.1,
-      "sharp_movement": true,
-      "movement_delta": -5.3,
-      "movement_direction": "under_value",
-      "movement_strength": "significant",
-      "trap_risk": false,
-      "hook_risk": false,
-      "suspect_line_bait": false,
-      "trap_reasons": [],
-      "sidecar": {
-        "hook_risk": false,
-        "suspect_line_bait": false
-      },
-      "tier_label": "FRONT_LINE",
-      "stat_type": "PRA",
-      "h10_hit_rate": 20,
-      "h5_hit_rate": 20,
-      "season_avg": 22.3,
-      "l10_hit_count": 2,
-      "l5_hit_count": 1,
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 15,
-          "display": "Rank #15 vs. All-Around",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Below Average Defense",
-          "opponent": "ATL",
-          "stat_category": "PRA"
-        },
-        "pace_delta": {
-          "possessions": 1.2,
-          "display": "+1.2 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 94.5,
-          "opponent_pace": 102.8,
-          "expected_game_pace": 98.7
-        },
-        "stability_index": {
-          "score": 55,
-          "label": "Medium",
-          "display": "55/100 (Medium)",
-          "std_dev": 4.18,
-          "consistency": "Average",
-          "variance_level": "Medium"
-        },
-        "vision_insight": {
-          "primary": "Mikal Bridges is looking like a ghost in this offense lately, failing to clear this 19.5 PRA mark in eight of his last ten outings while averaging a measly 15.9. Even against a mediocre Atlanta defense, his usage just isn't high enough to justify this number when he's consistently disappearing for long stretches of the game.",
-          "summary": "Mikal Bridges is looking like a ghost in this offense lately, failing to clear this 19.5 PRA mark in eight of his last ten outings while averaging a measly 15.9. Even against a mediocre Atlanta defense, his usage just isn't high enough to justify this number when he's consistently disappearing for long stretches of the game.",
-          "projection": 15.8,
-          "canonical_projection": 15.8,
-          "canonical_edge": -3.7,
-          "lasso_projection": 19.357,
-          "lasso_edge": -0.14,
-          "models_disagree": false,
-          "confidence": "HIGH_FIDELITY",
-          "tactical_note": "Baseline projection favorable"
-        },
-        "blowout_risk": {
-          "player_team_record": "53-29",
-          "opponent_team_record": "46-36",
-          "player_win_pct": 0.646,
-          "opponent_win_pct": 0.561,
-          "win_pct_diff": 0.085,
-          "favored_team": "NYK",
-          "player_is_favored": true,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: NYK (53-29) vs ATL (46-36)",
-          "warning": null
-        },
-        "scout_badges": [
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 19.357,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.6081,
-          "top_drivers": [
-            "prev_fga",
-            "L10_avg_fgm"
-          ]
-        },
-        "calculated_at": "2026-04-19T22:42:44.958723+00:00"
-      },
-      "is_vision_enriched": true,
-      "is_anomaly": false,
-      "is_demon_anomaly": false,
-      "is_goblin_anomaly": false,
-      "season_margin": 2.8,
-      "margin": -3.6,
-      "vision_summary": "",
-      "vision_enriched_at": null,
-      "vision_score": 92.2,
-      "board": null,
-      "active_badges": [],
-      "player_id": "28318347129",
-      "nba_id": 1628969,
-      "bdl_id": 61,
-      "nba_com_id": 1628969,
-      "headshot_url": "/static/player-headshots/1628969.png",
-      "photo_url": "/static/player-headshots/1628969.png",
-      "team": "NYK",
-      "team_name": "New York Knicks",
-      "position": "F",
-      "opponent": "ATL",
-      "opponent_abbr": "ATL",
-      "injured_teammates": [],
-      "context_badges": [],
-      "recommendation": "Under",
-      "sport": "nba",
-      "tier": "front_lines",
-      "vision_score_raw": 0.180478,
-      "tier_gate_results": {
-        "gate_cv": {
-          "threshold": 0.75,
-          "value": 0.3407,
-          "passed": true
-        },
-        "gate_hit_rate": {
-          "threshold": 60,
-          "value": 80.0,
-          "passed": true
-        },
-        "gate_edge": {
-          "threshold": 5,
-          "value": 34.5,
-          "passed": true
-        },
-        "gate_tp": {
-          "threshold": 65,
-          "value": 80.0,
-          "passed": true,
-          "source": "model_confidence_under"
-        }
-      },
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "mgm",
-      "tier_reference_odds": -120,
-      "edge_vs_fair": 0.2545,
-      "fair_prob": 0.5455,
-      "quality_source": "mgm",
-      "stability": 0.8864,
-      "confidence_score": 1.0,
-      "version_tag": "final-nba-rt",
-      "computed_at": "2026-04-19T02:06:16.548184+00:00",
-      "pp_utility": 70.0,
-      "pp_utility_category": "pp_fair",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.491,
-        "edge_confidence": 0.6363,
-        "multiplier_value": 0.5,
-        "weights": {
-          "availability": 0.15,
-          "line_fairness": 0.2,
-          "model_alignment": 0.25,
-          "edge_confidence": 0.2,
-          "multiplier_value": 0.2
-        },
-        "pp_utility_raw": 70.0,
-        "category_raw": "pp_fair"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": "standard",
-      "pp_multiplier_source": "pp_label",
-      "pp_reference_source": "mgm",
-      "pp_playable": true,
-      "pp_playability_reason": "playable",
-      "is_standard": true,
-      "vk2_projection": null,
-      "vk2_sigma": null,
-      "model_projection": 15.83,
-      "model_sigma": 7.92,
-      "p_true_active": 0.8,
-      "p_true_method": "hit_rate",
-      "p_true_vk2": null,
-      "p_true_hit_rate": 0.8,
-      "hit_rate_over": 20.0,
-      "model_hit_rate_over": 20.0,
-      "hit_rate_under": 80.0,
-      "model_hit_rate_under": 80.0,
-      "model_hit_rate_active": 80.0,
-      "canonical_key": "nba|a1b444bd00a27cbae3cf7ca3bf75a3f0|Mikal Bridges|PRA|19.5|UNDER",
-      "scout_badges": [
-        "high_fidelity_model"
-      ],
-      "validation": {
-        "has_market_data": true,
-        "has_hit_rates": true,
-        "has_context": true,
-        "has_mlr": false,
-        "has_gemini": false,
-        "is_fully_validated": false
-      },
-      "volatility_score": 62.1,
-      "volatility_label": "moderate",
-      "volatility_family": "nba_high_line",
-      "vision_intel": "",
-      "vk_data": {
-        "projection": 19.357,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.6081,
-        "top_drivers": [
-          "prev_fga",
-          "L10_avg_fgm"
-        ]
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-19T22:42:54.065986+00:00",
-      "_cache_updated": "2026-04-19T22:42:54.065988+00:00"
     },
     "jabari_smith_jr.|pra|19.5|prizepicks": {
       "event_id": "d3d28b764e5099920880de59a45e82cf",
@@ -2342,290 +2058,6 @@
       "_enriched": true,
       "_enriched_at": "2026-04-19T22:43:23.505895+00:00",
       "_cache_updated": "2026-04-19T22:43:23.505897+00:00"
-    },
-    "julius_randle|ast|4.5|prizepicks": {
-      "event_id": "a52365fe7f7123df1c4220d9591a6da2",
-      "home_team": "DEN",
-      "away_team": "MIN",
-      "commence_time": "2026-04-21T02:40:00Z",
-      "player_name": "Julius Randle",
-      "market": "player_assists",
-      "direction": "Under",
-      "line": 4.5,
-      "price": -137,
-      "multiplier": null,
-      "bookmaker": "prizepicks",
-      "is_alternate_market": false,
-      "is_demon": false,
-      "is_goblin": false,
-      "prop_type": "STANDARD",
-      "last_update": "2026-04-19T21:25:23Z",
-      "popularity_order": 4,
-      "fetched_at": "2026-04-19T21:26:08.949345+00:00",
-      "sharp_market": {
-        "draftkings_price": -119,
-        "fanduel_price": -125,
-        "betonline_price": -123,
-        "sort_price": -119,
-        "sort_source": "draftkings",
-        "is_alternate": false
-      },
-      "draftkings_price": -119,
-      "fanduel_price": -125,
-      "betonline_price": -123,
-      "sort_price": -119,
-      "sort_source": "draftkings",
-      "home_team_full": "Denver Nuggets",
-      "away_team_full": "Minnesota Timberwolves",
-      "player_name_raw": "Julius Randle",
-      "_composite_key": "Julius Randle|AST|4.5|Under|2026-04-19",
-      "stat_type_extracted": "AST",
-      "game_date": "2026-04-19",
-      "synced_at": "2026-04-19T21:26:08.616381+00:00",
-      "hit_rates": {
-        "l10_rate": 20,
-        "l5_rate": 20,
-        "l10_hit_count": 2,
-        "l5_hit_count": 1,
-        "l5_avg": 3.8,
-        "season_avg": 5.0,
-        "l10_avg": 4.1
-      },
-      "oracle_apex_qualified": false,
-      "apex_reason": "GATE1_HIT_RATE: 5/20 < 15/20",
-      "vk_predicted": 4.1,
-      "vk_edge": -0.4,
-      "vk_prob_over": 25.0,
-      "vk_prob_under": 75.0,
-      "vk_recommendation": "STRONG_UNDER",
-      "cv": 0.292,
-      "h5_rate": 20,
-      "h10_rate": 20,
-      "h20_rate": 25.0,
-      "l5_hits": 1,
-      "l10_hits": 2,
-      "l20_hits": 5,
-      "l5_avg": 3.8,
-      "l10_avg": 4.1,
-      "l20_avg": 4.0,
-      "sharp_movement": false,
-      "movement_delta": -0.7,
-      "movement_direction": "under_value",
-      "movement_strength": "minimal",
-      "trap_risk": false,
-      "hook_risk": false,
-      "suspect_line_bait": false,
-      "trap_reasons": [],
-      "sidecar": {
-        "hook_risk": false,
-        "suspect_line_bait": false
-      },
-      "tier_label": "FRONT_LINE",
-      "stat_type": "AST",
-      "h10_hit_rate": 20,
-      "h5_hit_rate": 20,
-      "season_avg": 5.0,
-      "l10_hit_count": 2,
-      "l5_hit_count": 1,
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 12,
-          "display": "Rank #12 vs. Playmakers",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Average Defense",
-          "opponent": "DEN",
-          "stat_category": "AST"
-        },
-        "pace_delta": {
-          "possessions": 2.7,
-          "display": "+2.7 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Above Avg Tempo",
-          "team_pace": 100.5,
-          "opponent_pace": 99.8,
-          "expected_game_pace": 100.2
-        },
-        "stability_index": {
-          "score": 95,
-          "label": "Elite",
-          "display": "95/100 (Elite)",
-          "std_dev": 1.49,
-          "consistency": "Extremely Consistent",
-          "variance_level": "Low"
-        },
-        "vision_insight": {
-          "primary": "Julius Randle has stayed below this 4.5 mark in eight of his last ten games, proving his role is focused more on finishing than facilitating lately. While the pace against Denver should be quick, the Nuggets' interior length forces him into tough buckets rather than the kick-out passes we'd need to see him clear this total.",
-          "summary": "Julius Randle has stayed below this 4.5 mark in eight of his last ten games, proving his role is focused more on finishing than facilitating lately. While the pace against Denver should be quick, the Nuggets' interior length forces him into tough buckets rather than the kick-out passes we'd need to see him clear this total.",
-          "projection": 4.1,
-          "canonical_projection": 4.1,
-          "canonical_edge": -0.4,
-          "lasso_projection": 4.957,
-          "lasso_edge": 0.46,
-          "models_disagree": true,
-          "confidence": "HIGH_FIDELITY",
-          "tactical_note": "Baseline projection favorable"
-        },
-        "blowout_risk": {
-          "player_team_record": "49-33",
-          "opponent_team_record": "54-28",
-          "player_win_pct": 0.598,
-          "opponent_win_pct": 0.659,
-          "win_pct_diff": 0.061,
-          "favored_team": "DEN",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: MIN (49-33) vs DEN (54-28)",
-          "warning": null
-        },
-        "scout_badges": [
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 4.957,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.5469,
-          "top_drivers": [
-            "L10_avg_ast",
-            "target_L10_avg"
-          ]
-        },
-        "calculated_at": "2026-04-19T22:43:42.531869+00:00"
-      },
-      "is_vision_enriched": true,
-      "is_anomaly": false,
-      "is_demon_anomaly": false,
-      "is_goblin_anomaly": false,
-      "season_margin": 0.5,
-      "margin": -0.4,
-      "vision_summary": "",
-      "vision_enriched_at": null,
-      "vision_score": 100.0,
-      "board": null,
-      "active_badges": [],
-      "player_id": "28438011729",
-      "nba_id": 203944,
-      "bdl_id": 387,
-      "nba_com_id": 203944,
-      "headshot_url": "/static/player-headshots/203944.png",
-      "photo_url": "/static/player-headshots/203944.png",
-      "team": "MIN",
-      "team_name": "Minnesota Timberwolves",
-      "position": "F",
-      "opponent": "DEN",
-      "opponent_abbr": "DEN",
-      "injured_teammates": [],
-      "context_badges": [],
-      "recommendation": "Under",
-      "sport": "nba",
-      "tier": "front_lines",
-      "vision_score_raw": 0.135005,
-      "tier_gate_results": {
-        "gate_cv": {
-          "threshold": 0.75,
-          "value": 0.473,
-          "passed": true
-        },
-        "gate_hit_rate": {
-          "threshold": 60,
-          "value": 75.0,
-          "passed": true
-        },
-        "gate_edge": {
-          "threshold": 5,
-          "value": 28.6,
-          "passed": true
-        },
-        "gate_tp": {
-          "threshold": 65,
-          "value": 75.0,
-          "passed": true,
-          "source": "model_confidence_under"
-        }
-      },
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "dk",
-      "tier_reference_odds": -107,
-      "edge_vs_fair": 0.2137,
-      "fair_prob": 0.5363,
-      "quality_source": "consensus",
-      "stability": 0.8423,
-      "confidence_score": 1.0,
-      "version_tag": "final-nba-rt",
-      "computed_at": "2026-04-19T00:53:00.115928+00:00",
-      "pp_utility": 70.0,
-      "pp_utility_category": "pp_fair",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.5338,
-        "edge_confidence": 0.5827,
-        "multiplier_value": 0.5,
-        "weights": {
-          "availability": 0.15,
-          "line_fairness": 0.2,
-          "model_alignment": 0.25,
-          "edge_confidence": 0.2,
-          "multiplier_value": 0.2
-        },
-        "pp_utility_raw": 70.0,
-        "category_raw": "pp_fair"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": "standard",
-      "pp_multiplier_source": "pp_label",
-      "pp_reference_source": "dk",
-      "pp_playable": true,
-      "pp_playability_reason": "playable",
-      "is_standard": true,
-      "vk2_projection": null,
-      "vk2_sigma": null,
-      "model_projection": 4.11,
-      "model_sigma": 1.7,
-      "p_true_active": 0.75,
-      "p_true_method": "hit_rate",
-      "p_true_vk2": null,
-      "p_true_hit_rate": 0.75,
-      "hit_rate_over": 25.0,
-      "model_hit_rate_over": 25.0,
-      "hit_rate_under": 75.0,
-      "model_hit_rate_under": 75.0,
-      "model_hit_rate_active": 75.0,
-      "canonical_key": "nba|a52365fe7f7123df1c4220d9591a6da2|Julius Randle|AST|4.5|UNDER",
-      "scout_badges": [
-        "high_fidelity_model"
-      ],
-      "validation": {
-        "has_market_data": true,
-        "has_hit_rates": true,
-        "has_context": true,
-        "has_mlr": false,
-        "has_gemini": false,
-        "is_fully_validated": false
-      },
-      "volatility_score": 32.4,
-      "volatility_label": "low",
-      "volatility_family": "nba_low_line",
-      "vision_intel": "",
-      "vk_data": {
-        "projection": 4.957,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.5469,
-        "top_drivers": [
-          "L10_avg_ast",
-          "target_L10_avg"
-        ]
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-19T22:43:43.789269+00:00",
-      "_cache_updated": "2026-04-19T22:43:43.789271+00:00"
     },
     "sandro_mamukelashvili|reb|2.5|prizepicks": {
       "event_id": "273905d6a4ae9217ec0734b66a0eb28b",
@@ -4139,314 +3571,6 @@
       "_enriched": true,
       "_enriched_at": "2026-04-19T22:44:42.865982+00:00",
       "_cache_updated": "2026-04-19T22:44:42.865984+00:00"
-    },
-    "jabari_smith_jr.|pts|11.5|prizepicks": {
-      "event_id": "d3d28b764e5099920880de59a45e82cf",
-      "home_team": "LAL",
-      "away_team": "HOU",
-      "commence_time": "2026-04-22T02:40:00Z",
-      "player_name": "Jabari Smith Jr.",
-      "market": "player_points_alternate",
-      "direction": "Over",
-      "line": 11.5,
-      "price": -137,
-      "multiplier": null,
-      "bookmaker": "prizepicks",
-      "is_alternate_market": true,
-      "is_demon": false,
-      "is_goblin": true,
-      "prop_type": "GOBLIN",
-      "last_update": "2026-04-19T21:26:06Z",
-      "popularity_order": 9,
-      "fetched_at": "2026-04-19T21:26:08.950748+00:00",
-      "sharp_market": {
-        "draftkings_price": -281,
-        "fanduel_price": null,
-        "betonline_price": null,
-        "sort_price": -281,
-        "sort_source": "draftkings",
-        "is_alternate": true
-      },
-      "draftkings_price": -281,
-      "fanduel_price": null,
-      "betonline_price": null,
-      "sort_price": -281,
-      "sort_source": "draftkings",
-      "home_team_full": "Los Angeles Lakers",
-      "away_team_full": "Houston Rockets",
-      "player_name_raw": "Jabari Smith Jr",
-      "_composite_key": "Jabari Smith Jr.|PTS|11.5|Over|2026-04-19",
-      "stat_type_extracted": "PTS",
-      "game_date": "2026-04-19",
-      "synced_at": "2026-04-19T21:26:08.616381+00:00",
-      "hit_rates": {
-        "l10_rate": 100,
-        "l5_rate": 100,
-        "l10_hit_count": 10,
-        "l5_hit_count": 5,
-        "l5_avg": 18.8,
-        "season_avg": 15.8,
-        "l10_avg": 18.0
-      },
-      "oracle_apex_qualified": true,
-      "apex_reason": "ORACLE_APEX_QUALIFIED",
-      "vk_predicted": 16.7,
-      "vk_edge": 5.2,
-      "vk_prob_over": 90.0,
-      "vk_prob_under": 10.0,
-      "vk_recommendation": "STRONG_OVER",
-      "cv": 0.181,
-      "h5_rate": 100,
-      "h10_rate": 100,
-      "h20_rate": 90.0,
-      "l5_hits": 5,
-      "l10_hits": 10,
-      "l20_hits": 18,
-      "l5_avg": 18.8,
-      "l10_avg": 18.0,
-      "l20_avg": 17.2,
-      "sharp_movement": true,
-      "movement_delta": 7.3,
-      "movement_direction": "over_value",
-      "movement_strength": "significant",
-      "trap_risk": false,
-      "hook_risk": false,
-      "suspect_line_bait": false,
-      "trap_reasons": [],
-      "sidecar": {
-        "hook_risk": false,
-        "suspect_line_bait": false
-      },
-      "tier_label": "SAFE_HAVEN",
-      "stat_type": "PTS",
-      "h10_hit_rate": 100,
-      "h5_hit_rate": 100,
-      "season_avg": 15.8,
-      "l10_hit_count": 10,
-      "l5_hit_count": 5,
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 11,
-          "display": "Rank #11 vs. Scorers",
-          "color": "yellow",
-          "friction_level": "Med-High",
-          "friction_label": "Above Average Defense",
-          "opponent": "LAL",
-          "stat_category": "PTS"
-        },
-        "pace_delta": {
-          "possessions": 0.8,
-          "display": "+0.8 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 97.0,
-          "opponent_pace": 99.5,
-          "expected_game_pace": 98.2
-        },
-        "stability_index": {
-          "score": 70,
-          "label": "Medium-High",
-          "display": "70/100 (Medium-High)",
-          "std_dev": 3.27,
-          "consistency": "Above Average",
-          "variance_level": "Low"
-        },
-        "vision_insight": {
-          "primary": "Jabari Smith Jr. hasn't just been clearing this 11.5 mark lately; he\u2019s been absolutely torching it with a perfect 10-for-10 hit rate and a massive 18.0 point average over his last ten games. Even with the Lakers bringing a decent defensive front, his rock-steady floor and 45.2% edge make this play feel like we're catching a massive discount on a guy who refuses to miss.",
-          "summary": "Jabari Smith Jr. hasn't just been clearing this 11.5 mark lately; he\u2019s been absolutely torching it with a perfect 10-for-10 hit rate and a massive 18.0 point average over his last ten games. Even with the Lakers bringing a decent defensive front, his rock-steady floor and 45.2% edge make this play feel like we're catching a massive discount on a guy who refuses to miss.",
-          "projection": 16.7,
-          "canonical_projection": 16.7,
-          "canonical_edge": 5.2,
-          "lasso_projection": 15.383,
-          "lasso_edge": 3.88,
-          "models_disagree": false,
-          "confidence": "HIGH_FIDELITY",
-          "tactical_note": "Baseline projection favorable"
-        },
-        "blowout_risk": {
-          "player_team_record": "52-30",
-          "opponent_team_record": "53-29",
-          "player_win_pct": 0.634,
-          "opponent_win_pct": 0.646,
-          "win_pct_diff": 0.012,
-          "favored_team": "LAL",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: HOU (52-30) vs LAL (53-29)",
-          "warning": null
-        },
-        "scout_badges": [
-          "hot_streak",
-          "floor_lock",
-          "lasso_high_edge",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 15.383,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.544,
-          "top_drivers": [
-            "L10_avg_fgm",
-            "prev_fga"
-          ]
-        },
-        "calculated_at": "2026-04-19T22:44:51.900237+00:00"
-      },
-      "is_vision_enriched": true,
-      "is_anomaly": true,
-      "is_demon_anomaly": false,
-      "is_goblin_anomaly": true,
-      "season_margin": 4.3,
-      "margin": 6.5,
-      "vision_summary": "",
-      "vision_enriched_at": "2026-04-19T21:36:41.871010+00:00",
-      "vision_score": 90.5,
-      "board": "safe_haven",
-      "active_badges": null,
-      "player_id": "38017684",
-      "nba_id": 1631095,
-      "bdl_id": 38017684,
-      "nba_com_id": 1631095,
-      "headshot_url": "/static/player-headshots/1631095.png",
-      "photo_url": "/static/player-headshots/1631095.png",
-      "team": "HOU",
-      "team_name": "Houston Rockets",
-      "position": "F",
-      "opponent": "LAL",
-      "opponent_abbr": "LAL",
-      "injured_teammates": [],
-      "context_badges": [
-        {
-          "badge_key": "jet_lag",
-          "display": "Jet Lag",
-          "icon": "Plane",
-          "color": "#a855f7",
-          "description": "Traveled 1372 miles",
-          "travel_miles": 1372,
-          "auto_generated": true
-        },
-        {
-          "badge_key": "locked_in",
-          "display": "Locked In",
-          "icon": "Target",
-          "color": "#06b6d4",
-          "description": "L5 avg 19.2 vs season 15.8 (+22%)",
-          "auto_generated": true
-        }
-      ],
-      "recommendation": "Over",
-      "sport": "nba",
-      "tier": "safe_haven",
-      "vision_score_raw": 0.148123,
-      "tier_gate_results": {
-        "gate_cv": {
-          "threshold": 0.5,
-          "value": 0.2585,
-          "passed": true
-        },
-        "gate_hit_rate": {
-          "threshold": 75,
-          "value": 90.0,
-          "passed": true
-        },
-        "gate_edge": {
-          "threshold": 8,
-          "value": 18.0,
-          "passed": true
-        },
-        "gate_tp": {
-          "threshold": 70,
-          "value": 72.0,
-          "passed": true,
-          "source": "market_implied_over"
-        }
-      },
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "dk",
-      "tier_reference_odds": -257,
-      "edge_vs_fair": 0.1801,
-      "fair_prob": 0.7199,
-      "quality_source": "dk",
-      "stability": 0.9138,
-      "confidence_score": 1.0,
-      "version_tag": "final-nba-rt",
-      "computed_at": "2026-04-19T05:25:06.933249+00:00",
-      "pp_utility": 65.0,
-      "pp_utility_category": "pp_discount",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.6398,
-        "edge_confidence": 0.4503,
-        "multiplier_value": 0.25,
-        "weights": {
-          "availability": 0.15,
-          "line_fairness": 0.2,
-          "model_alignment": 0.25,
-          "edge_confidence": 0.2,
-          "multiplier_value": 0.2
-        },
-        "pp_utility_raw": 65.0,
-        "category_raw": "pp_discount"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": "goblin",
-      "pp_multiplier_source": "pp_label",
-      "pp_reference_source": "dk",
-      "pp_playable": true,
-      "pp_playability_reason": "playable",
-      "is_standard": false,
-      "vk2_projection": null,
-      "vk2_sigma": null,
-      "model_projection": 16.72,
-      "model_sigma": 5.8,
-      "p_true_active": 0.9,
-      "p_true_method": "hit_rate",
-      "p_true_vk2": null,
-      "p_true_hit_rate": 0.9,
-      "hit_rate_over": 90.0,
-      "model_hit_rate_over": 90.0,
-      "hit_rate_under": 10.0,
-      "model_hit_rate_under": 10.0,
-      "model_hit_rate_active": 90.0,
-      "canonical_key": "nba|d3d28b764e5099920880de59a45e82cf|Jabari Smith Jr.|PTS|11.5|OVER",
-      "validation": {
-        "has_market_data": true,
-        "has_hit_rates": true,
-        "has_context": true,
-        "has_mlr": false,
-        "has_gemini": false,
-        "is_fully_validated": false
-      },
-      "volatility_score": 22.6,
-      "volatility_label": "low",
-      "volatility_family": "nba_mid_line",
-      "scout_badges": [
-        "hot_streak",
-        "floor_lock",
-        "lasso_high_edge",
-        "high_fidelity_model"
-      ],
-      "vision_intel": "",
-      "vk_data": {
-        "projection": 15.383,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.544,
-        "top_drivers": [
-          "L10_avg_fgm",
-          "prev_fga"
-        ]
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-19T22:44:53.156124+00:00",
-      "_cache_updated": "2026-04-19T22:44:53.156126+00:00"
     },
     "lebron_james|pts|24.5|prizepicks": {
       "event_id": "d3d28b764e5099920880de59a45e82cf",
@@ -6823,6 +5947,586 @@
       "_enriched": true,
       "_enriched_at": "2026-04-20T04:13:12.832910+00:00",
       "_cache_updated": "2026-04-20T04:13:12.832912+00:00"
+    },
+    "mikal_bridges|pra|19.5|dk": {
+      "player_name": "Mikal Bridges",
+      "stat_type": "PRA",
+      "line": 19.5,
+      "direction": "Under",
+      "recommendation": "Under",
+      "sport": "nba",
+      "tier": "front_lines",
+      "tier_label": "FRONT_LINE",
+      "vision_score": 92.2,
+      "vision_score_raw": 0.180478,
+      "tier_gate_results": {
+        "gate_cv": {
+          "threshold": 0.75,
+          "value": 0.3407,
+          "passed": true
+        },
+        "gate_hit_rate": {
+          "threshold": 60,
+          "value": 80.0,
+          "passed": true
+        },
+        "gate_edge": {
+          "threshold": 5,
+          "value": 34.5,
+          "passed": true
+        },
+        "gate_tp": {
+          "threshold": 65,
+          "value": 80.0,
+          "passed": true,
+          "source": "model_confidence_under"
+        }
+      },
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "mgm",
+      "tier_reference_odds": -120,
+      "edge_vs_fair": 0.2545,
+      "fair_prob": 0.5455,
+      "quality_source": "mgm",
+      "stability": 0.8864,
+      "confidence_score": 1.0,
+      "version_tag": "final-nba-rt",
+      "computed_at": "2026-04-19T02:06:16.548184+00:00",
+      "pp_utility": 70.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.491,
+        "edge_confidence": 0.6363,
+        "multiplier_value": 0.5,
+        "weights": {
+          "availability": 0.15,
+          "line_fairness": 0.2,
+          "model_alignment": 0.25,
+          "edge_confidence": 0.2,
+          "multiplier_value": 0.2
+        },
+        "pp_utility_raw": 70.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": "standard",
+      "pp_multiplier_source": "pp_label",
+      "pp_reference_source": "mgm",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "is_goblin": false,
+      "is_demon": false,
+      "is_standard": true,
+      "prop_type": "STANDARD",
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "model_projection": 15.83,
+      "model_sigma": 7.92,
+      "p_true_active": 0.8,
+      "p_true_method": "hit_rate",
+      "p_true_vk2": null,
+      "p_true_hit_rate": 0.8,
+      "vk_prob_under": 80.0,
+      "vk_prob_over": 20.0,
+      "hit_rate_over": 20.0,
+      "model_hit_rate_over": 20.0,
+      "hit_rate_under": 80.0,
+      "model_hit_rate_under": 80.0,
+      "model_hit_rate_active": 80.0,
+      "vk_recommendation": "STRONG_UNDER",
+      "canonical_key": "nba|a1b444bd00a27cbae3cf7ca3bf75a3f0|Mikal Bridges|PRA|19.5|UNDER",
+      "context_badges": [],
+      "scout_badges": [
+        "high_fidelity_model"
+      ],
+      "active_badges": [],
+      "validation": {
+        "has_market_data": false,
+        "has_hit_rates": false,
+        "has_context": false,
+        "has_mlr": false,
+        "has_gemini": false,
+        "is_fully_validated": false
+      },
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. All-Around",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "ATL",
+          "stat_category": "PRA"
+        },
+        "pace_delta": {
+          "possessions": 1.2,
+          "display": "+1.2 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 94.5,
+          "opponent_pace": 102.8,
+          "expected_game_pace": 98.7
+        },
+        "stability_index": {
+          "score": 55,
+          "label": "Medium",
+          "display": "55/100 (Medium)",
+          "std_dev": 4.18,
+          "consistency": "Average",
+          "variance_level": "Medium"
+        },
+        "vision_insight": {
+          "primary": "Atlanta's perimeter defense is basically a revolving door right now, so we are looking for Mikal to capitalize on that extra breathing room and blow past this 19.5 PRA line. With the pace ticking up against a Hawks squad that hates to track back, he should see plenty of clean looks and transition opportunities to pad his stat sheet early.",
+          "summary": "Atlanta's perimeter defense is basically a revolving door right now, so we are looking for Mikal to capitalize on that extra breathing room and blow past this 19.5 PRA line. With the pace ticking up against a Hawks squad that hates to track back, he should see plenty of clean looks and transition opportunities to pad his stat sheet early.",
+          "projection": null,
+          "canonical_projection": null,
+          "canonical_edge": null,
+          "lasso_projection": 19.357,
+          "lasso_edge": -0.14,
+          "models_disagree": false,
+          "confidence": "HIGH_FIDELITY",
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "player_team_record": "53-29",
+          "opponent_team_record": "46-36",
+          "player_win_pct": 0.646,
+          "opponent_win_pct": 0.561,
+          "win_pct_diff": 0.085,
+          "favored_team": "NYK",
+          "player_is_favored": true,
+          "risk_level": "NONE",
+          "risk_reason": "Competitive matchup: NYK (53-29) vs ATL (46-36)",
+          "warning": null
+        },
+        "scout_badges": [
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 19.357,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.6081,
+          "top_drivers": [
+            "prev_fga",
+            "L10_avg_fgm"
+          ]
+        },
+        "calculated_at": "2026-04-20T16:02:34.925729+00:00"
+      },
+      "volatility_score": 0.0,
+      "volatility_label": "unknown",
+      "volatility_family": "unknown",
+      "vision_intel": "Mikal Bridges hasn't even sniffed this 19.5 PRA ceiling lately, and we are happily fading a guy who looks completely lost in the Knicks' current offensive hierarchy. Even with Atlanta\u2019s mediocre defense inviting some production, his rock-bottom usage rate makes it nearly impossible to justify any outcome other than a quiet night on the box score.",
+      "vision_summary": "Mikal Bridges hasn't even sniffed this 19.5 PRA ceiling lately, and we are happily fading a guy who looks completely lost in the Knicks' current offensive hierarchy. Even with Atlanta\u2019s mediocre defense inviting some production, his rock-bottom usage rate makes it nearly impossible to justify any outcome other than a quiet night on the box score.",
+      "vk_data": {
+        "projection": 19.357,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.6081,
+        "top_drivers": [
+          "prev_fga",
+          "L10_avg_fgm"
+        ]
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T16:02:43.949719+00:00",
+      "_cache_updated": "2026-04-20T16:02:43.949721+00:00"
+    },
+    "julius_randle|ast|4.5|dk": {
+      "player_name": "Julius Randle",
+      "stat_type": "AST",
+      "line": 4.5,
+      "direction": "Under",
+      "recommendation": "Under",
+      "sport": "nba",
+      "tier": "front_lines",
+      "tier_label": "FRONT_LINE",
+      "vision_score": 100.0,
+      "vision_score_raw": 0.135005,
+      "tier_gate_results": {
+        "gate_cv": {
+          "threshold": 0.75,
+          "value": 0.473,
+          "passed": true
+        },
+        "gate_hit_rate": {
+          "threshold": 60,
+          "value": 75.0,
+          "passed": true
+        },
+        "gate_edge": {
+          "threshold": 5,
+          "value": 28.6,
+          "passed": true
+        },
+        "gate_tp": {
+          "threshold": 65,
+          "value": 75.0,
+          "passed": true,
+          "source": "model_confidence_under"
+        }
+      },
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -107,
+      "edge_vs_fair": 0.2137,
+      "fair_prob": 0.5363,
+      "quality_source": "consensus",
+      "stability": 0.8423,
+      "confidence_score": 1.0,
+      "version_tag": "final-nba-rt",
+      "computed_at": "2026-04-19T00:53:00.115928+00:00",
+      "pp_utility": 70.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.5338,
+        "edge_confidence": 0.5827,
+        "multiplier_value": 0.5,
+        "weights": {
+          "availability": 0.15,
+          "line_fairness": 0.2,
+          "model_alignment": 0.25,
+          "edge_confidence": 0.2,
+          "multiplier_value": 0.2
+        },
+        "pp_utility_raw": 70.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": "standard",
+      "pp_multiplier_source": "pp_label",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "is_goblin": false,
+      "is_demon": false,
+      "is_standard": true,
+      "prop_type": "STANDARD",
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "model_projection": 4.11,
+      "model_sigma": 1.7,
+      "p_true_active": 0.75,
+      "p_true_method": "hit_rate",
+      "p_true_vk2": null,
+      "p_true_hit_rate": 0.75,
+      "vk_prob_under": 75.0,
+      "vk_prob_over": 25.0,
+      "hit_rate_over": 25.0,
+      "model_hit_rate_over": 25.0,
+      "hit_rate_under": 75.0,
+      "model_hit_rate_under": 75.0,
+      "model_hit_rate_active": 75.0,
+      "vk_recommendation": "STRONG_UNDER",
+      "canonical_key": "nba|a52365fe7f7123df1c4220d9591a6da2|Julius Randle|AST|4.5|UNDER",
+      "context_badges": [],
+      "scout_badges": [
+        "high_fidelity_model"
+      ],
+      "active_badges": [],
+      "validation": {
+        "has_market_data": false,
+        "has_hit_rates": false,
+        "has_context": false,
+        "has_mlr": false,
+        "has_gemini": false,
+        "is_fully_validated": false
+      },
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 12,
+          "display": "Rank #12 vs. Playmakers",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Average Defense",
+          "opponent": "DEN",
+          "stat_category": "AST"
+        },
+        "pace_delta": {
+          "possessions": 2.7,
+          "display": "+2.7 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Above Avg Tempo",
+          "team_pace": 100.5,
+          "opponent_pace": 99.8,
+          "expected_game_pace": 100.2
+        },
+        "stability_index": {
+          "score": 95,
+          "label": "Elite",
+          "display": "95/100 (Elite)",
+          "std_dev": 1.49,
+          "consistency": "Extremely Consistent",
+          "variance_level": "Low"
+        },
+        "vision_insight": {
+          "primary": "Julius Randle is walking into a high-octane environment tonight where the 2.7 pace delta suggests we are going to see plenty of extra possessions for this Minnesota offense. Even with Denver's middle-of-the-pack defense, Randle's 95% stability score means we can trust his playmaking to shine as he clears that 4.5 assist line with ease.",
+          "summary": "Julius Randle is walking into a high-octane environment tonight where the 2.7 pace delta suggests we are going to see plenty of extra possessions for this Minnesota offense. Even with Denver's middle-of-the-pack defense, Randle's 95% stability score means we can trust his playmaking to shine as he clears that 4.5 assist line with ease.",
+          "projection": null,
+          "canonical_projection": null,
+          "canonical_edge": null,
+          "lasso_projection": 4.957,
+          "lasso_edge": 0.46,
+          "models_disagree": false,
+          "confidence": "HIGH_FIDELITY",
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "player_team_record": "49-33",
+          "opponent_team_record": "54-28",
+          "player_win_pct": 0.598,
+          "opponent_win_pct": 0.659,
+          "win_pct_diff": 0.061,
+          "favored_team": "DEN",
+          "player_is_favored": false,
+          "risk_level": "NONE",
+          "risk_reason": "Competitive matchup: MIN (49-33) vs DEN (54-28)",
+          "warning": null
+        },
+        "scout_badges": [
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 4.957,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.5469,
+          "top_drivers": [
+            "L10_avg_ast",
+            "target_L10_avg"
+          ]
+        },
+        "calculated_at": "2026-04-20T16:02:45.307011+00:00"
+      },
+      "volatility_score": 0.0,
+      "volatility_label": "unknown",
+      "volatility_family": "unknown",
+      "vision_intel": "Julius Randle is stepping into a high-octane environment against Denver where the 2.7 pace delta suggests we're going to see way more possessions than a typical Minnesota grind. While the Nuggets play decent defense, Randle\u2019s stability score of 95 tells us he\u2019s making the right reads consistently enough to clear this 4.5 line in an up-tempo affair.",
+      "vision_summary": "Julius Randle is stepping into a high-octane environment against Denver where the 2.7 pace delta suggests we're going to see way more possessions than a typical Minnesota grind. While the Nuggets play decent defense, Randle\u2019s stability score of 95 tells us he\u2019s making the right reads consistently enough to clear this 4.5 line in an up-tempo affair.",
+      "vk_data": {
+        "projection": 4.957,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.5469,
+        "top_drivers": [
+          "L10_avg_ast",
+          "target_L10_avg"
+        ]
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T16:02:46.520869+00:00",
+      "_cache_updated": "2026-04-20T16:02:46.520871+00:00"
+    },
+    "jabari_smith_jr.|pts|11.5|dk": {
+      "player_name": "Jabari Smith Jr.",
+      "stat_type": "PTS",
+      "line": 11.5,
+      "direction": "Over",
+      "recommendation": "Over",
+      "sport": "nba",
+      "tier": "safe_haven",
+      "tier_label": "SAFE_HAVEN",
+      "vision_score": 90.5,
+      "vision_score_raw": 0.148123,
+      "tier_gate_results": {
+        "gate_cv": {
+          "threshold": 0.5,
+          "value": 0.2585,
+          "passed": true
+        },
+        "gate_hit_rate": {
+          "threshold": 75,
+          "value": 90.0,
+          "passed": true
+        },
+        "gate_edge": {
+          "threshold": 8,
+          "value": 18.0,
+          "passed": true
+        },
+        "gate_tp": {
+          "threshold": 70,
+          "value": 72.0,
+          "passed": true,
+          "source": "market_implied_over"
+        }
+      },
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -257,
+      "edge_vs_fair": 0.1801,
+      "fair_prob": 0.7199,
+      "quality_source": "dk",
+      "stability": 0.9138,
+      "confidence_score": 1.0,
+      "version_tag": "final-nba-rt",
+      "computed_at": "2026-04-19T05:25:06.933249+00:00",
+      "pp_utility": 65.0,
+      "pp_utility_category": "pp_discount",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.6398,
+        "edge_confidence": 0.4503,
+        "multiplier_value": 0.25,
+        "weights": {
+          "availability": 0.15,
+          "line_fairness": 0.2,
+          "model_alignment": 0.25,
+          "edge_confidence": 0.2,
+          "multiplier_value": 0.2
+        },
+        "pp_utility_raw": 65.0,
+        "category_raw": "pp_discount"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": "goblin",
+      "pp_multiplier_source": "pp_label",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "is_goblin": true,
+      "is_demon": false,
+      "is_standard": false,
+      "prop_type": "GOBLIN",
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "model_projection": 16.72,
+      "model_sigma": 5.8,
+      "p_true_active": 0.9,
+      "p_true_method": "hit_rate",
+      "p_true_vk2": null,
+      "p_true_hit_rate": 0.9,
+      "vk_prob_over": 90.0,
+      "vk_prob_under": 10.0,
+      "hit_rate_over": 90.0,
+      "model_hit_rate_over": 90.0,
+      "hit_rate_under": 10.0,
+      "model_hit_rate_under": 10.0,
+      "model_hit_rate_active": 90.0,
+      "vk_recommendation": "STRONG_OVER",
+      "canonical_key": "nba|d3d28b764e5099920880de59a45e82cf|Jabari Smith Jr.|PTS|11.5|OVER",
+      "validation": {
+        "has_market_data": false,
+        "has_hit_rates": false,
+        "has_context": false,
+        "has_mlr": false,
+        "has_gemini": false,
+        "is_fully_validated": false
+      },
+      "scout_badges": [
+        "hot_streak",
+        "floor_lock",
+        "lasso_high_edge",
+        "high_fidelity_model"
+      ],
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 11,
+          "display": "Rank #11 vs. Scorers",
+          "color": "yellow",
+          "friction_level": "Med-High",
+          "friction_label": "Above Average Defense",
+          "opponent": "LAL",
+          "stat_category": "PTS"
+        },
+        "pace_delta": {
+          "possessions": 0.8,
+          "display": "+0.8 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 97.0,
+          "opponent_pace": 99.5,
+          "expected_game_pace": 98.2
+        },
+        "stability_index": {
+          "score": 70,
+          "label": "Medium-High",
+          "display": "70/100 (Medium-High)",
+          "std_dev": 3.27,
+          "consistency": "Above Average",
+          "variance_level": "Low"
+        },
+        "vision_insight": {
+          "primary": "Jabari is staring down a 11.5 line tonight against a Lakers squad that funnels action toward mobile bigs who can stretch the floor from the perimeter. With his stability score sitting at a rock-solid 70, we are counting on him to capitalize on the extra possessions provided by this 0.8 pace increase.",
+          "summary": "Jabari is staring down a 11.5 line tonight against a Lakers squad that funnels action toward mobile bigs who can stretch the floor from the perimeter. With his stability score sitting at a rock-solid 70, we are counting on him to capitalize on the extra possessions provided by this 0.8 pace increase.",
+          "projection": null,
+          "canonical_projection": null,
+          "canonical_edge": null,
+          "lasso_projection": 15.383,
+          "lasso_edge": 3.88,
+          "models_disagree": false,
+          "confidence": "HIGH_FIDELITY",
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "player_team_record": "52-30",
+          "opponent_team_record": "53-29",
+          "player_win_pct": 0.634,
+          "opponent_win_pct": 0.646,
+          "win_pct_diff": 0.012,
+          "favored_team": "LAL",
+          "player_is_favored": false,
+          "risk_level": "NONE",
+          "risk_reason": "Competitive matchup: HOU (52-30) vs LAL (53-29)",
+          "warning": null
+        },
+        "scout_badges": [
+          "hot_streak",
+          "floor_lock",
+          "lasso_high_edge",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 15.383,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.544,
+          "top_drivers": [
+            "L10_avg_fgm",
+            "prev_fga"
+          ]
+        },
+        "calculated_at": "2026-04-20T16:02:48.026528+00:00"
+      },
+      "volatility_score": 0.0,
+      "volatility_label": "unknown",
+      "volatility_family": "unknown",
+      "vision_intel": "Jabari's offensive role is expanding just as the Lakers' interior defense shows signs of fatigue, leaving a massive 33.8% edge on his 11.5-point total tonight. We are grabbing this over because he is projected for 15.4 points and his 70 stability score means he is consistently finding his spots regardless of the opponent.",
+      "vk_data": {
+        "projection": 15.383,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.544,
+        "top_drivers": [
+          "L10_avg_fgm",
+          "prev_fga"
+        ]
+      },
+      "vision_summary": "Jabari's offensive role is expanding just as the Lakers' interior defense shows signs of fatigue, leaving a massive 33.8% edge on his 11.5-point total tonight. We are grabbing this over because he is projected for 15.4 points and his 70 stability score means he is consistently finding his spots regardless of the opponent.",
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T16:02:50.017419+00:00",
+      "_cache_updated": "2026-04-20T16:02:50.017422+00:00"
     }
   }
 }
