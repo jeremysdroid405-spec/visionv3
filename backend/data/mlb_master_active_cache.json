@@ -1,7 +1,7 @@
 {
   "sport": "MLB",
-  "last_updated": "2026-04-20T23:25:40.326470+00:00",
-  "prop_count": 29,
+  "last_updated": "2026-04-20T23:34:44.588171+00:00",
+  "prop_count": 27,
   "props": {
     "jacob_wilson|batter_strikeouts|0.5|dk": {
       "canonical_key": "mlb|253e6890f41456a41767494219509d9b|Jacob Wilson|Batter Strikeouts|0.5|OVER",
@@ -2785,49 +2785,56 @@
       "_enriched_at": "2026-04-20T23:00:48.561041+00:00",
       "_cache_updated": "2026-04-20T23:00:48.561042+00:00"
     },
-    "rece_hinds|rbis|0.5|dk": {
-      "canonical_key": "mlb|eaa622d11f4b04e532bbea382e56ca52|Rece Hinds|RBIs|0.5|OVER",
+    "lenyn_sosa|batter_strikeouts|0.5|dk": {
+      "canonical_key": "mlb|043dafafb56c1b3ebf5472c9f3fe428f|Lenyn Sosa|Batter Strikeouts|0.5|OVER",
       "sport": "mlb",
-      "event_id": "eaa622d11f4b04e532bbea382e56ca52",
-      "player_name": "Rece Hinds",
-      "stat_type": "RBIs",
+      "event_id": "043dafafb56c1b3ebf5472c9f3fe428f",
+      "player_name": "Lenyn Sosa",
+      "stat_type": "Batter Strikeouts",
       "line": 0.5,
       "recommendation": "OVER",
-      "vision_score": 83.3,
-      "vision_score_raw": 0.076016,
-      "quality_source": "dk",
-      "fair_prob": 0.2703,
-      "stability": 0.534,
-      "confidence": 0.875,
-      "edge_vs_fair": 0.2997,
-      "tier": "war_zone",
+      "vision_score": 0.0,
+      "vision_score_raw": null,
+      "quality_source": "consensus",
+      "fair_prob": 0.7155,
+      "stability": null,
+      "confidence": null,
+      "edge_vs_fair": null,
+      "tier": "safe_haven",
       "tier_reason": "gates_passed",
       "tier_reference_book": "dk",
-      "tier_reference_odds": 270,
+      "tier_reference_odds": -253,
       "tier_gate_results": {
         "gate1_cv": {
-          "threshold": ">= 1.0",
-          "value": 1.398,
-          "passed": true
+          "threshold": 1.1,
+          "value": null,
+          "passed": true,
+          "skipped": true
         },
-        "gate2_ceiling": {
-          "threshold": 35,
-          "value": 45.0,
-          "passed": true
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": null,
+          "passed": true,
+          "skipped": true
         },
         "gate3_edge": {
-          "threshold": 30,
-          "value": 30.0,
+          "threshold": -9999,
+          "value": -71.5,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 71.5,
           "passed": true
         }
       },
-      "pp_utility": 75.0,
+      "pp_utility": 59.4,
       "pp_utility_category": "pp_fair",
       "pp_utility_components": {
         "availability": 1.0,
         "line_fairness": 1.0,
-        "model_alignment": 0.4006,
-        "edge_confidence": 0.7492,
+        "model_alignment": 0.5,
+        "edge_confidence": 0.0,
         "multiplier_value": null,
         "weights": {
           "availability": 0.18749999999999997,
@@ -2835,115 +2842,37 @@
           "model_alignment": 0.3125,
           "edge_confidence": 0.25
         },
-        "pp_utility_raw": 75.0,
+        "pp_utility_raw": 59.4,
         "category_raw": "pp_fair"
       },
       "pp_multiplier": null,
       "pp_multiplier_label": null,
       "pp_multiplier_source": "none",
       "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": null,
+      "p_true_method": null,
+      "p_true_hit_rate": null,
+      "p_true_model": null,
+      "model_projection": null,
+      "model_sigma": null,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": null,
       "active": true,
       "inactive_reason": null,
       "active_changed_at": null,
-      "game_start_utc": null,
+      "game_start_utc": "2026-04-21T01:39:00",
       "version_tag": "final-mlb",
-      "computed_at": "2026-04-20T23:24:21.123567+00:00",
-      "vision_intel": "Rece Hinds hasn't driven in a single run over his last ten appearances, and we aren't about to bet on that drought ending against a pitching staff that's been keeping him quiet. With a massive 28.6% edge favoring the under on 0.5 RBIs, this play is all about fading a guy who simply hasn't found his rhythm at the plate lately.",
-      "vision_summary": "Rece Hinds hasn't driven in a single run over his last ten appearances, and we aren't about to bet on that drought ending against a pitching staff that's been keeping him quiet. With a massive 28.6% edge favoring the under on 0.5 RBIs, this play is all about fading a guy who simply hasn't found his rhythm at the plate lately.",
+      "computed_at": "2026-04-20T23:26:08.783553+00:00",
       "volatility_score": 0.0,
       "volatility_label": "low",
-      "volatility_family": "mlb_binary",
-      "scout_badges": [],
-      "tempo_modifier": 1.0,
-      "intel_suite": {
-        "lasso": {
-          "projection": 0.357,
-          "confidence_tier": "HIGH_VARIANCE",
-          "r_squared": 0.0131,
-          "top_drivers": [
-            "L10_avg_plate_appearances",
-            "L5_std_fielding_chances"
-          ]
-        }
-      },
-      "vk_data": {
-        "predicted": 0.357,
-        "projection": 0.357,
-        "edge": -0.14300000000000002,
-        "source": "lasso_v2"
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-20T23:25:19.195734+00:00",
-      "_cache_updated": "2026-04-20T23:25:19.195737+00:00"
-    },
-    "jorge_mateo|singles|0.5|dk": {
-      "canonical_key": "mlb|6e7862ded6af1d5c6d82f19895ccd191|Jorge Mateo|Singles|0.5|OVER",
-      "sport": "mlb",
-      "event_id": "6e7862ded6af1d5c6d82f19895ccd191",
-      "player_name": "Jorge Mateo",
-      "stat_type": "Singles",
-      "line": 0.5,
-      "recommendation": "OVER",
-      "vision_score": 78.0,
-      "vision_score_raw": 0.057883,
-      "quality_source": "dk",
-      "fair_prob": 0.3226,
-      "stability": 0.3693,
-      "confidence": 0.875,
-      "edge_vs_fair": 0.3014,
-      "tier": "war_zone",
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "dk",
-      "tier_reference_odds": 210,
-      "tier_gate_results": {
-        "gate1_cv": {
-          "threshold": ">= 1.0",
-          "value": 1.892,
-          "passed": true
-        },
-        "gate2_ceiling": {
-          "threshold": 35,
-          "value": 35.0,
-          "passed": true
-        },
-        "gate3_edge": {
-          "threshold": 30,
-          "value": 30.1,
-          "passed": true
-        }
-      },
-      "pp_utility": 75.0,
-      "pp_utility_category": "pp_fair",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.3972,
-        "edge_confidence": 0.7535,
-        "multiplier_value": null,
-        "weights": {
-          "availability": 0.18749999999999997,
-          "line_fairness": 0.25,
-          "model_alignment": 0.3125,
-          "edge_confidence": 0.25
-        },
-        "pp_utility_raw": 75.0,
-        "category_raw": "pp_fair"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": null,
-      "pp_multiplier_source": "none",
-      "pp_reference_source": "dk",
-      "active": true,
-      "inactive_reason": null,
-      "active_changed_at": null,
-      "game_start_utc": null,
-      "version_tag": "final-mlb",
-      "computed_at": "2026-04-20T23:24:21.123567+00:00",
-      "vision_intel": "Jorge Mateo is looking at a wide-open runway tonight because his elite speed puts immense pressure on a defense that can't afford any bobbles on routine grounders. We are banking on him putting the ball in play and using those wheels to turn a simple infield knock into a winning ticket while the line stays at a very manageable 0.5.",
-      "vision_summary": "Jorge Mateo is looking at a wide-open runway tonight because his elite speed puts immense pressure on a defense that can't afford any bobbles on routine grounders. We are banking on him putting the ball in play and using those wheels to turn a simple infield knock into a winning ticket while the line stays at a very manageable 0.5.",
-      "volatility_score": 0.0,
-      "volatility_label": "low",
-      "volatility_family": "mlb_binary",
+      "volatility_family": "mlb_counting",
       "scout_badges": [],
       "tempo_modifier": 1.0,
       "intel_suite": {
@@ -2964,9 +2893,9 @@
         "sport": "mlb",
         "context_badges": [],
         "vision_insight": {
-          "primary": "Jorge Mateo Singles @ 0.5 - 0% L10 hit rate",
+          "primary": "Lenyn Sosa Batter Strikeouts @ 0.5 - 0% L10 hit rate",
           "reasons": [
-            "Analyzing Jorge Mateo Singles @ 0.5"
+            "Analyzing Lenyn Sosa Batter Strikeouts @ 0.5"
           ],
           "confidence": "STANDARD"
         },
@@ -2984,46 +2913,55 @@
           "friction_label": "Standard Matchup",
           "color": "yellow",
           "dvp_rank": 15,
-          "stat_type": "Singles"
+          "stat_type": "Batter Strikeouts"
         }
       },
+      "vision_summary": "Lenyn Sosa has been finding plenty of air lately with his swing, and a 0.5 line feels like a total trap when he's whiffing at this frequency. We only need one mistake at the plate to cash this, and given how often he\u2019s chasing outside the zone, we\u2019re banking on the K-streak continuing tonight.",
+      "vision_intel": "Lenyn Sosa has been finding plenty of air lately with his swing, and a 0.5 line feels like a total trap when he's whiffing at this frequency. We only need one mistake at the plate to cash this, and given how often he\u2019s chasing outside the zone, we\u2019re banking on the K-streak continuing tonight.",
       "_enriched": true,
-      "_enriched_at": "2026-04-20T23:25:37.988744+00:00",
-      "_cache_updated": "2026-04-20T23:25:37.988746+00:00"
+      "_enriched_at": "2026-04-20T23:27:11.844098+00:00",
+      "_cache_updated": "2026-04-20T23:27:11.844100+00:00"
     },
-    "luis_garcia_jr.|rbis|0.5|dk": {
-      "canonical_key": "mlb|6e7862ded6af1d5c6d82f19895ccd191|Luis Garcia Jr.|RBIs|0.5|OVER",
+    "lenyn_sosa|total_bases|0.5|dk": {
+      "canonical_key": "mlb|043dafafb56c1b3ebf5472c9f3fe428f|Lenyn Sosa|Total Bases|0.5|OVER",
       "sport": "mlb",
-      "event_id": "6e7862ded6af1d5c6d82f19895ccd191",
-      "player_name": "Luis Garcia Jr.",
-      "stat_type": "RBIs",
+      "event_id": "043dafafb56c1b3ebf5472c9f3fe428f",
+      "player_name": "Lenyn Sosa",
+      "stat_type": "Total Bases",
       "line": 0.5,
       "recommendation": "OVER",
-      "vision_score": 83.4,
-      "vision_score_raw": 0.07731,
-      "quality_source": "dk",
-      "fair_prob": 0.2381,
-      "stability": 0.5097,
-      "confidence": 0.875,
-      "edge_vs_fair": 0.3239,
-      "tier": "war_zone",
+      "vision_score": 85.5,
+      "vision_score_raw": 0.097172,
+      "quality_source": "pinnacle",
+      "fair_prob": 0.6721,
+      "stability": 0.5,
+      "confidence": 0.6667,
+      "edge_vs_fair": 0.2999,
+      "tier": "front_lines",
       "tier_reason": "gates_passed",
-      "tier_reference_book": "dk",
-      "tier_reference_odds": 320,
+      "tier_reference_book": "mgm",
+      "tier_reference_odds": -200,
       "tier_gate_results": {
         "gate1_cv": {
-          "threshold": ">= 1.0",
-          "value": 1.471,
-          "passed": true
+          "threshold": 0.95,
+          "value": null,
+          "passed": true,
+          "skipped": true
         },
-        "gate2_ceiling": {
-          "threshold": 35,
-          "value": 40.0,
-          "passed": true
+        "gate2_hit_rate": {
+          "threshold": 60,
+          "value": null,
+          "passed": true,
+          "skipped": true
         },
         "gate3_edge": {
-          "threshold": 30,
-          "value": 32.4,
+          "threshold": 15,
+          "value": 30.5,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 66.7,
           "passed": true
         }
       },
@@ -3032,8 +2970,8 @@
       "pp_utility_components": {
         "availability": 1.0,
         "line_fairness": 1.0,
-        "model_alignment": 0.3522,
-        "edge_confidence": 0.8098,
+        "model_alignment": 0.3894,
+        "edge_confidence": 0.7632,
         "multiplier_value": null,
         "weights": {
           "availability": 0.18749999999999997,
@@ -3047,155 +2985,55 @@
       "pp_multiplier": null,
       "pp_multiplier_label": null,
       "pp_multiplier_source": "none",
-      "pp_reference_source": "dk",
+      "pp_reference_source": "mgm",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.972,
+      "p_true_method": "model",
+      "p_true_hit_rate": null,
+      "p_true_model": 0.972,
+      "model_projection": 1.49,
+      "model_sigma": 0.5164,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 0.96228,
       "active": true,
       "inactive_reason": null,
       "active_changed_at": null,
-      "game_start_utc": null,
+      "game_start_utc": "2026-04-21T01:39:00",
       "version_tag": "final-mlb",
-      "computed_at": "2026-04-20T23:24:21.123567+00:00",
-      "vision_intel": "Is it even legal to bet on someone who hasn't driven in a single run over his last twenty games, or are we just taking a walk in the park here? Garcia is coming in with a flat-zero RBI rate across his last ten outings, and we're looking at a massive 32% edge on the under today.",
-      "vision_summary": "Is it even legal to bet on someone who hasn't driven in a single run over his last twenty games, or are we just taking a walk in the park here? Garcia is coming in with a flat-zero RBI rate across his last ten outings, and we're looking at a massive 32% edge on the under today.",
+      "computed_at": "2026-04-20T23:26:08.783553+00:00",
       "volatility_score": 0.0,
       "volatility_label": "low",
-      "volatility_family": "mlb_binary",
+      "volatility_family": "mlb_counting",
       "scout_badges": [],
       "tempo_modifier": 1.0,
       "intel_suite": {
         "lasso": {
-          "projection": 0.34,
+          "projection": 0.95,
           "confidence_tier": "HIGH_VARIANCE",
-          "r_squared": 0.0131,
+          "r_squared": 0.0189,
           "top_drivers": [
             "L10_avg_plate_appearances",
-            "L5_std_fielding_chances"
+            "L10_std_total_bases"
           ]
         }
       },
       "vk_data": {
-        "predicted": 0.34,
-        "projection": 0.34,
-        "edge": -0.15999999999999998,
+        "predicted": 0.95,
+        "projection": 0.95,
+        "edge": 0.44999999999999996,
         "source": "lasso_v2"
       },
+      "vision_summary": "How is Lenyn Sosa sitting at a 0.5 Total Bases line when our data sees a massive 90% edge for him to grab just one bag? He\u2019s basically being handed a green light to produce against this staff, and with a 0.9 projection, we only need a single knock to cash this ticket.",
+      "vision_intel": "How is Lenyn Sosa sitting at a 0.5 Total Bases line when our data sees a massive 90% edge for him to grab just one bag? He\u2019s basically being handed a green light to produce against this staff, and with a 0.9 projection, we only need a single knock to cash this ticket.",
       "_enriched": true,
-      "_enriched_at": "2026-04-20T23:25:39.195022+00:00",
-      "_cache_updated": "2026-04-20T23:25:39.195024+00:00"
-    },
-    "jose_altuve|singles|0.5|dk": {
-      "canonical_key": "mlb|8b84f5c8a8eec852cbc8ab761818b5dc|Jose Altuve|Singles|0.5|OVER",
-      "sport": "mlb",
-      "event_id": "8b84f5c8a8eec852cbc8ab761818b5dc",
-      "player_name": "Jose Altuve",
-      "stat_type": "Singles",
-      "line": 0.5,
-      "recommendation": "OVER",
-      "vision_score": 85.3,
-      "vision_score_raw": 0.085498,
-      "quality_source": "dk",
-      "fair_prob": 0.2778,
-      "stability": 0.5883,
-      "confidence": 0.875,
-      "edge_vs_fair": 0.3012,
-      "tier": "war_zone",
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "dk",
-      "tier_reference_odds": 260,
-      "tier_gate_results": {
-        "gate1_cv": {
-          "threshold": ">= 1.0",
-          "value": 1.235,
-          "passed": true
-        },
-        "gate2_ceiling": {
-          "threshold": 35,
-          "value": 50.0,
-          "passed": true
-        },
-        "gate3_edge": {
-          "threshold": 30,
-          "value": 30.1,
-          "passed": true
-        }
-      },
-      "pp_utility": 75.0,
-      "pp_utility_category": "pp_fair",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.3976,
-        "edge_confidence": 0.753,
-        "multiplier_value": null,
-        "weights": {
-          "availability": 0.18749999999999997,
-          "line_fairness": 0.25,
-          "model_alignment": 0.3125,
-          "edge_confidence": 0.25
-        },
-        "pp_utility_raw": 75.0,
-        "category_raw": "pp_fair"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": null,
-      "pp_multiplier_source": "none",
-      "pp_reference_source": "dk",
-      "active": true,
-      "inactive_reason": null,
-      "active_changed_at": null,
-      "game_start_utc": null,
-      "version_tag": "final-mlb",
-      "computed_at": "2026-04-20T23:24:21.123567+00:00",
-      "vision_intel": "Jose Altuve remains the engine of this Houston lineup and facing an unknown starter won't change his approach of hunting fastballs early in the count. We are looking at a guy who consistently puts the ball in play, making this 0.5 line for a single feel like a total bargain given his elite contact rates.",
-      "vision_summary": "Jose Altuve remains the engine of this Houston lineup and facing an unknown starter won't change his approach of hunting fastballs early in the count. We are looking at a guy who consistently puts the ball in play, making this 0.5 line for a single feel like a total bargain given his elite contact rates.",
-      "volatility_score": 0.0,
-      "volatility_label": "low",
-      "volatility_family": "mlb_binary",
-      "scout_badges": [],
-      "tempo_modifier": 1.0,
-      "intel_suite": {
-        "tempo": {
-          "multiplier": 1.0,
-          "display": "+0%",
-          "tempo_label": "Standard PA Volume",
-          "factors": [],
-          "total_pct": 0.0
-        },
-        "pace_delta": {
-          "multiplier": 1.0,
-          "display": "+0%",
-          "tempo_label": "Standard PA Volume",
-          "factors": [],
-          "total_pct": 0.0
-        },
-        "sport": "mlb",
-        "context_badges": [],
-        "vision_insight": {
-          "primary": "Jose Altuve Singles @ 0.5 - 0% L10 hit rate",
-          "reasons": [
-            "Analyzing Jose Altuve Singles @ 0.5"
-          ],
-          "confidence": "STANDARD"
-        },
-        "stability_index": {
-          "display": "50%",
-          "score": 50,
-          "consistency": "Unknown",
-          "std_dev": 0.0
-        },
-        "matchup_dvp": {
-          "display": "vs None",
-          "opponent": null,
-          "opponent_abbr": "OPP",
-          "friction_level": "Medium",
-          "friction_label": "Standard Matchup",
-          "color": "yellow",
-          "dvp_rank": 15,
-          "stat_type": "Singles"
-        }
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-20T23:25:40.326459+00:00",
-      "_cache_updated": "2026-04-20T23:25:40.326461+00:00"
+      "_enriched_at": "2026-04-20T23:27:13.178622+00:00",
+      "_cache_updated": "2026-04-20T23:27:13.178624+00:00"
     }
   }
 }
