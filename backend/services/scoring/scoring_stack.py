@@ -306,6 +306,21 @@ def compute_tier(
             "tier_gate_results": {},
         }
 
+    # Historical profitable-signal gate (2026-02-20): the VK1 backtest that
+    # produced +19.26% real-odds AST ROI on 4,249 bets applied
+    # `confidence_threshold = 55.0` on the Gaussian p_over. Every prop below
+    # 0.55 model confidence is rejected to `unqualified` before any tier-
+    # specific gate runs. This mirrors the single filter responsible for the
+    # historical edge; no other gates are added.
+    if p_model is not None and p_model < 0.55:
+        return {
+            "tier": "unqualified",
+            "tier_reason": "p_model<0.55",
+            "tier_reference_book": ref_book,
+            "tier_reference_odds": ref_odds,
+            "tier_gate_results": {},
+        }
+
     # Safe Haven — short odds
     if ref_odds <= _REF_SAFE_HAVEN_MAX:
         passed, reason, gates = sorter.check_safe_haven_gates(

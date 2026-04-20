@@ -494,7 +494,7 @@ class NBAScoringAdapter(ScoringAdapter):
             ((config or {}).get("override_config") or {})
             .get("vision_score", {})
             .get("p_true_method")
-        ) or "hit_rate"
+        ) or "model"
         if active_method_early == "vk2" and not self._vk2_adv_loaded:
             await self._preload_vk2_adv_map(db)
 

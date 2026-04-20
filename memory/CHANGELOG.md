@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-02-20 — Restore VK1 profitable signal as default NBA `p_model`
+
+**Context:** Forensic audit revealed VK1 was computed but discarded: 95.5% of
+`nba_prop_scores` used `p_true_method="hit_rate"` (L10 rolling), 0% used VK1.
+The historically profitable `confidence_threshold=55.0` filter from
+`backtest_real_lines.json` (AST 62.44% WR / +19.26% ROI / 4,249 bets) had no
+equivalent in the live pipeline.
+
+**Diff (2 files, ~6 LOC):**
+- `services/scoring/adapters/nba_scoring.py:497` — default `p_true_method`
+  `"hit_rate"` → `"model"` (VK1 regression as `p_model`).
+- `services/scoring/scoring_stack.py::compute_tier` — new `p_model < 0.55 →
+  tier="unqualified"` gate, fires after anchor veto, before tier gates.
+
+**Verification (post-recompute, `version_tag=final-nba-rt`, 2,688 props):**
+- `p_true_method` distribution: `model=2421, hit_rate=171 (fallback), none=96`
+- Tier distribution: `safe_haven=39, front_lines=102, war_zone=14, unqualified=2533`
+- 55% gate fires: 1,196
+- AST surfaced: 31 → **40 (+29%)**; top of AST surface is now Cade Cunningham,
+  Jokic, Harden, Brunson (model-elevated) instead of trivial 1.5/3.5-line picks.
+- Traps correctly demoted: Tatum REB 9.5 (p=0.375), KAT REB 10.5 (p=0.503) now
+  `unqualified` with reason `p_model<0.55`.
+- Endpoints healthy: `/api/v3/ferrari/{safe-haven,front-lines,war-zone}` HTTP 200;
+  `/api/v3/odds/props`, `/api/live/scores`, `/api/v3/scheduler-status` all 200.
+
+**VK2 status:** kept on disk, still callable via explicit `p_true_method="vk2"`.
+5-path audit (`/tmp/path_compare_report.md`) showed VK2's 102 advanced-stat
+features contribute <1pp ROI; simplified VK2 returns +29.79% vs VK1's +30.12%.
+No routing advantage to VK2 by default.
+
+**Expected downstream impact:** `edge_pct` now reflects real model edge (not
+`hit_rate − tp`); tier assignments now driven by VK1 p_over (Gaussian over MAE)
+matching the historical backtest that produced the original +19.26% AST ROI.
+
+
 ## 2026-04-19 — Wave 0 Batch 12 plumbing (long-tail sweep + odds_mapping closure)
 - Registry reconciliation: `odds_mapping` was **already** present in registry at
   `collection_names.py:70` as per-sport NBA concept. Batch 11 mis-used
