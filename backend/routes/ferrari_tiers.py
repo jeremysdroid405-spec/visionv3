@@ -4587,34 +4587,33 @@ async def get_top_hrr_safe_haven_endpoint(
 @router.post("/mlb/sync/master")
 async def mlb_master_sync():
     """
-    MLB Master Sync — routes through Rebuild Coordinator → UnifiedPipeline(MLBAdapter).
+    MLB Master Sync — performs a FULL upstream refresh:
+        STEP 1: Odds-API ingest  (universal_odds_sync.sync_sport_props('mlb'))
+        STEP 2: Cached-board intersection build
+        STEP 3: BDL splits prefetch
+        STEP 4: Oracle Apex tier rebuilds (writes legacy mlb_{safe_haven,front_lines,war_zone})
+        STEP 5: Lineup Ripple
 
-    Phase 3: All MLB board publishes go through the single authoritative path.
+    2026-04-20: previously this endpoint only dispatched a BoardEvent to
+    rebuild_coordinator -> UnifiedPipeline(MLBAdapter), which reads from
+    mlb_cached_board and never re-fetches upstream odds. That caused
+    `mlb_live_props.commence_time` to go silently stale for days. Switched
+    to direct call on MLBMasterSync.run_master_sync() so the endpoint name
+    matches its actual behaviour (parity with what users expect from NBA).
     """
-    from services.event_bus import BoardEvent, get_event_bus
-    from services.rebuild_coordinator import get_coordinator
+    from services.mlb_master_sync import get_mlb_master_sync
 
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
     try:
-        event = BoardEvent(
-            sport="mlb",
-            event_type="manual",
-            severity="high",
-            source="manual_api_mlb_master",
-        )
-        await get_event_bus().publish(event)
-        await asyncio.sleep(1)
-
-        stats = get_coordinator().get_stats()
-        last = stats.get("last_publish", {}).get("mlb", {})
+        master_sync = get_mlb_master_sync(_db)
+        metrics = await master_sync.run_master_sync()
 
         return {
-            "success": True,
-            "coordinator_mode": stats["sport_modes"]["mlb"],
-            "dispatch": "coordinator → UnifiedPipeline(MLBAdapter)",
-            "last_publish": last,
+            "success": metrics.get("success", False),
+            "dispatch": "direct → MLBMasterSync.run_master_sync()",
+            "metrics": metrics,
         }
 
     except Exception as e:
