@@ -21,7 +21,7 @@ import time
 from collections import deque
 from datetime import datetime, timezone, timedelta
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from services.event_bus import BoardEvent, EventBus, get_event_bus
 
@@ -70,6 +70,14 @@ class RebuildCoordinator:
 
         # Last rebuild timestamps
         self._last_rebuild: Dict[str, datetime] = {}
+
+        # ---- Stage 1 (2026-04-20): unified master-sync state tracker.
+        # Replaces route-level _mlb_master_sync_state. Identical semantics
+        # for every sport — NBA and MLB share this one dict, NFL will too.
+        self._master_sync_state: Dict[str, Dict[str, Any]] = {
+            "nba": {"in_progress": False, "run_id": None, "started_at": None, "last_run": None},
+            "mlb": {"in_progress": False, "run_id": None, "started_at": None, "last_run": None},
+        }
 
         # ---- Metrics ----
         self._metrics = {
@@ -340,6 +348,82 @@ class RebuildCoordinator:
             "avg_pipeline_duration_s": avg_durations,
             "counters": self._metrics,
             "last_publish": self._metrics.get("last_publish_counts", {}),
+            "master_sync_state": dict(self._master_sync_state),
+        }
+
+    # ------------------------------------------------------------------
+    # Stage 1 (2026-04-20): Unified per-sport master-sync dispatcher.
+    #
+    # Single entrypoint for /api/{sport}/sync/master. Spawns the sport's
+    # master-sync class (NBAMasterSync / MLBMasterSync) as an asyncio
+    # background task so the HTTP caller gets an immediate 202-style
+    # response (no proxy timeout), while the actual pipeline runs to
+    # completion. State is tracked per-sport in `_master_sync_state`;
+    # both sports share identical response shape and state semantics.
+    # ------------------------------------------------------------------
+    async def dispatch_master_sync(self, sport: str) -> Dict[str, Any]:
+        sport = (sport or "").lower()
+        if sport not in self._master_sync_state:
+            raise ValueError(f"Unknown sport for master_sync: {sport!r}")
+
+        state = self._master_sync_state[sport]
+        if state.get("in_progress"):
+            return {
+                "accepted": False,
+                "reason": "already_running",
+                "sport": sport,
+                "run_id": state.get("run_id"),
+                "started_at": state.get("started_at"),
+                "last_run": state.get("last_run"),
+            }
+
+        import uuid
+        run_id = str(uuid.uuid4())[:8]
+        state["in_progress"] = True
+        state["started_at"] = datetime.now(timezone.utc).isoformat()
+        state["run_id"] = run_id
+
+        async def _runner():
+            try:
+                if sport == "nba":
+                    from services.nba_master_sync import get_nba_master_sync
+                    metrics = await get_nba_master_sync(self._db).run_full_pipeline()
+                elif sport == "mlb":
+                    from services.mlb_master_sync import get_mlb_master_sync
+                    metrics = await get_mlb_master_sync(self._db).run_master_sync()
+                else:
+                    raise ValueError(f"Unsupported sport: {sport}")
+                state["last_run"] = {
+                    "run_id": run_id,
+                    "success": metrics.get("success", True),
+                    "total_duration_seconds": metrics.get("total_duration_seconds"),
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "step_durations_s": {
+                        k: round((v or {}).get("duration_seconds", 0), 2)
+                        for k, v in (metrics.get("steps") or metrics.get("phases") or {}).items()
+                    },
+                    "errors": metrics.get("errors", []),
+                }
+            except Exception as exc:
+                logger.exception(f"[COORDINATOR] master_sync({sport}) run_id={run_id} failed")
+                state["last_run"] = {
+                    "run_id": run_id,
+                    "success": False,
+                    "error": str(exc),
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                }
+            finally:
+                state["in_progress"] = False
+
+        asyncio.create_task(_runner())
+
+        return {
+            "accepted": True,
+            "sport": sport,
+            "dispatch": "coordinator.dispatch_master_sync()",
+            "run_id": run_id,
+            "started_at": state["started_at"],
+            "last_run": state.get("last_run"),
         }
 
 

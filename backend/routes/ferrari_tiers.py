@@ -31,14 +31,6 @@ _sync_db = None
 _enrichment_cache = {}
 _enrichment_cache_mtime = {}
 
-# In-memory tracker for the fire-and-forget MLB master sync endpoint.
-_mlb_master_sync_state: Dict[str, Any] = {
-    "in_progress": False,
-    "started_at": None,
-    "run_id": None,
-    "last_run": None,
-}
-
 # ---------------------------------------------------------------------------
 # Canonical stat-window invariant guard
 # ---------------------------------------------------------------------------
@@ -4595,118 +4587,41 @@ async def get_top_hrr_safe_haven_endpoint(
 @router.post("/mlb/sync/master", status_code=202)
 async def mlb_master_sync():
     """
-    MLB Master Sync — FIRE-AND-FORGET full upstream refresh.
+    MLB Master Sync — unified entrypoint (Stage 1 carbon-copy enforcement).
 
-    Returns 202 Accepted immediately while the 6-step pipeline runs in
-    the background (upstream odds ingest → cached board → BDL prefetch →
-    tier rebuilds → lineup ripple → universal recompute). This avoids
-    the ingress proxy's ~120s timeout. Poll `last_run` on a subsequent
-    call for completion status.
+    Byte-identical to /api/nba/sync/master. Delegates to the coordinator's
+    single dispatch method. No sport-specific orchestration exceptions,
+    no route-level state tracker, no MLB-only fire-and-forget machinery.
     """
-    from services.mlb_master_sync import get_mlb_master_sync
+    from services.rebuild_coordinator import get_coordinator
 
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
-    # Serialise: if a run is already in flight, return its status without kicking a new one.
-    state = _mlb_master_sync_state
-    if state.get("in_progress"):
-        return {
-            "accepted": False,
-            "reason": "already_running",
-            "started_at": state.get("started_at"),
-            "run_id": state.get("run_id"),
-            "last_run": state.get("last_run"),
-        }
-
-    import uuid
-    from datetime import datetime, timezone
-    run_id = str(uuid.uuid4())[:8]
-    state["in_progress"] = True
-    state["started_at"] = datetime.now(timezone.utc).isoformat()
-    state["run_id"] = run_id
-
-    async def _runner():
-        try:
-            master_sync = get_mlb_master_sync(_db)
-            metrics = await master_sync.run_master_sync()
-            state["last_run"] = {
-                "run_id": run_id,
-                "success": metrics.get("success", False),
-                "total_duration_seconds": metrics.get("total_duration_seconds"),
-                "completed_at": metrics.get("completed_at"),
-                "step_durations_s": {
-                    k: round((v or {}).get("duration_seconds", 0), 2)
-                    for k, v in (metrics.get("steps") or {}).items()
-                },
-                "step_6_written": ((metrics.get("steps") or {}).get("6_universal_recompute") or {}).get("written"),
-                "step_6_tier_distribution": ((metrics.get("steps") or {}).get("6_universal_recompute") or {}).get("tier_distribution"),
-                "errors": metrics.get("errors", []),
-            }
-        except Exception as exc:
-            logger.exception(f"[MLB_MASTER_SYNC] background run {run_id} failed")
-            state["last_run"] = {
-                "run_id": run_id,
-                "success": False,
-                "error": str(exc),
-                "completed_at": datetime.now(timezone.utc).isoformat(),
-            }
-        finally:
-            state["in_progress"] = False
-
-    asyncio.create_task(_runner())
-
-    return {
-        "accepted": True,
-        "dispatch": "background → MLBMasterSync.run_master_sync()",
-        "run_id": run_id,
-        "started_at": state["started_at"],
-        "last_run": state.get("last_run"),  # previous run's summary, if any
-    }
+    coord = get_coordinator()
+    coord.set_db(_db)
+    return await coord.dispatch_master_sync("mlb")
 
 
-@router.post("/nba/sync/master")
+@router.post("/nba/sync/master", status_code=202)
 async def nba_master_sync_endpoint(
     refresh_intel: bool = Query(False, description="Force refresh all Vision Intel")
 ):
     """
-    NBA Master Sync — routes through Rebuild Coordinator → UnifiedPipeline(NBAAdapter).
-    
-    Phase 2: All NBA board publishes go through the single authoritative path.
+    NBA Master Sync — unified entrypoint (Stage 1 carbon-copy enforcement).
+
+    Byte-identical to /api/mlb/sync/master. Delegates to the coordinator's
+    single dispatch method. No sport-specific orchestration exceptions,
+    no per-route state tracker, no sleep-and-read-stale-stats pattern.
     """
-    from services.event_bus import BoardEvent, get_event_bus
     from services.rebuild_coordinator import get_coordinator
-    
+
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
-    
-    try:
-        coordinator = get_coordinator()
-        event = BoardEvent(
-            sport="nba",
-            event_type="manual",
-            severity="high",
-            source="manual_api_nba_master",
-        )
-        await get_event_bus().publish(event)
-        
-        # Wait briefly for the async rebuild to start and finish
-        await asyncio.sleep(1)
-        
-        # Return coordinator state as response
-        stats = coordinator.get_stats()
-        last = stats.get("last_publish", {}).get("nba", {})
-        
-        return {
-            "success": True,
-            "coordinator_mode": stats["sport_modes"]["nba"],
-            "dispatch": "coordinator → UnifiedPipeline(NBAAdapter)",
-            "last_publish": last,
-        }
-        
-    except Exception as e:
-        logger.error(f"[NBA_MASTER_SYNC] Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
+    coord = get_coordinator()
+    coord.set_db(_db)
+    return await coord.dispatch_master_sync("nba")
 
 
 @router.post("/nba/sync/elite-top-10")

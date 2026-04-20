@@ -1,7 +1,7 @@
 {
   "sport": "MLB",
-  "last_updated": "2026-04-20T23:09:53.229108+00:00",
-  "prop_count": 27,
+  "last_updated": "2026-04-20T23:25:40.326470+00:00",
+  "prop_count": 29,
   "props": {
     "jacob_wilson|batter_strikeouts|0.5|dk": {
       "canonical_key": "mlb|253e6890f41456a41767494219509d9b|Jacob Wilson|Batter Strikeouts|0.5|OVER",
@@ -2785,44 +2785,39 @@
       "_enriched_at": "2026-04-20T23:00:48.561041+00:00",
       "_cache_updated": "2026-04-20T23:00:48.561042+00:00"
     },
-    "dominic_smith|total_bases|0.5|dk": {
-      "canonical_key": "mlb|6e7862ded6af1d5c6d82f19895ccd191|Dominic Smith|Total Bases|0.5|OVER",
+    "rece_hinds|rbis|0.5|dk": {
+      "canonical_key": "mlb|eaa622d11f4b04e532bbea382e56ca52|Rece Hinds|RBIs|0.5|OVER",
       "sport": "mlb",
-      "event_id": "6e7862ded6af1d5c6d82f19895ccd191",
-      "player_name": "Dominic Smith",
-      "stat_type": "Total Bases",
+      "event_id": "eaa622d11f4b04e532bbea382e56ca52",
+      "player_name": "Rece Hinds",
+      "stat_type": "RBIs",
       "line": 0.5,
       "recommendation": "OVER",
-      "vision_score": 84.8,
-      "vision_score_raw": 0.08898,
-      "quality_source": "pinnacle",
-      "fair_prob": 0.6732,
-      "stability": 0.705,
-      "confidence": 1.0,
-      "edge_vs_fair": 0.1528,
-      "tier": "front_lines",
+      "vision_score": 83.3,
+      "vision_score_raw": 0.076016,
+      "quality_source": "dk",
+      "fair_prob": 0.2703,
+      "stability": 0.534,
+      "confidence": 0.875,
+      "edge_vs_fair": 0.2997,
+      "tier": "war_zone",
       "tier_reason": "gates_passed",
       "tier_reference_book": "dk",
-      "tier_reference_odds": -175,
+      "tier_reference_odds": 270,
       "tier_gate_results": {
         "gate1_cv": {
-          "threshold": 0.95,
-          "value": 0.885,
+          "threshold": ">= 1.0",
+          "value": 1.398,
           "passed": true
         },
-        "gate2_hit_rate": {
-          "threshold": 60,
-          "value": 73.7,
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 45.0,
           "passed": true
         },
         "gate3_edge": {
-          "threshold": 15,
-          "value": 19.0,
-          "passed": true
-        },
-        "gate4_tp": {
-          "threshold": 58,
-          "value": 63.6,
+          "threshold": 30,
+          "value": 30.0,
           "passed": true
         }
       },
@@ -2831,8 +2826,8 @@
       "pp_utility_components": {
         "availability": 1.0,
         "line_fairness": 1.0,
-        "model_alignment": 0.6208,
-        "edge_confidence": 0.474,
+        "model_alignment": 0.4006,
+        "edge_confidence": 0.7492,
         "multiplier_value": null,
         "weights": {
           "availability": 0.18749999999999997,
@@ -2852,19 +2847,19 @@
       "active_changed_at": null,
       "game_start_utc": null,
       "version_tag": "final-mlb",
-      "computed_at": "2026-04-20T23:03:09.099889+00:00",
-      "vision_intel": "Dominic Smith is staring down a line of just 0.5 total bases while our numbers have him slated for 1.2, giving us a massive 148% edge that feels like finding a gold bar in a junk drawer. We only need one single knock to clear this hurdle, and with the way his swing path aligns tonight, we are grabbing this value before the window slams shut on us.",
-      "vision_summary": "Dominic Smith is staring down a line of just 0.5 total bases while our numbers have him slated for 1.2, giving us a massive 148% edge that feels like finding a gold bar in a junk drawer. We only need one single knock to clear this hurdle, and with the way his swing path aligns tonight, we are grabbing this value before the window slams shut on us.",
+      "computed_at": "2026-04-20T23:24:21.123567+00:00",
+      "vision_intel": "Rece Hinds hasn't driven in a single run over his last ten appearances, and we aren't about to bet on that drought ending against a pitching staff that's been keeping him quiet. With a massive 28.6% edge favoring the under on 0.5 RBIs, this play is all about fading a guy who simply hasn't found his rhythm at the plate lately.",
+      "vision_summary": "Rece Hinds hasn't driven in a single run over his last ten appearances, and we aren't about to bet on that drought ending against a pitching staff that's been keeping him quiet. With a massive 28.6% edge favoring the under on 0.5 RBIs, this play is all about fading a guy who simply hasn't found his rhythm at the plate lately.",
       "volatility_score": 0.0,
       "volatility_label": "low",
-      "volatility_family": "mlb_counting",
+      "volatility_family": "mlb_binary",
       "scout_badges": [],
       "tempo_modifier": 1.0,
       "intel_suite": {
         "lasso": {
-          "projection": 1.242,
+          "projection": 0.357,
           "confidence_tier": "HIGH_VARIANCE",
-          "r_squared": 0.0189,
+          "r_squared": 0.0131,
           "top_drivers": [
             "L10_avg_plate_appearances",
             "L5_std_fielding_chances"
@@ -2872,38 +2867,38 @@
         }
       },
       "vk_data": {
-        "predicted": 1.242,
-        "projection": 1.242,
-        "edge": 0.742,
+        "predicted": 0.357,
+        "projection": 0.357,
+        "edge": -0.14300000000000002,
         "source": "lasso_v2"
       },
       "_enriched": true,
-      "_enriched_at": "2026-04-20T23:03:50.404755+00:00",
-      "_cache_updated": "2026-04-20T23:03:50.404757+00:00"
+      "_enriched_at": "2026-04-20T23:25:19.195734+00:00",
+      "_cache_updated": "2026-04-20T23:25:19.195737+00:00"
     },
-    "brayan_rocchio|rbis|0.5|dk": {
-      "canonical_key": "mlb|8b84f5c8a8eec852cbc8ab761818b5dc|Brayan Rocchio|RBIs|0.5|OVER",
+    "jorge_mateo|singles|0.5|dk": {
+      "canonical_key": "mlb|6e7862ded6af1d5c6d82f19895ccd191|Jorge Mateo|Singles|0.5|OVER",
       "sport": "mlb",
-      "event_id": "8b84f5c8a8eec852cbc8ab761818b5dc",
-      "player_name": "Brayan Rocchio",
-      "stat_type": "RBIs",
+      "event_id": "6e7862ded6af1d5c6d82f19895ccd191",
+      "player_name": "Jorge Mateo",
+      "stat_type": "Singles",
       "line": 0.5,
       "recommendation": "OVER",
-      "vision_score": 80.0,
-      "vision_score_raw": 0.065333,
+      "vision_score": 78.0,
+      "vision_score_raw": 0.057883,
       "quality_source": "dk",
-      "fair_prob": 0.2439,
-      "stability": 0.4473,
+      "fair_prob": 0.3226,
+      "stability": 0.3693,
       "confidence": 0.875,
-      "edge_vs_fair": 0.3141,
+      "edge_vs_fair": 0.3014,
       "tier": "war_zone",
       "tier_reason": "gates_passed",
       "tier_reference_book": "dk",
-      "tier_reference_odds": 310,
+      "tier_reference_odds": 210,
       "tier_gate_results": {
         "gate1_cv": {
           "threshold": ">= 1.0",
-          "value": 1.658,
+          "value": 1.892,
           "passed": true
         },
         "gate2_ceiling": {
@@ -2913,7 +2908,7 @@
         },
         "gate3_edge": {
           "threshold": 30,
-          "value": 31.4,
+          "value": 30.1,
           "passed": true
         }
       },
@@ -2922,8 +2917,8 @@
       "pp_utility_components": {
         "availability": 1.0,
         "line_fairness": 1.0,
-        "model_alignment": 0.3718,
-        "edge_confidence": 0.7852,
+        "model_alignment": 0.3972,
+        "edge_confidence": 0.7535,
         "multiplier_value": null,
         "weights": {
           "availability": 0.18749999999999997,
@@ -2943,9 +2938,124 @@
       "active_changed_at": null,
       "game_start_utc": null,
       "version_tag": "final-mlb",
-      "computed_at": "2026-04-20T23:03:09.099889+00:00",
-      "vision_intel": "Why are we even looking for an RBI from a guy who hasn't driven in a single run over his last twenty appearances? Rocchio is stuck in a massive power drought at the bottom of the order and the data shows he's basically been a non-factor for run production lately. Even with the projected total sitting at a measly 0.5, his zero-percent hit rate makes the under feel like the only logical move for our bankroll tonight.",
-      "vision_summary": "Why are we even looking for an RBI from a guy who hasn't driven in a single run over his last twenty appearances? Rocchio is stuck in a massive power drought at the bottom of the order and the data shows he's basically been a non-factor for run production lately. Even with the projected total sitting at a measly 0.5, his zero-percent hit rate makes the under feel like the only logical move for our bankroll tonight.",
+      "computed_at": "2026-04-20T23:24:21.123567+00:00",
+      "vision_intel": "Jorge Mateo is looking at a wide-open runway tonight because his elite speed puts immense pressure on a defense that can't afford any bobbles on routine grounders. We are banking on him putting the ball in play and using those wheels to turn a simple infield knock into a winning ticket while the line stays at a very manageable 0.5.",
+      "vision_summary": "Jorge Mateo is looking at a wide-open runway tonight because his elite speed puts immense pressure on a defense that can't afford any bobbles on routine grounders. We are banking on him putting the ball in play and using those wheels to turn a simple infield knock into a winning ticket while the line stays at a very manageable 0.5.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_binary",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "pace_delta": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "sport": "mlb",
+        "context_badges": [],
+        "vision_insight": {
+          "primary": "Jorge Mateo Singles @ 0.5 - 0% L10 hit rate",
+          "reasons": [
+            "Analyzing Jorge Mateo Singles @ 0.5"
+          ],
+          "confidence": "STANDARD"
+        },
+        "stability_index": {
+          "display": "50%",
+          "score": 50,
+          "consistency": "Unknown",
+          "std_dev": 0.0
+        },
+        "matchup_dvp": {
+          "display": "vs None",
+          "opponent": null,
+          "opponent_abbr": "OPP",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Singles"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:25:37.988744+00:00",
+      "_cache_updated": "2026-04-20T23:25:37.988746+00:00"
+    },
+    "luis_garcia_jr.|rbis|0.5|dk": {
+      "canonical_key": "mlb|6e7862ded6af1d5c6d82f19895ccd191|Luis Garcia Jr.|RBIs|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "6e7862ded6af1d5c6d82f19895ccd191",
+      "player_name": "Luis Garcia Jr.",
+      "stat_type": "RBIs",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 83.4,
+      "vision_score_raw": 0.07731,
+      "quality_source": "dk",
+      "fair_prob": 0.2381,
+      "stability": 0.5097,
+      "confidence": 0.875,
+      "edge_vs_fair": 0.3239,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 320,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.471,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 40.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 32.4,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.3522,
+        "edge_confidence": 0.8098,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": null,
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:24:21.123567+00:00",
+      "vision_intel": "Is it even legal to bet on someone who hasn't driven in a single run over his last twenty games, or are we just taking a walk in the park here? Garcia is coming in with a flat-zero RBI rate across his last ten outings, and we're looking at a massive 32% edge on the under today.",
+      "vision_summary": "Is it even legal to bet on someone who hasn't driven in a single run over his last twenty games, or are we just taking a walk in the park here? Garcia is coming in with a flat-zero RBI rate across his last ten outings, and we're looking at a massive 32% edge on the under today.",
       "volatility_score": 0.0,
       "volatility_label": "low",
       "volatility_family": "mlb_binary",
@@ -2953,24 +3063,139 @@
       "tempo_modifier": 1.0,
       "intel_suite": {
         "lasso": {
-          "projection": 0.422,
+          "projection": 0.34,
           "confidence_tier": "HIGH_VARIANCE",
           "r_squared": 0.0131,
           "top_drivers": [
-            "L5_std_fielding_chances",
-            "L10_std_rbi"
+            "L10_avg_plate_appearances",
+            "L5_std_fielding_chances"
           ]
         }
       },
       "vk_data": {
-        "predicted": 0.422,
-        "projection": 0.422,
-        "edge": -0.07800000000000001,
+        "predicted": 0.34,
+        "projection": 0.34,
+        "edge": -0.15999999999999998,
         "source": "lasso_v2"
       },
       "_enriched": true,
-      "_enriched_at": "2026-04-20T23:03:52.524729+00:00",
-      "_cache_updated": "2026-04-20T23:03:52.524731+00:00"
+      "_enriched_at": "2026-04-20T23:25:39.195022+00:00",
+      "_cache_updated": "2026-04-20T23:25:39.195024+00:00"
+    },
+    "jose_altuve|singles|0.5|dk": {
+      "canonical_key": "mlb|8b84f5c8a8eec852cbc8ab761818b5dc|Jose Altuve|Singles|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "8b84f5c8a8eec852cbc8ab761818b5dc",
+      "player_name": "Jose Altuve",
+      "stat_type": "Singles",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 85.3,
+      "vision_score_raw": 0.085498,
+      "quality_source": "dk",
+      "fair_prob": 0.2778,
+      "stability": 0.5883,
+      "confidence": 0.875,
+      "edge_vs_fair": 0.3012,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 260,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.235,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 50.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 30.1,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.3976,
+        "edge_confidence": 0.753,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": null,
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:24:21.123567+00:00",
+      "vision_intel": "Jose Altuve remains the engine of this Houston lineup and facing an unknown starter won't change his approach of hunting fastballs early in the count. We are looking at a guy who consistently puts the ball in play, making this 0.5 line for a single feel like a total bargain given his elite contact rates.",
+      "vision_summary": "Jose Altuve remains the engine of this Houston lineup and facing an unknown starter won't change his approach of hunting fastballs early in the count. We are looking at a guy who consistently puts the ball in play, making this 0.5 line for a single feel like a total bargain given his elite contact rates.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_binary",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "pace_delta": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "sport": "mlb",
+        "context_badges": [],
+        "vision_insight": {
+          "primary": "Jose Altuve Singles @ 0.5 - 0% L10 hit rate",
+          "reasons": [
+            "Analyzing Jose Altuve Singles @ 0.5"
+          ],
+          "confidence": "STANDARD"
+        },
+        "stability_index": {
+          "display": "50%",
+          "score": 50,
+          "consistency": "Unknown",
+          "std_dev": 0.0
+        },
+        "matchup_dvp": {
+          "display": "vs None",
+          "opponent": null,
+          "opponent_abbr": "OPP",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Singles"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:25:40.326459+00:00",
+      "_cache_updated": "2026-04-20T23:25:40.326461+00:00"
     }
   }
 }
