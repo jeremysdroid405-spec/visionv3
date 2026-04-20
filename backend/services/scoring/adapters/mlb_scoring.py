@@ -111,6 +111,9 @@ class MLBScoringAdapter(ScoringAdapter):
         # Model
         hf_model = self._get_hf_model(db)
         p_model = None
+        model_projection = None
+        model_sigma = None
+        p_true_method_used = None
         if hf_model:
             opponent = prop.get('away_team') if not prop.get('is_away_team') else prop.get('home_team')
             park_team = prop.get('home_team') if prop.get('is_away_team') else prop.get('team')
@@ -126,6 +129,11 @@ class MLBScoringAdapter(ScoringAdapter):
             )
             if result and not result.get("error") and result.get("prob_over") is not None:
                 p_model = result["prob_over"] / 100.0
+                # Preserve projection + sigma so recompute can populate
+                # model_projection and ranking_score_v2 for MLB (2026-04-20 restore).
+                model_projection = result.get("predicted")
+                model_sigma = result.get("std_dev")
+                p_true_method_used = "model"
 
         # Books available
         books = 0
@@ -172,6 +180,10 @@ class MLBScoringAdapter(ScoringAdapter):
             mgm_layer=mgm_layer,
             sharp_layer=sharp_layer,
             p_model=p_model,
+            p_true_model=p_model,
+            p_true_method=p_true_method_used,
+            model_projection=model_projection,
+            model_sigma=model_sigma,
             cv=cv,
             hit_rate=hit_rate,
             edge_pct=edge_pct,
