@@ -1,6 +1,6 @@
 {
   "sport": "NBA",
-  "last_updated": "2026-04-20T21:54:47.845671+00:00",
+  "last_updated": "2026-04-20T22:02:32.114653+00:00",
   "prop_count": 5,
   "props": {
     "scottie_barnes|ast|5.5|prizepicks": {
@@ -294,296 +294,6 @@
       "_enriched": true,
       "_enriched_at": "2026-04-20T16:52:00.557414+00:00",
       "_cache_updated": "2026-04-20T16:52:00.557417+00:00"
-    },
-    "brandon_ingram|pra|30.5|prizepicks": {
-      "event_id": "273905d6a4ae9217ec0734b66a0eb28b",
-      "home_team": "CLE",
-      "away_team": "TOR",
-      "commence_time": "2026-04-20T23:10:00Z",
-      "player_name": "Brandon Ingram",
-      "market": "player_points_rebounds_assists",
-      "direction": "Under",
-      "line": 30.5,
-      "price": -137,
-      "multiplier": null,
-      "bookmaker": "prizepicks",
-      "is_alternate_market": false,
-      "is_demon": false,
-      "is_goblin": false,
-      "prop_type": "STANDARD",
-      "last_update": "2026-04-20T21:32:22Z",
-      "popularity_order": 2,
-      "fetched_at": "2026-04-20T21:32:28.560284+00:00",
-      "sharp_market": {
-        "draftkings_price": -109,
-        "fanduel_price": -113,
-        "betonline_price": -110,
-        "sort_price": -109,
-        "sort_source": "draftkings",
-        "is_alternate": false
-      },
-      "draftkings_price": -109,
-      "fanduel_price": -113,
-      "betonline_price": -110,
-      "sort_price": -109,
-      "sort_source": "draftkings",
-      "home_team_full": "Cleveland Cavaliers",
-      "away_team_full": "Toronto Raptors",
-      "player_name_raw": "Brandon Ingram",
-      "_composite_key": "Brandon Ingram|PRA|30.5|Under|2026-04-20",
-      "stat_type_extracted": "PRA",
-      "game_date": "2026-04-20",
-      "synced_at": "2026-04-20T21:32:28.238237+00:00",
-      "hit_rates": {
-        "l10_rate": 30,
-        "l5_rate": 60,
-        "l10_hit_count": 3,
-        "l5_hit_count": 3,
-        "l5_avg": 33.8,
-        "season_avg": 30.6,
-        "l10_avg": 29.2
-      },
-      "oracle_apex_qualified": false,
-      "apex_reason": "GATE1_HIT_RATE: 7/20 < 18/20",
-      "vk_predicted": 26.8,
-      "vk_edge": -3.7,
-      "vk_prob_over": 31.9,
-      "vk_prob_under": 68.1,
-      "vk_recommendation": "LEAN_UNDER",
-      "cv": 0.319,
-      "h5_rate": 60,
-      "h10_rate": 30,
-      "h20_rate": 35.0,
-      "l5_hits": 3,
-      "l10_hits": 3,
-      "l20_hits": 7,
-      "l5_avg": 33.8,
-      "l10_avg": 29.2,
-      "l20_avg": 28.4,
-      "sharp_movement": true,
-      "movement_delta": 3.3,
-      "movement_direction": "over_value",
-      "movement_strength": "significant",
-      "trap_risk": false,
-      "hook_risk": false,
-      "suspect_line_bait": false,
-      "trap_reasons": [],
-      "sidecar": {
-        "hook_risk": false,
-        "suspect_line_bait": false
-      },
-      "tier_label": "FRONT_LINE",
-      "stat_type": "PRA",
-      "h10_hit_rate": 30,
-      "h5_hit_rate": 60,
-      "season_avg": 30.6,
-      "l10_hit_count": 3,
-      "l5_hit_count": 3,
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 15,
-          "display": "Rank #15 vs. All-Around",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Below Average Defense",
-          "opponent": "CLE",
-          "stat_category": "PRA"
-        },
-        "pace_delta": {
-          "possessions": -1.6,
-          "display": "-1.6 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 96.8,
-          "opponent_pace": 95.0,
-          "expected_game_pace": 95.9
-        },
-        "stability_index": {
-          "score": 25,
-          "label": "Low",
-          "display": "25/100 (Low)",
-          "std_dev": 10.85,
-          "consistency": "High Variance",
-          "variance_level": "High"
-        },
-        "vision_insight": {
-          "primary": "Brandon Ingram is walking into a defensive buzzsaw against Cleveland tonight, and we\u2019re fading him because he\u2019s stayed under this 30.5 PRA line in 70% of his last ten games. With the pace slowing down by 1.6 possessions and his recent average sitting at a modest 29.2, there just isn't enough volume for him to clear this hurdle against the Cavs' length.",
-          "summary": "Brandon Ingram is walking into a defensive buzzsaw against Cleveland tonight, and we\u2019re fading him because he\u2019s stayed under this 30.5 PRA line in 70% of his last ten games. With the pace slowing down by 1.6 possessions and his recent average sitting at a modest 29.2, there just isn't enough volume for him to clear this hurdle against the Cavs' length.",
-          "projection": 26.8,
-          "canonical_projection": 26.8,
-          "canonical_edge": -3.7,
-          "lasso_projection": 31.358,
-          "lasso_edge": 0.86,
-          "models_disagree": true,
-          "confidence": "HIGH_FIDELITY",
-          "tactical_note": "Baseline projection favorable"
-        },
-        "blowout_risk": {
-          "player_team_record": "46-36",
-          "opponent_team_record": "52-30",
-          "player_win_pct": 0.561,
-          "opponent_win_pct": 0.634,
-          "win_pct_diff": 0.073,
-          "favored_team": "CLE",
-          "player_is_favored": false,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: TOR (46-36) vs CLE (52-30)",
-          "warning": null
-        },
-        "scout_badges": [
-          "volatility_extreme",
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 31.358,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.6081,
-          "top_drivers": [
-            "prev_fga",
-            "L10_avg_fgm"
-          ]
-        },
-        "calculated_at": "2026-04-20T21:44:46.722061+00:00"
-      },
-      "is_vision_enriched": true,
-      "is_anomaly": false,
-      "is_demon_anomaly": false,
-      "is_goblin_anomaly": false,
-      "season_margin": 0.1,
-      "margin": -1.3,
-      "vision_summary": "Brandon Ingram is walking into a dogfight against Cleveland with a 30.5 line that feels just a hair too low for a guy seeing this much usage. While he's only cleared this in 30% of his last ten, the workload is there and he's going to need every bucket to keep pace with a middle-of-the-pack Cavs defense.",
-      "vision_enriched_at": null,
-      "vision_score": 88.9,
-      "board": null,
-      "active_badges": [],
-      "player_id": "227",
-      "nba_id": 1627742,
-      "bdl_id": 227,
-      "nba_com_id": 1627742,
-      "headshot_url": "/static/player-headshots/1627742.png",
-      "photo_url": "/static/player-headshots/1627742.png",
-      "team": "TOR",
-      "team_name": "Toronto Raptors",
-      "position": "F",
-      "opponent": "CLE",
-      "opponent_abbr": "CLE",
-      "injured_teammates": [
-        "Immanuel Quickley",
-        "Chucky Hepburn"
-      ],
-      "recommendation": "Under",
-      "sport": "nba",
-      "tier": "front_lines",
-      "vision_score_raw": 0.095005,
-      "tier_gate_results": {
-        "gate_cv": {
-          "threshold": 0.75,
-          "value": 0.3418,
-          "passed": true
-        },
-        "gate_hit_rate": {
-          "threshold": 60,
-          "value": 65.0,
-          "passed": true
-        },
-        "gate_edge": {
-          "threshold": 5,
-          "value": 20.7,
-          "passed": true
-        },
-        "gate_tp": {
-          "threshold": 65,
-          "value": 68.1,
-          "passed": true,
-          "source": "model_confidence_under"
-        }
-      },
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "dk",
-      "tier_reference_odds": -109,
-      "edge_vs_fair": 0.1574,
-      "fair_prob": 0.5238,
-      "quality_source": "betonline",
-      "stability": 0.8861,
-      "confidence_score": 1.0,
-      "version_tag": "final-nba-rt",
-      "computed_at": "2026-04-20T21:44:31.836146+00:00",
-      "pp_utility": 70.0,
-      "pp_utility_category": "pp_fair",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.6806,
-        "edge_confidence": 0.3993,
-        "multiplier_value": 0.5,
-        "weights": {
-          "availability": 0.15,
-          "line_fairness": 0.2,
-          "model_alignment": 0.25,
-          "edge_confidence": 0.2,
-          "multiplier_value": 0.2
-        },
-        "pp_utility_raw": 70.0,
-        "category_raw": "pp_fair"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": "standard",
-      "pp_multiplier_source": "pp_label",
-      "pp_reference_source": "dk",
-      "pp_playable": true,
-      "pp_playability_reason": "playable",
-      "is_standard": true,
-      "vk2_projection": null,
-      "vk2_sigma": null,
-      "model_projection": 26.77,
-      "model_sigma": 7.92,
-      "p_true_active": 0.6812,
-      "p_true_method": "model",
-      "p_true_vk2": null,
-      "p_true_hit_rate": 0.65,
-      "ranking_score_v2": 0.647535,
-      "hit_rate_over": 35.0,
-      "model_hit_rate_over": 35.0,
-      "hit_rate_under": 65.0,
-      "model_hit_rate_under": 65.0,
-      "model_hit_rate_active": 65.0,
-      "canonical_key": "nba|273905d6a4ae9217ec0734b66a0eb28b|Brandon Ingram|PRA|30.5|UNDER",
-      "context_badges": [],
-      "scout_badges": [
-        "volatility_extreme",
-        "high_fidelity_model"
-      ],
-      "validation": {
-        "has_market_data": true,
-        "has_hit_rates": true,
-        "has_context": true,
-        "has_mlr": false,
-        "has_gemini": false,
-        "is_fully_validated": false
-      },
-      "volatility_score": 45.6,
-      "volatility_label": "moderate",
-      "volatility_family": "nba_high_line",
-      "vision_intel": "Brandon Ingram is walking into a dogfight against Cleveland with a 30.5 line that feels just a hair too low for a guy seeing this much usage. While he's only cleared this in 30% of his last ten, the workload is there and he's going to need every bucket to keep pace with a middle-of-the-pack Cavs defense.",
-      "vk_data": {
-        "projection": 31.358,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.6081,
-        "top_drivers": [
-          "prev_fga",
-          "L10_avg_fgm"
-        ]
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-20T21:44:47.871302+00:00",
-      "_cache_updated": "2026-04-20T21:44:47.871304+00:00"
     },
     "ja'kobe_walter|pts|5.5|prizepicks": {
       "event_id": "273905d6a4ae9217ec0734b66a0eb28b",
@@ -1455,6 +1165,201 @@
       "_enriched": true,
       "_enriched_at": "2026-04-20T21:44:59.970126+00:00",
       "_cache_updated": "2026-04-20T21:44:59.970128+00:00"
+    },
+    "brandon_ingram|pra|30.5|dk": {
+      "player_name": "Brandon Ingram",
+      "stat_type": "PRA",
+      "line": 30.5,
+      "direction": "Under",
+      "recommendation": "Under",
+      "sport": "nba",
+      "tier": "front_lines",
+      "tier_label": "FRONT_LINE",
+      "vision_score": 88.9,
+      "vision_score_raw": 0.095005,
+      "tier_gate_results": {
+        "gate_cv": {
+          "threshold": 0.75,
+          "value": 0.3418,
+          "passed": true
+        },
+        "gate_hit_rate": {
+          "threshold": 60,
+          "value": 65.0,
+          "passed": true
+        },
+        "gate_edge": {
+          "threshold": 5,
+          "value": 20.7,
+          "passed": true
+        },
+        "gate_tp": {
+          "threshold": 65,
+          "value": 68.1,
+          "passed": true,
+          "source": "model_confidence_under"
+        }
+      },
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -109,
+      "edge_vs_fair": 0.1574,
+      "fair_prob": 0.5238,
+      "quality_source": "betonline",
+      "stability": 0.8861,
+      "confidence_score": 1.0,
+      "version_tag": "final-nba-rt",
+      "computed_at": "2026-04-20T21:44:31.836146+00:00",
+      "pp_utility": 70.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.6806,
+        "edge_confidence": 0.3993,
+        "multiplier_value": 0.5,
+        "weights": {
+          "availability": 0.15,
+          "line_fairness": 0.2,
+          "model_alignment": 0.25,
+          "edge_confidence": 0.2,
+          "multiplier_value": 0.2
+        },
+        "pp_utility_raw": 70.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": "standard",
+      "pp_multiplier_source": "pp_label",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "is_goblin": false,
+      "is_demon": false,
+      "is_standard": true,
+      "prop_type": "STANDARD",
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "model_projection": 26.77,
+      "model_sigma": 7.92,
+      "p_true_active": 0.6812,
+      "p_true_method": "model",
+      "p_true_vk2": null,
+      "p_true_hit_rate": 0.65,
+      "ranking_score_v2": 0.647535,
+      "vk_prob_under": 68.1,
+      "vk_prob_over": 31.9,
+      "hit_rate_over": 35.0,
+      "model_hit_rate_over": 35.0,
+      "hit_rate_under": 65.0,
+      "model_hit_rate_under": 65.0,
+      "model_hit_rate_active": 65.0,
+      "vk_recommendation": "LEAN_UNDER",
+      "canonical_key": "nba|273905d6a4ae9217ec0734b66a0eb28b|Brandon Ingram|PRA|30.5|UNDER",
+      "context_badges": [],
+      "scout_badges": [
+        "volatility_extreme",
+        "high_fidelity_model"
+      ],
+      "active_badges": [],
+      "validation": {
+        "has_market_data": false,
+        "has_hit_rates": false,
+        "has_context": false,
+        "has_mlr": false,
+        "has_gemini": false,
+        "is_fully_validated": false
+      },
+      "vision_intel": "Ingram is stepping into a heavy usage role tonight against a Cleveland defense that hasn't exactly been a brick wall for opposing wings lately. We are looking at a razor-thin 2.8% edge here, but the sheer volume he commands makes this a calculated play as he chases that 31 PRA mark.",
+      "vision_summary": "Ingram is stepping into a heavy usage role tonight against a Cleveland defense that hasn't exactly been a brick wall for opposing wings lately. We are looking at a razor-thin 2.8% edge here, but the sheer volume he commands makes this a calculated play as he chases that 31 PRA mark.",
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. All-Around",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "CLE",
+          "stat_category": "PRA"
+        },
+        "pace_delta": {
+          "possessions": -1.6,
+          "display": "-1.6 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 96.8,
+          "opponent_pace": 95.0,
+          "expected_game_pace": 95.9
+        },
+        "stability_index": {
+          "score": 25,
+          "label": "Low",
+          "display": "25/100 (Low)",
+          "std_dev": 10.85,
+          "consistency": "High Variance",
+          "variance_level": "High"
+        },
+        "vision_insight": {
+          "primary": "Brandon Ingram is walking into a massive usage vacuum with Zion sidelined, and he's already proven he can shoulder the heavy lifting by clearing 30.5 PRA in four of his last six outings. While Cleveland's defense isn't a total sieve, they haven't seen this version of Ingram who is currently hunting his own shot and distributing at a career-high clip to keep the Pelicans afloat.",
+          "summary": "Brandon Ingram is walking into a massive usage vacuum with Zion sidelined, and he's already proven he can shoulder the heavy lifting by clearing 30.5 PRA in four of his last six outings. While Cleveland's defense isn't a total sieve, they haven't seen this version of Ingram who is currently hunting his own shot and distributing at a career-high clip to keep the Pelicans afloat.",
+          "projection": null,
+          "canonical_projection": null,
+          "canonical_edge": null,
+          "lasso_projection": 31.358,
+          "lasso_edge": 0.86,
+          "models_disagree": false,
+          "confidence": "HIGH_FIDELITY",
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "player_team_record": "46-36",
+          "opponent_team_record": "52-30",
+          "player_win_pct": 0.561,
+          "opponent_win_pct": 0.634,
+          "win_pct_diff": 0.073,
+          "favored_team": "CLE",
+          "player_is_favored": false,
+          "risk_level": "NONE",
+          "risk_reason": "Competitive matchup: TOR (46-36) vs CLE (52-30)",
+          "warning": null
+        },
+        "scout_badges": [
+          "volatility_extreme",
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 31.358,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.6081,
+          "top_drivers": [
+            "prev_fga",
+            "L10_avg_fgm"
+          ]
+        },
+        "calculated_at": "2026-04-20T21:57:56.921116+00:00"
+      },
+      "volatility_score": 0.0,
+      "volatility_label": "unknown",
+      "volatility_family": "unknown",
+      "vk_data": {
+        "projection": 31.358,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.6081,
+        "top_drivers": [
+          "prev_fga",
+          "L10_avg_fgm"
+        ]
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T21:57:59.893721+00:00",
+      "_cache_updated": "2026-04-20T21:57:59.893723+00:00"
     }
   }
 }
