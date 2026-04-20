@@ -5,7 +5,7 @@ Subscribes to `BoardEvent(event_type="injury_change", sport="nba")` on the
 central event bus (published by `services.injury_sensor`) and patches ONLY
 the props / player docs affected by that injury event:
 
-    - `nba_prop_scores`  (version_tag='final-nba')  — re-scored via the
+    - `nba_prop_scores`  (version_tag='final-nba-rt')  — re-scored via the
       full VK2/gate/PP stack, but scoped to the impacted player set only.
     - `dg_cached_board`                           — refresh injury_status +
       injured_teammates + synced_at for each impacted player doc so the
@@ -35,7 +35,7 @@ Concurrency / safety:
 
 Re-score mechanism:
     Monkey-patches `NBAScoringAdapter.load_live_props` for the duration of
-    ONE `recompute(db, sports=["nba"], version_tag="final-nba")` call,
+    ONE `recompute(db, sports=["nba"], version_tag="final-nba-rt")` call,
     scoping the props query to only the impacted player set. The rest of
     the pipeline (VK2 models, empirical residual, gate stack, tier
     assignment, PP utility) is unchanged — so this produces bit-identical
@@ -57,7 +57,7 @@ from services.config.collection_names import COLL
 logger = logging.getLogger(__name__)
 
 
-_VERSION_TAG = "final-nba"
+_VERSION_TAG = "final-nba-rt"
 _DEDUP_WINDOW_SEC = 10.0
 
 
