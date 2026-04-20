@@ -1352,12 +1352,28 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user, logout, isDemo } = useAuth();
   const { currentSport } = useSport();
-  
+
+  // NBA ranking-mode toggle (default = legacy vision_score; gap = ranking_score_v2 DESC).
+  // Only affects the three NBA Ferrari tiers. Persisted in localStorage so the
+  // user's choice survives refreshes.
+  const [nbaRankingMode, setNbaRankingMode] = useState(() => {
+    try {
+      const v = typeof window !== 'undefined' ? window.localStorage.getItem('nbaRankingMode') : null;
+      return v === 'gap' ? 'gap' : 'default';
+    } catch (_) { return 'default'; }
+  });
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') window.localStorage.setItem('nbaRankingMode', nbaRankingMode);
+    } catch (_) { /* ignore */ }
+  }, [nbaRankingMode]);
+  const nbaSortParam = nbaRankingMode === 'gap' ? 'gap' : null;
+
   // ========== SSOT: TanStack Query Subscriptions ==========
   // PIPE 2: Live Wire - 30s polling for real-time updates
-  const { data: warZoneData, isLoading: warZoneLoading, refetch: refetchWarZone } = useWarZone();
-  const { data: safeHavenData, isLoading: safeHavenLoading, refetch: refetchSafeHaven } = useSafeHaven();
-  const { data: frontLinesData, isLoading: frontLinesLoading, refetch: refetchFrontLines } = useFrontLines();
+  const { data: warZoneData, isLoading: warZoneLoading, refetch: refetchWarZone } = useWarZone({ sort: nbaSortParam });
+  const { data: safeHavenData, isLoading: safeHavenLoading, refetch: refetchSafeHaven } = useSafeHaven({ sort: nbaSortParam });
+  const { data: frontLinesData, isLoading: frontLinesLoading, refetch: refetchFrontLines } = useFrontLines({ sort: nbaSortParam });
   const { data: liveOddsData, isLoading: boardLoading, refetch: refetchBoard } = useLiveOdds();
   const { data: vacuumAlertsData, isLoading: vacuumAlertsLoading } = useLiveVacuumAlerts();
   const { data: mlbVacuumAlertsData, isLoading: mlbVacuumAlertsLoading } = useMLBLiveVacuumAlerts();
@@ -1848,6 +1864,43 @@ const Dashboard = () => {
           {/* NBA-SPECIFIC SECTIONS */}
           {currentSport === 'nba' && (
             <>
+              {/* Ranking mode toggle — default vision_score vs projection-gap */}
+              <div
+                data-testid="nba-ranking-toggle"
+                className="flex items-center justify-end gap-2 mb-3 px-1"
+              >
+                <span className="text-xs text-slate-400 uppercase tracking-wide mr-1">
+                  Ranking
+                </span>
+                <div className="inline-flex rounded-full border border-slate-700 bg-slate-900/60 p-0.5">
+                  <button
+                    type="button"
+                    data-testid="nba-ranking-default-btn"
+                    onClick={() => setNbaRankingMode('default')}
+                    className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                      nbaRankingMode === 'default'
+                        ? 'bg-emerald-600 text-white'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    Default
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="nba-ranking-gap-btn"
+                    onClick={() => setNbaRankingMode('gap')}
+                    className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                      nbaRankingMode === 'gap'
+                        ? 'bg-emerald-600 text-white'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                    title="Sort by projection gap vs line (ranking_score_v2)"
+                  >
+                    Projection Gap
+                  </button>
+                </div>
+              </div>
+
               {/* Safe Haven */}
               <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
               

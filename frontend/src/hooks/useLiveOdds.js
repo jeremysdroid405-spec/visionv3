@@ -67,14 +67,16 @@ const fetchLiveOdds = async (sport = 'nba') => {
  * Fetch War Zone picks (Elite Demons - Ferrari filtered)
  * Sharp price >= +500, Bovada 200+ pts separation
  */
-const fetchWarZone = async (sport = 'nba') => {
+const fetchWarZone = async (sport = 'nba', sort = null) => {
   // MOCK DATA MODE - MLB ONLY
   if (USE_MOCK_DATA && sport === 'mlb') {
     console.log(`[MOCK] Returning War Zone mock data for MLB`);
     return getMockTierData(sport, 'war_zone');
   }
   
-  const response = await fetch(buildUrl('/api/v3/ferrari/war-zone', sport));
+  let url = buildUrl('/api/v3/ferrari/war-zone', sport);
+  if (sort) url += `&sort=${encodeURIComponent(sort)}`;
+  const response = await fetch(url);
   if (!response.ok) throw new Error('War Zone fetch failed');
   const data = await response.json();
   preloadImages(data.picks);
@@ -85,14 +87,16 @@ const fetchWarZone = async (sport = 'nba') => {
  * Fetch Safe Haven picks (Elite Goblins - Ferrari filtered)
  * Sharp price <= -250, L10 >= 70%
  */
-const fetchSafeHaven = async (sport = 'nba') => {
+const fetchSafeHaven = async (sport = 'nba', sort = null) => {
   // MOCK DATA MODE - MLB ONLY
   if (USE_MOCK_DATA && sport === 'mlb') {
     console.log(`[MOCK] Returning Safe Haven mock data for MLB`);
     return getMockTierData(sport, 'safe_haven');
   }
   
-  const response = await fetch(buildUrl('/api/v3/ferrari/safe-haven', sport));
+  let url = buildUrl('/api/v3/ferrari/safe-haven', sport);
+  if (sort) url += `&sort=${encodeURIComponent(sort)}`;
+  const response = await fetch(url);
   if (!response.ok) throw new Error('Safe Haven fetch failed');
   const data = await response.json();
   preloadImages(data.picks);
@@ -122,14 +126,16 @@ const preloadImages = (picks) => {
  * Fetch Front Lines picks (Battleground - Ferrari filtered)
  * Sharp price -245 to -149, L10 >= 70%, sorted by hit rate
  */
-const fetchFrontLines = async (sport = 'nba') => {
+const fetchFrontLines = async (sport = 'nba', sort = null) => {
   // MOCK DATA MODE - MLB ONLY
   if (USE_MOCK_DATA && sport === 'mlb') {
     console.log(`[MOCK] Returning Front Lines mock data for MLB`);
     return getMockTierData(sport, 'front_lines');
   }
   
-  const response = await fetch(buildUrl('/api/v3/ferrari/front-lines', sport));
+  let url = buildUrl('/api/v3/ferrari/front-lines', sport);
+  if (sort) url += `&sort=${encodeURIComponent(sort)}`;
+  const response = await fetch(url);
   if (!response.ok) throw new Error('Front Lines fetch failed');
   const data = await response.json();
   // Preload images immediately after fetch
@@ -319,12 +325,12 @@ export const useLiveOdds = (options = {}) => {
  * Sport-aware
  */
 export const useWarZone = (options = {}) => {
-  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL, sort = null } = options;
   const { currentSport, isTransitioning } = useSport();
   
   return useQuery({
-    queryKey: ['warZone', currentSport],
-    queryFn: () => fetchWarZone(currentSport),
+    queryKey: ['warZone', currentSport, sort || 'default'],
+    queryFn: () => fetchWarZone(currentSport, sort),
     enabled: enabled && !isTransitioning,
     staleTime: LIVE_ODDS_STALE_TIME,
     refetchInterval,
@@ -337,12 +343,12 @@ export const useWarZone = (options = {}) => {
  * Sport-aware
  */
 export const useSafeHaven = (options = {}) => {
-  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL, sort = null } = options;
   const { currentSport, isTransitioning } = useSport();
   
   return useQuery({
-    queryKey: ['safeHaven', currentSport],
-    queryFn: () => fetchSafeHaven(currentSport),
+    queryKey: ['safeHaven', currentSport, sort || 'default'],
+    queryFn: () => fetchSafeHaven(currentSport, sort),
     enabled: enabled && !isTransitioning,
     staleTime: LIVE_ODDS_STALE_TIME,
     refetchInterval,
@@ -355,12 +361,12 @@ export const useSafeHaven = (options = {}) => {
  * Sport-aware
  */
 export const useFrontLines = (options = {}) => {
-  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
+  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL, sort = null } = options;
   const { currentSport, isTransitioning } = useSport();
   
   return useQuery({
-    queryKey: ['frontLines', currentSport],
-    queryFn: () => fetchFrontLines(currentSport),
+    queryKey: ['frontLines', currentSport, sort || 'default'],
+    queryFn: () => fetchFrontLines(currentSport, sort),
     enabled: enabled && !isTransitioning,
     staleTime: LIVE_ODDS_STALE_TIME,
     refetchInterval,

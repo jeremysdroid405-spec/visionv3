@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-02-20 — Frontend toggle for Projection Gap ranking (NBA)
+
+**Diff (2 files, ~65 LOC):**
+- `frontend/src/hooks/useLiveOdds.js` — `fetchWarZone`, `fetchSafeHaven`,
+  `fetchFrontLines` now accept an optional `sort` argument and append
+  `&sort=<value>` to the URL when set. `useWarZone`, `useSafeHaven`,
+  `useFrontLines` accept `sort` via their `options` object, thread it
+  into the query key so cache separates the two orderings, and forward
+  it to the fetcher.
+- `frontend/src/pages/Dashboard.jsx`:
+  - New `nbaRankingMode` state (`'default'` | `'gap'`) persisted to
+    `localStorage` under key `nbaRankingMode` so the user's choice
+    survives refreshes.
+  - The 3 NBA tier hooks receive `{ sort: nbaRankingMode === 'gap' ? 'gap' : null }`.
+  - A small pill-toggle (`data-testid="nba-ranking-toggle"` with
+    `nba-ranking-default-btn` and `nba-ranking-gap-btn`) renders only
+    when `currentSport === 'nba'`, positioned above the Safe Haven
+    section. Defaults to "Default".
+
+**Verification (live Ferrari demo dashboard, 2026-02-20):**
+- Default top-5 Safe Haven (unchanged): Daniss Jenkins AST 1.5, Cade
+  Cunningham AST 7.5, Jalen Duren PTS 14.5, Shaedon Sharpe PTS 7.5,
+  Nikola Jokic AST 8.5.
+- After "Projection Gap" click: Daniss Jenkins AST 1.5 (+1.66),
+  Shaedon Sharpe PTS 7.5 (+1.31), Scoot Henderson PTS 7.5 (+1.06),
+  Christian Braun PTS 7.5 (+0.97), Jarrett Allen PTS 9.5 (+0.97) — same
+  strict DESC `ranking_score_v2` order the API returns for `?sort=gap`.
+- Pill toggle stays selected after refresh (localStorage persistence).
+- MLB dashboard unaffected — the toggle is gated behind
+  `currentSport === 'nba'`.
+
+**Default ranking still unchanged on the wire.** The opt-in is purely
+user-driven.
+
+
 ## 2026-02-20 — Projection-gap ranking (`ranking_score_v2`) behind `?sort=gap` toggle
 
 **Context:** Shadow audit (`/tmp/projection_gap_ranking_report.md`) showed that
