@@ -63,10 +63,17 @@ anomalies through market-consensus probabilities.
   events available) and our ingest had no stale-preservation; root cause
   was the misnamed `/api/mlb/sync/master` endpoint only dispatching the
   publish phase on cached data instead of calling the actual master sync.
-- **Option B applied (minimal diff)** — `routes/ferrari_tiers.py`:
-  rewrote `/api/mlb/sync/master` to call `MLBMasterSync.run_master_sync()`
-  directly. Endpoint now executes the 5-step pipeline (odds ingest →
-  cached_board → BDL prefetch → tier rebuilds → lineup ripple). NBA parity.
+- **Option C applied (end-to-end MLB refresh endpoint)** — two minimal diffs:
+  - `routes/ferrari_tiers.py`: `/api/mlb/sync/master` made fire-and-forget
+    (returns HTTP 202 in ~250 ms, runs in background via `asyncio.create_task`).
+    Added `_mlb_master_sync_state` module-level tracker so a second call
+    returns `{reason: "already_running", last_run: {...}}` for polling.
+  - `services/mlb_master_sync.py`: added **Step 6 universal recompute**
+    at the end of `run_master_sync()` so `mlb_prop_scores` gets
+    `p_true_method`, `p_true_model`, `model_projection`, `model_sigma`,
+    and `ranking_score_v2` populated in a single endpoint call.
+  Verified: background run completed in 200 s, 6 Ferrari endpoints serve
+  100% `model`-source picks with rs_v2 populated, no manual recompute needed.
 
 ### End-to-End Verification (2026-04-20)
 All 6 MLB Ferrari endpoints return HTTP 200 with 100% `vk_source="model"`,
@@ -77,18 +84,6 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
 
 ## Known Operational Gaps (Flagged, Not Fixed)
 
-### P1 — MLB structural follow-ups
-- **MLBAdapter's tier-publish path (Step 4 in master_sync) writes `mlb_prop_scores`
-  without computing `ranking_score_v2` or `p_true_method`.** A subsequent
-  `recompute_sport('mlb')` is currently required after each master sync to
-  make the Ferrari endpoints serve model-ranked picks. Minimum fix: add a
-  recompute step inside `MLBMasterSync.run_master_sync()` or replace the
-  MLBAdapter scoring write with a universal recompute call.
-- **`/api/mlb/sync/master` runs 126 s, exceeds ingress proxy's ~120 s limit.**
-  The backend completes the work, but the HTTP caller gets 502. Options:
-  make the endpoint fire-and-forget (202 Accepted + background task), or
-  move the 5-step chain into a coordinator job with polling.
-
 ### P1 — Original roadmap
 - **Injury-Rank Phase 2 (usage-sorted teammate semantics).** Replace
   `my_index` loop-order in `services/injury_advantage.py` with a descending
@@ -96,6 +91,12 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
 - **Emergent Google OAuth** via `integration_playbook_expert_v2`.
 - **Stripe payments** (pod test keys; via `integration_playbook_expert_v2`).
 - **Dashboard.jsx refactor** — break the 2000-line file into focused sections.
+
+### Resolved this session (MLB)
+- ~~MLBAdapter pipeline doesn't compute ranking_score_v2~~ — resolved via
+  Step 6 universal recompute inside `run_master_sync()`.
+- ~~/api/mlb/sync/master exceeds ingress proxy 120 s~~ — resolved via
+  fire-and-forget 202 pattern.
 
 ### P2 — Backlog
 - NBA-native tier admission table (NBA stats currently fall through to the

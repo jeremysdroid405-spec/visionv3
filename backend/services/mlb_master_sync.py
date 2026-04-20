@@ -164,7 +164,45 @@ class MLBMasterSync:
             }
             logger.info(f"[MLB_MASTER] Step 5 complete: {ripple_result.get('anchors_missing', 0)} anchors missing, "
                        f"{len(ripple_result.get('pa_bumps', []))} PA bumps")
-            
+
+            # ================================================================
+            # STEP 6: UNIVERSAL RECOMPUTE (Model-driven mlb_prop_scores)
+            # 2026-04-20: MLBAdapter's Step-4 write does not populate
+            # p_true_method / ranking_score_v2. Running the universal
+            # recompute here stamps the full model triplet
+            # (p_true_method=model, p_true_model, model_projection,
+            # model_sigma, ranking_score_v2) onto mlb_prop_scores so the
+            # Ferrari endpoints serve model-ranked picks without requiring
+            # a separate manual recompute call.
+            # ================================================================
+            logger.info("=" * 70)
+            logger.info("[MLB_MASTER] STEP 6: Universal recompute (model triplet + ranking_score_v2)...")
+            logger.info("=" * 70)
+
+            step6_start = datetime.now(timezone.utc)
+            try:
+                from services.scoring.recompute import recompute_sport
+                recompute_result = await recompute_sport(
+                    db=self.db, sport="mlb", version_tag="final-mlb", dry_run=False,
+                )
+                step6_duration = (datetime.now(timezone.utc) - step6_start).total_seconds()
+                metrics["steps"]["6_universal_recompute"] = {
+                    "duration_seconds": step6_duration,
+                    "processed": recompute_result.get("processed", 0),
+                    "written": recompute_result.get("written", 0),
+                    "replaced": recompute_result.get("replaced", 0),
+                    "tier_distribution": recompute_result.get("tier_distribution", {}),
+                    "version_tag": recompute_result.get("version_tag"),
+                }
+                logger.info(
+                    f"[MLB_MASTER] Step 6 complete: "
+                    f"{recompute_result.get('written', 0)} written, "
+                    f"tier_distribution={recompute_result.get('tier_distribution', {})}"
+                )
+            except Exception as _recompute_err:
+                logger.error(f"[MLB_MASTER] Step 6 recompute failed: {_recompute_err}")
+                metrics["errors"].append(f"step_6_recompute: {_recompute_err}")
+
             # Final summary
             total_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             metrics["completed_at"] = datetime.now(timezone.utc).isoformat()

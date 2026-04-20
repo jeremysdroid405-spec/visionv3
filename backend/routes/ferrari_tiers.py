@@ -31,6 +31,14 @@ _sync_db = None
 _enrichment_cache = {}
 _enrichment_cache_mtime = {}
 
+# In-memory tracker for the fire-and-forget MLB master sync endpoint.
+_mlb_master_sync_state: Dict[str, Any] = {
+    "in_progress": False,
+    "started_at": None,
+    "run_id": None,
+    "last_run": None,
+}
+
 # ---------------------------------------------------------------------------
 # Canonical stat-window invariant guard
 # ---------------------------------------------------------------------------
@@ -4584,41 +4592,77 @@ async def get_top_hrr_safe_haven_endpoint(
 # MLB MASTER SYNC ENDPOINT
 # ============================================================================
 
-@router.post("/mlb/sync/master")
+@router.post("/mlb/sync/master", status_code=202)
 async def mlb_master_sync():
     """
-    MLB Master Sync — performs a FULL upstream refresh:
-        STEP 1: Odds-API ingest  (universal_odds_sync.sync_sport_props('mlb'))
-        STEP 2: Cached-board intersection build
-        STEP 3: BDL splits prefetch
-        STEP 4: Oracle Apex tier rebuilds (writes legacy mlb_{safe_haven,front_lines,war_zone})
-        STEP 5: Lineup Ripple
+    MLB Master Sync — FIRE-AND-FORGET full upstream refresh.
 
-    2026-04-20: previously this endpoint only dispatched a BoardEvent to
-    rebuild_coordinator -> UnifiedPipeline(MLBAdapter), which reads from
-    mlb_cached_board and never re-fetches upstream odds. That caused
-    `mlb_live_props.commence_time` to go silently stale for days. Switched
-    to direct call on MLBMasterSync.run_master_sync() so the endpoint name
-    matches its actual behaviour (parity with what users expect from NBA).
+    Returns 202 Accepted immediately while the 6-step pipeline runs in
+    the background (upstream odds ingest → cached board → BDL prefetch →
+    tier rebuilds → lineup ripple → universal recompute). This avoids
+    the ingress proxy's ~120s timeout. Poll `last_run` on a subsequent
+    call for completion status.
     """
     from services.mlb_master_sync import get_mlb_master_sync
 
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
-    try:
-        master_sync = get_mlb_master_sync(_db)
-        metrics = await master_sync.run_master_sync()
-
+    # Serialise: if a run is already in flight, return its status without kicking a new one.
+    state = _mlb_master_sync_state
+    if state.get("in_progress"):
         return {
-            "success": metrics.get("success", False),
-            "dispatch": "direct → MLBMasterSync.run_master_sync()",
-            "metrics": metrics,
+            "accepted": False,
+            "reason": "already_running",
+            "started_at": state.get("started_at"),
+            "run_id": state.get("run_id"),
+            "last_run": state.get("last_run"),
         }
 
-    except Exception as e:
-        logger.error(f"[MLB_MASTER_SYNC] Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    import uuid
+    from datetime import datetime, timezone
+    run_id = str(uuid.uuid4())[:8]
+    state["in_progress"] = True
+    state["started_at"] = datetime.now(timezone.utc).isoformat()
+    state["run_id"] = run_id
+
+    async def _runner():
+        try:
+            master_sync = get_mlb_master_sync(_db)
+            metrics = await master_sync.run_master_sync()
+            state["last_run"] = {
+                "run_id": run_id,
+                "success": metrics.get("success", False),
+                "total_duration_seconds": metrics.get("total_duration_seconds"),
+                "completed_at": metrics.get("completed_at"),
+                "step_durations_s": {
+                    k: round((v or {}).get("duration_seconds", 0), 2)
+                    for k, v in (metrics.get("steps") or {}).items()
+                },
+                "step_6_written": ((metrics.get("steps") or {}).get("6_universal_recompute") or {}).get("written"),
+                "step_6_tier_distribution": ((metrics.get("steps") or {}).get("6_universal_recompute") or {}).get("tier_distribution"),
+                "errors": metrics.get("errors", []),
+            }
+        except Exception as exc:
+            logger.exception(f"[MLB_MASTER_SYNC] background run {run_id} failed")
+            state["last_run"] = {
+                "run_id": run_id,
+                "success": False,
+                "error": str(exc),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            }
+        finally:
+            state["in_progress"] = False
+
+    asyncio.create_task(_runner())
+
+    return {
+        "accepted": True,
+        "dispatch": "background → MLBMasterSync.run_master_sync()",
+        "run_id": run_id,
+        "started_at": state["started_at"],
+        "last_run": state.get("last_run"),  # previous run's summary, if any
+    }
 
 
 @router.post("/nba/sync/master")
