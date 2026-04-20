@@ -1,5 +1,59 @@
 # Changelog
 
+## 2026-02-20 — Projection-gap ranking (`ranking_score_v2`) behind `?sort=gap` toggle
+
+**Context:** Shadow audit (`/tmp/projection_gap_ranking_report.md`) showed that
+ranking surfaced picks by `gap / max(line,1.0)` produced Top-25 AST at 80% WR
+and +149% real-odds ROI — strictly dominating the current `vision_score` sort.
+Ships the new ranking signal **behind a toggle** — default sort remains
+unchanged pending live A/B.
+
+**Diff (5 files, ~50 LOC total):**
+- `services/scoring/recompute.py` — new `_compute_ranking_score_v2(projection,
+  line, recommendation)` helper; persisted on every scored prop.
+- `services/scoring/prop_scores_store.py` — added `ranking_score_v2` to the
+  `_SCORE_OUTPUT_FIELDS` allow-list (otherwise silently stripped on write).
+- `services/board/reader.py::get_board` — new optional `sort_key_override`
+  parameter. When set to `"ranking_score_v2"`, the query also excludes
+  null-ranking rows so the DESC sort doesn't float nulls to the top.
+- `routes/ferrari_tiers.py`:
+  - `_dedupe_picks_by_player(..., sort=...)` — NBA safe_haven / front_lines /
+    war_zone endpoints pass `sort` through; rank tuple becomes
+    `(ranking_score_v2,)` when `sort == "gap"`.
+  - `_get_nba_tier_picks_from_scores(..., sort=...)` — forwards to
+    `get_board(sort_key_override=...)`.
+  - `get_ferrari_safe_haven / front_lines / war_zone` — accept new
+    `sort: Optional[str] = Query(None)` query param; pass through.
+  - `_merge_score_with_board` — now copies `ranking_score_v2` from the score
+    doc into the UI pick dict.
+
+**Verification (post-recompute, 2,717 NBA scores):**
+- `ranking_score_v2` present on 2,450 / 2,717 rows (90.2%). The 267 nulls are
+  rows where VK1 produces no `model_projection` (non-model stat_type such as
+  certain PRA markets or rows with missing history).
+- Endpoint behavior (live board, 2026-02-20):
+  - `GET /api/v3/ferrari/safe-haven?sport=nba&limit=10` — unchanged default
+    (Daniss Jenkins AST 1.5, Cade Cunningham AST 7.5, Jalen Duren PTS 14.5 …)
+  - `GET /api/v3/ferrari/safe-haven?sport=nba&limit=10&sort=gap` — strict DESC
+    by `ranking_score_v2` (Daniss Jenkins +1.660, Shaedon Sharpe +1.313, Scoot
+    Henderson +1.057, Christian Braun +0.968, Jarrett Allen +0.967, Jerami
+    Grant +0.952, Tari Eason +0.931, Sam Merrill +0.884, Wendell Carter
+    +0.822, Evan Mobley +0.692).
+  - Front Lines `?sort=gap` elevates small-line multi-projection plays (Daniss
+    Jenkins REB 1.5 = +1.407, Cameron Johnson AST 1.5 = +1.093).
+  - War Zone `?sort=gap` unchanged small-set but slightly re-ordered.
+- Invalid sort values silently fall back to default (tested with
+  `?sort=bogus` → default ordering).
+- MLB endpoints unaffected (the `sort` param only activates when
+  `sport == "nba"`; all paths pass `sort=None` for MLB).
+- All other endpoints healthy: `/api/v3/odds/props`, `/api/live/scores`,
+  `/api/v3/scheduler-status`, both MLB Ferrari endpoints — HTTP 200.
+
+**Default sort is NOT flipped.** The new signal is opt-in only via the
+`?sort=gap` query param. Promotion to default blocked pending live user
+comparison.
+
+
 ## 2026-02-20 — Restore VK1 profitable signal as default NBA `p_model`
 
 **Context:** Forensic audit revealed VK1 was computed but discarded: 95.5% of

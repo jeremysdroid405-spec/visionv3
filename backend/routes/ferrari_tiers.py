@@ -9,7 +9,7 @@ Whistle Matrix applies referee-based modifiers to power scores.
 """
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 import asyncio
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import logging
 import os
 
@@ -82,7 +82,7 @@ def _guard_board_picks(picks):
     return picks
 
 
-def _dedupe_picks_by_player(picks, keep: str = "best"):
+def _dedupe_picks_by_player(picks, keep: str = "best", sort: Optional[str] = None):
     """Tier-integrity invariant: one player = max one pick per tier.
 
     Legacy-Ferrari MLB collections and a few NBA paths can surface multiple
@@ -107,6 +107,13 @@ def _dedupe_picks_by_player(picks, keep: str = "best"):
         return picks
 
     def _rank_score(p):
+        # Projection-gap sort (opt-in via ?sort=gap). When active, rank by
+        # ranking_score_v2 DESC; fall back to vision_score for picks missing
+        # the field so we never drop a pick.
+        if (sort or "").lower() == "gap":
+            rv = p.get("ranking_score_v2")
+            rv_r = float(rv) if isinstance(rv, (int, float)) else float("-inf")
+            return (rv_r,)
         vs = p.get("vision_score")
         pu = p.get("pp_utility")
         eg = p.get("edge_pct") if p.get("edge_pct") is not None else p.get("vk_edge")
@@ -1155,6 +1162,7 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     prop["p_true_method"] = score.get("p_true_method")
     prop["p_true_vk2"] = score.get("p_true_vk2")
     prop["p_true_hit_rate"] = score.get("p_true_hit_rate")
+    prop["ranking_score_v2"] = score.get("ranking_score_v2")
 
     # Side-aware VK probabilities from p_true_active (percent)
     p_true = score.get("p_true_active")
@@ -1242,7 +1250,11 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     return prop
 
 
-async def _get_nba_tier_picks_from_scores(tier: str, limit: int) -> List[Dict[str, Any]]:
+async def _get_nba_tier_picks_from_scores(
+    tier: str,
+    limit: int,
+    sort: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """Read the top-N final-nba scores for a given tier via the UNIVERSAL
     BOARD READER (services/board/reader.py), enrich with board data, and
     return a list of UI-ready picks sorted by the adapter's tier sort key.
@@ -1251,13 +1263,21 @@ async def _get_nba_tier_picks_from_scores(tier: str, limit: int) -> List[Dict[st
     authoritative side-aware fields after cache overlays inject OVER-side
     enrichment. The helper is cleared before the pick is returned to the
     client.
+
+    `sort`:
+        None (default) — adapter's default sort key (vision_score DESC).
+        "gap"          — projection-gap sort (ranking_score_v2 DESC).
     """
     if _db is None:
         return []
 
     from services.board.reader import get_board
 
-    scores = await get_board(_db, sport="nba", tier=tier, limit=limit)
+    sort_override = "ranking_score_v2" if (sort or "").lower() == "gap" else None
+    scores = await get_board(
+        _db, sport="nba", tier=tier, limit=limit,
+        sort_key_override=sort_override,
+    )
 
     if not scores:
         return []
@@ -1616,7 +1636,8 @@ async def get_ferrari_safe_haven(
     response: Response,
     limit: int = Query(10, ge=1, le=50),
     sport: str = Query("nba", description="Sport to query (nba or mlb)"),
-    legacy: bool = Query(False, description="Use legacy Safe Haven logic instead of stored data")
+    legacy: bool = Query(False, description="Use legacy Safe Haven logic instead of stored data"),
+    sort: Optional[str] = Query(None, description="Sort override. Pass 'gap' to sort by projection-gap ranking (ranking_score_v2 DESC) instead of the default vision_score DESC. NBA only."),
 ):
     """
     FERRARI SAFE HAVEN - Returns stored picks with Vision Intel data.
@@ -1677,7 +1698,7 @@ async def get_ferrari_safe_haven(
     # pipeline, not the legacy `elite_*` collections.
     if sport == "nba":
         collection_name = "nba_prop_scores[tier=safe_haven,version=final-nba-rt]"
-        picks = await _get_nba_tier_picks_from_scores("safe_haven", limit)
+        picks = await _get_nba_tier_picks_from_scores("safe_haven", limit, sort=sort)
     else:
         collection_name = "mlb_safe_haven"
         collection = _db[collection_name]
@@ -1733,7 +1754,7 @@ async def get_ferrari_safe_haven(
     # CANONICAL STAT GUARD: last line of defense against silent clobbering of
     # h5_rate / h10_rate / h20_rate. Auto-corrects to count-based values.
     picks = _guard_board_picks(picks)
-    picks = _dedupe_picks_by_player(picks)
+    picks = _dedupe_picks_by_player(picks, sort=sort if sport == "nba" else None)
 
     # Return picks with pipeline status
     # Count validation states for status flag
@@ -1763,7 +1784,8 @@ async def get_ferrari_safe_haven(
 async def get_ferrari_front_lines(
     response: Response,
     limit: int = Query(10, ge=1, le=50),
-    sport: str = Query("nba", description="Sport to query (nba or mlb)")
+    sport: str = Query("nba", description="Sport to query (nba or mlb)"),
+    sort: Optional[str] = Query(None, description="Sort override. Pass 'gap' to sort by projection-gap ranking (ranking_score_v2 DESC) instead of the default vision_score DESC. NBA only."),
 ):
     """
     FERRARI FRONT LINES - Returns stored picks with Vision Intel data.
@@ -1795,7 +1817,7 @@ async def get_ferrari_front_lines(
     # MLB still uses legacy collection.
     if sport == "nba":
         collection_name = "nba_prop_scores[tier=front_lines,version=final-nba-rt]"
-        picks = await _get_nba_tier_picks_from_scores("front_lines", limit)
+        picks = await _get_nba_tier_picks_from_scores("front_lines", limit, sort=sort)
     else:
         collection_name = "mlb_front_lines"
         collection = _db[collection_name]
@@ -1848,7 +1870,7 @@ async def get_ferrari_front_lines(
 
     # CANONICAL STAT GUARD: see safe-haven for rationale.
     picks = _guard_board_picks(picks)
-    picks = _dedupe_picks_by_player(picks)
+    picks = _dedupe_picks_by_player(picks, sort=sort if sport == "nba" else None)
 
     # Return picks with pipeline status
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
@@ -1876,7 +1898,8 @@ async def get_ferrari_front_lines(
 async def get_ferrari_war_zone(
     response: Response,
     limit: int = Query(10, ge=1, le=50),
-    sport: str = Query("nba", description="Sport to query (nba or mlb)")
+    sport: str = Query("nba", description="Sport to query (nba or mlb)"),
+    sort: Optional[str] = Query(None, description="Sort override. Pass 'gap' to sort by projection-gap ranking (ranking_score_v2 DESC) instead of the default vision_score DESC. NBA only."),
 ):
     """
     FERRARI WAR ZONE - Returns stored high-risk/high-reward picks with Vision Intel.
@@ -1908,7 +1931,7 @@ async def get_ferrari_war_zone(
     # MLB still uses legacy collection.
     if sport == "nba":
         collection_name = "nba_prop_scores[tier=war_zone,version=final-nba-rt]"
-        picks = await _get_nba_tier_picks_from_scores("war_zone", limit)
+        picks = await _get_nba_tier_picks_from_scores("war_zone", limit, sort=sort)
     else:
         collection_name = "mlb_war_zone"
         collection = _db[collection_name]
@@ -1961,7 +1984,7 @@ async def get_ferrari_war_zone(
 
     # CANONICAL STAT GUARD: see safe-haven for rationale.
     picks = _guard_board_picks(picks)
-    picks = _dedupe_picks_by_player(picks)
+    picks = _dedupe_picks_by_player(picks, sort=sort if sport == "nba" else None)
 
     # Return picks with pipeline status
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))

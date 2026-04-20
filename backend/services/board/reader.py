@@ -31,11 +31,12 @@ async def get_board(
     sport: str,
     tier: str,
     limit: Optional[int] = None,
+    sort_key_override: Optional[str] = None,
 ) -> List[Dict]:
     adapter = get_adapter(sport)
     cap = int(limit) if limit else adapter.capacity_for_tier(tier)
     now_utc = datetime.now(timezone.utc)
-    primary = adapter.sort_key_for_tier(tier)
+    primary = sort_key_override or adapter.sort_key_for_tier(tier)
 
     # Main filter: exclude inactive + exclude tipped-off games.
     # `active` default-True semantics: we treat missing field as active
@@ -50,6 +51,10 @@ async def get_board(
             {"game_start_utc": {"$exists": False}},
         ],
     }
+    # When sorting on ranking_score_v2, exclude rows where the field is
+    # missing/null so MongoDB doesn't float null → top of DESC order.
+    if primary == "ranking_score_v2":
+        query["ranking_score_v2"] = {"$ne": None}
     projection = {"_id": 0}
 
     # Deterministic sort: primary key desc, pp_utility desc as tiebreak.

@@ -37,6 +37,9 @@ _SCORE_OUTPUT_FIELDS = (
     "p_true_vk2", "vk2_projection", "vk2_sigma", "vk2_error",
     # Side-aware hit-rate diagnostics (the side passed to gates is in hit_rate)
     "hit_rate_over", "hit_rate_under",
+    # Projection-gap ranking signal (2026-02-20 shadow G1).
+    # Persisted for `?sort=gap` opt-in on tier endpoints.
+    "ranking_score_v2",
 )
 
 _IDENTITY_FIELDS = (

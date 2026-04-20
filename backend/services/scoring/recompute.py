@@ -34,6 +34,34 @@ def _default_version_tag() -> str:
     return f"recompute-{ts}-{uuid.uuid4().hex[:6]}"
 
 
+def _compute_ranking_score_v2(
+    projection: Optional[float],
+    line: Optional[float],
+    recommendation: Optional[str],
+) -> Optional[float]:
+    """Projection-gap ranking (shadow G1, 2026-02-20).
+
+    For OVER:  gap = projection - line
+    For UNDER: gap = line - projection
+    ranking_score_v2 = gap / max(line, 1.0)
+
+    Returns None when projection or line are missing, or recommendation is
+    neither OVER nor UNDER.
+    """
+    if projection is None or line is None:
+        return None
+    rec = (recommendation or "").strip().upper()
+    if rec not in ("OVER", "UNDER"):
+        return None
+    try:
+        proj_f = float(projection)
+        line_f = float(line)
+    except (TypeError, ValueError):
+        return None
+    gap = (proj_f - line_f) if rec == "OVER" else (line_f - proj_f)
+    return round(gap / max(line_f, 1.0), 6)
+
+
 def _apply_vision_score_normalization(score_docs: List[Dict[str, Any]]) -> None:
     """Populate `vision_score` (0-100) via percentile rank of vision_score_raw.
     Props with quality_source='insufficient_market' keep vision_score=None."""
@@ -185,6 +213,15 @@ async def recompute_sport(
             "vk2_error": ctx.vk2_error,
             "hit_rate_over": ctx.hit_rate_over,
             "hit_rate_under": ctx.hit_rate_under,
+            # ranking_score_v2 (2026-02-20 shadow G1):
+            #   For OVER:  gap = model_projection - line
+            #   For UNDER: gap = line - model_projection
+            #   ranking_score_v2 = gap / max(line, 1.0)
+            # Persisted on every scored prop so endpoints can opt-in to
+            # projection-gap sort via `?sort=gap`. Default sort unchanged.
+            "ranking_score_v2": _compute_ranking_score_v2(
+                ctx.model_projection, ctx.line, ctx.recommendation
+            ),
             **stack,
         }
         score_docs.append(doc)
