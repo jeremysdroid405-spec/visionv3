@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-02-20 — Upgrade `ranking_score_v2` formula to α=0.40 blend
+
+**Context:** Shadow α-sweep audit (`/tmp/alpha_sweep.py` →
+`/tmp/magic_formula_report.md`) compared the raw_gap vs gap_pct extremes
+plus 7 intermediate α values. α=0.40 delivered the highest Top-25 WR
+(76%) and +71.2% real-odds ROI of any formula tested this session while
+allowing 3 small-line props into Top-10 (vs 10/10 under pure gap_pct,
+0/10 under raw_gap). Lets Cade Cunningham AST 7.5 and Nikola Jokic
+AST 7.5 re-enter the visible slate instead of being buried.
+
+**Diff (1 file, ~15 LOC):**
+- `services/scoring/recompute.py::_compute_ranking_score_v2` —
+  new signature `(projection, line, recommendation, p_model=None)`.
+  Formula: `round((raw_gap / max(line, 1.0) ** 0.40) * p_model, 6)`.
+  Helper call in the score-doc construction now passes `ctx.p_model`.
+
+**Verification (post-recompute, 2,741 NBA scores replaced):**
+- Expected match confirmed per row:
+  - Cade Cunningham AST 7.5 OVER → `+1.6425` ✓
+  - Cade Cunningham AST 8.5 OVER → `+1.0971` ✓
+  - Daniss Jenkins AST 1.5 OVER → `+1.9658` ✓
+  - Shaedon Sharpe PTS 7.5 OVER → `+4.2029` ✓
+  - Nikola Jokic AST 7.5 OVER  → `+1.4986` ✓
+  - Nikola Jokic AST 8.5 OVER  → `+0.9535` ✓
+- `?sort=gap` Safe Haven top-10: all big-line PTS (Sharpe 7.5, Allen 9.5,
+  Scoot 7.5, Duren 14.5, Merrill PRA 9.5, Braun 7.5, Grant 7.5, Brown 19.5,
+  Edwards 19.5, J. Green 14.5). **0 small-line ≤3.5 picks in the top-10.**
+- Top-30 distribution under `?sort=gap`:
+  - Jenkins AST 1.5 at **#14** (was #1 under old gap_pct formula)
+  - Cade AST 7.5 at **#18** (was #43 under old gap_pct formula)
+  - Jokic AST 7.5 at **#19**
+  - 5 / 30 small-line ≤3.5 picks — present but not dominating.
+- Default sort unchanged: Jenkins AST 1.5 still #1 (uses `vision_score`).
+- Endpoint smoke: all HTTP 200 (nba & mlb ferrari, odds/props, live/scores,
+  scheduler-status).
+- Hot-reload note: `recompute.py` is imported at module load by the FastAPI
+  route; helper changes require a supervisor restart (not just reload).
+  Single restart + re-recompute resolved.
+
+
 ## 2026-02-20 — Frontend toggle for Projection Gap ranking (NBA)
 
 **Diff (2 files, ~65 LOC):**

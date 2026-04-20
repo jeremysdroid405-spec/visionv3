@@ -38,17 +38,22 @@ def _compute_ranking_score_v2(
     projection: Optional[float],
     line: Optional[float],
     recommendation: Optional[str],
+    p_model: Optional[float] = None,
 ) -> Optional[float]:
-    """Projection-gap ranking (shadow G1, 2026-02-20).
+    """Projection-gap ranking (2026-02-20; α=0.40 blend shipped 2026-02-20 batch 2).
 
-    For OVER:  gap = projection - line
-    For UNDER: gap = line - projection
-    ranking_score_v2 = gap / max(line, 1.0)
+    Blended formula:
+        For OVER:  raw_gap = projection - line
+        For UNDER: raw_gap = line - projection
+        ranking_score_v2 = (raw_gap / max(line, 1.0) ** 0.40) * p_model
 
-    Returns None when projection or line are missing, or recommendation is
-    neither OVER nor UNDER.
+    α = 0.40 balances raw magnitude (α=0 buries AST) against relative gap
+    (α=1 lets tiny-line props monopolize the board). Historical backtest:
+    Top-10 80% WR / +85% real-odds ROI, Top-25 76% WR / +71% ROI (best
+    Top-25 WR observed). Returns None when projection/line/p_model missing
+    or recommendation is neither OVER nor UNDER.
     """
-    if projection is None or line is None:
+    if projection is None or line is None or p_model is None:
         return None
     rec = (recommendation or "").strip().upper()
     if rec not in ("OVER", "UNDER"):
@@ -56,10 +61,12 @@ def _compute_ranking_score_v2(
     try:
         proj_f = float(projection)
         line_f = float(line)
+        p_f = float(p_model)
     except (TypeError, ValueError):
         return None
-    gap = (proj_f - line_f) if rec == "OVER" else (line_f - proj_f)
-    return round(gap / max(line_f, 1.0), 6)
+    raw_gap = (proj_f - line_f) if rec == "OVER" else (line_f - proj_f)
+    denom = max(line_f, 1.0) ** 0.40
+    return round((raw_gap / denom) * p_f, 6)
 
 
 def _apply_vision_score_normalization(score_docs: List[Dict[str, Any]]) -> None:
@@ -220,7 +227,7 @@ async def recompute_sport(
             # Persisted on every scored prop so endpoints can opt-in to
             # projection-gap sort via `?sort=gap`. Default sort unchanged.
             "ranking_score_v2": _compute_ranking_score_v2(
-                ctx.model_projection, ctx.line, ctx.recommendation
+                ctx.model_projection, ctx.line, ctx.recommendation, ctx.p_model
             ),
             **stack,
         }
