@@ -166,17 +166,22 @@ class MLBMasterSync:
                        f"{len(ripple_result.get('pa_bumps', []))} PA bumps")
 
             # ================================================================
-            # STEP 6: UNIVERSAL RECOMPUTE (Model-driven mlb_prop_scores)
-            # 2026-04-20: MLBAdapter's Step-4 write does not populate
-            # p_true_method / ranking_score_v2. Running the universal
-            # recompute here stamps the full model triplet
-            # (p_true_method=model, p_true_model, model_projection,
-            # model_sigma, ranking_score_v2) onto mlb_prop_scores so the
-            # Ferrari endpoints serve model-ranked picks without requiring
-            # a separate manual recompute call.
+            # STEP 6: CANONICAL SCORING PASS (mlb_prop_scores via recompute_sport)
+            #
+            # Stage 2 (2026-04-20, MLB↔NBA carbon-copy enforcement):
+            # This is the SINGLE scoring pass for MLB. It reads mlb_live_props,
+            # runs MLBScoringAdapter.build_context (which invokes the shared
+            # p_true ladder: model → hit_rate → vk2 → fair), and writes fully
+            # populated score docs to mlb_prop_scores with:
+            #   - p_true_active / p_true_method (never None when any rung has data)
+            #   - p_true_model, model_projection, model_sigma
+            #   - ranking_score_v2 (projection-gap α=0.40)
+            #   - vision_score, tier, pp_utility
+            # No second recompute pass is needed outside master sync.
+            # Every `/api/mlb/sync/master` run produces complete score docs.
             # ================================================================
             logger.info("=" * 70)
-            logger.info("[MLB_MASTER] STEP 6: Universal recompute (model triplet + ranking_score_v2)...")
+            logger.info("[MLB_MASTER] STEP 6: Canonical scoring pass (mlb_prop_scores)...")
             logger.info("=" * 70)
 
             step6_start = datetime.now(timezone.utc)
@@ -186,7 +191,7 @@ class MLBMasterSync:
                     db=self.db, sport="mlb", version_tag="final-mlb", dry_run=False,
                 )
                 step6_duration = (datetime.now(timezone.utc) - step6_start).total_seconds()
-                metrics["steps"]["6_universal_recompute"] = {
+                metrics["steps"]["6_canonical_scoring"] = {
                     "duration_seconds": step6_duration,
                     "processed": recompute_result.get("processed", 0),
                     "written": recompute_result.get("written", 0),
@@ -196,12 +201,12 @@ class MLBMasterSync:
                 }
                 logger.info(
                     f"[MLB_MASTER] Step 6 complete: "
-                    f"{recompute_result.get('written', 0)} written, "
+                    f"{recompute_result.get('written', 0)} scored, "
                     f"tier_distribution={recompute_result.get('tier_distribution', {})}"
                 )
-            except Exception as _recompute_err:
-                logger.error(f"[MLB_MASTER] Step 6 recompute failed: {_recompute_err}")
-                metrics["errors"].append(f"step_6_recompute: {_recompute_err}")
+            except Exception as _scoring_err:
+                logger.error(f"[MLB_MASTER] Step 6 canonical scoring failed: {_scoring_err}")
+                metrics["errors"].append(f"step_6_canonical_scoring: {_scoring_err}")
 
             # Final summary
             total_duration = (datetime.now(timezone.utc) - start_time).total_seconds()

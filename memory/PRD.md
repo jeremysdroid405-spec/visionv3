@@ -82,6 +82,47 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
 
 ---
 
+## Carbon-Copy Migration — Stage 2 Complete (2026-04-20)
+
+### Shared scoring ladder (eliminates D3 + D10)
+- **Added `resolve_p_true_ladder()`** in `services/scoring/scoring_stack.py`
+  (exported via `services/scoring/__init__.py`). Single canonical
+  probability resolver shared by every sport scoring adapter.
+- **Ladder order:** `model → hit_rate → vk2 → fair`. `preferred_method`
+  kwarg lets any rung jump to the front (NBA's "vk2" opt-in preserved).
+  `fair` rung uses market-implied `tp` → `p_true_method` is never
+  `"none"` whenever a reference market exists.
+- **NBA scoring adapter** now delegates: replaced inline
+  `if vk2 … elif model … else hit_rate` block with a ladder call. `tp`
+  computed BEFORE the ladder so fair rung has input. `edge_pct` math
+  preserved via `tp_for_gates`.
+- **MLB scoring adapter** now delegates: previously emitted
+  `p_true_method="model"` or `None`. Now computes `p_true_hit_rate`
+  from existing hit-rate, calls the shared ladder, and applies the
+  side-aware UNDER flip (which was missing before).
+- **MLB pipeline adapter** (`services/adapters/mlb_adapter.py`)
+  replaced the legacy `write_prop_scores(db, scored)` with
+  `recompute_sport(db, 'mlb', version_tag='final-mlb')` so a single
+  canonical scoring pass populates `mlb_prop_scores` identically to NBA.
+- **MLB master sync** Step 6 renamed `UNIVERSAL RECOMPUTE` →
+  `CANONICAL SCORING PASS`; metric key `6_universal_recompute` →
+  `6_canonical_scoring`. No longer framed as a workaround.
+
+### Stage 2 acceptance verification (`/api/mlb/sync/master`)
+- Master sync: 143 s total (4 s odds / 1 s board / 61 s BDL / 62 s
+  tiers / 0 s ripple / 16 s canonical scoring).
+- `mlb_prop_scores` (tag=`final-mlb`): 2560 docs, 33 tiered picks,
+  **100.00% `p_true_method` coverage among qualified rows**.
+- `nba_prop_scores`: 2460 docs, 131 tiered picks,
+  **100.00% `p_true_method` coverage among qualified rows**.
+- Method breakdown: NBA model=2213 / hit_rate=171 / fair=49 / none=27
+  (1.10%, all `tier=unqualified`); MLB model=2366 / hit_rate=131 /
+  fair=47 / none=16 (0.62%, all `tier=unqualified`).
+- Ferrari endpoints continue to serve with `p_true_method='model'` +
+  `ranking_score_v2` populated; default and `?sort=gap` both correct.
+
+---
+
 ## Known Operational Gaps (Flagged, Not Fixed)
 
 ### P1 — Original roadmap
@@ -97,6 +138,13 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
   Step 6 universal recompute inside `run_master_sync()`.
 - ~~/api/mlb/sync/master exceeds ingress proxy 120 s~~ — resolved via
   fire-and-forget 202 pattern.
+- ~~D3: MLB writes `mlb_prop_scores` without model triplet in-pass~~ —
+  resolved via Stage 2 (MLBAdapter routes through `recompute_sport`;
+  MLB master sync Step 6 is now the canonical scoring pass, not a
+  workaround).
+- ~~D10: MLB scoring ladder truncated to model-only~~ — resolved via
+  Stage 2 shared `resolve_p_true_ladder()` helper; NBA + MLB both
+  delegate to the canonical `model → hit_rate → vk2 → fair` ladder.
 
 ### P2 — Backlog
 - NBA-native tier admission table (NBA stats currently fall through to the

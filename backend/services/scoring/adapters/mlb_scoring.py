@@ -110,10 +110,9 @@ class MLBScoringAdapter(ScoringAdapter):
 
         # Model
         hf_model = self._get_hf_model(db)
-        p_model = None
+        p_true_model = None
         model_projection = None
         model_sigma = None
-        p_true_method_used = None
         if hf_model:
             opponent = prop.get('away_team') if not prop.get('is_away_team') else prop.get('home_team')
             park_team = prop.get('home_team') if prop.get('is_away_team') else prop.get('team')
@@ -128,12 +127,18 @@ class MLBScoringAdapter(ScoringAdapter):
                 opponent_team=opponent, park_team=park_team, dk_odds=dk_odds_int,
             )
             if result and not result.get("error") and result.get("prob_over") is not None:
-                p_model = result["prob_over"] / 100.0
+                prob_over_pct = result["prob_over"]
+                # Side-aware flip: MLB stores over-prob; flip for UNDER picks
+                # so p_true_model always reflects the side we're picking.
+                side = (prop.get("recommendation") or "OVER").upper()
+                if "UNDER" in side:
+                    p_true_model = round((100.0 - prob_over_pct) / 100.0, 4)
+                else:
+                    p_true_model = round(prob_over_pct / 100.0, 4)
                 # Preserve projection + sigma so recompute can populate
-                # model_projection and ranking_score_v2 for MLB (2026-04-20 restore).
+                # model_projection and ranking_score_v2 for MLB.
                 model_projection = result.get("predicted")
                 model_sigma = result.get("std_dev")
-                p_true_method_used = "model"
 
         # Books available
         books = 0
@@ -159,12 +164,27 @@ class MLBScoringAdapter(ScoringAdapter):
         elif mgm_p is not None:
             tp = round(mgm_p * 100.0, 1)
         else:
-            tp = 50.0
+            tp = None  # No reference market → "fair" rung cannot fire
+
+        # ---- Shared p_true ladder (carbon-copy with NBA) ---------------
+        # Ladder order: model → hit_rate → vk2 → fair
+        # MLB currently has no vk2 model on disk, so that rung stays None
+        # until a 5-year adv-stat MLB VK2 model is trained. The structure
+        # is identical to NBA — only the available rungs differ.
+        p_true_hit_rate = (hit_rate / 100.0) if hit_rate is not None else None
+        p_true_vk2 = None  # reserved: future MLB VK2 model
+        from services.scoring.scoring_stack import resolve_p_true_ladder
+        p_model, p_true_method_used = resolve_p_true_ladder(
+            p_true_model=p_true_model,
+            p_true_hit_rate=p_true_hit_rate,
+            p_true_vk2=p_true_vk2,
+            tp=tp,  # enables the "fair" rung when a reference market exists
+        )
 
         if p_model is not None:
-            edge_pct = round((p_model * 100.0) - tp, 1)
+            edge_pct = round((p_model * 100.0) - (tp if tp is not None else 50.0), 1)
         else:
-            edge_pct = round((hit_rate or 0) - tp, 1)
+            edge_pct = round((hit_rate or 0) - (tp if tp is not None else 50.0), 1)
 
         # MLB has no verified PP multiplier data yet
         return ScoringContext(
@@ -180,14 +200,16 @@ class MLBScoringAdapter(ScoringAdapter):
             mgm_layer=mgm_layer,
             sharp_layer=sharp_layer,
             p_model=p_model,
-            p_true_model=p_model,
+            p_true_hit_rate=p_true_hit_rate,
+            p_true_model=p_true_model,
             p_true_method=p_true_method_used,
+            p_true_vk2=p_true_vk2,
             model_projection=model_projection,
             model_sigma=model_sigma,
             cv=cv,
             hit_rate=hit_rate,
             edge_pct=edge_pct,
-            tp=tp,
+            tp=tp if tp is not None else 50.0,
             ceiling_rate=ceiling_rate,
             books_available_count=books,
             raw_prop=prop,

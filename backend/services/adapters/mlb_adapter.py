@@ -473,17 +473,33 @@ class MLBAdapter(SportAdapter):
 
         # -------------------------------------------------------
         # PERSIST SCORING STACK TO mlb_prop_scores (system of record)
-        # Per locked spec: do NOT embed in mlb_cached_board/tier collections.
+        #
+        # Stage 2 (2026-04-20, MLB↔NBA carbon-copy):
+        # Instead of the legacy `write_prop_scores` single-pass writer —
+        # which did NOT stamp `p_true_method`, `p_true_model`,
+        # `model_projection`, `model_sigma`, or `ranking_score_v2` and
+        # therefore required a tacked-on Step 6 recompute in
+        # MLBMasterSync — this adapter now routes scoring persistence
+        # through the shared `recompute_sport()` pipeline. Both NBA and
+        # MLB now use the SAME canonical write path, producing fully
+        # populated `{sport}_prop_scores` documents in a single pass.
+        # Eliminates deviations D3 and D10.
         # -------------------------------------------------------
         try:
-            from services.scoring import write_prop_scores, strip_score_fields
-            write_result = await write_prop_scores(db, scored)
+            from services.scoring.recompute import recompute_sport
+            recompute_result = await recompute_sport(
+                db=db, sport="mlb", version_tag="final-mlb", dry_run=False,
+            )
             logger.info(
-                f"[MLB_ADAPTER] mlb_prop_scores updated: "
-                f"inserted={write_result['inserted']} purged={write_result['purged']}"
+                f"[MLB_ADAPTER] mlb_prop_scores (via recompute_sport): "
+                f"processed={recompute_result.get('processed', 0)} "
+                f"written={recompute_result.get('written', 0)} "
+                f"replaced={recompute_result.get('replaced', 0)} "
+                f"tier_distribution={recompute_result.get('tier_distribution', {})}"
             )
             # Strip scoring-stack fields from in-memory props so downstream
             # writers (cached_board, tiers) do NOT persist them.
+            from services.scoring import strip_score_fields
             strip_score_fields(scored)
         except Exception as e:
             logger.error(f"[MLB_ADAPTER] mlb_prop_scores write failed: {e}")

@@ -617,22 +617,11 @@ class NBAScoringAdapter(ScoringAdapter):
                 vk2_sigma = v2res.get("sigma")
                 vk2_error = v2res.get("error")
 
-        # Select active method: default "hit_rate" (production); "model" / "vk2" opt-in.
-        active_method = active_method_early
-        if active_method == "vk2" and p_true_vk2 is not None:
-            p_model = p_true_vk2
-            p_true_method_used = "vk2"
-        elif active_method == "model" and p_true_model is not None:
-            p_model = p_true_model
-            p_true_method_used = "model"
-        else:
-            p_model = p_true_hit_rate
-            p_true_method_used = "hit_rate" if p_true_hit_rate is not None else "none"
-
         # tp from reference-market implied prob (dk preferred, else fanduel).
         # Prices on dg_live_props are OVER-side American odds, so convert and
         # flip for UNDER picks to keep the gate mathematically side-aware
         # (mirrors the existing side-aware fix applied to gate_hit_rate).
+        # Computed BEFORE the p_true ladder so the "fair" rung has tp.
         def _amer(o):
             if o is None: return None
             try: o = float(o)
@@ -647,13 +636,38 @@ class NBAScoringAdapter(ScoringAdapter):
         elif fd_p is not None:
             tp_over = round(fd_p * 100.0, 1)
         else:
-            tp_over = 50.0
+            tp_over = None
         # Flip to the recommended side so gate_tp and edge_pct reflect
         # the market's implied probability for the SIDE we are picking.
-        tp = round(100.0 - tp_over, 1) if side == "UNDER" else tp_over
+        if tp_over is None:
+            tp = None  # no reference market → fair rung disabled, tp default 50.0 for gates
+        else:
+            tp = round(100.0 - tp_over, 1) if side == "UNDER" else tp_over
+
+        # Select active method via the shared p_true ladder helper.
+        # Canonical order: model → hit_rate → vk2 → fair.
+        # `preferred_method` lets override_config.vision_score.p_true_method
+        # jump any rung to the front (e.g. the legacy NBA "vk2" opt-in or
+        # "hit_rate" A/B harness), preserving historical behaviour.
+        # The "fair" rung uses market-implied tp so p_true_method is never
+        # "none" when a reference market exists (Stage 2 invariant).
+        # When only the fair rung fires, p_model = tp/100 → edge_pct = 0
+        # (mathematically identical to the legacy "no signal" fallback).
+        from services.scoring.scoring_stack import resolve_p_true_ladder
+        p_model, p_true_method_used = resolve_p_true_ladder(
+            p_true_model=p_true_model,
+            p_true_hit_rate=p_true_hit_rate,
+            p_true_vk2=p_true_vk2,
+            tp=tp,
+            preferred_method=active_method_early,
+        )
+
+        # Gates/edge keep the legacy tp default of 50.0 when no reference
+        # market exists, preserving behaviour for downstream gate checks.
+        tp_for_gates = tp if tp is not None else 50.0
 
         if p_model is not None:
-            edge_pct = round(p_model * 100.0 - tp, 1)
+            edge_pct = round(p_model * 100.0 - tp_for_gates, 1)
         else:
             edge_pct = 0.0
 
@@ -675,7 +689,7 @@ class NBAScoringAdapter(ScoringAdapter):
             pp_layer=pp_layer, dk_layer=dk_layer, mgm_layer=mgm_layer,
             sharp_layer=sharp_layer,
             p_model=p_model, cv=cv, hit_rate=hit_rate, edge_pct=edge_pct,
-            tp=tp, ceiling_rate=ceiling_rate,
+            tp=tp_for_gates, ceiling_rate=ceiling_rate,
             books_available_count=books,
             raw_prop=prop,
             pp_combo_multiplier=pp_multiplier,

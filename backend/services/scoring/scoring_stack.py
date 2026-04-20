@@ -35,6 +35,81 @@ LOCKED SPEC (user 2026-04-17):
 from typing import Dict, Any, Optional, Tuple
 
 # -----------------------------------------------------------------------------
+# Shared p_true ladder (canonical scoring-framework primitive)
+# -----------------------------------------------------------------------------
+# Stage 2 (2026-04-20, MLB↔NBA carbon-copy enforcement):
+# Both sport scoring adapters delegate p_true selection to this helper.
+# Canonical ladder order (applies to every sport):
+#
+#     model → hit_rate → vk2 → fair
+#
+# Each rung is evaluated in order; the first non-None candidate becomes
+# `p_true_active` and its name becomes `p_true_method`. If a preferred
+# method is supplied via override_config (NBA keeps the legacy "vk2"
+# opt-in path) and its candidate is available, that rung jumps to the
+# front without changing the rest of the ladder order.
+#
+# Invariant: `p_true_method` is non-None for every scored row as long as
+# any rung has data. The "fair" rung (market-implied `tp`) guarantees
+# coverage whenever reference odds exist.
+# -----------------------------------------------------------------------------
+
+_LADDER_ORDER: Tuple[str, ...] = ("model", "hit_rate", "vk2", "fair")
+
+
+def resolve_p_true_ladder(
+    *,
+    p_true_model: Optional[float] = None,
+    p_true_hit_rate: Optional[float] = None,
+    p_true_vk2: Optional[float] = None,
+    tp: Optional[float] = None,
+    preferred_method: Optional[str] = None,
+) -> Tuple[Optional[float], str]:
+    """Canonical ladder resolver shared by every sport scoring adapter.
+
+    Args:
+        p_true_model:   Primary model prob_over for the picked side, 0-1.
+        p_true_hit_rate: L20 rolling hit-rate prob, 0-1.
+        p_true_vk2:     Alternate 5-year adv-stat VK2 prob_over, 0-1.
+        tp:             Market-implied reference probability in 0-100 pp.
+                        (Converted to 0-1 internally for the "fair" rung.)
+        preferred_method: If supplied (e.g. "vk2") and that rung has a
+                        value, it is used regardless of canonical order.
+
+    Returns:
+        (p_active, method) where method ∈ {"model","hit_rate","vk2",
+        "fair","none"}. method == "none" ONLY if every rung is None.
+    """
+    fair_p = None
+    if tp is not None:
+        try:
+            fair_p = float(tp) / 100.0
+        except (TypeError, ValueError):
+            fair_p = None
+
+    candidates: Dict[str, Optional[float]] = {
+        "model":    p_true_model,
+        "hit_rate": p_true_hit_rate,
+        "vk2":      p_true_vk2,
+        "fair":     fair_p,
+    }
+
+    # Preferred rung takes priority when it has a value.
+    if preferred_method and preferred_method in candidates:
+        v = candidates[preferred_method]
+        if v is not None:
+            return v, preferred_method
+
+    # Canonical ladder walk.
+    for method in _LADDER_ORDER:
+        v = candidates.get(method)
+        if v is not None:
+            return v, method
+
+    return None, "none"
+
+
+# -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
 
