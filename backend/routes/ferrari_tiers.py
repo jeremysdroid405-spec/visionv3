@@ -326,6 +326,16 @@ def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
     Returns:
         The enriched prop dictionary matching NBA structure
     """
+    # 2026-04-20 gate (MLB model restore): if the upstream score doc already
+    # carries `p_true_method == "model"` (i.e. MLBHighFrictionModel produced a
+    # probability + projection), this function is a NO-OP. The model fields
+    # already on the doc (model_projection → vk_predicted, p_true_model*100 →
+    # vk_prob_over) are authoritative; re-running Lasso/weighted-avg would
+    # clobber them. Structurally mirrors NBA, which has no route-time
+    # projection/probability setter for model-scored rows.
+    if prop and isinstance(prop, dict) and (prop.get("p_true_method") or "").lower() == "model":
+        return prop
+
     # Add player-level data if provided
     if player_data:
         prop["player_name"] = prop.get("player_name") or player_data.get("player_name")
@@ -1315,6 +1325,87 @@ async def _get_nba_tier_picks_from_scores(
     return picks
 
 
+async def _get_mlb_tier_picks_from_scores(
+    tier: str,
+    limit: int,
+    sort: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Structural mirror of `_get_nba_tier_picks_from_scores`, for MLB.
+
+    Reads the top-N `final-mlb` scored rows for a given tier via the universal
+    board reader (services/board/reader.py) and returns UI-ready picks.
+
+    Differences from the NBA helper (by necessity, not design):
+      * NBA has `dg_cached_board` (player-grain) as a display-enrichment
+        source. MLB has no equivalent -- MLB's display enrichment is applied
+        downstream as pure-function transforms (enrich_mlb_prop_with_tempo,
+        enrich_mlb_intel_suite, overlay_enrichment_cache). We therefore skip
+        the lookup-merge step and hand the score doc through as-is.
+      * The score doc already carries `model_projection`, `p_true_model`,
+        `model_sigma`, `ranking_score_v2`, `p_true_method`. We surface those
+        to the UI and also mirror them into the legacy `vk_*` contract that
+        downstream intel_suite / card components read, so the UI works
+        without component-side changes.
+
+    `sort`:
+        None (default) -- adapter's default sort key (vision_score DESC).
+        "gap"          -- projection-gap sort (ranking_score_v2 DESC).
+    """
+    if _db is None:
+        return []
+
+    from services.board.reader import get_board
+
+    sort_override = "ranking_score_v2" if (sort or "").lower() == "gap" else None
+    scores = await get_board(
+        _db, sport="mlb", tier=tier, limit=limit,
+        sort_key_override=sort_override,
+    )
+    if not scores:
+        return []
+
+    picks: List[Dict[str, Any]] = []
+    for sc in scores:
+        # Base shape: pass the score doc through. Downstream enrichers
+        # (overlay_enrichment_cache, enrich_mlb_prop_with_tempo,
+        # enrich_mlb_intel_suite) mutate this dict in place.
+        pick: Dict[str, Any] = dict(sc)
+
+        # Mirror model fields -> legacy vk_* contract so existing UI
+        # components and intel_suite assembly continue to work unchanged.
+        p_model = sc.get("p_true_model") or sc.get("p_true_active")
+        model_proj = sc.get("model_projection")
+        if (sc.get("p_true_method") or "").lower() == "model":
+            if model_proj is not None:
+                try:
+                    pick["vk_predicted"] = round(float(model_proj), 2)
+                except (TypeError, ValueError):
+                    pass
+            if p_model is not None:
+                try:
+                    prob_over = float(p_model) * 100.0
+                    side = (sc.get("recommendation") or "OVER").upper()
+                    pick["vk_prob_over"]  = round(prob_over if side == "OVER" else (100.0 - prob_over), 1)
+                    pick["vk_prob_under"] = round(100.0 - pick["vk_prob_over"], 1)
+                    pick["vk_probability"] = pick["vk_prob_over"]
+                except (TypeError, ValueError):
+                    pass
+            pick["vk_source"] = "model"
+            # Surface canonical model fields on the pick as well.
+            pick["model_projection"]  = model_proj
+            pick["p_true_method"]     = sc.get("p_true_method")
+            pick["p_true_model"]      = p_model
+            pick["ranking_score_v2"]  = sc.get("ranking_score_v2")
+            pick["model_sigma"]       = sc.get("model_sigma")
+
+        # Stash the score doc so any later post-overlay pass can re-read
+        # authoritative fields, parallel to the NBA `_nba_score_doc` stash.
+        pick["_mlb_score_doc"] = sc
+        picks.append(pick)
+
+    return picks
+
+
 async def _enrich_under_picks_with_gemini(
     picks: List[Dict[str, Any]],
     tier_name: str,
@@ -1700,10 +1791,8 @@ async def get_ferrari_safe_haven(
         collection_name = "nba_prop_scores[tier=safe_haven,version=final-nba-rt]"
         picks = await _get_nba_tier_picks_from_scores("safe_haven", limit, sort=sort)
     else:
-        collection_name = "mlb_safe_haven"
-        collection = _db[collection_name]
-        cursor = collection.find({}, {"_id": 0}).limit(limit)
-        picks = await cursor.to_list(length=limit)
+        collection_name = "mlb_prop_scores[tier=safe_haven,version=final-mlb]"
+        picks = await _get_mlb_tier_picks_from_scores("safe_haven", limit, sort=sort)
 
     # JIT Injury Check for NBA picks
     if sport == "nba" and picks:
@@ -1754,7 +1843,7 @@ async def get_ferrari_safe_haven(
     # CANONICAL STAT GUARD: last line of defense against silent clobbering of
     # h5_rate / h10_rate / h20_rate. Auto-corrects to count-based values.
     picks = _guard_board_picks(picks)
-    picks = _dedupe_picks_by_player(picks, sort=sort if sport == "nba" else None)
+    picks = _dedupe_picks_by_player(picks, sort=sort)
 
     # Return picks with pipeline status
     # Count validation states for status flag
@@ -1819,10 +1908,8 @@ async def get_ferrari_front_lines(
         collection_name = "nba_prop_scores[tier=front_lines,version=final-nba-rt]"
         picks = await _get_nba_tier_picks_from_scores("front_lines", limit, sort=sort)
     else:
-        collection_name = "mlb_front_lines"
-        collection = _db[collection_name]
-        cursor = collection.find({}, {"_id": 0}).limit(limit)
-        picks = await cursor.to_list(length=limit)
+        collection_name = "mlb_prop_scores[tier=front_lines,version=final-mlb]"
+        picks = await _get_mlb_tier_picks_from_scores("front_lines", limit, sort=sort)
 
     # JIT Injury Check for NBA picks
     if sport == "nba" and picks:
@@ -1870,7 +1957,7 @@ async def get_ferrari_front_lines(
 
     # CANONICAL STAT GUARD: see safe-haven for rationale.
     picks = _guard_board_picks(picks)
-    picks = _dedupe_picks_by_player(picks, sort=sort if sport == "nba" else None)
+    picks = _dedupe_picks_by_player(picks, sort=sort)
 
     # Return picks with pipeline status
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
@@ -1933,10 +2020,8 @@ async def get_ferrari_war_zone(
         collection_name = "nba_prop_scores[tier=war_zone,version=final-nba-rt]"
         picks = await _get_nba_tier_picks_from_scores("war_zone", limit, sort=sort)
     else:
-        collection_name = "mlb_war_zone"
-        collection = _db[collection_name]
-        cursor = collection.find({}, {"_id": 0}).limit(limit)
-        picks = await cursor.to_list(length=limit)
+        collection_name = "mlb_prop_scores[tier=war_zone,version=final-mlb]"
+        picks = await _get_mlb_tier_picks_from_scores("war_zone", limit, sort=sort)
 
     # JIT Injury Check for NBA picks
     if sport == "nba" and picks:
@@ -1984,7 +2069,7 @@ async def get_ferrari_war_zone(
 
     # CANONICAL STAT GUARD: see safe-haven for rationale.
     picks = _guard_board_picks(picks)
-    picks = _dedupe_picks_by_player(picks, sort=sort if sport == "nba" else None)
+    picks = _dedupe_picks_by_player(picks, sort=sort)
 
     # Return picks with pipeline status
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
