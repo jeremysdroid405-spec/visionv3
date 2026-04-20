@@ -1,6 +1,6 @@
 {
   "sport": "NBA",
-  "last_updated": "2026-04-20T03:19:57.506704+00:00",
+  "last_updated": "2026-04-20T04:13:12.832926+00:00",
   "prop_count": 24,
   "props": {
     "nickeil_alexander-walker|pts|14.5|prizepicks": {
@@ -4448,290 +4448,6 @@
       "_enriched_at": "2026-04-19T22:44:53.156124+00:00",
       "_cache_updated": "2026-04-19T22:44:53.156126+00:00"
     },
-    "marcus_smart|pra|18.5|prizepicks": {
-      "event_id": "d3d28b764e5099920880de59a45e82cf",
-      "home_team": "LAL",
-      "away_team": "HOU",
-      "commence_time": "2026-04-22T02:40:00Z",
-      "player_name": "Marcus Smart",
-      "market": "player_points_rebounds_assists",
-      "direction": "Under",
-      "line": 18.5,
-      "price": -137,
-      "multiplier": null,
-      "bookmaker": "prizepicks",
-      "is_alternate_market": false,
-      "is_demon": false,
-      "is_goblin": false,
-      "prop_type": "STANDARD",
-      "last_update": "2026-04-19T21:26:06Z",
-      "popularity_order": 6,
-      "fetched_at": "2026-04-19T21:26:08.950840+00:00",
-      "sharp_market": {
-        "draftkings_price": -116,
-        "fanduel_price": -114,
-        "betonline_price": null,
-        "sort_price": -116,
-        "sort_source": "draftkings",
-        "is_alternate": false
-      },
-      "draftkings_price": -116,
-      "fanduel_price": -114,
-      "betonline_price": null,
-      "sort_price": -116,
-      "sort_source": "draftkings",
-      "home_team_full": "Los Angeles Lakers",
-      "away_team_full": "Houston Rockets",
-      "player_name_raw": "Marcus Smart",
-      "_composite_key": "Marcus Smart|PRA|18.5|Under|2026-04-19",
-      "stat_type_extracted": "PRA",
-      "game_date": "2026-04-19",
-      "synced_at": "2026-04-19T21:26:08.616381+00:00",
-      "hit_rates": {
-        "l10_rate": 30,
-        "l5_rate": 40,
-        "l10_hit_count": 3,
-        "l5_hit_count": 2,
-        "l5_avg": 16.6,
-        "season_avg": 15.1,
-        "l10_avg": 15.6
-      },
-      "oracle_apex_qualified": false,
-      "apex_reason": "GATE1_HIT_RATE: 4/20 < 18/20",
-      "vk_predicted": 16.7,
-      "vk_edge": -1.8,
-      "vk_prob_over": 20.0,
-      "vk_prob_under": 80.0,
-      "vk_recommendation": "STRONG_UNDER",
-      "cv": 0.433,
-      "h5_rate": 40,
-      "h10_rate": 30,
-      "h20_rate": 20.0,
-      "l5_hits": 2,
-      "l10_hits": 3,
-      "l20_hits": 4,
-      "l5_avg": 16.6,
-      "l10_avg": 15.6,
-      "l20_avg": 14.4,
-      "sharp_movement": true,
-      "movement_delta": -1.9,
-      "movement_direction": "under_value",
-      "movement_strength": "moderate",
-      "trap_risk": false,
-      "hook_risk": false,
-      "suspect_line_bait": false,
-      "trap_reasons": [],
-      "sidecar": {
-        "hook_risk": false,
-        "suspect_line_bait": false
-      },
-      "tier_label": "FRONT_LINE",
-      "stat_type": "PRA",
-      "h10_hit_rate": 30,
-      "h5_hit_rate": 40,
-      "season_avg": 15.1,
-      "l10_hit_count": 3,
-      "l5_hit_count": 2,
-      "intel_suite": {
-        "usage_ripple": {
-          "bump_percent": 0,
-          "display": "Standard Volume",
-          "shift_label": "Standard Volume",
-          "injuries_affecting": [],
-          "reasoning": "No significant lineup changes"
-        },
-        "matchup_dvp": {
-          "rank": 15,
-          "display": "Rank #15 vs. All-Around",
-          "color": "yellow",
-          "friction_level": "Medium",
-          "friction_label": "Below Average Defense",
-          "opponent": "HOU",
-          "stat_category": "PRA"
-        },
-        "pace_delta": {
-          "possessions": 0.8,
-          "display": "+0.8 Possessions",
-          "pace_factor": 1.0,
-          "tempo_label": "Standard Tempo",
-          "team_pace": 99.5,
-          "opponent_pace": 97.0,
-          "expected_game_pace": 98.2
-        },
-        "stability_index": {
-          "score": 40,
-          "label": "Medium-Low",
-          "display": "40/100 (Medium-Low)",
-          "std_dev": 5.94,
-          "consistency": "Below Average",
-          "variance_level": "High"
-        },
-        "vision_insight": {
-          "primary": "Marcus Smart is struggling to find his rhythm lately, staying under this 18.5 PRA mark in 80% of his last twenty games while averaging a modest 15.6 over the last ten. Even with a standard tempo against Houston, his low 40% stability score suggests he\u2019s not getting the consistent usage we need to sweat an over tonight.",
-          "summary": "Marcus Smart is struggling to find his rhythm lately, staying under this 18.5 PRA mark in 80% of his last twenty games while averaging a modest 15.6 over the last ten. Even with a standard tempo against Houston, his low 40% stability score suggests he\u2019s not getting the consistent usage we need to sweat an over tonight.",
-          "projection": 16.7,
-          "canonical_projection": 16.7,
-          "canonical_edge": -1.8,
-          "lasso_projection": 19.897,
-          "lasso_edge": 1.4,
-          "models_disagree": true,
-          "confidence": "HIGH_FIDELITY",
-          "tactical_note": "Baseline projection favorable"
-        },
-        "blowout_risk": {
-          "player_team_record": "53-29",
-          "opponent_team_record": "52-30",
-          "player_win_pct": 0.646,
-          "opponent_win_pct": 0.634,
-          "win_pct_diff": 0.012,
-          "favored_team": "LAL",
-          "player_is_favored": true,
-          "risk_level": "NONE",
-          "risk_reason": "Competitive matchup: LAL (53-29) vs HOU (52-30)",
-          "warning": null
-        },
-        "scout_badges": [
-          "high_fidelity_model"
-        ],
-        "lasso": {
-          "projection": 19.897,
-          "confidence_tier": "HIGH_FIDELITY",
-          "r_squared": 0.6081,
-          "top_drivers": [
-            "prev_ast",
-            "target_L5_avg"
-          ]
-        },
-        "calculated_at": "2026-04-19T22:44:58.178589+00:00"
-      },
-      "is_vision_enriched": true,
-      "is_anomaly": false,
-      "is_demon_anomaly": false,
-      "is_goblin_anomaly": false,
-      "season_margin": -3.4,
-      "margin": -2.9,
-      "vision_summary": "",
-      "vision_enriched_at": null,
-      "vision_score": 100.0,
-      "board": null,
-      "active_badges": [],
-      "player_id": "420",
-      "nba_id": 203935,
-      "bdl_id": 420,
-      "nba_com_id": 203935,
-      "headshot_url": "/static/player-headshots/203935.png",
-      "photo_url": "/static/player-headshots/203935.png",
-      "team": "LAL",
-      "team_name": "Los Angeles Lakers",
-      "position": "G",
-      "opponent": "HOU",
-      "opponent_abbr": "HOU",
-      "injured_teammates": [],
-      "context_badges": [],
-      "recommendation": "Under",
-      "sport": "nba",
-      "tier": "front_lines",
-      "vision_score_raw": 0.17513,
-      "tier_gate_results": {
-        "gate_cv": {
-          "threshold": 0.75,
-          "value": 0.4195,
-          "passed": true
-        },
-        "gate_hit_rate": {
-          "threshold": 60,
-          "value": 80.0,
-          "passed": true
-        },
-        "gate_edge": {
-          "threshold": 5,
-          "value": 34.5,
-          "passed": true
-        },
-        "gate_tp": {
-          "threshold": 65,
-          "value": 80.0,
-          "passed": true,
-          "source": "model_confidence_under"
-        }
-      },
-      "tier_reason": "gates_passed",
-      "tier_reference_book": "dk",
-      "tier_reference_odds": -120,
-      "edge_vs_fair": 0.2545,
-      "fair_prob": 0.5455,
-      "quality_source": "consensus",
-      "stability": 0.8602,
-      "confidence_score": 1.0,
-      "version_tag": "final-nba-rt",
-      "computed_at": "2026-04-19T07:29:07.728482+00:00",
-      "pp_utility": 70.0,
-      "pp_utility_category": "pp_fair",
-      "pp_utility_components": {
-        "availability": 1.0,
-        "line_fairness": 1.0,
-        "model_alignment": 0.491,
-        "edge_confidence": 0.6363,
-        "multiplier_value": 0.5,
-        "weights": {
-          "availability": 0.15,
-          "line_fairness": 0.2,
-          "model_alignment": 0.25,
-          "edge_confidence": 0.2,
-          "multiplier_value": 0.2
-        },
-        "pp_utility_raw": 70.0,
-        "category_raw": "pp_fair"
-      },
-      "pp_multiplier": null,
-      "pp_multiplier_label": "standard",
-      "pp_multiplier_source": "pp_label",
-      "pp_reference_source": "dk",
-      "pp_playable": true,
-      "pp_playability_reason": "playable",
-      "is_standard": true,
-      "vk2_projection": null,
-      "vk2_sigma": null,
-      "model_projection": 16.69,
-      "model_sigma": 7.92,
-      "p_true_active": 0.8,
-      "p_true_method": "hit_rate",
-      "p_true_vk2": null,
-      "p_true_hit_rate": 0.8,
-      "hit_rate_over": 20.0,
-      "model_hit_rate_over": 20.0,
-      "hit_rate_under": 80.0,
-      "model_hit_rate_under": 80.0,
-      "model_hit_rate_active": 80.0,
-      "canonical_key": "nba|d3d28b764e5099920880de59a45e82cf|Marcus Smart|PRA|18.5|UNDER",
-      "scout_badges": [
-        "high_fidelity_model"
-      ],
-      "validation": {
-        "has_market_data": true,
-        "has_hit_rates": true,
-        "has_context": true,
-        "has_mlr": false,
-        "has_gemini": false,
-        "is_fully_validated": false
-      },
-      "volatility_score": 61.9,
-      "volatility_label": "moderate",
-      "volatility_family": "nba_high_line",
-      "vision_intel": "",
-      "vk_data": {
-        "projection": 19.897,
-        "confidence_tier": "HIGH_FIDELITY",
-        "r_squared": 0.6081,
-        "top_drivers": [
-          "prev_ast",
-          "target_L5_avg"
-        ]
-      },
-      "_enriched": true,
-      "_enriched_at": "2026-04-19T22:44:59.520447+00:00",
-      "_cache_updated": "2026-04-19T22:44:59.520449+00:00"
-    },
     "lebron_james|pts|24.5|prizepicks": {
       "event_id": "d3d28b764e5099920880de59a45e82cf",
       "home_team": "LAL",
@@ -6915,6 +6631,198 @@
       "_enriched": true,
       "_enriched_at": "2026-04-20T01:11:15.855624+00:00",
       "_cache_updated": "2026-04-20T01:11:15.855626+00:00"
+    },
+    "marcus_smart|pra|18.5|dk": {
+      "player_name": "Marcus Smart",
+      "stat_type": "PRA",
+      "line": 18.5,
+      "direction": "Under",
+      "recommendation": "Under",
+      "sport": "nba",
+      "tier": "front_lines",
+      "tier_label": "FRONT_LINE",
+      "vision_score": 100.0,
+      "vision_score_raw": 0.17513,
+      "tier_gate_results": {
+        "gate_cv": {
+          "threshold": 0.75,
+          "value": 0.4195,
+          "passed": true
+        },
+        "gate_hit_rate": {
+          "threshold": 60,
+          "value": 80.0,
+          "passed": true
+        },
+        "gate_edge": {
+          "threshold": 5,
+          "value": 34.5,
+          "passed": true
+        },
+        "gate_tp": {
+          "threshold": 65,
+          "value": 80.0,
+          "passed": true,
+          "source": "model_confidence_under"
+        }
+      },
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -120,
+      "edge_vs_fair": 0.2545,
+      "fair_prob": 0.5455,
+      "quality_source": "consensus",
+      "stability": 0.8602,
+      "confidence_score": 1.0,
+      "version_tag": "final-nba-rt",
+      "computed_at": "2026-04-19T07:29:07.728482+00:00",
+      "pp_utility": 70.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.491,
+        "edge_confidence": 0.6363,
+        "multiplier_value": 0.5,
+        "weights": {
+          "availability": 0.15,
+          "line_fairness": 0.2,
+          "model_alignment": 0.25,
+          "edge_confidence": 0.2,
+          "multiplier_value": 0.2
+        },
+        "pp_utility_raw": 70.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": "standard",
+      "pp_multiplier_source": "pp_label",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "is_goblin": false,
+      "is_demon": false,
+      "is_standard": true,
+      "prop_type": "STANDARD",
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "model_projection": 16.69,
+      "model_sigma": 7.92,
+      "p_true_active": 0.8,
+      "p_true_method": "hit_rate",
+      "p_true_vk2": null,
+      "p_true_hit_rate": 0.8,
+      "vk_prob_under": 80.0,
+      "vk_prob_over": 20.0,
+      "hit_rate_over": 20.0,
+      "model_hit_rate_over": 20.0,
+      "hit_rate_under": 80.0,
+      "model_hit_rate_under": 80.0,
+      "model_hit_rate_active": 80.0,
+      "vk_recommendation": "STRONG_UNDER",
+      "canonical_key": "nba|d3d28b764e5099920880de59a45e82cf|Marcus Smart|PRA|18.5|UNDER",
+      "context_badges": [],
+      "scout_badges": [
+        "high_fidelity_model"
+      ],
+      "active_badges": [],
+      "validation": {
+        "has_market_data": false,
+        "has_hit_rates": false,
+        "has_context": false,
+        "has_mlr": false,
+        "has_gemini": false,
+        "is_fully_validated": false
+      },
+      "intel_suite": {
+        "usage_ripple": {
+          "bump_percent": 0,
+          "display": "Standard Volume",
+          "shift_label": "Standard Volume",
+          "injuries_affecting": [],
+          "reasoning": "No significant lineup changes"
+        },
+        "matchup_dvp": {
+          "rank": 15,
+          "display": "Rank #15 vs. All-Around",
+          "color": "yellow",
+          "friction_level": "Medium",
+          "friction_label": "Below Average Defense",
+          "opponent": "HOU",
+          "stat_category": "PRA"
+        },
+        "pace_delta": {
+          "possessions": 0.8,
+          "display": "+0.8 Possessions",
+          "pace_factor": 1.0,
+          "tempo_label": "Standard Tempo",
+          "team_pace": 99.5,
+          "opponent_pace": 97.0,
+          "expected_game_pace": 98.2
+        },
+        "stability_index": {
+          "score": 40,
+          "label": "Medium-Low",
+          "display": "40/100 (Medium-Low)",
+          "std_dev": 5.94,
+          "consistency": "Below Average",
+          "variance_level": "High"
+        },
+        "vision_insight": {
+          "primary": "Marcus Smart steps into a massive usage vacuum tonight against a Houston defense that tends to wander when the game speeds up even slightly. We are looking at a line of 18.5 PRA for a guy who thrives on chaos, and with the tempo ticking upward, he should easily clear this hurdle through sheer hustle and playmaking.",
+          "summary": "Marcus Smart steps into a massive usage vacuum tonight against a Houston defense that tends to wander when the game speeds up even slightly. We are looking at a line of 18.5 PRA for a guy who thrives on chaos, and with the tempo ticking upward, he should easily clear this hurdle through sheer hustle and playmaking.",
+          "projection": null,
+          "canonical_projection": null,
+          "canonical_edge": null,
+          "lasso_projection": 19.897,
+          "lasso_edge": 1.4,
+          "models_disagree": false,
+          "confidence": "HIGH_FIDELITY",
+          "tactical_note": "Baseline projection favorable"
+        },
+        "blowout_risk": {
+          "player_team_record": "53-29",
+          "opponent_team_record": "52-30",
+          "player_win_pct": 0.646,
+          "opponent_win_pct": 0.634,
+          "win_pct_diff": 0.012,
+          "favored_team": "LAL",
+          "player_is_favored": true,
+          "risk_level": "NONE",
+          "risk_reason": "Competitive matchup: LAL (53-29) vs HOU (52-30)",
+          "warning": null
+        },
+        "scout_badges": [
+          "high_fidelity_model"
+        ],
+        "lasso": {
+          "projection": 19.897,
+          "confidence_tier": "HIGH_FIDELITY",
+          "r_squared": 0.6081,
+          "top_drivers": [
+            "prev_ast",
+            "target_L5_avg"
+          ]
+        },
+        "calculated_at": "2026-04-20T04:13:11.813226+00:00"
+      },
+      "volatility_score": 0.0,
+      "volatility_label": "unknown",
+      "volatility_family": "unknown",
+      "vision_intel": "Marcus Smart is walking into a Houston matchup where the pace is picking up just enough for us to hammer this 18.5 PRA line. While he\u2019s been a bit of a wildcard lately, the Rockets' middle-of-the-pack defense lacks the perimeter discipline to stop him from stuffing the stat sheet across all three categories tonight.",
+      "vision_summary": "Marcus Smart is walking into a Houston matchup where the pace is picking up just enough for us to hammer this 18.5 PRA line. While he\u2019s been a bit of a wildcard lately, the Rockets' middle-of-the-pack defense lacks the perimeter discipline to stop him from stuffing the stat sheet across all three categories tonight.",
+      "vk_data": {
+        "projection": 19.897,
+        "confidence_tier": "HIGH_FIDELITY",
+        "r_squared": 0.6081,
+        "top_drivers": [
+          "prev_ast",
+          "target_L5_avg"
+        ]
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T04:13:12.832910+00:00",
+      "_cache_updated": "2026-04-20T04:13:12.832912+00:00"
     }
   }
 }
