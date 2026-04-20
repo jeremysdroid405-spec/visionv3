@@ -39,6 +39,19 @@ logger = logging.getLogger(__name__)
 # Minimum projected minutes increase to qualify
 MIN_MINUTES_BUMP = 2.0
 
+# Shared relevance gates — prevent inactive / non-rotation players from
+# generating injury-advantage alerts. Applied after the tier + recency
+# gates in `_get_meaningful_injuries()` for every sport.
+MIN_MPG_FOR_VACUUM = 10.0
+MIN_GP_FOR_VACUUM = 5
+
+# Season-ending / long-term injury freshness cap. Old OFS rows that
+# resurface via re-sync (causing `status_changed_at` to restamp) must
+# ALSO have been first observed within this window to qualify as a
+# "live" advantage event. Measured in hours.
+MAX_OFS_FRESHNESS_HOURS = 48
+_LONG_TERM_STATUSES = {"OUT_FOR_SEASON", "IL_EXTENDED"}
+
 # Dynamic recency windows (hours)
 RECENCY_DEFAULT_HOURS = 12    # No games nearby
 RECENCY_PREGAME_HOURS = 6     # Within 2h of tipoff
@@ -62,14 +75,17 @@ TIER_LABELS = {
 # Minutes boost estimates by injured player's role
 # Based on typical usage redistribution when a starter goes out
 MINUTES_BOOST_BY_TIER = {
-    5: {"primary": 6.0, "secondary": 4.0, "tertiary": 2.5},   # OUT_FOR_SEASON / IL_EXTENDED
+    # tier 5 (OUT_FOR_SEASON / IL_EXTENDED) is capped at-or-below
+    # tier 4 — a season-ending absence was baked into lineups weeks
+    # ago and should never out-boost a genuine late scratch.
+    5: {"primary": 4.0, "secondary": 2.5, "tertiary": 1.5},
     4: {"primary": 5.0, "secondary": 3.5, "tertiary": 2.0},   # OUT / IL_STANDARD
     3: {"primary": 3.0, "secondary": 2.0, "tertiary": 1.0},   # DOUBTFUL / IL_SHORT
 }
 
 # Usage bump estimates (percentage points)
 USAGE_BOOST_BY_TIER = {
-    5: {"primary": 5.0, "secondary": 3.0, "tertiary": 1.5},
+    5: {"primary": 3.5, "secondary": 2.0, "tertiary": 1.0},
     4: {"primary": 4.0, "secondary": 2.5, "tertiary": 1.0},
     3: {"primary": 2.5, "secondary": 1.5, "tertiary": 0.5},
 }
@@ -134,6 +150,57 @@ async def _get_board_picks(db, sport: str) -> List[dict]:
     return picks
 
 
+async def _is_rotation_relevant(db, sport: str, player_name: str) -> bool:
+    """Shared relevance gate — returns True iff the injured player has a
+    real recent rotation role. Blocks inactive / never-played / zero-minute
+    players from generating advantage alerts.
+
+    Qualifies a candidate when ANY of the following is true:
+      - NBA only: player appears in `star_usage_cache` (they're a tracked star)
+      - player exists in the sport's master_hub with
+            games_played >= MIN_GP_FOR_VACUUM
+        AND (sport == "nba": advanced_stats.minutes_per_game >= MIN_MPG_FOR_VACUUM)
+        (MLB has no "minutes" concept — GP alone is the rotation signal.)
+
+    Missing / null stats => NOT rotation-relevant (fail closed).
+    """
+    if not player_name:
+        return False
+    try:
+        if sport == "nba":
+            # Fast path: tracked stars in usage cache always pass.
+            star = await db[COLL("star_usage_cache", "nba")].find_one(
+                {"player_name": player_name}, {"_id": 0, "player_name": 1}
+            )
+            if star:
+                return True
+
+        hub = await db[COLL("master_hub", sport)].find_one(
+            {"$or": [{"display_name": player_name}, {"player_name": player_name}]},
+            {"_id": 0, "games_played": 1, "advanced_stats": 1},
+        )
+        if not hub:
+            return False
+
+        if sport == "nba":
+            adv = hub.get("advanced_stats") or {}
+            gp = adv.get("games_played")
+            mpg = adv.get("minutes_per_game")
+            if gp is None or mpg is None:
+                return False
+            return gp >= MIN_GP_FOR_VACUUM and mpg >= MIN_MPG_FOR_VACUUM
+
+        # Default (MLB / future sports): GP-only signal from hub top-level.
+        gp = hub.get("games_played")
+        if gp is None:
+            return False
+        return gp >= MIN_GP_FOR_VACUUM
+    except Exception:
+        # Fail closed — better to drop a questionable alert than to
+        # publish a bogus one under an infra hiccup.
+        return False
+
+
 async def _get_meaningful_injuries(db, sport: str) -> List[dict]:
     """
     Get injuries that are:
@@ -163,9 +230,37 @@ async def _get_meaningful_injuries(db, sport: str) -> List[dict]:
     )
     results = await cursor.to_list(length=300)
 
-    logger.debug(f"[INJURY_ADV] {sport.upper()}: {len(results)} meaningful injuries (window={window_hours}h, cutoff={cutoff[:16]})")
+    # Shared post-query filters (apply to EVERY sport):
+    #   1. OFS / IL_EXTENDED freshness cap — a season-ending row must ALSO
+    #      have been first observed within MAX_OFS_FRESHNESS_HOURS, else
+    #      it's a stale restamp re-presenting as "fresh".
+    #   2. Rotation relevance — injured player must have a real recent
+    #      rotation footprint (GP / MPG / star_usage_cache).
+    ofs_cutoff = (
+        datetime.now(timezone.utc) - timedelta(hours=MAX_OFS_FRESHNESS_HOURS)
+    ).isoformat()
+    filtered: List[dict] = []
+    dropped_ofs = 0
+    dropped_irrelevant = 0
+    for row in results:
+        status = (row.get("status") or "").upper()
+        if status in _LONG_TERM_STATUSES:
+            first_seen = row.get("first_seen_at")
+            if not first_seen or first_seen < ofs_cutoff:
+                dropped_ofs += 1
+                continue
+        if not await _is_rotation_relevant(db, sport, row.get("player_name", "")):
+            dropped_irrelevant += 1
+            continue
+        filtered.append(row)
 
-    return results
+    logger.debug(
+        f"[INJURY_ADV] {sport.upper()}: {len(filtered)}/{len(results)} meaningful "
+        f"(window={window_hours}h, cutoff={cutoff[:16]}, "
+        f"dropped_ofs_stale={dropped_ofs}, dropped_not_rotation={dropped_irrelevant})"
+    )
+
+    return filtered
 
 
 def _estimate_benefit(injury_tier: int, rank: str) -> dict:

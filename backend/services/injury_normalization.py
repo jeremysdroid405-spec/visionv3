@@ -319,11 +319,15 @@ async def sync_injuries(db, sport: str) -> dict:
 
     # Load previous state for change tracking
     prev_by_bdl_id: Dict[int, dict] = {}
-    cursor = collection.find({"sport": sport}, {"_id": 0, "bdl_id": 1, "status": 1, "tier_level": 1, "return_date": 1, "first_seen_at": 1, "status_changed_at": 1})
+    prev_by_name: Dict[str, dict] = {}
+    cursor = collection.find({"sport": sport}, {"_id": 0, "bdl_id": 1, "player_name": 1, "status": 1, "tier_level": 1, "return_date": 1, "first_seen_at": 1, "status_changed_at": 1})
     async for doc in cursor:
         bid = doc.get("bdl_id")
         if bid:
             prev_by_bdl_id[bid] = doc
+        pname = (doc.get("player_name") or "").strip().lower()
+        if pname:
+            prev_by_name[pname] = doc
 
     # Stamp each record with recency fields
     new_count = 0
@@ -331,6 +335,14 @@ async def sync_injuries(db, sport: str) -> dict:
     for rec in records:
         bid = rec.get("bdl_id")
         prev = prev_by_bdl_id.get(bid) if bid else None
+        # Fallback lookup by normalized (player_name, sport) — protects against
+        # upstream bdl_id churn that would otherwise re-stamp a months-old
+        # season-ending injury as "new" and falsely trigger live advantage
+        # alerts. A bdl_id miss alone is NOT a fresh injury event.
+        if not prev:
+            pname = (rec.get("player_name") or "").strip().lower()
+            if pname:
+                prev = prev_by_name.get(pname)
 
         if not prev:
             # New injury — never seen before
@@ -338,9 +350,17 @@ async def sync_injuries(db, sport: str) -> dict:
             rec["status_changed_at"] = now
             new_count += 1
         else:
-            # Existing injury — preserve first_seen, check for status change
+            # Existing injury — preserve first_seen, only re-stamp
+            # status_changed_at on a MATERIAL state change (tier/status/
+            # return_date). Identity-only changes (bdl_id reassignment,
+            # description updates) must not bump the recency clock.
             rec["first_seen_at"] = prev.get("first_seen_at", now)
-            if prev.get("tier_level") != rec.get("tier_level") or prev.get("return_date") != rec.get("return_date"):
+            material_change = (
+                prev.get("tier_level") != rec.get("tier_level")
+                or prev.get("status") != rec.get("status")
+                or prev.get("return_date") != rec.get("return_date")
+            )
+            if material_change:
                 rec["status_changed_at"] = now
                 changed_count += 1
             else:
