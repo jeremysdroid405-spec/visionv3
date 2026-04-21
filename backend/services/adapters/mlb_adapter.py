@@ -626,11 +626,12 @@ class MLBAdapter(SportAdapter):
             return unique[:self.TIER_CAPACITY]
 
     async def enrich_intel(self, tiers: Dict[str, List[Dict]], db) -> Dict[str, List[Dict]]:
-        """Pre-publish enrichment for MLB: overlay cache, averages, tempo, intel_suite.
-        Gemini batch enrichment is handled by the shared pipeline Phase 7."""
+        """Pre-publish enrichment for MLB: overlay cache, tempo, intel_suite.
+        Stage 5 (2026-04-21, MLB↔NBA carbon-copy): `enrich_mlb_prop_with_averages`
+        removed from the live pipeline path (D5). Gemini batch enrichment is
+        handled by the shared pipeline Phase 7."""
         from routes.ferrari_tiers import (
             overlay_enrichment_cache,
-            enrich_mlb_prop_with_averages,
             enrich_mlb_prop_with_tempo,
             enrich_mlb_intel_suite,
         )
@@ -641,7 +642,6 @@ class MLBAdapter(SportAdapter):
 
             for pick in picks:
                 try:
-                    enrich_mlb_prop_with_averages(pick)
                     enrich_mlb_prop_with_tempo(pick)
                 except Exception:
                     pass

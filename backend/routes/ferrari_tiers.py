@@ -312,187 +312,28 @@ def overlay_enrichment_cache(picks: list, sport: str) -> list:
 
 
 def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
+    """DEPRECATED — removed from live path in Stage 5 (2026-04-21, MLB↔NBA
+    carbon-copy). Kept as an intentional stub for import-compat with any
+    external caller; raises RuntimeError if invoked so accidental
+    re-introduction into the live path is caught immediately. The fields
+    this function used to produce (L5/L10/L20 rolling averages, hit rates,
+    vk_predicted, vk_edge, vk_probability, vision_intel fallback, etc.)
+    are EITHER:
+      * already persisted on `mlb_prop_scores` by the canonical scoring
+        pass (`model_projection`, `p_true_model`, `p_true_active`,
+        `ranking_score_v2`, `intel_suite`, `tempo_modifier`), OR
+      * built by the shared `_generate_vision_fallback()` helper and the
+        `enrich_mlb_intel_suite()` route-time enricher (idempotent guard,
+        Stage 4), which run once per pick and consume persisted fields.
+    No live path calls this function. Eliminates D5.
     """
-    Enrich an MLB prop with ALL fields needed to match NBA pick card display:
-    - L5/L10/L20 averages
-    - Hit rates (h5_rate, h10_rate, h20_rate)
-    - VK prediction and edge
-    - Vision intel summary
-    
-    Args:
-        prop: The prop dictionary to enrich
-        player_data: Optional player-level data (for player_name, team, etc.)
-    
-    Returns:
-        The enriched prop dictionary matching NBA structure
-    """
-    # 2026-04-20 gate (MLB model restore): if the upstream score doc already
-    # carries `p_true_method == "model"` (i.e. MLBHighFrictionModel produced a
-    # probability + projection), this function is a NO-OP. The model fields
-    # already on the doc (model_projection → vk_predicted, p_true_model*100 →
-    # vk_prob_over) are authoritative; re-running Lasso/weighted-avg would
-    # clobber them. Structurally mirrors NBA, which has no route-time
-    # projection/probability setter for model-scored rows.
-    if prop and isinstance(prop, dict) and (prop.get("p_true_method") or "").lower() == "model":
-        return prop
-
-    # Add player-level data if provided
-    if player_data:
-        prop["player_name"] = prop.get("player_name") or player_data.get("player_name")
-        prop["team"] = prop.get("team") or player_data.get("team")
-        prop["position"] = prop.get("position") or player_data.get("position")
-        prop["headshot_url"] = prop.get("headshot_url") or player_data.get("headshot_url")
-        prop["photo_url"] = prop.get("photo_url") or player_data.get("headshot_url")
-    
-    # Calculate L5/L10/L20 averages from last_10_games
-    last_games = prop.get("last_10_games", [])
-    line = prop.get("line", 0)
-    
-    values = []
-    if last_games and isinstance(last_games, list):
-        values = [g.get("value", 0) for g in last_games if isinstance(g, dict) and "value" in g]
-    
-    # L5 calculations
-    l5_vals = values[:5] if len(values) >= 5 else values
-    if l5_vals:
-        prop["l5_avg"] = prop.get("l5_avg") or round(sum(l5_vals) / len(l5_vals), 2)
-        if line > 0:
-            l5_hits = sum(1 for v in l5_vals if v >= line)
-            prop["l5_hits"] = l5_hits
-            prop["h5_rate"] = prop.get("h5_rate") or round((l5_hits / len(l5_vals)) * 100, 1)
-            prop["hit_rate_l5"] = prop["h5_rate"]
-    
-    # L10 calculations
-    l10_vals = values[:10] if len(values) >= 10 else values
-    if l10_vals:
-        prop["l10_avg"] = prop.get("l10_avg") or round(sum(l10_vals) / len(l10_vals), 2)
-        if line > 0:
-            l10_hits = sum(1 for v in l10_vals if v >= line)
-            prop["l10_hits"] = l10_hits
-            prop["h10_rate"] = prop.get("h10_rate") or round((l10_hits / len(l10_vals)) * 100, 1)
-            prop["hit_rate_l10"] = prop["h10_rate"]
-    
-    # L20 calculations (use all available, up to 20)
-    l20_vals = values[:20] if len(values) >= 20 else values
-    if l20_vals:
-        prop["l20_avg"] = prop.get("l20_avg") or round(sum(l20_vals) / len(l20_vals), 2)
-        if line > 0:
-            l20_hits = sum(1 for v in l20_vals if v >= line)
-            prop["l20_hits"] = l20_hits
-            prop["h20_rate"] = prop.get("h20_rate") or round((l20_hits / len(l20_vals)) * 100, 1)
-            prop["hit_rate_l20"] = prop["h20_rate"]
-    
-    # Fallbacks for averages
-    season_avg = prop.get("season_average") or prop.get("season_avg")
-    if not prop.get("l10_avg"):
-        prop["l10_avg"] = season_avg
-    if not prop.get("l5_avg"):
-        prop["l5_avg"] = prop.get("l10_avg") or season_avg
-    if not prop.get("l20_avg"):
-        prop["l20_avg"] = prop.get("l10_avg") or season_avg
-    
-    # Set season_avg
-    prop["season_avg"] = season_avg or prop.get("l10_avg")
-    
-    # =========================================================================
-    # VK PREDICTION - Lasso v2 first, fallback to weighted average
-    # =========================================================================
-    l5 = prop.get("l5_avg") or 0
-    l10 = prop.get("l10_avg") or 0
-    season = prop.get("season_avg") or l10
-
-    # Try Lasso v2 projection
-    lasso_proj = None
-    lasso_tier = None
-    lasso_top_driver = None
-    try:
-        from models.predictor import get_lasso_engine, STAT_ALIASES
-        engine = get_lasso_engine()
-        stat_type_raw = prop.get("stat_type", "")
-        target = STAT_ALIASES.get(stat_type_raw, stat_type_raw.lower().replace(" ", "_"))
-        sport = prop.get("sport", "nba").lower()
-        model_key = engine.resolve_model_key(sport, target)
-        if model_key and prop.get("_lasso_game_logs"):
-            lasso_result = engine.predict_player(
-                sport=sport, target_stat=target,
-                game_logs=prop["_lasso_game_logs"],
-                player_name=prop.get("player_name", ""),
-                line=line,
-            )
-            if lasso_result and not lasso_result.get("error"):
-                lasso_proj = lasso_result["projection"]
-                lasso_tier = lasso_result.get("confidence_tier")
-                top_c = lasso_result.get("top_contributors", [])
-                if top_c:
-                    lasso_top_driver = top_c[0].get("feature", "")
-    except Exception:
-        pass
-
-    if lasso_proj is not None:
-        vk_predicted = lasso_proj
-        prop["vk_predicted"] = round(vk_predicted, 2)
-        prop["vk_source"] = "lasso_v2"
-        prop["lasso_confidence"] = lasso_tier
-    elif l5 or l10 or season:
-        vk_predicted = (l5 * 0.40) + (l10 * 0.35) + (season * 0.25)
-        prop["vk_predicted"] = round(vk_predicted, 2)
-        prop["vk_source"] = "weighted_avg"
-    else:
-        vk_predicted = 0
-
-    if vk_predicted and line > 0:
-            vk_edge = vk_predicted - line
-            prop["vk_edge"] = round(vk_edge, 2)
-            
-            # VK Probability (simplified: based on hit rate and edge)
-            h10 = prop.get("h10_rate") or 50
-            edge_boost = min(20, max(-20, vk_edge * 10))  # Cap at ±20%
-            vk_prob = min(95, max(5, h10 + edge_boost))
-            prop["vk_prob_over"] = round(vk_prob, 1)
-            prop["vk_probability"] = round(vk_prob, 1)
-            prop["vk_prob_under"] = round(100 - vk_prob, 1)
-            
-            # VK Recommendation
-            if vk_edge >= 0.5 and h10 >= 60:
-                prop["vk_recommendation"] = "STRONG OVER"
-            elif vk_edge >= 0.2 and h10 >= 50:
-                prop["vk_recommendation"] = "LEAN OVER"
-            elif vk_edge <= -0.5 and h10 <= 40:
-                prop["vk_recommendation"] = "LEAN UNDER"
-            else:
-                prop["vk_recommendation"] = "HOLD"
-    
-    # =========================================================================
-    # VISION INTEL - Generated by Gemini during enrichment cycle.
-    # This sync path sets a baseline; the async enrichment overwrites with LLM text.
-    # =========================================================================
-    # Only set baseline if vision_intel not already set by Gemini enrichment.
-    # Delegates to the shared DIRECTION-AWARE fallback builder so the
-    # sync-path and the fallback-overlay path produce identical symmetric
-    # wording for OVER and UNDER props.
-    if not prop.get("vision_intel"):
-        prop["vision_intel"] = _generate_vision_fallback(prop)
-        prop["vision_summary"] = prop["vision_intel"]
-    
-    # =========================================================================
-    # ADDITIONAL NBA-MATCHING FIELDS
-    # =========================================================================
-    prop["oracle_apex_qualified"] = prop.get("is_goblin", False) and h10 >= 60
-    prop["tier"] = prop.get("tier") or ("safe_haven" if prop.get("is_goblin") else "front_lines")
-    prop["synced_at"] = prop.get("synced_at") or prop.get("fetched_at")
-    
-    # Opponent field
-    if not prop.get("opponent"):
-        player_team = prop.get("team")
-        away = prop.get("away_team")
-        home = prop.get("home_team")
-        if player_team and away and home:
-            prop["opponent"] = away if player_team == home else home
-    
-    # Game time
-    prop["game_time"] = prop.get("game_time") or prop.get("commence_time")
-    
-    return prop
+    raise RuntimeError(
+        "enrich_mlb_prop_with_averages was removed in Stage 5 of the "
+        "MLB↔NBA carbon-copy migration. Live MLB picks obtain projection/"
+        "probability/hit-rate fields from the canonical scoring pass "
+        "(mlb_prop_scores) and Stage-4 scoring-write enrichers. See "
+        "PRD.md § 'Stage 5 Complete' for details."
+    )
 
 
 def dedupe_mlb_props(props: List[Dict], sort_key: str = "hit_rate_l10") -> List[Dict]:
@@ -1842,11 +1683,13 @@ async def get_ferrari_safe_haven(
         # OVERs already carry vision_intel from the legacy pipeline.
         await _enrich_under_picks_with_gemini(picks, "safe_haven")
 
-    # MLB: Enrich with averages, tempo, and full intel_suite
+    # MLB: Stage 5 (2026-04-21, MLB↔NBA carbon-copy) — `enrich_mlb_prop_with_averages`
+    # removed from live path (D5). tempo + intel_suite are no-ops when
+    # persisted (Stage 4 guards). They remain here as defensive enrichers
+    # for any legacy/debug pick that might lack persisted fields.
     if sport == "mlb" and picks:
         for pick in picks:
             try:
-                enrich_mlb_prop_with_averages(pick)
                 enrich_mlb_prop_with_tempo(pick)
             except Exception:
                 pass
@@ -1957,11 +1800,13 @@ async def get_ferrari_front_lines(
         _finalize_nba_picks_side_aware(picks)
         await _enrich_under_picks_with_gemini(picks, "front_lines")
 
-    # MLB: Enrich with averages, tempo, and full intel_suite
+    # MLB: Stage 5 (2026-04-21, MLB↔NBA carbon-copy) — `enrich_mlb_prop_with_averages`
+    # removed from live path (D5). tempo + intel_suite are no-ops when
+    # persisted (Stage 4 guards). They remain here as defensive enrichers
+    # for any legacy/debug pick that might lack persisted fields.
     if sport == "mlb" and picks:
         for pick in picks:
             try:
-                enrich_mlb_prop_with_averages(pick)
                 enrich_mlb_prop_with_tempo(pick)
             except Exception:
                 pass
@@ -2069,11 +1914,13 @@ async def get_ferrari_war_zone(
         _finalize_nba_picks_side_aware(picks)
         await _enrich_under_picks_with_gemini(picks, "war_zone")
 
-    # MLB: Enrich with averages, tempo, and full intel_suite
+    # MLB: Stage 5 (2026-04-21, MLB↔NBA carbon-copy) — `enrich_mlb_prop_with_averages`
+    # removed from live path (D5). tempo + intel_suite are no-ops when
+    # persisted (Stage 4 guards). They remain here as defensive enrichers
+    # for any legacy/debug pick that might lack persisted fields.
     if sport == "mlb" and picks:
         for pick in picks:
             try:
-                enrich_mlb_prop_with_averages(pick)
                 enrich_mlb_prop_with_tempo(pick)
             except Exception:
                 pass

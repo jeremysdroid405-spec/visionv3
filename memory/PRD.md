@@ -122,6 +122,54 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
   `ranking_score_v2` populated; default and `?sort=gap` both correct.
 
 
+## Carbon-Copy Migration — Stage 5 Complete (2026-04-21)
+
+### Route-time projection/probability enrichment removed (eliminates D5)
+- **`enrich_mlb_prop_with_averages` deleted from the live MLB path.** It
+  previously computed L5/L10/L20 rolling averages, hit rates (h5/h10/h20),
+  VK projection via Lasso fallback, VK edge, VK probability, VK
+  recommendation, and a vision-intel baseline at route time — all from
+  scratch on every request.
+- All 3 MLB Ferrari endpoints (`/v3/ferrari/{safe-haven|front-lines|war-zone}?sport=mlb`)
+  and `MLBAdapter.enrich_intel` no longer call it.
+- The function body was replaced with a stub that raises
+  `RuntimeError("enrich_mlb_prop_with_averages was removed in Stage 5 of
+  the MLB↔NBA carbon-copy migration...")` — a trip-wire that
+  immediately surfaces any accidental re-introduction into the live
+  path.
+
+### Where the fields come from now
+| Field formerly set by the enricher | New canonical source |
+|---|---|
+| `l5_avg`, `l10_avg`, `l20_avg`, `season_avg` | persisted in `mlb_prop_scores` by the canonical scoring pass when available; else absent (UI already tolerates this) |
+| `h5_rate`, `h10_rate`, `h20_rate`, `hit_rate_l*` | persisted `hit_rate_over`/`hit_rate_under` on score doc; Stage-2 side-aware ladder |
+| `vk_predicted`, `vk_source`, `vk_prob_over`, `vk_prob_under`, `vk_probability` | mirrored from `model_projection` + `p_true_model` in `_get_mlb_tier_picks_from_scores` (Stage 2) |
+| `vk_edge`, `vk_recommendation` | derived client-side from `model_projection - line` and `p_true_method`; the primary UI signal is already `ranking_score_v2` |
+| `lasso_confidence` | absent in live path (Lasso retained for research only) |
+| `vision_intel` baseline | built by `_generate_vision_fallback()` + `enrich_mlb_intel_suite()` (Stage 4 persisted) |
+| `tier`, `synced_at`, `opponent`, `game_time` | already on the score doc or raw prop |
+
+### Files updated
+- `routes/ferrari_tiers.py` — function body replaced with
+  `RuntimeError` stub; 3 route call sites removed (safe-haven,
+  front-lines, war-zone).
+- `services/adapters/mlb_adapter.py::enrich_intel` — import + call
+  removed.
+
+### Stage 5 acceptance verification
+- `/api/mlb/sync/master`: 115 s, `success=True`, `errors=[]`.
+- `mlb_prop_scores(final-mlb)`: 2214 docs, 40 tiered picks.
+- All 3 Ferrari MLB endpoints serve picks with `p_true_method='model'`,
+  `model_projection`, `ranking_score_v2`, `vk_source='model'`,
+  `vk_predicted`, `vk_prob_over`, full `intel_suite`.
+- Grep for `enrich_mlb_prop_with_averages(` across `/app/backend/`
+  returns **1 match** — the stub definition itself. Zero live callers.
+- `grep RuntimeError.*Stage 5` in backend logs: zero hits → stub is
+  never invoked in production.
+
+---
+
+
 ## Carbon-Copy Migration — Stage 4 Complete (2026-04-21)
 
 ### Single source of truth + scoring-write enrichment (eliminates D2, D6, D11)
@@ -279,6 +327,13 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
   path via the new `ScoringAdapter.enrich_score_doc()` hook; persisted
   in `mlb_prop_scores`. Route-time enrichers now have idempotent
   early-return guards → no-op when persisted fields exist.
+- ~~D5: `enrich_mlb_prop_with_averages` still in live route path~~ —
+  resolved via Stage 5. Function body replaced with `RuntimeError`
+  stub. All 3 Ferrari MLB endpoints + `MLBAdapter.enrich_intel` no
+  longer call it. All fields it previously set either come from
+  persisted `mlb_prop_scores` or from already-integrated Stage-4
+  scoring-write enrichers (`intel_suite`, `tempo_modifier`,
+  `vision_fallback`).
 
 ### P2 — Backlog
 - NBA-native tier admission table (NBA stats currently fall through to the
