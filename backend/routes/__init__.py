@@ -36,6 +36,7 @@ from .forward_testing import router as forward_testing_router, set_forward_test_
 from .intel_cache import router as intel_cache_router, set_db as set_intel_cache_db
 from .scores import router as scores_router
 from .delta_admin import router as delta_admin_router, set_delta_admin_db
+from .gemini_admin import router as gemini_admin_router
 
 # ARCHIVED ROUTES (moved to routes_archive/):
 # - intel.py (duplicates of injuries.py, intel_sync.py, live_scores.py)
@@ -209,3 +210,6 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
     if db is not None:
         set_delta_admin_db(db)
     app.include_router(delta_admin_router, prefix="/api")
+
+    # Gemini admin (P3.3 — cache counters + real-call history)
+    app.include_router(gemini_admin_router, prefix="/api")

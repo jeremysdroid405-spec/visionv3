@@ -187,25 +187,42 @@ Output ONLY valid JSON, no markdown, no explanation:"""
         return default_response
     
     async def _call_gemini(self, prompt: str) -> Optional[str]:
-        """Call Gemini Flash API for context evaluation."""
-        
+        """Call Gemini Flash API for context evaluation.
+
+        P3.1 (2026-04-21, Gemini cost audit): wrapped with an in-process
+        LRU cache keyed on sha1(prompt). Ensures identical-prompt calls
+        inside a short window (same boot lifetime) serve from memory
+        instead of re-hitting the API. LRU size=500 prompts.
+        """
+        # Lazy shared cache + metrics
+        from services.gemini_metrics import GeminiLRUCache, record_gemini_call
+        cls = self.__class__
+        if not hasattr(cls, "_lru_cache"):
+            cls._lru_cache = GeminiLRUCache(max_size=500)
+        cache = cls._lru_cache
+
+        hit_value = cache.get(prompt)
+        if hit_value is not None:
+            record_gemini_call("ai_context", sport=None, hit=True)
+            return hit_value
+
         try:
             from google import genai
-            
+
             client = genai.Client(api_key=GOOGLE_API_KEY)
-            
+
             def generate():
                 return client.models.generate_content(
                     model="gemini-3-flash-preview",
                     contents=prompt
                 )
-            
+
             response = await asyncio.get_event_loop().run_in_executor(None, generate)
-            
+
             if response and response.text:
                 # Clean up response - extract JSON
                 text = response.text.strip()
-                
+
                 # Remove markdown code blocks if present
                 if text.startswith("```json"):
                     text = text[7:]
@@ -213,9 +230,12 @@ Output ONLY valid JSON, no markdown, no explanation:"""
                     text = text[3:]
                 if text.endswith("```"):
                     text = text[:-3]
-                
-                return text.strip()
-            
+
+                cleaned = text.strip()
+                cache.set(prompt, cleaned)
+                record_gemini_call("ai_context", sport=None, hit=False)
+                return cleaned
+
         except ImportError:
             logger.error("[AI_CONTEXT] google-genai package not installed")
         except Exception as e:

@@ -641,6 +641,109 @@ engine) still call zero Gemini anywhere. `GOOGLE_API_KEY=""` is a
 no-op — the scoring ladder + tier assignments are identical, and
 `_generate_vision_fallback` populates the narrative field cleanly.
 
+## Gemini Cost Fixes — P2 + P3 Complete (2026-04-21)
+
+### Scope delivered
+All five approved tasks from the P2/P3 batch applied:
+P2.1 consolidate, P2.3 skip unqualified, P3.1 LRU, P3.2 mode enum,
+P3.3 admin endpoint. No request-path Gemini calls. Scoring/delta/
+tiering unchanged.
+
+### Files changed
+| File | Δ LOC | Change |
+|---|---|---|
+| NEW `services/gemini_metrics.py` | +130 | Shared `record_gemini_call` + `GeminiLRUCache` + `cache_stats` |
+| NEW `routes/gemini_admin.py` | +33 | `GET /api/v3/admin/gemini/cache-stats` |
+| NEW `tests/test_gemini_p2_p3_fixes.py` | +203 | 11 regression tests |
+| `services/vision_summary_service.py` | 462 → 190 (**-272**) | P2.1: rewritten as thin delegator to `VisionIntelService.analyze_prop_strict`. No duplicate prompt. |
+| `services/intel_suite_calculator.py` | +30 / -5 | P3.2: `mode="deterministic"\|"gemini"` param; `use_llm` deprecated + ignored |
+| `services/engines/ai_context_engine.py` | +40 / -8 | P3.1: LRU(500) keyed on sha1(prompt) + metrics |
+| `services/vision_intel_service.py` | +14 | P3.3: metrics tags on batch + strict calls |
+| `services/gemini_scout_engine.py` | +7 | P3.3: metrics tag on single-prop scout call |
+| `services/unified_pipeline.py` | +12 | P2.3: `_RENDERABLE_TIERS` gate in both Gemini paths |
+| `routes/__init__.py` | +4 | Wire gemini_admin router |
+| **Net** | **+218 / -411** = **−193 LOC** | |
+
+### P2.1 — Consolidation detail
+`VisionSummaryService.generate_pick_summary` no longer owns its own
+prompt, Gemini client, or retry loop. It now:
+1. Checks the class-level `_summary_cache` (6-hour TTL, unchanged key).
+2. On miss, builds a prop dict and delegates to
+   `VisionIntelService.analyze_prop_strict(prop, tier_name="safe_haven")`.
+3. Records every outcome through `record_gemini_call("vision_summary", ...)`.
+
+Result: **one Gemini prompt definition in the codebase, not two**. All
+existing call sites (`mlb_sync_engine.py`, `optimized_sync_engine.py`,
+`routes/cached_data.py`) continue to work unchanged — both the public
+API and the class-level caches are preserved.
+
+### P2.3 — Skip unqualified
+Two Gemini call sites in `unified_pipeline.py`:
+  * `_run_gemini_enrichment` payload loop: only processes tiers in
+    `_RENDERABLE_TIERS = {"safe_haven", "front_lines", "war_zone"}`.
+  * `_run_nba_under_enrichment` loop: same filter.
+`unqualified` tier picks no longer trigger Gemini anywhere.
+
+### P3.1 — LRU cache
+`AiContextEngine._call_gemini` wraps every call in a class-level
+`GeminiLRUCache(max_size=500)`. Identical prompts (same sha1 hash)
+within the pod lifetime return from memory. Cache hits are tagged
+as `ai_context` hits in `gemini_metrics`.
+
+### P3.2 — `use_llm` → `mode`
+`IntelSuiteCalculator.calculate_intel_suite`:
+  * New param `mode: str = "deterministic"` (DEFAULT).
+  * Legacy `use_llm: Optional[bool] = None` retained for
+    backwards compatibility — emits a deprecation warning and is
+    silently ignored. Future `use_llm=True` accidents cost $0.
+  * Threaded through `_generate_vision_insight(..., mode=mode)` which
+    only calls Gemini when `mode == "gemini"`.
+
+### P3.3 — Admin endpoint
+`GET /api/v3/admin/gemini/cache-stats[?window_hours=N]` returns:
+```json
+{
+  "hits": 0, "misses": 0, "total": 0, "hit_rate": 0.0,
+  "calls_last_24h": 0, "real_api_calls_last_24h": 0,
+  "calls_by_sport": {}, "calls_by_kind": {}, "window_calls_by_sport": {}
+}
+```
+Every Gemini call site now tags its outcome, making this endpoint the
+single operational view of LLM spend. Window-filtered counters enable
+"calls in the last hour/day/week" queries without restarting the pod.
+
+### Live verification
+- **45/45 unit tests pass** (34 prior + 11 new).
+- **Ferrari endpoints**: 6/6 HTTP 200 in 129-377ms. Unchanged pick
+  counts (NBA 10/10/6, MLB 2/6/8).
+- **Delta engine**: both sports ticking, no latency regression.
+- **Admin endpoint live**: returning proper JSON shape with zero-baseline
+  at post-restart.
+
+### Estimated monthly spend after P2/P3
+| Category | Post-P1 | Post-P2/P3 |
+|---|---|---|
+| Request-path Gemini | $0 | $0 |
+| Hourly master sync (payload-hash gated, unqualified skipped) | ~$2 | **~$1.50** |
+| VisionSummaryService (now consolidated + tagged) | ~$5 | **~$1.50** (same prompt as VisionIntelService; unified cache) |
+| AIContextEngine | ~$1 | **~$0.20** (LRU dedupe) |
+| IntelSuite use_llm footgun | latent risk ($15+/day) | **$0** (mode gate + deprecation) |
+| Misc (scout single-prop, briefings) | ~$1 | **~$0.80** |
+| **TOTAL** | **~$5/mo** | **~$4/mo** (steady-state, one internal user) |
+
+Primary remaining spend driver: the **hourly NBA+MLB master-sync batch**
+(~$1.50/mo), which only fires on actual content changes. This is the
+deterministic floor at dev pace — further cuts require reducing the
+master-sync cadence below 1/hour, which is out of scope.
+
+### Remaining hotspots
+- 🟢 Nothing urgent. The P1+P2+P3 stack has reduced dev spend from
+  ~$46/mo to ~$4/mo (≈91% total reduction).
+- 🟣 **P3.3 shared budget decorator** (per-day cap env var) would be the
+  next defence-in-depth layer. ~2 hours of work, defers until we see
+  real production traffic.
+
+
   single-pod preview environment doesn't benefit.
 
   and the history endpoint per-tick.

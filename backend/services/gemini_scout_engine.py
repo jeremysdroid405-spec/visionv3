@@ -130,6 +130,13 @@ async def generate_gemini_scout_intel(payload: Dict, max_retries: int = 3) -> st
                 f"output={um.candidates_token_count} total={um.total_token_count} "
                 f"| finish={response.candidates[0].finish_reason} | len={len(text)}"
             )
+            # P3.3 observability — tag scout-engine real API call.
+            try:
+                from services.gemini_metrics import record_gemini_call
+                record_gemini_call("scout_engine_single",
+                                   sport=payload.get("sport"), hit=False)
+            except Exception:
+                pass
 
             if len(text) >= 50:
                 return await _rewrite_if_banned(text, payload)

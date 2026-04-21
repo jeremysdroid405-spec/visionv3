@@ -370,6 +370,14 @@ Return your analysis as a JSON array. One object per prop with all required fiel
                     contents=full_prompt
                 )
             )
+            # P3.3 observability — record real API call.
+            try:
+                from services.gemini_metrics import record_gemini_call
+                record_gemini_call("vision_intel_batch",
+                                   sport=(props[0].get("sport") if props else None),
+                                   hit=False)
+            except Exception:
+                pass
             
             # Debug: Log raw response to see if Gemini is hallucinating
             logger.info(f"[VISION INTEL] Gemini response length: {len(response.text)} chars")
@@ -424,6 +432,12 @@ Return your analysis as a JSON array. One object per prop with all required fiel
                     contents=full_prompt,
                 ),
             )
+            try:
+                from services.gemini_metrics import record_gemini_call
+                record_gemini_call("vision_intel_strict",
+                                   sport=prop.get("sport"), hit=False)
+            except Exception:
+                pass
             intel_map = self._parse_batch_response(response.text, [prop])
             _dir = (prop.get("direction") or prop.get("recommendation") or "OVER").strip().upper()
             _dir = "UNDER" if "UNDER" in _dir else "OVER"

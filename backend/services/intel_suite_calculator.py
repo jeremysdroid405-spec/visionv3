@@ -126,12 +126,30 @@ class IntelSuiteCalculator:
         opponent: Optional[str] = None,
         board_pick: Optional[Dict] = None,
         lasso_result: Optional[Dict] = None,
-        use_llm: bool = False,
+        mode: str = "deterministic",
+        # Deprecated — retained only so existing call sites don't crash.
+        # P3.2 (2026-04-21, Gemini cost audit): always ignored; `mode` wins.
+        use_llm: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Calculate full Intel Suite.
-        use_llm=True: Call Gemini for scout text (batch enrichment only).
-        use_llm=False: Fast baseline text (inline request-time calls).
+
+        P3.2 (2026-04-21, Gemini cost audit):
+          `mode="deterministic"` (DEFAULT) — fast baseline text, no Gemini.
+          `mode="gemini"`                   — Gemini narrative (batch use only).
+          `use_llm` param is deprecated + silently ignored to prevent the
+          `use_llm=True` footgun from re-lighting a 720/hr background loop.
         """
+        if use_llm is not None:
+            logger.warning(
+                "[INTEL_SUITE] calculate_intel_suite(use_llm=...) is deprecated "
+                "(P3.2). Pass mode='deterministic' or mode='gemini' instead. "
+                "Ignoring use_llm and defaulting to mode=%r.", mode
+            )
+        if mode not in ("deterministic", "gemini"):
+            logger.warning(
+                "[INTEL_SUITE] Unknown mode=%r; falling back to deterministic.", mode
+            )
+            mode = "deterministic"
 
         # Fetch player from hub — only need game logs + team
         player = await self.master_hub.find_one(
@@ -191,7 +209,7 @@ class IntelSuiteCalculator:
         vision_insight = await self._generate_vision_insight(
             player_name, stat_type, line, direction,
             usage_ripple, matchup_dvp, pace_delta, stability_index,
-            board_pick, lasso_result, use_llm=use_llm,
+            board_pick, lasso_result, mode=mode,
         )
 
         # Scout badges from live data
@@ -317,7 +335,7 @@ class IntelSuiteCalculator:
         except Exception as e:
             return {"risk_level": "UNKNOWN", "risk_reason": str(e), "warning": None}
 
-    async def _generate_vision_insight(self, player_name, stat_type, line, direction, usage_ripple, matchup_dvp, pace_delta, stability_index, board_pick, lasso_result, use_llm=False):
+    async def _generate_vision_insight(self, player_name, stat_type, line, direction, usage_ripple, matchup_dvp, pace_delta, stability_index, board_pick, lasso_result, mode: str = "deterministic"):
         """Generate vision_insight — Gemini for batch enrichment, fast baseline for inline.
 
         CANONICAL PROJECTION CONTRACT (2026-04-19):
@@ -355,7 +373,7 @@ class IntelSuiteCalculator:
             lasso_over = lasso_proj > line
             models_disagree = diff_pct > 0.10 and (vk_over != lasso_over)
 
-        if use_llm:
+        if mode == "gemini":
             from services.gemini_scout_engine import generate_gemini_scout_intel, build_scout_payload
             intel_suite_data = {
                 "matchup_dvp": matchup_dvp, "pace_delta": pace_delta,

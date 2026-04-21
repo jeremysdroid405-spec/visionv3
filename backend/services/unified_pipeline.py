@@ -610,10 +610,17 @@ class UnifiedPipeline:
         tier_labels = {"safe_haven": "Safe Haven", "front_lines": "Front Lines", "war_zone": "War Zone"}
 
         # Build payloads from all tier picks
+        # P2.3 (2026-04-21, Gemini cost audit): the four Ferrari tiers
+        # surface `safe_haven`, `front_lines`, `war_zone` in the UI.
+        # `unqualified` picks never render → skip their Gemini calls.
+        _RENDERABLE_TIERS = {"safe_haven", "front_lines", "war_zone"}
+
         payloads = []
         pick_refs = []  # (collection_name, player_name, stat_type, line)
 
         for tier_name, picks in tiers.items():
+            if tier_name not in _RENDERABLE_TIERS:
+                continue
             tier_label = tier_labels.get(tier_name, "Front Lines")
             for pick in picks:
                 payloads.append({
@@ -792,8 +799,13 @@ class UnifiedPipeline:
         # Lazy import to avoid a routes-↔-services circular at module load.
         from routes.ferrari_tiers import _enrich_under_picks_with_gemini
 
+        # P2.3 — skip unqualified tier for the UNDER enrichment pass too.
+        _RENDERABLE_TIERS = {"safe_haven", "front_lines", "war_zone"}
+
         total_picks = 0
         for tier_name, picks in tiers.items():
+            if tier_name not in _RENDERABLE_TIERS:
+                continue
             if not picks:
                 continue
             total_picks += len(picks)
