@@ -21,7 +21,7 @@ defense vulnerable to Luka's elite driving gravity. With Kyrie Irving sidelined
 tonight, Luka's projected usage rate jumps to a season-high 38%, making this 24.5 
 point line an easy exploitation of a depleted Cavaliers frontcourt."
 
-Model: gemini-2.5-flash
+Model: gemini-flash-lite-latest
 """
 
 import os
@@ -321,7 +321,7 @@ YOUR 2-SENTENCE OUTPUT:"""
             
             def generate():
                 return client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model="gemini-flash-lite-latest",
                     contents=prompt
                 )
             

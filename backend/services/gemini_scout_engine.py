@@ -22,7 +22,7 @@ from typing import Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
 
 # =========================================================================
 # SYSTEM PROMPT — passed as system_instruction, NOT in the content.

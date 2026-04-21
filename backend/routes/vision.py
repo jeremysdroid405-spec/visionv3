@@ -135,7 +135,7 @@ async def get_vision_status():
         "success": True,
         "service_initialized": _vision_service is not None,
         "google_key_configured": google_key_configured,
-        "model": "gemini-3-flash-preview",
+        "model": "gemini-flash-lite-latest",
         "provider": "google",
         "ai_insights_count": ai_insights_count,
         "cost_filters": {

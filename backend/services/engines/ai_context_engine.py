@@ -213,7 +213,7 @@ Output ONLY valid JSON, no markdown, no explanation:"""
 
             def generate():
                 return client.models.generate_content(
-                    model="gemini-3-flash-preview",
+                    model="gemini-flash-lite-latest",
                     contents=prompt
                 )
 

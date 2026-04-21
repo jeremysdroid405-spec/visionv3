@@ -1349,7 +1349,7 @@ async def _enrich_under_picks_with_gemini(
     wrote into `dg_cached_board`. UNDER picks never went through Gemini, so
     this method picks them up after the tier-scoring pass and runs the
     direction-aware batch prompt using the same `GOOGLE_API_KEY` +
-    `gemini-3-flash-preview` path used for OVERs.
+    `gemini-flash-lite-latest` path used for OVERs.
 
     Results are cached directly on the `nba_prop_scores` doc (fields
     `vision_intel`, `vision_intel_generated_at`, and

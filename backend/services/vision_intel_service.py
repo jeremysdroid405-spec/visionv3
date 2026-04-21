@@ -154,7 +154,7 @@ class VisionIntelService:
         self.api_key = os.environ.get('GOOGLE_API_KEY')
         self.enabled = GEMINI_AVAILABLE and self.api_key is not None
         self.client = None
-        self.model_name = 'gemini-3-flash-preview'
+        self.model_name = 'gemini-flash-lite-latest'
         
         if self.enabled:
             try:

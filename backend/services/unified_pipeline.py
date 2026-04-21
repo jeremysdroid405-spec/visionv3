@@ -31,7 +31,7 @@ from abc import ABC, abstractmethod
 logger = logging.getLogger(__name__)
 
 CACHE_DIR = os.environ.get("CACHE_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "data"))
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
 
 
 class SportAdapter(ABC):

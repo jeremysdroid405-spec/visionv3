@@ -185,7 +185,7 @@ def test_vision_summary_service_has_no_own_prompt_building():
     assert "generate_content" not in src, (
         "VisionSummaryService still calls Gemini directly — delegation broken."
     )
-    assert "gemini-3-flash-preview" not in src, (
+    assert "gemini-flash-lite-latest" not in src, (
         "VisionSummaryService still references a model name directly."
     )
     # And it should reference the unified service.

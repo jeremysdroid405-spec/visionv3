@@ -52,7 +52,7 @@ async def test_strict_batch_returns_none_for_unechoed_props():
     svc = VisionIntelService.__new__(VisionIntelService)
     svc.enabled = True
     svc.client = MagicMock()
-    svc.model_name = "gemini-3-flash-preview"
+    svc.model_name = "gemini-flash-lite-latest"
 
     # Fake batch response stub — we patch _parse_batch_response so the
     # test doesn't care about the real prompt/response shape.
@@ -97,7 +97,7 @@ async def test_strict_batch_when_service_disabled_returns_all_none():
     svc = VisionIntelService.__new__(VisionIntelService)
     svc.enabled = False
     svc.client = None
-    svc.model_name = "gemini-3-flash-preview"
+    svc.model_name = "gemini-flash-lite-latest"
 
     props = [
         {"canonical_key": "p1", "player_name": "A", "stat_type": "PTS",
@@ -117,7 +117,7 @@ async def test_non_strict_batch_legacy_callers_unchanged():
     svc = VisionIntelService.__new__(VisionIntelService)
     svc.enabled = False
     svc.client = None
-    svc.model_name = "gemini-3-flash-preview"
+    svc.model_name = "gemini-flash-lite-latest"
 
     props = [{"canonical_key": "p1", "player_name": "A", "stat_type": "PTS",
               "line": 10, "direction": "UNDER"}]
@@ -136,7 +136,7 @@ async def test_batch_makes_exactly_one_api_call_per_tier():
     from services.vision_intel_service import VisionIntelService
     svc = VisionIntelService.__new__(VisionIntelService)
     svc.enabled = True
-    svc.model_name = "gemini-3-flash-preview"
+    svc.model_name = "gemini-flash-lite-latest"
     svc._build_batch_prompt = MagicMock(return_value="fake prompt")
     svc._parse_batch_response = MagicMock(return_value={})
 
