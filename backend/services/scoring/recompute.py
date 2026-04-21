@@ -34,24 +34,68 @@ def _default_version_tag() -> str:
     return f"recompute-{ts}-{uuid.uuid4().hex[:6]}"
 
 
+# ----------------------------------------------------------------------------
+# Stat-aware α for ranking_score_v2 (2026-04-21)
+# ----------------------------------------------------------------------------
+# The single-α=0.40 constant compressed low-line props (AST/REB @ lines 1.5-5)
+# out of Top-10 slates even when their raw edge + p_model were strong, because
+# `line^0.40` barely shrinks for small lines.  A stat-aware α normalizes each
+# stat regime to its own scale:
+#   * PTS / PRA / combo : raw-gap is the real signal → α stays low (0.40-0.50)
+#   * AST / REB / 3PM   : mid-line regime, needs modest normalization (0.60)
+#   * STL / BLK         : tiny-line regime, needs strong normalization (0.70)
+#   * MLB / NFL / future: fall back to neutral 0.50 until tuned per-stat
+#
+# The map is keyed by normalized NBA stat codes (the same codes that show up
+# in {sport}_prop_scores.stat_type).  Unknown keys → _DEFAULT_ALPHA.  This
+# keeps the function multi-sport: MLB stats ("Hits", "Pitcher Strikeouts") and
+# future NFL stats naturally land on the default until explicitly tuned.
+_DEFAULT_ALPHA: float = 0.50
+ALPHA_BY_STAT: Dict[str, float] = {
+    # --- NBA scoring regimes ---
+    "PTS": 0.40,
+    "PRA": 0.40,
+    "PTS+REB": 0.50,
+    "PTS+AST": 0.50,
+    "REB+AST": 0.50,
+    "AST": 0.60,
+    "REB": 0.60,
+    "3PM": 0.60,
+    "STL": 0.70,
+    "BLK": 0.70,
+    # MLB / NFL entries can be added here without touching callers.
+}
+
+
+def _resolve_alpha(stat_type: Optional[str]) -> float:
+    """Return stat-aware α, falling back to _DEFAULT_ALPHA on miss."""
+    if not stat_type:
+        return _DEFAULT_ALPHA
+    return ALPHA_BY_STAT.get(stat_type, _DEFAULT_ALPHA)
+
+
 def _compute_ranking_score_v2(
     projection: Optional[float],
     line: Optional[float],
     recommendation: Optional[str],
     p_model: Optional[float] = None,
+    stat_type: Optional[str] = None,
 ) -> Optional[float]:
-    """Projection-gap ranking (2026-02-20; α=0.40 blend shipped 2026-02-20 batch 2).
+    """Projection-gap ranking with stat-aware α (2026-04-21).
 
     Blended formula:
-        For OVER:  raw_gap = projection - line
-        For UNDER: raw_gap = line - projection
-        ranking_score_v2 = (raw_gap / max(line, 1.0) ** 0.40) * p_model
+        raw_gap = projection - line   (OVER)
+                = line - projection   (UNDER)
+        α       = ALPHA_BY_STAT.get(stat_type, 0.50)
+        ranking_score_v2 = (raw_gap / max(line, 1.0) ** α) * p_model
 
-    α = 0.40 balances raw magnitude (α=0 buries AST) against relative gap
-    (α=1 lets tiny-line props monopolize the board). Historical backtest:
-    Top-10 80% WR / +85% real-odds ROI, Top-25 76% WR / +71% ROI (best
-    Top-25 WR observed). Returns None when projection/line/p_model missing
-    or recommendation is neither OVER nor UNDER.
+    Previously α was a single 0.40 constant, which suppressed low-line
+    stats (AST 1.5, REB 2.5, STL/BLK) because `line^0.40` barely shrinks
+    for small lines and their absolute gaps are tiny.  Stat-aware α lets
+    each regime be normalized on its own curve without reshuffling the
+    tier thresholds or the model weighting.  Returns None when
+    projection/line/p_model missing or recommendation is neither OVER
+    nor UNDER.
     """
     if projection is None or line is None or p_model is None:
         return None
@@ -65,7 +109,8 @@ def _compute_ranking_score_v2(
     except (TypeError, ValueError):
         return None
     raw_gap = (proj_f - line_f) if rec == "OVER" else (line_f - proj_f)
-    denom = max(line_f, 1.0) ** 0.40
+    alpha = _resolve_alpha(stat_type)
+    denom = max(line_f, 1.0) ** alpha
     return round((raw_gap / denom) * p_f, 6)
 
 
@@ -284,7 +329,8 @@ async def recompute_sport(
             # Persisted on every scored prop so endpoints can opt-in to
             # projection-gap sort via `?sort=gap`. Default sort unchanged.
             "ranking_score_v2": _compute_ranking_score_v2(
-                ctx.model_projection, ctx.line, ctx.recommendation, ctx.p_model
+                ctx.model_projection, ctx.line, ctx.recommendation, ctx.p_model,
+                stat_type=ctx.stat_type,
             ),
             **stack,
         }
