@@ -658,6 +658,12 @@ class UniversalOddsSyncService:
                 # Metadata
                 "sport": sport,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
+                # Delta engine (D1, 2026-04-21): datetime (not ISO string)
+                # so indexed range queries work via `{$gt: watermark_utc}`.
+                # Stamped at flatten-time; every prop in a full-sync batch
+                # gets the batch completion timestamp (same cadence is fine
+                # since detection runs between full syncs).
+                "updated_at": datetime.now(timezone.utc),
                 "source": "prizepicks",
                 "dfs_line": pp["line"],
                 "dfs_book": "prizepicks",

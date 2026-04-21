@@ -169,6 +169,46 @@ class NBAScoringAdapter(ScoringAdapter):
     def sport(self) -> str:
         return "nba"
 
+    # ------------------------------------------------------------------
+    # Delta Engine (Phase D1, 2026-04-21) — canonical_key_from_raw
+    # ------------------------------------------------------------------
+    # NBA's ingest path writes `_composite_key` on raw live_props rows
+    # but does NOT persist the scoring-layer `canonical_key`. This
+    # override derives the same key shape that `build_context` uses
+    # (see line ~520) directly from the raw prop fields, so the delta
+    # detector can set-diff live_props vs prop_scores without requiring
+    # an ingest-side change. MUST stay in sync with the canon_key
+    # formula in `build_context`.
+    # ------------------------------------------------------------------
+    _MARKET_TO_STAT = {
+        "player_points": "PTS", "player_rebounds": "REB",
+        "player_assists": "AST", "player_points_rebounds_assists": "PRA",
+        "player_points_alternate": "PTS", "player_rebounds_alternate": "REB",
+        "player_assists_alternate": "AST",
+        "player_points_rebounds_assists_alternate": "PRA",
+    }
+
+    def canonical_key_from_raw(self, raw_prop):
+        ck = raw_prop.get("canonical_key")
+        if isinstance(ck, str) and ck:
+            return ck
+        player_name = raw_prop.get("player_name")
+        line = raw_prop.get("line")
+        market = raw_prop.get("market", "")
+        stat_type = self._MARKET_TO_STAT.get(
+            market, raw_prop.get("stat_type_extracted") or market
+        )
+        event_id = raw_prop.get("event_id", "?")
+        direction = (raw_prop.get("direction") or "OVER").upper()
+        side = "OVER" if "OVER" in direction else "UNDER"
+        if player_name is None or line is None or not stat_type:
+            return None
+        try:
+            line_f = float(line)
+        except (TypeError, ValueError):
+            return None
+        return f"nba|{event_id}|{player_name}|{stat_type}|{line_f}|{side}"
+
     @property
     def live_props_collection(self) -> str:
         return COLL("live_props", "nba")

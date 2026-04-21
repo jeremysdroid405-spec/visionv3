@@ -35,6 +35,7 @@ from .mlb_ripple import router as mlb_ripple_router, set_mlb_ripple_db
 from .forward_testing import router as forward_testing_router, set_forward_test_db
 from .intel_cache import router as intel_cache_router, set_db as set_intel_cache_db
 from .scores import router as scores_router
+from .delta_admin import router as delta_admin_router, set_delta_admin_db
 
 # ARCHIVED ROUTES (moved to routes_archive/):
 # - intel.py (duplicates of injuries.py, intel_sync.py, live_scores.py)
@@ -203,3 +204,8 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
 
     # Scoring Recompute Framework (system-level, sport-agnostic)
     app.include_router(scores_router)
+
+    # Delta Engine admin inspect endpoint (D1 — read-only, no writes)
+    if db is not None:
+        set_delta_admin_db(db)
+    app.include_router(delta_admin_router, prefix="/api")

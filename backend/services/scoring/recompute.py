@@ -17,7 +17,7 @@ Constraints enforced:
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import logging
 logger = logging.getLogger(__name__)
@@ -104,6 +104,7 @@ async def recompute_sport(
     override_config: Optional[Dict[str, Any]] = None,
     write_mode: str = "replace",
     props: Optional[List[Dict[str, Any]]] = None,
+    only_canonical_keys: Optional[Set[str]] = None,
 ) -> Dict[str, Any]:
     """Recompute scoring stack for a single sport.
 
@@ -118,6 +119,19 @@ async def recompute_sport(
     `adapter.load_live_props` is bypassed entirely — the caller is
     responsible for filtering. Used by `services/board/engine.py` for
     scoped real-time ingest.
+
+    `only_canonical_keys` (Phase D2, 2026-04-21, Delta Engine):
+        Optional filter restricting the scoring pass to a specific set of
+        canonical keys. When provided:
+          - Only props whose `canonical_key` is in the set are scored and
+            written. Everything else is silently skipped.
+          - `write_mode` is FORCED to "upsert" — a "replace" full rescore
+            with a filtered subset would delete every untouched RT doc,
+            which would break the plan's "additive, not replacement"
+            invariant (§2). If the caller passes a subset filter with
+            mode="replace" we override to "upsert" and log a warning.
+          - Backwards compatible: when None (default), behaviour is
+            IDENTICAL to pre-D2 — full-sync callers need no changes.
     """
     t0 = time.monotonic()
     adapter = get_scoring_adapter(sport)
@@ -135,6 +149,29 @@ async def recompute_sport(
     # 1. Load live props (read-only) — unless caller supplied them
     if props is None:
         props = await adapter.load_live_props(db, limit=limit)
+
+    # Phase D2 (2026-04-21) — Delta Engine scoped-rescore filter.
+    # When a canonical-key subset is supplied, restrict the scoring pass
+    # to that subset and force `upsert` mode so untouched RT docs are
+    # preserved (plan §2: "additive, not replacement").
+    pre_filter_count = len(props)
+    filter_applied = False
+    if only_canonical_keys is not None:
+        only_set = set(only_canonical_keys)
+        props = [p for p in props if p.get("canonical_key") in only_set]
+        filter_applied = True
+        if write_mode != "upsert":
+            logger.warning(
+                f"[RECOMPUTE:{sport}] only_canonical_keys supplied with "
+                f"write_mode={write_mode!r}; forcing write_mode='upsert' to "
+                f"preserve untouched RT docs (Delta Engine invariant)."
+            )
+            write_mode = "upsert"
+        logger.info(
+            f"[RECOMPUTE:{sport}] only_canonical_keys filter: "
+            f"{len(only_set)} requested / {pre_filter_count} live "
+            f"/ {len(props)} matched"
+        )
 
     # 2. Build scoring contexts + compute stack
     sorter = adapter.get_sorter(db)
@@ -327,6 +364,14 @@ async def recompute_sport(
         "version_tag": version_tag,
         "dry_run": dry_run,
         "duration_ms": duration_ms,
+        # Phase D2 — surface the canonical-key filter diagnostics so
+        # the Delta Engine can assert exactly-N behaviour from
+        # integration tests / admin endpoints.
+        "only_canonical_keys_applied": filter_applied,
+        "only_canonical_keys_requested": (
+            len(only_canonical_keys) if only_canonical_keys is not None else None
+        ),
+        "only_canonical_keys_matched": len(props) if filter_applied else None,
         "cached_board_before_count": cached_before_count,
         "cached_board_after_count": cached_after_count,
         "cached_board_mutated": cached_before_count != cached_after_count

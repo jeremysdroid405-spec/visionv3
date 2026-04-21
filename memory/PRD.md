@@ -160,6 +160,83 @@ Net diff: **+37 LOC** in one file.
 ---
 
 
+## Delta Engine — Phase D1 + D2 Complete (2026-04-21)
+
+### Scope delivered
+Near-real-time Delta Engine foundation: read-only detection layer +
+backwards-compatible scoring filter. **No tier writes. No board
+mutations. Delta path never hits upstream APIs.**
+
+### New files
+- `services/delta/__init__.py` — package root with upstream-isolation invariant.
+- `services/delta/detector.py` — `detect_changed_props(db, sport)` returning
+  `DeltaDetectionResult` (updated / new / retired / dirty key sets +
+  samples). Sport-agnostic; keys resolved via `ScoringAdapter.canonical_key_from_raw`.
+- `services/delta_watermarks.py` — per-sport Mongo-backed watermark store
+  (`delta_watermarks` collection; 5s grace window; `get_watermark` /
+  `advance_watermark` / `describe_watermarks`).
+- `routes/delta_admin.py` — `GET /api/v3/admin/delta/inspect/{sport}`
+  and `GET /api/v3/admin/delta/inspect` (read-only).
+- `tests/test_delta_upstream_isolation.py` — CI-style grep guard;
+  fails the instant any `services.delta.*` module imports an upstream
+  fetcher (universal_odds_sync / bdl_* / nba_official_sync / etc).
+- `tests/test_delta_only_canonical_keys.py` — regression suite for the
+  D2 scoring filter.
+
+### Edited files
+- `services/universal_odds_sync.py` — stamp `updated_at: datetime` on
+  every MLB prop at flatten-time (one-line addition).
+- `services/scoring/adapters/base.py` — added
+  `canonical_key_from_raw(raw_prop)` method (default: read persisted
+  `canonical_key`; sport adapters may override).
+- `services/scoring/adapters/nba_scoring.py` — NBA-specific override
+  derives the same key shape `build_context` uses (since NBA ingest
+  doesn't persist `canonical_key`). Zero ingest changes needed.
+- `services/scoring/recompute.py` — added
+  `only_canonical_keys: Optional[Set[str]] = None` parameter. Defaults
+  preserve full pre-D2 behaviour. When supplied, forces `write_mode="upsert"`
+  (with warning log) so the RT tag remains additive.
+- `routes/__init__.py` — wired new delta admin router.
+
+### Inspect endpoint response shape
+`GET /api/v3/admin/delta/inspect/{sport}` →
+```
+{
+  sport, watermark_utc, dirty_count, updated_count, new_count,
+  retired_count, live_props_count, active_live_props_count,
+  scored_rt_count, missing_updated_at,
+  sample_updated_keys[10], sample_new_keys[10], sample_retired_keys[10],
+  upstream_lock_held, upstream_lock_detail{...}, duration_ms
+}
+```
+(D1 `upstream_lock_held` is proxied from
+`RebuildCoordinator._master_sync_state[sport].in_progress`. D4 will
+replace this with the real `UpstreamSyncLock`.)
+
+### Acceptance verification
+- NBA baseline: 2084 live / 2084 scored RT / 0 dirty (22 ms).
+- MLB baseline: 1726 live / 1726 scored RT / 0 dirty (20 ms).
+- Seeded 3 NBA updated props + 1 retired + 1 fake new → inspect
+  correctly returned `updated_count=5, new_count=2, retired_count=1,
+  dirty_count=5`, with deterministic sample keys for each bucket.
+- All 6 Ferrari endpoints HTTP 200 with unchanged pick counts
+  (nba: 10/10/5, mlb: 1/5/6).
+- 6/6 unit tests pass (`test_delta_upstream_isolation.py` +
+  `test_delta_only_canonical_keys.py`).
+- Grep proof: `services/delta/` + `services/delta_watermarks.py` +
+  `routes/delta_admin.py` contain **zero** imports from upstream-fetch
+  modules. Invariant enforced by CI test.
+
+### NOT YET IMPLEMENTED (D3+ gated on approval)
+- `RescoreDirtyPropsStep` + `RebalanceTiersStep` (D3).
+- `UpstreamSyncLock` singleton + `DeltaEngine.run_forever` driver (D4).
+- `SCHEDULED_SPORTS` extension (`delta_interval_seconds`) (D5).
+- Observability metrics + status endpoint (D6).
+- Retirement of `rolling_cache_manager.DeltaManager` (D7).
+- Change-streams upgrade (D8).
+
+
+
 ## Carbon-Copy Migration — D1 Residual Cleanup Complete (2026-04-21)
 
 ### MLBMasterSync class removed; MLB now runs through UnifiedPipeline

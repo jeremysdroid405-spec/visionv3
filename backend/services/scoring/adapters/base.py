@@ -115,3 +115,19 @@ class ScoringAdapter(ABC):
         self, raw_prop: Dict[str, Any], ctx: "ScoringContext"
     ) -> Dict[str, Any]:
         return {}
+
+    # ---------------------------------------------------------
+    # Optional: derive the canonical_key from a raw prop WITHOUT scoring.
+    # ---------------------------------------------------------
+    # Phase D1 (2026-04-21, Delta Engine): the detector compares
+    # live_props canonical_keys against scored RT canonical_keys to surface
+    # NEW / RETIRED props. Some sport ingests already persist
+    # `canonical_key` on the raw prop doc (MLB via universal_odds_sync);
+    # others (NBA's legacy per-book odds path) do not. Default behaviour:
+    # return whatever's already on the raw prop. Sport adapters may
+    # override this to compute the same key their `build_context` would
+    # produce — allowing the detector to do set-diff without mutating
+    # ingest. MUST be consistent with `build_context().canonical_key`.
+    def canonical_key_from_raw(self, raw_prop: Dict[str, Any]) -> Optional[str]:
+        ck = raw_prop.get("canonical_key")
+        return ck if isinstance(ck, str) and ck else None
