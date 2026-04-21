@@ -16,6 +16,7 @@ import os
 from services.ferrari_tier_service import get_ferrari_tier_service
 from services.referee_scraper_service import get_referee_service
 from services.mlb_matchup_math import get_mlb_matchup_analysis
+from services.market_gap import annotate_market_gap
 
 from services.config.collection_names import COLL
 
@@ -1771,6 +1772,10 @@ async def _serve_ferrari_tier(
             pick["vision_intel"] = _generate_vision_fallback(pick)
     picks = _guard_board_picks(picks)
     picks = _dedupe_picks_by_player(picks, sort=sort)
+
+    # Sport-agnostic sportsbook-disagreement signal.
+    # Adds market_gap_* fields; shared by NBA / MLB / NFL via a single contract.
+    picks = annotate_market_gap(picks)
 
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
     has_any_mlr    = sum(1 for p in picks if (p.get("validation") or {}).get("has_mlr", False))

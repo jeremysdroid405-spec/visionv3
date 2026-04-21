@@ -41,6 +41,7 @@ import { Badge } from '../ui/badge';
 import { DemonIcon, GoblinIcon } from './Icons';
 import IntelligenceModal from './IntelligenceModal';
 import { VKBadgeCompact } from './VegasKillerBadge';
+import { MarketGapBadge, MarketGapDetail } from './MarketGapBadge';
 
 // ==================== TEAM LOGOS (FALLBACK) ====================
 const TEAM_LOGOS = {
@@ -843,8 +844,9 @@ const UniversalPlayerCard = memo(({
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm font-semibold text-white truncate leading-tight">{displayName}</div>
-            <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.12em] truncate mt-0.5">
-              {sideLabel} · {line} · {formatStatType(stat_type)}
+            <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.12em] truncate mt-0.5 flex items-center gap-1.5">
+              <span className="truncate">{sideLabel} · {line} · {formatStatType(stat_type)}</span>
+              <MarketGapBadge pick={player} />
             </div>
           </div>
         </div>

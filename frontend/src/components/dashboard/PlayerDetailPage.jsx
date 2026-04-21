@@ -18,6 +18,7 @@ import { BadgeRow, BADGE_REGISTRY, BadgeGridItem } from '../ui/BadgePill';
 import GameLogBarChart from './GameLogBarChart';
 import { MomentumTrackerFull } from './MomentumTracker';
 import { MLBMatchupAnalysis } from './MLBMatchupAnalysis';
+import { MarketGapDetail } from './MarketGapBadge';
 
 // Gold Whistle Icon for High Whistle refs
 const GoldWhistleIcon = ({ className }) => (
@@ -346,7 +347,11 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
           </div>
         );
       })()}
-      
+
+      {/* MARKET GAP — sport-agnostic book-disagreement signal.
+          Silent unless prop crosses medium threshold. */}
+      <MarketGapDetail pick={prop} />
+
       {/* BOTTOM ROW: Stats column on left, Chart on right - Stack on mobile */}
       <div className="flex flex-col sm:flex-row items-stretch gap-4">
         {/* LEFT: Stats Column - Full width on mobile */}
