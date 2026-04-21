@@ -97,9 +97,28 @@ class SportAdapter(ABC):
     async def enrich_intel(self, tiers: Dict[str, List[Dict]], db) -> Dict[str, List[Dict]]:
         """Phase 6: Optional Gemini enrichment. Default: no-op.
         Override in adapter to add async Gemini calls.
-        MUST be non-blocking. On failure, mark has_gemini=false and continue.
-        """
+        MUST be non-blocking. On failure, mark has_gemini=false and continue.        """
         return tiers
+
+    # -----------------------------------------------------------------
+    # Master-sync step hooks (final carbon-copy enforcement 2026-04-21).
+    # -----------------------------------------------------------------
+    # Adapters may register pre- / post-score ingest steps consumed by
+    # `UnifiedPipeline.run_master_sync()`. This is the mechanism that
+    # replaced the former standalone `*_master_sync.py` orchestrator
+    # classes. Default returns empty — so NBA (which uses a legacy
+    # run_optimized_sync driver today) is unaffected until it opts in.
+    def pre_score_pipeline_steps(self) -> List[Any]:
+        """Ordered list of PipelineStep instances that run BEFORE the
+        unified scoring pass. Typical: fetch upstream odds, build any
+        sport-specific intersection/caches, prefetch stat-splits."""
+        return []
+
+    def post_score_pipeline_steps(self) -> List[Any]:
+        """Ordered list of PipelineStep instances that run AFTER the
+        unified scoring pass. Typical: write additional score tags such
+        as the real-time shadow (`final-{sport}-rt`)."""
+        return []
 
 
 class PipelineResult:
@@ -361,6 +380,92 @@ class UnifiedPipeline:
             result.errors.append(str(e))
             result.completed_at = datetime.now(timezone.utc)
             return result
+
+    # ------------------------------------------------------------------
+    # Master-sync driver (final carbon-copy enforcement 2026-04-21).
+    # ------------------------------------------------------------------
+    # Replaces the standalone per-sport master-sync orchestrator classes
+    # (`services/mlb_master_sync.py`). Adapters register pre- and
+    # post-score `PipelineStep` instances that wrap sport-specific
+    # ingest/shadow work (MLB: odds sync → cached-board build → BDL
+    # prefetch → [canonical scoring via pipeline.run()] → RT-shadow
+    # write). NBA's list is currently empty; wiring NBA's existing
+    # `run_optimized_sync` + Phase 7 through this framework is a
+    # follow-up.
+    # ------------------------------------------------------------------
+    async def run_master_sync(self) -> Dict[str, Any]:
+        """Full master-sync: pre-score steps → canonical scoring pass
+        (via `self.run()`) → post-score steps. Returns a metrics dict
+        compatible with the previous `MLBMasterSync.run_master_sync()`
+        shape (`{success, started_at, completed_at, total_duration_seconds,
+        steps: {...}, errors: [...]}`)."""
+        sport = self.adapter.sport.upper()
+        metrics: Dict[str, Any] = {
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "pipeline": f"{sport}_UNIFIED_MASTER_SYNC",
+            "sport": self.adapter.sport,
+            "run_id": self.run_id,
+            "steps": {},
+            "errors": [],
+        }
+        context: Dict[str, Any] = {"errors": metrics["errors"]}
+        start = datetime.now(timezone.utc)
+
+        async def _exec(step) -> None:
+            logger.info("=" * 70)
+            logger.info(f"[{sport}_MASTER] STEP: {step.name}")
+            logger.info("=" * 70)
+            try:
+                metrics["steps"][step.name] = await step.run(self.adapter, self.db, context)
+            except Exception as e:
+                logger.error(f"[{sport}_MASTER] step {step.name} failed: {e}")
+                metrics["errors"].append(f"{step.name}: {e}")
+
+        # Pre-score ingest steps (odds sync, caches, prefetches).
+        for step in self.adapter.pre_score_pipeline_steps():
+            await _exec(step)
+
+        # Canonical scoring pass via the shared unified pipeline.
+        # This writes the canonical `final-{sport}` tag, publishes tiers,
+        # runs gemini enrichment, and updates market moves — identical
+        # to what the event-driven coordinator rebuild does.
+        logger.info("=" * 70)
+        logger.info(f"[{sport}_MASTER] STEP: 6_canonical_scoring (UnifiedPipeline.run)")
+        logger.info("=" * 70)
+        try:
+            run_result = await self.run()
+            # Summarise the PipelineResult under the canonical step key
+            # so downstream observability tools keep working.
+            metrics["steps"]["6_canonical_scoring"] = {
+                "duration_seconds": (run_result.completed_at - run_result.started_at).total_seconds()
+                    if run_result.completed_at else None,
+                "success": run_result.success,
+                "tiers": run_result.tiers,
+                "validation_stats": run_result.validation_stats,
+                "phases": {k: v.get("duration_s") for k, v in (run_result.phases or {}).items()},
+            }
+            if run_result.errors:
+                metrics["errors"].extend(run_result.errors)
+        except Exception as e:
+            logger.error(f"[{sport}_MASTER] canonical scoring pass failed: {e}")
+            metrics["errors"].append(f"6_canonical_scoring: {e}")
+
+        # Post-score steps (e.g. RT shadow tag write).
+        for step in self.adapter.post_score_pipeline_steps():
+            await _exec(step)
+
+        end = datetime.now(timezone.utc)
+        metrics["completed_at"] = end.isoformat()
+        metrics["total_duration_seconds"] = (end - start).total_seconds()
+        metrics["success"] = len(metrics["errors"]) == 0
+        logger.info("=" * 70)
+        logger.info(
+            f"[{sport}_MASTER] MASTER SYNC COMPLETE in "
+            f"{metrics['total_duration_seconds']:.1f}s  "
+            f"success={metrics['success']}  steps={list(metrics['steps'].keys())}"
+        )
+        logger.info("=" * 70)
+        return metrics
 
     # ------------------------------------------------------------------
     # INTERNAL: Validation enforcement

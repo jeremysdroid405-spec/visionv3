@@ -389,8 +389,16 @@ class RebuildCoordinator:
                     from services.nba_master_sync import get_nba_master_sync
                     metrics = await get_nba_master_sync(self._db).run_full_pipeline()
                 elif sport == "mlb":
-                    from services.mlb_master_sync import get_mlb_master_sync
-                    metrics = await get_mlb_master_sync(self._db).run_master_sync()
+                    # Final carbon-copy enforcement (2026-04-21):
+                    # `services/mlb_master_sync.py` is deleted. MLB master
+                    # sync now runs through the sport-agnostic
+                    # `UnifiedPipeline.run_master_sync()` using the
+                    # `PipelineStep` chain registered on `MLBAdapter`.
+                    # Eliminates the D1 residual class dependency.
+                    from services.unified_pipeline import UnifiedPipeline
+                    from services.adapters.mlb_adapter import MLBAdapter
+                    pipeline = UnifiedPipeline(MLBAdapter(), self._db)
+                    metrics = await pipeline.run_master_sync()
                 else:
                     raise ValueError(f"Unsupported sport: {sport}")
                 state["last_run"] = {

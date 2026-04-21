@@ -11,7 +11,7 @@ This adapter plugs into UnifiedPipeline without changing any scoring math.
 import os
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 from services.unified_pipeline import SportAdapter
 from services.config.collection_names import COLL
@@ -36,6 +36,29 @@ class MLBAdapter(SportAdapter):
             "front_lines": "mlb_front_lines",
             "war_zone": "mlb_war_zone",
         }
+
+    # ------------------------------------------------------------------
+    # Master-sync step registration (final carbon-copy enforcement
+    # 2026-04-21). Replaces `services/mlb_master_sync.py`. The 6-step
+    # MLB pipeline is now driven by `UnifiedPipeline.run_master_sync()`
+    # via these step lists. Steps 4 (oracle tier rebuild) and 5 (lineup
+    # ripple) are intentionally omitted — they were legacy-tier writers
+    # gated off in Stage 4 (`MLB_WRITE_LEGACY_TIERS=0`) and have no
+    # effect on the carbon-copy live path.
+    # ------------------------------------------------------------------
+    def pre_score_pipeline_steps(self) -> List[Any]:
+        from services.pipeline.master_steps import (
+            MLBOddsSyncStep, MLBCachedBoardBuildStep, MLBBDLSplitsPrefetchStep,
+        )
+        return [
+            MLBOddsSyncStep(),
+            MLBCachedBoardBuildStep(),
+            MLBBDLSplitsPrefetchStep(),
+        ]
+
+    def post_score_pipeline_steps(self) -> List[Any]:
+        from services.pipeline.master_steps import MLBCanonicalRTScoringStep
+        return [MLBCanonicalRTScoringStep()]
 
     async def _get_sorter(self, db):
         """Lazy-init the MLBTierSorter."""
@@ -619,10 +642,10 @@ class MLBAdapter(SportAdapter):
                 unique.append(p)
 
         if len(unique) <= self.TIER_CAPACITY:
-            unique.sort(key=lambda x: x.get(sort_key, 0), reverse=True)
+            unique.sort(key=lambda x: x.get(sort_key) or 0, reverse=True)
             return unique
         else:
-            unique.sort(key=lambda x: x.get(sort_key, 0), reverse=True)
+            unique.sort(key=lambda x: x.get(sort_key) or 0, reverse=True)
             return unique[:self.TIER_CAPACITY]
 
     async def enrich_intel(self, tiers: Dict[str, List[Dict]], db) -> Dict[str, List[Dict]]:

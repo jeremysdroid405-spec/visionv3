@@ -122,6 +122,96 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
   `ranking_score_v2` populated; default and `?sort=gap` both correct.
 
 
+## Carbon-Copy Migration — D1 Residual Cleanup Complete (2026-04-21)
+
+### MLBMasterSync class removed; MLB now runs through UnifiedPipeline
+- **`services/mlb_master_sync.py` DELETED** (592 LOC removed).
+- **New module `services/pipeline/master_steps.py`** (205 LOC)
+  introduces a sport-agnostic `PipelineStep` ABC + 4 concrete MLB
+  steps (`MLBOddsSyncStep`, `MLBCachedBoardBuildStep`,
+  `MLBBDLSplitsPrefetchStep`, `MLBCanonicalRTScoringStep`). Each step
+  wraps an existing shared service function — no new computation is
+  introduced. Legacy Steps 4 (oracle tier rebuild) + 5 (lineup ripple)
+  are intentionally omitted since Stage 4 gated them off in the live
+  carbon-copy flow.
+- **`SportAdapter` base (unified_pipeline.py)** gains two registration
+  hooks — `pre_score_pipeline_steps()` and `post_score_pipeline_steps()`
+  — both returning `[]` by default so NBA is unaffected.
+- **`MLBAdapter`** registers the three pre-score steps + one
+  post-score step (RT shadow write).
+- **`UnifiedPipeline.run_master_sync()` (new)** drives the full
+  master-sync: pre-score steps → canonical `self.run()` → post-score
+  steps. Returns a metrics dict compatible with the old
+  `MLBMasterSync.run_master_sync()` shape (`{success, started_at,
+  completed_at, total_duration_seconds, steps, errors}`).
+- **`RebuildCoordinator.dispatch_master_sync("mlb")`** no longer
+  imports `services.mlb_master_sync`; it instantiates
+  `UnifiedPipeline(MLBAdapter(), self._db)` and awaits
+  `run_master_sync()`.
+
+### Pre-existing None-sort bug fixed en route
+`MLBAdapter._apply_retention_cap` used `x.get(sort_key, 0)` which returns
+`None` when the key is present but set to `None`. Sort crashed on mixed
+float/None comparison. Fix: `x.get(sort_key) or 0`. Bug existed before
+D1 cleanup but only surfaced once the full carbon-copy pipeline path
+ran tier-selection via Phase 5 at master-sync time.
+
+### Files changed
+- **DELETED** `services/mlb_master_sync.py` (−592 LOC).
+- **NEW** `services/pipeline/__init__.py`, `services/pipeline/master_steps.py` (+205 LOC).
+- `services/unified_pipeline.py` — adapter hooks + `run_master_sync()` (+109 LOC).
+- `services/adapters/mlb_adapter.py` — step registration + None-sort fix (+29 LOC).
+- `services/rebuild_coordinator.py` — swap MLB dispatcher (+12 LOC).
+- **Net: −251 LOC.**
+
+### D1 acceptance verification
+- `/api/mlb/sync/master` via `UnifiedPipeline.run_master_sync()`:
+  - 97 s total, `success=True`, `errors=[]`.
+  - Steps executed in order: `1_odds_sync` (3.5 s) → `2_cached_board`
+    (0.8 s) → `3_bdl_prefetch` (13.0 s) → `6_canonical_scoring`
+    (65.5 s) → `6rt_realtime_shadow` (14.4 s).
+- `mlb_prop_scores` tag distribution: `final-mlb` = 1956 docs,
+  `final-mlb-rt` = 1956 docs (bit-identical).
+- All 3 Ferrari MLB endpoints HTTP 200 with `pipeline.source =
+  mlb_prop_scores[tier={tier},version=final-mlb-rt]` and populated
+  tiered picks.
+- NBA endpoints HTTP 200 (no regressions — NBA path untouched).
+- `services/mlb_master_sync.py` physically absent on disk; `grep` over
+  the entire backend for `MLBMasterSync` / `get_mlb_master_sync`
+  returns only comment/docstring references in Stage-narrative
+  metadata; zero live imports.
+- `dispatch_master_sync("mlb")` call-chain now resolves through
+  `UnifiedPipeline(MLBAdapter()).run_master_sync()` exclusively.
+
+### Carbon-Copy Migration Status — 12/12 ELIMINATED
+All 12 identified deviations (D1–D12) are resolved. MLB is now a
+true carbon copy of NBA architecturally:
+- Same orchestration dispatch (`RebuildCoordinator.dispatch_master_sync`).
+- Same scheduler registration (`SCHEDULED_SPORTS`).
+- Same board reader path (universal adapter; UI reads `final-{sport}-rt`).
+- Same Ferrari route resolver (`SPORT_TIER_HELPERS`).
+- Same scoring ladder (`resolve_p_true_ladder`).
+- Same scoring-write enrichment hook (`ScoringAdapter.enrich_score_doc`).
+- Same master-sync driver (`UnifiedPipeline.run_master_sync`).
+- Same `PipelineStep`-based ingest framework.
+
+### Remaining caveats (post-migration)
+1. **NBA hasn't yet opted into the new master-sync framework.**
+   NBAAdapter's step lists return `[]`; `dispatch_master_sync("nba")`
+   still calls the legacy `NBAMasterSync.run_full_pipeline()`.
+   Optional follow-up: populate NBA's `pre_score_pipeline_steps()`
+   with its NBA.com-scraper / BDL / etc. steps and delete
+   `nba_master_sync.py` the same way we just deleted the MLB one.
+2. **Legacy tier collections** (`mlb_safe_haven` / `mlb_front_lines` /
+   `mlb_war_zone`) still receive writes from `UnifiedPipeline`'s
+   `_atomic_publish` (driven by `adapter.tier_collections`). The UI
+   does not read them (Stage 4), but they continue to accrue stale
+   data. Optional cleanup: make `tier_collections` return `{}` for MLB
+   and short-circuit `_atomic_publish` when empty.
+
+---
+
+
 ## Carbon-Copy Migration — Stage 8 Complete (2026-04-21)
 
 ### Unified sport-agnostic scheduler (eliminates D7)
@@ -544,6 +634,13 @@ post-Stage-8 follow-up (D1 residual).
   per sport via a loop over the registry. Adding NFL is three lines
   (registry entry + module-level callable + `SPORT_INTERVAL_CALLABLES`
   entry) — zero `server.py` edits.
+- ~~D1: `MLBMasterSync` exists as a separate orchestrator class~~ —
+  resolved via D1 residual cleanup. `services/mlb_master_sync.py`
+  deleted entirely; replaced by sport-agnostic `PipelineStep` chain
+  (`services/pipeline/master_steps.py`) + `UnifiedPipeline
+  .run_master_sync()` + step registration hooks on `SportAdapter`.
+  `dispatch_master_sync("mlb")` now resolves to
+  `UnifiedPipeline(MLBAdapter()).run_master_sync()`.
 
 ### P2 — Backlog
 - NBA-native tier admission table (NBA stats currently fall through to the
