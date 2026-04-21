@@ -187,6 +187,20 @@ async def recompute_sport(
     samples: List[Dict[str, Any]] = []
     skipped = 0
 
+    # Canonical multi-sport DvP rank (2026-04-21). Warm the sport's provider
+    # ONCE before the per-prop loop so `get_opponent_defensive_rank` has a
+    # hot BDL cache to read from. No-op for sports whose provider does not
+    # need external data.
+    try:
+        from services.defensive_rank_resolver import (
+            ensure_provider_warm as _ensure_def_warm,
+            get_opponent_defensive_rank as _get_def_rank,
+        )
+        await _ensure_def_warm(sport)
+    except Exception as _warm_err:
+        logger.warning(f"[RECOMPUTE:{sport}] def-rank prewarm failed: {_warm_err}")
+        _get_def_rank = lambda *_: (None, "unavailable")  # noqa: E731
+
     for prop in props:
         ctx = await adapter.build_context(db, prop, config)
         if ctx is None:
@@ -289,6 +303,22 @@ async def recompute_sport(
                 f"[RECOMPUTE:{sport}] enrich_score_doc failed for "
                 f"{ctx.canonical_key}: {_enrich_err}"
             )
+
+        # Canonical multi-sport DvP rank — written at scoring time so every
+        # downstream layer (board reader, Gemini payload, UI) reads the
+        # same value from the {sport}_prop_scores system of record.  Never
+        # falls back to the static DVP_RANKINGS table.  See
+        # services/defensive_rank_resolver.py for provider routing.
+        _opp = (
+            (ctx.raw_prop or {}).get("opponent")
+            or (ctx.raw_prop or {}).get("opponent_abbr")
+            or (ctx.raw_prop or {}).get("away_team")
+            or (ctx.raw_prop or {}).get("home_team")
+        )
+        _rank, _source = _get_def_rank(sport, _opp, ctx.stat_type)
+        doc["opponent_defensive_rank"] = _rank
+        doc["opponent_defensive_source"] = _source
+        doc["opponent_defensive_stat_type"] = ctx.stat_type
 
         score_docs.append(doc)
 

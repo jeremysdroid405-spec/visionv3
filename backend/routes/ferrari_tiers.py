@@ -1097,6 +1097,14 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     # Canonical key for client-side de-dupe / highlight tracking
     prop["canonical_key"] = score.get("canonical_key")
 
+    # Canonical multi-sport DvP rank (2026-04-21). Written at scoring
+    # time by services/scoring/recompute.py. Carries through to the
+    # Ferrari response as the single source of truth for opponent
+    # defensive rank — no downstream layer is permitted to derive its own.
+    prop["opponent_defensive_rank"] = score.get("opponent_defensive_rank")
+    prop["opponent_defensive_source"] = score.get("opponent_defensive_source")
+    prop["opponent_defensive_stat_type"] = score.get("opponent_defensive_stat_type")
+
     # =========================================================================
     # SIDE-AWARE BADGE REWIRE (UNDER picks only)
     # Board props are OVER-semantic — badges baked in there (hot_streak,

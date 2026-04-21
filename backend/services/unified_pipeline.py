@@ -265,6 +265,33 @@ class UnifiedPipeline:
             logger.info(f"  Gemini:      {v_stats['pct_gemini']}%")
 
             # ============================================================
+            # PHASE 4b: CANONICAL DEFENSIVE RANK (multi-sport, scoring-time)
+            # Writes `opponent_defensive_rank` + `opponent_defensive_source`
+            # onto EVERY scored prop BEFORE any enrichment runs (Gemini,
+            # momentum, UI). Single source of truth across NBA/MLB/NFL.
+            # See services/defensive_rank_resolver.py.
+            # ============================================================
+            try:
+                from services.defensive_rank_resolver import (
+                    annotate_defensive_rank,
+                    ensure_provider_warm,
+                )
+                # Sport-agnostic warm-up; NBA delegates to BDL fetch, MLB no-op.
+                await ensure_provider_warm(self.adapter.sport)
+                resolved = annotate_defensive_rank(validated, self.adapter.sport)
+                result.phases["4b_def_rank"] = {
+                    "total": len(validated),
+                    "resolved": resolved,
+                    "coverage_pct": round(100.0 * resolved / max(len(validated), 1), 1),
+                }
+                logger.info(
+                    f"[{sport}_PIPELINE] [{self.run_id}] PHASE 4b: "
+                    f"opponent_defensive_rank resolved on {resolved}/{len(validated)} picks"
+                )
+            except Exception as e:
+                logger.warning(f"[{sport}_PIPELINE] [{self.run_id}] PHASE 4b failed (non-fatal): {e}")
+
+            # ============================================================
             # PHASE 5: SELECT TIERS (Qualified Capped Set with Retention)
             # Load previous board for retention: qualified picks that were on
             # the board stay unless the pool is full and a higher-ranked pick
@@ -604,26 +631,15 @@ class UnifiedPipeline:
         Non-blocking: failures are logged but never crash the pipeline.
         """
         from services.gemini_scout_engine import batch_generate_scout_intel
-        # Fix 1 (2026-04-21): DvP rank resolver — scored docs frequently ship
-        # with momentum_data=None, which caused Gemini to receive dvp_rank=null
-        # and hallucinate a ranking. Resolver walks the canonical sources.
-        from services.dvp_service import _get_defensive_rank as _live_dvp_rank
-
+        # Canonical multi-sport DvP rank contract (2026-04-21).
+        # Every scored prop has `opponent_defensive_rank` written at Phase 4b
+        # (see UnifiedPipeline.run). This method MUST read that field only —
+        # no static-fallback, no momentum_data derivations.  Unresolved ranks
+        # ship as None so Gemini is explicitly told "unknown" instead of
+        # inventing a number.
         def _resolve_dvp_rank(pick: Dict[str, Any]) -> Optional[int]:
-            md = pick.get("momentum_data") or {}
-            if md.get("dvp_rank") is not None:
-                return md["dvp_rank"]
-            for k in ("defensive_rank", "opponent_defensive_rank"):
-                if pick.get(k) is not None:
-                    return pick[k]
-            opp = pick.get("opponent") or pick.get("opponent_abbr")
-            stat = pick.get("stat_type")
-            if opp and stat:
-                try:
-                    return _live_dvp_rank(opp, stat)
-                except Exception:
-                    return None
-            return None
+            v = pick.get("opponent_defensive_rank")
+            return v if isinstance(v, int) else None
 
         sport = self.adapter.sport
         col_map = self.adapter.tier_collections

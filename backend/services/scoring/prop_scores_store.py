@@ -46,6 +46,11 @@ _SCORE_OUTPUT_FIELDS = (
     # route-time enrichers (enrich_mlb_prop_with_tempo /
     # enrich_mlb_intel_suite). NBA leaves them None. Eliminates D11.
     "tempo_modifier", "intel_suite",
+    # Canonical multi-sport DvP rank (2026-04-21). Written at pipeline
+    # Phase 4b by services/defensive_rank_resolver.py — SINGLE source of
+    # truth for opponent defensive rank across NBA / MLB / future NFL.
+    "opponent_defensive_rank", "opponent_defensive_source",
+    "opponent_defensive_stat_type",
 )
 
 _IDENTITY_FIELDS = (
