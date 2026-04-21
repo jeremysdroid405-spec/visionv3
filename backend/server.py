@@ -1074,63 +1074,27 @@ async def scheduled_mlb_game_values_sync():
 # =============================================================================
 
 async def scheduled_hourly_mlb_full_sync():
-    """
-    HOURLY MLB SYNC — routes through Rebuild Coordinator.
+    """DEPRECATED in Stage 8 (2026-04-21, MLB↔NBA carbon-copy).
 
-    Phase 5.x: MLB previously had ONE scheduled refresh per day
-    (mlb_daily_refresh @ 09:23 UTC). Between daily crons the only way MLB
-    got refreshed was opportunistic injury_change events, leaving 8-12h
-    freshness gaps on the live /api/v3/mlb/ferrari/* endpoints. This mirrors
-    scheduled_hourly_full_sync but publishes sport='mlb'. The existing daily
-    cron (mlb_daily_refresh) is intentionally left in place — it runs at a
-    time when odds data is typically fresh and gives the day a deterministic
-    anchor. This hourly job is the gap-filler.
+    This function is retained as a shim so any still-pending APScheduler
+    job pointer stays resolvable during live hot-reload. New registrations
+    use the unified `run_scheduled_master_sync(sport='mlb')` via
+    `SCHEDULED_SPORTS`. See `services/scheduled_sports.py`.
     """
-    logger.info("=" * 70)
-    logger.info("[SCHEDULER] HOURLY MLB FULL SYNC (via Coordinator)")
-    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
-    logger.info("=" * 70)
-
-    try:
-        from services.event_bus import BoardEvent, get_event_bus
-        await get_event_bus().publish(BoardEvent(
-            sport="mlb",
-            event_type="scheduled_safety",
-            severity="medium",
-            source="scheduler_hourly_mlb",
-        ))
-    except Exception as e:
-        logger.error(f"[SCHEDULER] MLB hourly coordinator dispatch failed: {e}")
+    from services.scheduled_sports import run_scheduled_master_sync
+    await run_scheduled_master_sync("mlb")
 
 
 async def scheduled_hourly_full_sync():
-    """
-    HOURLY SYNC — routes through Rebuild Coordinator.
+    """DEPRECATED in Stage 8 (2026-04-21, MLB↔NBA carbon-copy).
 
-    Phase 2: NBA uses coordinator → UnifiedPipeline(NBAAdapter).
-    demon_goblin_engine preserved but disabled as live publisher.
+    This function is retained as a shim so any still-pending APScheduler
+    job pointer stays resolvable during live hot-reload. New registrations
+    use the unified `run_scheduled_master_sync(sport='nba')` via
+    `SCHEDULED_SPORTS`. See `services/scheduled_sports.py`.
     """
-    logger.info("=" * 70)
-    logger.info("[SCHEDULER] HOURLY FULL SYNC (via Coordinator)")
-    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
-    logger.info("=" * 70)
-
-    try:
-        from services.event_bus import BoardEvent, get_event_bus
-        await get_event_bus().publish(BoardEvent(
-            sport="nba",
-            event_type="scheduled_safety",
-            severity="medium",
-            source="scheduler_hourly",
-        ))
-    except Exception as e:
-        logger.error(f"[SCHEDULER] Coordinator dispatch failed, falling back to legacy: {e}")
-        if demon_goblin_engine:
-            try:
-                result = await demon_goblin_engine.run_full_sync()
-                logger.info(f"[SCHEDULER] Legacy fallback: {result.get('unique_players', 0)} players")
-            except Exception as le:
-                logger.error(f"[SCHEDULER] Legacy fallback also failed: {le}")
+    from services.scheduled_sports import run_scheduled_master_sync
+    await run_scheduled_master_sync("nba")
 
 
 async def scheduled_hourly_badge_sync():
@@ -1693,24 +1657,41 @@ async def startup_event():
             id=job_id, name=name, replace_existing=False
         )
     
-    # 1. HOURLY FULL SYNC (The Engine) - Every 60 minutes
-    # Keeps props fresh during game days
-    _register_interval_job(
-        scheduled_hourly_full_sync,
-        IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
-        job_id='hourly_full_sync',
-        name='Hourly Full Sync (60 min interval)',
+    # =========================================================================
+    # Stage 8 (2026-04-21, MLB↔NBA carbon-copy): unified per-sport master-sync
+    # registration. Adding a new sport (e.g. NFL) is a single-line entry in
+    # `services.scheduled_sports.SCHEDULED_SPORTS` + the matching serialisable
+    # module-level callable — NO server.py edits required. Replaces the former
+    # hand-written `hourly_full_sync` and `hourly_mlb_full_sync` registrations.
+    # Eliminates D7.
+    # =========================================================================
+    from services.scheduled_sports import (
+        SCHEDULED_SPORTS,
+        SPORT_INTERVAL_CALLABLES,
     )
-    
-    # 1b. HOURLY MLB FULL SYNC - Every 60 minutes
-    # Gap-filler between the 09:23 UTC daily cron. Without this, MLB tier
-    # collections went stale for 8-12h between refreshes.
-    _register_interval_job(
-        scheduled_hourly_mlb_full_sync,
-        IntervalTrigger(minutes=60, timezone=SCHEDULER_TIMEZONE),
-        job_id='hourly_mlb_full_sync',
-        name='Hourly MLB Full Sync (60 min interval)',
-    )
+
+    for _sport_key, _sport_cfg in SCHEDULED_SPORTS.items():
+        _interval_callable = SPORT_INTERVAL_CALLABLES.get(_sport_key)
+        if _interval_callable is None:
+            logger.warning(
+                f"[SCHEDULER] sport={_sport_key!r} in SCHEDULED_SPORTS but "
+                "not in SPORT_INTERVAL_CALLABLES; skipping"
+            )
+            continue
+        # Per-sport hourly master-sync interval job.
+        _register_interval_job(
+            _interval_callable,
+            IntervalTrigger(
+                minutes=_sport_cfg.master_sync_interval_minutes,
+                timezone=SCHEDULER_TIMEZONE,
+            ),
+            job_id=f"hourly_{_sport_key}_master_sync",
+            name=(
+                f"Hourly {_sport_key.upper()} Master Sync "
+                f"({_sport_cfg.master_sync_interval_minutes} min interval) "
+                "[SCHEDULED_SPORTS]"
+            ),
+        )
     
     # 2. HOURLY BADGE SYNC (The Intel) - Every 60 minutes
     # Updates context badges for all players

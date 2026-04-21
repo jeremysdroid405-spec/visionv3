@@ -122,6 +122,79 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
   `ranking_score_v2` populated; default and `?sort=gap` both correct.
 
 
+## Carbon-Copy Migration — Stage 8 Complete (2026-04-21)
+
+### Unified sport-agnostic scheduler (eliminates D7)
+- **New module `services/scheduled_sports.py`** (146 LOC) providing:
+  - `ScheduledSportConfig` frozen dataclass (sport, interval minutes,
+    daily-cron UTC time, event severity).
+  - `SCHEDULED_SPORTS` dict registry (`nba` + `mlb`).
+  - `run_scheduled_master_sync(sport)` canonical entry point that
+    publishes a `scheduled_safety` `BoardEvent` → consumed by
+    `RebuildCoordinator.dispatch_master_sync(sport)` (same code path
+    used by `/api/{sport}/sync/master`).
+  - Two pickle-able module-level callables:
+    `scheduled_master_sync_nba` and `scheduled_master_sync_mlb`.
+  - `SPORT_INTERVAL_CALLABLES` dict mapping each sport to its
+    serialisable callable (required by MongoDBJobStore).
+- **`server.py` scheduler section** replaced the hand-written NBA +
+  MLB interval-job registrations (jobs `hourly_full_sync`,
+  `hourly_mlb_full_sync`) with a loop over `SCHEDULED_SPORTS`
+  registering `hourly_{sport}_master_sync` jobs. Net
+  **−19 LOC in `server.py`** (49 added, 68 deleted).
+- Old per-sport shims `scheduled_hourly_full_sync` and
+  `scheduled_hourly_mlb_full_sync` retained but collapsed to a
+  one-line delegate that calls `run_scheduled_master_sync(sport)` —
+  prevents breakage of any still-pending job pointers in MongoDB
+  during hot-reload.
+- **Legacy MongoDB job IDs deleted** (`hourly_full_sync`,
+  `hourly_mlb_full_sync`) so there's no double-fire overlap with the
+  new unified jobs.
+
+### Sport-specific data-ingest crons LEFT IN PLACE
+NBA `nba_l5l10_batch_{1..5}`, `bdl_game_values_sync`,
+`bdl_game_logs_sync`, `daily_hard_refresh`, MLB `mlb_bdl_game_values_sync`,
+`mlb_bdl_game_logs_sync`, `mlb_daily_refresh`, and the ticker sync
+remain as bespoke daily crons — these are sport-specific data-ingest
+workflows (NBA.com scraping, BDL enrichment), not master-sync
+orchestration. They are outside D7's scope (which is specifically
+about the master-sync scheduling layer). Stage 8's contract: one
+scheduler mechanism for master-sync orchestration across every live
+sport. Achieved.
+
+### Stage 8 acceptance verification
+- `SCHEDULED_SPORTS.keys()` = `['nba', 'mlb']`. Both configs carry
+  interval=60 min + daily cron entries.
+- MongoDB `scheduler_jobs` collection now contains
+  `hourly_nba_master_sync` and `hourly_mlb_master_sync` entries (both
+  with valid next-run timestamps). Legacy `hourly_full_sync` +
+  `hourly_mlb_full_sync` purged.
+- Manual master-sync endpoints still work: `POST
+  /api/nba/sync/master` → HTTP 202, `POST /api/mlb/sync/master` →
+  HTTP 202 (both return `accepted=True`).
+- All 6 Ferrari endpoints return HTTP 200 with correct picks count and
+  `pipeline.source` tags (`…,version=final-{sport}-rt]`).
+- Pickle round-trip of `scheduled_master_sync_{nba,mlb}` callables
+  succeeds → MongoDBJobStore serialisation works correctly.
+- Adding NFL is a single-line entry in `SCHEDULED_SPORTS` plus a
+  3-line `scheduled_master_sync_nfl` module-level function plus one
+  dict entry in `SPORT_INTERVAL_CALLABLES` — zero `server.py` edits.
+
+### `services/mlb_master_sync.py` deletion eligibility (D1 cleanup)
+**NOT YET SAFE TO DELETE.** The coordinator's
+`dispatch_master_sync("mlb")` still imports and calls
+`MLBMasterSync.run_master_sync()` internally (Stage 1 decision — the
+coordinator is the thin dispatch wrapper, the per-sport master-sync
+classes are the actual pipelines). Full deletion of
+`mlb_master_sync.py` requires first folding its 6-step pipeline into
+a sport-agnostic orchestrator (e.g. `UnifiedPipeline(MLBAdapter)`),
+which touches the odds-sync / BDL-splits / oracle / ripple stages and
+is substantially larger than a pure deletion. Flagged as a
+post-Stage-8 follow-up (D1 residual).
+
+---
+
+
 ## Carbon-Copy Migration — Stage 7 Complete (2026-04-21)
 
 ### MLB real-time shadow parity (eliminates D9)
@@ -463,6 +536,14 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
   run; `MLBBoardAdapter.version_tag` pinned to the RT tag; Stage-6
   dispatch template updated. Both sports now serve from their `-rt`
   tag.
+- ~~D7: No unified scheduler (`SCHEDULED_SPORTS`) config~~ — resolved
+  via Stage 8. New `services/scheduled_sports.py` introduces a
+  `SCHEDULED_SPORTS` registry and canonical
+  `run_scheduled_master_sync(sport)` entry point. `server.py` now
+  registers one unified `hourly_{sport}_master_sync` APScheduler job
+  per sport via a loop over the registry. Adding NFL is three lines
+  (registry entry + module-level callable + `SPORT_INTERVAL_CALLABLES`
+  entry) — zero `server.py` edits.
 
 ### P2 — Backlog
 - NBA-native tier admission table (NBA stats currently fall through to the
