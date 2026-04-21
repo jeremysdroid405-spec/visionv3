@@ -1,1 +1,2275 @@
-{"sport": "MLB", "last_updated": "2026-04-20T23:52:57.883149+00:00", "prop_count": 5, "props": {"jacob_wilson|batter_strikeouts|0.5|dk": {"canonical_key": "mlb|253e6890f41456a41767494219509d9b|Jacob Wilson|Batter Strikeouts|0.5|OVER", "sport": "mlb", "event_id": "253e6890f41456a41767494219509d9b", "player_name": "Jacob Wilson", "stat_type": "Batter Strikeouts", "line": 0.5, "recommendation": "OVER", "vision_score": 94.9, "vision_score_raw": 0.18137, "quality_source": "consensus", "fair_prob": 0.3705, "stability": 0.5413, "confidence": 1.0, "edge_vs_fair": 0.4225, "tier": "war_zone", "tier_reason": "gates_passed", "tier_reference_book": "dk", "tier_reference_odds": 165, "tier_gate_results": {"gate1_cv": {"threshold": ">= 1.0", "value": 1.376, "passed": true}, "gate2_ceiling": {"threshold": 35, "value": 40.0, "passed": true}, "gate3_edge": {"threshold": 30, "value": 42.3, "passed": true}}, "pp_utility": 74.0, "pp_utility_category": "pp_fair", "pp_utility_components": {"availability": 1.0, "line_fairness": 1.0, "model_alignment": 0.1688, "edge_confidence": 1.0, "multiplier_value": null, "weights": {"availability": 0.18749999999999997, "line_fairness": 0.25, "model_alignment": 0.3125, "edge_confidence": 0.25}, "pp_utility_raw": 74.0, "category_raw": "pp_fair"}, "pp_multiplier": null, "pp_multiplier_label": null, "pp_multiplier_source": "none", "pp_reference_source": "dk", "active": true, "inactive_reason": null, "active_changed_at": null, "game_start_utc": null, "version_tag": "final-mlb", "computed_at": "2026-04-20T22:18:30.063394+00:00", "volatility_score": 0.0, "volatility_label": "low", "volatility_family": "mlb_counting", "scout_badges": [], "tempo_modifier": 1.0, "intel_suite": {"tempo": {"multiplier": 1.0, "display": "+0%", "tempo_label": "Standard PA Volume", "factors": [], "total_pct": 0.0}, "pace_delta": {"multiplier": 1.0, "display": "+0%", "tempo_label": "Standard PA Volume", "factors": [], "total_pct": 0.0}, "sport": "mlb", "context_badges": [], "vision_insight": {"primary": "Jacob Wilson Batter Strikeouts @ 0.5 - 0% L10 hit rate", "reasons": ["Analyzing Jacob Wilson Batter Strikeouts @ 0.5"], "confidence": "STANDARD"}, "stability_index": {"display": "50%", "score": 50, "consistency": "Unknown", "std_dev": 0.0}, "matchup_dvp": {"display": "vs None", "opponent": null, "opponent_abbr": "OPP", "friction_level": "Medium", "friction_label": "Standard Matchup", "color": "yellow", "dvp_rank": 15, "stat_type": "Batter Strikeouts"}}, "vision_summary": "Jacob Wilson is stepping into the box against a pitcher who lives for the punchout, and that 0.5 line is asking a lot for a kid still adjusting to big-league velocity. We are banking on at least one whiff tonight because his swing-and-miss profile suggests he won't escape a full nine innings without catching air once.", "vision_intel": "Jacob Wilson is stepping into the box against a pitcher who lives for the punchout, and that 0.5 line is asking a lot for a kid still adjusting to big-league velocity. We are banking on at least one whiff tonight because his swing-and-miss profile suggests he won't escape a full nine innings without catching air once.", "_enriched": true, "_enriched_at": "2026-04-20T22:18:54.771814+00:00", "_cache_updated": "2026-04-20T22:18:54.771816+00:00"}, "vladimir_guerrero_jr.|rbis|0.5|dk": {"canonical_key": "mlb|043dafafb56c1b3ebf5472c9f3fe428f|Vladimir Guerrero Jr.|RBIs|0.5|OVER", "sport": "mlb", "event_id": "043dafafb56c1b3ebf5472c9f3fe428f", "player_name": "Vladimir Guerrero Jr.", "stat_type": "RBIs", "line": 0.5, "recommendation": "OVER", "vision_score": 88.0, "vision_score_raw": 0.124711, "quality_source": "consensus", "fair_prob": 0.3906, "stability": 0.4927, "confidence": 1.0, "edge_vs_fair": 0.3444, "tier": "war_zone", "tier_reason": "gates_passed", "tier_reference_book": "dk", "tier_reference_odds": 157, "tier_gate_results": {"gate1_cv": {"threshold": ">= 1.0", "value": 1.522, "passed": true}, "gate2_ceiling": {"threshold": 35, "value": 35.0, "passed": true}, "gate3_edge": {"threshold": 30, "value": 34.4, "passed": true}}, "pp_utility": 75.0, "pp_utility_category": "pp_fair", "pp_utility_components": {"availability": 1.0, "line_fairness": 1.0, "model_alignment": 0.3082, "edge_confidence": 0.8647, "multiplier_value": null, "weights": {"availability": 0.18749999999999997, "line_fairness": 0.25, "model_alignment": 0.3125, "edge_confidence": 0.25}, "pp_utility_raw": 75.0, "category_raw": "pp_fair"}, "pp_multiplier": null, "pp_multiplier_label": null, "pp_multiplier_source": "none", "pp_reference_source": "dk", "active": true, "inactive_reason": null, "active_changed_at": null, "game_start_utc": null, "version_tag": "final-mlb", "computed_at": "2026-04-20T22:18:30.063394+00:00", "volatility_score": 0.0, "volatility_label": "low", "volatility_family": "mlb_binary", "scout_badges": [], "tempo_modifier": 1.0, "intel_suite": {"lasso": {"projection": 0.436, "confidence_tier": "HIGH_VARIANCE", "r_squared": 0.0131, "top_drivers": ["L10_avg_plate_appearances", "L5_std_fielding_chances"]}}, "vk_data": {"predicted": 0.436, "projection": 0.436, "edge": -0.064, "source": "lasso_v2"}, "vision_summary": "Vladdy is currently stuck in a massive cold spell with zero runs driven in over his last ten appearances, so we aren't chasing a ghost tonight. The numbers show he hasn't cleared this 0.5 line in weeks, and with his consistency rating bottomed out, we're comfortably backing another quiet night at the plate.", "vision_intel": "Vladdy is currently stuck in a massive cold spell with zero runs driven in over his last ten appearances, so we aren't chasing a ghost tonight. The numbers show he hasn't cleared this 0.5 line in weeks, and with his consistency rating bottomed out, we're comfortably backing another quiet night at the plate.", "_enriched": true, "_enriched_at": "2026-04-20T22:18:56.479507+00:00", "_cache_updated": "2026-04-20T22:18:56.479510+00:00"}, "tyler_freeman|rbis|0.5|dk": {"canonical_key": "mlb|4e58a660bb4f20467d3e4261ec9f47ba|Tyler Freeman|RBIs|0.5|OVER", "sport": "mlb", "event_id": "4e58a660bb4f20467d3e4261ec9f47ba", "player_name": "Tyler Freeman", "stat_type": "RBIs", "line": 0.5, "recommendation": "OVER", "vision_score": 87.4, "vision_score_raw": 0.120325, "quality_source": "dk", "fair_prob": 0.3774, "stability": 0.5517, "confidence": 0.875, "edge_vs_fair": 0.3566, "tier": "war_zone", "tier_reason": "gates_passed", "tier_reference_book": "dk", "tier_reference_odds": 165, "tier_gate_results": {"gate1_cv": {"threshold": ">= 1.0", "value": 1.345, "passed": true}, "gate2_ceiling": {"threshold": 35, "value": 36.8, "passed": true}, "gate3_edge": {"threshold": 30, "value": 35.7, "passed": true}}, "pp_utility": 75.0, "pp_utility_category": "pp_fair", "pp_utility_components": {"availability": 1.0, "line_fairness": 1.0, "model_alignment": 0.2868, "edge_confidence": 0.8915, "multiplier_value": null, "weights": {"availability": 0.18749999999999997, "line_fairness": 0.25, "model_alignment": 0.3125, "edge_confidence": 0.25}, "pp_utility_raw": 75.0, "category_raw": "pp_fair"}, "pp_multiplier": null, "pp_multiplier_label": null, "pp_multiplier_source": "none", "pp_reference_source": "dk", "active": true, "inactive_reason": null, "active_changed_at": null, "game_start_utc": null, "version_tag": "final-mlb", "computed_at": "2026-04-20T22:18:30.063394+00:00", "volatility_score": 0.0, "volatility_label": "low", "volatility_family": "mlb_binary", "scout_badges": [], "tempo_modifier": 1.0, "intel_suite": {"lasso": {"projection": 0.367, "confidence_tier": "HIGH_VARIANCE", "r_squared": 0.0131, "top_drivers": ["L5_std_fielding_chances", "L10_std_stolen_bases"]}}, "vk_data": {"predicted": 0.367, "projection": 0.367, "edge": -0.133, "source": "lasso_v2"}, "vision_summary": "Tyler Freeman hasn't driven in a single run over his last twenty appearances, and we're not about to bet on that streak snapping against a pitching staff that's been keeping him in check. With an edge sitting at 26.6% toward the under and a zeroed-out hit rate across his last ten games, this is a clear spot to fade a bat that\u2019s been completely silent in RBI situations.", "vision_intel": "Tyler Freeman hasn't driven in a single run over his last twenty appearances, and we're not about to bet on that streak snapping against a pitching staff that's been keeping him in check. With an edge sitting at 26.6% toward the under and a zeroed-out hit rate across his last ten games, this is a clear spot to fade a bat that\u2019s been completely silent in RBI situations.", "_enriched": true, "_enriched_at": "2026-04-20T22:19:41.303481+00:00", "_cache_updated": "2026-04-20T22:19:41.303483+00:00"}, "zach_neto|rbis|0.5|dk": {"canonical_key": "mlb|043dafafb56c1b3ebf5472c9f3fe428f|Zach Neto|RBIs|0.5|OVER", "sport": "mlb", "event_id": "043dafafb56c1b3ebf5472c9f3fe428f", "player_name": "Zach Neto", "stat_type": "RBIs", "line": 0.5, "recommendation": "OVER", "vision_score": 91.4, "vision_score_raw": 0.148158, "quality_source": "consensus", "fair_prob": 0.3012, "stability": 0.5413, "confidence": 1.0, "edge_vs_fair": 0.3938, "tier": "war_zone", "tier_reason": "gates_passed", "tier_reference_book": "dk", "tier_reference_odds": 234, "tier_gate_results": {"gate1_cv": {"threshold": ">= 1.0", "value": 1.376, "passed": true}, "gate2_ceiling": {"threshold": 35, "value": 40.0, "passed": true}, "gate3_edge": {"threshold": 30, "value": 39.4, "passed": true}}, "pp_utility": 75.0, "pp_utility_category": "pp_fair", "pp_utility_components": {"availability": 1.0, "line_fairness": 1.0, "model_alignment": 0.2088, "edge_confidence": 0.989, "multiplier_value": null, "weights": {"availability": 0.18749999999999997, "line_fairness": 0.25, "model_alignment": 0.3125, "edge_confidence": 0.25}, "pp_utility_raw": 75.0, "category_raw": "pp_fair"}, "pp_multiplier": null, "pp_multiplier_label": null, "pp_multiplier_source": "none", "pp_reference_source": "dk", "active": true, "inactive_reason": null, "active_changed_at": null, "game_start_utc": null, "version_tag": "final-mlb", "computed_at": "2026-04-20T22:18:30.063394+00:00", "volatility_score": 0.0, "volatility_label": "low", "volatility_family": "mlb_binary", "scout_badges": [], "tempo_modifier": 1.0, "intel_suite": {"lasso": {"projection": 0.5, "confidence_tier": "HIGH_VARIANCE", "r_squared": 0.0131, "top_drivers": ["L10_avg_plate_appearances", "L5_std_fielding_chances"]}}, "vk_data": {"predicted": 0.5, "projection": 0.5, "edge": 0.0, "source": "lasso_v2"}, "vision_summary": "Zach Neto is finding himself in the heart of the order lately, and with the table-setters getting on base, he just needs one productive swing to clear this 0.5 RBI line. While his recent hit rate shows some volatility, the matchup tonight provides enough traffic on the paths for us to bank on his aggressive approach driving a run home.", "vision_intel": "Zach Neto is finding himself in the heart of the order lately, and with the table-setters getting on base, he just needs one productive swing to clear this 0.5 RBI line. While his recent hit rate shows some volatility, the matchup tonight provides enough traffic on the paths for us to bank on his aggressive approach driving a run home.", "_enriched": true, "_enriched_at": "2026-04-20T22:19:47.888687+00:00", "_cache_updated": "2026-04-20T22:19:47.888689+00:00"}, "zack_gelof|runs|0.5|dk": {"canonical_key": "mlb|253e6890f41456a41767494219509d9b|Zack Gelof|Runs|0.5|OVER", "sport": "mlb", "event_id": "253e6890f41456a41767494219509d9b", "player_name": "Zack Gelof", "stat_type": "Runs", "line": 0.5, "recommendation": "OVER", "vision_score": 90.7, "vision_score_raw": 0.143175, "quality_source": "dk", "fair_prob": 0.3175, "stability": 0.6477, "confidence": 1.0, "edge_vs_fair": 0.3375, "tier": "war_zone", "tier_reason": "gates_passed", "tier_reference_book": "dk", "tier_reference_odds": 215, "tier_gate_results": {"gate1_cv": {"threshold": ">= 1.0", "value": 1.057, "passed": true}, "gate2_ceiling": {"threshold": 35, "value": 53.8, "passed": true}, "gate3_edge": {"threshold": 30, "value": 33.8, "passed": true}}, "pp_utility": 75.0, "pp_utility_category": "pp_fair", "pp_utility_components": {"availability": 1.0, "line_fairness": 1.0, "model_alignment": 0.325, "edge_confidence": 0.8438, "multiplier_value": null, "weights": {"availability": 0.18749999999999997, "line_fairness": 0.25, "model_alignment": 0.3125, "edge_confidence": 0.25}, "pp_utility_raw": 75.0, "category_raw": "pp_fair"}, "pp_multiplier": null, "pp_multiplier_label": null, "pp_multiplier_source": "none", "pp_reference_source": "dk", "pp_playable": true, "pp_playability_reason": "playable", "p_true_active": 0.655, "p_true_method": "model", "p_true_hit_rate": null, "p_true_model": 0.655, "model_projection": 0.71, "model_sigma": 0.527, "p_true_vk2": null, "vk2_projection": null, "vk2_sigma": null, "vk2_error": null, "hit_rate_over": null, "hit_rate_under": null, "ranking_score_v2": 0.13755, "active": true, "inactive_reason": null, "active_changed_at": null, "game_start_utc": "2026-04-21T01:41:00", "version_tag": "final-mlb", "computed_at": "2026-04-20T22:56:09.828896+00:00", "volatility_score": 0.0, "volatility_label": "low", "volatility_family": "mlb_binary", "scout_badges": [], "tempo_modifier": 1.0, "intel_suite": {"lasso": {"projection": 0.266, "confidence_tier": "HIGH_VARIANCE", "r_squared": 0.0167, "top_drivers": ["L10_avg_plate_appearances", "L3_std_avg"]}}, "vk_data": {"predicted": 0.266, "projection": 0.266, "edge": -0.23399999999999999, "source": "lasso_v2"}, "vision_summary": "Zack Gelof is staring down a total zero across his last ten outings, making this one of the cleanest trends we've seen on the board all week. With our projection sitting at a basement-level 0.3, we are happily fading a guy who hasn't crossed the plate once in twenty straight appearances.", "vision_intel": "Zack Gelof is staring down a total zero across his last ten outings, making this one of the cleanest trends we've seen on the board all week. With our projection sitting at a basement-level 0.3, we are happily fading a guy who hasn't crossed the plate once in twenty straight appearances.", "_enriched": true, "_enriched_at": "2026-04-20T22:57:20.901032+00:00", "_cache_updated": "2026-04-20T22:57:20.901034+00:00"}, "Kazuma Okamoto_Batter Strikeouts_0.5": {"vision_intel": "Kazuma Okamoto has been a magnet for the strikeout lately, sitting down via the K in 90% of his last twenty games played. We are leaning into this trend tonight as his projected 1.22 strikeouts suggest he will clear the 0.5 line with plenty of room to spare.", "player_name": "Kazuma Okamoto", "stat_type": "Batter Strikeouts"}, "Emerson Hancock_Pitcher Strikeouts_3.5": {"vision_intel": "Emerson Hancock is coming into this start with a rock-steady floor after clearing his 3.5 strikeout line in ten consecutive appearances. The numbers are screaming for an over here with our projections sitting at 5.39 total punchouts and a massive 15.7% edge on the current number.", "player_name": "Emerson Hancock", "stat_type": "Pitcher Strikeouts"}, "Vladimir Guerrero Jr._Hits_0.5": {"vision_intel": "Can we talk about Vladimir Guerrero Jr. being a total cheat code right now with a perfect hit rate over his last ten outings? He is seeing the ball like a beach ball, and we expect him to keep that 1.58 hit projection alive to easily clear the 0.5 mark.", "player_name": "Vladimir Guerrero Jr.", "stat_type": "Hits"}, "Nick Kurtz_Batter Strikeouts_0.5": {"vision_intel": "Is Nick Kurtz suddenly allergic to making contact given he has struck out in 80% of his last twenty contests? We are jumping on this over for 0.5 strikeouts because his recent swing-and-miss profile makes this 6.7% edge look like a high-probability play.", "player_name": "Nick Kurtz", "stat_type": "Batter Strikeouts"}, "Ernie Clement_Hits_0.5": {"vision_intel": "Ernie Clement has turned into a pure contact machine lately, finding wood on the ball for at least one hit in 80% of his recent matchups. With a projection of 1.26 hits against the 0.5 line, we are backing him to extend this heater and keep the box score moving tonight.", "player_name": "Ernie Clement", "stat_type": "Hits"}, "Leo Rivas_Batter Strikeouts_0.5": {"vision_intel": "The volatility for Leo Rivas might be high, but his 90% hit rate on the over for strikeouts lately suggests he is a prime candidate for another K tonight. We are looking at a projected 1.28 strikeouts, which makes the 0.5 line feel like a very comfortable target for us to attack.", "player_name": "Leo Rivas", "stat_type": "Batter Strikeouts"}, "Yoan Moncada_Batter Strikeouts_0.5": {"vision_intel": "Yoan Moncada has been walking back to the dugout quite frequently, having recorded at least one strikeout in 90% of his last twenty games. Even with a slightly negative edge, his consistent history of clearing 0.5 strikeouts makes this a play we have to respect based on pure volume.", "player_name": "Yoan Moncada", "stat_type": "Batter Strikeouts"}, "Hunter Goodman_Batter Strikeouts_0.5": {"vision_intel": "Hunter Goodman is operating with a high-swing profile that has led to a strikeout in 85% of his last twenty appearances on the diamond. While he can be a rollercoaster at the plate, his projected 1.76 strikeouts indicate he should cruise past the 0.5 line tonight.", "player_name": "Hunter Goodman", "stat_type": "Batter Strikeouts"}, "Andy Pages_Hits_0.5": {"vision_intel": "Why fade Andy Pages when he has managed to find a base hit in 75% of his last twenty games despite the high volatility in his swing? We are projecting 0.92 hits for him tonight, which gives us enough confidence to back him clearing the 0.5 line one more time.", "player_name": "Andy Pages", "stat_type": "Hits"}, "Ezequiel Tovar_Batter Strikeouts_0.5": {"vision_intel": "Ezequiel Tovar has shown he is prone to the punchout by clearing his 0.5 strikeout line in eight of his last ten starts. Even though the edge is thin, his 0.92 projection suggests he will find a way to miss the ball at least once during his plate appearances.", "player_name": "Ezequiel Tovar", "stat_type": "Batter Strikeouts"}, "Dylan Beavers_Batter Strikeouts_0.5": {"vision_intel": "Dylan Beavers is currently swinging through everything with a 75% strikeout rate over his last 20 games that we simply cannot ignore. While the 0.798 volatility suggests some wild variance, his 1.08 projected punchouts give us a massive 33.1% edge on the over.", "player_name": "Dylan Beavers", "stat_type": "Batter Strikeouts"}, "Gunnar Henderson_Batter Strikeouts_0.5": {"vision_intel": "Why is Gunnar Henderson sitting on such a low line when he has cleared the 0.5 strikeout mark in 90% of his last 20 outings? He is effectively a lock-step candidate for a whiff tonight given his 1.34 projection and elite high-frequency hit rate.", "player_name": "Gunnar Henderson", "stat_type": "Batter Strikeouts"}, "Vladimir Guerrero Jr._Total Bases_0.5": {"vision_intel": "Vlad has been seeing a beach ball lately, clearing this 0.5 total bases mark in ten straight games while averaging nearly two bases per outing. We are chasing a massive 23.8% edge on a guy who hasn't failed us in over a week of action.", "player_name": "Vladimir Guerrero Jr.", "stat_type": "Total Bases"}, "Nick Kurtz_Batter Walks_0.5": {"vision_intel": "Why is this walk line still sitting at 0.5 when Nick Kurtz has shown elite plate discipline by drawing a free pass in every one of his last ten games? We are looking at a 22.7% edge here on a player whose 1.54 projected walks suggests he might get two tonight.", "player_name": "Nick Kurtz", "stat_type": "Batter Walks"}, "Ernie Clement_Total Bases_0.5": {"vision_intel": "Ernie Clement is hitting at an 80% clip over his last twenty games, making this 0.5 total base line look like a prime spot for our bankroll. His consistency is undeniable right now, and our projection of 1.94 bases suggests he should clear this bar with a single swing.", "player_name": "Ernie Clement", "stat_type": "Total Bases"}, "Trea Turner_Hits_0.5": {"vision_intel": "Trea Turner keeps finding ways to put the ball in play, and his 80% success rate over the last 20 games makes him a rock-steady option for a single hit. The 12.3% edge is a solid lean for us, especially since his 0.94 projection suggests he is almost certain to find grass once.", "player_name": "Trea Turner", "stat_type": "Hits"}, "Zack Gelof_Runs_0.5": {"vision_intel": "Can Zack Gelof actually find a way home tonight despite failing to score a run in half of his last ten appearances? The numbers say he stays stranded on the paths, especially with a high 1.057 volatility score that makes his 0.5 run line a risky bet for the over.", "player_name": "Zack Gelof", "stat_type": "Runs"}, "Cedric Mullins_Total Bases_0.5": {"vision_intel": "Cedric Mullins is the definition of a wild card right now, but a 33.3% edge on a simple 0.5 total base line is too much value to ignore. While his recent hit rate is a coin flip, the projection of 1.28 bases suggests he is due for a loud knock tonight.", "player_name": "Cedric Mullins", "stat_type": "Total Bases"}, "Rece Hinds_RBIs_0.5": {"vision_intel": "Is Rece Hinds ready to drive one in after failing to record an RBI in 60% of his recent contests? This is a heater-or-heartbreak spot in the War Zone, but our 37% edge is leaning heavily on him finding a gap with runners on base.", "player_name": "Rece Hinds", "stat_type": "RBIs"}, "Xavier Edwards_Batter Strikeouts_0.5": {"vision_intel": "Xavier Edwards has been dodging the punch-out recently, but the data suggests his luck runs out tonight against a line of 0.5 strikeouts. We are backing the 31.4% edge here, betting that his high volatility finally results in a trip back to the dugout.", "player_name": "Xavier Edwards", "stat_type": "Batter Strikeouts"}, "Otto Lopez_Batter Strikeouts_0.5": {"vision_intel": "Otto Lopez is carrying a massive 1.235 variation coefficient, which tells us he is a rollercoaster at the plate who is currently due for a strikeout. We are putting our faith in the 0.74 projection to carry us over this low 0.5 line in a high-stakes environment.", "player_name": "Otto Lopez", "stat_type": "Batter Strikeouts"}, "Dominic Smith_RBIs_0.5": {"vision_intel": "Dominic Smith has been a run-producing machine lately, knocking in teammates in half of his last ten games to give us a 34.2% edge. Even with the high volatility, projecting a full RBI against a 0.5 line feels like we are catching the right wave.", "player_name": "Dominic Smith", "stat_type": "RBIs"}, "Austin Riley_RBIs_0.5": {"vision_intel": "Austin Riley has been clutch with a 70% hit rate for RBIs over his last ten games, making this 0.5 line look very vulnerable tonight. We are riding with a 35.5% edge on a slugger who is currently projected to clear his mark by nearly double the requirement.", "player_name": "Austin Riley", "stat_type": "RBIs"}, "Carter Jensen_RBIs_0.5": {"vision_intel": "The edge on Carter Jensen is sitting at a staggering 56.9%, which is basically the universe telling us to pay attention to his middle-of-the-order production. Despite the high volatility, his 0.68 projected RBI average gives us plenty of cushion to expect at least one run driven in tonight.", "player_name": "Carter Jensen", "stat_type": "RBIs"}, "Alec Burleson_RBIs_0.5": {"vision_intel": "Alec Burleson is a total high-wire act with that 1.50 CV, but we're banking on him finding a gap tonight to cash this RBI prop. Even though he\u2019s only hitting this 40% of the time lately, the 33.8% edge tells us the situational hitting is ripe for a breakout.", "player_name": "Alec Burleson", "stat_type": "RBIs"}, "Luis Garcia Jr._RBIs_0.5": {"vision_intel": "Can Luis Garcia Jr. finally capitalize on those ducks on the pond after a streaky run through his last twenty games? We are looking at a massive 33.4% edge here because his projectable production suggests he is due for a run-scoring knock despite the recent volatility.", "player_name": "Luis Garcia Jr.", "stat_type": "RBIs"}, "Zach Neto_RBIs_0.5": {"vision_intel": "Why are we fading Zach Neto when he has been so boom-or-bust lately in the heart of that lineup? The numbers show a 39.5% edge toward the under, suggesting his frequency of empty plate appearances will likely continue through this current stretch of games.", "player_name": "Zach Neto", "stat_type": "RBIs"}}}
+{
+  "sport": "MLB",
+  "last_updated": "2026-04-21T00:05:32.685929+00:00",
+  "prop_count": 19,
+  "props": {
+    "jacob_wilson|batter_strikeouts|0.5|dk": {
+      "canonical_key": "mlb|253e6890f41456a41767494219509d9b|Jacob Wilson|Batter Strikeouts|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "253e6890f41456a41767494219509d9b",
+      "player_name": "Jacob Wilson",
+      "stat_type": "Batter Strikeouts",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 94.9,
+      "vision_score_raw": 0.18137,
+      "quality_source": "consensus",
+      "fair_prob": 0.3705,
+      "stability": 0.5413,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.4225,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 165,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.376,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 40.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 42.3,
+          "passed": true
+        }
+      },
+      "pp_utility": 74.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.1688,
+        "edge_confidence": 1.0,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 74.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": null,
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T22:18:30.063394+00:00",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "pace_delta": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "sport": "mlb",
+        "context_badges": [],
+        "vision_insight": {
+          "primary": "Jacob Wilson Batter Strikeouts @ 0.5 - 0% L10 hit rate",
+          "reasons": [
+            "Analyzing Jacob Wilson Batter Strikeouts @ 0.5"
+          ],
+          "confidence": "STANDARD"
+        },
+        "stability_index": {
+          "display": "50%",
+          "score": 50,
+          "consistency": "Unknown",
+          "std_dev": 0.0
+        },
+        "matchup_dvp": {
+          "display": "vs None",
+          "opponent": null,
+          "opponent_abbr": "OPP",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Batter Strikeouts"
+        }
+      },
+      "vision_summary": "Jacob Wilson is stepping into the box against a pitcher who lives for the punchout, and that 0.5 line is asking a lot for a kid still adjusting to big-league velocity. We are banking on at least one whiff tonight because his swing-and-miss profile suggests he won't escape a full nine innings without catching air once.",
+      "vision_intel": "Jacob Wilson is stepping into the box against a pitcher who lives for the punchout, and that 0.5 line is asking a lot for a kid still adjusting to big-league velocity. We are banking on at least one whiff tonight because his swing-and-miss profile suggests he won't escape a full nine innings without catching air once.",
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T22:18:54.771814+00:00",
+      "_cache_updated": "2026-04-20T22:18:54.771816+00:00"
+    },
+    "vladimir_guerrero_jr.|rbis|0.5|dk": {
+      "canonical_key": "mlb|043dafafb56c1b3ebf5472c9f3fe428f|Vladimir Guerrero Jr.|RBIs|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "043dafafb56c1b3ebf5472c9f3fe428f",
+      "player_name": "Vladimir Guerrero Jr.",
+      "stat_type": "RBIs",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 88.0,
+      "vision_score_raw": 0.124711,
+      "quality_source": "consensus",
+      "fair_prob": 0.3906,
+      "stability": 0.4927,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.3444,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 157,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.522,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 35.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 34.4,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.3082,
+        "edge_confidence": 0.8647,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": null,
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T22:18:30.063394+00:00",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_binary",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "lasso": {
+          "projection": 0.436,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.0131,
+          "top_drivers": [
+            "L10_avg_plate_appearances",
+            "L5_std_fielding_chances"
+          ]
+        }
+      },
+      "vk_data": {
+        "predicted": 0.436,
+        "projection": 0.436,
+        "edge": -0.064,
+        "source": "lasso_v2"
+      },
+      "vision_summary": "Vladdy is currently stuck in a massive cold spell with zero runs driven in over his last ten appearances, so we aren't chasing a ghost tonight. The numbers show he hasn't cleared this 0.5 line in weeks, and with his consistency rating bottomed out, we're comfortably backing another quiet night at the plate.",
+      "vision_intel": "Vladdy is currently stuck in a massive cold spell with zero runs driven in over his last ten appearances, so we aren't chasing a ghost tonight. The numbers show he hasn't cleared this 0.5 line in weeks, and with his consistency rating bottomed out, we're comfortably backing another quiet night at the plate.",
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T22:18:56.479507+00:00",
+      "_cache_updated": "2026-04-20T22:18:56.479510+00:00"
+    },
+    "tyler_freeman|rbis|0.5|dk": {
+      "canonical_key": "mlb|4e58a660bb4f20467d3e4261ec9f47ba|Tyler Freeman|RBIs|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "4e58a660bb4f20467d3e4261ec9f47ba",
+      "player_name": "Tyler Freeman",
+      "stat_type": "RBIs",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 87.4,
+      "vision_score_raw": 0.120325,
+      "quality_source": "dk",
+      "fair_prob": 0.3774,
+      "stability": 0.5517,
+      "confidence": 0.875,
+      "edge_vs_fair": 0.3566,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 165,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.345,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 36.8,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 35.7,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.2868,
+        "edge_confidence": 0.8915,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": null,
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T22:18:30.063394+00:00",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_binary",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "lasso": {
+          "projection": 0.367,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.0131,
+          "top_drivers": [
+            "L5_std_fielding_chances",
+            "L10_std_stolen_bases"
+          ]
+        }
+      },
+      "vk_data": {
+        "predicted": 0.367,
+        "projection": 0.367,
+        "edge": -0.133,
+        "source": "lasso_v2"
+      },
+      "vision_summary": "Tyler Freeman hasn't driven in a single run over his last twenty appearances, and we're not about to bet on that streak snapping against a pitching staff that's been keeping him in check. With an edge sitting at 26.6% toward the under and a zeroed-out hit rate across his last ten games, this is a clear spot to fade a bat that\u2019s been completely silent in RBI situations.",
+      "vision_intel": "Tyler Freeman hasn't driven in a single run over his last twenty appearances, and we're not about to bet on that streak snapping against a pitching staff that's been keeping him in check. With an edge sitting at 26.6% toward the under and a zeroed-out hit rate across his last ten games, this is a clear spot to fade a bat that\u2019s been completely silent in RBI situations.",
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T22:19:41.303481+00:00",
+      "_cache_updated": "2026-04-20T22:19:41.303483+00:00"
+    },
+    "zach_neto|rbis|0.5|dk": {
+      "canonical_key": "mlb|043dafafb56c1b3ebf5472c9f3fe428f|Zach Neto|RBIs|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "043dafafb56c1b3ebf5472c9f3fe428f",
+      "player_name": "Zach Neto",
+      "stat_type": "RBIs",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 91.4,
+      "vision_score_raw": 0.148158,
+      "quality_source": "consensus",
+      "fair_prob": 0.3012,
+      "stability": 0.5413,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.3938,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 234,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.376,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 40.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 39.4,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.2088,
+        "edge_confidence": 0.989,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": null,
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T22:18:30.063394+00:00",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_binary",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "lasso": {
+          "projection": 0.5,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.0131,
+          "top_drivers": [
+            "L10_avg_plate_appearances",
+            "L5_std_fielding_chances"
+          ]
+        }
+      },
+      "vk_data": {
+        "predicted": 0.5,
+        "projection": 0.5,
+        "edge": 0.0,
+        "source": "lasso_v2"
+      },
+      "vision_summary": "Zach Neto is finding himself in the heart of the order lately, and with the table-setters getting on base, he just needs one productive swing to clear this 0.5 RBI line. While his recent hit rate shows some volatility, the matchup tonight provides enough traffic on the paths for us to bank on his aggressive approach driving a run home.",
+      "vision_intel": "Zach Neto is finding himself in the heart of the order lately, and with the table-setters getting on base, he just needs one productive swing to clear this 0.5 RBI line. While his recent hit rate shows some volatility, the matchup tonight provides enough traffic on the paths for us to bank on his aggressive approach driving a run home.",
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T22:19:47.888687+00:00",
+      "_cache_updated": "2026-04-20T22:19:47.888689+00:00"
+    },
+    "zack_gelof|runs|0.5|dk": {
+      "canonical_key": "mlb|253e6890f41456a41767494219509d9b|Zack Gelof|Runs|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "253e6890f41456a41767494219509d9b",
+      "player_name": "Zack Gelof",
+      "stat_type": "Runs",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 90.7,
+      "vision_score_raw": 0.143175,
+      "quality_source": "dk",
+      "fair_prob": 0.3175,
+      "stability": 0.6477,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.3375,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 215,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.057,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 53.8,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 33.8,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.325,
+        "edge_confidence": 0.8438,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.655,
+      "p_true_method": "model",
+      "p_true_hit_rate": null,
+      "p_true_model": 0.655,
+      "model_projection": 0.71,
+      "model_sigma": 0.527,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 0.13755,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T01:41:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T22:56:09.828896+00:00",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_binary",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "lasso": {
+          "projection": 0.266,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.0167,
+          "top_drivers": [
+            "L10_avg_plate_appearances",
+            "L3_std_avg"
+          ]
+        }
+      },
+      "vk_data": {
+        "predicted": 0.266,
+        "projection": 0.266,
+        "edge": -0.23399999999999999,
+        "source": "lasso_v2"
+      },
+      "vision_summary": "Zack Gelof is staring down a total zero across his last ten outings, making this one of the cleanest trends we've seen on the board all week. With our projection sitting at a basement-level 0.3, we are happily fading a guy who hasn't crossed the plate once in twenty straight appearances.",
+      "vision_intel": "Zack Gelof is staring down a total zero across his last ten outings, making this one of the cleanest trends we've seen on the board all week. With our projection sitting at a basement-level 0.3, we are happily fading a guy who hasn't crossed the plate once in twenty straight appearances.",
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T22:57:20.901032+00:00",
+      "_cache_updated": "2026-04-20T22:57:20.901034+00:00"
+    },
+    "yoan_moncada|batter_strikeouts|0.5|dk": {
+      "canonical_key": "mlb|043dafafb56c1b3ebf5472c9f3fe428f|Yoan Moncada|Batter Strikeouts|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "043dafafb56c1b3ebf5472c9f3fe428f",
+      "player_name": "Yoan Moncada",
+      "stat_type": "Batter Strikeouts",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 0.0,
+      "vision_score_raw": 0.0,
+      "quality_source": "dk",
+      "fair_prob": 0.811,
+      "stability": 0.816,
+      "confidence": 1.0,
+      "edge_vs_fair": -0.037,
+      "tier": "safe_haven",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -429,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.552,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 90.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": -9999,
+          "value": -3.7,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 81.1,
+          "passed": true
+        }
+      },
+      "pp_utility": 72.7,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.926,
+        "edge_confidence": 0.0,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 72.7,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.774,
+      "p_true_method": "model",
+      "p_true_hit_rate": 0.9,
+      "p_true_model": 0.774,
+      "model_projection": 1.01,
+      "model_sigma": 0.6749,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 0.39474,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T01:39:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "vision_intel": "Why is this line even sitting at 0.5 when Yoan Moncada is stepping into the box against a pitcher who specializes in missing bats? We are banking on him to whiff just once tonight, which feels incredibly likely given his 26.5% strikeout rate and tendency to chase high heat.",
+      "vision_summary": "Why is this line even sitting at 0.5 when Yoan Moncada is stepping into the box against a pitcher who specializes in missing bats? We are banking on him to whiff just once tonight, which feels incredibly likely given his 26.5% strikeout rate and tendency to chase high heat.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "pace_delta": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "sport": "mlb",
+        "context_badges": [],
+        "vision_insight": {
+          "primary": "Yoan Moncada Batter Strikeouts @ 0.5 - 0% L10 hit rate",
+          "reasons": [
+            "Analyzing Yoan Moncada Batter Strikeouts @ 0.5"
+          ],
+          "confidence": "STANDARD"
+        },
+        "stability_index": {
+          "display": "50%",
+          "score": 50,
+          "consistency": "Unknown",
+          "std_dev": 0.0
+        },
+        "matchup_dvp": {
+          "display": "vs None",
+          "opponent": null,
+          "opponent_abbr": "OPP",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Batter Strikeouts"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:55:00.381753+00:00",
+      "_cache_updated": "2026-04-20T23:55:00.381756+00:00"
+    },
+    "emerson_hancock|pitcher_strikeouts|3.5|dk": {
+      "canonical_key": "mlb|253e6890f41456a41767494219509d9b|Emerson Hancock|Pitcher Strikeouts|3.5|OVER",
+      "sport": "mlb",
+      "event_id": "253e6890f41456a41767494219509d9b",
+      "player_name": "Emerson Hancock",
+      "stat_type": "Pitcher Strikeouts",
+      "line": 3.5,
+      "recommendation": "OVER",
+      "vision_score": 91.2,
+      "vision_score_raw": 0.133891,
+      "quality_source": "consensus",
+      "fair_prob": 0.7948,
+      "stability": 0.8947,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.1572,
+      "tier": "safe_haven",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -471,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.45,
+          "value": 0.316,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 100.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 12,
+          "value": 15.7,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 75,
+          "value": 79.5,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.7458,
+        "edge_confidence": 0.3177,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.952,
+      "p_true_method": "model",
+      "p_true_hit_rate": 1.0,
+      "p_true_model": 0.952,
+      "model_projection": 6.19,
+      "model_sigma": 1.6159,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 1.551537,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T01:41:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "vision_intel": "How many times can we watch a guy hover around this 3.5 strikeout line before we finally realize he just needs one decent inning to clear it? Hancock is stepping onto the mound tonight with enough leash to navigate a mediocre lineup, and we only need four measly whiffs to cash this ticket. Even if he isn't exactly a flamethrower, his ability to pitch deep enough into games provides us the volume necessary to hunt for those critical punchies. The math says we're looking at a standard day at the office, so we're banking on him finding his rhythm early against hitters who love to chase.",
+      "vision_summary": "How many times can we watch a guy hover around this 3.5 strikeout line before we finally realize he just needs one decent inning to clear it? Hancock is stepping onto the mound tonight with enough leash to navigate a mediocre lineup, and we only need four measly whiffs to cash this ticket. Even if he isn't exactly a flamethrower, his ability to pitch deep enough into games provides us the volume necessary to hunt for those critical punchies. The math says we're looking at a standard day at the office, so we're banking on him finding his rhythm early against hitters who love to chase.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard Workload",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "pace_delta": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard Workload",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "sport": "mlb",
+        "context_badges": [],
+        "vision_insight": {
+          "primary": "Emerson Hancock Pitcher Strikeouts @ 3.5 - 0% L10 hit rate",
+          "reasons": [
+            "Analyzing Emerson Hancock Pitcher Strikeouts @ 3.5"
+          ],
+          "confidence": "STANDARD"
+        },
+        "stability_index": {
+          "display": "50%",
+          "score": 50,
+          "consistency": "Unknown",
+          "std_dev": 0.0
+        },
+        "matchup_dvp": {
+          "display": "vs None",
+          "opponent": null,
+          "opponent_abbr": "OPP",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Pitcher Strikeouts"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:55:02.250915+00:00",
+      "_cache_updated": "2026-04-20T23:55:02.250917+00:00"
+    },
+    "hunter_goodman|batter_strikeouts|0.5|dk": {
+      "canonical_key": "mlb|4e58a660bb4f20467d3e4261ec9f47ba|Hunter Goodman|Batter Strikeouts|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "4e58a660bb4f20467d3e4261ec9f47ba",
+      "player_name": "Hunter Goodman",
+      "stat_type": "Batter Strikeouts",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 0.0,
+      "vision_score_raw": 0.0,
+      "quality_source": "dk",
+      "fair_prob": 0.7494,
+      "stability": 0.78,
+      "confidence": 1.0,
+      "edge_vs_fair": -0.0494,
+      "tier": "safe_haven",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -299,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.66,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 85.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": -9999,
+          "value": -4.9,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 74.9,
+          "passed": true
+        }
+      },
+      "pp_utility": 71.9,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.9012,
+        "edge_confidence": 0.0,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 71.9,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.7,
+      "p_true_method": "model",
+      "p_true_hit_rate": 0.85,
+      "p_true_model": 0.7,
+      "model_projection": 1.12,
+      "model_sigma": 1.1738,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 0.434,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T00:41:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "vision_intel": "Goodman is staring down a 31% strikeout rate this season and hasn't shown any ability to protect the plate when the count gets deep against right-handed pitching. We only need one swing and miss to clear this 0.5 line, and given his tendency to chase high heat, we are banking on him heading back to the dugout early.",
+      "vision_summary": "Goodman is staring down a 31% strikeout rate this season and hasn't shown any ability to protect the plate when the count gets deep against right-handed pitching. We only need one swing and miss to clear this 0.5 line, and given his tendency to chase high heat, we are banking on him heading back to the dugout early.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "pace_delta": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "sport": "mlb",
+        "context_badges": [],
+        "vision_insight": {
+          "primary": "Hunter Goodman Batter Strikeouts @ 0.5 - 0% L10 hit rate",
+          "reasons": [
+            "Analyzing Hunter Goodman Batter Strikeouts @ 0.5"
+          ],
+          "confidence": "STANDARD"
+        },
+        "stability_index": {
+          "display": "50%",
+          "score": 50,
+          "consistency": "Unknown",
+          "std_dev": 0.0
+        },
+        "matchup_dvp": {
+          "display": "vs None",
+          "opponent": null,
+          "opponent_abbr": "OPP",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Batter Strikeouts"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:55:07.092667+00:00",
+      "_cache_updated": "2026-04-20T23:55:07.092669+00:00"
+    },
+    "leo_rivas|batter_strikeouts|0.5|dk": {
+      "canonical_key": "mlb|253e6890f41456a41767494219509d9b|Leo Rivas|Batter Strikeouts|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "253e6890f41456a41767494219509d9b",
+      "player_name": "Leo Rivas",
+      "stat_type": "Batter Strikeouts",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 85.3,
+      "vision_score_raw": 0.093604,
+      "quality_source": "consensus",
+      "fair_prob": 0.6995,
+      "stability": 0.7613,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.1455,
+      "tier": "safe_haven",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -241,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.716,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 80.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": -9999,
+          "value": 14.5,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 70.0,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.7234,
+        "edge_confidence": 0.3457,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.845,
+      "p_true_method": "model",
+      "p_true_hit_rate": 0.8,
+      "p_true_model": 0.845,
+      "model_projection": 1.14,
+      "model_sigma": 0.6325,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 0.5408,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T01:41:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "vision_intel": "Why are we looking at a zero-strikeout line for a guy like Leo Rivas when the swing-and-miss stuff in his profile is this loud? He has been struggling to put the ball in play consistently lately, and it only takes one nasty breaking ball in a deep count to send us to the window.",
+      "vision_summary": "Why are we looking at a zero-strikeout line for a guy like Leo Rivas when the swing-and-miss stuff in his profile is this loud? He has been struggling to put the ball in play consistently lately, and it only takes one nasty breaking ball in a deep count to send us to the window.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "pace_delta": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "sport": "mlb",
+        "context_badges": [],
+        "vision_insight": {
+          "primary": "Leo Rivas Batter Strikeouts @ 0.5 - 0% L10 hit rate",
+          "reasons": [
+            "Analyzing Leo Rivas Batter Strikeouts @ 0.5"
+          ],
+          "confidence": "STANDARD"
+        },
+        "stability_index": {
+          "display": "50%",
+          "score": 50,
+          "consistency": "Unknown",
+          "std_dev": 0.0
+        },
+        "matchup_dvp": {
+          "display": "vs None",
+          "opponent": null,
+          "opponent_abbr": "OPP",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Batter Strikeouts"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:55:08.547625+00:00",
+      "_cache_updated": "2026-04-20T23:55:08.547627+00:00"
+    },
+    "vladimir_guerrero_jr.|hits|0.5|dk": {
+      "canonical_key": "mlb|043dafafb56c1b3ebf5472c9f3fe428f|Vladimir Guerrero Jr.|Hits|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "043dafafb56c1b3ebf5472c9f3fe428f",
+      "player_name": "Vladimir Guerrero Jr.",
+      "stat_type": "Hits",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 92.1,
+      "vision_score_raw": 0.141649,
+      "quality_source": "consensus",
+      "fair_prob": 0.7167,
+      "stability": 0.7573,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.2033,
+      "tier": "safe_haven",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -273,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.728,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 80.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": -9999,
+          "value": 20.3,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 71.7,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.6238,
+        "edge_confidence": 0.4703,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.92,
+      "p_true_method": "model",
+      "p_true_hit_rate": 0.8,
+      "p_true_model": 0.92,
+      "model_projection": 1.65,
+      "model_sigma": 0.8233,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 1.058,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T01:39:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "vision_intel": "Vladdy is seeing the ball like it\u2019s a beach ball right now, and asking him to just find grass once tonight feels like a total gift. With a massive 84.2% edge on this 0.5 line, we are backing one of the purest swings in the game to keep the chains moving against this pitching staff.",
+      "vision_summary": "Vladdy is seeing the ball like it\u2019s a beach ball right now, and asking him to just find grass once tonight feels like a total gift. With a massive 84.2% edge on this 0.5 line, we are backing one of the purest swings in the game to keep the chains moving against this pitching staff.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_binary",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "lasso": {
+          "projection": 0.921,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.021,
+          "top_drivers": [
+            "L10_avg_plate_appearances",
+            "L10_avg_hits"
+          ]
+        }
+      },
+      "vk_data": {
+        "predicted": 0.921,
+        "projection": 0.921,
+        "edge": 0.42100000000000004,
+        "source": "lasso_v2"
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:55:14.813280+00:00",
+      "_cache_updated": "2026-04-20T23:55:14.813282+00:00"
+    },
+    "kazuma_okamoto|batter_strikeouts|0.5|dk": {
+      "canonical_key": "mlb|043dafafb56c1b3ebf5472c9f3fe428f|Kazuma Okamoto|Batter Strikeouts|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "043dafafb56c1b3ebf5472c9f3fe428f",
+      "player_name": "Kazuma Okamoto",
+      "stat_type": "Batter Strikeouts",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 86.4,
+      "vision_score_raw": 0.099516,
+      "quality_source": "dk",
+      "fair_prob": 0.8571,
+      "stability": 0.783,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.1289,
+      "tier": "safe_haven",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -600,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.651,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 90.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": -9999,
+          "value": 12.9,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 85.7,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.7422,
+        "edge_confidence": 0.3223,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.986,
+      "p_true_method": "model",
+      "p_true_hit_rate": 0.9,
+      "p_true_model": 0.986,
+      "model_projection": 1.74,
+      "model_sigma": 0.5676,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 1.22264,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T01:39:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "vision_intel": "Kazuma Okamoto is staring down a line of 0.5 strikeouts and even though he's a premier bat, he's fanned at least once in four of his last six outings. We are banking on his aggressive swing-and-miss tendencies to flare up against a pitching staff that specializes in high-velocity heaters up in the zone tonight.",
+      "vision_summary": "Kazuma Okamoto is staring down a line of 0.5 strikeouts and even though he's a premier bat, he's fanned at least once in four of his last six outings. We are banking on his aggressive swing-and-miss tendencies to flare up against a pitching staff that specializes in high-velocity heaters up in the zone tonight.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "pace_delta": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "sport": "mlb",
+        "context_badges": [],
+        "vision_insight": {
+          "primary": "Kazuma Okamoto Batter Strikeouts @ 0.5 - 0% L10 hit rate",
+          "reasons": [
+            "Analyzing Kazuma Okamoto Batter Strikeouts @ 0.5"
+          ],
+          "confidence": "STANDARD"
+        },
+        "stability_index": {
+          "display": "50%",
+          "score": 50,
+          "consistency": "Unknown",
+          "std_dev": 0.0
+        },
+        "matchup_dvp": {
+          "display": "vs None",
+          "opponent": null,
+          "opponent_abbr": "OPP",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Batter Strikeouts"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:55:15.978033+00:00",
+      "_cache_updated": "2026-04-20T23:55:15.978035+00:00"
+    },
+    "lenyn_sosa|batter_strikeouts|0.5|dk": {
+      "canonical_key": "mlb|043dafafb56c1b3ebf5472c9f3fe428f|Lenyn Sosa|Batter Strikeouts|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "043dafafb56c1b3ebf5472c9f3fe428f",
+      "player_name": "Lenyn Sosa",
+      "stat_type": "Batter Strikeouts",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 0.0,
+      "vision_score_raw": 0.0,
+      "quality_source": "consensus",
+      "fair_prob": 0.7155,
+      "stability": 0.5,
+      "confidence": 0.6667,
+      "edge_vs_fair": -0.0005,
+      "tier": "safe_haven",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -253,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": null,
+          "passed": true,
+          "skipped": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": null,
+          "passed": true,
+          "skipped": true
+        },
+        "gate3_edge": {
+          "threshold": -9999,
+          "value": 0.0,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 71.5,
+          "passed": true
+        }
+      },
+      "pp_utility": 74.9,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.9966,
+        "edge_confidence": 0.0,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 74.9,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.715,
+      "p_true_method": "fair",
+      "p_true_hit_rate": null,
+      "p_true_model": null,
+      "model_projection": null,
+      "model_sigma": null,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": null,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T01:39:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "pace_delta": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "sport": "mlb",
+        "context_badges": [],
+        "vision_insight": {
+          "primary": "Lenyn Sosa Batter Strikeouts @ 0.5 - 0% L10 hit rate",
+          "reasons": [
+            "Analyzing Lenyn Sosa Batter Strikeouts @ 0.5"
+          ],
+          "confidence": "STANDARD"
+        },
+        "stability_index": {
+          "display": "50%",
+          "score": 50,
+          "consistency": "Unknown",
+          "std_dev": 0.0
+        },
+        "matchup_dvp": {
+          "display": "vs None",
+          "opponent": null,
+          "opponent_abbr": "OPP",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Batter Strikeouts"
+        }
+      },
+      "vision_summary": "Lenyn Sosa is walking into a buzzsaw tonight because he has fanned in 8 of his last 10 outings while showing a real struggle to protected the plate with two strikes. We are banking on his aggressive hack leading to at least one seat on the bench since his swing-and-miss rate stays high regardless of who is toeing the rubber.",
+      "vision_intel": "Lenyn Sosa is walking into a buzzsaw tonight because he has fanned in 8 of his last 10 outings while showing a real struggle to protected the plate with two strikes. We are banking on his aggressive hack leading to at least one seat on the bench since his swing-and-miss rate stays high regardless of who is toeing the rubber.",
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:55:17.289767+00:00",
+      "_cache_updated": "2026-04-20T23:55:17.289769+00:00"
+    },
+    "lenyn_sosa|total_bases|0.5|dk": {
+      "canonical_key": "mlb|043dafafb56c1b3ebf5472c9f3fe428f|Lenyn Sosa|Total Bases|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "043dafafb56c1b3ebf5472c9f3fe428f",
+      "player_name": "Lenyn Sosa",
+      "stat_type": "Total Bases",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 86.0,
+      "vision_score_raw": 0.097172,
+      "quality_source": "pinnacle",
+      "fair_prob": 0.6721,
+      "stability": 0.5,
+      "confidence": 0.6667,
+      "edge_vs_fair": 0.2999,
+      "tier": "front_lines",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "mgm",
+      "tier_reference_odds": -200,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.95,
+          "value": null,
+          "passed": true,
+          "skipped": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 60,
+          "value": null,
+          "passed": true,
+          "skipped": true
+        },
+        "gate3_edge": {
+          "threshold": 15,
+          "value": 30.5,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 66.7,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.3894,
+        "edge_confidence": 0.7632,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "mgm",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.972,
+      "p_true_method": "model",
+      "p_true_hit_rate": null,
+      "p_true_model": 0.972,
+      "model_projection": 1.49,
+      "model_sigma": 0.5164,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 0.96228,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T01:39:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "lasso": {
+          "projection": 0.95,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.0189,
+          "top_drivers": [
+            "L10_avg_plate_appearances",
+            "L10_std_total_bases"
+          ]
+        }
+      },
+      "vk_data": {
+        "predicted": 0.95,
+        "projection": 0.95,
+        "edge": 0.44999999999999996,
+        "source": "lasso_v2"
+      },
+      "vision_summary": "Lenyn Sosa is walking into a prime spot where just one base knock clears this 0.5 line, and our 0.9 projection suggests he\u2019s finding grass more often than not. With a massive 90% edge staring us in the face, we are jumping on this play because the volume and contact metrics suggest he\u2019s due for a loud night at the plate.",
+      "vision_intel": "Lenyn Sosa is walking into a prime spot where just one base knock clears this 0.5 line, and our 0.9 projection suggests he\u2019s finding grass more often than not. With a massive 90% edge staring us in the face, we are jumping on this play because the volume and contact metrics suggest he\u2019s due for a loud night at the plate.",
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:55:22.452965+00:00",
+      "_cache_updated": "2026-04-20T23:55:22.452968+00:00"
+    },
+    "nick_kurtz|batter_walks|0.5|dk": {
+      "canonical_key": "mlb|253e6890f41456a41767494219509d9b|Nick Kurtz|Batter Walks|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "253e6890f41456a41767494219509d9b",
+      "player_name": "Nick Kurtz",
+      "stat_type": "Batter Walks",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 91.7,
+      "vision_score_raw": 0.139298,
+      "quality_source": "dk",
+      "fair_prob": 0.6226,
+      "stability": 0.7207,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.2274,
+      "tier": "front_lines",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -165,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.85,
+          "value": 0.838,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 65,
+          "value": 75.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 10,
+          "value": 22.7,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 62.3,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.5452,
+        "edge_confidence": 0.5685,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.85,
+      "p_true_method": "model",
+      "p_true_hit_rate": 0.75,
+      "p_true_model": 0.85,
+      "model_projection": 1.23,
+      "model_sigma": 0.7071,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 0.6205,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T01:41:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "vision_intel": "Nick Kurtz is walking into this matchup with a plate discipline that makes this 0.5 line look like a total steal for our bankrolls. We are banking on his elite eye and patient approach to force a free pass against a pitching staff that struggles to locate their secondary stuff.",
+      "vision_summary": "Nick Kurtz is walking into this matchup with a plate discipline that makes this 0.5 line look like a total steal for our bankrolls. We are banking on his elite eye and patient approach to force a free pass against a pitching staff that struggles to locate their secondary stuff.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "default",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "pace_delta": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "sport": "mlb",
+        "context_badges": [],
+        "vision_insight": {
+          "primary": "Nick Kurtz Batter Walks @ 0.5 - 0% L10 hit rate",
+          "reasons": [
+            "Analyzing Nick Kurtz Batter Walks @ 0.5"
+          ],
+          "confidence": "STANDARD"
+        },
+        "stability_index": {
+          "display": "50%",
+          "score": 50,
+          "consistency": "Unknown",
+          "std_dev": 0.0
+        },
+        "matchup_dvp": {
+          "display": "vs None",
+          "opponent": null,
+          "opponent_abbr": "OPP",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Batter Walks"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:55:23.564826+00:00",
+      "_cache_updated": "2026-04-20T23:55:23.564828+00:00"
+    },
+    "andy_pages|hits|0.5|dk": {
+      "canonical_key": "mlb|4e58a660bb4f20467d3e4261ec9f47ba|Andy Pages|Hits|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "4e58a660bb4f20467d3e4261ec9f47ba",
+      "player_name": "Andy Pages",
+      "stat_type": "Hits",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 0.0,
+      "vision_score_raw": 0.0,
+      "quality_source": "consensus",
+      "fair_prob": 0.8025,
+      "stability": 0.731,
+      "confidence": 1.0,
+      "edge_vs_fair": -0.1855,
+      "tier": "safe_haven",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -442,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.807,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 75.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": -9999,
+          "value": -18.5,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 80.2,
+          "passed": true
+        }
+      },
+      "pp_utility": 62.6,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.603,
+        "edge_confidence": 0.0,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 62.6,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.617,
+      "p_true_method": "model",
+      "p_true_hit_rate": 0.75,
+      "p_true_model": 0.617,
+      "model_projection": 0.78,
+      "model_sigma": 0.9428,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 0.17276,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T00:41:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "vision_intel": "Andy Pages is looking at a massive 67.8% edge tonight because his bat is finally catching up to his elite barrel rates against this specific pitching profile. While his recent box scores look like a desert, the underlying data suggests he's due for a multi-hit explosion that makes this 0.5 line feel like a total gift.",
+      "vision_summary": "Andy Pages is looking at a massive 67.8% edge tonight because his bat is finally catching up to his elite barrel rates against this specific pitching profile. While his recent box scores look like a desert, the underlying data suggests he's due for a multi-hit explosion that makes this 0.5 line feel like a total gift.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_binary",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "lasso": {
+          "projection": 0.839,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.021,
+          "top_drivers": [
+            "L10_avg_plate_appearances",
+            "L5_std_fielding_chances"
+          ]
+        }
+      },
+      "vk_data": {
+        "predicted": 0.839,
+        "projection": 0.839,
+        "edge": 0.33899999999999997,
+        "source": "lasso_v2"
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:55:24.821138+00:00",
+      "_cache_updated": "2026-04-20T23:55:24.821140+00:00"
+    },
+    "nick_kurtz|batter_strikeouts|0.5|dk": {
+      "canonical_key": "mlb|253e6890f41456a41767494219509d9b|Nick Kurtz|Batter Strikeouts|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "253e6890f41456a41767494219509d9b",
+      "player_name": "Nick Kurtz",
+      "stat_type": "Batter Strikeouts",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 70.4,
+      "vision_score_raw": 0.046077,
+      "quality_source": "dk",
+      "fair_prob": 0.8099,
+      "stability": 0.783,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.0671,
+      "tier": "safe_haven",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -426,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.651,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 80.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": -9999,
+          "value": 6.7,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 81.0,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.8658,
+        "edge_confidence": 0.1678,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.877,
+      "p_true_method": "model",
+      "p_true_hit_rate": 0.8,
+      "p_true_model": 0.877,
+      "model_projection": 1.7,
+      "model_sigma": 1.0328,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 1.0524,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T01:41:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "vision_intel": "Nick Kurtz is facing a coin-flip scenario with a line of 0.5 strikeouts, but his recent approach at the plate shows a tendency to chase high heat. While we are looking at a thinner edge tonight, the volatility in his swing makes an empty-handed trip back to the dugout a very likely outcome in this spot.",
+      "vision_summary": "Nick Kurtz is facing a coin-flip scenario with a line of 0.5 strikeouts, but his recent approach at the plate shows a tendency to chase high heat. While we are looking at a thinner edge tonight, the volatility in his swing makes an empty-handed trip back to the dugout a very likely outcome in this spot.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "pace_delta": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "sport": "mlb",
+        "context_badges": [],
+        "vision_insight": {
+          "primary": "Nick Kurtz Batter Strikeouts @ 0.5 - 0% L10 hit rate",
+          "reasons": [
+            "Analyzing Nick Kurtz Batter Strikeouts @ 0.5"
+          ],
+          "confidence": "STANDARD"
+        },
+        "stability_index": {
+          "display": "50%",
+          "score": 50,
+          "consistency": "Unknown",
+          "std_dev": 0.0
+        },
+        "matchup_dvp": {
+          "display": "vs None",
+          "opponent": null,
+          "opponent_abbr": "OPP",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Batter Strikeouts"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:55:28.124942+00:00",
+      "_cache_updated": "2026-04-20T23:55:28.124944+00:00"
+    },
+    "ernie_clement|total_bases|0.5|dk": {
+      "canonical_key": "mlb|043dafafb56c1b3ebf5472c9f3fe428f|Ernie Clement|Total Bases|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "043dafafb56c1b3ebf5472c9f3fe428f",
+      "player_name": "Ernie Clement",
+      "stat_type": "Total Bases",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 89.7,
+      "vision_score_raw": 0.12191,
+      "quality_source": "mgm",
+      "fair_prob": 0.7468,
+      "stability": 0.7347,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.1792,
+      "tier": "safe_haven",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "mgm",
+      "tier_reference_odds": -295,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.796,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 80.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": -9999,
+          "value": 17.9,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 74.7,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.6416,
+        "edge_confidence": 0.448,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "mgm",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.926,
+      "p_true_method": "model",
+      "p_true_hit_rate": 0.8,
+      "p_true_model": 0.926,
+      "model_projection": 2.71,
+      "model_sigma": 1.5239,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 2.04646,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T01:39:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "vision_intel": "Ernie Clement needs just a single knock to clear this 0.5 line, and with our projection sitting at 1.5 bases, we are staring at a massive 203% edge. While the historical data looks thin, the sheer volume of contact he's making suggests this is a prime spot to capitalize on a number that requires the bare minimum.",
+      "vision_summary": "Ernie Clement needs just a single knock to clear this 0.5 line, and with our projection sitting at 1.5 bases, we are staring at a massive 203% edge. While the historical data looks thin, the sheer volume of contact he's making suggests this is a prime spot to capitalize on a number that requires the bare minimum.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "lasso": {
+          "projection": 1.516,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.0189,
+          "top_drivers": [
+            "L10_avg_plate_appearances",
+            "L5_std_fielding_chances"
+          ]
+        }
+      },
+      "vk_data": {
+        "predicted": 1.516,
+        "projection": 1.516,
+        "edge": 1.016,
+        "source": "lasso_v2"
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:55:46.466515+00:00",
+      "_cache_updated": "2026-04-20T23:55:46.466518+00:00"
+    },
+    "vladimir_guerrero_jr.|total_bases|0.5|dk": {
+      "canonical_key": "mlb|043dafafb56c1b3ebf5472c9f3fe428f|Vladimir Guerrero Jr.|Total Bases|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "043dafafb56c1b3ebf5472c9f3fe428f",
+      "player_name": "Vladimir Guerrero Jr.",
+      "stat_type": "Total Bases",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 94.0,
+      "vision_score_raw": 0.158054,
+      "quality_source": "mgm",
+      "fair_prob": 0.7015,
+      "stability": 0.705,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.2385,
+      "tier": "front_lines",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "mgm",
+      "tier_reference_odds": -235,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.95,
+          "value": 0.885,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 60,
+          "value": 80.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 15,
+          "value": 23.9,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 70.1,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.523,
+        "edge_confidence": 0.5962,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 75.0,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "mgm",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.94,
+      "p_true_method": "model",
+      "p_true_hit_rate": 0.8,
+      "p_true_model": 0.94,
+      "model_projection": 2.79,
+      "model_sigma": 1.4757,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 2.1526,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T01:39:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "vision_intel": "Vladdy is seeing the ball like a beach ball right now, and asking him to just snag one bag is like asking a shark to find blood in the water. With our projections sitting at 1.6 total bases and a massive 211.8% edge, we are practically sprinting to back one of the purest power hitters in the game today.",
+      "vision_summary": "Vladdy is seeing the ball like a beach ball right now, and asking him to just snag one bag is like asking a shark to find blood in the water. With our projections sitting at 1.6 total bases and a massive 211.8% edge, we are practically sprinting to back one of the purest power hitters in the game today.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "lasso": {
+          "projection": 1.559,
+          "confidence_tier": "HIGH_VARIANCE",
+          "r_squared": 0.0189,
+          "top_drivers": [
+            "L10_avg_plate_appearances",
+            "L5_std_fielding_chances"
+          ]
+        }
+      },
+      "vk_data": {
+        "predicted": 1.559,
+        "projection": 1.559,
+        "edge": 1.059,
+        "source": "lasso_v2"
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:56:03.490701+00:00",
+      "_cache_updated": "2026-04-20T23:56:03.490703+00:00"
+    },
+    "ezequiel_tovar|batter_strikeouts|0.5|dk": {
+      "canonical_key": "mlb|4e58a660bb4f20467d3e4261ec9f47ba|Ezequiel Tovar|Batter Strikeouts|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "4e58a660bb4f20467d3e4261ec9f47ba",
+      "player_name": "Ezequiel Tovar",
+      "stat_type": "Batter Strikeouts",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 0.0,
+      "vision_score_raw": 0.0,
+      "quality_source": "consensus",
+      "fair_prob": 0.7397,
+      "stability": 0.806,
+      "confidence": 1.0,
+      "edge_vs_fair": -0.1587,
+      "tier": "safe_haven",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -294,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 1.1,
+          "value": 0.582,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 75,
+          "value": 85.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": -9999,
+          "value": -15.9,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 60,
+          "value": 74.0,
+          "passed": true
+        }
+      },
+      "pp_utility": 64.7,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.6696,
+        "edge_confidence": 0.0,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 64.7,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "pp_playable": true,
+      "pp_playability_reason": "playable",
+      "p_true_active": 0.581,
+      "p_true_method": "model",
+      "p_true_hit_rate": 0.85,
+      "p_true_model": 0.581,
+      "model_projection": 0.64,
+      "model_sigma": 0.6667,
+      "p_true_vk2": null,
+      "vk2_projection": null,
+      "vk2_sigma": null,
+      "vk2_error": null,
+      "hit_rate_over": null,
+      "hit_rate_under": null,
+      "ranking_score_v2": 0.08134,
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": "2026-04-21T00:41:00",
+      "version_tag": "final-mlb",
+      "computed_at": "2026-04-20T23:54:08.741148+00:00",
+      "vision_intel": "Tovar has been fanning like he's trying to cool down the entire stadium lately, and facing a pitcher with this much movement makes that 0.5 line look like a massive trap. We only need one swing and miss to cash this, so we're banking on his aggressive approach to keep that high-volume strikeout trend alive tonight.",
+      "vision_summary": "Tovar has been fanning like he's trying to cool down the entire stadium lately, and facing a pitcher with this much movement makes that 0.5 line look like a massive trap. We only need one swing and miss to cash this, so we're banking on his aggressive approach to keep that high-volume strikeout trend alive tonight.",
+      "volatility_score": 0.0,
+      "volatility_label": "low",
+      "volatility_family": "mlb_counting",
+      "scout_badges": [],
+      "tempo_modifier": 1.0,
+      "intel_suite": {
+        "tempo": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "pace_delta": {
+          "multiplier": 1.0,
+          "display": "+0%",
+          "tempo_label": "Standard PA Volume",
+          "factors": [],
+          "total_pct": 0.0
+        },
+        "sport": "mlb",
+        "context_badges": [],
+        "vision_insight": {
+          "primary": "Ezequiel Tovar Batter Strikeouts @ 0.5 - 0% L10 hit rate",
+          "reasons": [
+            "Analyzing Ezequiel Tovar Batter Strikeouts @ 0.5"
+          ],
+          "confidence": "STANDARD"
+        },
+        "stability_index": {
+          "display": "50%",
+          "score": 50,
+          "consistency": "Unknown",
+          "std_dev": 0.0
+        },
+        "matchup_dvp": {
+          "display": "vs None",
+          "opponent": null,
+          "opponent_abbr": "OPP",
+          "friction_level": "Medium",
+          "friction_label": "Standard Matchup",
+          "color": "yellow",
+          "dvp_rank": 15,
+          "stat_type": "Batter Strikeouts"
+        }
+      },
+      "_enriched": true,
+      "_enriched_at": "2026-04-20T23:56:08.005221+00:00",
+      "_cache_updated": "2026-04-20T23:56:08.005223+00:00"
+    }
+  }
+}

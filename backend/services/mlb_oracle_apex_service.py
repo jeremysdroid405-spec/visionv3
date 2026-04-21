@@ -69,8 +69,7 @@ from services.vk_model_enforcement import (
     validate_vk_fields,
     VKResult
 )
-from services.mlb_vegas_killer_model import MLBVegasKillerModel
-from services.mlb_physical_engine import MLBPhysicalEngine, get_mlb_physical_engine
+from services.mlb_high_friction_model import predict_live as mlb_predict_live
 import numpy as np
 import asyncio
 
@@ -326,31 +325,28 @@ class MLBOracleApexService:
         self.live_props = db[COLL("live_props", "mlb")]
         self.master_hub = db[COLL("master_hub", "mlb")]
         self.oracle_apex_collection = db.mlb_oracle_apex_analyzed
-        
-        # v2.0: Initialize MLB Physical Engine (64-feature XGBoost)
-        # Create sync MongoDB client for MLBPhysicalEngine
+
+        # Stage 3 (2026-04-20, MLB↔NBA carbon-copy):
+        # Single live MLB model = MLBHighFrictionModel. The legacy
+        # MLBPhysicalEngine (primary) and MLBVegasKillerModel (fallback)
+        # cascade is retired from the live path. Legacy model classes
+        # remain on disk for research/backtests only. Eliminates D12.
         from pymongo import MongoClient
         mongo_url = os.environ.get('MONGO_URL')
         db_name = os.environ.get('DB_NAME', 'propvision')
         sync_client = MongoClient(mongo_url)
-        sync_db = sync_client[db_name]
-        
-        # PRIMARY: Use new 64-feature Physical Engine
-        self.mlb_physical_engine = MLBPhysicalEngine(sync_db)
-        loaded_apex = self.mlb_physical_engine.load_models()
-        logger.info(f"[MLB_ORACLE] MLBPhysicalEngine loaded with {loaded_apex} trained 64-feature XGBoost models")
-        
-        # FALLBACK: Keep legacy VK model for any missing stats
-        if mlb_vegas_killer_model:
-            self.mlb_vegas_killer_model = mlb_vegas_killer_model
-        else:
-            self.mlb_vegas_killer_model = MLBVegasKillerModel(sync_db)
-            loaded_vk = self.mlb_vegas_killer_model.load_models()
-            logger.info(f"[MLB_ORACLE] Legacy MLBVegasKillerModel loaded with {loaded_vk} models (fallback)")
-        
+        self._sync_db = sync_client[db_name]
+        logger.info("[MLB_ORACLE] Live model: MLBHighFrictionModel (sole primary)")
+
+        # Retained attributes for backwards-compatibility with any external
+        # caller that checks these. Both are None in the carbon-copy flow.
+        self.mlb_physical_engine = None
+        self.mlb_vegas_killer_model = None
+
     def set_vegas_killer_model(self, model):
-        """Set the Vegas Killer model reference (legacy compatibility)."""
-        self.mlb_vegas_killer_model = model
+        """Deprecated (Stage 3): retained as no-op for external compatibility.
+        The live MLB path uses MLBHighFrictionModel exclusively."""
+        return
     
     def _normalize_stat_type(self, raw_stat: str) -> str:
         """Normalize stat type to our standard format."""
@@ -1086,105 +1082,74 @@ class MLBOracleApexService:
             gate_stats['qualified_pool'] += 1
             
             # ================================================================
-            # v2.0: CALL TRAINED MLB XGBoost MODEL - STRICT ENFORCEMENT
-            # ================================================================
-            # v2.0: MLB PHYSICAL ENGINE (64-feature XGBoost)
-            # NO FALLBACKS - If model fails, prop is DISQUALIFIED
+            # Stage 3 (2026-04-20, MLB↔NBA carbon-copy): single live MLB model.
+            # MLBHighFrictionModel is the sole primary — no Physical → VK
+            # cascade. `mlb_predict_live` returns a _LiveMLBPrediction whose
+            # attribute shape matches the legacy MLBPhysicalEngine output.
+            # Eliminates D12.
             # ================================================================
             mlr_prediction = None
             mlr_std_dev = None
             mlr_success = False
             mlr_matchup = {}
             vision_summary = None
-            
-            # Try Physical Engine first (64-feature model)
-            if self.mlb_physical_engine:
-                try:
-                    opponent = prop.get('opponent') or prop.get('opponent_abbr')
-                    park_team = prop.get('home_team') if prop.get('is_away_team') else prop.get('team')
-                    dk_odds_int = int(dk_odds) if dk_odds else None
-                    
-                    # Get pitcher hand if available
-                    pitcher_hand = prop.get('opposing_pitcher_hand') or prop.get('pitcher_hand')
-                    
-                    # Call Physical Engine
-                    apex_result = self.mlb_physical_engine.predict(
-                        player_name=player_name,
-                        stat_type=stat_type,
-                        line=line,
-                        opponent_team=opponent,
-                        park_team=park_team,
-                        pitcher_hand=pitcher_hand,
-                        dk_odds=dk_odds_int
+
+            try:
+                opponent = prop.get('opponent') or prop.get('opponent_abbr')
+                park_team = prop.get('home_team') if prop.get('is_away_team') else prop.get('team')
+                dk_odds_int = int(dk_odds) if dk_odds else None
+                pitcher_hand = prop.get('opposing_pitcher_hand') or prop.get('pitcher_hand')
+
+                hf_result = mlb_predict_live(
+                    self._sync_db,
+                    player_name=player_name,
+                    stat_type=stat_type,
+                    line=line,
+                    opponent_team=opponent,
+                    park_team=park_team,
+                    pitcher_hand=pitcher_hand,
+                    dk_odds=dk_odds_int,
+                )
+
+                if hf_result.is_valid and hf_result.mlr_predicted is not None:
+                    mlr_prediction = hf_result.mlr_predicted
+                    mlr_std_dev = hf_result.sigma_used
+                    mlr_matchup = hf_result.mlr_matchup
+                    mlr_success = True
+
+                    # Build Vision Summary (Park + Splits explanation)
+                    park_info = mlr_matchup.get('park', {})
+                    splits_info = mlr_matchup.get('splits', {})
+                    trends_info = mlr_matchup.get('trends', {})
+
+                    park_factor = park_info.get('factor', 1.0)
+                    matchup_avg = splits_info.get('matchup_avg', 0) or 0
+                    l10_avg = trends_info.get('l10_avg', 0) or 0
+
+                    park_desc = "neutral"
+                    if park_factor > 1.05:
+                        park_desc = "hitter-friendly"
+                    elif park_factor < 0.95:
+                        park_desc = "pitcher-friendly"
+
+                    vision_summary = (
+                        f"Park: {park_info.get('venue', 'N/A')} ({park_desc}, {park_factor:.2f}x) | "
+                        f"vs {pitcher_hand or 'TBD'}HP: .{int(matchup_avg*1000):03d} | "
+                        f"L10: {l10_avg:.1f} | σ={mlr_std_dev:.2f}"
                     )
-                    
-                    if apex_result.is_valid and apex_result.mlr_predicted is not None:
-                        mlr_prediction = apex_result.mlr_predicted
-                        mlr_std_dev = apex_result.sigma_used
-                        mlr_matchup = apex_result.mlr_matchup
-                        mlr_success = True
-                        
-                        # Build Vision Summary (Park + Splits explanation)
-                        park_info = mlr_matchup.get('park', {})
-                        splits_info = mlr_matchup.get('splits', {})
-                        trends_info = mlr_matchup.get('trends', {})
-                        
-                        park_factor = park_info.get('factor', 1.0)
-                        matchup_avg = splits_info.get('matchup_avg', 0)
-                        platoon = splits_info.get('platoon_split', 0)
-                        l10_avg = trends_info.get('l10_avg', 0)
-                        
-                        # Create vision text
-                        park_desc = "neutral"
-                        if park_factor > 1.05:
-                            park_desc = "hitter-friendly"
-                        elif park_factor < 0.95:
-                            park_desc = "pitcher-friendly"
-                        
-                        vision_summary = (
-                            f"Park: {park_info.get('venue', 'N/A')} ({park_desc}, {park_factor:.2f}x) | "
-                            f"vs {pitcher_hand or 'TBD'}HP: .{int(matchup_avg*1000):03d} | "
-                            f"L10: {l10_avg:.1f} | σ={mlr_std_dev:.2f}"
-                        )
-                        
-                        logger.info(
-                            f"[MLB_APEX] {player_name} {stat_type}: pred={mlr_prediction:.2f}, "
-                            f"park={park_factor:.2f}, σ={mlr_std_dev:.3f}, "
-                            f"P(over)={apex_result.vk_prob_over}%, edge={apex_result.vk_edge}"
-                        )
-                    else:
-                        error_msg = apex_result.error or 'Unknown'
-                        logger.warning(f"[MLB_APEX_FAIL] {player_name} {stat_type}: {error_msg}")
-                        
-                except Exception as e:
-                    logger.warning(f"[MLB_APEX_FAIL] {player_name} {stat_type}: {e}")
-            
-            # Fallback to legacy VK model if Physical Engine failed
-            if not mlr_success and self.mlb_vegas_killer_model:
-                try:
-                    opponent = prop.get('opponent') or prop.get('opponent_abbr')
-                    park_team = prop.get('home_team') if prop.get('is_away_team') else prop.get('team')
-                    
-                    vk_result_legacy = self.mlb_vegas_killer_model.predict(
-                        player_name,
-                        stat_type,
-                        line=line,
-                        opponent_team=opponent,
-                        park_team=park_team
+
+                    logger.info(
+                        f"[MLB_HF] {player_name} {stat_type}: pred={mlr_prediction:.2f}, "
+                        f"park={park_factor:.2f}, σ={mlr_std_dev:.3f}, "
+                        f"P(over)={hf_result.vk_prob_over}%, edge={hf_result.vk_edge}"
                     )
-                    
-                    if vk_result_legacy and not vk_result_legacy.get('error'):
-                        mlr_prediction = vk_result_legacy.get('predicted')
-                        mlr_std_dev = vk_result_legacy.get('std_dev')
-                        mlr_matchup = vk_result_legacy.get('full_features', {}).get('matchup', {})
-                        
-                        if mlr_prediction is not None and not (isinstance(mlr_prediction, float) and np.isnan(mlr_prediction)):
-                            mlr_success = True
-                            vision_summary = f"Legacy VK Model | pred={mlr_prediction:.2f}"
-                            logger.info(f"[MLB_VK_FALLBACK] {player_name} {stat_type}: pred={mlr_prediction:.2f}")
-                except Exception as e:
-                    logger.warning(f"[MLB_VK_FALLBACK_FAIL] {player_name} {stat_type}: {e}")
-            
+                else:
+                    error_msg = hf_result.error or 'Unknown'
+                    logger.warning(f"[MLB_HF_FAIL] {player_name} {stat_type}: {error_msg}")
+
+            except Exception as e:
+                logger.warning(f"[MLB_HF_FAIL] {player_name} {stat_type}: {e}")
+
             # STRICT DISQUALIFICATION: No MLR = No Elite Tier
             if not mlr_success:
                 gate_stats['fail_mlr_model'] = gate_stats.get('fail_mlr_model', 0) + 1

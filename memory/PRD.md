@@ -121,6 +121,49 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
 - Ferrari endpoints continue to serve with `p_true_method='model'` +
   `ranking_score_v2` populated; default and `?sort=gap` both correct.
 
+
+## Carbon-Copy Migration — Stage 3 Complete (2026-04-21)
+
+### Single live MLB model (eliminates D12)
+- **Retired from live path:** `MLBPhysicalEngine`, `MLBVegasKillerModel`,
+  and the Physical→VegasKiller fallback cascade.
+- **Sole live MLB model:** `MLBHighFrictionModel`, invoked exclusively
+  through a new canonical entry point
+  `services.mlb_high_friction_model.predict_live(...)`.
+- **Attribute-shape shim:** `_LiveMLBPrediction` wrapper exposes the
+  same attributes (`is_valid`, `mlr_predicted`, `sigma_used`,
+  `vk_prob_over`, `vk_prob_under`, `vk_edge`, `vk_verdict`, `z_score`,
+  `mlr_matchup`, `error`) legacy callers used with `MLBPhysicalEngine`,
+  keeping the diff minimal.
+- **Files updated:**
+  - `services/mlb_high_friction_model.py` — added `predict_live()` +
+    `_LiveMLBPrediction` + `_build_mlr_matchup_from_friction()`.
+  - `services/mlb_oracle_apex_service.py` — removed legacy model
+    imports / construction / load calls; cascade in
+    `build_elite_top_10_tiers` replaced with one `mlb_predict_live(...)`
+    call. Startup log: `[MLB_ORACLE] Live model: MLBHighFrictionModel
+    (sole primary)`. `set_vegas_killer_model` is now a no-op.
+  - `services/rolling_cache_manager.py::_get_mlb_engine` — JIT intel
+    path now returns a `_HFLiveEngineShim` that delegates to
+    `predict_live()`.
+- **Legacy models on disk:** `mlb_physical_engine.py` and
+  `mlb_vegas_killer_model.py` remain for research/backtests only; not
+  imported by any live-path module.
+
+### Stage 3 acceptance verification
+- `/api/mlb/sync/master`: 148 s total (6 s odds / 1 s board / 69 s BDL
+  / 57 s tiers / 0 s ripple / 16 s canonical scoring), zero errors.
+- `mlb_prop_scores` (tag=`final-mlb`): 2426 docs, 39 tiered picks,
+  **100.00% `p_true_method` coverage among qualified rows**.
+- Method breakdown: model 2263 / hit_rate 106 / fair 41 / none 16
+  (none rows all `tier=unqualified`).
+- **Live-model audit:** backend logs show `[MLB_HF]` / `[MLB_HF_PRED]`
+  only — zero `[MLB_APEX]` or `[MLB_VK_FALLBACK]` invocations.
+- Ferrari MLB endpoints: safe_haven=10, front_lines=3, war_zone=5 —
+  100% `p_true_method='model'` with `ranking_score_v2` populated.
+
+---
+
 ---
 
 ## Known Operational Gaps (Flagged, Not Fixed)
@@ -145,6 +188,10 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
 - ~~D10: MLB scoring ladder truncated to model-only~~ — resolved via
   Stage 2 shared `resolve_p_true_ladder()` helper; NBA + MLB both
   delegate to the canonical `model → hit_rate → vk2 → fair` ladder.
+- ~~D12: MLB has 3 live model classes stitched together~~ — resolved
+  via Stage 3. `MLBHighFrictionModel` is the sole live MLB model via
+  `predict_live()`; `MLBPhysicalEngine` and `MLBVegasKillerModel`
+  retired from the live path (on-disk only for research/backtests).
 
 ### P2 — Backlog
 - NBA-native tier admission table (NBA stats currently fall through to the

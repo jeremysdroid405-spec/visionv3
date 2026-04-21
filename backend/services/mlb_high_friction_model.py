@@ -787,3 +787,150 @@ def get_mlb_high_friction_model(db=None):
     if _mlb_hf_instance is None and db is not None:
         _mlb_hf_instance = MLBHighFrictionModel(db)
     return _mlb_hf_instance
+
+
+# -----------------------------------------------------------------------------
+# Stage 3 (2026-04-20, MLB↔NBA carbon-copy): canonical MLB live-model shim.
+#
+# Every live call site (MLBAdapter, oracle_apex_service, rolling_cache_manager,
+# mlb_scoring adapter) routes through `predict_live()` so MLB has EXACTLY ONE
+# live model path — `MLBHighFrictionModel`. The returned object exposes the
+# attribute shape legacy callers used with MLBPhysicalEngine (`is_valid`,
+# `mlr_predicted`, `sigma_used`, `mlr_matchup`, `vk_prob_over`, `vk_prob_under`,
+# `vk_edge`, `vk_verdict`, `sigma_source`, `z_score`, `error`). This eliminates
+# the live-path model cascade (Physical → VegasKiller → HighFriction) without
+# churning every caller's attribute accesses. Eliminates deviation D12.
+# -----------------------------------------------------------------------------
+
+class _LiveMLBPrediction:
+    """Attribute-access wrapper around MLBHighFrictionModel.predict() output."""
+    __slots__ = (
+        "is_valid", "error",
+        "mlr_predicted", "sigma_used", "sigma_source",
+        "vk_prob_over", "vk_prob_under", "vk_edge", "vk_verdict",
+        "z_score", "mlr_matchup",
+    )
+
+    def __init__(
+        self, *, is_valid: bool, error: Optional[str] = None,
+        mlr_predicted: Optional[float] = None,
+        sigma_used: Optional[float] = None,
+        sigma_source: Optional[str] = None,
+        vk_prob_over: Optional[float] = None,
+        vk_prob_under: Optional[float] = None,
+        vk_edge: Optional[float] = None,
+        vk_verdict: Optional[str] = None,
+        z_score: Optional[float] = None,
+        mlr_matchup: Optional[Dict[str, Any]] = None,
+    ):
+        self.is_valid = is_valid
+        self.error = error
+        self.mlr_predicted = mlr_predicted
+        self.sigma_used = sigma_used
+        self.sigma_source = sigma_source
+        self.vk_prob_over = vk_prob_over
+        self.vk_prob_under = vk_prob_under
+        self.vk_edge = vk_edge
+        self.vk_verdict = vk_verdict
+        self.z_score = z_score
+        self.mlr_matchup = mlr_matchup or {}
+
+
+def _build_mlr_matchup_from_friction(audit: Dict[str, Any]) -> Dict[str, Any]:
+    """Translate HF friction_audit into the legacy `mlr_matchup` shape so
+    downstream display/scoring code continues to work unchanged."""
+    pvp = (audit or {}).get("pvp") or {}
+    env = (audit or {}).get("environment") or {}
+    trends = (audit or {}).get("trends") or {}
+    # Pick the side-specific matchup_avg; callers only need a single value.
+    matchup_avg = pvp.get("vs_rhp_avg")
+    if matchup_avg is None:
+        matchup_avg = pvp.get("vs_lhp_avg") or 0.0
+    return {
+        "park":    {"venue": env.get("park_team"), "factor": env.get("park_factor", 1.0),
+                    "park_hits": env.get("park_hits"), "park_runs": env.get("park_runs"),
+                    "park_k": env.get("park_k")},
+        "splits":  {"matchup_avg": matchup_avg or 0.0,
+                    "platoon_split": pvp.get("platoon_split") or pvp.get("platoon_avg_split") or 0.0,
+                    "vs_lhp_avg": pvp.get("vs_lhp_avg"),
+                    "vs_rhp_avg": pvp.get("vs_rhp_avg")},
+        "opponent": {"k_rate": env.get("opp_k_rate")},
+        "trends":  {"l10_avg": trends.get("l10_avg") or 0.0,
+                    "l5_avg": trends.get("l5_avg"),
+                    "cv_l10": trends.get("cv_l10"),
+                    "hit_rate_l10": trends.get("hit_rate_l10")},
+        "discipline": {},
+        "variance": {"cv_l10": trends.get("cv_l10")},
+    }
+
+
+def predict_live(
+    db,
+    *,
+    player_name: str,
+    stat_type: str,
+    line: Optional[float],
+    opponent_team: Optional[str] = None,
+    park_team: Optional[str] = None,
+    pitcher_hand: Optional[str] = None,
+    dk_odds: Optional[int] = None,
+) -> _LiveMLBPrediction:
+    """Single canonical MLB live-model entry point. Returns a
+    `_LiveMLBPrediction` wrapping the MLBHighFrictionModel output."""
+    model = get_mlb_high_friction_model(db)
+    if model is None:
+        return _LiveMLBPrediction(is_valid=False, error="hf_model_unavailable")
+    if not model.models:
+        try:
+            model.load_models()
+        except Exception as e:
+            return _LiveMLBPrediction(is_valid=False, error=f"hf_load_failed:{e}")
+        if not model.models:
+            return _LiveMLBPrediction(is_valid=False, error="hf_models_empty")
+    try:
+        raw = model.predict(
+            player_name=player_name, stat_type=stat_type, line=line,
+            opponent_team=opponent_team, park_team=park_team,
+            dk_odds=int(dk_odds) if dk_odds else None,
+        )
+    except Exception as e:
+        return _LiveMLBPrediction(is_valid=False, error=f"hf_predict_failed:{e}")
+    if not raw or raw.get("error"):
+        return _LiveMLBPrediction(is_valid=False, error=(raw or {}).get("error") or "hf_no_result")
+
+    predicted = raw.get("predicted")
+    std_dev = raw.get("std_dev")
+    prob_over = raw.get("prob_over")  # percentage 0-100
+    z_score = raw.get("z_score")
+    friction = raw.get("friction_audit") or raw.get("full_features") or {}
+
+    if predicted is None or std_dev is None or prob_over is None:
+        return _LiveMLBPrediction(
+            is_valid=False, error="hf_missing_fields",
+            mlr_predicted=predicted, sigma_used=std_dev, z_score=z_score,
+        )
+
+    # Market-implied vs model-implied edge.
+    vk_edge = None
+    if dk_odds is not None:
+        try:
+            o = float(dk_odds)
+            market_prob_pct = (abs(o) / (abs(o) + 100.0) * 100.0) if o < 0 else (100.0 / (o + 100.0) * 100.0)
+            vk_edge = round(prob_over - market_prob_pct, 1)
+        except (TypeError, ValueError):
+            vk_edge = None
+    verdict = "OVER" if prob_over >= 50.0 else "UNDER"
+
+    return _LiveMLBPrediction(
+        is_valid=True,
+        error=None,
+        mlr_predicted=round(float(predicted), 3),
+        sigma_used=round(float(std_dev), 4),
+        sigma_source="hf_empirical",
+        vk_prob_over=round(float(prob_over), 1),
+        vk_prob_under=round(100.0 - float(prob_over), 1),
+        vk_edge=vk_edge,
+        vk_verdict=verdict,
+        z_score=round(float(z_score), 4) if z_score is not None else None,
+        mlr_matchup=_build_mlr_matchup_from_friction(friction),
+    )

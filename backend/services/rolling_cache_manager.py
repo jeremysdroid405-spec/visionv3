@@ -321,17 +321,34 @@ class DeltaManager:
         return self._intel_calculator
     
     async def _get_mlb_engine(self):
-        """Lazy load MLB Physical Engine."""
+        """Stage 3 (2026-04-20, MLB↔NBA carbon-copy): single live MLB model.
+        Returns a callable wrapping `MLBHighFrictionModel.predict_live()`.
+        The returned object exposes `.predict(...)` matching the legacy
+        `MLBPhysicalEngine` shape. Eliminates D12 in the JIT intel path."""
         if self._mlb_physical_engine is None and self.sport == "MLB":
             from pymongo import MongoClient
             mongo_url = os.environ.get('MONGO_URL')
             db_name = os.environ.get('DB_NAME', 'propvision')
             sync_client = MongoClient(mongo_url)
             sync_db = sync_client[db_name]
-            
-            from services.mlb_physical_engine import MLBPhysicalEngine
-            self._mlb_physical_engine = MLBPhysicalEngine(sync_db)
-            self._mlb_physical_engine.load_models()
+
+            from services.mlb_high_friction_model import predict_live as _hf_predict_live
+
+            class _HFLiveEngineShim:
+                def __init__(self, db):
+                    self._db = db
+
+                def predict(self, *, player_name, stat_type, line,
+                            opponent_team=None, park_team=None,
+                            pitcher_hand=None, dk_odds=None):
+                    return _hf_predict_live(
+                        self._db,
+                        player_name=player_name, stat_type=stat_type, line=line,
+                        opponent_team=opponent_team, park_team=park_team,
+                        pitcher_hand=pitcher_hand, dk_odds=dk_odds,
+                    )
+
+            self._mlb_physical_engine = _HFLiveEngineShim(sync_db)
         return self._mlb_physical_engine
     
     def _generate_prop_id(self, prop: Dict) -> str:
