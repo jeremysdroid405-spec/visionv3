@@ -46,27 +46,36 @@ class MLBAdapter(SportAdapter):
         return self._sorter
 
     async def load_board(self, db) -> List[Dict]:
-        """Load MLB props from mlb_cached_board, flatten props+goblins+demons, deduplicate."""
-        board = db[COLL("board_cache", "mlb")]
-        cursor = board.find({}, {"_id": 0})
-        players = await cursor.to_list(length=None)
+        """Load MLB props from the canonical live-props collection (mlb_live_props).
 
-        all_props = []
+        Stage 4 (2026-04-21, MLB↔NBA carbon-copy):
+        Previously this read from `mlb_cached_board` — a separate
+        intersection collection unique to MLB. NBAAdapter reads from
+        `ferrari_scored` (the pre-scored source). The carbon-copy rule
+        requires a single canonical source per sport. MLB's canonical
+        source is `mlb_live_props` (odds ingest), identical to what
+        `MLBScoringAdapter.load_live_props` uses for the scoring pass.
+        Eliminates D2.
+        """
+        live_props = db[COLL("live_props", "mlb")]
+        cursor = live_props.find({}, {"_id": 0})
+        props = await cursor.to_list(length=None)
+
+        # Deduplicate by player|stat|line — same key the scoring pass uses.
         seen = set()
-        for player in players:
-            combined = player.get("props", []) + player.get("goblins", []) + player.get("demons", [])
-            for prop in combined:
-                key = f"{player.get('player_name')}|{prop.get('stat_type')}|{prop.get('line')}"
-                if key in seen:
-                    continue
-                seen.add(key)
-                prop["player_name"] = player.get("player_name")
-                prop["team"] = player.get("team")
-                prop["position"] = player.get("position")
-                all_props.append(prop)
+        unique: List[Dict] = []
+        for p in props:
+            key = f"{p.get('player_name')}|{p.get('stat_type')}|{p.get('line')}"
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(p)
 
-        logger.info(f"[MLB_ADAPTER] Loaded {len(all_props)} unique props from {len(players)} players")
-        return all_props
+        logger.info(
+            f"[MLB_ADAPTER] Loaded {len(unique)} unique props from "
+            f"mlb_live_props (canonical source)"
+        )
+        return unique
 
     async def enrich_and_score(self, props: List[Dict], db) -> List[Dict]:
         """

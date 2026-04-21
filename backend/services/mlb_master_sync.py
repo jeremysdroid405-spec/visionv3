@@ -11,6 +11,7 @@ Sequence:
 """
 
 import logging
+import os
 import asyncio
 from typing import Dict, Any, Set
 from datetime import datetime, timezone
@@ -23,6 +24,13 @@ from services.mlb_oracle_apex_service import get_mlb_oracle_apex_service
 from services.config.collection_names import COLL
 
 logger = logging.getLogger(__name__)
+
+# Stage 4 (2026-04-21, MLB↔NBA carbon-copy): kill switch for legacy tier
+# writers (`mlb_safe_haven`, `mlb_front_lines`, `mlb_war_zone`). The live UI
+# path reads `mlb_prop_scores` via the universal board reader and does NOT
+# depend on these collections. Default is OFF — set MLB_WRITE_LEGACY_TIERS=1
+# to re-enable for migration / offline debugging.
+_WRITE_LEGACY_TIERS = os.environ.get("MLB_WRITE_LEGACY_TIERS", "0").lower() in ("1", "true", "yes")
 
 
 class MLBMasterSync:
@@ -424,9 +432,20 @@ class MLBMasterSync:
             logger.warning("[VISION_INTEL] Disabled - no AI summaries will be generated")
         
         # Store results
-        await self._store_tier_results("mlb_safe_haven", safe_haven)
-        await self._store_tier_results("mlb_front_lines", front_lines)
-        await self._store_tier_results("mlb_war_zone", war_zone)
+        # Stage 4 (2026-04-21, MLB↔NBA carbon-copy): legacy tier writes are
+        # gated behind `MLB_WRITE_LEGACY_TIERS`. The UI no longer reads these
+        # collections — the canonical source of truth is `mlb_prop_scores`
+        # (Step 6 of this pipeline). Eliminates D6 from the live path.
+        if _WRITE_LEGACY_TIERS:
+            await self._store_tier_results("mlb_safe_haven", safe_haven)
+            await self._store_tier_results("mlb_front_lines", front_lines)
+            await self._store_tier_results("mlb_war_zone", war_zone)
+            logger.info("[MLB_MASTER] Legacy tier writes ENABLED (MLB_WRITE_LEGACY_TIERS=1)")
+        else:
+            logger.info(
+                "[MLB_MASTER] Legacy tier writes SKIPPED (canonical source = mlb_prop_scores). "
+                "Set MLB_WRITE_LEGACY_TIERS=1 to re-enable for debug."
+            )
         
         # Market Moves: diff board after publish
         try:
@@ -464,28 +483,37 @@ class MLBMasterSync:
         pa_bumps = result.get("pa_bumps", [])
         
         if pa_bumps:
-            logger.info(f"[MLB_MASTER] Applying {len(pa_bumps)} PA bumps to tier collections")
-            
-            # Update props in tier collections with lineup_ripple_adj
-            for bump in pa_bumps:
-                player_name = bump.get("name", "")
-                lineup_ripple_adj = bump.get("lineup_ripple_adj", 0)
-                missing_anchor = bump.get("missing_anchor", "")
-                
-                # Update in all tier collections
-                for collection_name in ["mlb_safe_haven", "mlb_front_lines", "mlb_war_zone"]:
-                    collection = self.db[collection_name]
-                    
-                    await collection.update_many(
-                        {"player_name": player_name},
-                        {"$set": {
-                            "intel_suite.lineup_ripple_adj": lineup_ripple_adj,
-                            "intel_suite.missing_anchor": missing_anchor,
-                            "intel_suite.pa_bump_applied": True
-                        }}
-                    )
-            
-            logger.info("[MLB_MASTER] Applied lineup_ripple_adj to tier props")
+            if not _WRITE_LEGACY_TIERS:
+                # Legacy tier collections are not written in the carbon-copy
+                # flow; skip ripple updates against them. Ripple semantics
+                # will migrate into mlb_prop_scores in a future stage.
+                logger.info(
+                    f"[MLB_MASTER] {len(pa_bumps)} PA bumps computed; legacy "
+                    "tier updates SKIPPED (MLB_WRITE_LEGACY_TIERS=0)"
+                )
+            else:
+                logger.info(f"[MLB_MASTER] Applying {len(pa_bumps)} PA bumps to tier collections")
+
+                # Update props in tier collections with lineup_ripple_adj
+                for bump in pa_bumps:
+                    player_name = bump.get("name", "")
+                    lineup_ripple_adj = bump.get("lineup_ripple_adj", 0)
+                    missing_anchor = bump.get("missing_anchor", "")
+
+                    # Update in all tier collections
+                    for collection_name in ["mlb_safe_haven", "mlb_front_lines", "mlb_war_zone"]:
+                        collection = self.db[collection_name]
+
+                        await collection.update_many(
+                            {"player_name": player_name},
+                            {"$set": {
+                                "intel_suite.lineup_ripple_adj": lineup_ripple_adj,
+                                "intel_suite.missing_anchor": missing_anchor,
+                                "intel_suite.pa_bump_applied": True
+                            }}
+                        )
+
+                logger.info("[MLB_MASTER] Applied lineup_ripple_adj to tier props")
         
         return result
     

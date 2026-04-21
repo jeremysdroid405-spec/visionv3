@@ -101,3 +101,17 @@ class ScoringAdapter(ABC):
           check_war_zone_gates(prop, cv, ceiling_rate, edge_pct)
         Each returns (passed: bool, reason: str, gate_results: dict).
         """
+
+    # ---------------------------------------------------------
+    # Optional: Enrich a score doc at WRITE time.
+    # ---------------------------------------------------------
+    # Stage 4 (2026-04-21, MLB↔NBA carbon-copy): sport-specific enrichers
+    # that previously ran at route time (e.g. MLB tempo + intel_suite) now
+    # run once inside `recompute_sport` and get persisted into
+    # `{sport}_prop_scores`. Default implementation is a no-op so NBA is
+    # unaffected. Returns a dict of additional fields to merge into the
+    # score doc (must be in `_SCORE_OUTPUT_FIELDS` to survive projection).
+    def enrich_score_doc(
+        self, raw_prop: Dict[str, Any], ctx: "ScoringContext"
+    ) -> Dict[str, Any]:
+        return {}

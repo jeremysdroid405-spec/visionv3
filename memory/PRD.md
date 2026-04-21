@@ -122,6 +122,79 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
   `ranking_score_v2` populated; default and `?sort=gap` both correct.
 
 
+## Carbon-Copy Migration — Stage 4 Complete (2026-04-21)
+
+### Single source of truth + scoring-write enrichment (eliminates D2, D6, D11)
+- **D2**: `MLBAdapter.load_board()` now reads from `mlb_live_props` (the
+  canonical odds collection, same as `MLBScoringAdapter.load_live_props`)
+  instead of `mlb_cached_board`. No other live-path reads of
+  `mlb_cached_board` remain — it is now an internal pipeline intermediate
+  only.
+- **D6**: Legacy MLB tier writers (`mlb_safe_haven`, `mlb_front_lines`,
+  `mlb_war_zone`) are gated behind `MLB_WRITE_LEGACY_TIERS` (default
+  `false`). `MLBMasterSync._run_tier_rebuilds` now SKIPS both the tier
+  upserts and the lineup-ripple updates against them unless the flag is
+  set. No live UI endpoint depends on these collections — the canonical
+  source of truth is `mlb_prop_scores`.
+- **D11**: MLB-specific enrichers (`enrich_mlb_prop_with_tempo`,
+  `enrich_mlb_intel_suite`) now run once at scoring-write time via a new
+  adapter hook `ScoringAdapter.enrich_score_doc()`. Both `tempo_modifier`
+  and `intel_suite` are persisted in `mlb_prop_scores` (added to
+  `_SCORE_OUTPUT_FIELDS`). The original route-time enrichers got
+  idempotent early-return guards — when the persisted fields already
+  exist on the pick, the route-time pass is a NO-OP. NBA's adapter base
+  keeps a default no-op `enrich_score_doc()`, so NBA is unaffected.
+
+### Files updated
+- `services/adapters/mlb_adapter.py` — `load_board()` rewired.
+- `services/mlb_master_sync.py` — `_WRITE_LEGACY_TIERS` flag + gated
+  tier writes + gated ripple updates.
+- `services/scoring/adapters/base.py` — added `enrich_score_doc()`
+  default hook (no-op).
+- `services/scoring/adapters/mlb_scoring.py` — implemented
+  `enrich_score_doc()` that invokes the tempo + intel_suite enrichers
+  and folds the result into the score doc.
+- `services/scoring/prop_scores_store.py` — extended
+  `_SCORE_OUTPUT_FIELDS` with `tempo_modifier` + `intel_suite`.
+- `services/scoring/recompute.py` — calls the adapter hook after the
+  canonical doc is built, merges returned fields via the allow-list.
+- `routes/ferrari_tiers.py` — idempotent guards on
+  `enrich_mlb_prop_with_tempo` and `enrich_mlb_intel_suite`.
+
+### Stage 4 acceptance verification
+- `/api/mlb/sync/master`: 183 s total, zero errors.
+- `mlb_prop_scores` (tag=`final-mlb`): 2364 docs, **100.00%** of tiered
+  rows (51/51) now carry persisted `intel_suite`. `tempo_modifier`
+  populated where upstream data allows (raw `mlb_live_props` from the
+  odds sync lacks `team`/`batting_order` for most props — same data
+  limitation existed at route-time pre-Stage 4).
+- Legacy tier collections were NOT touched by this sync
+  (counts unchanged from pre-sync baseline); log line confirms:
+  `[MLB_MASTER] Legacy tier writes SKIPPED (canonical source =
+  mlb_prop_scores). Set MLB_WRITE_LEGACY_TIERS=1 to re-enable for debug`.
+- Ferrari MLB endpoints all serve picks with full `intel_suite`
+  (`sport`, `context_badges`, `vision_insight`, `stability_index`,
+  `matchup_dvp`, `tempo`, `pace_delta`) arriving from the persisted
+  score doc — route-time enrichers returned early as expected.
+- Structural parity: `mlb_live_props` (2364) == `mlb_prop_scores@final-mlb`
+  (2364) — one canonical live source, one scored store, one reader.
+
+### Collection status after Stage 4
+
+| Collection | Written? | Read by live UI? |
+|---|---|---|
+| `mlb_live_props` | ✓ by odds sync | — internal input only |
+| `mlb_cached_board` | ✓ by Step 2 (internal pipeline) | ✗ NOT read by live UI |
+| `mlb_prop_scores` | ✓ by Step 6 canonical scoring | ✓ CANONICAL SOURCE |
+| `mlb_safe_haven` | ✗ (gated OFF; stale data remains) | ✗ NOT read by live UI |
+| `mlb_front_lines` | ✗ (gated OFF; stale data remains) | ✗ NOT read by live UI |
+| `mlb_war_zone` | ✗ (gated OFF; stale data remains) | ✗ NOT read by live UI |
+| `mlb_master_hub` | ✓ | — internal input only |
+| `mlb_oracle_apex_analyzed` | ✓ (debug) | ✗ NOT read by live UI |
+
+---
+
+
 ## Carbon-Copy Migration — Stage 3 Complete (2026-04-21)
 
 ### Single live MLB model (eliminates D12)
@@ -192,6 +265,20 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
   via Stage 3. `MLBHighFrictionModel` is the sole live MLB model via
   `predict_live()`; `MLBPhysicalEngine` and `MLBVegasKillerModel`
   retired from the live path (on-disk only for research/backtests).
+- ~~D2: MLBAdapter reads `mlb_cached_board`~~ — resolved via Stage 4.
+  `MLBAdapter.load_board()` now reads from the canonical `mlb_live_props`
+  (same source as `MLBScoringAdapter`). No live UI path touches
+  `mlb_cached_board`.
+- ~~D6: legacy tier collections power the live board~~ — resolved via
+  Stage 4. `mlb_safe_haven`/`mlb_front_lines`/`mlb_war_zone` writes
+  gated behind `MLB_WRITE_LEGACY_TIERS` (default OFF). Zero live UI
+  endpoints read from these collections. Canonical source is
+  `mlb_prop_scores`.
+- ~~D11: route-time MLB enrichers (tempo, intel_suite) run on every
+  request~~ — resolved via Stage 4. Both moved into the scoring-write
+  path via the new `ScoringAdapter.enrich_score_doc()` hook; persisted
+  in `mlb_prop_scores`. Route-time enrichers now have idempotent
+  early-return guards → no-op when persisted fields exist.
 
 ### P2 — Backlog
 - NBA-native tier admission table (NBA stats currently fall through to the

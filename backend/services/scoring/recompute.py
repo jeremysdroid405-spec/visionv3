@@ -26,7 +26,7 @@ from services.scoring.scoring_stack import compute_scoring_stack
 from services.scoring.adapters import (
     SCORING_ADAPTERS, SUPPORTED_SPORTS, get_scoring_adapter,
 )
-from services.scoring.prop_scores_store import write_versioned_scores
+from services.scoring.prop_scores_store import write_versioned_scores, _SCORE_OUTPUT_FIELDS
 
 
 def _default_version_tag() -> str:
@@ -231,6 +231,22 @@ async def recompute_sport(
             ),
             **stack,
         }
+
+        # Stage 4 (2026-04-21, MLB↔NBA carbon-copy): sport-specific
+        # enrichment hook — moves previously route-time MLB enrichers
+        # (enrich_mlb_prop_with_tempo, enrich_mlb_intel_suite) into the
+        # scoring-write path. NBA adapter is a no-op. Eliminates D11.
+        try:
+            extra = adapter.enrich_score_doc(ctx.raw_prop or {}, ctx) or {}
+            for k, v in extra.items():
+                if k in _SCORE_OUTPUT_FIELDS:
+                    doc[k] = v
+        except Exception as _enrich_err:
+            logger.warning(
+                f"[RECOMPUTE:{sport}] enrich_score_doc failed for "
+                f"{ctx.canonical_key}: {_enrich_err}"
+            )
+
         score_docs.append(doc)
 
     # 3. Percentile-normalize vision_score across the sport's slate.

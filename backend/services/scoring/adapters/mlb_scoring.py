@@ -217,3 +217,38 @@ class MLBScoringAdapter(ScoringAdapter):
             pp_label=None,
             pp_multiplier_model=None,
         )
+
+    # ---------------------------------------------------------
+    # Stage 4 (2026-04-21, MLB↔NBA carbon-copy): persist tempo +
+    # intel_suite at scoring-write time. Eliminates the route-time
+    # enrichers `enrich_mlb_prop_with_tempo` and `enrich_mlb_intel_suite`
+    # from the live board path (D11).
+    # ---------------------------------------------------------
+    def enrich_score_doc(
+        self, raw_prop: Dict[str, Any], ctx: ScoringContext
+    ) -> Dict[str, Any]:
+        # Lazy import to avoid circular deps (routes → services).
+        try:
+            from routes.ferrari_tiers import (
+                enrich_mlb_prop_with_tempo,
+                enrich_mlb_intel_suite,
+            )
+        except Exception as e:
+            logger.debug(f"[MLB_SCORING] enrichers unavailable: {e}")
+            return {}
+
+        # Work on a shallow copy so we never mutate the live_props source.
+        working = dict(raw_prop) if raw_prop else {}
+        try:
+            enrich_mlb_prop_with_tempo(working)
+        except Exception as e:
+            logger.debug(f"[MLB_SCORING] tempo enrich skipped: {e}")
+        try:
+            enrich_mlb_intel_suite(working)
+        except Exception as e:
+            logger.debug(f"[MLB_SCORING] intel_suite enrich skipped: {e}")
+
+        return {
+            "tempo_modifier": working.get("tempo_modifier"),
+            "intel_suite": working.get("intel_suite"),
+        }

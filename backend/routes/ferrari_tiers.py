@@ -537,7 +537,15 @@ def enrich_mlb_prop_with_tempo(prop: Dict) -> Dict:
         calculate_hitter_tempo, calculate_pitcher_tempo,
         get_hitter_tempo_breakdown, get_pitcher_tempo_breakdown
     )
-    
+
+    # Stage 4 (2026-04-21, MLB↔NBA carbon-copy): if tempo was persisted at
+    # scoring-write time (MLBScoringAdapter.enrich_score_doc), this route-time
+    # pass is a NO-OP. The persisted fields are authoritative. Eliminates D11
+    # as a live route-time dependency.
+    if prop and (prop.get("tempo_modifier") is not None
+                 or ((prop.get("intel_suite") or {}).get("tempo") is not None)):
+        return prop
+
     stat_key = (prop.get("stat_type") or "").upper()
     is_pitcher = stat_key in ["K", "OUTS", "ER", "STRIKEOUTS", "PITCHER STRIKEOUTS", 
                               "PITCHER_STRIKEOUTS", "PITCHING OUTS", "HITS ALLOWED", "EARNED RUNS"]
@@ -664,6 +672,15 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     Returns:
         The enriched prop dictionary with full intel_suite
     """
+    # Stage 4 (2026-04-21, MLB↔NBA carbon-copy): if intel_suite was persisted
+    # at scoring-write time (MLBScoringAdapter.enrich_score_doc), this
+    # route-time pass is a NO-OP. Eliminates D11 as a live route-time
+    # dependency for core board fields. Route-time only runs when the score
+    # doc has no persisted intel_suite (e.g. legacy cached entries).
+    existing_is = prop.get("intel_suite") or {}
+    if existing_is.get("badges") is not None or existing_is.get("vision_insight") is not None:
+        return prop
+
     player_name = prop.get("player_name", "Unknown")
     stat_type = prop.get("stat_type", "")
     line = prop.get("line", 0)

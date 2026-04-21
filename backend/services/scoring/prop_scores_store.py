@@ -40,6 +40,12 @@ _SCORE_OUTPUT_FIELDS = (
     # Projection-gap ranking signal (2026-02-20 shadow G1).
     # Persisted for `?sort=gap` opt-in on tier endpoints.
     "ranking_score_v2",
+    # Sport-specific persisted enrichments (Stage 4 — MLB↔NBA carbon-copy).
+    # MLB populates `tempo_modifier` and `intel_suite` at scoring-write time
+    # via MLBScoringAdapter.enrich_score_doc(), replacing the previous
+    # route-time enrichers (enrich_mlb_prop_with_tempo /
+    # enrich_mlb_intel_suite). NBA leaves them None. Eliminates D11.
+    "tempo_modifier", "intel_suite",
 )
 
 _IDENTITY_FIELDS = (
