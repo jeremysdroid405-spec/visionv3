@@ -50,26 +50,33 @@ def set_delta_admin_db(db):
 
 
 def _check_upstream_lock(sport: str) -> dict:
-    """Proxy signal for `UpstreamSyncLock` (full implementation lands in D4).
+    """Return current upstream-lock state for `sport`.
 
-    D1 sources this from the existing `RebuildCoordinator._master_sync_state`
-    — the only place a full sync's `in_progress` flag currently lives.
-    When D4 introduces the real lock, this helper will read from it
-    directly without changing the response shape.
+    D4 (2026-04-21): this now reads the real `UpstreamSyncLock` singleton.
+    We still cross-reference `RebuildCoordinator._master_sync_state` so
+    callers see WHO holds the lock (run_id + started_at) rather than
+    just a boolean.
     """
     try:
+        from services.upstream_sync_lock import get_upstream_sync_lock
         from services.rebuild_coordinator import get_coordinator
-        coord = get_coordinator()
-        state = getattr(coord, "_master_sync_state", {}).get(sport, {}) or {}
-        last_run = state.get("last_run") or {}
-        return {
-            "held": bool(state.get("in_progress")),
-            "source": "RebuildCoordinator._master_sync_state",
-            "run_id": state.get("run_id"),
-            "started_at": state.get("started_at"),
+        lock = get_upstream_sync_lock()
+        held = lock.is_held(sport)
+        coord_state = (
+            getattr(get_coordinator(), "_master_sync_state", {}).get(sport, {})
+            or {}
+        )
+        last_run = coord_state.get("last_run") or {}
+        detail = lock.describe(sport)
+        detail.update({
+            "coord_in_progress": bool(coord_state.get("in_progress")),
+            "run_id": coord_state.get("run_id"),
+            "started_at": coord_state.get("started_at"),
             "last_run_completed_at": last_run.get("completed_at"),
             "last_run_success": last_run.get("success"),
-        }
+        })
+        detail["held"] = held
+        return detail
     except Exception as exc:
         logger.warning(f"[DELTA_ADMIN] upstream lock probe failed: {exc}")
         return {"held": False, "source": "probe_failed", "error": str(exc)}
@@ -121,4 +128,46 @@ async def inspect_all_sports():
         "sports": list(SUPPORTED_SPORTS),
         "per_sport": out,
         "duration_ms": int((time.monotonic() - t0) * 1000),
+    }
+
+
+# ---------------------------------------------------------------------------
+# D3+D4 — manual tick trigger + engine status + lock inspection
+# ---------------------------------------------------------------------------
+
+@router.post("/v3/admin/delta/run-once/{sport}")
+async def delta_run_once(sport: str):
+    """Manually run ONE delta-engine tick for `sport`.
+
+    D4 does NOT auto-start the engine (D5's job). This endpoint lets
+    operators verify the delta pipeline end-to-end on demand.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="delta admin db not wired")
+
+    sport = (sport or "").lower()
+    if sport not in SUPPORTED_SPORTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported sport: {sport!r}. Supported: {list(SUPPORTED_SPORTS)}",
+        )
+
+    from services.delta_engine import get_delta_engine
+    engine = get_delta_engine(_db)
+    result = await engine.tick(sport)
+    return result.to_dict()
+
+
+@router.get("/v3/admin/delta/engine-status")
+async def delta_engine_status():
+    """Observability view of the DeltaEngine's running state."""
+    if _db is None:
+        raise HTTPException(status_code=500, detail="delta admin db not wired")
+    from services.delta_engine import get_delta_engine
+    from services.upstream_sync_lock import get_upstream_sync_lock
+    engine = get_delta_engine(_db)
+    lock = get_upstream_sync_lock()
+    return {
+        "engine": engine.describe(),
+        "upstream_lock": lock.describe(),
     }

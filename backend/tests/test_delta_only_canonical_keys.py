@@ -61,6 +61,11 @@ class _StubAdapter:
     def enrich_score_doc(self, raw, ctx):
         return {}
 
+    def canonical_key_from_raw(self, raw_prop):
+        # D1 contract: return persisted canonical_key when present.
+        ck = raw_prop.get("canonical_key")
+        return ck if isinstance(ck, str) and ck else None
+
 
 @pytest.fixture
 def stub_env(monkeypatch):

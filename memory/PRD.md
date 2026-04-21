@@ -236,6 +236,110 @@ replace this with the real `UpstreamSyncLock`.)
 - Change-streams upgrade (D8).
 
 
+## Delta Engine — Phase D3 + D4 Complete (2026-04-21)
+
+### Scope delivered
+Wrote the tick orchestrator + lock coordinator on top of D1/D2 detection.
+**Delta engine now writes** to `{sport}_prop_scores@final-{sport}-rt`
+but still never calls upstream APIs and still respects the board
+reader contract.
+
+### New files (LOC)
+- `services/scoring/tiering.py` (110) — shared retire-path helpers
+  (`mark_retired_inactive`, `get_tier_distribution`). No per-sport branches.
+- `services/upstream_sync_lock.py` (124) — per-sport asyncio.Lock
+  coordinator with `exclusive(sport)` / `try_acquire_tick(sport)` /
+  `describe()` / `is_held()`. Singleton via `get_upstream_sync_lock()`.
+- `services/pipeline/delta_steps.py` (264) — `DeltaStep` ABC + six
+  concrete steps: `DetectChangedPropsStep`, `UpstreamLockGateStep`,
+  `RescoreDirtyPropsStep`, `RebalanceTiersStep`, `AdvanceWatermarkStep`,
+  `EmitDeltaTickStep`. Ordered `DEFAULT_DELTA_STEPS` tuple.
+- `services/delta_engine.py` (210) — `DeltaEngine.tick(sport)` +
+  `DeltaEngine.run_forever(sport, interval_seconds)` + `describe()`.
+  Per-sport tick lock prevents overlapping ticks. Singleton via
+  `get_delta_engine(db)`. **Not auto-started — that's D5.**
+- `tests/test_upstream_sync_lock.py` (88) — 5 lock-behaviour tests.
+- `tests/test_delta_engine_tick.py` (323) — 4 tick-orchestration tests
+  with a minimal fake Mongo.
+
+### Edited files
+- `services/rebuild_coordinator.py` — `dispatch_master_sync(sport)`
+  now wraps the full-sync run with `async with lock.exclusive(sport,
+  holder=f"master_sync:{run_id}")`. NBA AND MLB go through this single
+  lock acquisition path — same framework.
+- `services/scoring/recompute.py` — D2 filter now uses
+  `adapter.canonical_key_from_raw(p)` (sport-agnostic) instead of
+  `p.get("canonical_key")` (which silently missed NBA rows that don't
+  persist the key on the raw prop).
+- `routes/delta_admin.py` — added `POST /api/v3/admin/delta/run-once/{sport}`
+  (manual trigger) and `GET /api/v3/admin/delta/engine-status`. Rewired
+  `_check_upstream_lock` to read the real `UpstreamSyncLock` singleton.
+
+### Before/after delta execution semantics
+| Scenario | Before (D1+D2) | After (D3+D4) |
+|---|---|---|
+| New prop detected | Visible in inspect endpoint only | Rescored + inserted into RT tag within one tick |
+| Prop retired | Visible in inspect endpoint only | Scored doc flipped `active=False` within one tick |
+| Line-move detected | Visible in inspect endpoint only | Rescored (tier + rs2 updated) within one tick |
+| Full sync in flight | No coordination | Delta ticks clean-skip with `reason=upstream_lock_held` |
+| Cross-sport isolation | N/A | NBA full sync does NOT block MLB delta (verified) |
+
+### Live acceptance run (2026-04-21 02:28 UTC)
+```
+NBA delta tick (203 new props, real live data):
+  1_detect         → 26ms,  dirty=203 new=203
+  2_lock_gate      → lock=free, proceed
+  3_rescore_dirty  → 1630ms, keys_requested=203 matched=203 written=203
+  4_rebalance_tiers→ 5ms,   retired=0, tier_dist={front_lines:97, safe_haven:41, war_zone:7, unqualified:2064}
+  5_advance_wm     → 1ms,   advanced_to=2026-04-21T02:28:34+00:00
+  6_emit           → 0ms,   published=true
+  TOTAL: 1663ms → scored_rt: 2084 → 2287 ✓
+
+MLB delta tick during active MLB master sync:
+  2_lock_gate      → lock=HELD by master_sync:9d278c98, ABORT
+  3_rescore_dirty  → SKIPPED reason=upstream_lock_held
+  4_rebalance_tiers→ SKIPPED reason=upstream_lock_held
+  5_advance_wm     → SKIPPED reason=upstream_lock_held
+  RESULT: skipped=true, no writes, no collision ✓
+
+Live retire simulation on NBA (Shaedon Sharpe):
+  Seeded active=False on live prop + watermark → tick ran:
+  retired_keys_processed=1 retired_docs_modified=1
+  Scored doc: active=False, inactive_reason="retired_by_delta_engine"
+  Ferrari safe-haven: target evicted from board ✓
+```
+
+### Guardrail proofs
+- Upstream-isolation test (`test_delta_upstream_isolation.py`) now
+  covers all 6 delta-path modules (`delta_engine.py`, `upstream_sync_lock.py`,
+  `pipeline/delta_steps.py`, `delta/`, `delta_watermarks.py`,
+  `delta_admin.py`). Zero forbidden imports. CI-gated.
+- 15/15 unit tests pass across the 4 delta-path test files.
+- `UpstreamSyncLock` verified on live infrastructure: exclusive hold
+  during full sync → delta skip; cross-sport runs unblocked.
+- Board reader / Ferrari endpoints unchanged: all 6 endpoints HTTP
+  200 with correct pick counts (nba 10/10/5, mlb 1/5/6) both before
+  and after delta ticks.
+
+### Caveats before D5
+1. **Engine not auto-started.** `POST /api/v3/admin/delta/run-once/{sport}`
+   is the only trigger for now. D5 will spawn `asyncio.create_task(
+   engine.run_forever(sport))` at server startup, one per entry in
+   `SCHEDULED_SPORTS`.
+2. **`updated_at` only stamped by MLB's `universal_odds_sync`.** NBA's
+   legacy per-book sync path doesn't stamp it yet — so NBA's "line
+   move" signal currently relies entirely on the NEW signal (set-diff).
+   D5 should extend the stamp to the NBA sync path OR accept this gap
+   (new-key set-diff already catches line pulls that produce new
+   alternate-market props in practice).
+3. **Single-process lock.** If we ever scale to multiple backend
+   replicas, swap `asyncio.Lock` for a Mongo changestream lease or
+   Redis lock (D8-adjacent).
+4. **Tier slot fill is latent**, not explicit — Ferrari's `limit=10`
+   query naturally promotes the next qualified pick on the next read.
+   Verified working via the Shaedon Sharpe retire simulation.
+
+
 
 ## Carbon-Copy Migration — D1 Residual Cleanup Complete (2026-04-21)
 

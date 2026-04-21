@@ -158,7 +158,13 @@ async def recompute_sport(
     filter_applied = False
     if only_canonical_keys is not None:
         only_set = set(only_canonical_keys)
-        props = [p for p in props if p.get("canonical_key") in only_set]
+        # Sport-agnostic key resolution — MLB persists canonical_key on
+        # the raw prop, NBA computes it from raw fields. Both paths go
+        # through the adapter.
+        props = [
+            p for p in props
+            if adapter.canonical_key_from_raw(p) in only_set
+        ]
         filter_applied = True
         if write_mode != "upsert":
             logger.warning(
