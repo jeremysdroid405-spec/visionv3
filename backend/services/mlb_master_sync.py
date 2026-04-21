@@ -216,6 +216,55 @@ class MLBMasterSync:
                 logger.error(f"[MLB_MASTER] Step 6 canonical scoring failed: {_scoring_err}")
                 metrics["errors"].append(f"step_6_canonical_scoring: {_scoring_err}")
 
+            # ================================================================
+            # STEP 6-RT: Real-time shadow write (mlb_prop_scores @ final-mlb-rt)
+            #
+            # Stage 7 (2026-04-21, MLB↔NBA carbon-copy): MLB now publishes a
+            # real-time shadow tag `final-mlb-rt` in addition to the canonical
+            # `final-mlb`. Architectural parity with NBA, which has both
+            # `final-nba` (canonical baseline) and `final-nba-rt` (live-reader
+            # tag, maintained by `injury_triggered_rescore` + future event-
+            # driven mechanisms).
+            #
+            # Until an MLB-specific `injury_triggered_rescore` equivalent is
+            # wired, master sync seeds the RT tag on every full run so the
+            # UI board reader — now pinned to `final-mlb-rt` via
+            # `MLBBoardAdapter.version_tag` — is never stale by more than one
+            # master-sync cycle. The RT tag is NOT computed from scratch —
+            # it runs the identical scoring pass with a different tag, so
+            # every field (model_projection, p_true_*, ranking_score_v2,
+            # intel_suite, tempo_modifier, tier, etc.) is bit-identical to
+            # the canonical baseline. Eliminates D9.
+            # ================================================================
+            logger.info("=" * 70)
+            logger.info("[MLB_MASTER] STEP 6-RT: Real-time shadow pass (final-mlb-rt)...")
+            logger.info("=" * 70)
+
+            step6rt_start = datetime.now(timezone.utc)
+            try:
+                from services.scoring.recompute import recompute_sport
+                rt_result = await recompute_sport(
+                    db=self.db, sport="mlb", version_tag="final-mlb-rt",
+                    dry_run=False,
+                )
+                step6rt_duration = (datetime.now(timezone.utc) - step6rt_start).total_seconds()
+                metrics["steps"]["6rt_realtime_shadow"] = {
+                    "duration_seconds": step6rt_duration,
+                    "processed": rt_result.get("processed", 0),
+                    "written": rt_result.get("written", 0),
+                    "replaced": rt_result.get("replaced", 0),
+                    "tier_distribution": rt_result.get("tier_distribution", {}),
+                    "version_tag": rt_result.get("version_tag"),
+                }
+                logger.info(
+                    f"[MLB_MASTER] Step 6-RT complete: "
+                    f"{rt_result.get('written', 0)} scored, "
+                    f"tier_distribution={rt_result.get('tier_distribution', {})}"
+                )
+            except Exception as _rt_err:
+                logger.error(f"[MLB_MASTER] Step 6-RT realtime shadow failed: {_rt_err}")
+                metrics["errors"].append(f"step_6rt_realtime_shadow: {_rt_err}")
+
             # Final summary
             total_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             metrics["completed_at"] = datetime.now(timezone.utc).isoformat()

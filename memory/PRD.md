@@ -122,6 +122,65 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
   `ranking_score_v2` populated; default and `?sort=gap` both correct.
 
 
+## Carbon-Copy Migration — Stage 7 Complete (2026-04-21)
+
+### MLB real-time shadow parity (eliminates D9)
+- **`final-mlb-rt` tag now exists and is populated.** MLB master sync
+  writes both tags on every run:
+  - **Step 6 (canonical baseline)** → `final-mlb` (unchanged).
+  - **Step 6-RT (real-time shadow)** → `final-mlb-rt` (new, same
+    `recompute_sport` pass with the `-rt` tag; bit-identical score
+    fields to the canonical tag).
+- **UI reader pinned to `final-mlb-rt`** via
+  `MLBBoardAdapter.version_tag = "final-mlb-rt"` — structural parity
+  with `NBABoardAdapter.version_tag = "final-nba-rt"`.
+- **Stage-6 dispatch template** updated: MLB `source_tag_template` now
+  reads `mlb_prop_scores[tier={tier},version=final-mlb-rt]`. All
+  Ferrari MLB responses surface this new source identity in
+  `pipeline.source` for observability.
+- **Future work (out of Stage 7 scope):** wire an MLB equivalent of
+  `services/injury_triggered_rescore.py` so `final-mlb-rt` receives
+  sub-cycle patches on injury events, matching NBA's event-driven RT
+  behaviour exactly. Until then, RT freshness = master-sync cadence
+  (typically ~3 min, same as `final-mlb`).
+
+### Files updated
+- `services/mlb_master_sync.py` — added Step 6-RT block (second
+  `recompute_sport` call with `version_tag='final-mlb-rt'`; metric key
+  `6rt_realtime_shadow`).
+- `services/board/adapters/mlb.py` — `version_tag` flipped to
+  `"final-mlb-rt"`.
+- `routes/ferrari_tiers.py` — `SPORT_TIER_HELPERS["mlb"]
+  .source_tag_template` updated to `final-mlb-rt`.
+
+### Stage 7 acceptance verification
+- `/api/mlb/sync/master`: 157 s total (up from ~115 s — expected, adds
+  one ~40 s RT recompute pass), `success=True`, `errors=[]`.
+- `mlb_prop_scores` tag distribution:
+  - `final-mlb`: 1749 docs, 28 tiered.
+  - `final-mlb-rt`: 1749 docs, 28 tiered (bit-identical).
+- All tiered rows on both tags have `p_true_method='model'`,
+  `ranking_score_v2`, `intel_suite` populated.
+- All 3 MLB Ferrari endpoints serve HTTP 200 with `pipeline.source`
+  = `mlb_prop_scores[tier={tier},version=final-mlb-rt]`. `?sort=gap`
+  still re-orders (rs2 1.058 → 2.046).
+
+### Cross-sport comparison — NBA `final-nba-rt` empty-board state
+- Pre-existing state (unchanged by Stage 7): NBA has 32 docs at
+  `final-nba-rt` (0 currently tiered/active) — populated only by
+  `injury_triggered_rescore` events, not by any master-sync seeding.
+- NBA master sync (`nba_master_sync.py::run_elite_sync_phase7`) writes
+  only legacy `elite_*` collections — it has no equivalent of MLB's
+  new Step 6-RT.
+- **Conclusion**: NBA's empty-board state is independent of Stage 7.
+  The proper fix for NBA is to apply the same Step 6-RT seeding
+  pattern (one-line `recompute_sport` call) inside NBA's master sync
+  so the RT tag stays fresh between injury events. That is a separate
+  ticket — flagged below under Next Action Items.
+
+---
+
+
 ## Carbon-Copy Migration — Stage 6 Complete (2026-04-21)
 
 ### Ferrari endpoint IF-chain replaced with SPORT_TIER_HELPERS dispatch (eliminates D4)
@@ -399,6 +458,11 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
   endpoints (safe-haven, front-lines, war-zone) collapsed to a
   one-line delegate call. Adding NFL is a single-line registry
   entry — no route edits needed.
+- ~~D9: MLB has no `final-mlb-rt` real-time shadow tag~~ — resolved
+  via Stage 7. MLB master sync Step 6-RT writes `final-mlb-rt` every
+  run; `MLBBoardAdapter.version_tag` pinned to the RT tag; Stage-6
+  dispatch template updated. Both sports now serve from their `-rt`
+  tag.
 
 ### P2 — Backlog
 - NBA-native tier admission table (NBA stats currently fall through to the

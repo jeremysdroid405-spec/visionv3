@@ -15,7 +15,16 @@ _MLB_SORT_KEYS = {
 
 class MLBBoardAdapter(SportBoardAdapter):
     sport = "mlb"
-    version_tag = "final-mlb"
+    # Stage 7 (2026-04-21, MLB↔NBA carbon-copy): the live UI reader now pins
+    # to the real-time shadow tag `final-mlb-rt` — architectural parity with
+    # NBA (whose `NBABoardAdapter.version_tag = "final-nba-rt"`). MLB master
+    # sync's Step 6 writes `final-mlb` (canonical baseline); Step 6-RT writes
+    # `final-mlb-rt` (live UI tag) with bit-identical score fields. Future
+    # event-driven mechanisms (MLB injury-triggered partial rescore, analog
+    # of `services/injury_triggered_rescore.py`) will patch `final-mlb-rt`
+    # in seconds when an event arrives — matching NBA's live behaviour.
+    # Eliminates D9.
+    version_tag = "final-mlb-rt"
     # live_props_collection, scores_collection, cached_board_collection
     # are resolved via config.collections (the base class resolves them).
     tier_names = ("safe_haven", "front_lines", "war_zone")

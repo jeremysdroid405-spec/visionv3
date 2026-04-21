@@ -1659,7 +1659,7 @@ SPORT_TIER_HELPERS: Dict[str, SportTierHelpers] = {
         post_process=_post_process_nba_picks,
     ),
     "mlb": SportTierHelpers(
-        source_tag_template="mlb_prop_scores[tier={tier},version=final-mlb]",
+        source_tag_template="mlb_prop_scores[tier={tier},version=final-mlb-rt]",
         fetch_picks=_get_mlb_tier_picks_from_scores,
         post_process=_post_process_mlb_picks,
     ),
