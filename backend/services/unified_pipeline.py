@@ -604,6 +604,26 @@ class UnifiedPipeline:
         Non-blocking: failures are logged but never crash the pipeline.
         """
         from services.gemini_scout_engine import batch_generate_scout_intel
+        # Fix 1 (2026-04-21): DvP rank resolver — scored docs frequently ship
+        # with momentum_data=None, which caused Gemini to receive dvp_rank=null
+        # and hallucinate a ranking. Resolver walks the canonical sources.
+        from services.dvp_service import _get_defensive_rank as _live_dvp_rank
+
+        def _resolve_dvp_rank(pick: Dict[str, Any]) -> Optional[int]:
+            md = pick.get("momentum_data") or {}
+            if md.get("dvp_rank") is not None:
+                return md["dvp_rank"]
+            for k in ("defensive_rank", "opponent_defensive_rank"):
+                if pick.get(k) is not None:
+                    return pick[k]
+            opp = pick.get("opponent") or pick.get("opponent_abbr")
+            stat = pick.get("stat_type")
+            if opp and stat:
+                try:
+                    return _live_dvp_rank(opp, stat)
+                except Exception:
+                    return None
+            return None
 
         sport = self.adapter.sport
         col_map = self.adapter.tier_collections
@@ -636,7 +656,7 @@ class UnifiedPipeline:
                     "h20_rate": pick.get("true_hit_rate") or pick.get("h20_rate") or 0,
                     "cv": pick.get("cv"),
                     "matchup_opponent": pick.get("opponent") or pick.get("opponent_abbr"),
-                    "dvp_rank": (pick.get("momentum_data") or {}).get("dvp_rank"),
+                    "dvp_rank": _resolve_dvp_rank(pick),
                     "vacuum_data": pick.get("vacuum_data"),
                     "sport": sport,
                 })

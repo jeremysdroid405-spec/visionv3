@@ -263,9 +263,14 @@ def overlay_enrichment_cache(picks: list, sport: str) -> list:
         key = f"{pick.get('player_name', '')}|{pick.get('stat_type', '')}".lower()
         cached = cache_lookup.get(key)
         if cached:
+            # Fix 2 (2026-04-21): require payload_hash on cached narrative.
+            # Pre-hash entries are legacy hallucinated text (see DvP trace)
+            # and must never overlay onto board responses. Scout badges +
+            # Lasso data are still safe to reuse (they're numeric, not LLM).
+            has_hash = cached.get("payload_hash") is not None
             # Only overlay vision_intel if cache has LONGER text than DB
             # (Phase 7 Gemini writes directly to DB — don't overwrite with stale cache)
-            cached_vi = cached.get("vision_intel", "")
+            cached_vi = cached.get("vision_intel", "") if has_hash else ""
             existing_vi = pick.get("vision_intel", "")
             if cached_vi and len(cached_vi) > len(existing_vi):
                 pick["vision_intel"] = cached_vi
