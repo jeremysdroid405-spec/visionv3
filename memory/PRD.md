@@ -122,6 +122,44 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
   `ranking_score_v2` populated; default and `?sort=gap` both correct.
 
 
+## NBA RT Shadow Seeding Follow-Up (2026-04-21)
+
+### Symptom
+Pre-Stage-7 behavior: NBA Ferrari endpoints returned 0 picks on
+every tier. `final-nba-rt` aged out between injury-triggered
+partial rescores; NBA's master sync never seeded it.
+
+### Fix
+One-block addition in `services/nba_master_sync.py` right after
+Phase 7 Elite Overwrite completes — mirror of the MLB Stage 7
+pattern:
+```python
+from services.scoring.recompute import recompute_sport
+rt_result = await recompute_sport(
+    db=self.db, sport="nba",
+    version_tag="final-nba-rt", dry_run=False,
+)
+metrics["phases"]["rt_shadow_seed"] = {...}
+```
+
+### Verification
+- NBA `/api/nba/sync/master`: 176 s, `success=True`, `errors=[]`.
+- Logs: `[NBA_MASTER_V2] RT shadow complete: 2084 scored at
+  final-nba-rt tiers={'unqualified': 1953, 'front_lines': 86,
+  'safe_haven': 37, 'war_zone': 8}`.
+- `nba_prop_scores` tags now include `final-nba-rt` with 2084
+  docs (131 tiered). Previously 32 docs (0 active/tiered).
+- All 3 NBA Ferrari endpoints now serve 10/10/5 picks with
+  `pipeline.source = nba_prop_scores[tier=...,version=final-nba-rt]`
+  and `p_true_method='model'`, `ranking_score_v2` populated.
+- MLB regression-free (unchanged, Ferrari still serving from
+  `final-mlb-rt`).
+
+Net diff: **+37 LOC** in one file.
+
+---
+
+
 ## Carbon-Copy Migration — D1 Residual Cleanup Complete (2026-04-21)
 
 ### MLBMasterSync class removed; MLB now runs through UnifiedPipeline

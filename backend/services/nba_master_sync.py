@@ -157,7 +157,43 @@ class NBAMasterSync:
             logger.info(f"  elite_safe_haven: {final_sh}")
             logger.info(f"  elite_front_lines: {final_fl}")
             logger.info(f"  elite_war_zone: {final_wz}")
-            
+
+            # ================================================================
+            # RT SHADOW SEED (2026-04-21, carbon-copy follow-up):
+            # Mirrors MLB Stage 7 — write `final-nba-rt` on every master
+            # sync so the live UI reader (NBABoardAdapter.version_tag =
+            # "final-nba-rt") is never stale between injury-triggered
+            # partial rescores. Without this, `final-nba-rt` aged out
+            # between events and the Ferrari NBA board went empty.
+            # ================================================================
+            logger.info("=" * 70)
+            logger.info("[NBA_MASTER_V2] RT SHADOW: recompute_sport(final-nba-rt)...")
+            logger.info("=" * 70)
+            rt_start = datetime.now(timezone.utc)
+            try:
+                from services.scoring.recompute import recompute_sport
+                rt_result = await recompute_sport(
+                    db=self.db, sport="nba",
+                    version_tag="final-nba-rt", dry_run=False,
+                )
+                rt_duration = (datetime.now(timezone.utc) - rt_start).total_seconds()
+                metrics["phases"]["rt_shadow_seed"] = {
+                    "duration_seconds": rt_duration,
+                    "processed": rt_result.get("processed", 0),
+                    "written": rt_result.get("written", 0),
+                    "replaced": rt_result.get("replaced", 0),
+                    "tier_distribution": rt_result.get("tier_distribution", {}),
+                    "version_tag": rt_result.get("version_tag"),
+                }
+                logger.info(
+                    f"[NBA_MASTER_V2] RT shadow complete: "
+                    f"{rt_result.get('written', 0)} scored at final-nba-rt "
+                    f"tiers={rt_result.get('tier_distribution', {})}"
+                )
+            except Exception as _rt_err:
+                logger.error(f"[NBA_MASTER_V2] RT shadow seed failed: {_rt_err}")
+                metrics["errors"].append(f"rt_shadow_seed: {_rt_err}")
+
             # Final summary
             total_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             metrics["completed_at"] = datetime.now(timezone.utc).isoformat()
