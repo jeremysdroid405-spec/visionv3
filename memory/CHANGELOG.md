@@ -1,5 +1,135 @@
 # Changelog
 
+## 2026-04-21 — Injury-Rank Phase 2: usage-sorted beneficiaries (multi-sport)
+
+**Context:** `services/injury_advantage.py::compute_injury_advantages` was
+ranking injury beneficiaries by `my_index`, i.e. whichever order teammates
+happened to appear in `board_picks`. This made DEN's Christian Braun rank
+"primary" over Cameron Johnson purely by incidental iteration order.
+
+**Diff (4 files + 1 test file):**
+- `services/usage_resolver.py` — NEW. Multi-sport provider registry:
+  NBA reads `nba_master_hub_2026.advanced_stats` (usage% × minutes blend),
+  MLB/NFL return `(None, "unavailable")` and plug in via `register_provider`.
+  Public API: `rank_teammates_by_usage(db, sport, teammates)` — alphabetical
+  tiebreak on equal usage for determinism.
+- `services/injury_advantage.py` — build a per-team usage-sorted ranking
+  up front, replacing `my_index = next(...)` with `team_rank_map[team][name]`.
+  Emits `usage_rank` + `usage_source` per advantage.
+- `routes/vacuum.py::/v3/vacuum/live-alerts` — surface `usage_rank` +
+  `usage_source` on each alert payload.
+- `tests/test_usage_resolver.py` — 13 tests: blend function bounds,
+  unknown-sport/MLB fallback, deterministic tiebreak, loop-order immunity,
+  future-NFL plug-in proof.
+
+**Verification (live, 2026-04-21):**
+- DEN beneficiaries now correctly ordered:
+  `Cameron Johnson (usage 13.74, primary) > Christian Braun (13.70, secondary)`
+  (was reversed under loop-order).
+- All 5 live alerts carry `usage_source: "nba_hub"`.
+- All 6 Ferrari endpoints (NBA/MLB × 3 tiers) → HTTP 200.
+- 105/105 pytest passing.
+
+## 2026-04-21 — Stat-aware CV caps for Safe Haven eligibility
+
+**Context:** Single `max_cv=0.50` on Safe Haven was rejecting high-hit-rate
+low-line props (Ajay Mitchell AST 1.5 @ 95% HR, Vucevic REB 3.5 @ 90% HR,
+etc.) because CV = σ/μ is structurally higher for small-mean stats.
+
+**Diff (2 code + 1 test file):**
+- `services/scoring/cv_caps.py` — NEW sport-agnostic module with
+  `CV_CAP_BY_STAT` (PTS/PRA=0.50, AST/REB=0.60, STL/BLK=0.65, 3PM=0.55,
+  combos=0.50/0.55) + `DEFAULT_CV_CAP=0.50` for MLB/NFL/unknowns.
+- `services/scoring/adapters/nba_scoring.py::check_safe_haven_gates` —
+  resolve cap from `prop["stat_type"]` and override `self.SAFE_HAVEN["max_cv"]`
+  per-call.
+- `tests/test_cv_caps.py` — 24 tests including contract locks on the 13
+  audited CV-only rejects.
+
+**Verification (live on today's board):**
+- 7 picks newly admitted to Safe Haven (3 AST, 4 REB) — exactly the
+  audited candidates.
+- Safe Haven Top-10 now: 5 PTS, 3 AST, 2 REB (was PTS-dominated).
+- 2 PRA picks (Vucevic 10.5 / 11.5) remain correctly rejected (PRA cap
+  stays 0.50 per spec).
+- Extreme CV outliers (≥0.70) remain rejected on every stat.
+
+## 2026-04-21 — Stat-aware α in `ranking_score_v2`
+
+**Context:** Single α=0.40 suppressed low-line AST/REB/STL/BLK props in the
+`sort=gap` board because `line^0.40` barely shrinks for small lines while
+big-raw-gap PTS/PRA UNDERs monopolized the Top-10.
+
+**Diff (1 code + 1 test file):**
+- `services/scoring/recompute.py` — added `ALPHA_BY_STAT` map +
+  `_DEFAULT_ALPHA=0.50` + `_resolve_alpha()` helper; refactored
+  `_compute_ranking_score_v2` to take `stat_type` kwarg; caller passes
+  `ctx.stat_type`.
+- `tests/test_ranking_alpha.py` — 14 tests (cap map, rank-position
+  improvement, regression guards, backwards-compat, future NFL plug-in).
+
+**Verification (live):**
+- All low-line AST/REB/STL/BLK picks climbed 20–45 positions in the
+  global sort.
+- PTS/PRA picks identical (α stays 0.40 for those regimes).
+- Ferrari endpoints all 200.
+
+## 2026-04-21 — Canonical multi-sport DvP rank pipeline
+
+**Context:** Scored docs had `defensive_rank`, `momentum_data.dvp_rank`,
+and `opponent_defensive_rank` all ≈ `None`. Gemini filled the gap with
+"24th-ranked Spurs" hallucination (coincidentally matching the stale
+`config.settings.DVP_RANKINGS["PTS"]["SAS"]=24` from last season).
+
+**Diff (5 files + 1 test file):**
+- `services/defensive_rank_resolver.py` — NEW. Shared multi-sport resolver
+  + provider registry + prewarm hook. NBA strict-BDL (rejects
+  `DvPDataSource.STATIC_FALLBACK`); MLB/NFL unavailable.
+- `services/scoring/recompute.py` — Phase 4b writer: calls
+  `ensure_provider_warm(sport)` once, resolves per-prop via
+  `get_opponent_defensive_rank`, writes canonical 3 fields on every
+  score doc.
+- `services/scoring/prop_scores_store.py` — added 3 fields to
+  `_SCORE_OUTPUT_FIELDS` whitelist.
+- `services/unified_pipeline.py` — `_run_gemini_enrichment` now reads
+  only the canonical field; dropped `momentum_data` / static fallbacks.
+- `routes/ferrari_tiers.py` — NBA merger copies canonical fields to
+  API response.
+- `tests/test_defensive_rank_resolver.py` — 13 tests including
+  `test_static_DVP_RANKINGS_is_NEVER_a_source`.
+
+**Verification (live):**
+- `nba_prop_scores` (final-nba-rt): 2177/2177 carry canonical fields.
+- `mlb_prop_scores`: 4544/4544 carry canonical fields (honestly `unavailable`).
+- Ferrari responses: 10/10 picks per tier carry new fields.
+- Literal "24th" across all NBA board responses: **0**.
+- Shaedon Sharpe vs SAS: `opponent_defensive_rank=16, source=bdl_live`.
+
+## 2026-04-21 — Market Gap ("Book Spread") multi-sport disagreement signal
+
+**Context:** Backend exposed per-book prices but no aggregated measure of
+sportsbook disagreement — a premium sharp-betting signal.
+
+**Diff (3 code + 2 UI + 1 test file):**
+- `services/market_gap.py` — NEW sport-agnostic `compute_market_gap` +
+  `annotate_market_gap` helpers. Thresholds configurable via env
+  (`MARKET_GAP_MEDIUM=50`, `MARKET_GAP_HIGH=100`).
+- `routes/ferrari_tiers.py::_serve_ferrari_tier` — one-line wire-in,
+  single sport-agnostic choke point.
+- `components/dashboard/MarketGapBadge.jsx` — NEW shared React badge +
+  detail row. Muted zinc, no glow, no animation.
+- `components/dashboard/UniversalPlayerCard.jsx` + `PlayerDetailPage.jsx`
+  — inline + expanded placements.
+- `tests/test_market_gap.py` — 13 tests.
+
+## 2026-04-21 — Switch Gemini model to `gemini-flash-lite-latest`
+
+All callers + tests updated; 1 outlier at `gemini-2.5-flash`
+consolidated; `backend/.env::GEMINI_MODEL` updated. No stale model
+references remain.
+
+
+
 ## 2026-02-20 — Upgrade `ranking_score_v2` formula to α=0.40 blend
 
 **Context:** Shadow α-sweep audit (`/tmp/alpha_sweep.py` →

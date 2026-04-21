@@ -200,6 +200,9 @@ async def get_live_injury_advantage(response: Response, sport: str = "nba"):
                 "beneficiary_name": adv["beneficiary_name"],
                 "beneficiary_team": adv["beneficiary_team"],
                 "beneficiary_rank": adv["rank"],
+                # Injury-Rank Phase 2 (2026-04-21): usage-sorted provenance
+                "usage_rank": adv.get("usage_rank"),
+                "usage_source": adv.get("usage_source"),
                 "stat_type": adv["stat_type"],
                 "line": adv["line"],
                 "board_tier": adv["board_tier"],

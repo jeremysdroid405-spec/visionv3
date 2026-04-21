@@ -291,6 +291,38 @@ async def compute_injury_advantages(db, sport: str) -> List[dict]:
         if team:
             injuries_by_team.setdefault(team, []).append(inj)
 
+    # Build a per-team usage-sorted teammate ranking UP-FRONT so every
+    # per-pick lookup uses the same deterministic ordering rather than the
+    # incidental iteration order of `board_picks` (2026-04-21 fix).
+    # See services/usage_resolver.py for the multi-sport contract.
+    from services.usage_resolver import rank_teammates_by_usage
+    team_rank_map: Dict[str, Dict[str, int]] = {}           # team -> {player_lower -> rank}
+    team_usage_src: Dict[str, Dict[str, str]] = {}          # team -> {player_lower -> source}
+    for team, team_injuries in injuries_by_team.items():
+        injured_names_lower = {
+            i.get("player_name", "").lower() for i in team_injuries
+        }
+        teammates = [
+            {"player_name": p.get("player_name", "")}
+            for p in board_picks
+            if p.get("team") == team
+            and p.get("player_name", "").lower() not in injured_names_lower
+        ]
+        # Dedupe by name (board has multiple lines per player)
+        seen = set(); unique = []
+        for t in teammates:
+            k = (t["player_name"] or "").lower()
+            if k and k not in seen:
+                seen.add(k); unique.append(t)
+        ranked = await rank_teammates_by_usage(db, sport, unique)
+        team_rank_map[team] = {
+            (t["player_name"] or "").lower(): t["usage_rank"] for t in ranked
+        }
+        team_usage_src[team] = {
+            (t["player_name"] or "").lower(): t.get("usage_source", "unavailable")
+            for t in ranked
+        }
+
     # For each board pick, check if same-team injuries create an advantage
     advantages = []
     seen_players = set()  # one advantage per player (best stat line)
@@ -316,13 +348,15 @@ async def compute_injury_advantages(db, sport: str) -> List[dict]:
         best_injury = max(team_injuries, key=lambda i: i.get("tier_level", 0))
         injury_tier = best_injury.get("tier_level", 3)
 
-        # Count how many board picks are on this team (determines rank)
-        same_team_board = [p for p in board_picks if p.get("team") == team and p.get("player_name", "").lower() != best_injury.get("player_name", "").lower()]
-        my_index = next((i for i, p in enumerate(same_team_board) if p.get("player_name") == player), 0)
-
-        if my_index == 0:
+        # Usage-ranked beneficiary position (2026-04-21 replaces my_index
+        # loop-order semantics). Rank 1 = highest-usage rotation teammate.
+        rank_lookup = team_rank_map.get(team, {})
+        usage_rank = rank_lookup.get(player.lower())
+        usage_source_for_pick = (team_usage_src.get(team, {}).get(player.lower())
+                                 or "unavailable")
+        if usage_rank == 1:
             rank = "primary"
-        elif my_index == 1:
+        elif usage_rank == 2:
             rank = "secondary"
         else:
             rank = "tertiary"
@@ -359,6 +393,9 @@ async def compute_injury_advantages(db, sport: str) -> List[dict]:
             "minutes_bump": minutes_bump,
             "usage_bump": usage_bump,
             "rank": rank,
+            # Usage-based ranking provenance (2026-04-21 Injury-Rank Phase 2)
+            "usage_rank": usage_rank,
+            "usage_source": usage_source_for_pick,
             "recency_window_hours": window_hours,
             "computed_at": datetime.now(timezone.utc).isoformat(),
         })

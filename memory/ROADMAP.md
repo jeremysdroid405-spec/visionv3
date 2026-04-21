@@ -1,5 +1,39 @@
 # Rollback Procedure (Pre-Rename Phase)
 
+## P1 — ✅ COMPLETED 2026-04-21 (this cycle)
+
+- ✅ Gemini batching fix (routes/ferrari_tiers.py — `analyze_tier_batch` replaces per-prop fan-out)
+- ✅ Switch Gemini model to `gemini-flash-lite-latest` (all callers + tests)
+- ✅ Market Gap / "Book Spread" multi-sport feature
+- ✅ Canonical `opponent_defensive_rank` multi-sport pipeline
+- ✅ Stat-aware α in `ranking_score_v2`
+- ✅ Stat-aware CV caps for Safe Haven eligibility
+- ✅ Injury-Rank Phase 2 — usage-sorted beneficiaries via `usage_resolver`
+
+## P1 — NEXT UP
+
+- Emergent-managed Google OAuth integration (via `integration_playbook_expert_v2`)
+- Stripe payments integration (pod test keys)
+- Dashboard.jsx refactor (post-auth)
+
+## P2 — Backlog
+
+- Wave 3 Post-Migration Cleanup — Drop Step B (batch drop remaining backup
+  legacy collections)
+- Stale introspection artifacts under `/app/frontend/public/`
+  (regenerate API specs to remove `demon-tracker` endpoints)
+- Cross-sport logo collision — audit team logo lookup to require sport
+  context (Cleveland MLB Guardians vs NBA Cavaliers)
+- Legacy DB hardcodes in `scripts/ensure_indexes.py` and
+  `scripts/init_database.py`
+- Wind Tunnel weather API integration (MLB atmospheric friction)
+- Abstract `nba_master_sync.py` into shared `PipelineStep` framework
+- MLB opponent-defense provider (today `usage_resolver` / `defensive_rank_resolver`
+  both return `unavailable` for MLB — if team-defense signal becomes useful,
+  plug a provider without touching callers)
+
+
+
 Applies to Wave 0 and Wave 1 of the NBA rebuild, BEFORE any live collection
 rename has occurred. The indirection layer
 (`services/config/collection_names.py`) is the single reversal surface.
