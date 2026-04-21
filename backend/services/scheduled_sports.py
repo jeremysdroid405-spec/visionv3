@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,12 @@ class ScheduledSportConfig:
     daily_refresh_cron_utc: Optional[Dict[str, int]] = None
     # Severity for the scheduler-driven BoardEvent. Medium by default.
     event_severity: str = "medium"
+    # Phase D5 (2026-04-21) — Delta Engine near-real-time cadence.
+    # When `delta_enabled=True`, server startup spawns one
+    # `asyncio.create_task(DeltaEngine.run_forever(sport, delta_interval_seconds))`.
+    # Eliminating a sport from the delta loop = one flag flip here.
+    delta_enabled: bool = True
+    delta_interval_seconds: int = 20
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +57,9 @@ SCHEDULED_SPORTS: Dict[str, ScheduledSportConfig] = {
         master_sync_interval_minutes=60,
         # NBA daily refresh at 4:20 AM EST (09:20 UTC during EDT).
         daily_refresh_cron_utc={"hour": 9, "minute": 20},
+        # D5 delta-engine cadence for NBA: 20s ticks.
+        delta_enabled=True,
+        delta_interval_seconds=20,
     ),
     "mlb": ScheduledSportConfig(
         sport="mlb",
@@ -58,6 +67,10 @@ SCHEDULED_SPORTS: Dict[str, ScheduledSportConfig] = {
         # MLB daily refresh at 4:23 AM EST (09:23 UTC during EDT) —
         # 3 minutes after NBA to give daily odds APIs breathing room.
         daily_refresh_cron_utc={"hour": 9, "minute": 23},
+        # D5 delta-engine cadence for MLB: 30s ticks (prop churn is
+        # lower than NBA; extra 10s of slack is fine).
+        delta_enabled=True,
+        delta_interval_seconds=30,
     ),
 }
 
@@ -144,3 +157,89 @@ SPORT_INTERVAL_CALLABLES: Dict[str, callable] = {
     "nba": scheduled_master_sync_nba,
     "mlb": scheduled_master_sync_mlb,
 }
+
+
+# ---------------------------------------------------------------------------
+# D5 (2026-04-21) — Delta Engine continuous-loop startup helpers.
+# ---------------------------------------------------------------------------
+# Sport-agnostic startup + shutdown. `server.py` calls these once at
+# `@app.on_event("startup")` and `@app.on_event("shutdown")`. Adding a
+# new sport to the delta loop = one entry in SCHEDULED_SPORTS above
+# (with `delta_enabled=True`); zero `server.py` edits needed.
+# ---------------------------------------------------------------------------
+import asyncio as _asyncio
+
+# Tracks per-sport background tasks so shutdown can cancel them cleanly.
+_DELTA_TASKS: Dict[str, "_asyncio.Task"] = {}
+
+
+def start_delta_engine_loops(db) -> Dict[str, Any]:
+    """Spawn one `DeltaEngine.run_forever(sport)` task per delta-enabled sport.
+
+    Idempotent: if a task for a given sport is already running, it is
+    NOT restarted. Returns a summary dict for logging.
+    """
+    from services.delta_engine import get_delta_engine
+    engine = get_delta_engine(db)
+    started: Dict[str, Any] = {}
+    for sport, cfg in SCHEDULED_SPORTS.items():
+        if not cfg.delta_enabled:
+            started[sport] = {"started": False, "reason": "delta_disabled"}
+            continue
+        existing = _DELTA_TASKS.get(sport)
+        if existing is not None and not existing.done():
+            started[sport] = {
+                "started": False,
+                "reason": "already_running",
+                "interval_s": cfg.delta_interval_seconds,
+            }
+            continue
+        task = _asyncio.create_task(
+            engine.run_forever(sport, interval_seconds=cfg.delta_interval_seconds),
+            name=f"delta_engine_{sport}",
+        )
+        _DELTA_TASKS[sport] = task
+        started[sport] = {
+            "started": True,
+            "interval_s": cfg.delta_interval_seconds,
+        }
+        logger.info(
+            f"[DELTA_STARTUP] sport={sport} run_forever task spawned "
+            f"(interval={cfg.delta_interval_seconds}s)"
+        )
+    return started
+
+
+async def stop_delta_engine_loops() -> Dict[str, Any]:
+    """Cancel all running delta-engine tasks. Called at FastAPI shutdown."""
+    results: Dict[str, Any] = {}
+    for sport, task in list(_DELTA_TASKS.items()):
+        if task.done():
+            results[sport] = {"stopped": False, "reason": "already_done"}
+            continue
+        task.cancel()
+        try:
+            await task
+        except _asyncio.CancelledError:
+            pass
+        except Exception as exc:  # noqa: BLE001
+            results[sport] = {"stopped": True, "error_on_shutdown": str(exc)}
+            continue
+        results[sport] = {"stopped": True}
+        logger.info(f"[DELTA_SHUTDOWN] sport={sport} run_forever task cancelled")
+    _DELTA_TASKS.clear()
+    return results
+
+
+def describe_delta_engine_loops() -> Dict[str, Any]:
+    """Introspection helper — returns per-sport task state for diagnostics."""
+    out: Dict[str, Any] = {}
+    for sport, cfg in SCHEDULED_SPORTS.items():
+        task = _DELTA_TASKS.get(sport)
+        out[sport] = {
+            "delta_enabled": cfg.delta_enabled,
+            "delta_interval_seconds": cfg.delta_interval_seconds,
+            "running": bool(task and not task.done()),
+            "task_name": task.get_name() if task else None,
+        }
+    return out

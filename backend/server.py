@@ -1541,6 +1541,23 @@ async def startup_event():
     await run_mlb_startup_health_check()
 
     # ==========================================================================
+    # D5 (2026-04-21) — DELTA ENGINE CONTINUOUS LOOPS
+    # ==========================================================================
+    # One `DeltaEngine.run_forever(sport)` background task per sport with
+    # `delta_enabled=True` in SCHEDULED_SPORTS. Sport-agnostic: adding a
+    # new sport to the live delta layer is a single flag in the registry.
+    # Respects UpstreamSyncLock (full-sync holds exclusive, delta ticks
+    # clean-skip). Never calls upstream APIs — enforced by
+    # tests/test_delta_upstream_isolation.py.
+    # ==========================================================================
+    try:
+        from services.scheduled_sports import start_delta_engine_loops
+        delta_startup = start_delta_engine_loops(db)
+        logger.info(f"[DELTA_ENGINE] startup: {delta_startup}")
+    except Exception as exc:
+        logger.error(f"[DELTA_ENGINE] startup failed: {exc}")
+
+    # ==========================================================================
     # CANONICAL COLLECTION HEALTH CHECK - one-shot, log-only
     # =========================================================================
     # Compares config/collections.py SPORT_OVERRIDES against the actual
@@ -2126,6 +2143,14 @@ async def shutdown_event():
     if scheduler:
         scheduler.shutdown()
         logger.info("[SHUTDOWN] APScheduler stopped")
+
+    # D5 — cancel delta-engine continuous loops cleanly.
+    try:
+        from services.scheduled_sports import stop_delta_engine_loops
+        stop_summary = await stop_delta_engine_loops()
+        logger.info(f"[SHUTDOWN] Delta engine loops stopped: {stop_summary}")
+    except Exception as exc:
+        logger.error(f"[SHUTDOWN] Delta engine stop failed: {exc}")
 
 
 class SignUpRequest(BaseModel):

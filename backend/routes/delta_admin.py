@@ -165,9 +165,11 @@ async def delta_engine_status():
         raise HTTPException(status_code=500, detail="delta admin db not wired")
     from services.delta_engine import get_delta_engine
     from services.upstream_sync_lock import get_upstream_sync_lock
+    from services.scheduled_sports import describe_delta_engine_loops
     engine = get_delta_engine(_db)
     lock = get_upstream_sync_lock()
     return {
         "engine": engine.describe(),
         "upstream_lock": lock.describe(),
+        "startup_loops": describe_delta_engine_loops(),
     }

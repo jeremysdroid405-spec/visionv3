@@ -322,6 +322,81 @@ Live retire simulation on NBA (Shaedon Sharpe):
   and after delta ticks.
 
 ### Caveats before D5
+
+## Delta Engine — Phase D5 Complete (2026-04-21)
+
+### Scope delivered
+Delta engine is now **auto-running continuously** for every sport in
+`SCHEDULED_SPORTS` with `delta_enabled=True`. Manual run-once + engine-
+status endpoints remain available. Startup adds two background tasks
+(one per sport); shutdown cancels them cleanly.
+
+### Files changed (4 files, +133 LOC)
+- `services/scheduled_sports.py` (+100 LOC):
+  - Added `delta_enabled: bool = True` and `delta_interval_seconds: int = 20`
+    to `ScheduledSportConfig`. NBA registered at 20s, MLB at 30s.
+  - New `start_delta_engine_loops(db)` — idempotent. Spawns one
+    `asyncio.create_task(DeltaEngine.run_forever(sport, interval_seconds))`
+    per delta-enabled sport, tracked in module-level `_DELTA_TASKS` dict.
+  - New `stop_delta_engine_loops()` — awaits cancellation of all tracked
+    tasks at shutdown.
+  - New `describe_delta_engine_loops()` — per-sport `(delta_enabled,
+    interval_s, running, task_name)` for the engine-status endpoint.
+- `server.py` (+25 LOC):
+  - `@app.on_event("startup")` calls `start_delta_engine_loops(db)`.
+  - `@app.on_event("shutdown")` awaits `stop_delta_engine_loops()`.
+- `services/odds_sync_service.py` (+6 LOC):
+  - Stamp `updated_at = datetime.now(timezone.utc)` on every NBA prop
+    at the insert-time (immediately after `deduplicated` list build).
+    Parity with `universal_odds_sync` which already did this for MLB.
+- `routes/delta_admin.py` (+2 LOC):
+  - `/api/v3/admin/delta/engine-status` now also returns
+    `startup_loops` map (from `describe_delta_engine_loops()`).
+
+### Acceptance verification (live, 2026-04-21 02:35–02:39 UTC)
+```
+Startup log:
+  [DELTA_ENGINE] startup: {'nba': {'started': True, 'interval_s': 20},
+                           'mlb': {'started': True, 'interval_s': 30}}
+  [DELTA:nba] run_forever START interval=20s
+  [DELTA:mlb] run_forever START interval=30s
+
+Continuous ticks (sampled):
+  02:35:30 [DELTA:nba] detect: updated=0 new=2058 retired=0 dirty=2058
+  02:35:30 [DELTA:mlb] detect: updated=0 new=0    retired=0 dirty=0
+  02:36:00 [DELTA:mlb] detect: updated=0 new=0    retired=0 dirty=0
+  02:36:06 [DELTA:nba] detect: updated=0 new=0    retired=0 dirty=0
+  02:36:26 [DELTA:nba] (lock held by master_sync:69d77949 → SKIPPED)
+  02:36:46 [DELTA:nba] (lock held → SKIPPED)
+  ... 7 consecutive NBA delta ticks SKIPPED while master sync ran ...
+  02:39:xx [DELTA:nba] lock released → 17.4s rescore of freshly-updated props
+  02:39:xx engine-status: nba total_ticks=12, mlb total_ticks=9
+
+NBA updated_at stamping:
+  Before: 2199 live_props, 0 stamped (pre-D5 baseline).
+  After:  2229 live_props, 2229 stamped (100% coverage after one master sync).
+
+Ferrari endpoints: all 6 HTTP 200 (nba 10/10/6, mlb 2/6/8).
+```
+
+### Caveats before D6/D7
+1. **Heavy delta tick post-full-sync.** When a full sync completes,
+   the next delta tick may rescore every new prop in one pass (NBA
+   saw a 17.4s tick with 2058 new keys). That's within the `interval_s`
+   budget on MLB (30s) but tight on NBA (20s). Mitigation candidate for
+   D6: cap `rescore_keys` per tick to N (e.g. 500), spreading the
+   rescore across 2-3 ticks. Low priority — this only happens once
+   per hour.
+2. **Ticks during game-tip storms** (multiple games tipping off in
+   the same 20s window) aren't bounded. No issue observed yet; worth
+   watching once we're live during a full slate.
+3. **No metrics surface yet.** Tick counts and durations are in-memory
+   only (`engine.describe()`). D6 will add Prometheus-style metrics
+   and a rolling tick history.
+4. **`rolling_cache_manager.DeltaManager` is still running.** Its 90s
+   overlay loop is structurally redundant post-Stage-4/D3 but has not
+   been removed. D7 is the cleanup ticket.
+
 1. **Engine not auto-started.** `POST /api/v3/admin/delta/run-once/{sport}`
    is the only trigger for now. D5 will spawn `asyncio.create_task(
    engine.run_forever(sport))` at server startup, one per entry in

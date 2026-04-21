@@ -351,8 +351,14 @@ class OddsSyncService:
                 
                 # Insert deduplicated props
                 props_list = list(deduplicated.values())
+                now_utc = datetime.now(timezone.utc)
                 for prop in props_list:
                     prop.pop("_id", None)
+                    # Delta engine (D5, 2026-04-21): datetime stamp so
+                    # `{updated_at: {$gt: watermark}}` range queries work
+                    # for NBA the same way they do for MLB (parity with
+                    # universal_odds_sync which stamps this field too).
+                    prop["updated_at"] = now_utc
                 
                 if props_list:
                     try:
