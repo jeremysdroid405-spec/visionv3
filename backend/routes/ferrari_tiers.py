@@ -1580,6 +1580,147 @@ async def get_oracle_apex_picks(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
+# ---------------------------------------------------------------------------
+# Stage 6 (2026-04-21, MLB↔NBA carbon-copy): SPORT_TIER_HELPERS dispatch
+# ---------------------------------------------------------------------------
+# Single point of truth for per-sport wiring of the Ferrari tier endpoints.
+# Adding a new sport (e.g. NFL) requires ONE new entry below — no route
+# edits, no per-endpoint IF-chain. Eliminates D4.
+#
+# Each registered helper provides:
+#   * source_tag_template: the `pipeline.source` string surfaced in the
+#     endpoint response; used for monitoring/observability parity.
+#   * fetch_picks(tier, limit, sort) -> list[dict]: pulls scored picks
+#     from the canonical sport store via the universal board reader.
+#   * post_process(picks, tier_name) -> None: applies sport-specific
+#     display finalization (NBA: side-aware strip + Gemini UNDER;
+#     MLB: tempo + intel_suite enricher no-op guards).
+# ---------------------------------------------------------------------------
+from dataclasses import dataclass
+from typing import Awaitable, Callable
+
+
+@dataclass(frozen=True)
+class SportTierHelpers:
+    source_tag_template: str
+    fetch_picks:  Callable[[str, int, Optional[str]], Awaitable[List[Dict[str, Any]]]]
+    post_process: Callable[[List[Dict[str, Any]], str], Awaitable[None]]
+
+
+async def _apply_jit_injury_filter(
+    picks: List[Dict[str, Any]], sport: str, tier_name: str
+) -> List[Dict[str, Any]]:
+    """Sport-uniform JIT injury filter. Replaces the duplicated
+    sport-branched blocks that used to live in each Ferrari endpoint."""
+    if not picks:
+        return picks
+    try:
+        from services.live_injury_micro_sync import get_live_injury_service
+        svc = get_live_injury_service()
+        if svc:
+            picks = await svc.jit_filter_picks(picks, sport=sport)
+    except Exception as e:
+        logger.warning(f"[{tier_name.upper()} {sport.upper()}] JIT injury check failed: {e}")
+    return picks
+
+
+async def _post_process_nba_picks(
+    picks: List[Dict[str, Any]], tier_name: str
+) -> None:
+    """NBA post-process: side-aware finalization + Gemini UNDER enrichment.
+    Mutates picks in place. No-op when picks is empty."""
+    if not picks:
+        return
+    _finalize_nba_picks_side_aware(picks)
+    await _enrich_under_picks_with_gemini(picks, tier_name)
+
+
+async def _post_process_mlb_picks(
+    picks: List[Dict[str, Any]], tier_name: str
+) -> None:
+    """MLB post-process: defensive tempo + intel_suite. Both enrichers
+    are idempotent no-ops when fields were persisted at scoring-write
+    time (Stage 4). Mutates picks in place. No-op when picks is empty."""
+    if not picks:
+        return
+    for pick in picks:
+        try:
+            enrich_mlb_prop_with_tempo(pick)
+        except Exception:
+            pass
+        enrich_mlb_intel_suite(pick)
+
+
+SPORT_TIER_HELPERS: Dict[str, SportTierHelpers] = {
+    "nba": SportTierHelpers(
+        source_tag_template="nba_prop_scores[tier={tier},version=final-nba-rt]",
+        fetch_picks=_get_nba_tier_picks_from_scores,
+        post_process=_post_process_nba_picks,
+    ),
+    "mlb": SportTierHelpers(
+        source_tag_template="mlb_prop_scores[tier={tier},version=final-mlb]",
+        fetch_picks=_get_mlb_tier_picks_from_scores,
+        post_process=_post_process_mlb_picks,
+    ),
+}
+
+
+async def _serve_ferrari_tier(
+    sport: str, tier_name: str, tier_label_prefix: str,
+    limit: int, sort: Optional[str],
+) -> Dict[str, Any]:
+    """Canonical Ferrari tier resolver. Replaces the per-sport IF-chain
+    that used to live in every tier endpoint. Adding a new sport is a
+    single-line SPORT_TIER_HELPERS entry — no route edits required.
+    Eliminates D4."""
+    helpers = SPORT_TIER_HELPERS.get(sport)
+    if helpers is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"sport={sport!r} not registered in SPORT_TIER_HELPERS",
+        )
+
+    collection_name = helpers.source_tag_template.format(tier=tier_name)
+    picks = await helpers.fetch_picks(tier_name, limit, sort=sort)
+
+    # Uniform JIT injury filter (sport-agnostic wrapper).
+    picks = await _apply_jit_injury_filter(picks, sport, tier_name)
+
+    # Overlay async Gemini enrichment cache (sport-agnostic).
+    picks = overlay_enrichment_cache(picks, sport)
+
+    # Sport-specific finalization via dispatch table.
+    await helpers.post_process(picks, tier_name)
+
+    # Common fallback + canonical guards (sport-agnostic).
+    for pick in picks:
+        if not pick.get("vision_intel"):
+            pick["vision_intel"] = _generate_vision_fallback(pick)
+    picks = _guard_board_picks(picks)
+    picks = _dedupe_picks_by_player(picks, sort=sort)
+
+    fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
+    has_any_mlr    = sum(1 for p in picks if (p.get("validation") or {}).get("has_mlr", False))
+    has_any_gemini = sum(1 for p in picks if (p.get("validation") or {}).get("has_gemini", False))
+    status = "full" if fully_validated == len(picks) and picks else ("partial" if picks else "no_data")
+
+    return {
+        "tier": tier_name,
+        "tier_label": f"{tier_label_prefix} ({sport.upper()})",
+        "sport": sport,
+        "picks": picks,
+        "count": len(picks),
+        "status": status,
+        "pipeline": {
+            "source": collection_name,
+            "fully_validated": fully_validated,
+            "with_mlr": has_any_mlr,
+            "with_gemini": has_any_gemini,
+        },
+    }
+
+
 @router.get("/v3/ferrari/safe-haven")
 async def get_ferrari_safe_haven(
     response: Response,
@@ -1643,90 +1784,15 @@ async def get_ferrari_safe_haven(
             logger.error(f"[SAFE_HAVEN] Legacy scan error: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
-    # NBA: read from the VK2 `nba_prop_scores` (version_tag='final-nba')
-    # pipeline, not the legacy `elite_*` collections.
-    if sport == "nba":
-        collection_name = "nba_prop_scores[tier=safe_haven,version=final-nba-rt]"
-        picks = await _get_nba_tier_picks_from_scores("safe_haven", limit, sort=sort)
-    else:
-        collection_name = "mlb_prop_scores[tier=safe_haven,version=final-mlb]"
-        picks = await _get_mlb_tier_picks_from_scores("safe_haven", limit, sort=sort)
-
-    # JIT Injury Check for NBA picks
-    if sport == "nba" and picks:
-        try:
-            from services.live_injury_micro_sync import get_live_injury_service
-            live_injury_svc = get_live_injury_service()
-            if live_injury_svc:
-                picks = await live_injury_svc.jit_filter_picks(picks, sport="nba")
-        except Exception as e:
-            logger.warning(f"[SAFE_HAVEN NBA] JIT injury check failed: {e}")
-    
-    # JIT Injury Check for MLB picks
-    if sport == "mlb" and picks:
-        try:
-            from services.live_injury_micro_sync import get_live_injury_service
-            live_injury_svc = get_live_injury_service()
-            if live_injury_svc:
-                picks = await live_injury_svc.jit_filter_picks(picks, sport="mlb")
-        except Exception as e:
-            logger.warning(f"[SAFE_HAVEN MLB] JIT injury check failed: {e}")
-    
-    # Overlay enrichment cache data (vision_intel, scout_badges, Lasso)
-    picks = overlay_enrichment_cache(picks, sport)
-
-    # NBA: side-aware finalization — strip OVER-only badges from UNDER picks
-    # after the enrichment cache overlays OVER-biased scout_badges onto them.
-    if sport == "nba" and picks:
-        _finalize_nba_picks_side_aware(picks)
-        # Gemini UNDER enrichment (same GOOGLE_API_KEY + model used for OVERs).
-        # OVERs already carry vision_intel from the legacy pipeline.
-        await _enrich_under_picks_with_gemini(picks, "safe_haven")
-
-    # MLB: Stage 5 (2026-04-21, MLB↔NBA carbon-copy) — `enrich_mlb_prop_with_averages`
-    # removed from live path (D5). tempo + intel_suite are no-ops when
-    # persisted (Stage 4 guards). They remain here as defensive enrichers
-    # for any legacy/debug pick that might lack persisted fields.
-    if sport == "mlb" and picks:
-        for pick in picks:
-            try:
-                enrich_mlb_prop_with_tempo(pick)
-            except Exception:
-                pass
-            enrich_mlb_intel_suite(pick)
-
-    # Generate fallback vision_intel for any pick missing it (both sports)
-    for pick in picks:
-        if not pick.get("vision_intel"):
-            pick["vision_intel"] = _generate_vision_fallback(pick)
-
-    # CANONICAL STAT GUARD: last line of defense against silent clobbering of
-    # h5_rate / h10_rate / h20_rate. Auto-corrects to count-based values.
-    picks = _guard_board_picks(picks)
-    picks = _dedupe_picks_by_player(picks, sort=sort)
-
-    # Return picks with pipeline status
-    # Count validation states for status flag
-    fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
-    has_any_mlr = sum(1 for p in picks if (p.get("validation") or {}).get("has_mlr", False))
-    has_any_gemini = sum(1 for p in picks if (p.get("validation") or {}).get("has_gemini", False))
-
-    status = "full" if fully_validated == len(picks) and picks else ("partial" if picks else "no_data")
-
-    return {
-        "tier": "safe_haven",
-        "tier_label": f"Safe Haven ({sport.upper()})",
-        "sport": sport,
-        "picks": picks,
-        "count": len(picks),
-        "status": status,
-        "pipeline": {
-            "source": collection_name,
-            "fully_validated": fully_validated,
-            "with_mlr": has_any_mlr,
-            "with_gemini": has_any_gemini,
-        },
-    }
+    # Stage 6 (2026-04-21, MLB↔NBA carbon-copy): single dispatch path.
+    # Eliminates D4 — no per-sport IF-chain. Preserves response shape
+    # (tier/tier_label/sport/picks/count/status/pipeline), default sort,
+    # `?sort=gap` behavior, JIT injury filter, and enrichment order.
+    return await _serve_ferrari_tier(
+        sport=sport, tier_name="safe_haven",
+        tier_label_prefix="Safe Haven",
+        limit=limit, sort=sort,
+    )
 
 
 @router.get("/v3/ferrari/front-lines")
@@ -1762,85 +1828,12 @@ async def get_ferrari_front_lines(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    # VAULT ISOLATION: NBA reads from `nba_prop_scores` (VK2 pipeline);
-    # MLB still uses legacy collection.
-    if sport == "nba":
-        collection_name = "nba_prop_scores[tier=front_lines,version=final-nba-rt]"
-        picks = await _get_nba_tier_picks_from_scores("front_lines", limit, sort=sort)
-    else:
-        collection_name = "mlb_prop_scores[tier=front_lines,version=final-mlb]"
-        picks = await _get_mlb_tier_picks_from_scores("front_lines", limit, sort=sort)
-
-    # JIT Injury Check for NBA picks
-    if sport == "nba" and picks:
-        try:
-            from services.live_injury_micro_sync import get_live_injury_service
-            live_injury_svc = get_live_injury_service()
-            if live_injury_svc:
-                picks = await live_injury_svc.jit_filter_picks(picks, sport="nba")
-        except Exception as e:
-            logger.warning(f"[FRONT_LINES NBA] JIT injury check failed: {e}")
-    
-    # JIT Injury Check for MLB picks
-    if sport == "mlb" and picks:
-        try:
-            from services.live_injury_micro_sync import get_live_injury_service
-            live_injury_svc = get_live_injury_service()
-            if live_injury_svc:
-                picks = await live_injury_svc.jit_filter_picks(picks, sport="mlb")
-        except Exception as e:
-            logger.warning(f"[FRONT_LINES MLB] JIT injury check failed: {e}")
-    
-    # Overlay enrichment cache data (vision_intel, scout_badges, Lasso)
-    picks = overlay_enrichment_cache(picks, sport)
-
-    # NBA: side-aware finalization — strip OVER-only badges from UNDER picks
-    # after the enrichment cache overlays OVER-biased scout_badges onto them.
-    if sport == "nba" and picks:
-        _finalize_nba_picks_side_aware(picks)
-        await _enrich_under_picks_with_gemini(picks, "front_lines")
-
-    # MLB: Stage 5 (2026-04-21, MLB↔NBA carbon-copy) — `enrich_mlb_prop_with_averages`
-    # removed from live path (D5). tempo + intel_suite are no-ops when
-    # persisted (Stage 4 guards). They remain here as defensive enrichers
-    # for any legacy/debug pick that might lack persisted fields.
-    if sport == "mlb" and picks:
-        for pick in picks:
-            try:
-                enrich_mlb_prop_with_tempo(pick)
-            except Exception:
-                pass
-            enrich_mlb_intel_suite(pick)
-
-    # Generate fallback vision_intel for any pick missing it (both sports)
-    for pick in picks:
-        if not pick.get("vision_intel"):
-            pick["vision_intel"] = _generate_vision_fallback(pick)
-
-    # CANONICAL STAT GUARD: see safe-haven for rationale.
-    picks = _guard_board_picks(picks)
-    picks = _dedupe_picks_by_player(picks, sort=sort)
-
-    # Return picks with pipeline status
-    fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
-    has_any_mlr = sum(1 for p in picks if (p.get("validation") or {}).get("has_mlr", False))
-    has_any_gemini = sum(1 for p in picks if (p.get("validation") or {}).get("has_gemini", False))
-    status = "full" if fully_validated == len(picks) and picks else ("partial" if picks else "no_data")
-
-    return {
-        "tier": "front_lines",
-        "tier_label": f"Front Lines ({sport.upper()})",
-        "sport": sport,
-        "picks": picks,
-        "count": len(picks),
-        "status": status,
-        "pipeline": {
-            "source": collection_name,
-            "fully_validated": fully_validated,
-            "with_mlr": has_any_mlr,
-            "with_gemini": has_any_gemini,
-        },
-    }
+    # Stage 6 (2026-04-21, MLB↔NBA carbon-copy): single dispatch path.
+    return await _serve_ferrari_tier(
+        sport=sport, tier_name="front_lines",
+        tier_label_prefix="Front Lines",
+        limit=limit, sort=sort,
+    )
 
 
 @router.get("/v3/ferrari/war-zone")
@@ -1876,85 +1869,12 @@ async def get_ferrari_war_zone(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    # VAULT ISOLATION: NBA reads from `nba_prop_scores` (VK2 pipeline);
-    # MLB still uses legacy collection.
-    if sport == "nba":
-        collection_name = "nba_prop_scores[tier=war_zone,version=final-nba-rt]"
-        picks = await _get_nba_tier_picks_from_scores("war_zone", limit, sort=sort)
-    else:
-        collection_name = "mlb_prop_scores[tier=war_zone,version=final-mlb]"
-        picks = await _get_mlb_tier_picks_from_scores("war_zone", limit, sort=sort)
-
-    # JIT Injury Check for NBA picks
-    if sport == "nba" and picks:
-        try:
-            from services.live_injury_micro_sync import get_live_injury_service
-            live_injury_svc = get_live_injury_service()
-            if live_injury_svc:
-                picks = await live_injury_svc.jit_filter_picks(picks, sport="nba")
-        except Exception as e:
-            logger.warning(f"[WAR_ZONE NBA] JIT injury check failed: {e}")
-    
-    # JIT Injury Check for MLB picks
-    if sport == "mlb" and picks:
-        try:
-            from services.live_injury_micro_sync import get_live_injury_service
-            live_injury_svc = get_live_injury_service()
-            if live_injury_svc:
-                picks = await live_injury_svc.jit_filter_picks(picks, sport="mlb")
-        except Exception as e:
-            logger.warning(f"[WAR_ZONE MLB] JIT injury check failed: {e}")
-    
-    # Overlay enrichment cache data (vision_intel, scout_badges, Lasso)
-    picks = overlay_enrichment_cache(picks, sport)
-
-    # NBA: side-aware finalization — strip OVER-only badges from UNDER picks
-    # after the enrichment cache overlays OVER-biased scout_badges onto them.
-    if sport == "nba" and picks:
-        _finalize_nba_picks_side_aware(picks)
-        await _enrich_under_picks_with_gemini(picks, "war_zone")
-
-    # MLB: Stage 5 (2026-04-21, MLB↔NBA carbon-copy) — `enrich_mlb_prop_with_averages`
-    # removed from live path (D5). tempo + intel_suite are no-ops when
-    # persisted (Stage 4 guards). They remain here as defensive enrichers
-    # for any legacy/debug pick that might lack persisted fields.
-    if sport == "mlb" and picks:
-        for pick in picks:
-            try:
-                enrich_mlb_prop_with_tempo(pick)
-            except Exception:
-                pass
-            enrich_mlb_intel_suite(pick)
-
-    # Generate fallback vision_intel for any pick missing it (both sports)
-    for pick in picks:
-        if not pick.get("vision_intel"):
-            pick["vision_intel"] = _generate_vision_fallback(pick)
-
-    # CANONICAL STAT GUARD: see safe-haven for rationale.
-    picks = _guard_board_picks(picks)
-    picks = _dedupe_picks_by_player(picks, sort=sort)
-
-    # Return picks with pipeline status
-    fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
-    has_any_mlr = sum(1 for p in picks if (p.get("validation") or {}).get("has_mlr", False))
-    has_any_gemini = sum(1 for p in picks if (p.get("validation") or {}).get("has_gemini", False))
-    status = "full" if fully_validated == len(picks) and picks else ("partial" if picks else "no_data")
-
-    return {
-        "tier": "war_zone",
-        "tier_label": f"War Zone ({sport.upper()})",
-        "sport": sport,
-        "picks": picks,
-        "count": len(picks),
-        "status": status,
-        "pipeline": {
-            "source": collection_name,
-            "fully_validated": fully_validated,
-            "with_mlr": has_any_mlr,
-            "with_gemini": has_any_gemini,
-        },
-    }
+    # Stage 6 (2026-04-21, MLB↔NBA carbon-copy): single dispatch path.
+    return await _serve_ferrari_tier(
+        sport=sport, tier_name="war_zone",
+        tier_label_prefix="War Zone",
+        limit=limit, sort=sort,
+    )
 
 
 @router.get("/v3/ferrari/discarded")

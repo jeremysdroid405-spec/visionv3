@@ -122,6 +122,65 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
   `ranking_score_v2` populated; default and `?sort=gap` both correct.
 
 
+## Carbon-Copy Migration — Stage 6 Complete (2026-04-21)
+
+### Ferrari endpoint IF-chain replaced with SPORT_TIER_HELPERS dispatch (eliminates D4)
+- **New dispatch infrastructure** in `routes/ferrari_tiers.py`:
+  - `@dataclass(frozen=True) SportTierHelpers` with three fields:
+    `source_tag_template`, `fetch_picks`, `post_process`.
+  - `SPORT_TIER_HELPERS: Dict[str, SportTierHelpers]` registry with
+    entries for `"nba"` and `"mlb"`.
+  - `_apply_jit_injury_filter(picks, sport, tier)` — sport-uniform
+    wrapper around `live_injury_micro_sync.jit_filter_picks`.
+  - `_post_process_nba_picks(picks, tier)` — side-aware strip +
+    Gemini UNDER enrichment.
+  - `_post_process_mlb_picks(picks, tier)` — defensive tempo +
+    intel_suite (Stage-4 guards make these no-ops when persisted).
+  - `_serve_ferrari_tier(sport, tier_name, tier_label_prefix, limit,
+    sort)` — single canonical resolver that every tier endpoint
+    delegates to.
+- **All 3 Ferrari tier endpoint bodies** collapsed to a single
+  one-liner that calls `_serve_ferrari_tier(...)`. Zero per-sport
+  branching remains in the endpoint handlers.
+- **NFL readiness**: adding a new sport is now a one-line
+  `SPORT_TIER_HELPERS["nfl"] = SportTierHelpers(...)` registration
+  plus (optionally) a sport-specific `_post_process_nfl_picks` helper.
+  No route edits required.
+
+### Response invariants preserved
+- Same response shape: `{tier, tier_label, sport, picks, count, status,
+  pipeline: {source, fully_validated, with_mlr, with_gemini}}`.
+- Same default sort (adapter's `vision_score DESC`).
+- Same `?sort=gap` behaviour (NBA + MLB — verified that gap changes
+  top-pick rs2 for MLB from 1.058 → 2.046 as expected).
+- Same JIT injury filter, `overlay_enrichment_cache`, sport-specific
+  enrichers, `_generate_vision_fallback`, `_guard_board_picks`,
+  `_dedupe_picks_by_player` — all called in identical order.
+- Same reader path: `get_board(db, sport, tier, limit, sort_override)`.
+- Same scoring-source semantics: NBA reads `final-nba-rt`, MLB reads
+  `final-mlb`.
+
+### Files updated
+- `routes/ferrari_tiers.py` — dispatch infrastructure added (~140 lines
+  near line 1583); 3 endpoint bodies collapsed. Net: **-80 lines**
+  (242 removed, 162 added).
+
+### Stage 6 acceptance verification
+- All 6 endpoints return HTTP 200:
+  - `nba safe-haven=0, front-lines=0, war-zone=0` (pre-existing NBA
+    data state — real-time recompute hasn't run; not a regression).
+  - `mlb safe-haven=8, front-lines=3, war-zone=4` — full payload with
+    `p_true_method='model'`, `ranking_score_v2`, `intel_suite`.
+- `?sort=gap` verified on MLB safe-haven (top rs2 jumps from 1.058 to
+  2.046 on gap sort, proving the parameter still re-orders).
+- `grep 'sport == "nba"|sport == "mlb"' within Ferrari endpoint bodies`:
+  **0 matches** (vs ~15 before Stage 6).
+- `SPORT_TIER_HELPERS.keys()` = `['nba', 'mlb']` — both sports wire up
+  through the registry.
+
+---
+
+
 ## Carbon-Copy Migration — Stage 5 Complete (2026-04-21)
 
 ### Route-time projection/probability enrichment removed (eliminates D5)
@@ -334,6 +393,12 @@ Default sort and `?sort=gap` both work. Picks visibly re-order on gap sort.
   persisted `mlb_prop_scores` or from already-integrated Stage-4
   scoring-write enrichers (`intel_suite`, `tempo_modifier`,
   `vision_fallback`).
+- ~~D4: Ferrari endpoint IF-chain by sport~~ — resolved via Stage 6.
+  Introduced `SPORT_TIER_HELPERS` dispatch registry +
+  `_serve_ferrari_tier()` canonical resolver. All 3 Ferrari tier
+  endpoints (safe-haven, front-lines, war-zone) collapsed to a
+  one-line delegate call. Adding NFL is a single-line registry
+  entry — no route edits needed.
 
 ### P2 — Backlog
 - NBA-native tier admission table (NBA stats currently fall through to the
