@@ -343,6 +343,21 @@ class UnifiedPipeline:
                 logger.warning(f"[{sport}_PIPELINE] [{self.run_id}] PHASE 7 Gemini failed (non-fatal): {e}")
                 gemini_ok = False
 
+            # P1.3 (2026-04-21, Gemini cost audit): NBA UNDER-pick narrative
+            # generation previously fired on EVERY Ferrari tier page load via
+            # `routes/ferrari_tiers._post_process_nba_picks`. It now runs
+            # exclusively from this non-request path — once per master sync,
+            # gated by the content-hash cache (P1.1) so unchanged UNDERs
+            # don't re-call Gemini.
+            if self.adapter.sport == "nba":
+                try:
+                    await self._run_nba_under_enrichment(tiers)
+                except Exception as e:
+                    logger.warning(
+                        f"[{sport}_PIPELINE] [{self.run_id}] UNDER-enrichment "
+                        f"failed (non-fatal): {e}"
+                    )
+
             phase_dur = (datetime.now(timezone.utc) - phase_start).total_seconds()
             result.phases["7_gemini"] = {
                 "duration_s": round(phase_dur, 2),
@@ -628,35 +643,114 @@ class UnifiedPipeline:
         if not payloads:
             return {"attempted": 0, "success": 0, "failed": 0, "skipped": 0}
 
-        stats = {"attempted": len(payloads), "success": 0, "failed": 0, "skipped": 0}
+        # ------------------------------------------------------------------
+        # P1.2 (2026-04-21) — payload-hash skip-check.
+        # Load existing cache JSON first; if a payload's content hash matches
+        # the cached `payload_hash`, skip Gemini entirely for that pick. This
+        # is the single biggest dev-cost driver identified in the Gemini
+        # audit — hourly master syncs were regenerating near-identical
+        # narrative for unchanged props. Cache key is `{player}_{stat}_{line}`
+        # (unchanged); hash covers all inputs that materially drive the text.
+        # ------------------------------------------------------------------
+        import hashlib as _hashlib
 
-        # Batch call Gemini
-        results = await batch_generate_scout_intel(payloads, batch_size=10)
-
-        # Count write eligibility (success / short-response / empty) for
-        # logging and stats parity with the legacy flow. We DO NOT persist
-        # vision_intel into the tier collections (elite_safe_haven /
-        # elite_front_lines / elite_war_zone) anymore — the Dashboard never
-        # reads vision_intel from those collections; it reads from the
-        # enrichment cache JSON (written below) and, for UNDER picks, from
-        # nba_prop_scores (written by routes/ferrari_tiers._enrich_under_picks_with_gemini).
-        # Killing this DB write removes ~30 wasted UPDATE ops/rebuild with
-        # zero reader impact (Phase 5 Step 1 — 2026-04-18).
-        for i, _ref in enumerate(pick_refs):
-            key = f"{payloads[i]['player']}|{payloads[i]['stat']}|{payloads[i]['line']}"
-            text = results.get(key, "")
-            if not text or len(text) < 50:
-                stats["failed"] += 1
-                continue
-            stats["success"] += 1
-
-        # Update cache JSON for serve-time overlay
         cache_path = os.path.join(CACHE_DIR, f"{sport}_master_active_cache.json")
         try:
             with open(cache_path) as f:
                 cache = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             cache = {"props": {}}
+
+        cache_props = cache.get("props", {})
+
+        def _payload_hash(p: Dict[str, Any]) -> str:
+            # Deterministic hash over only the fields the prompt actually
+            # uses. Sorting keys ensures re-ordering doesn't spuriously
+            # invalidate the cache.
+            material = {
+                "v": 1,
+                "player": p.get("player"),
+                "stat": p.get("stat"),
+                "line": p.get("line"),
+                "tier": p.get("tier"),
+                "direction": p.get("direction"),
+                "edge_pct": round(float(p.get("edge_pct") or 0.0), 3),
+                "h10_rate": round(float(p.get("h10_rate") or 0.0), 3),
+                "h20_rate": round(float(p.get("h20_rate") or 0.0), 3),
+                "matchup_opponent": p.get("matchup_opponent") or "",
+                "dvp_rank": p.get("dvp_rank"),
+                "sport": p.get("sport"),
+            }
+            blob = json.dumps(material, sort_keys=True, default=str)
+            return _hashlib.sha1(blob.encode("utf-8")).hexdigest()
+
+        fresh_payloads: List[Dict[str, Any]] = []
+        fresh_pick_refs: List[tuple] = []
+        skipped_keys: List[str] = []
+
+        for idx, payload in enumerate(payloads):
+            cache_key = (
+                f"{payload['player']}_{payload['stat']}_{payload['line']}"
+            )
+            h = _payload_hash(payload)
+            payload["_payload_hash"] = h  # stashed for write-back below
+            cached = cache_props.get(cache_key) or {}
+            if (
+                cached.get("vision_intel")
+                and cached.get("payload_hash") == h
+            ):
+                skipped_keys.append(cache_key)
+                continue
+            fresh_payloads.append(payload)
+            fresh_pick_refs.append(pick_refs[idx])
+
+        if skipped_keys:
+            logger.info(
+                f"[GEMINI_ENRICH] {sport.upper()} | payload-hash skip: "
+                f"{len(skipped_keys)} / {len(payloads)} props unchanged"
+            )
+
+        if not fresh_payloads:
+            logger.info(
+                f"[GEMINI_ENRICH] {sport.upper()} | 100% cache hit — "
+                f"Gemini NOT called ({len(payloads)} props all unchanged)"
+            )
+            return {
+                "attempted": len(payloads), "success": 0,
+                "failed": 0, "skipped": len(skipped_keys),
+            }
+
+        stats = {
+            "attempted": len(fresh_payloads),
+            "success": 0, "failed": 0,
+            "skipped": len(skipped_keys),
+        }
+
+        # Batch call Gemini (fresh payloads only)
+        results = await batch_generate_scout_intel(fresh_payloads, batch_size=10)
+
+        # Count write eligibility (success / short-response / empty) for
+        # logging and stats parity with the legacy flow.
+        for i, _ref in enumerate(fresh_pick_refs):
+            key = (
+                f"{fresh_payloads[i]['player']}|"
+                f"{fresh_payloads[i]['stat']}|"
+                f"{fresh_payloads[i]['line']}"
+            )
+            text = results.get(key, "")
+            if not text or len(text) < 50:
+                stats["failed"] += 1
+                continue
+            stats["success"] += 1
+
+        # Update cache JSON with both narrative AND the payload hash.
+        # The next run of this method will short-circuit on identical input.
+        hash_by_key: Dict[str, str] = {}
+        for payload in fresh_payloads:
+            cache_key = (
+                f"{payload['player']}_{payload['stat']}_{payload['line']}"
+            )
+            hash_by_key[cache_key] = payload["_payload_hash"]
 
         for key, text in results.items():
             if text and len(text) >= 50:
@@ -667,6 +761,9 @@ class UnifiedPipeline:
                 cache["props"][cache_key]["vision_intel"] = text
                 cache["props"][cache_key]["player_name"] = parts[0]
                 cache["props"][cache_key]["stat_type"] = parts[1]
+                h = hash_by_key.get(cache_key)
+                if h:
+                    cache["props"][cache_key]["payload_hash"] = h
 
         try:
             with open(cache_path, "w") as f:
@@ -677,7 +774,35 @@ class UnifiedPipeline:
         logger.info(
             f"[GEMINI_ENRICH] {sport.upper()} | "
             f"success={stats['success']} failed={stats['failed']} "
-            f"cache={cache_path}"
+            f"skipped={stats['skipped']} cache={cache_path}"
         )
         return stats
+
+    async def _run_nba_under_enrichment(
+        self, tiers: Dict[str, List[Dict]]
+    ) -> Dict[str, Any]:
+        """NBA UNDER-pick Gemini enrichment — non-request path (P1.3).
+
+        Invokes the existing UNDER-enrichment helper that used to run from
+        the Ferrari request path. The helper's P1.1 content-hash cache
+        ensures unchanged UNDERs are skipped without hitting Gemini.
+
+        Non-blocking: failures are logged but never crash the pipeline.
+        """
+        # Lazy import to avoid a routes-↔-services circular at module load.
+        from routes.ferrari_tiers import _enrich_under_picks_with_gemini
+
+        total_picks = 0
+        for tier_name, picks in tiers.items():
+            if not picks:
+                continue
+            total_picks += len(picks)
+            await _enrich_under_picks_with_gemini(picks, tier_name)
+
+        logger.info(
+            f"[UNDER_ENRICH] NBA UNDER enrichment complete for "
+            f"{total_picks} tier picks (content-hash gated)"
+        )
+        return {"tier_picks_processed": total_picks}
+
 

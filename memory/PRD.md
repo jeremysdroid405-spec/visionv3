@@ -546,6 +546,101 @@ is now the ONLY background loop maintaining prop freshness.
 - 🟢 No regressions. D7 is a pure retirement.
 - 🟣 **D8** (optional): Mongo change-streams upgrade to replace the
   polling-based detection. Only meaningful on replica-set deployments;
+
+## Gemini Cost Fixes — Priority 1 Complete (2026-04-21)
+
+### Scope delivered
+Three cost-cut patches from `/tmp/gemini_cost_audit_report.md` applied
+and live-verified. **Betting engine unchanged** — fallback
+`_generate_vision_fallback` still covers the `GOOGLE_API_KEY=""` case.
+
+### Files changed
+- EDITED: `routes/ferrari_tiers.py` (+130 LOC, -50 LOC net +80)
+  - **P1.1**: New module-level helper `_vision_intel_content_hash(pick)`
+    producing a sha1 over only *material* inputs: sport, canonical_key,
+    line, direction, opponent, edge bucket (10%). `_is_cache_fresh` now
+    a module-level function comparing stored `vision_intel_content_hash`
+    against the computed hash. `computed_at` is ignored — D3 delta ticks
+    no longer cache-bust.
+  - Persist block in `_enrich_under_picks_with_gemini` now writes
+    `vision_intel_content_hash` alongside the narrative.
+  - **P1.3**: Removed `await _enrich_under_picks_with_gemini(...)` from
+    `_post_process_nba_picks`. Zero request-time Gemini calls remain
+    on the Ferrari hot path.
+- EDITED: `services/unified_pipeline.py` (+167 LOC, -50 LOC net +117)
+  - **P1.2**: `_run_gemini_enrichment` now computes per-payload
+    `payload_hash` (sha1 over player/stat/line/tier/direction/edge_pct/
+    h10_rate/h20_rate/matchup_opponent/dvp_rank/sport), loads the
+    existing `{sport}_master_active_cache.json`, and skips payloads whose
+    hash matches the cached `payload_hash`. Cache write-back persists
+    the hash so the next rebuild short-circuits on unchanged props.
+    Logs `payload-hash skip: X / Y props unchanged`.
+  - **P1.3**: New `UnifiedPipeline._run_nba_under_enrichment(tiers)`
+    method invoked from Phase 7 after `_run_gemini_enrichment` (NBA only,
+    non-blocking). Lazy-imports the UNDER helper from
+    `routes/ferrari_tiers` to avoid a routes↔services circular.
+- NEW: `tests/test_gemini_cost_fixes.py` (153 LOC) — 12 regression
+  tests covering content-hash stability, D3-tick cache-bust fix,
+  invalidation triggers, and cache-freshness semantics. **All pass.**
+
+### Before/after Gemini execution paths
+| Trigger | Before | After |
+|---|---|---|
+| `GET /api/v3/ferrari/{tier}?sport=nba` | Calls Gemini for every stale UNDER pick in the tier | **Zero Gemini calls**. Reads cached `vision_intel`, falls back to `_generate_vision_fallback` for new/unenriched picks. |
+| D3 delta tick (20s NBA / 30s MLB) | Bumped `computed_at` → invalidated cache → next page load triggered Gemini | **No cache invalidation**. Content-hash stays stable across rescores. |
+| Hourly master sync (`_run_gemini_enrichment`) | Called Gemini for ALL tier picks every rebuild | Called only for picks whose `payload_hash` changed. Logs skip count. |
+| Hourly master sync (NBA UNDER) | Relied on the next page load to enrich UNDERs via request path | Runs `_run_nba_under_enrichment` once at sync time; content-hash gated. |
+
+### Sample hash behaviour (live)
+```
+pick = {sport: nba, canonical_key: X, line: 25.5, direction: OVER,
+        opponent: BOS, true_edge: 0.12}
+→ hash = ce3f…9b (40-char sha1)
+
+After D3 tick bumps computed_at + tier_rank:
+→ hash = ce3f…9b  (UNCHANGED — cache HIT)
+
+After line moves 25.5 → 26.5:
+→ hash = 7a1c…82  (CHANGED — cache MISS, Gemini called)
+
+After edge jitters 0.12 → 0.17 (same bucket):
+→ hash = ce3f…9b  (UNCHANGED — cache HIT)
+```
+
+### Live verification
+- **34/34 unit tests pass** (22 existing + 12 new).
+- Ferrari endpoints: **6/6 HTTP 200 in 140-390 ms** (zero LLM latency).
+  NBA 10/10/5, MLB 2/6/8 — identical to pre-fix counts.
+- Backend logs during request + delta tick: **zero Gemini-path activity**
+  (only the engine init line at startup).
+- Delta tick run: `rescored=0 reason=no_dirty_props_to_rescore
+  retired_docs_modified=0` in 33ms. Engine unchanged.
+
+### Expected Gemini spend reduction
+| Path | Before | After | Saved |
+|---|---|---|---|
+| Request-time UNDER enrichment | ~$12/mo | **$0/mo** | $12 |
+| Hourly batch (payload-hash) | ~$22/mo | **~$2/mo** | $20 |
+| MLB sync summary | ~$5/mo | unchanged (P2 scope) | - |
+| Misc | ~$7/mo | ~$3/mo (less dev churn) | ~$4 |
+| **Total** | **~$46/mo** | **~$5/mo (≈89% reduction)** | **~$41/mo** |
+
+### Remaining cost hotspots (Priority 2 territory)
+- `VisionSummaryService` (`services/vision_summary_service.py`) —
+  still fires per-pick inside MLB sync cache warming. ~$5/mo. **P2.1 +
+  P2.2**: consolidate with `VisionIntelService` or gate on content hash.
+- `AIContextEngine._call_gemini` (`services/engines/ai_context_engine.py`)
+  — still has no cache. **P3.1**: LRU content-hash cache, ~30 min work.
+- `calculate_intel_suite(use_llm=True)` footgun in background_worker —
+  2-minute cadence × 30 picks = 720 LLM calls/hour if flag flipped.
+  **P3.2**: rename parameter to gate future mis-use.
+
+### Presentation-only invariant preserved
+Betting engine paths (scoring stack, Ferrari tier selection, D3 delta
+engine) still call zero Gemini anywhere. `GOOGLE_API_KEY=""` is a
+no-op — the scoring ladder + tier assignments are identical, and
+`_generate_vision_fallback` populates the narrative field cleanly.
+
   single-pod preview environment doesn't benefit.
 
   and the history endpoint per-tick.

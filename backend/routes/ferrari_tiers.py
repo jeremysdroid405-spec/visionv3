@@ -1264,11 +1264,86 @@ async def _get_mlb_tier_picks_from_scores(
     return picks
 
 
+# ---------------------------------------------------------------------------
+# Gemini cost audit — P1.1 (2026-04-21)
+# ---------------------------------------------------------------------------
+# Content-hash cache freshness. A prop's narrative depends ONLY on these
+# material inputs: (sport, canonical_key, line, direction, opponent,
+# edge bucket). It does NOT depend on `computed_at`, delta-tick id, or
+# any rescore metadata. Hashing the material inputs means rescoring the
+# same prop (as D3 does every 20s) no longer invalidates the cache.
+# ---------------------------------------------------------------------------
+def _vision_intel_content_hash(pick: Dict[str, Any]) -> str:
+    """Return a stable sha1 hash of the inputs that materially drive the
+    Gemini narrative text. Any value not in this hash MUST NOT invalidate
+    the cached narrative.
+    """
+    import hashlib
+
+    def _edge_bucket(pick: Dict[str, Any]) -> str:
+        # 10-percent buckets of true_edge (or vk_edge fallback). Crossing
+        # a bucket is a material change — staying inside it is not.
+        edge = pick.get("true_edge")
+        if edge is None:
+            edge = pick.get("vk_edge") or 0.0
+        try:
+            edge_f = float(edge)
+        except (TypeError, ValueError):
+            edge_f = 0.0
+        # Convert to integer bucket (e.g. edge=0.12 → bucket=1, edge=-0.04 → bucket=0).
+        return str(int(edge_f * 10))
+
+    opponent = (
+        pick.get("opponent")
+        or pick.get("opponent_team")
+        or pick.get("opp")
+        or ""
+    )
+    parts = [
+        "v1",
+        pick.get("sport") or "",
+        pick.get("canonical_key") or "",
+        str(pick.get("line") or ""),
+        (pick.get("direction") or "").upper(),
+        str(opponent),
+        _edge_bucket(pick),
+    ]
+    payload = "|".join(parts)
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+
+def _is_cache_fresh(pick: Dict[str, Any], cached: Dict[str, Any]) -> bool:
+    """Content-hash freshness check (P1.1).
+
+    Fresh iff the cached `vision_intel_content_hash` equals the hash
+    computed from the pick's current material state.
+
+    Fallback behaviour: if a cache entry predates P1.1 and has no hash
+    field, we treat it as STALE (forces a one-time regeneration that
+    writes the hash so the next check can short-circuit).
+    """
+    if not cached.get("vision_intel"):
+        return False
+    stored_hash = cached.get("vision_intel_content_hash")
+    if not stored_hash:
+        return False
+    return stored_hash == _vision_intel_content_hash(pick)
+
+
+
+
 async def _enrich_under_picks_with_gemini(
     picks: List[Dict[str, Any]],
     tier_name: str,
 ) -> None:
     """JIT Gemini enrichment for UNDER picks only.
+
+    P1.3 (2026-04-21, Gemini cost audit): This function is NO LONGER called
+    from the request path (`_post_process_nba_picks`). It is now invoked
+    exclusively from non-request enrichment paths (currently
+    `UnifiedPipeline.run_master_sync` Phase 7 via `_run_nba_under_enrichment`).
+    The content-hash cache (see `_vision_intel_content_hash`) guarantees
+    that re-running this function on unchanged picks is a no-op.
 
     OVER picks already carry `vision_intel` from the legacy pipeline that
     wrote into `dg_cached_board`. UNDER picks never went through Gemini, so
@@ -1277,9 +1352,10 @@ async def _enrich_under_picks_with_gemini(
     `gemini-3-flash-preview` path used for OVERs.
 
     Results are cached directly on the `nba_prop_scores` doc (fields
-    `vision_intel` + `vision_intel_generated_at`) keyed by `canonical_key`,
-    so subsequent requests skip the API call. Cache is invalidated whenever
-    the score's `computed_at` is newer than the cached `vision_intel_generated_at`.
+    `vision_intel`, `vision_intel_generated_at`, and
+    `vision_intel_content_hash`) keyed by `canonical_key`. The content-hash
+    makes the cache survive D3 delta-tick rescores (which bump `computed_at`
+    every 20s but do NOT change the material inputs to the narrative).
     """
     if _db is None or not picks:
         return
@@ -1292,41 +1368,24 @@ async def _enrich_under_picks_with_gemini(
         return
 
     # --- Cache lookup: fetch any previously-generated UNDER vision_intel
-    # that's still fresh (generated AFTER the current computed_at).
+    # plus its stored content_hash. Freshness is now content-hash-based
+    # (P1.1, 2026-04-21) — a rescore alone no longer invalidates the cache.
     ckeys = [p.get("canonical_key") for p in under_picks if p.get("canonical_key")]
     cache_docs = await _db[COLL("prop_scores", "nba")].find(
         {"canonical_key": {"$in": ckeys}, "version_tag": "final-nba-rt",
          "vision_intel": {"$ne": None}},
         {"_id": 0, "canonical_key": 1, "vision_intel": 1,
-         "vision_intel_generated_at": 1, "computed_at": 1},
+         "vision_intel_generated_at": 1, "vision_intel_content_hash": 1,
+         "computed_at": 1},
     ).to_list(length=len(ckeys))
     cache_by_ck: Dict[str, Dict[str, Any]] = {d["canonical_key"]: d for d in cache_docs}
 
-    def _is_cache_fresh(pick: Dict[str, Any], cached: Dict[str, Any]) -> bool:
-        """Cache is fresh if generated at-or-after the score's computed_at."""
-        gen = cached.get("vision_intel_generated_at")
-        comp = cached.get("computed_at") or pick.get("computed_at")
-        if not gen or not comp:
-            return False
-        try:
-            gen_dt = gen if isinstance(gen, datetime) else datetime.fromisoformat(str(gen).replace("Z", "+00:00"))
-            comp_dt = comp if isinstance(comp, datetime) else datetime.fromisoformat(str(comp).replace("Z", "+00:00"))
-            # Normalize tz — drop tz from both sides for a consistent compare.
-            # (Mongo stores datetimes as BSON which can return naive in some drivers.)
-            if gen_dt.tzinfo is not None:
-                gen_dt = gen_dt.replace(tzinfo=None)
-            if comp_dt.tzinfo is not None:
-                comp_dt = comp_dt.replace(tzinfo=None)
-            return gen_dt >= comp_dt
-        except Exception:
-            return False
-
-    # Attach cached intel where available; collect the uncached for batch call.
+    # Attach cached intel where content-hash matches; collect the rest for batch call.
     to_call: List[Dict[str, Any]] = []
     for p in under_picks:
         ck = p.get("canonical_key")
         cached = cache_by_ck.get(ck) if ck else None
-        if cached and cached.get("vision_intel") and _is_cache_fresh(p, cached):
+        if cached and _is_cache_fresh(p, cached):
             p["vision_intel"] = cached["vision_intel"]
             p["vision_summary"] = cached["vision_intel"]
         else:
@@ -1364,12 +1423,18 @@ async def _enrich_under_picks_with_gemini(
         src["vision_summary"] = vi
         ck = src.get("canonical_key")
         if ck:
+            # P1.1 (2026-04-21) — persist the content-hash alongside the
+            # narrative so the next cache-freshness check can short-circuit
+            # without re-calling Gemini for unchanged pick state.
+            content_hash = _vision_intel_content_hash(src)
+            src["vision_intel_content_hash"] = content_hash
             persist_ops.append(
                 _db[COLL("prop_scores", "nba")].update_one(
                     {"canonical_key": ck, "version_tag": "final-nba-rt"},
                     {"$set": {
                         "vision_intel": vi,
                         "vision_intel_generated_at": now,
+                        "vision_intel_content_hash": content_hash,
                     }},
                 )
             )
@@ -1628,12 +1693,19 @@ async def _apply_jit_injury_filter(
 async def _post_process_nba_picks(
     picks: List[Dict[str, Any]], tier_name: str
 ) -> None:
-    """NBA post-process: side-aware finalization + Gemini UNDER enrichment.
-    Mutates picks in place. No-op when picks is empty."""
+    """NBA post-process: side-aware finalization only.
+    Mutates picks in place. No-op when picks is empty.
+
+    P1.3 (2026-04-21, Gemini cost audit): UNDER-pick Gemini enrichment
+    used to run HERE on every tier request. It has been removed from the
+    request path and now runs exclusively during master sync
+    (UnifiedPipeline._run_nba_under_enrichment). UNDER picks that have
+    not yet been enriched fall back to `_generate_vision_fallback` via
+    the sport-agnostic guard in `_serve_ferrari_tier`.
+    """
     if not picks:
         return
     _finalize_nba_picks_side_aware(picks)
-    await _enrich_under_picks_with_gemini(picks, tier_name)
 
 
 async def _post_process_mlb_picks(
