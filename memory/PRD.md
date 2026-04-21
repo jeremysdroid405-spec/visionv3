@@ -474,6 +474,80 @@ tick via set-diff; overflow UPDATED keys are deferred to the next
   the D6 rollout (NBA 10/10/6, MLB 2/6/8).
 - Lock-held skips now visible in both Prometheus
   (`propvision_delta_ticks_skipped_total{reason="upstream_lock_held",sport="mlb"} 6`)
+
+## Delta Engine — Phase D7 Complete (2026-04-21)
+
+### Scope delivered
+Retired the legacy `rolling_cache_manager` "rolling cache" system
+(90s overlay loop, `RollingCacheManager` class, `DeltaManager` class,
+manual-refresh endpoint). The continuous D5 `DeltaEngine.run_forever`
+is now the ONLY background loop maintaining prop freshness.
+
+### Files changed (3 files, net −848 LOC)
+- EDITED: `services/rolling_cache_manager.py` — **862 LOC → 75 LOC**.
+  Rewrote as a narrow read-only file-cache surface. Kept ONLY
+  `get_cached_props()` and `get_cached_prop_by_id()` (both have live
+  callers in `routes/ferrari_tiers.py:2683` and `routes/intel_cache.py`).
+  Deleted: `RollingCacheManager` class (zero callers), `DeltaManager`
+  class (replaced by `DeltaEngine`), `run_cache_refresh_loop`
+  coroutine (superseded by D5), all enrichment/refresh plumbing.
+- EDITED: `server.py` (−19 LOC) — removed the two
+  `asyncio.create_task(run_cache_refresh_loop(...))` startup lines
+  (NBA + MLB 90s loops) and their surrounding logging scaffold.
+  Shutdown remains clean (no task was registered to cancel).
+- EDITED: `routes/intel_cache.py` (−45 LOC effective) — removed
+  `POST /api/v3/intel-cache/refresh/{sport}` endpoint and its
+  `DeltaManager` import. GET endpoints (`/nba`, `/mlb`, `/prop/{id}`,
+  `/status`) unchanged — they still read the on-disk cache files.
+
+### Before/after runtime behaviour
+| Loop | Before D7 | After D7 |
+|---|---|---|
+| `DeltaEngine.run_forever(nba)` | 20s cadence | 20s cadence ✓ unchanged |
+| `DeltaEngine.run_forever(mlb)` | 30s cadence | 30s cadence ✓ unchanged |
+| `run_cache_refresh_loop(NBA)` | 90s cadence | **REMOVED** |
+| `run_cache_refresh_loop(MLB)` | 90s cadence | **REMOVED** |
+| Manual refresh endpoint       | `POST /intel-cache/refresh/{sport}` | **GONE (404)** |
+| File cache readers            | `/intel-cache/{sport}` (GET) | Still work ✓ |
+
+### Verification
+- **Grep proof**: zero code references to `RollingCacheManager`,
+  `DeltaManager`, `run_cache_refresh_loop` outside module docstrings
+  that document the retirement.
+- **Startup log proof**: latest restart (03:03:36 UTC) emits ONLY
+  `DELTA_STARTUP` and `DELTA_ENGINE` messages — zero `ROLLING_CACHE`
+  entries.
+- **Live tick counters**: post-restart, both sports ticking at
+  configured intervals (NBA +4 ticks, MLB +3 ticks over 40s).
+- **Ferrari endpoints**: all 6 HTTP 200 with unchanged pick counts
+  (NBA 10/10/5, MLB 2/6/8).
+- **intel-cache GET endpoints**: HTTP 200 (readers kept).
+- **intel-cache refresh endpoint**: HTTP 404 (correctly gone).
+- **All 22 unit tests pass** including the upstream-isolation guard.
+
+### Edge cases discovered
+1. **`get_cached_props` / `get_cached_prop_by_id` are now read-only
+   against stale files.** The underlying `{sport}_master_active_cache.json`
+   payloads are no longer refreshed by a background loop. They contain
+   whatever the last full master sync wrote. This is intentional:
+   if the MLB player-detail vision-intel merge starts showing stale
+   data, the correct fix is to either (a) have the full-sync pipeline
+   write these files directly, or (b) delete the readers and
+   re-architect the Vision Intel merge on top of a database query.
+   Neither is required right now — both readers were already gated
+   on "cache file exists" and fall back gracefully.
+2. **Dead data files on disk.** `/app/backend/data/nba_master_active_cache.json`
+   and `/app/backend/data/mlb_master_active_cache.json` remain on disk
+   but will no longer auto-update. Not a bug, just a footnote. Can be
+   removed by a future cleanup ticket along with the readers, or left
+   for backwards compatibility.
+
+### Remaining caveats before D8
+- 🟢 No regressions. D7 is a pure retirement.
+- 🟣 **D8** (optional): Mongo change-streams upgrade to replace the
+  polling-based detection. Only meaningful on replica-set deployments;
+  single-pod preview environment doesn't benefit.
+
   and the history endpoint per-tick.
 
 ### Caveats before D7

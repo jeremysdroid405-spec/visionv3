@@ -1514,25 +1514,6 @@ async def startup_event():
         logger.warning("[ADAPTIVE_SYNC] No Odds API key - adaptive sync disabled")
     
     # ==========================================================================
-    # ROLLING CACHE ARCHITECTURE - Intel Suite Instant Display
-    # ==========================================================================
-    # Background loops that maintain master_active_cache.json for instant display
-    # Frontend loads from cache FIRST - no database hits
-    # ==========================================================================
-    try:
-        from services.rolling_cache_manager import run_cache_refresh_loop
-        
-        # Start NBA cache refresh loop (90-second interval)
-        asyncio.create_task(run_cache_refresh_loop(db, sport="NBA", interval_seconds=90))
-        logger.info("[ROLLING_CACHE] NBA cache refresh loop STARTED (90s interval)")
-        
-        # Start MLB cache refresh loop (90-second interval)
-        asyncio.create_task(run_cache_refresh_loop(db, sport="MLB", interval_seconds=90))
-        logger.info("[ROLLING_CACHE] MLB cache refresh loop STARTED (90s interval)")
-    except Exception as e:
-        logger.error(f"[ROLLING_CACHE] Error starting cache loops: {e}")
-    
-    # ==========================================================================
     # MLB STARTUP HEALTH CHECK - Auto-populate on pod fork
     # =========================================================================
     # If MLB collections are empty (common after pod fork), automatically sync
