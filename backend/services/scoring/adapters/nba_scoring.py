@@ -111,7 +111,14 @@ class _NBAGateSorter:
 
     def check_safe_haven_gates(self, prop, cv, hit_rate, edge_pct, tp,
                                side: str = "OVER", p_model_pct: Optional[float] = None):
-        return self._check(self.SAFE_HAVEN, cv=cv, hit_rate=hit_rate,
+        # Stat-aware CV cap (2026-04-21): structurally higher CV on
+        # small-mean stats (AST/REB/STL/BLK) was rejecting high-HitR picks.
+        # Resolve the cap from prop["stat_type"] and override the default
+        # Safe Haven max_cv for this single check.  PTS/PRA still use 0.50.
+        from services.scoring.cv_caps import resolve_cv_cap
+        stat_type = (prop or {}).get("stat_type") if isinstance(prop, dict) else None
+        gates_def = {**self.SAFE_HAVEN, "max_cv": resolve_cv_cap(stat_type)}
+        return self._check(gates_def, cv=cv, hit_rate=hit_rate,
                            edge_pct=edge_pct, tp=tp,
                            side=side, p_model_pct=p_model_pct, tier_name="safe_haven")
 
