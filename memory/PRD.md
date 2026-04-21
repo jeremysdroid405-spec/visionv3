@@ -392,6 +392,105 @@ Ferrari endpoints: all 6 HTTP 200 (nba 10/10/6, mlb 2/6/8).
    watching once we're live during a full slate.
 3. **No metrics surface yet.** Tick counts and durations are in-memory
    only (`engine.describe()`). D6 will add Prometheus-style metrics
+
+## Delta Engine — Phase D6 Complete (2026-04-21)
+
+### Scope delivered
+Observability + safety brake. No D5 behavior changes.
+
+### Files changed
+- NEW: `services/delta_metrics.py` (310 LOC) — dependency-free metrics
+  sink. Per-sport counters, duration histogram (11 buckets: 0.05s → 60s +Inf),
+  200-entry rolling ring buffer. Prometheus 0.0.4 text exposition
+  generated in-process.
+- NEW: `tests/test_delta_metrics.py` (220 LOC) — 7 regression tests
+  covering counter increments, skipped-reason buckets, history ordering,
+  batch-cap field capture, Prometheus label shape, and the cap-priority
+  logic in `RescoreDirtyPropsStep`.
+- EDITED: `services/scheduled_sports.py` (+8 LOC) — added
+  `delta_rescore_batch_cap: int = 500` field to `ScheduledSportConfig`.
+- EDITED: `services/pipeline/delta_steps.py` (+35 LOC) — `RescoreDirtyPropsStep`
+  now reads `context["rescore_batch_cap"]`, prioritises `updated → new`
+  deterministically (sorted), truncates to cap, and returns
+  `{batch_cap, batch_capped, keys_skipped_due_to_cap, total_dirty_requested}`.
+- EDITED: `services/delta_engine.py` (+32 LOC) — `tick()` resolves the
+  per-sport cap from `SCHEDULED_SPORTS`, injects into context, and calls
+  `delta_metrics.record_tick(result)` after every tick including the
+  prior-tick-still-running skip path.
+- EDITED: `routes/delta_admin.py` (+63 LOC) — three new endpoints:
+    - `GET /api/v3/admin/delta/tick-history/{sport}?n=N` (1 ≤ N ≤ 200)
+    - `GET /api/v3/admin/delta/tick-history?n=N` (all sports compact)
+    - `GET /api/v3/admin/delta/metrics` (Prometheus text, Content-Type
+      `text/plain; version=0.0.4; charset=utf-8`)
+  `engine-status` now includes a `metrics` counters snapshot.
+
+### Metrics added (Prometheus names)
+```
+propvision_delta_ticks_total{sport=}                     counter
+propvision_delta_ticks_success_total{sport=}             counter
+propvision_delta_ticks_skipped_total{sport=,reason=}     counter
+propvision_delta_dirty_props_total{sport=}               counter
+propvision_delta_updated_props_total{sport=}             counter
+propvision_delta_new_props_total{sport=}                 counter
+propvision_delta_retired_props_total{sport=}             counter
+propvision_delta_rescored_props_total{sport=}            counter
+propvision_delta_batch_cap_truncations_total{sport=}     counter
+propvision_delta_batch_cap_keys_skipped_total{sport=}    counter
+propvision_delta_tick_duration_seconds_{bucket,sum,count}{sport=} histogram
+propvision_delta_last_tick_duration_seconds{sport=}      gauge
+```
+
+### Batch cap behaviour (live proof)
+```
+MLB full-sync→first-delta-tick after lock release:
+  Tick 0776342b: duration=6.61s, dirty=2668 (all updated),
+                 rescored=500, capped=True, skip_cap=2168
+  Cap protected the 30s interval budget — tick finished with ~23s slack.
+
+Config: ScheduledSportConfig(..., delta_rescore_batch_cap=500)  # default
+Visibility: batch_cap, batch_capped, keys_skipped_due_to_cap are in
+            every tick-history entry AND surface as Prometheus counters.
+
+Priority order inside the cap: sorted(updated_keys) first, then sorted
+new_keys (deterministic, idempotent). Overflow NEW keys re-surface next
+tick via set-diff; overflow UPDATED keys are deferred to the next
+`updated_at > watermark` bump.
+```
+
+### Sample tick-history payload
+```json
+{"tick_id":"0776342b","timestamp":"2026-04-21T02:53:…","duration_seconds":6.614,
+ "success":true,"skipped":false,"skipped_reason":null,"upstream_lock_held":false,
+ "dirty_count":2668,"updated_count":2668,"new_count":0,"retired_count":0,
+ "rescored_count":500,"retired_docs_modified":0,
+ "batch_capped":true,"keys_skipped_due_to_cap":2168,"batch_cap":500,"errors":[]}
+```
+
+### Guardrail proofs
+- 22/22 unit tests pass (pre-existing 15 + D6's 7).
+- Upstream-isolation test auto-scans `services/delta_metrics.py` and
+  `services/pipeline/delta_steps.py` — zero forbidden imports.
+- Ferrari endpoints remain HTTP 200 with unchanged pick counts across
+  the D6 rollout (NBA 10/10/6, MLB 2/6/8).
+- Lock-held skips now visible in both Prometheus
+  (`propvision_delta_ticks_skipped_total{reason="upstream_lock_held",sport="mlb"} 6`)
+  and the history endpoint per-tick.
+
+### Caveats before D7
+1. **Overflow UPDATED-key deferral.** When dirty > cap and the overflow
+   is made of updated keys (not new), those keys do NOT automatically
+   re-surface next tick (watermark advanced past them). In practice,
+   this only happens right after a full sync — and the full sync already
+   scored them, so the deferred rescore is a no-op anyway. If line moves
+   ever spike above 500/sport in a 20s window we'd want to re-evaluate,
+   but that's orders of magnitude above current traffic.
+2. **Metrics reset on pod restart.** No persistent store. Prometheus
+   scrapes delta-absolute, so this is the correct behaviour — we just
+   lose the pre-restart tick history (not counters, which are fine to
+   be reset).
+3. **`rolling_cache_manager.DeltaManager` still alive.** Its 90s overlay
+   loop is now fully redundant — D7 cleanup is the next ticket.
+
    and a rolling tick history.
 4. **`rolling_cache_manager.DeltaManager` is still running.** Its 90s
    overlay loop is structurally redundant post-Stage-4/D3 but has not

@@ -166,10 +166,73 @@ async def delta_engine_status():
     from services.delta_engine import get_delta_engine
     from services.upstream_sync_lock import get_upstream_sync_lock
     from services.scheduled_sports import describe_delta_engine_loops
+    from services.delta_metrics import counters_snapshot
     engine = get_delta_engine(_db)
     lock = get_upstream_sync_lock()
     return {
         "engine": engine.describe(),
         "upstream_lock": lock.describe(),
         "startup_loops": describe_delta_engine_loops(),
+        # Phase D6 — counters snapshot alongside the in-memory engine state.
+        "metrics": counters_snapshot(),
     }
+
+
+# ---------------------------------------------------------------------------
+# D6 — rolling tick history + Prometheus metrics
+# ---------------------------------------------------------------------------
+
+@router.get("/v3/admin/delta/tick-history/{sport}")
+async def delta_tick_history(sport: str, n: int = 50):
+    """Return the last `n` delta ticks for `sport`, newest LAST.
+
+    Each entry includes: timestamp, duration, dirty/updated/new/retired
+    counts, rescored count, skipped_reason, upstream_lock_held, and
+    batch-cap diagnostics.
+    """
+    if _db is None:
+        raise HTTPException(status_code=500, detail="delta admin db not wired")
+    sport = (sport or "").lower()
+    if sport not in SUPPORTED_SPORTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported sport: {sport!r}. Supported: {list(SUPPORTED_SPORTS)}",
+        )
+    from services.delta_metrics import history_snapshot, HISTORY_BUFFER_SIZE
+    n = max(1, min(n, HISTORY_BUFFER_SIZE))
+    return {
+        "sport": sport,
+        "n_requested": n,
+        "buffer_capacity": HISTORY_BUFFER_SIZE,
+        "ticks": history_snapshot(sport, n=n),
+    }
+
+
+@router.get("/v3/admin/delta/tick-history")
+async def delta_tick_history_all(n: int = 20):
+    """Per-sport compact tick history across all supported sports."""
+    if _db is None:
+        raise HTTPException(status_code=500, detail="delta admin db not wired")
+    from services.delta_metrics import history_snapshot, HISTORY_BUFFER_SIZE
+    n = max(1, min(n, HISTORY_BUFFER_SIZE))
+    return {
+        "n_requested": n,
+        "buffer_capacity": HISTORY_BUFFER_SIZE,
+        "per_sport": {
+            s: history_snapshot(s, n=n) for s in SUPPORTED_SPORTS
+        },
+    }
+
+
+@router.get("/v3/admin/delta/metrics")
+async def delta_metrics_prometheus():
+    """Prometheus text exposition of delta-engine metrics.
+
+    Content-Type: text/plain; version=0.0.4
+    """
+    from fastapi.responses import PlainTextResponse
+    from services.delta_metrics import prometheus_text
+    return PlainTextResponse(
+        content=prometheus_text(),
+        headers={"Content-Type": "text/plain; version=0.0.4; charset=utf-8"},
+    )

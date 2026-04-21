@@ -117,13 +117,39 @@ class RescoreDirtyPropsStep(DeltaStep):
         # RETIRED keys are handled by RebalanceTiersStep — do NOT rescore
         # them (their live_props row is inactive; rescoring would
         # reactivate them via the recompute's unconditional active=True).
-        rescore_keys = set(detection.updated_keys) | set(detection.new_keys)
+        updated_keys = sorted(set(detection.updated_keys))
+        new_keys = sorted(set(detection.new_keys) - set(detection.updated_keys))
+        total_requested = len(updated_keys) + len(new_keys)
+
+        # Phase D6 (2026-04-21) — apply the batch cap. Priority order:
+        #   1) UPDATED (line moves affecting existing tier incumbents)
+        #   2) NEW     (unscored props; overflow is deterministically
+        #               re-detected next tick via set-diff → natural
+        #               convergence)
+        batch_cap = context.get("rescore_batch_cap") or 0
+        batch_capped = False
+        keys_skipped_due_to_cap = 0
+        if batch_cap and batch_cap > 0 and total_requested > batch_cap:
+            batch_capped = True
+            remaining = batch_cap
+            selected_updated = updated_keys[:remaining]
+            remaining -= len(selected_updated)
+            selected_new = new_keys[:max(remaining, 0)]
+            selected = selected_updated + selected_new
+            keys_skipped_due_to_cap = total_requested - len(selected)
+            rescore_keys = set(selected)
+        else:
+            rescore_keys = set(updated_keys) | set(new_keys)
+
         if not rescore_keys:
             return {
                 "skipped": False,
                 "keys_requested": 0,
                 "written": 0,
                 "reason": "no_dirty_props_to_rescore",
+                "batch_cap": batch_cap if batch_cap > 0 else None,
+                "batch_capped": False,
+                "keys_skipped_due_to_cap": 0,
             }
 
         version_tag = f"final-{sport}-rt"
@@ -138,7 +164,8 @@ class RescoreDirtyPropsStep(DeltaStep):
         dur = (datetime.now(timezone.utc) - t0).total_seconds()
         logger.info(
             f"[DELTA_STEP:{sport}] rescored {result.get('written', 0)} / "
-            f"{len(rescore_keys)} requested in {dur:.2f}s"
+            f"{len(rescore_keys)} requested in {dur:.2f}s "
+            f"(batch_capped={batch_capped} skipped_due_to_cap={keys_skipped_due_to_cap})"
         )
         context["rescore_result"] = result
         return {
@@ -148,6 +175,10 @@ class RescoreDirtyPropsStep(DeltaStep):
             "written": result.get("written", 0),
             "skipped": result.get("skipped", 0),
             "version_tag": version_tag,
+            "batch_cap": batch_cap if batch_cap > 0 else None,
+            "batch_capped": batch_capped,
+            "keys_skipped_due_to_cap": keys_skipped_due_to_cap,
+            "total_dirty_requested": total_requested,
         }
 
 

@@ -89,18 +89,39 @@ class DeltaEngine:
         if lock.locked():
             self._skipped_ticks[sport] = self._skipped_ticks.get(sport, 0) + 1
             logger.info(f"[DELTA:{sport}] tick={tick_id} SKIPPED — prior tick still running")
-            return DeltaTickResult(
+            skipped_result = DeltaTickResult(
                 sport=sport, tick_id=tick_id, success=True,
                 started_at=started, completed_at=datetime.now(timezone.utc),
                 total_duration_seconds=0.0,
                 skipped=True, skipped_reason="prior_tick_in_progress",
             )
+            # Phase D6 — still record prior-tick skips so the metrics
+            # surface overrunning ticks.
+            try:
+                from services.delta_metrics import record_tick as _record_tick
+                _record_tick(skipped_result.to_dict())
+            except Exception:  # pragma: no cover
+                logger.exception(f"[DELTA:{sport}] metrics record_tick (skip) failed")
+            return skipped_result
 
         async with lock:
             self._total_ticks[sport] = self._total_ticks.get(sport, 0) + 1
+            # Phase D6 — resolve the per-sport rescore batch cap once per
+            # tick so RescoreDirtyPropsStep can read it via context. Falls
+            # back to 0 (disabled) when SCHEDULED_SPORTS has no entry for
+            # `sport` — keeps the engine usable in unit tests without the
+            # full registry.
+            try:
+                from services.scheduled_sports import SCHEDULED_SPORTS
+                cfg = SCHEDULED_SPORTS.get(sport)
+                batch_cap = getattr(cfg, "delta_rescore_batch_cap", 0) or 0
+            except Exception:  # pragma: no cover — defensive for testing
+                batch_cap = 0
+
             context: Dict[str, Any] = {
                 "tick_started_at": started,
                 "tick_id": tick_id,
+                "rescore_batch_cap": batch_cap,
                 "errors": [],
             }
             result = DeltaTickResult(
@@ -134,6 +155,15 @@ class DeltaEngine:
                 result.completed_at - t0
             ).total_seconds()
             self._last_tick[sport] = result
+
+            # Phase D6 — record tick into the metrics sink (counters +
+            # rolling history). Fire-and-forget: metrics failures must
+            # never taint a tick result.
+            try:
+                from services.delta_metrics import record_tick as _record_tick
+                _record_tick(result.to_dict())
+            except Exception:  # pragma: no cover
+                logger.exception(f"[DELTA:{sport}] metrics record_tick failed")
             return result
 
     async def run_forever(

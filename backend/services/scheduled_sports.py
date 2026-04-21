@@ -44,6 +44,14 @@ class ScheduledSportConfig:
     # Eliminating a sport from the delta loop = one flag flip here.
     delta_enabled: bool = True
     delta_interval_seconds: int = 20
+    # Phase D6 (2026-04-21) — rescore batch cap per tick. Prevents a
+    # single tick from rescoring thousands of newly-synced props post-
+    # full-sync and breaching the tick interval. Overflow NEW keys
+    # naturally re-surface next tick via the set-diff detector; overflow
+    # UPDATED keys are deferred to the next tick that sees them (their
+    # `updated_at` is already > watermark). Set to 0 / negative to
+    # disable the cap.
+    delta_rescore_batch_cap: int = 500
 
 
 # ---------------------------------------------------------------------------
