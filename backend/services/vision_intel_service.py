@@ -335,13 +335,26 @@ Return your analysis as a JSON array. One object per prop with all required fiel
     async def analyze_tier_batch(
         self, 
         props: List[Dict[str, Any]], 
-        tier_name: str
-    ) -> List[Dict[str, Any]]:
+        tier_name: str,
+        strict: bool = False,
+    ) -> List[Any]:
         """
         Analyze ALL props for a tier in ONE Gemini API call.
         
         This is the main entry point - processes entire tier at once.
         Returns props enriched with all Vision Intel fields.
+
+        P2/P3 refinement (2026-04-21, Gemini batching audit):
+          strict=False (default) — legacy behaviour. Returns a list of
+            enriched prop dicts. Missing / empty Gemini responses are
+            replaced with `_merge_intel_to_prop(prop, {})` fallback
+            text so downstream flows always have a prop shape to read.
+          strict=True — returns a list of `Optional[Dict]`, one per
+            input prop, IN INPUT ORDER. Each entry is EITHER the raw
+            intel dict Gemini actually authored (prop_id was echoed back
+            AND vision_intel is non-empty) OR `None`. Used by the UNDER
+            enricher in `routes/ferrari_tiers.py` so fallback text is
+            never cached as though it were Gemini-authored.
         """
         if not props:
             return []
@@ -350,6 +363,11 @@ Return your analysis as a JSON array. One object per prop with all required fiel
         
         if not self.enabled or not self.client:
             logger.warning(f"[VISION INTEL] Service disabled - using fallback for {tier_name}")
+            if strict:
+                # Strict callers don't want fallback text pretending to be
+                # Gemini-authored. Return None slots so the caller can skip
+                # persisting those picks.
+                return [None for _ in props]
             return [self._enrich_with_fallback(prop) for prop in props]
         
         try:
@@ -387,6 +405,7 @@ Return your analysis as a JSON array. One object per prop with all required fiel
             
             # Enrich each prop with its intel (direction-aware prop_id key)
             enriched_props = []
+            strict_results: List[Any] = []
             for prop in props:
                 _dir = (prop.get('direction') or prop.get('recommendation') or 'OVER').strip().upper()
                 _dir = 'UNDER' if 'UNDER' in _dir else 'OVER'
@@ -395,8 +414,24 @@ Return your analysis as a JSON array. One object per prop with all required fiel
                     or f"{prop.get('player_name')}_{prop.get('stat_type')}_{prop.get('line')}_{_dir}"
                 )
                 intel = intel_map.get(prop_id, {})
-                enriched_props.append(self._merge_intel_to_prop(prop, intel))
-            
+                if strict:
+                    # Return only Gemini-authored intel (non-empty
+                    # vision_intel for a prop Gemini echoed back).
+                    if intel and (intel.get("vision_intel") or "").strip():
+                        strict_results.append(intel)
+                    else:
+                        strict_results.append(None)
+                else:
+                    enriched_props.append(self._merge_intel_to_prop(prop, intel))
+
+            if strict:
+                logger.info(
+                    f"[VISION INTEL] Batch (strict) complete for {tier_name}: "
+                    f"{sum(1 for r in strict_results if r is not None)}/{len(props)} "
+                    f"Gemini-authored"
+                )
+                return strict_results
+
             # Sort by composite score
             enriched_props.sort(key=lambda x: x.get('composite_score', 0), reverse=True)
             
@@ -405,6 +440,8 @@ Return your analysis as a JSON array. One object per prop with all required fiel
             
         except Exception as e:
             logger.error(f"[VISION INTEL] Batch analysis failed for {tier_name}: {e}")
+            if strict:
+                return [None for _ in props]
             return [self._enrich_with_fallback(prop) for prop in props]
 
     async def analyze_prop_strict(

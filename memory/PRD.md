@@ -760,6 +760,95 @@ master-sync cadence below 1/hour, which is out of scope.
    scrapes delta-absolute, so this is the correct behaviour — we just
    lose the pre-restart tick history (not counters, which are fine to
    be reset).
+
+## Gemini Batching Fix — Non-Batched Bulk Path Eliminated (2026-04-21)
+
+### Scope delivered
+Removed the single remaining per-prop Gemini fan-out identified in the
+batching audit. The UNDER enricher now makes **ONE** Gemini API call
+per tier (capped by the existing content-hash cache-miss filter)
+instead of N gathered calls.
+
+### Files changed (3 files, +48 / -11)
+- `services/vision_intel_service.py` (+45 / -6):
+  Added `strict: bool = False` kwarg to `analyze_tier_batch`. When
+  `strict=True`, returns `List[Optional[Dict]]` where each slot is
+  either the Gemini-authored intel dict (prop_id echoed back AND
+  `vision_intel` non-empty) or `None` — preserves the "only cache
+  Gemini-authored text" invariant. Legacy (default `strict=False`)
+  behaviour is byte-identical; existing callers (MLB tier service,
+  VisionSummaryService delegation) are untouched.
+- `routes/ferrari_tiers.py` (+3 / -5):
+  Replaced the `asyncio.gather(*[analyze_prop_strict(p, tier) for p in
+  to_call])` fan-out with
+  `await vis.analyze_tier_batch(to_call, tier_name, strict=True)`.
+  Output shape preserved — the persist loop still sees a list of
+  `Optional[intel_dict]` values in input order.
+- NEW: `tests/test_gemini_batching_fix.py` (~160 LOC) — 6 regression
+  tests. Structural (fan-out gone, strict kwarg exists), behavioural
+  (strict=True returns correct None slots; disabled service path;
+  legacy mode unchanged), and the critical call-count test
+  (10-prop tier → exactly 1 Gemini API call).
+
+### Before / after call semantics
+| Tier size (cache-missed UNDER picks) | Before | After |
+|---|---|---|
+| 10 UNDER picks | 10 parallel `generate_content` calls (gather) | **1 `generate_content` call** |
+| 5 UNDER picks | 5 parallel calls | 1 call |
+| 0 UNDER picks | 0 calls (unchanged) | 0 calls (unchanged) |
+
+### Cache invariants preserved
+- Only picks with Gemini-authored `vision_intel` (non-empty + prop_id
+  echoed) get `vision_intel_content_hash` persisted.
+- Picks where Gemini failed to echo fall back to
+  `_generate_vision_fallback` downstream WITHOUT corrupting the cache
+  (strict=True returns None for those slots; the persist loop's
+  `if not out: continue` skips them).
+
+### Grep-verified proof
+- `grep "analyze_prop_strict(p, tier_name) for p in"` → **zero matches**
+  anywhere under `/app/backend/**` (fan-out eliminated).
+- `grep "asyncio.gather.*analyze_prop_strict"` → **zero matches**.
+- `routes/ferrari_tiers.py:1411` shows the new batched call.
+- Remaining `analyze_prop_strict` usages are limited to:
+  * `services/vision_summary_service.py:169` — single-prop cached
+    delegation (P2.1 consolidation; intentional single-call).
+  * Docstring references only.
+
+### Live verification
+- **51/51 unit tests pass** (45 prior + 6 new).
+- Ferrari endpoints: 6/6 HTTP 200 in 119-372 ms, unchanged pick counts
+  (NBA 10/10/6, MLB 2/6/8). Response shape unchanged.
+- Delta engine: both sports running, no regression.
+
+### Estimated additional savings
+| Scenario | Pre-fix | Post-fix |
+|---|---|---|
+| Per NBA master sync, avg 6-10 UNDER cache misses | 6-10 billed Gemini calls | **1 billed call** |
+| Over 24 NBA syncs/day × 0.5 dirty rate | ~100 API calls/day | **~15 API calls/day** |
+| Monthly UNDER-enrichment spend | ~$0.40 | **~$0.06** |
+| Prod at 1000 users (proportional) | ~$4.00/mo | **~$0.60/mo** |
+
+Absolute dev savings are small (~$0.35/mo) but the factor-of-7 reduction
+matters at production scale. The structural improvement also closes the
+last "spot-light" risk where a developer adding a new UNDER tier could
+accidentally 10x their API bill.
+
+### Remaining non-batched bulk Gemini paths
+🟡 **Only one remaining — operator-triggered, bounded exposure**:
+`AiContextEngine.update_master_hub_with_context` at
+`services/engines/ai_context_engine.py:279-314` still iterates
+`evaluate_player_context` → `_call_gemini` per player in a sequential
+loop with 100 ms sleep.
+- **Trigger**: only the admin `POST /api/v3/ai-context/run` endpoint.
+- **Not on any scheduled / request / delta path** → does not burn tokens
+  in steady state.
+- **P3.1 LRU dedupe still helps** when the same player has identical
+  news across runs.
+- Per the batch instructions, `AiContextEngine` was explicitly OUT OF
+  SCOPE for this batch. Flagged for P2.2 or a future "operator bulk
+  endpoints" cleanup.
+
 3. **`rolling_cache_manager.DeltaManager` still alive.** Its 90s overlay
    loop is now fully redundant — D7 cleanup is the next ticket.
 

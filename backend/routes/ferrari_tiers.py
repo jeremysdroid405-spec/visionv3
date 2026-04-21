@@ -1402,13 +1402,13 @@ async def _enrich_under_picks_with_gemini(
         )
         return
 
-    # Call Gemini ONE PROP AT A TIME via the strict method. This guarantees
-    # we only cache text Gemini actually authored — if the prop_id echo fails
-    # or the response is empty, we return None and the pick falls back to
-    # _generate_vision_fallback downstream (without corrupting the cache).
-    results = await asyncio.gather(
-        *[vis.analyze_prop_strict(p, tier_name) for p in to_call]
-    )
+    # Batched Gemini call (2026-04-21, Gemini batching audit): ONE
+    # Gemini API call per tier instead of N (one-per-prop fan-out). Uses
+    # the existing `analyze_tier_batch` with `strict=True` so ONLY
+    # Gemini-authored text is cached. If Gemini fails to echo a prop_id
+    # or returns empty, that slot is None and the pick falls back to
+    # `_generate_vision_fallback` downstream without corrupting the cache.
+    results = await vis.analyze_tier_batch(to_call, tier_name, strict=True)
 
     # Map results back by canonical_key and persist to nba_prop_scores.
     now = datetime.now(timezone.utc)
