@@ -183,10 +183,20 @@ def _generate_vision_fallback(pick: dict) -> str:
     direction = _resolve_prop_direction(pick)
     is_under = direction == "UNDER"
 
-    # Side-aware hit-rate. Prefer explicit side-keyed field (backend now
-    # emits `hit_rate_under` / `hit_rate_over`); fall back to raw OVER rate
-    # flipped for UNDER when only legacy h10/l10 is present.
-    h_over = pick.get("hit_rate_over") or pick.get("h10_rate") or pick.get("l10_rate") or pick.get("true_hit_rate") or 0
+    # Side-aware hit-rate. The template labels this as "L10" so we MUST pull
+    # the HISTORICAL last-10 hit rate (h10_rate / l10_rate), NOT the model's
+    # inferred hit_rate_over (which is the model's ceiling-probability and
+    # often ~5% higher than actual L10). 2026-04-21 bug: Jarrett Allen PTS
+    # 9.5 showed "95% L10" when real L10 was 90% because this list began
+    # with hit_rate_over.
+    h_over = (
+        pick.get("h10_rate")
+        or pick.get("l10_rate")
+        or pick.get("h10_hit_rate")
+        or pick.get("hit_rate_over")      # last-resort model fallback
+        or pick.get("true_hit_rate")
+        or 0
+    )
     h_under = pick.get("hit_rate_under")
     if h_under is None and h_over is not None:
         h_under = max(0.0, 100.0 - float(h_over))
@@ -256,11 +266,28 @@ def overlay_enrichment_cache(picks: list, sport: str) -> list:
 
     cache_lookup = {}
     for pid, cprop in cache_props.items():
-        key = f"{cprop.get('player_name', '')}|{cprop.get('stat_type', '')}".lower()
+        # Key on (player|stat|line|recommendation) — the 4-tuple that uniquely
+        # identifies a prop.  Bug fixed 2026-04-21: previously keyed on just
+        # (player|stat), which collided across lines (Jarrett Allen PTS 9.5
+        # received the narrative written for Jarrett Allen PTS 11.5 → wrong
+        # L10 hit rate, wrong projection, wrong edge).  Legacy cache entries
+        # that store line=None / recommendation=None are effectively orphaned
+        # by this stricter key, which is the intended behavior — they were
+        # the source of the bug.
+        p_name = (cprop.get("player_name") or "").strip().lower()
+        p_stat = (cprop.get("stat_type") or "").strip().lower()
+        p_line = cprop.get("line")
+        p_rec = (cprop.get("recommendation") or "").strip().lower()
+        key = f"{p_name}|{p_stat}|{p_line}|{p_rec}"
         cache_lookup[key] = cprop
 
     for pick in picks:
-        key = f"{pick.get('player_name', '')}|{pick.get('stat_type', '')}".lower()
+        p_name = (pick.get("player_name") or "").strip().lower()
+        p_stat = (pick.get("stat_type") or "").strip().lower()
+        p_line = pick.get("line")
+        p_rec = ((pick.get("recommendation") or pick.get("direction") or "")
+                 .strip().lower())
+        key = f"{p_name}|{p_stat}|{p_line}|{p_rec}"
         cached = cache_lookup.get(key)
         if cached:
             # Fix 2 (2026-04-21): require payload_hash on cached narrative.
