@@ -83,6 +83,41 @@ def _guard_board_picks(picks):
     return picks
 
 
+def _guard_pp_only_exclusion(picks, sport: str = "unknown"):
+    """0-Book Exclusion Rule (2026-04-22) read-side guard.
+
+    Drops any pick whose `coverage_class == "pp_only"` (or, as a
+    belt-and-suspenders fallback for score docs written before the
+    rule shipped, any pick that carries `book_count == 0`).
+
+    The scoring adapters already filter pp_only props pre-scoring, so
+    fresh rescores will never write pp_only docs into prop_scores. This
+    guard keeps the API response clean even while legacy pp_only docs
+    from older syncs are still present in the collection.
+    """
+    if not picks:
+        return picks
+    kept = []
+    excluded = 0
+    for p in picks:
+        if not isinstance(p, dict):
+            kept.append(p)
+            continue
+        cov = p.get("coverage_class")
+        book_count = p.get("book_count")
+        is_pp_only = (cov == "pp_only") or (book_count == 0)
+        if is_pp_only:
+            excluded += 1
+            continue
+        kept.append(p)
+    if excluded:
+        logger.info(
+            f"[COVERAGE_GUARD] {sport.upper()} read-side: filtered "
+            f"{excluded} pp_only pick(s) from tier response"
+        )
+    return kept
+
+
 def _dedupe_picks_by_player(picks, keep: str = "best", sort: Optional[str] = None):
     """Tier-integrity invariant: one player = max one pick per tier.
 
@@ -1065,6 +1100,16 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     prop["p_true_hit_rate"] = score.get("p_true_hit_rate")
     prop["ranking_score_v2"] = score.get("ranking_score_v2")
 
+    # 0-Book Exclusion Rule (2026-04-22) — surface the coverage signal
+    # on every pick so the UI can render a "N books anchored" chip /
+    # trust indicator. Every pick coming out of the scoring pipeline
+    # is guaranteed book_count >= 1 (pp_only props are filtered before
+    # scoring); this field lets the frontend distinguish multi-book
+    # consensus from single-book rescue picks.
+    prop["book_count"] = score.get("book_count")
+    prop["coverage_class"] = score.get("coverage_class")
+    prop["books_anchored"] = score.get("books_anchored")
+
     # Side-aware VK probabilities from p_true_active (percent)
     p_true = score.get("p_true_active")
     if p_true is not None:
@@ -1296,6 +1341,11 @@ async def _get_mlb_tier_picks_from_scores(
             pick["p_true_model"]      = p_model
             pick["ranking_score_v2"]  = sc.get("ranking_score_v2")
             pick["model_sigma"]       = sc.get("model_sigma")
+
+        # 0-Book Exclusion Rule coverage signal (2026-04-22).
+        pick["book_count"] = sc.get("book_count")
+        pick["coverage_class"] = sc.get("coverage_class")
+        pick["books_anchored"] = sc.get("books_anchored")
 
         # Stash the score doc so any later post-overlay pass can re-read
         # authoritative fields, parallel to the NBA `_nba_score_doc` stash.
@@ -1796,6 +1846,11 @@ async def _serve_ferrari_tier(
 
     collection_name = helpers.source_tag_template.format(tier=tier_name)
     picks = await helpers.fetch_picks(tier_name, limit, sort=sort)
+
+    # 0-Book Exclusion Rule (2026-04-22): strip any legacy pp_only
+    # picks before any JIT enrichment runs. Fresh rescores don't
+    # generate these; this guard cleans up picks written by older syncs.
+    picks = _guard_pp_only_exclusion(picks, sport=sport)
 
     # Uniform JIT injury filter (sport-agnostic wrapper).
     picks = await _apply_jit_injury_filter(picks, sport, tier_name)

@@ -366,6 +366,20 @@ async def recompute_sport(
         doc["opponent_defensive_source"] = _source
         doc["opponent_defensive_stat_type"] = ctx.stat_type
 
+        # 0-Book Exclusion Rule (2026-04-22). The adapter already marks
+        # every prop with `book_count`/`coverage_class`/`books_anchored`
+        # during `load_live_props`. Propagate those into the score doc
+        # so the API + UI can surface the coverage signal. Pp_only
+        # props never reach recompute (they're filtered pre-scoring),
+        # so any doc persisted here is guaranteed book_count >= 1.
+        raw = ctx.raw_prop or {}
+        if "book_count" in raw:
+            doc["book_count"] = raw["book_count"]
+        if "coverage_class" in raw:
+            doc["coverage_class"] = raw["coverage_class"]
+        if "books_anchored" in raw:
+            doc["books_anchored"] = raw["books_anchored"]
+
         score_docs.append(doc)
 
     # 3. Percentile-normalize vision_score across the sport's slate.

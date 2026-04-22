@@ -761,6 +761,77 @@ master-sync cadence below 1/hour, which is out of scope.
    lose the pre-restart tick history (not counters, which are fine to
    be reset).
 
+## 0-Book Exclusion Rule — Pricing Integrity Hard Gate (2026-04-22)
+
+### Scope
+Implements the user-requested strict pricing-integrity rule: any prop
+without an exact-line anchor from DraftKings, FanDuel, BetMGM, or
+BetOnline is classified `coverage_class="pp_only"` and **excluded from
+all downstream processing**. No fuzzy matching, no nearest-line fallback,
+no probability inference for unpriced props.
+
+### Rule
+```
+book_count == 0  → pp_only    → EXCLUDED from scoring, ranking,
+                                tiers, cached board, parlay builder
+book_count == 1  → single_book → kept, scored normally
+book_count >= 2  → multi_book  → kept, scored normally
+```
+
+### Files touched
+- **NEW** `services/scoring/coverage_filter.py` — `classify_coverage()`,
+  `filter_priceable()`. Recognises both naming conventions
+  (`draftkings_price`/`dk_odds`, `fanduel_price`/`fd_odds`,
+  `betonline_price`/`bol_odds`, `betmgm_price`/`mgm_odds`) plus nested
+  `sharp_market` prices. Rejects 0-value odds. Logs one
+  `[COVERAGE_FILTER]` line per run with
+  `total/excluded/remaining/coverage_rate/multi_book/single_book`
+  counters.
+- **EDITED** `services/scoring/adapters/mlb_scoring.py::load_live_props`
+  + `services/scoring/adapters/nba_scoring.py::load_live_props` —
+  apply the filter at the single RT scoring chokepoint per sport.
+- **EDITED** `services/adapters/nba_adapter.py::load_board` +
+  `services/adapters/mlb_adapter.py::load_board` — apply filter on
+  the master-sync path.
+- **EDITED** `services/scoring/prop_scores_store.py` — added
+  `book_count`/`coverage_class`/`books_anchored` to
+  `_SCORE_OUTPUT_FIELDS` so classification persists.
+- **EDITED** `services/scoring/recompute.py` — copies coverage fields
+  from `ctx.raw_prop` onto the score doc.
+- **EDITED** `routes/ferrari_tiers.py` — `_guard_pp_only_exclusion()`
+  read-side safety net + surface coverage fields on every Ferrari pick
+  via NBA and MLB merge blocks.
+- **NEW** `tests/test_coverage_filter.py` (15 tests) +
+  `tests/test_coverage_fields_persisted.py` (2 tests).
+
+### Verification (live)
+| Sport | Live props | pp_only dropped | Kept | Coverage rate |
+|---|---:|---:|---:|---:|
+| NBA RT scoring | 7,037 | 2,619 | 4,418 | **62.8%** |
+| NBA master sync | 622 | 165 | 457 | **73.5%** |
+| MLB RT scoring | 4,414 | 664 | 3,750 | **85.0%** |
+
+Persistence check (fresh `final-{sport}-rt`):
+- NBA: 4,418 docs / 4,418 with `coverage_class` / **0 pp_only persisted**.
+- MLB: 3,736 docs / 3,736 with `coverage_class` / **0 pp_only persisted**.
+
+API smoke (all 6 tier endpoints): **0 pp_only leaks**. Every pick
+carries `book_count`, `coverage_class`, `books_anchored`.
+
+### Test coverage
+**136/136 pass** (15 new `test_coverage_filter.py` + 2 new
+`test_coverage_fields_persisted.py` + all existing delta-isolation /
+carbon-copy / scoring / market-catalog / BetMGM / odds-sync regressions).
+
+### Invariants preserved
+- Delta engine isolation unchanged (filter is pre-delta).
+- Carbon-copy standard: same filter module + projection for NBA + MLB.
+- No changes to ranking math, tier gates, multipliers, or EV logic.
+  Pure filtering layer.
+
+---
+
+
 ## Pull All Markets / All 3 Books — Dynamic Discovery (2026-04-22)
 
 ### Scope delivered

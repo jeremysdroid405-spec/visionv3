@@ -51,6 +51,12 @@ _SCORE_OUTPUT_FIELDS = (
     # truth for opponent defensive rank across NBA / MLB / future NFL.
     "opponent_defensive_rank", "opponent_defensive_source",
     "opponent_defensive_stat_type",
+    # 0-Book Exclusion Rule (2026-04-22). Classified by
+    # services/scoring/coverage_filter.py during live_props load. A
+    # prop with coverage_class=="pp_only" is filtered pre-scoring and
+    # will never appear here; surfaced on every score doc so the UI /
+    # read-side guards can sanity-check the invariant.
+    "book_count", "coverage_class", "books_anchored",
 )
 
 _IDENTITY_FIELDS = (

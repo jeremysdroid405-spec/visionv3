@@ -40,7 +40,18 @@ class MLBScoringAdapter(ScoringAdapter):
             cursor = cursor.limit(int(limit))
         props = await cursor.to_list(length=None)
         logger.info(f"[MLB_SCORING] Loaded {len(props)} live props from {self.live_props_collection}")
-        return props
+
+        # 0-Book Exclusion Rule (2026-04-22): any prop with no exact-line
+        # anchor from DraftKings / FanDuel / BetMGM / BetOnline is marked
+        # pp_only and MUST NOT enter scoring, tiering, or the cached board.
+        # This is the single MLB chokepoint — every scoring run funnels
+        # through `load_live_props`, so filtering here covers delta,
+        # master-sync, and recompute paths uniformly.
+        from services.scoring.coverage_filter import filter_priceable
+        priceable, coverage_stats = filter_priceable(props, sport="mlb")
+        # Attach stats for the caller (pipeline logs / sync-result JSON).
+        self.last_coverage_stats = coverage_stats
+        return priceable
 
     def get_sorter(self, db):
         if self._sorter is None:

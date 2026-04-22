@@ -98,7 +98,15 @@ class MLBAdapter(SportAdapter):
             f"[MLB_ADAPTER] Loaded {len(unique)} unique props from "
             f"mlb_live_props (canonical source)"
         )
-        return unique
+
+        # 0-Book Exclusion Rule (2026-04-22) — drop props without any
+        # DK/FD/BOL/MGM exact-line anchor. Same contract as the RT
+        # scoring adapter's load_live_props; keeps the master-sync
+        # path and the delta path identical.
+        from services.scoring.coverage_filter import filter_priceable
+        priceable, coverage_stats = filter_priceable(unique, sport="mlb")
+        self.last_coverage_stats = coverage_stats
+        return priceable
 
     async def enrich_and_score(self, props: List[Dict], db) -> List[Dict]:
         """

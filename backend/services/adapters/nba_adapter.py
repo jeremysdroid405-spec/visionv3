@@ -48,7 +48,19 @@ class NBAAdapter(SportAdapter):
         cursor = db["ferrari_scored"].find({}, {"_id": 0})
         props = await cursor.to_list(length=None)
         logger.info(f"[NBA_ADAPTER] Loaded {len(props)} props from ferrari_scored")
-        return props
+
+        # 0-Book Exclusion Rule (2026-04-22). Drop props without any
+        # DK/FD/BOL/MGM exact-line anchor before scoring / ranking /
+        # tier gating. ferrari_scored carries book-price fields
+        # (draftkings_price/fanduel_price/betonline_price/betmgm_price
+        # under ``sharp_market`` and/or flat), so the same filter
+        # module works here.
+        from services.scoring.coverage_filter import filter_priceable
+        priceable, coverage_stats = filter_priceable(
+            props, sport="nba"
+        )
+        self.last_coverage_stats = coverage_stats
+        return priceable
 
     async def enrich_and_score(self, props: List[Dict], db) -> List[Dict]:
         """
