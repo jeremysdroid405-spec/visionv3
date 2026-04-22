@@ -53,8 +53,9 @@ PRIZEPICKS_ALL_MARKETS = ",".join(PRIZEPICKS_ALTERNATE_MARKETS + PRIZEPICKS_STAN
 
 # Sharp books we pull for NBA line comparison + arbitrage. The full list
 # of markets offered by each is discovered per-event at runtime.
-NBA_SHARP_BOOKMAKERS = ["draftkings", "fanduel", "betonlineag"]
-NBA_SHARP_REGIONS = "us,us2"  # DK/FD in us, BetOnline in us2
+# BetMGM added 2026-04-22 in response to "what about BetMGM?" follow-up.
+NBA_SHARP_BOOKMAKERS = ["draftkings", "fanduel", "betonlineag", "betmgm"]
+NBA_SHARP_REGIONS = "us,us2"  # DK/FD/MGM in us, BetOnline in us2
 
 
 class OddsApiService:

@@ -21,7 +21,7 @@ def _build_lookup(sharp_results):
     for sharp_data in sharp_results:
         for bm in sharp_data.get("bookmakers", []):
             bm_key = bm.get("key", "")
-            if bm_key not in ["draftkings", "fanduel", "betonlineag"]:
+            if bm_key not in ["draftkings", "fanduel", "betonlineag", "betmgm"]:
                 continue
             for market in bm.get("markets", []):
                 market_key = market.get("key", "")
@@ -41,6 +41,7 @@ def _build_lookup(sharp_results):
                                 "draftkings_price": None,
                                 "fanduel_price": None,
                                 "betonline_price": None,
+                                "betmgm_price": None,
                             }
                         cur = sharp_prices[k]
                         if bm_key == "draftkings" and (cur["draftkings_price"] is None or not is_std):
@@ -49,6 +50,8 @@ def _build_lookup(sharp_results):
                             cur["fanduel_price"] = price
                         elif bm_key == "betonlineag" and (cur["betonline_price"] is None or not is_std):
                             cur["betonline_price"] = price
+                        elif bm_key == "betmgm" and (cur["betmgm_price"] is None or not is_std):
+                            cur["betmgm_price"] = price
     return sharp_prices
 
 

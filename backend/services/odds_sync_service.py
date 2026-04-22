@@ -182,7 +182,7 @@ class OddsSyncService:
                         
                         for bm in sharp_data.get("bookmakers", []):
                             bm_key = bm.get("key", "")
-                            if bm_key not in ["draftkings", "fanduel", "betonlineag"]:
+                            if bm_key not in ["draftkings", "fanduel", "betonlineag", "betmgm"]:
                                 continue
                             
                             for market in bm.get("markets", []):
@@ -219,6 +219,7 @@ class OddsSyncService:
                                                 "draftkings_price": None,
                                                 "fanduel_price": None,
                                                 "betonline_price": None,
+                                                "betmgm_price": None,
                                             }
                                         # Only overwrite if the existing slot is empty;
                                         # alt-native entries take precedence when both
@@ -230,6 +231,8 @@ class OddsSyncService:
                                             cur["fanduel_price"] = price
                                         elif bm_key == "betonlineag" and (cur["betonline_price"] is None or not is_std):
                                             cur["betonline_price"] = price
+                                        elif bm_key == "betmgm" and (cur["betmgm_price"] is None or not is_std):
+                                            cur["betmgm_price"] = price
                     
                     logger.info(f"[SYNC_ODDS_TO_MONGO] Built sharp price lookup: {len(sharp_prices)} unique props")
                 
@@ -263,14 +266,17 @@ class OddsSyncService:
                                 or std_data.get("fanduel_price"),
                             "betonline_price": sharp_data.get("betonline_price")
                                 or std_data.get("betonline_price"),
+                            "betmgm_price": sharp_data.get("betmgm_price")
+                                or std_data.get("betmgm_price"),
                         }
                         sharp_data = merged
 
                     draftkings_price = sharp_data.get("draftkings_price")
                     fanduel_price = sharp_data.get("fanduel_price")
                     betonline_price = sharp_data.get("betonline_price")
+                    betmgm_price = sharp_data.get("betmgm_price")
                     
-                    # Calculate sort_price: Use first available from DK > FD > BOL
+                    # Calculate sort_price: Use first available from DK > FD > BOL > MGM
                     # This provides variable odds for sorting (vs PrizePicks flat -137)
                     sort_price = None
                     sort_source = None
@@ -283,12 +289,16 @@ class OddsSyncService:
                     elif betonline_price is not None:
                         sort_price = betonline_price
                         sort_source = "betonline"
+                    elif betmgm_price is not None:
+                        sort_price = betmgm_price
+                        sort_source = "betmgm"
                     
                     # Build nested sharp_market object
                     prop["sharp_market"] = {
                         "draftkings_price": draftkings_price,
                         "fanduel_price": fanduel_price,
                         "betonline_price": betonline_price,
+                        "betmgm_price": betmgm_price,
                         "sort_price": sort_price,
                         "sort_source": sort_source,
                         "is_alternate": is_alternate
@@ -298,6 +308,7 @@ class OddsSyncService:
                     prop["draftkings_price"] = draftkings_price
                     prop["fanduel_price"] = fanduel_price
                     prop["betonline_price"] = betonline_price
+                    prop["betmgm_price"] = betmgm_price
                     prop["sort_price"] = sort_price
                     prop["sort_source"] = sort_source
             

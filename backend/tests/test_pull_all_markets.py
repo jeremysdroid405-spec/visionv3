@@ -8,33 +8,34 @@ from services import odds_api_service
 from services import universal_odds_sync
 
 
-def test_nba_sharp_bookmakers_are_the_user_requested_trio():
-    """Locks: NBA sharp-book fetch hits DraftKings + FanDuel + BetOnline."""
+def test_nba_sharp_bookmakers_are_the_user_requested_quartet():
+    """Locks: NBA sharp-book fetch hits DraftKings + FanDuel + BetOnline + BetMGM
+    (BetMGM added 2026-04-22 after the "what about BetMGM?" follow-up)."""
     assert odds_api_service.NBA_SHARP_BOOKMAKERS == [
-        "draftkings", "fanduel", "betonlineag",
+        "draftkings", "fanduel", "betonlineag", "betmgm",
     ]
 
 
 def test_nba_sharp_regions_cover_betonline_region():
-    """BetOnline lives in us2 and DK/FD in us — both regions required."""
+    """BetOnline lives in us2 and DK/FD/MGM in us — both regions required."""
     assert "us" in odds_api_service.NBA_SHARP_REGIONS
     assert "us2" in odds_api_service.NBA_SHARP_REGIONS
 
 
-def test_mlb_bookmakers_config_includes_user_requested_trio():
-    """MLB universal-sync defaults now include all three user-requested
+def test_mlb_bookmakers_config_includes_user_requested_quartet():
+    """MLB universal-sync defaults now include all four user-requested
     books alongside the PrizePicks anchor."""
     mlb_bms = universal_odds_sync.SPORT_API_CONFIG["mlb"]["bookmakers"]
-    for required in ("draftkings", "fanduel", "betonlineag"):
+    for required in ("draftkings", "fanduel", "betonlineag", "betmgm"):
         assert required in mlb_bms, f"MLB missing {required}"
     # PrizePicks anchor still present so the canonical-key extraction
     # retains its DFS anchor.
     assert "prizepicks" in mlb_bms
 
 
-def test_nba_bookmakers_config_includes_user_requested_trio():
+def test_nba_bookmakers_config_includes_user_requested_quartet():
     nba_bms = universal_odds_sync.SPORT_API_CONFIG["nba"]["bookmakers"]
-    for required in ("draftkings", "fanduel", "betonlineag"):
+    for required in ("draftkings", "fanduel", "betonlineag", "betmgm"):
         assert required in nba_bms, f"NBA missing {required}"
     assert "prizepicks" in nba_bms
 

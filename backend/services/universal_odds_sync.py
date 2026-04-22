@@ -123,13 +123,13 @@ BOOKMAKER_CONFIG = {
 DEFAULT_BOOKMAKERS = ["prizepicks", "draftkings", "fanduel", "betonlineag", "pinnacle"]
 SHARP_BOOKMAKERS = ["pinnacle", "circa", "betcris"]
 
-# Sports-book trio the user asked us to pull "all markets" from.
-# Applied to both NBA and MLB sharp-enrichment paths.
-USER_SHARP_BOOKMAKERS = ["draftkings", "fanduel", "betonlineag"]
+# Sports-book quartet the user asked us to pull "all markets" from.
+# Applied to both NBA and MLB sharp-enrichment paths. BetMGM added
+# 2026-04-22 after the "what about BetMGM?" follow-up.
+USER_SHARP_BOOKMAKERS = ["draftkings", "fanduel", "betonlineag", "betmgm"]
 
-# MLB-specific: PrizePicks anchor + DK/FD/BOL (per 2026-04-21 request).
-# Pinnacle retained as an optional sharp reference (low priority).
-MLB_BOOKMAKERS = ["prizepicks", "draftkings", "fanduel", "betonlineag"]
+# MLB-specific: PrizePicks anchor + DK/FD/BOL/MGM (per 2026-04-22 update).
+MLB_BOOKMAKERS = ["prizepicks", "draftkings", "fanduel", "betonlineag", "betmgm"]
 
 # =============================================================================
 # SPORT-SPECIFIC CONFIGURATION
@@ -161,9 +161,9 @@ SPORT_API_CONFIG = {
             "player_points_rebounds_assists": "PRA",
             "player_points_rebounds_assists_alternate": "PRA",
         },
-        # PrizePicks anchor + DK + FD + BetOnline (2026-04-21 "pull all
-        # markets for all 3 books" request).
-        "bookmakers": ["prizepicks", "draftkings", "fanduel", "betonlineag"],
+        # PrizePicks anchor + DK + FD + BetOnline + BetMGM
+        # (2026-04-22 update: BetMGM added).
+        "bookmakers": ["prizepicks", "draftkings", "fanduel", "betonlineag", "betmgm"],
     },
     "mlb": {
         "sport_key": "baseball_mlb",
@@ -256,9 +256,10 @@ SPORT_API_CONFIG = {
             "batter_hits_runs": "Hits+Runs",
             "batter_hits_runs_alternate": "Hits+Runs",
         },
-        # PrizePicks anchor + DK + FD + BetOnline (2026-04-21 "pull all
-        # markets for all 3 books" request).
-        "bookmakers": ["prizepicks", "draftkings", "fanduel", "betonlineag"]
+        # PrizePicks anchor + DK + FD + BetOnline + BetMGM
+        # (2026-04-22 update: BetMGM added to the request so its
+        # `mgm_layer` in extract_props_from_odds gets populated).
+        "bookmakers": ["prizepicks", "draftkings", "fanduel", "betonlineag", "betmgm"]
     }
 }
 
