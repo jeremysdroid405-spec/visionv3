@@ -187,26 +187,49 @@ class OddsSyncService:
                             
                             for market in bm.get("markets", []):
                                 market_key = market.get("key", "")
+                                # Normalize to the alternate-market namespace so a
+                                # STANDARD-market outcome at the same line is reachable
+                                # via the alt lookup used during merge.  PrizePicks props
+                                # are always keyed on the alternate market, but several
+                                # books (notably BetOnline) expose many prop lines ONLY
+                                # on the standard market.  Without this normalization we
+                                # silently dropped those prices. (Fix 2026-04-21.)
+                                is_std = not market_key.endswith("_alternate")
+                                alt_key = (
+                                    f"{market_key}_alternate" if is_std else market_key
+                                )
+
                                 for outcome in market.get("outcomes", []):
                                     player_name = outcome.get("description", "")
                                     line = outcome.get("point", 0)
                                     direction = (outcome.get("name", "") or "over").lower()
                                     price = outcome.get("price")
-                                    
-                                    lookup_key = (player_name, market_key, line, direction)
-                                    if lookup_key not in sharp_prices:
-                                        sharp_prices[lookup_key] = {
-                                            "draftkings_price": None,
-                                            "fanduel_price": None,
-                                            "betonline_price": None
-                                        }
-                                    
-                                    if bm_key == "draftkings":
-                                        sharp_prices[lookup_key]["draftkings_price"] = price
-                                    elif bm_key == "fanduel":
-                                        sharp_prices[lookup_key]["fanduel_price"] = price
-                                    elif bm_key == "betonlineag":
-                                        sharp_prices[lookup_key]["betonline_price"] = price
+
+                                    # Store under BOTH the native key and the alt key so
+                                    # either lookup resolves.  Alt-native data must
+                                    # ALWAYS win over standard-duplicated data when both
+                                    # books offer the same line.
+                                    keys = [(player_name, market_key, line, direction)]
+                                    if is_std and alt_key != market_key:
+                                        keys.append((player_name, alt_key, line, direction))
+
+                                    for lookup_key in keys:
+                                        if lookup_key not in sharp_prices:
+                                            sharp_prices[lookup_key] = {
+                                                "draftkings_price": None,
+                                                "fanduel_price": None,
+                                                "betonline_price": None,
+                                            }
+                                        # Only overwrite if the existing slot is empty;
+                                        # alt-native entries take precedence when both
+                                        # exist for the same (player, market, line).
+                                        cur = sharp_prices[lookup_key]
+                                        if bm_key == "draftkings" and (cur["draftkings_price"] is None or not is_std):
+                                            cur["draftkings_price"] = price
+                                        elif bm_key == "fanduel" and (cur["fanduel_price"] is None or not is_std):
+                                            cur["fanduel_price"] = price
+                                        elif bm_key == "betonlineag" and (cur["betonline_price"] is None or not is_std):
+                                            cur["betonline_price"] = price
                     
                     logger.info(f"[SYNC_ODDS_TO_MONGO] Built sharp price lookup: {len(sharp_prices)} unique props")
                 
@@ -219,8 +242,30 @@ class OddsSyncService:
                     is_alternate = "_alternate" in market_key
                     
                     lookup_key = (player_name, market_key, line, direction)
-                    sharp_data = sharp_prices.get(lookup_key, {})
-                    
+                    sharp_data = sharp_prices.get(lookup_key, {}) or {}
+
+                    # Per-book fallback: if the alt-market lookup is missing
+                    # a book, fall back to the standard-market lookup at the
+                    # same line.  Matches the "pulling standard lines as well"
+                    # requirement (2026-04-21).
+                    if is_alternate:
+                        std_key = (
+                            player_name,
+                            market_key.replace("_alternate", ""),
+                            line,
+                            direction,
+                        )
+                        std_data = sharp_prices.get(std_key, {}) or {}
+                        merged = {
+                            "draftkings_price": sharp_data.get("draftkings_price")
+                                or std_data.get("draftkings_price"),
+                            "fanduel_price": sharp_data.get("fanduel_price")
+                                or std_data.get("fanduel_price"),
+                            "betonline_price": sharp_data.get("betonline_price")
+                                or std_data.get("betonline_price"),
+                        }
+                        sharp_data = merged
+
                     draftkings_price = sharp_data.get("draftkings_price")
                     fanduel_price = sharp_data.get("fanduel_price")
                     betonline_price = sharp_data.get("betonline_price")
