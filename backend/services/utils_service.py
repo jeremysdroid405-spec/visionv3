@@ -263,7 +263,11 @@ def probability_to_american_odds(probability: float) -> int:
         return int(100 * (1 - probability) / probability)
 
 
-# Stat type mapping
+# Stat type mapping — known NBA markets get concise abbreviations used
+# by the scoring pipeline (PTS/REB/AST/PRA/…). Unknown markets fall
+# through the ``extract_stat_type`` helper and are returned as a
+# readable slug derived from the raw market key so composite-keys stay
+# unique (2026-04-21 "pull all markets" expansion).
 STAT_TYPE_MAP = {
     "player_points": "PTS",
     "player_rebounds": "REB",
@@ -276,13 +280,33 @@ STAT_TYPE_MAP = {
     "player_points_assists": "P+A",
     "player_rebounds_assists": "R+A",
     "player_points_rebounds_assists": "PRA",
+    # Extended NBA markets now unlocked by dynamic market discovery.
+    "player_double_double": "DD",
+    "player_triple_double": "TD",
+    "player_blocks_steals": "BLK+STL",
+    "player_first_basket": "FIRST BASKET",
+    "player_first_team_basket": "FIRST TEAM BASKET",
+    "player_field_goals": "FGM",
+    "player_frees_made": "FTM",
+    "player_frees_attempts": "FTA",
+    "player_method_of_first_basket": "FIRST BASKET METHOD",
 }
 
 
 def extract_stat_type(market: str) -> str:
-    """Extract stat type from market name."""
+    """Extract stat type from market name.
+
+    Known markets (see ``STAT_TYPE_MAP``) get concise abbreviations.
+    Unknown markets return the raw market key (minus the
+    ``_alternate`` suffix) so composite-keys stay unique when new
+    markets surface via dynamic market discovery.
+    """
     if not market:
         return ""
-    # Remove _alternate suffix
-    market = market.replace("_alternate", "")
-    return STAT_TYPE_MAP.get(market, "")
+    base = market.replace("_alternate", "")
+    mapped = STAT_TYPE_MAP.get(base)
+    if mapped:
+        return mapped
+    # Fallback: return the raw base key uppercased for readability.
+    # e.g. "player_first_basket" → "PLAYER_FIRST_BASKET"
+    return base.upper()

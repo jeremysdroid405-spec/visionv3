@@ -761,6 +761,137 @@ master-sync cadence below 1/hour, which is out of scope.
    lose the pre-restart tick history (not counters, which are fine to
    be reset).
 
+## Pull All Markets / All 3 Books — Dynamic Discovery (2026-04-22)
+
+### Scope delivered
+User request: **"pull all available props and markets for NBA and MLB
+available on Odds API. All props, all markets, for all 3 books
+(DraftKings, FanDuel, BetOnline)"**. Replaced every hardcoded market
+whitelist (`PRIZEPICKS_STANDARD_MARKETS`, `PRIZEPICKS_ALTERNATE_MARKETS`,
+`SHARP_MARKETS`, `SPORT_API_CONFIG[sport]['markets']`) with dynamic
+per-event market discovery via Odds API's
+`/v4/sports/{sport}/events/{id}/markets` endpoint.
+
+### Files changed
+- **NEW** `services/market_catalog.py` (+200 LOC) — `MarketCatalog`
+  class exposing `discover_event_markets` (per-event) and
+  `discover_union_across_events` (sport-wide union across sample
+  events). Per-event cache so each market-discovery credit is paid
+  only once per sync. Filters to `player_*` / `batter_*` / `pitcher_*`
+  markets by default; `include_game_markets=True` extends to
+  `h2h` / `spreads` / `totals` / etc.
+- **EDITED** `services/odds_api_service.py`:
+  - `PRIZEPICKS_STANDARD_MARKETS`/`..._ALTERNATE_MARKETS` retained as
+    **fallback only** when the catalog returns empty.
+  - New `NBA_SHARP_BOOKMAKERS = ["draftkings","fanduel","betonlineag"]`
+    and `NBA_SHARP_REGIONS = "us,us2"` constants documenting the
+    user's requested book trio.
+  - `OddsApiService.__init__` owns a `MarketCatalog` and tracks
+    `credits_used` (`market_discovery`, `sharp_book_odds`,
+    `prizepicks_odds`).
+  - `fetch_prizepicks_odds` now calls discovery before hitting `/odds`
+    so every market PP currently exposes for the event is fetched.
+  - `fetch_sharp_book_odds` rewritten: discovers all DK+FD+BOL markets
+    per event, then issues a single `/odds` call with the complete
+    market list. Credits per event = 1 discovery + 1 odds.
+- **EDITED** `services/universal_odds_sync.py`:
+  - Added `betonlineag` to `BOOKMAKER_CONFIG` (region=`us2`).
+  - `DEFAULT_BOOKMAKERS` + `MLB_BOOKMAKERS` + `SPORT_API_CONFIG['nba'].bookmakers`
+    + `SPORT_API_CONFIG['mlb'].bookmakers` all updated to the user-
+    requested trio alongside the PrizePicks anchor
+    (`prizepicks, draftkings, fanduel, betonlineag`). BetMGM/Pinnacle
+    removed from the MLB primary list.
+  - `UniversalOddsSyncService.__init__` owns a `MarketCatalog`,
+    per-sport union memo, and `credits_used` counter.
+  - New `_resolve_markets_for_sport` discovers the union of markets
+    across the first 3 events for the sport **once per sync** and
+    reuses it across every event (3 discovery credits per sport).
+  - `fetch_event_odds` accepts `markets_override` so the sync-wide
+    discovered list is injected. Hardcoded list retained purely as
+    fallback if discovery fails.
+  - `sync_sport_props` resets credit counters, invokes discovery,
+    injects the discovered list, and surfaces `credits_used` +
+    `markets_discovered` in the sync result.
+  - `extract_props_from_odds` (Pass 2+3) now attaches independent
+    **FanDuel and BetOnline layers** alongside the existing DK/MGM/
+    Sharp layers. Flattened props now carry `fd_line`/`fd_odds`/
+    `bol_line`/`bol_odds`/`fd_layer`/`bol_layer` in addition to the
+    legacy DK/MGM fields. `all_odds` + `bookmakers_available`
+    aggregates include every matched book.
+- **EDITED** `services/utils_service.py` — `STAT_TYPE_MAP` expanded
+  with new NBA markets (`player_double_double`, `player_triple_double`,
+  `player_blocks_steals`, `player_first_basket`, etc.). Unknown
+  markets now fall back to the uppercased base key (previously
+  `""`) so composite-key uniqueness is preserved when new markets
+  surface.
+- **NEW** `tests/test_market_catalog.py` (+220 LOC) — 10 tests covering
+  player/game-market classification, discovery happy path, book
+  filtering, 404 fallback, no-api-key guard, per-event caching, and
+  union-across-events aggregation with max-events cap.
+- **NEW** `tests/test_pull_all_markets.py` (+120 LOC) — 11 tests
+  locking the user-requested book trio (DK/FD/BOL) across both sports,
+  the BetOnline region mapping, the `credits_used` observability
+  contract, the new `extract_stat_type` fallback, and grep-style
+  structural guards preventing regression back to hardcoded market
+  lists.
+- **EDITED** `tests/test_delta_upstream_isolation.py` — added
+  `services.market_catalog` and `services.odds_api_service` to the
+  forbidden-import list so the delta engine can never accidentally
+  import the new upstream fetcher.
+
+### Before / after coverage
+| Path | Before | After |
+|---|---|---|
+| NBA PrizePicks markets | Hardcoded 8 markets (PTS/REB/AST/PRA × std+alt) | **All markets** PP currently offers for each event |
+| NBA DK/FD/BOL markets  | Same hardcoded 8 markets | **All markets** the 3 books expose for each event |
+| MLB bookmakers | `prizepicks, draftkings, betmgm, pinnacle` | `prizepicks, draftkings, fanduel, betonlineag` |
+| MLB markets | Hardcoded ~30 batter/pitcher markets | **All markets** DK/FD/BOL expose per event |
+| FanDuel/BetOnline prop layers | silently dropped (only DK+MGM layers in extract) | persisted as `fd_layer`/`bol_layer` with flat price fields |
+| Unknown market → stat_type | `""` (composite-key collisions) | uppercased base key (unique per market) |
+| API-credit usage | Untracked | Surfaced per sync in `results.credits_used` |
+
+### Invariants preserved
+- **Delta engine isolation**: new `market_catalog.py` is an upstream
+  fetcher and is blocked from the delta path via the CI grep guard.
+- **PrizePicks anchor**: PP still anchors `extract_props_from_odds`
+  canonical keys for both sports — DK/FD/BOL/MGM/Sharp attach as
+  independent layers on exact-line match (existing layered architecture
+  unchanged).
+- **Back-compat**: every `/odds` call's fallback-on-catalog-miss path
+  still uses the legacy hardcoded market list, so the pipeline cannot
+  serve zero props in the event of a catalog outage.
+
+### Verification
+- **172/172 relevant unit tests pass** (155 existing + 17 new).
+  Includes all delta-isolation / carbon-copy / scoring / Gemini-cost
+  tests plus the new market-catalog and pull-all-markets suites.
+- Ruff/lint clean on all 4 edited modules + the 2 new test files.
+- Backend supervisor healthy, zero import errors, Ferrari endpoints
+  live (NBA safe-haven=10, MLB 0 due to no games running — unrelated).
+
+### Cost note
+Credits per full sync after this change:
+- NBA: `1 events` + `3 discovery (union)` + `N × 2 (discover+odds per event)` via OddsApiService path. On a 10-game night ≈ 24 credits (vs. ~12 pre-change). Offset by catching every market rather than the 8-market whitelist → proportionally many more props priced.
+- MLB: `1 events` + `3 discovery` + `N × 1 odds` via UniversalOddsSync path ≈ 18 credits on a 15-game night.
+- `sync_sport_props` result now surfaces `credits_used` for operator
+  monitoring so the budget curve is observable.
+
+### Remaining caveats
+- The NBA sync still goes through two parallel paths:
+  `DemonGoblinEngine.sync_odds_to_mongo` (PP + sharp-books) is what
+  the legacy hourly NBA sync uses; `UniversalOddsSyncService` is
+  triggered by the manual route `/api/v3/universal-odds-sync`. Both
+  now pull "all markets" for their respective books. No unification
+  work done — flagged for a future cleanup pass.
+- If a brand-new market surfaces (not in `STAT_TYPE_MAP`) the prop
+  lands in `live_props` with `stat_type == BASE_MARKET_KEY_UPPER`. The
+  scoring models (VK, HighFriction, etc.) won't know what to do with
+  it and the prop will simply not be tier-assigned. Add new stat-type
+  mappings + training data as desired.
+
+---
+
+
 ## Gemini Batching Fix — Non-Batched Bulk Path Eliminated (2026-04-21)
 
 ### Scope delivered

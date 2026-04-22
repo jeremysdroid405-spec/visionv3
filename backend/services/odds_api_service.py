@@ -17,6 +17,7 @@ import logging
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from services.config.collection_names import COLL
+from services.market_catalog import MarketCatalog
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +30,14 @@ PRIZEPICKS_REGION = "us_dfs"
 PRIZEPICKS_BOOKMAKER = "prizepicks"
 DEMON_ODDS = 100  # Even odds = Demon
 
-# Markets - REDUCED for API quota efficiency
-# The Odds API charges PER MARKET per request
-# Only fetch essential markets to conserve quota
+# PrizePicks anchor markets (PP always exposes these; used to bootstrap
+# the anchor layer). Sharp-book fetches now discover ALL available
+# markets dynamically via MarketCatalog rather than filtering through
+# a hardcoded whitelist, per the 2026-04-21 "pull all markets / all 3
+# books" requirement.
 PRIZEPICKS_ALTERNATE_MARKETS = [
     "player_points_alternate",
-    "player_rebounds_alternate", 
+    "player_rebounds_alternate",
     "player_assists_alternate",
     "player_points_rebounds_assists_alternate",  # PRA combo
 ]
@@ -47,6 +50,11 @@ PRIZEPICKS_STANDARD_MARKETS = [
 ]
 
 PRIZEPICKS_ALL_MARKETS = ",".join(PRIZEPICKS_ALTERNATE_MARKETS + PRIZEPICKS_STANDARD_MARKETS)
+
+# Sharp books we pull for NBA line comparison + arbitrage. The full list
+# of markets offered by each is discovered per-event at runtime.
+NBA_SHARP_BOOKMAKERS = ["draftkings", "fanduel", "betonlineag"]
+NBA_SHARP_REGIONS = "us,us2"  # DK/FD in us, BetOnline in us2
 
 
 class OddsApiService:
@@ -62,6 +70,18 @@ class OddsApiService:
         
         # Shared HTTP client for parallel requests
         self._client: Optional[httpx.AsyncClient] = None
+
+        # Dynamic market discovery (replaces hardcoded sharp-book whitelist).
+        self._market_catalog = MarketCatalog(ODDS_API_KEY)
+
+        # Tallies how many Odds API credits each sharp-book fetch burns,
+        # so operators can monitor spend after the "pull all markets"
+        # expansion. Reset per sync by the sync orchestrator.
+        self.credits_used: Dict[str, int] = {
+            "market_discovery": 0,
+            "sharp_book_odds": 0,
+            "prizepicks_odds": 0,
+        }
     
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create shared HTTP client."""
@@ -154,20 +174,37 @@ class OddsApiService:
                         logger.debug(f"  [PRIZEPICKS] Using cached data for {event_id} (age: {age_minutes:.1f}m)")
                         return cached
             
+            # Dynamically discover the complete set of markets PrizePicks
+            # currently offers for this event. Falls back to the legacy
+            # PTS/REB/AST/PRA whitelist if the catalog endpoint returns
+            # nothing (e.g. pre-game window or API glitch).
+            client = await self._get_client()
+            discovered_pp_markets = await self._market_catalog.discover_event_markets(
+                client=client,
+                sport_key="basketball_nba",
+                event_id=event_id,
+                regions=PRIZEPICKS_REGION,
+                bookmakers=[PRIZEPICKS_BOOKMAKER],
+                include_game_markets=False,
+            )
+            self.credits_used["market_discovery"] += 1
+            if not discovered_pp_markets:
+                discovered_pp_markets = PRIZEPICKS_ALTERNATE_MARKETS + PRIZEPICKS_STANDARD_MARKETS
+
             # FETCH FROM API using shared client
             url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
-            
+
             params = {
                 "apiKey": ODDS_API_KEY,
                 "regions": PRIZEPICKS_REGION,
-                "markets": PRIZEPICKS_ALL_MARKETS,
+                "markets": ",".join(discovered_pp_markets),
                 "bookmakers": PRIZEPICKS_BOOKMAKER,
                 "oddsFormat": "american",
                 "includeMultipliers": "true"
             }
-            
-            client = await self._get_client()
+
             response = await client.get(url, params=params)
+            self.credits_used["prizepicks_odds"] += 1
             
             if response.status_code == 200:
                 odds_data = response.json()
@@ -267,64 +304,89 @@ class OddsApiService:
         cache_ttl_minutes: int = 10
     ) -> Dict[str, Any]:
         """
-        Fetch Sharp Book odds (DraftKings + FanDuel + BetOnline) for sorting & arbitrage.
-        
-        These lines are used for:
-        1. SORTING: Variable odds for ranking picks (vs PrizePicks flat -137)
-        2. Sharp Edge Calculator: Find +EV opportunities
-        
-        Strategy:
-        - DraftKings: Primary reference (72% coverage)
-        - FanDuel: Secondary reference (45% coverage)  
-        - BetOnline: Tertiary reference (38% coverage, best for alternates)
-        - Combined: 90% coverage of all PrizePicks lines
-        
+        Fetch Sharp Book odds (DraftKings + FanDuel + BetOnline) for
+        sorting & arbitrage — pulling **ALL markets** each book exposes
+        for the event, not a hardcoded whitelist.
+
+        Flow:
+          1. ``MarketCatalog.discover_event_markets`` → list every market
+             the 3 books currently expose for this event.
+          2. Single ``/odds`` call for all 3 books × every discovered
+             market.
+          3. Credits burned = 1 (discovery) + 1 (odds) per event. The
+             odds-call quota multiplier is markets × regions, same as
+             the pre-expansion cost model; requesting more markets in a
+             single call is cheaper than issuing multiple narrower calls.
+
         Returns:
-            Combined odds data from DraftKings, FanDuel, and BetOnline
+            Combined odds data from DraftKings, FanDuel, and BetOnline.
         """
         try:
             # CHECK CACHE FIRST
             cached = await self.odds_cache.find_one({
-                "event_id": event_id, 
+                "event_id": event_id,
                 "source": "sharp_books"
             })
-            
+
             if cached:
                 fetched_at = cached.get("fetched_at")
                 if fetched_at:
                     if isinstance(fetched_at, str):
                         fetched_at = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
-                    
+
                     age_minutes = (datetime.now(timezone.utc) - fetched_at).total_seconds() / 60
-                    
+
                     if age_minutes < cache_ttl_minutes:
                         logger.debug(f"  [SHARP_BOOKS] Using cached data for {event_id} (age: {age_minutes:.1f}m)")
                         return cached
-            
-            # FETCH FROM API - Include BOTH standard AND alternate markets
-            # DraftKings + FanDuel + BetOnline for 90% coverage
+
+            client = await self._get_client()
+
+            # -------------------------------------------------------------
+            # Step 1: Discover ALL markets the 3 books currently offer.
+            # -------------------------------------------------------------
+            discovered_markets = await self._market_catalog.discover_event_markets(
+                client=client,
+                sport_key="basketball_nba",
+                event_id=event_id,
+                regions=NBA_SHARP_REGIONS,
+                bookmakers=NBA_SHARP_BOOKMAKERS,
+                include_game_markets=False,
+            )
+            self.credits_used["market_discovery"] += 1
+
+            # If the catalog returns nothing (event too far out, or API
+            # glitch), fall back to the legacy hardcoded list so we never
+            # serve zero props for an event.
+            if not discovered_markets:
+                discovered_markets = PRIZEPICKS_STANDARD_MARKETS + PRIZEPICKS_ALTERNATE_MARKETS
+                logger.debug(
+                    f"  [SHARP_BOOKS] catalog empty for {event_id}, "
+                    f"falling back to {len(discovered_markets)} legacy markets"
+                )
+
+            # -------------------------------------------------------------
+            # Step 2: Single /odds call for every discovered market.
+            # -------------------------------------------------------------
             url = f"{ODDS_API_BASE}/sports/basketball_nba/events/{event_id}/odds"
-            
-            # Combine standard + alternate markets for sharp books
-            sharp_markets = PRIZEPICKS_STANDARD_MARKETS + PRIZEPICKS_ALTERNATE_MARKETS
-            
             params = {
                 "apiKey": ODDS_API_KEY,
-                "regions": "us,us2",  # US regions for DK/FD/BetOnline
-                "markets": ",".join(sharp_markets),
-                "bookmakers": "draftkings,fanduel,betonlineag",
+                "regions": NBA_SHARP_REGIONS,
+                "markets": ",".join(discovered_markets),
+                "bookmakers": ",".join(NBA_SHARP_BOOKMAKERS),
                 "oddsFormat": "american",
-                "includeMultipliers": "true"
+                "includeMultipliers": "true",
             }
-            
-            client = await self._get_client()
+
             response = await client.get(url, params=params)
+            self.credits_used["sharp_book_odds"] += 1
             
             if response.status_code == 200:
                 odds_data = response.json()
                 odds_data["event_id"] = event_id
                 odds_data["fetched_at"] = datetime.now(timezone.utc).isoformat()
                 odds_data["source"] = "sharp_books"
+                odds_data["markets_fetched"] = discovered_markets
                 
                 # Count props by bookmaker
                 draftkings_count = 0
@@ -346,6 +408,7 @@ class OddsApiService:
                     logger.info(
                         f"  [SHARP_BOOKS] {event_info.get('away_team', '')} @ "
                         f"{event_info.get('home_team', '')}: "
+                        f"markets={len(discovered_markets)} "
                         f"DK={draftkings_count}, FD={fanduel_count}, BOL={betonline_count}"
                     )
                     

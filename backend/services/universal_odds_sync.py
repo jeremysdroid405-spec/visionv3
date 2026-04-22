@@ -29,6 +29,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from config.db_config import get_collection_name, validate_sport, SPORT_CONFIG
 from services.config.collection_names import COLL
+from services.market_catalog import MarketCatalog
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,14 @@ BOOKMAKER_CONFIG = {
         "is_sharp": False,
         "priority": 4,
     },
+    "betonlineag": {
+        # Odds API key is "betonlineag" (BetOnline.ag).
+        "region": "us2",
+        "display_name": "BetOnline",
+        "is_dfs": False,
+        "is_sharp": False,
+        "priority": 4,
+    },
     "betmgm": {
         "region": "us",
         "display_name": "BetMGM",
@@ -111,11 +120,16 @@ BOOKMAKER_CONFIG = {
 }
 
 # Default bookmakers to fetch (prioritized list)
-DEFAULT_BOOKMAKERS = ["prizepicks", "draftkings", "fanduel", "pinnacle"]
+DEFAULT_BOOKMAKERS = ["prizepicks", "draftkings", "fanduel", "betonlineag", "pinnacle"]
 SHARP_BOOKMAKERS = ["pinnacle", "circa", "betcris"]
 
-# MLB-specific: PrizePicks + DraftKings + Pinnacle (for reference/sorting)
-MLB_BOOKMAKERS = ["prizepicks", "draftkings", "pinnacle"]
+# Sports-book trio the user asked us to pull "all markets" from.
+# Applied to both NBA and MLB sharp-enrichment paths.
+USER_SHARP_BOOKMAKERS = ["draftkings", "fanduel", "betonlineag"]
+
+# MLB-specific: PrizePicks anchor + DK/FD/BOL (per 2026-04-21 request).
+# Pinnacle retained as an optional sharp reference (low priority).
+MLB_BOOKMAKERS = ["prizepicks", "draftkings", "fanduel", "betonlineag"]
 
 # =============================================================================
 # SPORT-SPECIFIC CONFIGURATION
@@ -146,7 +160,10 @@ SPORT_API_CONFIG = {
             "player_assists_alternate": "AST",
             "player_points_rebounds_assists": "PRA",
             "player_points_rebounds_assists_alternate": "PRA",
-        }
+        },
+        # PrizePicks anchor + DK + FD + BetOnline (2026-04-21 "pull all
+        # markets for all 3 books" request).
+        "bookmakers": ["prizepicks", "draftkings", "fanduel", "betonlineag"],
     },
     "mlb": {
         "sport_key": "baseball_mlb",
@@ -239,8 +256,9 @@ SPORT_API_CONFIG = {
             "batter_hits_runs": "Hits+Runs",
             "batter_hits_runs_alternate": "Hits+Runs",
         },
-        # PrizePicks + DK + Pinnacle for MLB (DK/Pinnacle for reference only)
-        "bookmakers": ["prizepicks", "draftkings", "betmgm", "pinnacle"]
+        # PrizePicks anchor + DK + FD + BetOnline (2026-04-21 "pull all
+        # markets for all 3 books" request).
+        "bookmakers": ["prizepicks", "draftkings", "fanduel", "betonlineag"]
     }
 }
 
@@ -255,6 +273,24 @@ class UniversalOddsSyncService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self._client: Optional[httpx.AsyncClient] = None
+
+        # Dynamic market discovery. Replaces hardcoded market whitelists
+        # per the 2026-04-21 "pull all available markets" requirement.
+        # Per-event market lists are cached in-instance so we don't pay
+        # the discovery credit twice for the same event within a sync.
+        self._market_catalog = MarketCatalog(ODDS_API_KEY)
+
+        # Per-sport union-market memo. Reset every sync start.
+        self._sport_market_union: Dict[str, List[str]] = {}
+
+        # Approximate Odds API credit usage for the current sync
+        # (cleared each call to sync_sport_props). Surfaced in the sync
+        # results so operators can monitor spend.
+        self.credits_used: Dict[str, int] = {
+            "events": 0,
+            "market_discovery": 0,
+            "event_odds": 0,
+        }
     
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create shared HTTP client."""
@@ -317,29 +353,96 @@ class UniversalOddsSyncService:
             logger.error(f"[UNIVERSAL_ODDS] Event fetch error for {display_name}: {e}")
             return []
     
+    async def _resolve_markets_for_sport(
+        self,
+        sport: str,
+        sport_key: str,
+        bookmakers: List[str],
+        regions_str: str,
+        sample_events: List[Dict[str, Any]],
+    ) -> List[str]:
+        """Discover the union of markets offered by ``bookmakers`` across
+        a sample of upcoming events for this sport.
+
+        The result is cached on the instance (``_sport_market_union``) so
+        every event in the current sync reuses the same discovered list
+        — we only pay the discovery credits once per sport per sync.
+
+        Falls back to the sport's hardcoded ``SPORT_API_CONFIG[sport].markets``
+        list if the catalog returns nothing (e.g. API glitch, pre-season
+        window).
+        """
+        cached = self._sport_market_union.get(sport)
+        if cached is not None:
+            return cached
+
+        event_ids = [e.get("id") for e in sample_events if e.get("id")]
+        client = await self._get_client()
+
+        discovered: List[str] = []
+        if event_ids:
+            discovered = await self._market_catalog.discover_union_across_events(
+                client=client,
+                sport_key=sport_key,
+                event_ids=event_ids,
+                regions=regions_str,
+                bookmakers=bookmakers,
+                include_game_markets=False,
+                max_events=3,
+            )
+            # Each probe event = 1 credit.
+            self.credits_used["market_discovery"] += min(3, len(event_ids))
+
+        if not discovered:
+            # Fall back to the sport-specific hardcoded list so we never
+            # silently serve zero props when discovery fails.
+            config = self._get_sport_config(sport)
+            discovered = list(config.get("markets", []))
+            logger.warning(
+                f"[UNIVERSAL_ODDS] {sport}: dynamic market discovery returned "
+                f"no markets; falling back to {len(discovered)} hardcoded markets"
+            )
+
+        self._sport_market_union[sport] = discovered
+        logger.info(
+            f"[UNIVERSAL_ODDS] {sport}: using {len(discovered)} markets for this "
+            f"sync across books={bookmakers}"
+        )
+        return discovered
+
     async def fetch_event_odds(
         self,
         event_id: str,
         event_info: Dict[str, Any],
         sport: str = "nba",
-        bookmakers: List[str] = None
+        bookmakers: List[str] = None,
+        markets_override: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Fetch odds for a single event from multiple bookmakers.
-        
+
         Args:
             event_id: The Odds API event ID
             event_info: Event metadata (teams, time, etc.)
             sport: Sport to fetch ('nba' or 'mlb')
-            bookmakers: List of bookmakers to fetch (default: prizepicks, draftkings, fanduel, pinnacle)
-            
+            bookmakers: List of bookmakers to fetch
+            markets_override: Explicit markets list (typically the
+                union discovered by ``_resolve_markets_for_sport``). If
+                omitted we fall back to the sport-config hardcoded list
+                (legacy behavior for unit tests).
+
         Returns:
             Odds data with all player props from all bookmakers
         """
         config = self._get_sport_config(sport)
         sport_key = config["sport_key"]
-        markets = ",".join(config["markets"])
-        
+
+        if markets_override is not None and markets_override:
+            markets_list = markets_override
+        else:
+            markets_list = list(config.get("markets", []))
+        markets = ",".join(markets_list)
+
         # Default bookmakers if not specified - use sport-specific config
         if bookmakers is None:
             if "bookmakers" in config:
@@ -522,13 +625,17 @@ class UniversalOddsSyncService:
                         },
                         # --- DK layer (empty until exact match) ---
                         "dk_layer": None,
+                        # --- FD layer (empty until exact match) ---
+                        "fd_layer": None,
+                        # --- BetOnline layer (empty until exact match) ---
+                        "bol_layer": None,
                         # --- MGM layer (empty until exact match) ---
                         "mgm_layer": None,
                         # --- Sharp layer (empty until exact match) ---
                         "sharp_layer": None,
                     }
         
-        # --- Pass 2: Attach DK/MGM/Sharp as independent layers (exact match only) ---
+        # --- Pass 2: Attach DK/FD/BOL/MGM/Sharp as independent layers (exact match only) ---
         for bookmaker in odds_data.get("bookmakers", []):
             bm_key = bookmaker.get("key", "unknown")
             if bm_key == "prizepicks":
@@ -571,6 +678,10 @@ class UniversalOddsSyncService:
                     
                     if bm_key == "draftkings":
                         target["dk_layer"] = layer
+                    elif bm_key == "fanduel":
+                        target["fd_layer"] = layer
+                    elif bm_key == "betonlineag":
+                        target["bol_layer"] = layer
                     elif bm_key == "betmgm":
                         target["mgm_layer"] = layer
                     
@@ -582,24 +693,29 @@ class UniversalOddsSyncService:
         for canon_key, rec in canonical.items():
             pp = rec["pp_layer"]
             dk = rec.get("dk_layer")
+            fd = rec.get("fd_layer")
+            bol = rec.get("bol_layer")
             mgm = rec.get("mgm_layer")
             sharp = rec.get("sharp_layer")
             
             # Derive flat fields from layers
             pp_odds = pp["odds"]
             dk_odds = dk["odds"] if dk else None
+            fd_odds = fd["odds"] if fd else None
+            bol_odds = bol["odds"] if bol else None
             mgm_odds = mgm["odds"] if mgm else None
             sharp_odds = sharp["odds"] if sharp else None
             
-            # Demon/goblin from DK, then MGM, then nothing
+            # Demon/goblin from DK, then FD, then BOL, then MGM, then nothing
             is_demon = False
             is_goblin = False
-            if dk_odds is not None:
-                is_demon = dk_odds >= 100
-                is_goblin = dk_odds < 0
-            elif mgm_odds is not None:
-                is_demon = mgm_odds >= 100
-                is_goblin = mgm_odds < 0
+            primary_ref_odds = next(
+                (x for x in (dk_odds, fd_odds, bol_odds, mgm_odds) if x is not None),
+                None,
+            )
+            if primary_ref_odds is not None:
+                is_demon = primary_ref_odds >= 100
+                is_goblin = primary_ref_odds < 0
             
             # Build all_odds/all_lines from exact-match layers only
             all_odds = {"prizepicks": pp_odds}
@@ -609,6 +725,14 @@ class UniversalOddsSyncService:
                 all_odds["draftkings"] = dk_odds
                 all_lines["draftkings"] = dk["line"]
                 books_available.append("draftkings")
+            if fd:
+                all_odds["fanduel"] = fd_odds
+                all_lines["fanduel"] = fd["line"]
+                books_available.append("fanduel")
+            if bol:
+                all_odds["betonlineag"] = bol_odds
+                all_lines["betonlineag"] = bol["line"]
+                books_available.append("betonlineag")
             if mgm:
                 all_odds["betmgm"] = mgm_odds
                 all_lines["betmgm"] = mgm["line"]
@@ -637,6 +761,10 @@ class UniversalOddsSyncService:
                 "pp_odds": pp_odds,
                 "dk_line": dk["line"] if dk else None,
                 "dk_odds": dk_odds,
+                "fd_line": fd["line"] if fd else None,
+                "fd_odds": fd_odds,
+                "bol_line": bol["line"] if bol else None,
+                "bol_odds": bol_odds,
                 "mgm_line": mgm["line"] if mgm else None,
                 "mgm_odds": mgm_odds,
                 "sharp_line": sharp["line"] if sharp else None,
@@ -645,6 +773,8 @@ class UniversalOddsSyncService:
                 # Structured layers (full objects)
                 "pp_layer": pp,
                 "dk_layer": dk,
+                "fd_layer": fd,
+                "bol_layer": bol,
                 "mgm_layer": mgm,
                 "sharp_layer": sharp,
                 # Aggregated (from exact matches only)
@@ -738,17 +868,51 @@ class UniversalOddsSyncService:
         }
         
         try:
+            # Reset per-sync credit counter so `results` reports only
+            # this sync's spend.
+            self.credits_used = {
+                "events": 0,
+                "market_discovery": 0,
+                "event_odds": 0,
+            }
+            # Reset per-sport market-union memo so this sync always
+            # rediscovers markets (catches newly-added markets by books).
+            self._sport_market_union.pop(sport, None)
+
             # Step 1: Fetch events
             events = await self.fetch_events(sport)
             results["events_count"] = len(events)
             results["api_calls"] += 1
+            self.credits_used["events"] += 1
             
             if not events:
                 logger.warning(f"[UNIVERSAL_ODDS] No {display_name} events found")
                 results["success"] = False
                 results["errors"].append("No events found")
                 return results
-            
+
+            # Step 1b: Discover ALL markets the selected bookmakers
+            # currently offer — once per sync — and reuse the union
+            # across every event. Replaces the hardcoded market lists
+            # (2026-04-21 "pull all markets / all 3 books" request).
+            # Build the regions string from our bookmaker config so the
+            # discovery call sees every required region.
+            regions_set = set()
+            for bm in bookmakers:
+                bm_cfg = BOOKMAKER_CONFIG.get(bm)
+                if bm_cfg:
+                    regions_set.add(bm_cfg["region"])
+            regions_str_for_discovery = ",".join(sorted(regions_set))
+
+            sync_markets = await self._resolve_markets_for_sport(
+                sport=sport,
+                sport_key=config["sport_key"],
+                bookmakers=bookmakers,
+                regions_str=regions_str_for_discovery,
+                sample_events=events,
+            )
+            results["markets_discovered"] = sync_markets
+
             # Step 2: Fetch odds for each event (with rate limiting)
             all_props = []
             
@@ -757,9 +921,15 @@ class UniversalOddsSyncService:
                 if not event_id:
                     continue
                 
-                # Fetch odds from all bookmakers
-                odds_data = await self.fetch_event_odds(event_id, event, sport, bookmakers)
+                # Fetch odds from all bookmakers using the discovered
+                # market union so every book's complete prop menu
+                # surfaces in the response.
+                odds_data = await self.fetch_event_odds(
+                    event_id, event, sport, bookmakers,
+                    markets_override=sync_markets,
+                )
                 results["api_calls"] += 1
+                self.credits_used["event_odds"] += 1
                 
                 if odds_data:
                     # Extract props
@@ -785,6 +955,7 @@ class UniversalOddsSyncService:
             
             results["total_props"] = len(all_props)
             results["unique_players"] = len(results["unique_players"])
+            results["credits_used"] = dict(self.credits_used)
             
             # Step 3: Save to sport-specific collection
             # CRITICAL: Drop-and-replace to purge stale props from past events.

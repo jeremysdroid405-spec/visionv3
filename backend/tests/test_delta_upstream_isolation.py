@@ -57,6 +57,8 @@ FORBIDDEN_UPSTREAM_MODULES = [
     "services.mlb_headshot_sync",
     "services.master_hub_sync",
     "services.insights_sync_service",
+    "services.market_catalog",
+    "services.odds_api_service",
 ]
 
 
