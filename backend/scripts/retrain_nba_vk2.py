@@ -91,6 +91,34 @@ assert len(PRUNED_FEATURES) == 52, (
 )
 
 # -----------------------------------------------------------------------------
+# Usage-aware feature additions (2026-04-23).
+#
+# Rationale: the minutes audit showed that minutes features win at the tails
+# (high-volatility, declining-role, 10+ line buckets) but REGRESS low-line
+# bench props (+2.2% RMSE, +3.9 bias on PRA<10). Root cause: minutes-only
+# features can't distinguish a bench guy playing 18 defensive minutes (touches
+# 5× the ball) from a bench guy playing 18 offensive-role minutes (touches
+# 25×). Usage rates decouple opportunity from involvement.
+#
+# 7 additions on top of the 52-feat pruned baseline (→ 59 features):
+#   * fga_per_min_L5/L10       — shot-attempt rate per minute (volume proxy)
+#   * pra_per_min_L5/L10       — overall production rate per minute
+#   * touches_per_min_L5       — ball-involvement rate (adv tracking)
+#   * touches_L20_std          — ball-involvement volatility
+#   * usage_trend              — recency shift in volume (fga_L3 - fga_L10)
+# -----------------------------------------------------------------------------
+USAGE_FEATURES = [
+    'fga_per_min_L5', 'fga_per_min_L10',
+    'pra_per_min_L5', 'pra_per_min_L10',
+    'touches_per_min_L5',
+    'touches_L20_std',
+    'usage_trend',
+]
+assert len(USAGE_FEATURES) == 7
+PRUNED_USAGE_FEATURES = list(PRUNED_FEATURES) + list(USAGE_FEATURES)
+assert len(PRUNED_USAGE_FEATURES) == 59
+
+# -----------------------------------------------------------------------------
 # Minutes-Aware feature additions (2026-04-23).
 #
 # Goal: Separate OPPORTUNITY (minutes) from EFFICIENCY (per-minute production).
@@ -364,6 +392,61 @@ def build_features(history_logs, target_game=None, adv_map=None,
     feats['expected_stat_ast'] = expected_minutes * ast_pm_L5
     feats['expected_stat_pra'] = expected_minutes * pra_pm_L5
 
+    # -----------------------------------------------------------------
+    # USAGE-AWARE feature block (2026-04-23). Separates opportunity
+    # (minutes) from involvement (fga / touches). Targets the bench
+    # low-line regression surfaced in the minutes segmented evaluation.
+    # -----------------------------------------------------------------
+    fga_pm_L5 = _per_min('fga', 5)
+    fga_pm_L10 = _per_min('fga', 10)
+    feats['fga_per_min_L5'] = fga_pm_L5
+    feats['fga_per_min_L10'] = fga_pm_L10
+
+    # usage_trend: L3 fga mean minus L10 fga mean (role-expansion signal).
+    fga_L3_vals = [g.get('fga') for g in history_logs[:3] if g.get('fga') is not None]
+    fga_L10_vals = [g.get('fga') for g in history_logs[:10] if g.get('fga') is not None]
+    fga_L3_mean = float(np.mean(fga_L3_vals)) if fga_L3_vals else 0.0
+    fga_L10_mean = float(np.mean(fga_L10_vals)) if fga_L10_vals else 0.0
+    feats['usage_trend'] = fga_L3_mean - fga_L10_mean
+
+    # Touches — sourced from bdl_advanced_stats (passed via adv_map).
+    # Per-minute rate over L5, std over L20. Missing adv rows are
+    # silently skipped; when no coverage at all, features = 0.0 (the
+    # adv coverage features elsewhere carry the missingness signal).
+    touches_by_game = []
+    if adv_map is not None:
+        for g in history_logs[:20]:
+            key = (g.get('player_id'), g.get('game_id'))
+            a = adv_map.get(key)
+            if not a:
+                continue
+            t = a.get('touches')
+            if t is None:
+                continue
+            try:
+                touches_by_game.append((float(t), _mins(g)))
+            except (TypeError, ValueError):
+                continue
+
+    # touches_per_min_L5 — sum(touches) / sum(minutes) over last 5
+    # games where both are present.
+    t_num = 0.0
+    t_den = 0.0
+    count_l5 = 0
+    for touches, mins in touches_by_game:
+        if mins is None or mins <= 0:
+            continue
+        if count_l5 >= 5:
+            break
+        t_num += touches
+        t_den += mins
+        count_l5 += 1
+    feats['touches_per_min_L5'] = (t_num / t_den) if t_den > 0 else 0.0
+
+    # touches_L20_std — raw touches per-game std over last 20.
+    raw_touches = [t for t, _ in touches_by_game[:20]]
+    feats['touches_L20_std'] = float(np.std(raw_touches)) if len(raw_touches) >= 2 else 0.0
+
     # Volume proxies
     vol = [g.get('fga', 0) + 0.44 * g.get('fta', 0) for g in history_logs[:10]
            if g.get('fga') is not None and g.get('fta') is not None]
@@ -551,13 +634,19 @@ def build_training_matrix(stat_label, stat_field, adv_map=None,
 
 
 # ---------- Train + calibrate per stat ----------
-def train_one(stat_label, stat_field, adv_map=None, pruned=False, minutes=False):
+def train_one(stat_label, stat_field, adv_map=None, pruned=False,
+              minutes=False, usage=False):
     # Schema-aware feature build (2026-04-23) — when pruned is set,
     # pass the resolved schema into the builder so expensive loops
     # (ADV_FIELDS ≈ 47M ops) only iterate features the trainer will
     # actually consume. Matrix-build time drops ~55% in practice.
     if pruned:
-        active_schema = PRUNED_MINUTES_FEATURES if minutes else PRUNED_FEATURES
+        if usage:
+            active_schema = PRUNED_USAGE_FEATURES
+        elif minutes:
+            active_schema = PRUNED_MINUTES_FEATURES
+        else:
+            active_schema = PRUNED_FEATURES
         target_schema = set(active_schema)
     else:
         target_schema = None
@@ -570,11 +659,11 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False, minutes=False)
         log.warning(f'[{stat_label}] no samples; SKIP')
         return
 
-    # Apply pruned schema (52-feat or 69-feat with minutes). Column subset
-    # is applied BEFORE the temporal split so both scaler and XGB see the
-    # exact same feature set.
+    # Apply pruned schema (52 / 59 usage / 69 minutes). Column subset
+    # is applied BEFORE the temporal split so both scaler and XGB see
+    # the exact same feature set.
     if pruned:
-        schema = PRUNED_MINUTES_FEATURES if minutes else PRUNED_FEATURES
+        schema = active_schema
         missing = [f for f in schema if f not in feature_cols]
         if missing:
             raise RuntimeError(
@@ -584,7 +673,12 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False, minutes=False)
         kept_idx = [feature_cols.index(f) for f in schema]
         X = X[:, kept_idx]
         feature_cols = list(schema)
-        label_extra = '+min' if minutes else ''
+        if usage:
+            label_extra = '+usage'
+        elif minutes:
+            label_extra = '+min'
+        else:
+            label_extra = ''
         log.info(f'[{stat_label}] pruned{label_extra} schema applied: {len(feature_cols)} features')
 
     # Temporal split: first 80% of rows (sorted by player_id, game_id in pipeline)
@@ -646,7 +740,9 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False, minutes=False)
     top_features = [(n, float(v)) for n, v in top]
 
     # Persist
-    if minutes:
+    if usage:
+        version_str = 'NBA_VK_v2_5yr_weighted_pruned_usage59'
+    elif minutes:
         version_str = 'NBA_VK_v2_5yr_weighted_pruned_min69'
     elif pruned:
         version_str = 'NBA_VK_v2_5yr_weighted_pruned52'
@@ -658,6 +754,7 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False, minutes=False)
         'version': version_str,
         'pruned_schema': bool(pruned),
         'minutes_schema': bool(minutes),
+        'usage_schema': bool(usage),
         'trained_at': datetime.now(timezone.utc).isoformat(),
         'seasons_used': SEASONS,
         'season_weights': SEASON_WEIGHTS,
@@ -677,7 +774,9 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False, minutes=False)
         'calibration_buckets': calib_rows,
         'top_features': top_features,
     }
-    if minutes:
+    if usage:
+        suffix = '_usage'
+    elif minutes:
         suffix = '_min'
     elif pruned:
         suffix = '_pruned'
@@ -710,20 +809,33 @@ if __name__ == '__main__':
         help='Add minutes-aware feature block on top of --pruned (69 features). '
              'Writes to vk2_{stat}_min.pkl.',
     )
+    ap.add_argument(
+        '--usage', action='store_true',
+        help='Add usage-aware feature block on top of --pruned (59 features). '
+             'Writes to vk2_{stat}_usage.pkl. Mutually exclusive with --minutes.',
+    )
     args = ap.parse_args()
     if args.minutes and not args.pruned:
         ap.error('--minutes requires --pruned (extends the pruned baseline)')
+    if args.usage and not args.pruned:
+        ap.error('--usage requires --pruned (extends the pruned baseline)')
+    if args.usage and args.minutes:
+        ap.error('--usage and --minutes are mutually exclusive')
 
     t_all = time.monotonic()
     adv_map = preload_advanced_stats()
     results = {}
     for label, field in STATS.items():
-        tag = ('[MIN]' if args.minutes else '[PRUNED]') if args.pruned else ''
+        tag = (
+            '[USAGE]' if args.usage else
+            '[MIN]' if args.minutes else
+            '[PRUNED]' if args.pruned else ''
+        )
         log.info(f'=== {label} ({field}) {tag} ===')
         try:
             results[label] = train_one(
                 label, field, adv_map=adv_map,
-                pruned=args.pruned, minutes=args.minutes,
+                pruned=args.pruned, minutes=args.minutes, usage=args.usage,
             )
         except Exception as e:
             log.exception(f'[{label}] FAILED: {e}')
