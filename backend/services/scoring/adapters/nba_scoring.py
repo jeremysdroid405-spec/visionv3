@@ -61,6 +61,18 @@ class NBAScoringAdapter(ScoringAdapter):
 
     # Which stat_types have a Vegas Killer model on disk
     _MODEL_STATS = {"PTS", "REB", "AST", "3PM", "PRA"}
+    # Canonical family (lowercase, from resolve_stat_family) → model key
+    # (the UPPERCASE stat_type the VK / VK2 predictors internally expect).
+    # Every raw market name — standard or alternate — routes to a family
+    # by `_resolve_family`; families listed here inherit the trained
+    # model without needing a new model file.
+    _FAMILY_TO_MODEL_KEY = {
+        "pts":    "PTS",
+        "reb":    "REB",
+        "ast":    "AST",
+        "pra":    "PRA",
+        "threes": "3PM",
+    }
     # VK v2 model file paths (new 5-season weighted models w/ advanced stats)
     _VK2_DIR = "/app/backend/models"
     _VK2_FILE_MAP = {
@@ -582,11 +594,21 @@ class NBAScoringAdapter(ScoringAdapter):
         vk2_projection = None
         vk2_sigma = None
         vk2_error = None
-        if stat_type in self._MODEL_STATS:
+        # Family-based model routing (2026-04-23). Alternates and aliased
+        # market names (e.g. `player_points_alternate`, `player_threes`)
+        # inherit the projection model of their canonical family. The
+        # line differs per prop; the model / sigma do not. The underlying
+        # predictors (`_predict_model_prob_over`, `_predict_vk2_prob_over`)
+        # still reject anything outside _MODEL_STATS / _VK2_FILE_MAP, so
+        # we pass the RESOLVED uppercase model key, not the raw stat_type.
+        model_key = self._FAMILY_TO_MODEL_KEY.get(
+            self._resolve_family(stat_type) or "", None
+        )
+        if model_key in self._MODEL_STATS:
             opponent_team = prop.get("opponent") or prop.get("away_team")
             if active_method_early != "vk2":
                 mres = self._predict_model_prob_over(
-                    db=db, player_name=player_name, stat_type=stat_type,
+                    db=db, player_name=player_name, stat_type=model_key,
                     line=float(line), opponent_team=opponent_team,
                 )
                 p_over = mres.get("p_over")
@@ -598,7 +620,7 @@ class NBAScoringAdapter(ScoringAdapter):
                 model_sigma = mres.get("sigma")
             else:
                 v2res = self._predict_vk2_prob_over(
-                    player_name=player_name, stat_type=stat_type, line=float(line),
+                    player_name=player_name, stat_type=model_key, line=float(line),
                 )
                 p_over_v2 = v2res.get("p_over")
                 if p_over_v2 is not None:

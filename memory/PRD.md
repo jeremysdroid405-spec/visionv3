@@ -1624,6 +1624,33 @@ post-Stage-8 follow-up (D1 residual).
 - Google Gemini (user key)
 - Emergent LLM key available as fallback.
 
+## Feature: Family-Based Model Projection Routing — 2026-04-23
+- **Problem:** Projection model was gated on `stat_type in
+  {"PTS","REB","AST","3PM","PRA"}`. Raw market names that didn't
+  equal one of those strings received no `model_projection` even
+  when their canonical family had a trained VK/VK2 model on disk.
+  (In practice most PTS/REB/AST/PRA alt-markets were already being
+  pre-normalized to the short names at the stat_type mapping step, so
+  the real gap was `player_threes` + `player_threes_alternate`.)
+- **Fix:**
+  - Added `_FAMILY_TO_MODEL_KEY = {"pts":"PTS","reb":"REB","ast":"AST",
+    "pra":"PRA","threes":"3PM"}` to `NBAScoringAdapter`.
+  - Replaced `if stat_type in self._MODEL_STATS` with a resolution
+    step: `model_key = _FAMILY_TO_MODEL_KEY.get(_resolve_family(stat_type))`
+    and invoked `_predict_model_prob_over` / `_predict_vk2_prob_over`
+    with the canonical `model_key`, not the raw `stat_type`. The
+    predictors' internal `stat_type in _MODEL_STATS` check is now
+    satisfied by any family-matching raw market.
+- **Impact (`final-nba-rt`, 4,015 props recomputed):**
+  - `player_threes_alternate`: 0 → **248 with projection** (+248)
+  - `player_threes`: 0 → **22 with projection** (+22)
+  - Canonical PTS / REB / AST / PRA: unchanged (622 / 510 / 371 / 509
+    — no regression).
+  - Other unsupported families (`pts_reb`, `pts_ast`, `reb_ast`,
+    `stl`, `blk`) still have 0 projection — expected; scope was
+    family-based routing only, no new training, no combo synthesis.
+- **Files:** `/app/backend/services/scoring/adapters/nba_scoring.py`.
+
 ## Feature: Universal Per-Prop CV Computation — 2026-04-23
 - **Problem:** ~1,300 NBA props (all alt-line + combo markets) had
   null CV because the adapter's `_STAT_FIELD_MAP` only knew the 8
