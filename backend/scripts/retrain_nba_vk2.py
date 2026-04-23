@@ -90,6 +90,43 @@ assert len(PRUNED_FEATURES) == 52, (
     f'PRUNED_FEATURES must be exactly 52, got {len(PRUNED_FEATURES)}'
 )
 
+# -----------------------------------------------------------------------------
+# Minutes-Aware feature additions (2026-04-23).
+#
+# Goal: Separate OPPORTUNITY (minutes) from EFFICIENCY (per-minute production).
+# The pruned 52-feature schema bakes them together in `pts_L5_mean` / etc.,
+# which masks bench-volatility risk for role players. These 17 additions
+# decompose that signal, giving the trees a handle on "this guy puts up 6 pts
+# in 12 min OR 22 pts in 38 min" patterns the flat rolling-mean missed.
+#
+# Enabled via `--minutes` CLI flag (requires `--pruned`). Writes sibling
+# `vk2_{stat}_min.pkl`.
+# -----------------------------------------------------------------------------
+MINUTES_FEATURES = [
+    # Per-minute production — 8 features (L5 = recent, L10 = stable form)
+    'pts_per_min_L5', 'pts_per_min_L10',
+    'reb_per_min_L5', 'reb_per_min_L10',
+    'ast_per_min_L5', 'ast_per_min_L10',
+    'pra_per_min_L5', 'pra_per_min_L10',
+    # Minutes expectation — 4 features (NEW vs baseline; L5/L10/L20 mean
+    # and all _std windows are already in the 52-feature pruned set).
+    'min_L3_mean',          # shortest recency window for minutes
+    'min_trend',            # L3_mean - L10_mean (minutes trajectory)
+    'min_floor_L20',        # minimum minutes in last 20 games
+    'min_ceiling_L20',      # maximum minutes in last 20 games
+    # Derived — 5 features
+    'expected_minutes',     # 0.65*L3 + 0.35*L10 weighted blend
+    'expected_stat_pts',    # expected_minutes * pts_per_min_L5
+    'expected_stat_reb',    # expected_minutes * reb_per_min_L5
+    'expected_stat_ast',    # expected_minutes * ast_per_min_L5
+    'expected_stat_pra',    # expected_minutes * pra_per_min_L5
+]
+assert len(MINUTES_FEATURES) == 17, (
+    f'MINUTES_FEATURES must be exactly 17, got {len(MINUTES_FEATURES)}'
+)
+PRUNED_MINUTES_FEATURES = list(PRUNED_FEATURES) + list(MINUTES_FEATURES)
+assert len(PRUNED_MINUTES_FEATURES) == 69
+
 # Advanced-stat fields to incorporate as rolling features
 ADV_FIELDS = [
     'usage_percentage', 'true_shooting_percentage', 'effective_field_goal_percentage',
@@ -134,13 +171,32 @@ def build_features(history_logs, target_game=None, adv_map=None):
         vals = []
         for g in history_logs[:ROLLING_WINDOW]:
             v = g.get(field)
-            if field == 'min' and isinstance(v, str):
-                # "31:24" format
-                try:
-                    mm, ss = v.split(':')
-                    v = float(mm) + float(ss) / 60.0
-                except Exception:
-                    v = None
+            if field == 'min':
+                # BDL game logs: `min` ships as a string. Seen formats:
+                # - "30"       plain integer-minutes (2020–2026 production)
+                # - "31:24"    legacy MM:SS (rare; defensive parse kept)
+                # - 30 / 30.5  numeric (defensive)
+                # None / empty → skip row.
+                if isinstance(v, str):
+                    s = v.strip()
+                    if not s:
+                        v = None
+                    elif ':' in s:
+                        try:
+                            mm, ss = s.split(':')
+                            v = float(mm) + float(ss) / 60.0
+                        except Exception:
+                            v = None
+                    else:
+                        try:
+                            v = float(s)
+                        except Exception:
+                            v = None
+                elif v is not None:
+                    try:
+                        v = float(v)
+                    except Exception:
+                        v = None
             if v is None:
                 continue
             vals.append(float(v))
@@ -172,6 +228,108 @@ def build_features(history_logs, target_game=None, adv_map=None):
     for ef_field in ('fg_pct', 'fg3_pct', 'ft_pct'):
         vv = [g.get(ef_field) for g in history_logs[:10] if g.get(ef_field) is not None]
         feats[f'{ef_field}_L10_mean'] = float(np.mean(vv)) if vv else 0.0
+
+    # ---------------------------------------------------------------
+    # Minutes-aware feature block (2026-04-23).
+    # Separates opportunity (minutes) from efficiency (per-min production).
+    # All quantities computed from a SINGLE resolved minutes list so the
+    # model sees a consistent opportunity surface.
+    # ---------------------------------------------------------------
+    def _mins(g):
+        """Parse `min` from a BDL game log. Accepts plain "30",
+        legacy "31:24", or numeric. Returns float minutes or None."""
+        v = g.get('min')
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            if not s:
+                return None
+            if ':' in s:
+                try:
+                    mm, ss = s.split(':')
+                    return float(mm) + float(ss) / 60.0
+                except Exception:
+                    return None
+            try:
+                return float(s)
+            except Exception:
+                return None
+        try:
+            return float(v)
+        except Exception:
+            return None
+
+    mins_series = []
+    for g in history_logs[:20]:
+        m = _mins(g)
+        if m is not None and m > 0:
+            mins_series.append(m)
+
+    def _window_mean(arr, w):
+        return float(np.mean(arr[:w])) if len(arr) >= 1 else 0.0
+
+    min_L3 = _window_mean(mins_series, 3)
+    min_L10 = _window_mean(mins_series, 10)
+    feats['min_L3_mean'] = min_L3
+    feats['min_trend'] = min_L3 - min_L10
+    feats['min_floor_L20'] = float(np.min(mins_series)) if mins_series else 0.0
+    feats['min_ceiling_L20'] = float(np.max(mins_series)) if mins_series else 0.0
+    # 0.65 / 0.35 favours the L3 signal — lineup / role changes in the
+    # last three games matter more than deep history for tonight's prop.
+    expected_minutes = 0.65 * min_L3 + 0.35 * min_L10
+    feats['expected_minutes'] = expected_minutes
+
+    # Per-minute production — sum(stat) / sum(minutes) over window.
+    # Using sums rather than per-game ratios avoids blow-ups when a game
+    # had 1-2 minutes of garbage time.
+    def _per_min(stat_field, window):
+        num = 0.0
+        den = 0.0
+        for g in history_logs[:window]:
+            m = _mins(g)
+            if m is None or m <= 0:
+                continue
+            v = g.get(stat_field)
+            if v is None:
+                continue
+            num += float(v)
+            den += m
+        return num / den if den > 0 else 0.0
+
+    def _per_min_pra(window):
+        num = 0.0
+        den = 0.0
+        for g in history_logs[:window]:
+            m = _mins(g)
+            if m is None or m <= 0:
+                continue
+            p = g.get('pts'); r = g.get('reb'); a = g.get('ast')
+            if p is None or r is None or a is None:
+                continue
+            num += float(p) + float(r) + float(a)
+            den += m
+        return num / den if den > 0 else 0.0
+
+    pts_pm_L5 = _per_min('pts', 5); pts_pm_L10 = _per_min('pts', 10)
+    reb_pm_L5 = _per_min('reb', 5); reb_pm_L10 = _per_min('reb', 10)
+    ast_pm_L5 = _per_min('ast', 5); ast_pm_L10 = _per_min('ast', 10)
+    pra_pm_L5 = _per_min_pra(5);    pra_pm_L10 = _per_min_pra(10)
+    feats['pts_per_min_L5'] = pts_pm_L5
+    feats['pts_per_min_L10'] = pts_pm_L10
+    feats['reb_per_min_L5'] = reb_pm_L5
+    feats['reb_per_min_L10'] = reb_pm_L10
+    feats['ast_per_min_L5'] = ast_pm_L5
+    feats['ast_per_min_L10'] = ast_pm_L10
+    feats['pra_per_min_L5'] = pra_pm_L5
+    feats['pra_per_min_L10'] = pra_pm_L10
+
+    # Derived expected stats — opportunity × efficiency. Using L5 per-min
+    # rates because expected_minutes is recency-weighted.
+    feats['expected_stat_pts'] = expected_minutes * pts_pm_L5
+    feats['expected_stat_reb'] = expected_minutes * reb_pm_L5
+    feats['expected_stat_ast'] = expected_minutes * ast_pm_L5
+    feats['expected_stat_pra'] = expected_minutes * pra_pm_L5
 
     # Volume proxies
     vol = [g.get('fga', 0) + 0.44 * g.get('fta', 0) for g in history_logs[:10]
@@ -335,27 +493,28 @@ def build_training_matrix(stat_label, stat_field, adv_map=None):
 
 
 # ---------- Train + calibrate per stat ----------
-def train_one(stat_label, stat_field, adv_map=None, pruned=False):
+def train_one(stat_label, stat_field, adv_map=None, pruned=False, minutes=False):
     X, y, sw, feature_cols = build_training_matrix(stat_label, stat_field, adv_map=adv_map)
     if X is None:
         log.warning(f'[{stat_label}] no samples; SKIP')
         return
 
-    # Apply 2026-04-23 pruned 52-feature schema if requested. Column
-    # subset is applied BEFORE the temporal split so both scaler and
-    # XGB see the exact same feature set. The production schema
-    # (feature_cols) is preserved on the return path when not pruned.
+    # Apply pruned schema (52-feat or 69-feat with minutes). Column subset
+    # is applied BEFORE the temporal split so both scaler and XGB see the
+    # exact same feature set.
     if pruned:
-        missing = [f for f in PRUNED_FEATURES if f not in feature_cols]
+        schema = PRUNED_MINUTES_FEATURES if minutes else PRUNED_FEATURES
+        missing = [f for f in schema if f not in feature_cols]
         if missing:
             raise RuntimeError(
                 f'[{stat_label}] pruned schema references {len(missing)} '
                 f'features not produced by build_features: {missing[:5]}...'
             )
-        kept_idx = [feature_cols.index(f) for f in PRUNED_FEATURES]
+        kept_idx = [feature_cols.index(f) for f in schema]
         X = X[:, kept_idx]
-        feature_cols = list(PRUNED_FEATURES)
-        log.info(f'[{stat_label}] pruned schema applied: {len(feature_cols)} features')
+        feature_cols = list(schema)
+        label_extra = '+min' if minutes else ''
+        log.info(f'[{stat_label}] pruned{label_extra} schema applied: {len(feature_cols)} features')
 
     # Temporal split: first 80% of rows (sorted by player_id, game_id in pipeline)
     # is close enough to temporal since game_id is monotonic within season
@@ -416,14 +575,18 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False):
     top_features = [(n, float(v)) for n, v in top]
 
     # Persist
+    if minutes:
+        version_str = 'NBA_VK_v2_5yr_weighted_pruned_min69'
+    elif pruned:
+        version_str = 'NBA_VK_v2_5yr_weighted_pruned52'
+    else:
+        version_str = 'NBA_VK_v2_5yr_weighted'
     payload = {
         'stat_label': stat_label,
         'stat_field': stat_field,
-        'version': (
-            'NBA_VK_v2_5yr_weighted_pruned52' if pruned
-            else 'NBA_VK_v2_5yr_weighted'
-        ),
+        'version': version_str,
         'pruned_schema': bool(pruned),
+        'minutes_schema': bool(minutes),
         'trained_at': datetime.now(timezone.utc).isoformat(),
         'seasons_used': SEASONS,
         'season_weights': SEASON_WEIGHTS,
@@ -443,7 +606,12 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False):
         'calibration_buckets': calib_rows,
         'top_features': top_features,
     }
-    suffix = '_pruned' if pruned else ''
+    if minutes:
+        suffix = '_min'
+    elif pruned:
+        suffix = '_pruned'
+    else:
+        suffix = ''
     out_path = os.path.join(MODEL_DIR, f'vk2_{stat_label.lower()}{suffix}.pkl')
     with open(out_path, 'wb') as f:
         pickle.dump(payload, f)
@@ -466,16 +634,25 @@ if __name__ == '__main__':
         help='Use the 2026-04-23 52-feature pruned schema. Writes to '
              'vk2_{stat}_pruned.pkl (sibling to production models).',
     )
+    ap.add_argument(
+        '--minutes', action='store_true',
+        help='Add minutes-aware feature block on top of --pruned (69 features). '
+             'Writes to vk2_{stat}_min.pkl.',
+    )
     args = ap.parse_args()
+    if args.minutes and not args.pruned:
+        ap.error('--minutes requires --pruned (extends the pruned baseline)')
 
     t_all = time.monotonic()
     adv_map = preload_advanced_stats()
     results = {}
     for label, field in STATS.items():
-        log.info(f'=== {label} ({field}) {"[PRUNED]" if args.pruned else ""} ===')
+        tag = ('[MIN]' if args.minutes else '[PRUNED]') if args.pruned else ''
+        log.info(f'=== {label} ({field}) {tag} ===')
         try:
             results[label] = train_one(
-                label, field, adv_map=adv_map, pruned=args.pruned,
+                label, field, adv_map=adv_map,
+                pruned=args.pruned, minutes=args.minutes,
             )
         except Exception as e:
             log.exception(f'[{label}] FAILED: {e}')
