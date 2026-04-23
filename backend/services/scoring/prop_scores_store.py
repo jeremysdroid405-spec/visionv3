@@ -87,6 +87,15 @@ _SCORE_OUTPUT_FIELDS = (
     # component family models via empirical covariance. None means
     # no model-derived projection is available for this prop.
     "projection_method",
+    # PRA dual-projection audit (2026-04-23). Persists BOTH the
+    # direct model projection and the 3-way component-synth
+    # projection side-by-side on PRA rows so we can evaluate them
+    # against actual PRA totals once games complete. Live behaviour
+    # unchanged — `model_projection` still drives scoring / ranking.
+    "model_projection_direct", "model_sigma_direct",
+    "model_projection_synth",  "model_sigma_synth",
+    "projection_delta_abs",    "projection_delta_pct",
+    "projection_compare_status", "projection_primary_method",
     # Universal Gate Engine (2026-04-22). The normalized gate output is
     # persisted on every scored prop so the UI / admin can explain the
     # gate outcome in the exact same structure regardless of sport.

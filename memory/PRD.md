@@ -1624,6 +1624,49 @@ post-Stage-8 follow-up (D1 residual).
 - Google Gemini (user key)
 - Emergent LLM key available as fallback.
 
+## Feature: PRA Dual-Projection Audit (A/B Infrastructure) — 2026-04-23
+- **Goal:** Persist BOTH the direct PRA model projection and the 3-way
+  component synth projection side-by-side on every PRA row so we can
+  evaluate the two methods against actual PRA totals once games
+  conclude. Live production behaviour is unchanged.
+- **What changed:**
+  - `ScoringContext` (base.py): +8 audit fields
+    (`model_projection_direct/sigma_direct`,
+    `model_projection_synth/sigma_synth`, `projection_delta_abs/pct`,
+    `projection_compare_status`, `projection_primary_method`).
+  - `NBAScoringAdapter` (nba_scoring.py): for PRA props, always runs
+    the synth in parallel with the direct model; stamps both sets.
+    Live `model_projection` still carries whatever the primary path
+    chose (direct-first with synth fallback, unchanged).
+  - `prop_scores_store.py`: audit fields added to
+    `_SCORE_OUTPUT_FIELDS` so every NBA PRA score doc persists them.
+  - `recompute.py`: new `_build_pra_audit_snapshots()` helper and
+    upsert into `nba_pra_projection_audit` (idempotent by
+    `event_id+player_name+line+recommendation`) so the dual
+    projections survive `final-nba-rt` overwrites.
+- **New admin endpoints:**
+  - `POST /api/v3/admin/pra-audit/settle` — walks unsettled audit
+    rows, joins with `nba_master_hub_2026.bdl_game_logs` on player
+    name + game date (±1 day slack for UTC skew), writes actual
+    pts/reb/ast/pra back into the audit row.
+  - `GET /api/v3/admin/pra-audit/report` — counts, divergence audit
+    (direct-vs-synth absolute delta %), MAE audit once settled data
+    exists (direct vs actual / synth vs actual), per-archetype
+    (guard/wing/big from `nba_master_hub_2026.position`) and
+    per-line-bucket breakdowns, top 10 synth-outperforms-direct and
+    direct-outperforms-synth samples with >2.0 MAE edge.
+- **Snapshot created:** 511 PRA rows, **100% both_available**. Zero
+  settled (tonight's slate hasn't started yet — game_start_utc is
+  23:10 UTC, current 05:41 UTC). MAE audit will populate after
+  `/settle` is re-run post-games.
+- **Divergence audit (live, 511 samples):**
+  - Overall: avg 5.18%, median 3.55%, max 49.5%
+  - By archetype: bigs 5.85% / guards 5.61% / wings 4.24%
+  - By line bucket: **<20 = 7.24%** (largest divergence); 50+ = 1.79% (methods agree on HIGH-total players)
+  - Outliers: Jerami Grant cluster (49.5% → 35.9% across lines), Shaedon Sharpe (25.3% → 21.1%). Both traced to empirical covariance structure the direct model doesn't decompose.
+- **Files:** `adapters/base.py`, `adapters/nba_scoring.py`,
+  `prop_scores_store.py`, `recompute.py`, `routes/admin.py`.
+
 ## Feature: 3-Way Combo Projection Synthesis (Generalized N-Way) — 2026-04-23
 - **Goal:** Generalize combo synthesis to arbitrary N components, and
   add 3-way synth as a FALLBACK path for direct-model families

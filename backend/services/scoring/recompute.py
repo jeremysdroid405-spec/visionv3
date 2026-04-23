@@ -34,6 +34,66 @@ def _default_version_tag() -> str:
     return f"recompute-{ts}-{uuid.uuid4().hex[:6]}"
 
 
+def _build_pra_audit_snapshots(score_docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Build PRA dual-projection audit rows from a batch of scored docs.
+
+    Filters to NBA PRA-family rows where at least one projection
+    (direct or synth) is non-null, and returns lean rows suitable for
+    upsert into `nba_pra_projection_audit`. The audit collection
+    stores a snapshot of (direct, synth, deltas) keyed by
+    (event_id, player_name, line, recommendation) so actuals can be
+    joined in later once games complete. No-op for non-PRA families
+    and for rows where BOTH projections are missing (neither).
+    """
+    rows: List[Dict[str, Any]] = []
+    for d in score_docs:
+        gate_eval = d.get("gate_eval") or {}
+        fam = (gate_eval.get("stat_family") or "").lower()
+        # Resolve family from stat_type as a fallback for rows where
+        # gate_eval wasn't fully populated (e.g., pre-gate-screen).
+        if fam != "pra" and (d.get("stat_type") or "").upper() != "PRA":
+            continue
+        if (d.get("projection_compare_status") or "neither") == "neither":
+            continue
+        if not d.get("event_id") or not d.get("player_name") or d.get("line") is None:
+            continue
+        rows.append({
+            "event_id": d["event_id"],
+            "player_name": d["player_name"],
+            "stat_type": d.get("stat_type"),
+            "stat_family": fam or "pra",
+            "line": float(d["line"]),
+            "recommendation": d.get("recommendation"),
+            "game_start_utc": d.get("game_start_utc"),
+            "model_projection_direct": d.get("model_projection_direct"),
+            "model_sigma_direct": d.get("model_sigma_direct"),
+            "model_projection_synth": d.get("model_projection_synth"),
+            "model_sigma_synth": d.get("model_sigma_synth"),
+            "projection_delta_abs": d.get("projection_delta_abs"),
+            "projection_delta_pct": d.get("projection_delta_pct"),
+            "projection_compare_status": d.get("projection_compare_status"),
+            "projection_primary_method": d.get("projection_primary_method"),
+            "tier": d.get("tier"),
+            "tier_reference_book": d.get("tier_reference_book"),
+            "tier_reference_odds": d.get("tier_reference_odds"),
+            "hit_rate_over": d.get("hit_rate_over"),
+            "hit_rate_under": d.get("hit_rate_under"),
+            "cv": d.get("cv"),
+            "snapshot_at": datetime.now(timezone.utc),
+            # Settlement fields — filled by the audit endpoint when
+            # bdl_game_logs show the game concluded.
+            "actual_pts": None,
+            "actual_reb": None,
+            "actual_ast": None,
+            "actual_pra": None,
+            "settled": False,
+            "settled_at": None,
+        })
+    return rows
+
+
+
+
 # ----------------------------------------------------------------------------
 # Stat-aware α for ranking_score_v2 (2026-04-21)
 # ----------------------------------------------------------------------------
@@ -397,6 +457,17 @@ async def recompute_sport(
         # model_projection / model_sigma came from ("model",
         # "combo_synth", or None).
         doc["projection_method"] = ctx.projection_method
+        # PRA dual-projection audit (2026-04-23): both projections
+        # side-by-side so we can evaluate direct vs synth against
+        # actual PRA totals once games complete.
+        doc["model_projection_direct"] = ctx.model_projection_direct
+        doc["model_sigma_direct"] = ctx.model_sigma_direct
+        doc["model_projection_synth"] = ctx.model_projection_synth
+        doc["model_sigma_synth"] = ctx.model_sigma_synth
+        doc["projection_delta_abs"] = ctx.projection_delta_abs
+        doc["projection_delta_pct"] = ctx.projection_delta_pct
+        doc["projection_compare_status"] = ctx.projection_compare_status
+        doc["projection_primary_method"] = ctx.projection_primary_method
         if "tp_books_used" in raw:
             doc["tp_books_used"] = raw["tp_books_used"]
         if "tp_books_list" in raw:
@@ -431,6 +502,37 @@ async def recompute_sport(
         version_tag=version_tag, dry_run=dry_run,
         mode=write_mode,
     )
+
+    # 4b. PRA dual-projection audit snapshot (NBA only, 2026-04-23).
+    # Persist every PRA row where either direct or synth produced a
+    # projection into a standalone audit collection, idempotently
+    # keyed by (event_id, player_name, line). Survives `final-nba-rt`
+    # overwrites so we can backtest against actuals once games
+    # conclude. Live scoring behaviour is unaffected by this block.
+    if not dry_run and sport == "nba":
+        try:
+            audit_rows = _build_pra_audit_snapshots(score_docs)
+            if audit_rows:
+                audit_coll = db["nba_pra_projection_audit"]
+                for row in audit_rows:
+                    await audit_coll.update_one(
+                        {
+                            "event_id": row["event_id"],
+                            "player_name": row["player_name"],
+                            "line": row["line"],
+                            "recommendation": row["recommendation"],
+                        },
+                        {"$set": row},
+                        upsert=True,
+                    )
+                logger.info(
+                    f"[PRA_AUDIT] upserted {len(audit_rows)} PRA dual-"
+                    f"projection rows into nba_pra_projection_audit"
+                )
+        except Exception as exc:
+            # Audit is non-critical; never fail the recompute because
+            # of it. Log and continue.
+            logger.warning(f"[PRA_AUDIT] snapshot write failed: {exc!r}")
 
     # 5. Leak-check: cached_board must NOT be mutated AND must not contain
     #    recompute-produced scoring data (check for non-null scoring values).

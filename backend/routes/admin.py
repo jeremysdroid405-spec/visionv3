@@ -1111,3 +1111,282 @@ async def threshold_simulate(
             "note": "units are metric-native (percentage points for tp/hit_rate/edge/ceiling; raw ratio for cv)",
         },
     }
+
+
+
+# ---------------------------------------------------------------------------
+# PRA Dual-Projection Audit (2026-04-23)
+# ---------------------------------------------------------------------------
+from datetime import datetime, timezone
+
+
+def _player_archetype_from_position(pos: Optional[str], name: Optional[str]) -> str:
+    if not pos:
+        return "unknown"
+    p = str(pos).upper()
+    if "G" in p and "F" not in p:
+        return "guard"
+    if "F" in p and "C" not in p:
+        return "wing"
+    if "C" in p:
+        return "big"
+    return "unknown"
+
+
+def _line_bucket(line: float) -> str:
+    if line < 20: return "<20"
+    if line < 30: return "20-30"
+    if line < 40: return "30-40"
+    if line < 50: return "40-50"
+    return "50+"
+
+
+@router.post("/v3/admin/pra-audit/settle")
+async def pra_audit_settle(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Walk unsettled `nba_pra_projection_audit` rows and resolve
+    each one's actual pts / reb / ast from
+    `nba_master_hub_2026.bdl_game_logs`. Idempotent."""
+    _require_admin_debug_token(x_admin_token)
+    if _db is None:
+        raise HTTPException(status_code=500, detail="db not initialised")
+
+    audit = _db["nba_pra_projection_audit"]
+    hub = _db["nba_master_hub_2026"]
+
+    logs_by_name: Dict[str, list] = {}
+    async for h in hub.find(
+        {"bdl_game_logs_count": {"$gt": 0}},
+        {"_id": 0, "display_name": 1, "bdl_game_logs": 1},
+    ):
+        nm = (h.get("display_name") or "").lower()
+        logs_by_name[nm] = h.get("bdl_game_logs") or []
+
+    settled = 0
+    still_pending = 0
+    from datetime import timedelta as _td
+    async for row in audit.find({"settled": {"$ne": True}}, {"_id": 0}):
+        game_start = row.get("game_start_utc")
+        if not game_start:
+            still_pending += 1
+            continue
+        try:
+            dt = game_start
+            if isinstance(dt, str):
+                dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+            target_dates = {dt.date().isoformat(), (dt.date() - _td(days=1)).isoformat()}
+        except Exception:
+            still_pending += 1
+            continue
+        player_logs = logs_by_name.get((row.get("player_name") or "").lower()) or []
+        hit = None
+        for g in player_logs:
+            if str(g.get("date") or "") in target_dates:
+                hit = g
+                break
+        if hit is None:
+            still_pending += 1
+            continue
+        pts = hit.get("pts"); reb = hit.get("reb"); ast = hit.get("ast")
+        if pts is None or reb is None or ast is None:
+            still_pending += 1
+            continue
+        pra_actual = float(pts) + float(reb) + float(ast)
+        await audit.update_one(
+            {
+                "event_id": row["event_id"],
+                "player_name": row["player_name"],
+                "line": row["line"],
+                "recommendation": row["recommendation"],
+            },
+            {"$set": {
+                "actual_pts": int(pts),
+                "actual_reb": int(reb),
+                "actual_ast": int(ast),
+                "actual_pra": round(pra_actual, 2),
+                "settled": True,
+                "settled_at": datetime.now(timezone.utc),
+            }},
+        )
+        settled += 1
+
+    total = await audit.count_documents({})
+    settled_total = await audit.count_documents({"settled": True})
+    return {
+        "status": "ok",
+        "settled_this_run": settled,
+        "still_pending_this_run": still_pending,
+        "total_audit_rows": total,
+        "total_settled": settled_total,
+        "total_pending": total - settled_total,
+    }
+
+
+@router.get("/v3/admin/pra-audit/report")
+async def pra_audit_report(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Aggregate the PRA dual-projection audit: counts, MAE (direct
+    vs actual, synth vs actual), hit-rate calibration, per-archetype
+    and per-line-bucket breakdowns, and top outperformance samples."""
+    _require_admin_debug_token(x_admin_token)
+    if _db is None:
+        raise HTTPException(status_code=500, detail="db not initialised")
+
+    audit = _db["nba_pra_projection_audit"]
+    hub = _db["nba_master_hub_2026"]
+
+    pos_by_name: Dict[str, str] = {}
+    async for h in hub.find(
+        {}, {"_id": 0, "display_name": 1, "position": 1, "bdl_position": 1},
+    ):
+        nm = (h.get("display_name") or "").lower()
+        pos_by_name[nm] = h.get("position") or h.get("bdl_position") or ""
+
+    total_rows = await audit.count_documents({})
+    both_available = await audit.count_documents({"projection_compare_status": "both_available"})
+    direct_only = await audit.count_documents({"projection_compare_status": "direct_only"})
+    synth_only = await audit.count_documents({"projection_compare_status": "synth_only"})
+    settled = await audit.count_documents({"settled": True})
+    settled_both = await audit.count_documents(
+        {"settled": True, "projection_compare_status": "both_available"}
+    )
+
+    from collections import defaultdict
+    deltas: List[float] = []
+    delta_by_arch: Dict[str, List[float]] = defaultdict(list)
+    delta_by_bucket: Dict[str, List[float]] = defaultdict(list)
+    async for row in audit.find(
+        {"projection_compare_status": "both_available"},
+        {"_id": 0, "projection_delta_pct": 1, "line": 1, "player_name": 1},
+    ):
+        dp = row.get("projection_delta_pct")
+        if dp is None:
+            continue
+        deltas.append(float(dp))
+        arch = _player_archetype_from_position(
+            pos_by_name.get((row.get("player_name") or "").lower()), row.get("player_name"),
+        )
+        delta_by_arch[arch].append(float(dp))
+        delta_by_bucket[_line_bucket(float(row.get("line") or 0))].append(float(dp))
+
+    def _stats(xs: List[float]) -> Dict[str, Any]:
+        if not xs:
+            return {"n": 0}
+        from statistics import median as _median
+        return {
+            "n": len(xs),
+            "avg_abs_delta_pct": round(sum(xs) / len(xs), 3),
+            "median_abs_delta_pct": round(_median(xs), 3),
+            "max_abs_delta_pct": round(max(xs), 3),
+        }
+
+    divergence = {
+        "all": _stats(deltas),
+        "by_archetype": {k: _stats(v) for k, v in delta_by_arch.items()},
+        "by_line_bucket": {k: _stats(v) for k, v in delta_by_bucket.items()},
+    }
+
+    direct_errs: List[float] = []; synth_errs: List[float] = []
+    direct_signed: List[float] = []; synth_signed: List[float] = []
+    direct_hit_match = 0; synth_hit_match = 0; counted_hits = 0
+    synth_wins: List[Dict[str, Any]] = []
+    direct_wins: List[Dict[str, Any]] = []
+    err_by_arch: Dict[str, Dict[str, List[float]]] = defaultdict(
+        lambda: {"direct": [], "synth": []}
+    )
+    err_by_bucket: Dict[str, Dict[str, List[float]]] = defaultdict(
+        lambda: {"direct": [], "synth": []}
+    )
+
+    async for row in audit.find(
+        {"settled": True, "projection_compare_status": "both_available"},
+        {"_id": 0},
+    ):
+        actual = row.get("actual_pra")
+        pd = row.get("model_projection_direct")
+        ps = row.get("model_projection_synth")
+        line = row.get("line")
+        rec = row.get("recommendation")
+        if actual is None or pd is None or ps is None or line is None:
+            continue
+        arch = _player_archetype_from_position(
+            pos_by_name.get((row.get("player_name") or "").lower()), row.get("player_name"),
+        )
+        bucket = _line_bucket(float(line))
+
+        d_err_abs = abs(float(pd) - float(actual))
+        s_err_abs = abs(float(ps) - float(actual))
+        direct_errs.append(d_err_abs); synth_errs.append(s_err_abs)
+        direct_signed.append(float(pd) - float(actual))
+        synth_signed.append(float(ps) - float(actual))
+        err_by_arch[arch]["direct"].append(d_err_abs)
+        err_by_arch[arch]["synth"].append(s_err_abs)
+        err_by_bucket[bucket]["direct"].append(d_err_abs)
+        err_by_bucket[bucket]["synth"].append(s_err_abs)
+
+        actual_over = float(actual) > float(line)
+        if (float(pd) > float(line)) == actual_over: direct_hit_match += 1
+        if (float(ps) > float(line)) == actual_over: synth_hit_match += 1
+        counted_hits += 1
+
+        edge = d_err_abs - s_err_abs
+        sample = {
+            "player": row.get("player_name"), "line": line, "side": rec,
+            "actual": actual, "direct": pd, "synth": ps,
+            "direct_err": round(d_err_abs, 3), "synth_err": round(s_err_abs, 3),
+            "edge": round(edge, 3),
+        }
+        if edge >= 2.0:
+            synth_wins.append(sample)
+        elif edge <= -2.0:
+            direct_wins.append(sample)
+
+    def _mae(xs: List[float]) -> Optional[float]:
+        return round(sum(xs) / len(xs), 3) if xs else None
+
+    accuracy = {
+        "settled_samples": len(direct_errs),
+        "direct_mae": _mae(direct_errs),
+        "synth_mae": _mae(synth_errs),
+        "direct_bias": round(sum(direct_signed) / len(direct_signed), 3) if direct_signed else None,
+        "synth_bias": round(sum(synth_signed) / len(synth_signed), 3) if synth_signed else None,
+        "direct_side_accuracy_pct": (
+            round(direct_hit_match / counted_hits * 100.0, 2) if counted_hits else None
+        ),
+        "synth_side_accuracy_pct": (
+            round(synth_hit_match / counted_hits * 100.0, 2) if counted_hits else None
+        ),
+        "by_archetype": {
+            k: {"n": len(v["direct"]), "direct_mae": _mae(v["direct"]), "synth_mae": _mae(v["synth"])}
+            for k, v in err_by_arch.items()
+        },
+        "by_line_bucket": {
+            k: {"n": len(v["direct"]), "direct_mae": _mae(v["direct"]), "synth_mae": _mae(v["synth"])}
+            for k, v in err_by_bucket.items()
+        },
+        "synth_outperforms_direct_samples": sorted(synth_wins, key=lambda r: -r["edge"])[:10],
+        "direct_outperforms_synth_samples": sorted(direct_wins, key=lambda r: r["edge"])[:10],
+    }
+
+    return {
+        "collection": "nba_pra_projection_audit",
+        "counts": {
+            "total_audit_rows": total_rows,
+            "both_available": both_available,
+            "direct_only": direct_only,
+            "synth_only": synth_only,
+            "settled": settled,
+            "settled_both_available": settled_both,
+            "pending": total_rows - settled,
+        },
+        "divergence_audit": divergence,
+        "accuracy_audit": accuracy,
+        "notes": [
+            "Run POST /api/v3/admin/pra-audit/settle first to backfill "
+            "actuals from nba_master_hub_2026.bdl_game_logs.",
+            "accuracy_audit is populated only when settled_samples > 0. "
+            "Before the first game concludes, only divergence_audit is meaningful.",
+        ],
+    }

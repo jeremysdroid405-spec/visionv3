@@ -788,6 +788,15 @@ class NBAScoringAdapter(ScoringAdapter):
         projection_method: Optional[str] = None
         opponent_team = prop.get("opponent") or prop.get("away_team")
         use_vk2_path = (active_method_early == "vk2")
+        # PRA dual-projection audit (2026-04-23): populate these when
+        # both direct and synth come back with a projection so we can
+        # evaluate them against actuals later. Live pipeline behaviour
+        # is unchanged — `model_projection` / `model_sigma` still carry
+        # whatever the live primary path chose.
+        model_projection_direct: Optional[float] = None
+        model_sigma_direct: Optional[float] = None
+        model_projection_synth: Optional[float] = None
+        model_sigma_synth: Optional[float] = None
         if model_key in self._MODEL_STATS:
             if not use_vk2_path:
                 mres = self._predict_model_prob_over(
@@ -803,6 +812,8 @@ class NBAScoringAdapter(ScoringAdapter):
                 model_sigma = mres.get("sigma")
                 if model_projection is not None:
                     projection_method = "model"
+                    model_projection_direct = model_projection
+                    model_sigma_direct = model_sigma
             else:
                 v2res = self._predict_vk2_prob_over(
                     player_name=player_name, stat_type=model_key, line=float(line),
@@ -817,30 +828,36 @@ class NBAScoringAdapter(ScoringAdapter):
                 vk2_error = v2res.get("error")
                 if vk2_projection is not None:
                     projection_method = "model"
+                    model_projection_direct = vk2_projection
+                    model_sigma_direct = vk2_sigma
 
-            # 3-way synth FALLBACK (2026-04-23): if the direct model
-            # didn't produce a projection but this family has a synth
-            # recipe (e.g. PRA → PTS+REB+AST), try synthesizing. This
-            # rescues PRA props where the direct model training set
-            # doesn't include the player.
-            direct_proj = (
-                vk2_projection if use_vk2_path else model_projection
-            )
             synth_components = self._SYNTH_FALLBACK_COMPONENTS.get(resolved_family)
-            if direct_proj is None and synth_components:
-                cres = self._predict_combo_projection(
+            if synth_components:
+                # PRA audit: always run synth in parallel so we can
+                # compare against the direct model row-by-row.
+                cres_audit = self._predict_combo_projection(
                     db=db, player_name=player_name, line=float(line),
                     opponent_team=opponent_team, use_vk2=use_vk2_path,
                     components=synth_components,
                 )
-                if cres.get("projection") is not None:
-                    p_over_c = cres.get("p_over")
+                if cres_audit.get("projection") is not None:
+                    model_projection_synth = cres_audit.get("projection")
+                    model_sigma_synth = cres_audit.get("sigma")
+
+                # Fallback wiring (unchanged): when direct missed,
+                # promote synth to the LIVE projection so ranking /
+                # p_true_model still have a real value.
+                direct_proj = (
+                    vk2_projection if use_vk2_path else model_projection
+                )
+                if direct_proj is None and model_projection_synth is not None:
+                    p_over_c = cres_audit.get("p_over")
                     if p_over_c is not None:
                         p_true_model = round(
                             (1.0 - p_over_c) if side == "UNDER" else p_over_c, 4
                         )
-                    model_projection = cres.get("projection")
-                    model_sigma = cres.get("sigma")
+                    model_projection = model_projection_synth
+                    model_sigma = model_sigma_synth
                     projection_method = "combo_synth"
         elif resolved_family in self._COMBO_COMPONENTS:
             # Primary combo synthesis (2026-04-23): pts_reb / pts_ast /
@@ -945,4 +962,31 @@ class NBAScoringAdapter(ScoringAdapter):
             hit_rate_over=hit_rate_over,
             hit_rate_under=hit_rate_under,
             projection_method=projection_method,
+            # PRA dual-projection audit — both versions side by side
+            # when the family has a synth recipe; None otherwise.
+            model_projection_direct=model_projection_direct,
+            model_sigma_direct=model_sigma_direct,
+            model_projection_synth=model_projection_synth,
+            model_sigma_synth=model_sigma_synth,
+            projection_delta_abs=(
+                round(abs(model_projection_direct - model_projection_synth), 3)
+                if (model_projection_direct is not None
+                    and model_projection_synth is not None) else None
+            ),
+            projection_delta_pct=(
+                round(
+                    abs(model_projection_direct - model_projection_synth)
+                    / max(abs(model_projection_direct), 1e-6) * 100.0, 2,
+                )
+                if (model_projection_direct is not None
+                    and model_projection_synth is not None) else None
+            ),
+            projection_compare_status=(
+                "both_available"
+                if (model_projection_direct is not None and model_projection_synth is not None)
+                else "direct_only" if model_projection_direct is not None
+                else "synth_only" if model_projection_synth is not None
+                else "neither"
+            ),
+            projection_primary_method=projection_method,
         )

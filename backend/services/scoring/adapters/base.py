@@ -32,6 +32,20 @@ class ScoringContext:
     #                    empirical covariance of the two stats).
     # None when no projection is available (family has no model).
     projection_method: Optional[str] = None
+    # PRA dual-projection audit fields (2026-04-23). When both the
+    # direct model and the 3-way component synth produce a valid
+    # projection for a PRA prop, both are stamped side-by-side so we
+    # can evaluate them against actuals later. Live production
+    # behaviour is unchanged — `model_projection` / `model_sigma`
+    # still carry whatever the current live pipeline chose.
+    model_projection_direct: Optional[float] = None
+    model_sigma_direct: Optional[float] = None
+    model_projection_synth: Optional[float] = None
+    model_sigma_synth: Optional[float] = None
+    projection_delta_abs: Optional[float] = None
+    projection_delta_pct: Optional[float] = None
+    projection_compare_status: Optional[str] = None  # both_available | direct_only | synth_only | neither
+    projection_primary_method: Optional[str] = None   # mirrors live projection_method, preserved for audit
     hit_rate: Optional[float] = None
     edge_pct: Optional[float] = None
     tp: Optional[float] = None
