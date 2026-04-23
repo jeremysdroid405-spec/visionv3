@@ -348,20 +348,38 @@ def compute_tier(
     mgm_layer: Optional[Dict],
     p_model: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """Assign risk bucket using existing MLBTierSorter gates on a reference book."""
+    """Assign risk bucket via the UNIVERSAL GATE ENGINE.
+
+    Post 2026-04-22 Hard Consolidation / Gate Engine refactor:
+      • sport-specific gate evaluators (`_NBAGateSorter`,
+        `MLBTierSorter.check_*_gates`) are NOT called;
+      • this function assembles a `NormalizedMetrics` record and
+        delegates the decision to `services.scoring.gates.UniversalGateEngine`;
+      • the returned contract (`tier`, `tier_reason`,
+        `tier_reference_book`, `tier_reference_odds`,
+        `tier_gate_results`, optional `war_zone_cv_modifier`) is
+        preserved for `recompute.py` and all UI consumers.
+
+    The `sorter` parameter is retained only as a carrier of the adapter
+    identity (``sorter.sport`` when the adapter exposes it) and any
+    stat-specific CV cap override (via `_resolve_cv_cap_override`).
+    """
+    from services.scoring.gates import (
+        NormalizedMetrics, ReasonCode, get_engine,
+    )
+    from services.scoring.gates.thresholds import (
+        resolve_stat_family, resolve_target_tier,
+    )
+
     ref_odds, ref_book = _pick_reference_odds(dk_layer, mgm_layer)
 
-    # Side-aware gate inputs. For UNDER picks we pass `p_model_pct` through
-    # so the sorter can replace the market-implied `gate_tp` with a
-    # model-confidence floor (path (c): "UNDER tp = model confidence").
-    # OVER behaviour is unchanged — sorter ignores side when it equals OVER.
     side = (prop.get("recommendation") or "OVER").upper()
     p_model_pct = round((p_model or 0.0) * 100.0, 1) if p_model is not None else None
 
     if ref_odds is None:
         return {
             "tier": "unqualified",
-            "tier_reason": "no_reference_market",
+            "tier_reason": ReasonCode.NO_REFERENCE_MARKET,
             "tier_reference_book": "none",
             "tier_reference_odds": None,
             "tier_gate_results": {},
@@ -369,7 +387,7 @@ def compute_tier(
 
     # Direction veto — PP demon/goblin anchor can't force a side against
     # converging negative evidence (model edge < 0, anchor-side hit rate < 50,
-    # newest-L10 avg on wrong side). Fires BEFORE any tier gate so the pick
+    # newest-L10 avg on wrong side). Fires BEFORE gate evaluation so the pick
     # never reaches the board.
     veto_reason = _model_contradicts_anchor(prop, side)
     if veto_reason:
@@ -381,12 +399,11 @@ def compute_tier(
             "tier_gate_results": {},
         }
 
-    # Historical profitable-signal gate (2026-02-20): the VK1 backtest that
-    # produced +19.26% real-odds AST ROI on 4,249 bets applied
-    # `confidence_threshold = 55.0` on the Gaussian p_over. Every prop below
-    # 0.55 model confidence is rejected to `unqualified` before any tier-
-    # specific gate runs. This mirrors the single filter responsible for the
-    # historical edge; no other gates are added.
+    # Historical profitable-signal gate (2026-02-20): the VK1 backtest
+    # that produced +19.26% real-odds AST ROI applied
+    # `confidence_threshold = 55.0` on the Gaussian p_over. Every prop
+    # below 0.55 model confidence is rejected to `unqualified` before
+    # the gate engine runs.
     if p_model is not None and p_model < 0.55:
         return {
             "tier": "unqualified",
@@ -396,63 +413,171 @@ def compute_tier(
             "tier_gate_results": {},
         }
 
-    # Safe Haven — short odds
-    if ref_odds <= _REF_SAFE_HAVEN_MAX:
-        passed, reason, gates = sorter.check_safe_haven_gates(
-            prop, cv, hit_rate, edge_pct, tp,
-            side=side, p_model_pct=p_model_pct,
-        )
-        if passed:
-            return {
-                "tier": "safe_haven", "tier_reason": "gates_passed",
-                "tier_reference_book": ref_book, "tier_reference_odds": ref_odds,
-                "tier_gate_results": gates,
-            }
-        return {
-            "tier": "unqualified", "tier_reason": f"safe_haven_failed: {reason}",
-            "tier_reference_book": ref_book, "tier_reference_odds": ref_odds,
-            "tier_gate_results": gates,
-        }
+    # Route to a target tier via the sport-aware odds buckets in config.
+    sport = _infer_sport(sorter, prop)
+    target_tier = resolve_target_tier(sport, ref_odds) or "front_lines"
+    stat_raw = prop.get("stat_type")
+    stat_family = resolve_stat_family(sport, stat_raw)
 
-    # War Zone — long odds
-    if ref_odds >= _REF_WAR_ZONE_MIN:
-        passed, reason, gates = sorter.check_war_zone_gates(prop, cv, ceiling_rate, edge_pct)
-        # `check_war_zone_gates` stamps `prop["war_zone_cv_modifier"]`
-        # (2026-04-22 refactor); surface it on the stack result so
-        # `recompute.py` can persist it on the score doc. Mutations to
-        # `prop` here do NOT flow back to `ctx.raw_prop` because
-        # `recompute.compute_scoring_stack` passes a fresh splatted dict.
-        cv_mod = prop.get("war_zone_cv_modifier")
-        if passed:
-            return {
-                "tier": "war_zone", "tier_reason": "gates_passed",
-                "tier_reference_book": ref_book, "tier_reference_odds": ref_odds,
-                "tier_gate_results": gates,
-                "war_zone_cv_modifier": cv_mod,
-            }
-        return {
-            "tier": "unqualified", "tier_reason": f"war_zone_failed: {reason}",
-            "tier_reference_book": ref_book, "tier_reference_odds": ref_odds,
-            "tier_gate_results": gates,
-            "war_zone_cv_modifier": cv_mod,
-        }
+    # Book count — the universal 0-Book Exclusion filter has already
+    # trimmed pp_only rows before scoring; for any survivor this is
+    # always >= 1. We still surface the real count so the coverage_gate
+    # is informative and future per-tier min_books bumps become config
+    # changes rather than code changes.
+    book_count = prop.get("book_count")
+    if book_count is None:
+        books = [b for b in (prop.get("books_anchored") or []) if b and b != "prizepicks"]
+        book_count = len(books) if books else None
 
-    # Front Lines — middle band
-    passed, reason, gates = sorter.check_front_lines_gates(
-        prop, cv, hit_rate, edge_pct, tp,
-        side=side, p_model_pct=p_model_pct,
+    # CV cap override — NBA Safe Haven applies a stat-specific cap via
+    # `services.scoring.cv_caps.resolve_cv_cap`. For every other
+    # (sport, tier) we leave the config default in place.
+    cv_cap_override = None
+    if sport == "nba" and target_tier == "safe_haven":
+        try:
+            from services.scoring.cv_caps import resolve_cv_cap
+            cv_cap_override = resolve_cv_cap(stat_raw)
+        except Exception:
+            cv_cap_override = None
+
+    # MLB goblin-line override — binary outcomes (line < 1) use a
+    # relaxed Safe Haven threshold matrix.
+    mlb_goblin_override: Dict[str, Any] = {}
+    if sport == "mlb" and target_tier == "safe_haven":
+        try:
+            if float(prop.get("line") or 0) < 1.0:
+                mlb_goblin_override = {
+                    "cv_max": 1.10, "hr_min": 75.0, "tp_min": 60.0, "edge_min": -9999.0,
+                }
+        except (TypeError, ValueError):
+            pass
+
+    metrics = NormalizedMetrics(
+        sport=sport,
+        tier=target_tier,
+        stat_family=stat_family,
+        side=side,
+        reference_book=ref_book,
+        reference_odds=ref_odds,
+        book_count=book_count,
+        tp=tp,
+        hit_rate=hit_rate,
+        hit_rate_l20=prop.get("hit_rate_over") or prop.get("hit_rate_l20"),
+        hit_rate_l10=prop.get("hit_rate_l10"),
+        hit_rate_l5=prop.get("hit_rate_l5"),
+        ceiling_rate=ceiling_rate,
+        cv=cv,
+        edge_pct=edge_pct,
+        p_model_pct=p_model_pct,
+        extras={"cv_cap_override": cv_cap_override, **(
+            {"mlb_goblin_override": mlb_goblin_override} if mlb_goblin_override else {}
+        )},
     )
-    if passed:
-        return {
-            "tier": "front_lines", "tier_reason": "gates_passed",
-            "tier_reference_book": ref_book, "tier_reference_odds": ref_odds,
-            "tier_gate_results": gates,
+
+    # Apply the MLB goblin-line override by mutating the resolved
+    # thresholds inline. (Kept here so the engine itself stays sport-
+    # blind — the override is a pre-engine config patch.)
+    eval_result = get_engine().evaluate(metrics)
+    if mlb_goblin_override and eval_result.gate_summary == "FAIL":
+        # Re-evaluate with the goblin override applied.
+        from services.scoring.gates.engine import UniversalGateEngine
+        from services.scoring.gates.schema import GateDetail
+        from services.scoring.gates.thresholds import resolve_thresholds
+        thresholds = dict(resolve_thresholds(sport, target_tier, stat_family))
+        if thresholds:
+            thresholds["cv_gate"]       = {"max": mlb_goblin_override["cv_max"]}
+            thresholds["hit_rate_gate"] = {"min": mlb_goblin_override["hr_min"], "window": "default"}
+            thresholds["tp_gate"]       = {"min": mlb_goblin_override["tp_min"]}
+            thresholds["edge_gate"]     = {"min": mlb_goblin_override["edge_min"]}
+            details: Dict[str, GateDetail] = {}
+            passed_gates: list = []
+            failed_gates: list = []
+            engine = UniversalGateEngine()
+            for gate_type, gate_cfg in thresholds.items():
+                fn = engine._GATE_DISPATCH.get(gate_type)
+                if fn is None:
+                    continue
+                detail = fn.__func__(gate_cfg, metrics) if hasattr(fn, "__func__") else fn(gate_cfg, metrics)
+                details[gate_type] = detail
+                (passed_gates if detail.passed else failed_gates).append(gate_type)
+            overall_passed = len(failed_gates) == 0
+            eval_result.gate_details = details
+            eval_result.passed_gates = passed_gates
+            eval_result.failed_gates = failed_gates
+            eval_result.passed = overall_passed
+            eval_result.gate_summary = "PASS" if overall_passed else "FAIL"
+            eval_result.reason_code = (
+                ReasonCode.GATES_PASSED if overall_passed
+                else details[failed_gates[0]].reason_code or ReasonCode.for_gate(failed_gates[0])
+            )
+
+    # War-Zone CV scoring modifier — unchanged semantics (CV floor is
+    # applied by the NBA `cv_gate.min_cv_floor`; the modifier affects
+    # ranking only and survives regardless of gate outcome).
+    war_zone_cv_mod = None
+    if target_tier == "war_zone":
+        try:
+            from services.mlb_tier_sorter import war_zone_cv_modifier
+            war_zone_cv_mod = war_zone_cv_modifier(cv)
+        except Exception:
+            war_zone_cv_mod = None
+
+    # Build legacy-shaped return for recompute.py / UI.
+    legacy_gate_results = {
+        name: {
+            "threshold": d.threshold,
+            "value": d.actual,
+            "passed": bool(d.passed),
+            **({"tp_unavailable": True} if d.reason_code == ReasonCode.TP_UNAVAILABLE else {}),
+            **({"note": d.note} if d.note else {}),
+            "reason_code": d.reason_code,
         }
-    return {
-        "tier": "unqualified", "tier_reason": f"front_lines_failed: {reason}",
-        "tier_reference_book": ref_book, "tier_reference_odds": ref_odds,
-        "tier_gate_results": gates,
+        for name, d in eval_result.gate_details.items()
     }
+
+    if eval_result.passed:
+        out = {
+            "tier": target_tier,
+            "tier_reason": ReasonCode.GATES_PASSED,
+            "tier_reference_book": ref_book,
+            "tier_reference_odds": ref_odds,
+            "tier_gate_results": legacy_gate_results,
+            "gate_eval": eval_result.to_dict(),
+        }
+        if war_zone_cv_mod is not None:
+            out["war_zone_cv_modifier"] = war_zone_cv_mod
+        return out
+
+    out = {
+        "tier": "unqualified",
+        "tier_reason": f"{target_tier}_failed: {eval_result.reason_code}",
+        "tier_reference_book": ref_book,
+        "tier_reference_odds": ref_odds,
+        "tier_gate_results": legacy_gate_results,
+        "gate_eval": eval_result.to_dict(),
+    }
+    if war_zone_cv_mod is not None:
+        out["war_zone_cv_modifier"] = war_zone_cv_mod
+    return out
+
+
+def _infer_sport(sorter, prop: Dict) -> str:
+    """Best-effort sport resolution without breaking sorter-less calls."""
+    if isinstance(prop, dict):
+        s = prop.get("sport")
+        if s:
+            return str(s).lower()
+    if sorter is not None:
+        for attr in ("sport", "SPORT", "_sport"):
+            s = getattr(sorter, attr, None)
+            if s:
+                return str(s).lower()
+        mod = type(sorter).__module__ or ""
+        if "mlb" in mod.lower():
+            return "mlb"
+        if "nba" in mod.lower():
+            return "nba"
+    return "nba"
 
 
 # =============================================================================

@@ -103,12 +103,19 @@ DK_WAR_ZONE_MIN = 150
 
 class MLBTierSorter:
     """
-    MLB Tier Sorter - Quantitative Gating System.
-    
-    Sorts props from mlb_cached_board into Ferrari tiers using
-    strict stat-specific thresholds.
+    MLB stat-utility carrier.
+
+    Post 2026-04-22 Universal Gate Engine refactor this class no longer
+    contains gate-evaluation methods; all gate logic runs through
+    `services.scoring.gates.UniversalGateEngine`. It survives purely as
+    a carrier for MLB-specific stat utilities consumed by
+    `services.scoring.adapters.mlb_scoring` (CV, hit-rate, ceiling-rate,
+    splits caches). The `sport` attribute is read by
+    `scoring_stack.compute_tier._infer_sport`.
     """
-    
+
+    sport = "mlb"
+
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self._player_logs_cache: Dict[str, List[Dict]] = {}
@@ -518,224 +525,14 @@ class MLBTierSorter:
         return formatted
 
     
-    def check_safe_haven_gates(
-        self,
-        prop: Dict,
-        cv: Optional[float],
-        hit_rate: Optional[float],
-        edge_pct: Optional[float],
-        tp_odds: float,
-        **kwargs,
-    ) -> Tuple[bool, str, Dict]:
-        """
-        Check if prop passes Safe Haven stat-specific gates.
-        
-        For GOBLIN LINES (line < 1.0), uses relaxed thresholds calibrated
-        for binary/Bernoulli outcomes:
-          - CV <= 1.10, Hit Rate >= 75%, TP > 60%
-        
-        Returns:
-            Tuple of (passed, reason, gate_results)
-        """
-        stat_key = self._normalize_stat_type(prop.get("stat_type", ""))
-        line = prop.get("line", 0)
-        
-        # Goblin-line override for sub-1.0 props (binary outcomes)
-        # Only 3 gates: CV, Hit Rate, TP — no edge requirement
-        if line < 1.0:
-            gates = {"max_cv": 1.10, "min_hit_rate": 75, "min_edge": -9999, "min_tp": 60}
-        else:
-            gates = SAFE_HAVEN_GATES.get(stat_key, SAFE_HAVEN_GATES.get("hits"))
-        
-        gate_results = {
-            "gate1_cv": {"threshold": gates["max_cv"], "value": cv, "passed": False},
-            "gate2_hit_rate": {"threshold": gates["min_hit_rate"], "value": hit_rate, "passed": False},
-            "gate3_edge": {"threshold": gates["min_edge"], "value": edge_pct, "passed": False},
-            "gate4_tp": {"threshold": gates["min_tp"], "value": tp_odds, "passed": False},
-        }
-        
-        passed_count = 0
-        required_count = 0
-        
-        # Gate 1: CV Check (optional - pass if None)
-        if cv is not None:
-            required_count += 1
-            if cv <= gates["max_cv"]:
-                gate_results["gate1_cv"]["passed"] = True
-                passed_count += 1
-        else:
-            gate_results["gate1_cv"]["passed"] = True  # Skip if no data
-            gate_results["gate1_cv"]["skipped"] = True
-        
-        # Gate 2: Hit Rate Check (required)
-        required_count += 1
-        if hit_rate is not None and hit_rate >= gates["min_hit_rate"]:
-            gate_results["gate2_hit_rate"]["passed"] = True
-            passed_count += 1
-        elif hit_rate is None:
-            # No hit rate data - use 60% as minimum proxy
-            gate_results["gate2_hit_rate"]["passed"] = True
-            gate_results["gate2_hit_rate"]["skipped"] = True
-            passed_count += 1
-        
-        # Gate 3: Edge Check (optional - pass if None)
-        if edge_pct is not None:
-            required_count += 1
-            if edge_pct >= gates["min_edge"]:
-                gate_results["gate3_edge"]["passed"] = True
-                passed_count += 1
-        else:
-            gate_results["gate3_edge"]["passed"] = True
-            gate_results["gate3_edge"]["skipped"] = True
-        
-        # Gate 4: TP Check (required)
-        # 2026-04-22: when TP is None (multi-book de-vig returned no
-        # valid books), this gate HARD FAILS. No 50% fallback.
-        required_count += 1
-        if tp_odds is None:
-            gate_results["gate4_tp"]["value"] = None
-            gate_results["gate4_tp"]["tp_unavailable"] = True
-        elif tp_odds >= gates["min_tp"]:
-            gate_results["gate4_tp"]["passed"] = True
-            passed_count += 1
-        
-        # Must pass all non-skipped gates
-        all_passed = all(g["passed"] for g in gate_results.values())
-        
-        if all_passed:
-            reason = f"All gates passed for {stat_key.upper()}"
-        else:
-            failed = [k for k, v in gate_results.items() if not v["passed"]]
-            reason = f"Failed gates: {', '.join(failed)}"
-        
-        return all_passed, reason, gate_results
-    
-    def check_front_lines_gates(
-        self,
-        prop: Dict,
-        cv: Optional[float],
-        hit_rate: Optional[float],
-        edge_pct: Optional[float],
-        tp_odds: float,
-        **kwargs,
-    ) -> Tuple[bool, str, Dict]:
-        """Check if prop passes Front Lines stat-specific gates."""
-        stat_key = self._normalize_stat_type(prop.get("stat_type", ""))
-        gates = FRONT_LINES_GATES.get(stat_key, FRONT_LINES_GATES.get("hits"))
-        
-        gate_results = {
-            "gate1_cv": {"threshold": gates["max_cv"], "value": cv, "passed": False},
-            "gate2_hit_rate": {"threshold": gates["min_hit_rate"], "value": hit_rate, "passed": False},
-            "gate3_edge": {"threshold": gates["min_edge"], "value": edge_pct, "passed": False},
-            "gate4_tp": {"threshold": gates["min_tp"], "value": tp_odds, "passed": False},
-        }
-        
-        # Gate 1: CV Check
-        if cv is not None and cv <= gates["max_cv"]:
-            gate_results["gate1_cv"]["passed"] = True
-        elif cv is None:
-            gate_results["gate1_cv"]["passed"] = True
-            gate_results["gate1_cv"]["skipped"] = True
-        
-        # Gate 2: Hit Rate Check
-        if hit_rate is not None and hit_rate >= gates["min_hit_rate"]:
-            gate_results["gate2_hit_rate"]["passed"] = True
-        elif hit_rate is None:
-            gate_results["gate2_hit_rate"]["passed"] = True
-            gate_results["gate2_hit_rate"]["skipped"] = True
-        
-        # Gate 3: Edge Check  
-        if edge_pct is not None and edge_pct >= gates["min_edge"]:
-            gate_results["gate3_edge"]["passed"] = True
-        elif edge_pct is None:
-            gate_results["gate3_edge"]["passed"] = True
-            gate_results["gate3_edge"]["skipped"] = True
-        
-        # Gate 4: TP Check
-        # 2026-04-22: None → hard fail (multi-book de-vig TP contract).
-        if tp_odds is None:
-            gate_results["gate4_tp"]["value"] = None
-            gate_results["gate4_tp"]["tp_unavailable"] = True
-        elif tp_odds >= gates["min_tp"]:
-            gate_results["gate4_tp"]["passed"] = True
-        
-        all_passed = all(g["passed"] for g in gate_results.values())
-        
-        if all_passed:
-            reason = f"All gates passed for {stat_key.upper()}"
-        else:
-            failed = [k for k, v in gate_results.items() if not v["passed"]]
-            reason = f"Failed gates: {', '.join(failed)}"
-        
-        return all_passed, reason, gate_results
-    
-    def check_war_zone_gates(
-        self,
-        prop: Dict,
-        cv: Optional[float],
-        ceiling_rate: Optional[float],
-        edge_pct: Optional[float]
-    ) -> Tuple[bool, str, Dict]:
-        """Check if prop passes War Zone gates.
+    # ------------------------------------------------------------------
+    # check_safe_haven_gates / check_front_lines_gates / check_war_zone_gates
+    # DELETED 2026-04-22 (Universal Gate Engine refactor).
+    # All gate evaluation now runs through
+    # services.scoring.gates.UniversalGateEngine driven by config
+    # in services.scoring.gates.thresholds.THRESHOLDS.
+    # ------------------------------------------------------------------
 
-        2026-04-22 refactor: the CV floor (``gate1_cv``) was removed.
-        War Zone now evaluates only:
-          - gate_ceiling (min ceiling hit rate)
-          - gate_edge    (min edge %)
-        …plus the book_count>=1 rule enforced upstream by the 0-Book
-        Exclusion filter, and the DK odds bucket enforced by the caller
-        (``dk_odds >= DK_WAR_ZONE_MIN``).
-
-        CV is recorded on the gate_results for diagnostics / scoring
-        modification (``war_zone_cv_modifier``) but never disqualifies
-        a prop. The ``gate1_cv`` key is retained as ``passed=True`` for
-        every prop so downstream dashboards that enumerate gate results
-        continue to render without code changes.
-        """
-        stat_key = self._normalize_stat_type(prop.get("stat_type", ""))
-        gates = WAR_ZONE_GATES.get(stat_key, WAR_ZONE_GATES.get("hits"))
-
-        gate_results = {
-            # Retained for diagnostic parity with Safe Haven / Front
-            # Lines gate result dicts. Always passes post-refactor.
-            "gate1_cv": {
-                "threshold": "not_enforced",
-                "value": cv,
-                "passed": True,
-                "note": "CV floor removed 2026-04-22; scoring modifier only",
-            },
-            "gate2_ceiling": {"threshold": gates["min_ceiling_rate"], "value": ceiling_rate, "passed": False},
-            "gate3_edge": {"threshold": gates["min_edge"], "value": edge_pct, "passed": False},
-        }
-
-        # Ceiling rate check (still required).
-        if ceiling_rate is not None and ceiling_rate >= gates["min_ceiling_rate"]:
-            gate_results["gate2_ceiling"]["passed"] = True
-        elif ceiling_rate is None:
-            gate_results["gate2_ceiling"]["passed"] = True
-            gate_results["gate2_ceiling"]["skipped"] = True
-
-        # Edge check (still required).
-        if edge_pct is not None and edge_pct >= gates["min_edge"]:
-            gate_results["gate3_edge"]["passed"] = True
-        elif edge_pct is None:
-            gate_results["gate3_edge"]["passed"] = True
-            gate_results["gate3_edge"]["skipped"] = True
-
-        all_passed = all(g["passed"] for g in gate_results.values())
-
-        # CV is applied as a scoring modifier on the prop so downstream
-        # ranking/sort layers can pick it up. Never flipped into a
-        # disqualification.
-        prop["war_zone_cv_modifier"] = war_zone_cv_modifier(cv)
-
-        if all_passed:
-            reason = "Moonshot qualified: ceiling upside"
-        else:
-            failed = [k for k, v in gate_results.items() if not v["passed"]]
-            reason = f"Failed gates: {', '.join(failed)}"
-
-        return all_passed, reason, gate_results
     
     async def sort_props(self, save_to_db: bool = True) -> Dict[str, Any]:
         """

@@ -20,120 +20,24 @@ logger = logging.getLogger(__name__)
 
 
 class _NBAGateSorter:
+    """Thin carrier kept so `recompute.py` can call
+    `adapter.get_sorter()` and pass *some* non-None object to
+    `compute_tier(sorter=...)`. Post Hard Consolidation / Universal
+    Gate Engine refactor (2026-04-22) this class contains NO gate
+    logic — gate evaluation lives exclusively in
+    `services.scoring.gates.UniversalGateEngine`. The `sport` attribute
+    is the only piece of information the engine still reads off the
+    sorter (via `_infer_sport` in `scoring_stack.compute_tier`).
     """
-    Minimal NBA gate sorter satisfying the MLBTierSorter-compatible contract.
-    Uses hit-rate + edge + tp + CV thresholds scaled for NBA's stat types.
 
-    These thresholds are intentionally conservative placeholders — tuned
-    by NBA analytics can be passed in via config.override_config.tier.
-    """
-    SAFE_HAVEN = {"max_cv": 0.50, "min_hit_rate": 75, "min_edge": 8, "min_tp": 70}
-    FRONT_LINES = {"max_cv": 0.75, "min_hit_rate": 60, "min_edge": 5, "min_tp": 55}
-    # NBA war_zone defaults (varA, locked 2026-04-17 after tuning validation).
-    # MLB-scale thresholds (cv=0.80, ceil=30, edge=15) were unreachable on NBA.
-    # varA produces ~1.5% slate-share legitimate moonshots with zero cannibalization
-    # of safe_haven/front_lines; all entrants migrate from unqualified only.
-    WAR_ZONE = {"min_cv": 0.45, "min_ceiling_rate": 20, "min_edge": 10}
-    # WAR_ZONE gate review (2026-04-19): these three gates are intentionally
-    # market-facing only (CV, ceiling_rate, market edge). Model-side veto
-    # (negative vk_edge + weak hit_rate_over + wrong-side l10_avg) is a
-    # SEPARATE concern handled by scoring_stack._model_contradicts_anchor,
-    # which runs BEFORE tier dispatch and can eject a pick from any tier.
-    # Duplicating it here would weaken legitimate long-odds moonshots whose
-    # ceiling/CV profile qualifies even when short-term VK trails. The two
-    # layers compose cleanly: gates decide bucket, veto decides side.
-
-    # Path (c) — side-aware tp gate: UNDER picks replace market-implied tp with
-    # a model-confidence floor (p_model * 100) at BALANCED thresholds locked
-    # 2026-04-18 after slate audit. OVER path is unchanged. `war_zone_under`
-    # is recorded for future use; war_zone has no gate_tp today (ceiling-only).
-    UNDER_TP_FLOORS = {
-        "safe_haven": 75,
-        "front_lines": 65,
-        "war_zone": 60,  # not yet wired — awaits floor_rate side-aware gate
-    }
+    sport = "nba"
 
     def __init__(self, overrides: Optional[Dict[str, Any]] = None):
-        o = overrides or {}
-        self.SAFE_HAVEN = {**self.SAFE_HAVEN, **(o.get("safe_haven") or {})}
-        self.FRONT_LINES = {**self.FRONT_LINES, **(o.get("front_lines") or {})}
-        self.WAR_ZONE = {**self.WAR_ZONE, **(o.get("war_zone") or {})}
-        self.UNDER_TP_FLOORS = {**self.UNDER_TP_FLOORS, **(o.get("under_tp_floors") or {})}
-
-    def _check(self, gates_def, *, cv=None, hit_rate=None, edge_pct=None,
-               tp=None, ceiling_rate=None,
-               side: str = "OVER", p_model_pct: Optional[float] = None,
-               tier_name: Optional[str] = None):
-        results = {}
-        if "max_cv" in gates_def:
-            results["gate_cv"] = {
-                "threshold": gates_def["max_cv"], "value": cv,
-                "passed": cv is not None and cv <= gates_def["max_cv"],
-            }
-        if "min_cv" in gates_def:
-            results["gate_cv"] = {
-                "threshold": gates_def["min_cv"], "value": cv,
-                "passed": cv is not None and cv >= gates_def["min_cv"],
-            }
-        if "min_hit_rate" in gates_def:
-            results["gate_hit_rate"] = {
-                "threshold": gates_def["min_hit_rate"], "value": hit_rate,
-                "passed": hit_rate is not None and hit_rate >= gates_def["min_hit_rate"],
-            }
-        if "min_ceiling_rate" in gates_def:
-            results["gate_ceiling"] = {
-                "threshold": gates_def["min_ceiling_rate"], "value": ceiling_rate,
-                "passed": ceiling_rate is not None and ceiling_rate >= gates_def["min_ceiling_rate"],
-            }
-        if "min_edge" in gates_def:
-            results["gate_edge"] = {
-                "threshold": gates_def["min_edge"], "value": edge_pct,
-                "passed": edge_pct is not None and edge_pct >= gates_def["min_edge"],
-            }
-        if "min_tp" in gates_def:
-            if side == "UNDER" and tier_name in self.UNDER_TP_FLOORS:
-                # Side-aware path: replace market-implied tp with model
-                # confidence (p_model * 100) against UNDER-specific threshold.
-                under_floor = self.UNDER_TP_FLOORS[tier_name]
-                results["gate_tp"] = {
-                    "threshold": under_floor, "value": p_model_pct,
-                    "passed": p_model_pct is not None and p_model_pct >= under_floor,
-                    "source": "model_confidence_under",
-                }
-            else:
-                results["gate_tp"] = {
-                    "threshold": gates_def["min_tp"], "value": tp,
-                    "passed": tp is not None and tp >= gates_def["min_tp"],
-                    "tp_unavailable": tp is None,
-                    "source": "market_implied_over" if side == "OVER" else "market_implied",
-                }
-        failed = [k for k, v in results.items() if not v["passed"]]
-        return (len(failed) == 0), (",".join(failed) or "ok"), results
-
-    def check_safe_haven_gates(self, prop, cv, hit_rate, edge_pct, tp,
-                               side: str = "OVER", p_model_pct: Optional[float] = None):
-        # Stat-aware CV cap (2026-04-21): structurally higher CV on
-        # small-mean stats (AST/REB/STL/BLK) was rejecting high-HitR picks.
-        # Resolve the cap from prop["stat_type"] and override the default
-        # Safe Haven max_cv for this single check.  PTS/PRA still use 0.50.
-        from services.scoring.cv_caps import resolve_cv_cap
-        stat_type = (prop or {}).get("stat_type") if isinstance(prop, dict) else None
-        gates_def = {**self.SAFE_HAVEN, "max_cv": resolve_cv_cap(stat_type)}
-        return self._check(gates_def, cv=cv, hit_rate=hit_rate,
-                           edge_pct=edge_pct, tp=tp,
-                           side=side, p_model_pct=p_model_pct, tier_name="safe_haven")
-
-    def check_front_lines_gates(self, prop, cv, hit_rate, edge_pct, tp,
-                                side: str = "OVER", p_model_pct: Optional[float] = None):
-        return self._check(self.FRONT_LINES, cv=cv, hit_rate=hit_rate,
-                           edge_pct=edge_pct, tp=tp,
-                           side=side, p_model_pct=p_model_pct, tier_name="front_lines")
-
-    def check_war_zone_gates(self, prop, cv, ceiling_rate, edge_pct):
-        # war_zone has no tp gate — UNDER qualification here awaits the
-        # separate floor_rate work. OVER behaviour fully preserved.
-        return self._check(self.WAR_ZONE, cv=cv, ceiling_rate=ceiling_rate,
-                           edge_pct=edge_pct)
+        # Retained for API compatibility. Overrides targeted at the
+        # legacy `_NBAGateSorter.SAFE_HAVEN/FRONT_LINES/WAR_ZONE` dicts
+        # are now applied via `services/scoring/gates/thresholds.py`.
+        # No-op here.
+        self._overrides = overrides or {}
 
 
 class NBAScoringAdapter(ScoringAdapter):

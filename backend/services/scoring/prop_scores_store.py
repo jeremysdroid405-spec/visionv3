@@ -72,6 +72,10 @@ _SCORE_OUTPUT_FIELDS = (
     #   tp_unavailable   — True when no book had both sides (hard-fails gate_tp)
     "tp", "edge_pct", "tp_books_used", "tp_books_list", "tp_method",
     "tp_unavailable",
+    # Universal Gate Engine (2026-04-22). The normalized gate output is
+    # persisted on every scored prop so the UI / admin can explain the
+    # gate outcome in the exact same structure regardless of sport.
+    "gate_eval",
 )
 
 _IDENTITY_FIELDS = (

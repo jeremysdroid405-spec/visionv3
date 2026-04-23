@@ -885,3 +885,65 @@ Dropped via `db.drop_collection`:
 - 108 / 108 consolidation-relevant pytest tests pass.
 - Grep proof: zero live references to any deleted tier collection in production code.
 
+
+## 2026-04-22 — Phase 3: Universal Gate Engine
+
+Gating is now a single engine with a single schema. Sport adapters only
+compute normalized metrics.
+
+### New package — `services/scoring/gates/`
+- `schema.py` — `NormalizedMetrics`, `GateDetail`, `GateEvalResult`,
+  `ReasonCode` (canonical reason codes: `gate_coverage_fail`,
+  `gate_hit_rate_fail`, `gate_tp_fail`, `gate_tp_unavailable`,
+  `gate_cv_fail`, `gate_edge_fail`, `gate_ceiling_fail`,
+  `gate_context_fail`).
+- `thresholds.py` — pure config: `THRESHOLDS[sport][tier][stat_family]`
+  with stat aliases + odds-bucket-to-target-tier mapping. NBA + MLB
+  populated from the old `_NBAGateSorter` / `MLBTierSorter` tables.
+  NFL scaffold in place (drop in a stat family → works end-to-end).
+- `engine.py` — `UniversalGateEngine.evaluate(metrics)` returns a
+  `GateEvalResult`. Gate types: `coverage_gate`, `hit_rate_gate`,
+  `tp_gate` (side-aware — UNDER uses `p_model_pct` floor), `cv_gate`
+  (supports both `max` and `min_cv_floor`), `edge_gate`,
+  `ceiling_gate`, `context_gate`.
+
+### Sport-specific gate code DELETED
+- `_NBAGateSorter.check_safe_haven_gates` / `check_front_lines_gates` /
+  `check_war_zone_gates` / `_check` — removed. Class reduced to a thin
+  sport-identity carrier.
+- `MLBTierSorter.check_safe_haven_gates` / `check_front_lines_gates` /
+  `check_war_zone_gates` — removed. `MLBTierSorter` now exists only as
+  a carrier of MLB stat utilities consumed by `mlb_scoring.py`.
+- `scoring_stack.compute_tier` fully rewritten — no sport-specific
+  branches; looks up thresholds from `resolve_thresholds(sport, tier,
+  stat_family)` and delegates to `UniversalGateEngine`.
+
+### Persistence
+- `prop_scores_store._SCORE_OUTPUT_FIELDS` gained `gate_eval`. Every
+  scored prop now carries the full canonical gate output on the score
+  doc so any UI / admin consumer can explain a pick's gating in the
+  same structure regardless of sport.
+
+### Verified
+- NBA master sync: 116 s, success=true, tier dist
+  `{'unqualified': 3294, 'front_lines': 34, 'safe_haven': 16, 'war_zone': 9}`
+  (same shape as pre-refactor).
+- MLB master sync: 88 s, success=true, tiers populated.
+- All 6 Ferrari endpoints HTTP 200.
+- `gate_eval` persists with canonical shape — verified on a live NBA
+  safe_haven doc (stat_family=`reb`, passed_gates=5, failed_gates=0).
+- 16 new unit tests in `tests/test_universal_gate_engine.py` (engine
+  pass/fail paths, UNDER side-aware TP, CV cap override, NFL scaffold,
+  unknown-gate-type forward compatibility, per-sport identical output
+  schema). 124 / 124 regression tests pass.
+- Grep proof: zero `def check_*_gates` methods, zero `SAFE_HAVEN_GATES`
+  / `FRONT_LINES_GATES` / `WAR_ZONE_GATES` module-level dicts in live
+  code.
+
+### Adding a new sport now
+1. Add `stat_family` alias block in `STAT_FAMILY_ALIASES[<sport>]`.
+2. Fill `THRESHOLDS[<sport>][<tier>][<stat_family>]` with the gate dict.
+3. Add an `ODDS_BUCKETS[<sport>]` entry.
+4. Ship a scoring adapter that emits `NormalizedMetrics`.
+No new gate-evaluation code.
+
