@@ -75,11 +75,18 @@ class MLBTierSorter:
 
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self._player_logs_cache: Dict[str, List[Dict]] = {}
+        # Global Identity Rule (2026-04-23): keyed on `bdl_player_id`
+        # (canonical identity), not `player_name` (display-only).
+        self._player_logs_cache: Dict[int, List[Dict]] = {}
         self._vk_projections_cache: Dict[str, Dict] = {}
     
     async def _load_caches(self):
-        """Load player logs and VK projections into memory."""
+        """Load player logs and VK projections into memory.
+
+        Global Identity Rule (2026-04-23): logs are indexed by
+        `bdl_player_id` (the hub's `bdl_id` column). Hub rows without
+        an ID are skipped — they cannot be resolved unambiguously.
+        """
         from datetime import datetime
         
         # Current season (2026)
@@ -90,30 +97,39 @@ class MLBTierSorter:
         master_hub = self.db[COLL("master_hub", "mlb")]
         players = await master_hub.find(
             {"bdl_game_logs": {"$exists": True, "$ne": []}},
-            {"_id": 0, "display_name": 1, "bdl_game_logs": 1, "vk_baselines": 1}
+            {"_id": 0, "bdl_id": 1, "bdl_player_id": 1,
+             "display_name": 1, "bdl_game_logs": 1, "vk_baselines": 1}
         ).to_list(length=None)
         
         for player in players:
-            name = player.get("display_name", "").lower().strip()
-            if name:
-                all_logs = player.get("bdl_game_logs", [])
+            pid = player.get("bdl_player_id") or player.get("bdl_id")
+            if pid is None:
+                continue
+            try:
+                pid_int = int(pid)
+            except (TypeError, ValueError):
+                continue
+            all_logs = player.get("bdl_game_logs", [])
+            
+            # CRITICAL: Filter to ONLY current season (2026) games
+            # Check both 'season' field and date year
+            current_season_logs = []
+            for log in all_logs:
+                season = log.get("season")
+                date_str = log.get("date", "")
                 
-                # CRITICAL: Filter to ONLY current season (2026) games
-                # Check both 'season' field and date year
-                current_season_logs = []
-                for log in all_logs:
-                    season = log.get("season")
-                    date_str = log.get("date", "")
-                    
-                    # Include if season matches OR date is in current year
-                    if season == current_season:
-                        current_season_logs.append(log)
-                    elif date_str and str(current_season) in date_str[:4]:
-                        current_season_logs.append(log)
-                
-                self._player_logs_cache[name] = current_season_logs
+                # Include if season matches OR date is in current year
+                if season == current_season:
+                    current_season_logs.append(log)
+                elif date_str and str(current_season) in date_str[:4]:
+                    current_season_logs.append(log)
+            
+            self._player_logs_cache[pid_int] = current_season_logs
         
-        logger.info(f"[TIER_SORTER] Loaded {len(self._player_logs_cache)} player logs (filtered to {current_season} season)")
+        logger.info(
+            f"[TIER_SORTER] Loaded {len(self._player_logs_cache)} "
+            f"player logs by bdl_player_id (filtered to {current_season} season)"
+        )
         
         # Load VK projections
         vk_collection = self.db["mlb_vk_projections"]
@@ -153,10 +169,24 @@ class MLBTierSorter:
         
         return mappings.get(normalized, normalized.replace(" ", "_"))
     
-    def _calculate_cv(self, player_name: str, stat_type: str) -> Optional[float]:
+    def _get_logs_by_id(
+        self, bdl_player_id: Optional[int]
+    ) -> List[Dict]:
+        """Global Identity Rule (2026-04-23): game-log lookup by
+        canonical `bdl_player_id`. No name-based fallback."""
+        if bdl_player_id is None:
+            return []
+        try:
+            pid = int(bdl_player_id)
+        except (TypeError, ValueError):
+            return []
+        return self._player_logs_cache.get(pid) or []
+
+    def _calculate_cv(
+        self, bdl_player_id: Optional[int], stat_type: str
+    ) -> Optional[float]:
         """Calculate Coefficient of Variation for player stat."""
-        player_key = player_name.lower().strip()
-        game_logs = self._player_logs_cache.get(player_key, [])
+        game_logs = self._get_logs_by_id(bdl_player_id)
         
         if len(game_logs) < 5:
             return None
@@ -228,7 +258,7 @@ class MLBTierSorter:
     
     def _calculate_hit_rate(
         self, 
-        player_name: str, 
+        bdl_player_id: Optional[int],
         stat_type: str, 
         line: float, 
         num_games: int = 20
@@ -239,8 +269,7 @@ class MLBTierSorter:
         Returns:
             Tuple of (hit_rate_percentage, average)
         """
-        player_key = player_name.lower().strip()
-        game_logs = self._player_logs_cache.get(player_key, [])
+        game_logs = self._get_logs_by_id(bdl_player_id)
         
         if not game_logs:
             return None, None
@@ -317,13 +346,12 @@ class MLBTierSorter:
     
     def _calculate_ceiling_hit_rate(
         self, 
-        player_name: str, 
+        bdl_player_id: Optional[int],
         stat_type: str, 
         line: float
     ) -> Optional[float]:
         """Calculate ceiling hit rate (times player exceeded 2x line)."""
-        player_key = player_name.lower().strip()
-        game_logs = self._player_logs_cache.get(player_key, [])
+        game_logs = self._get_logs_by_id(bdl_player_id)
         
         if len(game_logs) < 10:
             return None
@@ -403,13 +431,12 @@ class MLBTierSorter:
 
     def _get_recent_game_logs(
         self, 
-        player_name: str, 
+        bdl_player_id: Optional[int],
         stat_type: str, 
         num_games: int = 5
     ) -> List[Dict]:
         """Get formatted recent game logs for Oracle context."""
-        player_key = player_name.lower().strip()
-        game_logs = self._player_logs_cache.get(player_key, [])
+        game_logs = self._get_logs_by_id(bdl_player_id)
         
         if not game_logs:
             return []

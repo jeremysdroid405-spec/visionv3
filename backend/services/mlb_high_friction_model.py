@@ -623,12 +623,18 @@ class MLBHighFrictionModel:
         line: float = None,
         opponent_team: str = None,
         park_team: str = None,
-        dk_odds: int = None
+        dk_odds: int = None,
+        bdl_player_id: int = None,
     ) -> Dict[str, Any]:
         """
         Generate High-Friction prediction.
         
         NO FALLBACKS - returns error if features can't be built.
+
+        Global Identity Rule (2026-04-23): when `bdl_player_id` is
+        provided, the hub row is resolved by ID (canonical identity).
+        `player_name` is retained only as a fallback for legacy callers
+        and is never used when an ID is supplied.
         """
         norm_stat = self._normalize_stat(stat_type)
         
@@ -636,15 +642,30 @@ class MLBHighFrictionModel:
             return {"error": f"No model for {stat_type}"}
         
         try:
-            # Find player
-            player = self.master_hub.find_one(
-                {"$or": [
-                    {"display_name": player_name},
-                    {"player_name": player_name},
-                    {"mlb_full_name": player_name}
-                ]},
-                {"_id": 0}
-            )
+            # Find player — prefer ID-based identity (Global Identity Rule).
+            player = None
+            if bdl_player_id is not None:
+                try:
+                    pid_int = int(bdl_player_id)
+                    player = self.master_hub.find_one(
+                        {"$or": [
+                            {"bdl_player_id": pid_int},
+                            {"bdl_id": pid_int},
+                        ]},
+                        {"_id": 0},
+                    )
+                except (TypeError, ValueError):
+                    player = None
+            if player is None and player_name:
+                # Legacy name lookup retained only when ID is absent.
+                player = self.master_hub.find_one(
+                    {"$or": [
+                        {"display_name": player_name},
+                        {"player_name": player_name},
+                        {"mlb_full_name": player_name}
+                    ]},
+                    {"_id": 0}
+                )
             
             if not player:
                 return {"error": f"Player not found: {player_name}"}

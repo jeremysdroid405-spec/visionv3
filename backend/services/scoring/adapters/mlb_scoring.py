@@ -98,6 +98,19 @@ class MLBScoringAdapter(ScoringAdapter):
             await stats._load_caches()
 
         player_name = prop.get("player_name")
+        # Global Identity Rule (2026-04-23): `bdl_player_id` is the
+        # canonical join key. Stamped at ingest by
+        # `services/universal_odds_sync._stamp_identity_on_props`.
+        # Absence is reported as `identity_status="missing_bdl_id"`
+        # and downstream ID-based computations are skipped.
+        bdl_player_id_raw = prop.get("bdl_player_id")
+        bdl_player_id: Optional[int] = None
+        if bdl_player_id_raw is not None:
+            try:
+                bdl_player_id = int(bdl_player_id_raw)
+            except (TypeError, ValueError):
+                bdl_player_id = None
+        identity_status = "resolved" if bdl_player_id is not None else "missing_bdl_id"
         stat_type = prop.get("stat_type")
         line = prop.get("line")
         if line is None or player_name is None or stat_type is None:
@@ -132,27 +145,30 @@ class MLBScoringAdapter(ScoringAdapter):
             if prop.get("sharp_odds") is not None else None
         )
 
-        # Stats from hub (pure metric normalization — no gate logic)
-        cv = stats._calculate_cv(player_name, stat_type)
-        # Universal cv_status (2026-04-23) — MLB delegates cv calc to the
-        # tier_sorter stats helper; report "computed" when a value came
-        # back, otherwise "missing_source_distribution". MLB has no
-        # unsupported stat-family case here because live props are
-        # already filtered by `load_live_props` to supported families.
-        cv_status = "computed" if cv is not None else "missing_source_distribution"
-        hit_rate, _ = stats._calculate_hit_rate(player_name, stat_type, line, 20)
-        # HR status mirrors the same state machine as cv_status. MLB
-        # stats helper returns None on insufficient-data, otherwise a
-        # computed percentage.
-        hit_rate_status = "computed" if hit_rate is not None else "missing_source_distribution"
-        ceiling_rate = stats._calculate_ceiling_hit_rate(player_name, stat_type, line)
+        # Stats from hub — ID-based joins only (Global Identity Rule).
+        if bdl_player_id is None:
+            cv = None
+            cv_status = "missing_bdl_id"
+            hit_rate = None
+            hit_rate_status = "missing_bdl_id"
+            ceiling_rate = None
+        else:
+            cv = stats._calculate_cv(bdl_player_id, stat_type)
+            cv_status = "computed" if cv is not None else "missing_source_distribution"
+            hit_rate, _ = stats._calculate_hit_rate(
+                bdl_player_id, stat_type, line, 20,
+            )
+            hit_rate_status = "computed" if hit_rate is not None else "missing_source_distribution"
+            ceiling_rate = stats._calculate_ceiling_hit_rate(
+                bdl_player_id, stat_type, line,
+            )
 
-        # Model
+        # Model — gated on identity resolution (Global Identity Rule).
         hf_model = self._get_hf_model(db)
         p_true_model = None
         model_projection = None
         model_sigma = None
-        if hf_model:
+        if hf_model and bdl_player_id is not None:
             opponent = prop.get('away_team') if not prop.get('is_away_team') else prop.get('home_team')
             park_team = prop.get('home_team') if prop.get('is_away_team') else prop.get('team')
             dk_odds_int = None
@@ -164,6 +180,7 @@ class MLBScoringAdapter(ScoringAdapter):
             result = hf_model.predict(
                 player_name=player_name, stat_type=stat_type, line=line,
                 opponent_team=opponent, park_team=park_team, dk_odds=dk_odds_int,
+                bdl_player_id=bdl_player_id,
             )
             if result and not result.get("error") and result.get("prob_over") is not None:
                 prob_over_pct = result["prob_over"]
@@ -263,6 +280,10 @@ class MLBScoringAdapter(ScoringAdapter):
             pp_combo_multiplier=None,  # not yet available for MLB
             pp_label=None,
             pp_multiplier_model=None,
+            # Global Identity Rule (2026-04-23) — persist the identity
+            # decision on every MLB score doc, same shape as NBA.
+            bdl_player_id=bdl_player_id,
+            identity_status=identity_status,
         )
 
     # ---------------------------------------------------------

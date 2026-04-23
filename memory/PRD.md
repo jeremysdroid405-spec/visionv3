@@ -14,26 +14,42 @@ ingest. Props without a resolvable ID are flagged
 `identity_status="missing_bdl_id"` and skip HR / CV / projection computation.
 
 - **Ingest** (`services/universal_odds_sync.py`): `_stamp_identity_on_props`
-  runs after flatten, stamps every prop with `bdl_player_id` +
-  `identity_status`. Hub aliases are built once per sync from
+  runs after flatten, stamps every prop (NBA + MLB) with `bdl_player_id`
+  + `identity_status`. Hub aliases are built once per sync from
   `{sport}_master_hub_2026.bdl_id`.
-- **Scoring** (`services/scoring/adapters/nba_scoring.py`):
-  `_logs_by_id` is the SOLE game-log cache (keyed on bdl_player_id).
+- **NBA scoring** (`services/scoring/adapters/nba_scoring.py`):
+  `_logs_by_id` is the SOLE game-log cache (keyed on `bdl_player_id`).
   `_get_logs_by_id` is the sole lookup. `_compute_cv_and_hit_rate`,
   `_get_vk2_history_logs`, `_empirical_covariance`,
   `_predict_combo_projection`, `_predict_model_prob_over`, and
   `_predict_vk2_prob_over` ALL take `bdl_player_id` as the identity input.
-- **VK model** (`services/vegas_killer_model.py::predict`) now accepts
-  `bdl_player_id` and prefers ID-based hub lookup when provided.
+- **MLB scoring** (`services/mlb_tier_sorter.py` +
+  `services/scoring/adapters/mlb_scoring.py`): `_player_logs_cache` is
+  `Dict[int, List[Dict]]` keyed on `bdl_player_id`. `_calculate_cv`,
+  `_calculate_hit_rate`, `_calculate_ceiling_hit_rate`, and
+  `_get_recent_game_logs` all take `bdl_player_id`. MLB adapter
+  extracts and propagates the ID through every metric + model call
+  and gates the HF predict on identity.
+- **VK & HF models** (`services/vegas_killer_model.py::predict`,
+  `services/mlb_high_friction_model.py::predict`) both accept an
+  optional `bdl_player_id` and prefer ID-based hub lookup when
+  supplied; name lookup remains only as legacy fallback.
 - **Persistence** (`services/scoring/prop_scores_store.py`):
   `bdl_player_id` + `identity_status` added to `_SCORE_OUTPUT_FIELDS`.
+- **Observability**: `GET /api/v3/admin/identity-status` returns per-sport
+  live-props resolution %, scored-doc identity breakdown, HR/CV status
+  counts, and top unresolved player names for triage.
 - **Status values**: `computed` | `unavailable_stat_family` |
   `missing_source_distribution` | `missing_bdl_id`.
 
-**Verification (2026-04-23)**: `missing_source_distribution` dropped
-**536 → 0**. All 4,122 scored props resolve to `identity_status="resolved"`.
-All 6,164 live props stamp with `bdl_player_id` at ingest (0 missing).
-105 scoring-related tests pass, incl. 7 new `test_identity_rule_nba.py`.
+**Verification (2026-04-23)**:
+- NBA: `missing_source_distribution` **536 → 0**. 6,156/6,156 live props
+  resolved (100%). 4,122/4,122 scored props have `identity_status=resolved`.
+- MLB: 3,457/3,606 live props resolved (95.87%). 2,483/2,601 scored props
+  `resolved`, 118 correctly flagged `missing_bdl_id`. Top unresolved
+  players surface in the admin panel for hub-coverage triage.
+- 147 scoring-pipeline tests pass, incl. 7 `test_identity_rule_nba.py`
+  + 5 `test_identity_rule_mlb.py` regressions.
 
 ## Architecture
 - **Frontend:** React + Shadcn UI — `/app/frontend/src/pages/Dashboard.jsx`,

@@ -587,6 +587,120 @@ def _signed_margin(actual, threshold_val, comparator):
     return None
 
 
+@router.get("/v3/admin/identity-status")
+async def identity_status_report(
+    sport: str | None = None,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Global Identity Rule (2026-04-23) observability panel.
+
+    Surfaces `identity_status` / `hit_rate_status` / `cv_status`
+    breakdowns for every sport in the live scoring table
+    (`final-{sport}-rt`). Paired with live-props ingest counts so
+    operators can catch drift between ingest-side stamping and
+    scoring-side usage without tailing logs.
+
+    Query params:
+      - sport (optional): 'nba' | 'mlb'. Omit to report on all sports
+        registered in `scheduled_sports.SCHEDULED_SPORTS`.
+
+    Auth: `X-Admin-Token` header must match env `ADMIN_DEBUG_TOKEN`.
+    """
+    _require_admin_debug_token(x_admin_token)
+
+    if _db is None:
+        raise HTTPException(status_code=500, detail="db not initialised")
+
+    # Which sports to report on
+    if sport:
+        sports = [sport.strip().lower()]
+    else:
+        try:
+            from services.scheduled_sports import SCHEDULED_SPORTS
+            sports = list(SCHEDULED_SPORTS.keys())
+        except Exception:
+            sports = ["nba", "mlb"]
+
+    report: Dict[str, Any] = {}
+    for s in sports:
+        scores_coll = _db[f"{s}_prop_scores"]
+        live_coll = _db[f"{s}_live_props"]
+        version_tag = f"final-{s}-rt"
+
+        # Live-props ingest coverage
+        live_total = await live_coll.count_documents({})
+        live_resolved = await live_coll.count_documents(
+            {"bdl_player_id": {"$ne": None}}
+        )
+        live_missing = await live_coll.count_documents(
+            {"identity_status": "missing_bdl_id"}
+        )
+
+        # Scored-doc identity + metric status
+        scored_total = await scores_coll.count_documents(
+            {"version_tag": version_tag}
+        )
+        id_resolved = await scores_coll.count_documents(
+            {"version_tag": version_tag, "identity_status": "resolved"}
+        )
+        id_missing = await scores_coll.count_documents(
+            {"version_tag": version_tag, "identity_status": "missing_bdl_id"}
+        )
+
+        # HR / CV status breakdown on scored docs
+        hr_counts: Dict[str, int] = {}
+        cv_counts: Dict[str, int] = {}
+        for status in ("computed", "missing_source_distribution",
+                       "unavailable_stat_family", "missing_bdl_id"):
+            hr_counts[status] = await scores_coll.count_documents(
+                {"version_tag": version_tag, "hit_rate_status": status}
+            )
+            cv_counts[status] = await scores_coll.count_documents(
+                {"version_tag": version_tag, "cv_status": status}
+            )
+
+        # Top unresolved player names for quick triage. Aggregated on
+        # live_props since scored docs exclude the name field in some
+        # output projections.
+        unresolved_pipeline = [
+            {"$match": {"identity_status": "missing_bdl_id"}},
+            {"$group": {"_id": "$player_name", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 20},
+        ]
+        unresolved_samples = []
+        async for d in live_coll.aggregate(unresolved_pipeline):
+            unresolved_samples.append(
+                {"player_name": d["_id"], "prop_count": d["count"]}
+            )
+
+        report[s] = {
+            "live_props": {
+                "total": live_total,
+                "resolved": live_resolved,
+                "missing_bdl_id": live_missing,
+                "resolution_pct": (
+                    round(live_resolved / live_total * 100.0, 2)
+                    if live_total else None
+                ),
+            },
+            "scored_props": {
+                "version_tag": version_tag,
+                "total": scored_total,
+                "identity": {
+                    "resolved": id_resolved,
+                    "missing_bdl_id": id_missing,
+                },
+                "hit_rate_status": hr_counts,
+                "cv_status": cv_counts,
+            },
+            "top_unresolved_players": unresolved_samples,
+        }
+
+    return {"sports": report}
+
+
+
 @router.get("/v3/admin/gate-stats")
 async def gate_stats(
     sport: str,
