@@ -2552,3 +2552,43 @@ per-player-aware evals don't need a separate re-sweep. Non-breaking
 - Ferrari endpoints HTTP 200 across NBA + MLB.
 - `vk2_*.pkl` + `nba_scoring.py` bytes unchanged.
 
+
+---
+
+## Minutes-Threshold Analysis (read-only, 2026-04-23)
+
+### Scope
+Pure analysis — no projection / gate / model changes. Tested cutoffs
+{24, 26, 28, 30, 32} as separators for role stability vs minutes-risk.
+
+### Files
+- `scripts/analyze_minutes_thresholds.py` — NEW (read-only aggregation
+  over live board + 2024 hold-out).
+- `reports/minutes_threshold_analysis.json` — per-cutoff raw data.
+- `reports/minutes_threshold_analysis.md` — human report + recommendation.
+
+### Key finding: pass-rate inversion at cutoffs ≥ 30
+
+| Cutoff | high_mins pass_rate | low_mins pass_rate | Stars-pass-more? |
+|-------:|-------------------:|-------------------:|:---------------:|
+| 24 | 3.02% | 2.20% | ✅ |
+| 26 | 2.79% | 2.53% | ✅ |
+| 28 | 2.76% | 2.57% | ✅ |
+| 30 | 2.20% | 2.96% | ❌ inverted |
+| 32 | 2.00% | 2.98% | ❌ inverted |
+
+### Recommendation: **26 minutes** (28 as defensible alternative)
+
+- Smallest cutoff capturing rotation minute-risk (low-line bias
+  climbs to +1.56 at 26 vs +1.39 at 24 in the low_mins bucket).
+- Preserves stars-pass-more invariant.
+- Flags 41 risky OVER passes — small enough for human review.
+- **Do not use 30 or 32** — the label inversion means "low_minutes"
+  starts capturing reliable rotation players whose props are
+  among the more reliable on the board.
+
+### Verification
+- 84 regression tests pass.
+- Ferrari endpoints HTTP 200 across NBA + MLB.
+- No code changes to scoring / gates / projections.
+

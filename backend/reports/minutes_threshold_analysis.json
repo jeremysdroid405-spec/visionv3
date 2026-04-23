@@ -1,0 +1,2318 @@
+{
+  "cutoffs": [
+    24,
+    26,
+    28,
+    30,
+    32
+  ],
+  "historical_2024": {
+    "PTS": {
+      "24": {
+        "high_minutes": {
+          "n_total": 13246,
+          "overall": {
+            "label": "high_all",
+            "n": 13246,
+            "rmse": 8.267,
+            "mae": 6.394,
+            "bias": 0.253,
+            "actual_mean": 14.037,
+            "pred_mean": 14.291
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 4660,
+            "rmse": 9.578,
+            "mae": 7.706,
+            "bias": 7.602,
+            "actual_mean": 4.111,
+            "pred_mean": 11.712
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 3624,
+            "rmse": 10.112,
+            "mae": 8.382,
+            "bias": -7.963,
+            "actual_mean": 26.456,
+            "pred_mean": 18.493
+          }
+        },
+        "low_minutes": {
+          "n_total": 32341,
+          "overall": {
+            "label": "low_all",
+            "n": 32341,
+            "rmse": 4.831,
+            "mae": 3.076,
+            "bias": 0.029,
+            "actual_mean": 3.486,
+            "pred_mean": 3.516
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 27688,
+            "rmse": 3.276,
+            "mae": 2.192,
+            "bias": 1.394,
+            "actual_mean": 1.436,
+            "pred_mean": 2.83
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 920,
+            "rmse": 16.046,
+            "mae": 14.721,
+            "bias": -14.669,
+            "actual_mean": 24.997,
+            "pred_mean": 10.327
+          }
+        }
+      },
+      "26": {
+        "high_minutes": {
+          "n_total": 11104,
+          "overall": {
+            "label": "high_all",
+            "n": 11104,
+            "rmse": 8.427,
+            "mae": 6.508,
+            "bias": 0.195,
+            "actual_mean": 14.91,
+            "pred_mean": 15.105
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 3500,
+            "rmse": 10.251,
+            "mae": 8.357,
+            "bias": 8.287,
+            "actual_mean": 4.224,
+            "pred_mean": 12.512
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 3400,
+            "rmse": 9.893,
+            "mae": 8.155,
+            "bias": -7.714,
+            "actual_mean": 26.574,
+            "pred_mean": 18.861
+          }
+        },
+        "low_minutes": {
+          "n_total": 34483,
+          "overall": {
+            "label": "low_all",
+            "n": 34483,
+            "rmse": 5.027,
+            "mae": 3.245,
+            "bias": 0.062,
+            "actual_mean": 3.861,
+            "pred_mean": 3.923
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 28848,
+            "rmse": 3.518,
+            "mae": 2.335,
+            "bias": 1.561,
+            "actual_mean": 1.53,
+            "pred_mean": 3.09
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 1144,
+            "rmse": 15.496,
+            "mae": 14.157,
+            "bias": -14.098,
+            "actual_mean": 24.931,
+            "pred_mean": 10.833
+          }
+        }
+      },
+      "28": {
+        "high_minutes": {
+          "n_total": 9058,
+          "overall": {
+            "label": "high_all",
+            "n": 9058,
+            "rmse": 8.632,
+            "mae": 6.649,
+            "bias": 0.18,
+            "actual_mean": 15.793,
+            "pred_mean": 15.973
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 2540,
+            "rmse": 11.062,
+            "mae": 9.165,
+            "bias": 9.127,
+            "actual_mean": 4.226,
+            "pred_mean": 13.353
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 3094,
+            "rmse": 9.711,
+            "mae": 7.917,
+            "bias": -7.449,
+            "actual_mean": 26.742,
+            "pred_mean": 19.293
+          }
+        },
+        "low_minutes": {
+          "n_total": 36529,
+          "overall": {
+            "label": "low_all",
+            "n": 36529,
+            "rmse": 5.193,
+            "mae": 3.393,
+            "bias": 0.073,
+            "actual_mean": 4.261,
+            "pred_mean": 4.334
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 29808,
+            "rmse": 3.726,
+            "mae": 2.46,
+            "bias": 1.706,
+            "actual_mean": 1.616,
+            "pred_mean": 3.322
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 1450,
+            "rmse": 14.755,
+            "mae": 13.397,
+            "bias": -13.316,
+            "actual_mean": 24.92,
+            "pred_mean": 11.604
+          }
+        }
+      },
+      "30": {
+        "high_minutes": {
+          "n_total": 7031,
+          "overall": {
+            "label": "high_all",
+            "n": 7031,
+            "rmse": 8.807,
+            "mae": 6.774,
+            "bias": 0.167,
+            "actual_mean": 16.762,
+            "pred_mean": 16.93
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 1740,
+            "rmse": 11.886,
+            "mae": 10.014,
+            "bias": 9.995,
+            "actual_mean": 4.28,
+            "pred_mean": 14.275
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 2676,
+            "rmse": 9.506,
+            "mae": 7.668,
+            "bias": -7.148,
+            "actual_mean": 26.958,
+            "pred_mean": 19.81
+          }
+        },
+        "low_minutes": {
+          "n_total": 38556,
+          "overall": {
+            "label": "low_all",
+            "n": 38556,
+            "rmse": 5.377,
+            "mae": 3.541,
+            "bias": 0.081,
+            "actual_mean": 4.69,
+            "pred_mean": 4.771
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 30608,
+            "rmse": 3.956,
+            "mae": 2.587,
+            "bias": 1.85,
+            "actual_mean": 1.681,
+            "pred_mean": 3.532
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 1868,
+            "rmse": 13.991,
+            "mae": 12.527,
+            "bias": -12.434,
+            "actual_mean": 25.019,
+            "pred_mean": 12.585
+          }
+        }
+      },
+      "32": {
+        "high_minutes": {
+          "n_total": 5097,
+          "overall": {
+            "label": "high_all",
+            "n": 5097,
+            "rmse": 9.008,
+            "mae": 6.904,
+            "bias": 0.155,
+            "actual_mean": 17.832,
+            "pred_mean": 17.986
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 1062,
+            "rmse": 13.136,
+            "mae": 11.322,
+            "bias": 11.308,
+            "actual_mean": 4.162,
+            "pred_mean": 15.47
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 2172,
+            "rmse": 9.277,
+            "mae": 7.397,
+            "bias": -6.83,
+            "actual_mean": 27.178,
+            "pred_mean": 20.348
+          }
+        },
+        "low_minutes": {
+          "n_total": 40490,
+          "overall": {
+            "label": "low_all",
+            "n": 40490,
+            "rmse": 5.548,
+            "mae": 3.679,
+            "bias": 0.087,
+            "actual_mean": 5.132,
+            "pred_mean": 5.219
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 31286,
+            "rmse": 4.16,
+            "mae": 2.704,
+            "bias": 1.982,
+            "actual_mean": 1.742,
+            "pred_mean": 3.724
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 2372,
+            "rmse": 13.315,
+            "mae": 11.743,
+            "bias": -11.602,
+            "actual_mean": 25.229,
+            "pred_mean": 13.627
+          }
+        }
+      }
+    },
+    "REB": {
+      "24": {
+        "high_minutes": {
+          "n_total": 13246,
+          "overall": {
+            "label": "high_all",
+            "n": 13246,
+            "rmse": 3.103,
+            "mae": 2.362,
+            "bias": 0.013,
+            "actual_mean": 4.86,
+            "pred_mean": 4.873
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 11634,
+            "rmse": 2.689,
+            "mae": 2.071,
+            "bias": 0.617,
+            "actual_mean": 3.818,
+            "pred_mean": 4.436
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 35,
+            "rmse": 11.206,
+            "mae": 10.903,
+            "bias": -10.903,
+            "actual_mean": 21.457,
+            "pred_mean": 10.554
+          }
+        },
+        "low_minutes": {
+          "n_total": 32341,
+          "overall": {
+            "label": "low_all",
+            "n": 32341,
+            "rmse": 2.138,
+            "mae": 1.363,
+            "bias": 0.002,
+            "actual_mean": 1.587,
+            "pred_mean": 1.589
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 31639,
+            "rmse": 1.837,
+            "mae": 1.237,
+            "bias": 0.158,
+            "actual_mean": 1.355,
+            "pred_mean": 1.513
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 8,
+            "rmse": 15.505,
+            "mae": 15.16,
+            "bias": -15.16,
+            "actual_mean": 21.25,
+            "pred_mean": 6.09
+          }
+        }
+      },
+      "26": {
+        "high_minutes": {
+          "n_total": 11104,
+          "overall": {
+            "label": "high_all",
+            "n": 11104,
+            "rmse": 3.129,
+            "mae": 2.38,
+            "bias": -0.012,
+            "actual_mean": 5.076,
+            "pred_mean": 5.064
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 9640,
+            "rmse": 2.713,
+            "mae": 2.081,
+            "bias": 0.629,
+            "actual_mean": 3.961,
+            "pred_mean": 4.591
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 32,
+            "rmse": 10.876,
+            "mae": 10.596,
+            "bias": -10.596,
+            "actual_mean": 21.438,
+            "pred_mean": 10.842
+          }
+        },
+        "low_minutes": {
+          "n_total": 34483,
+          "overall": {
+            "label": "low_all",
+            "n": 34483,
+            "rmse": 2.198,
+            "mae": 1.419,
+            "bias": 0.01,
+            "actual_mean": 1.721,
+            "pred_mean": 1.731
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 33633,
+            "rmse": 1.888,
+            "mae": 1.283,
+            "bias": 0.182,
+            "actual_mean": 1.46,
+            "pred_mean": 1.642
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 11,
+            "rmse": 15.175,
+            "mae": 14.893,
+            "bias": -14.893,
+            "actual_mean": 21.364,
+            "pred_mean": 6.47
+          }
+        }
+      },
+      "28": {
+        "high_minutes": {
+          "n_total": 9058,
+          "overall": {
+            "label": "high_all",
+            "n": 9058,
+            "rmse": 3.16,
+            "mae": 2.396,
+            "bias": -0.017,
+            "actual_mean": 5.259,
+            "pred_mean": 5.242
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 7767,
+            "rmse": 2.732,
+            "mae": 2.084,
+            "bias": 0.669,
+            "actual_mean": 4.063,
+            "pred_mean": 4.733
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 31,
+            "rmse": 10.897,
+            "mae": 10.608,
+            "bias": -10.608,
+            "actual_mean": 21.419,
+            "pred_mean": 10.811
+          }
+        },
+        "low_minutes": {
+          "n_total": 36529,
+          "overall": {
+            "label": "low_all",
+            "n": 36529,
+            "rmse": 2.25,
+            "mae": 1.469,
+            "bias": 0.011,
+            "actual_mean": 1.863,
+            "pred_mean": 1.874
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 35506,
+            "rmse": 1.935,
+            "mae": 1.325,
+            "bias": 0.197,
+            "actual_mean": 1.57,
+            "pred_mean": 1.767
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 12,
+            "rmse": 14.825,
+            "mae": 14.504,
+            "bias": -14.504,
+            "actual_mean": 21.417,
+            "pred_mean": 6.913
+          }
+        }
+      },
+      "30": {
+        "high_minutes": {
+          "n_total": 7031,
+          "overall": {
+            "label": "high_all",
+            "n": 7031,
+            "rmse": 3.167,
+            "mae": 2.4,
+            "bias": -0.01,
+            "actual_mean": 5.427,
+            "pred_mean": 5.417
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 5985,
+            "rmse": 2.743,
+            "mae": 2.09,
+            "bias": 0.693,
+            "actual_mean": 4.192,
+            "pred_mean": 4.885
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 29,
+            "rmse": 10.911,
+            "mae": 10.604,
+            "bias": -10.604,
+            "actual_mean": 21.483,
+            "pred_mean": 10.878
+          }
+        },
+        "low_minutes": {
+          "n_total": 38556,
+          "overall": {
+            "label": "low_all",
+            "n": 38556,
+            "rmse": 2.305,
+            "mae": 1.517,
+            "bias": 0.008,
+            "actual_mean": 2.011,
+            "pred_mean": 2.019
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 37288,
+            "rmse": 1.978,
+            "mae": 1.36,
+            "bias": 0.216,
+            "actual_mean": 1.668,
+            "pred_mean": 1.884
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 14,
+            "rmse": 14.307,
+            "mae": 13.955,
+            "bias": -13.955,
+            "actual_mean": 21.286,
+            "pred_mean": 7.331
+          }
+        }
+      },
+      "32": {
+        "high_minutes": {
+          "n_total": 5097,
+          "overall": {
+            "label": "high_all",
+            "n": 5097,
+            "rmse": 3.182,
+            "mae": 2.406,
+            "bias": 0.013,
+            "actual_mean": 5.556,
+            "pred_mean": 5.569
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 4299,
+            "rmse": 2.766,
+            "mae": 2.095,
+            "bias": 0.743,
+            "actual_mean": 4.272,
+            "pred_mean": 5.014
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 23,
+            "rmse": 10.579,
+            "mae": 10.297,
+            "bias": -10.297,
+            "actual_mean": 21.348,
+            "pred_mean": 11.051
+          }
+        },
+        "low_minutes": {
+          "n_total": 40490,
+          "overall": {
+            "label": "low_all",
+            "n": 40490,
+            "rmse": 2.351,
+            "mae": 1.559,
+            "bias": 0.004,
+            "actual_mean": 2.158,
+            "pred_mean": 2.162
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 38974,
+            "rmse": 2.013,
+            "mae": 1.391,
+            "bias": 0.231,
+            "actual_mean": 1.769,
+            "pred_mean": 2.0
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 20,
+            "rmse": 13.682,
+            "mae": 13.303,
+            "bias": -13.303,
+            "actual_mean": 21.5,
+            "pred_mean": 8.197
+          }
+        }
+      }
+    },
+    "AST": {
+      "24": {
+        "high_minutes": {
+          "n_total": 13246,
+          "overall": {
+            "label": "high_all",
+            "n": 13246,
+            "rmse": 2.394,
+            "mae": 1.805,
+            "bias": 0.052,
+            "actual_mean": 3.276,
+            "pred_mean": 3.328
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 12681,
+            "rmse": 2.133,
+            "mae": 1.652,
+            "bias": 0.287,
+            "actual_mean": 2.906,
+            "pred_mean": 3.193
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 5,
+            "rmse": 12.23,
+            "mae": 12.079,
+            "bias": -12.079,
+            "actual_mean": 20.8,
+            "pred_mean": 8.721
+          }
+        },
+        "low_minutes": {
+          "n_total": 32341,
+          "overall": {
+            "label": "low_all",
+            "n": 32341,
+            "rmse": 1.334,
+            "mae": 0.789,
+            "bias": 0.003,
+            "actual_mean": 0.798,
+            "pred_mean": 0.801
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 32232,
+            "rmse": 1.248,
+            "mae": 0.766,
+            "bias": 0.029,
+            "actual_mean": 0.762,
+            "pred_mean": 0.791
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 1,
+            "rmse": 16.751,
+            "mae": 16.751,
+            "bias": -16.751,
+            "actual_mean": 21.0,
+            "pred_mean": 4.249
+          }
+        }
+      },
+      "26": {
+        "high_minutes": {
+          "n_total": 11104,
+          "overall": {
+            "label": "high_all",
+            "n": 11104,
+            "rmse": 2.452,
+            "mae": 1.848,
+            "bias": 0.036,
+            "actual_mean": 3.489,
+            "pred_mean": 3.524
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 10568,
+            "rmse": 2.171,
+            "mae": 1.68,
+            "bias": 0.299,
+            "actual_mean": 3.078,
+            "pred_mean": 3.377
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 5,
+            "rmse": 12.23,
+            "mae": 12.079,
+            "bias": -12.079,
+            "actual_mean": 20.8,
+            "pred_mean": 8.721
+          }
+        },
+        "low_minutes": {
+          "n_total": 34483,
+          "overall": {
+            "label": "low_all",
+            "n": 34483,
+            "rmse": 1.391,
+            "mae": 0.839,
+            "bias": 0.011,
+            "actual_mean": 0.884,
+            "pred_mean": 0.895
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 34345,
+            "rmse": 1.301,
+            "mae": 0.812,
+            "bias": 0.041,
+            "actual_mean": 0.842,
+            "pred_mean": 0.883
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 1,
+            "rmse": 16.751,
+            "mae": 16.751,
+            "bias": -16.751,
+            "actual_mean": 21.0,
+            "pred_mean": 4.249
+          }
+        }
+      },
+      "28": {
+        "high_minutes": {
+          "n_total": 9058,
+          "overall": {
+            "label": "high_all",
+            "n": 9058,
+            "rmse": 2.522,
+            "mae": 1.905,
+            "bias": 0.024,
+            "actual_mean": 3.721,
+            "pred_mean": 3.746
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 8569,
+            "rmse": 2.23,
+            "mae": 1.724,
+            "bias": 0.315,
+            "actual_mean": 3.268,
+            "pred_mean": 3.584
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 5,
+            "rmse": 12.23,
+            "mae": 12.079,
+            "bias": -12.079,
+            "actual_mean": 20.8,
+            "pred_mean": 8.721
+          }
+        },
+        "low_minutes": {
+          "n_total": 36529,
+          "overall": {
+            "label": "low_all",
+            "n": 36529,
+            "rmse": 1.441,
+            "mae": 0.881,
+            "bias": 0.015,
+            "actual_mean": 0.972,
+            "pred_mean": 0.987
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 36344,
+            "rmse": 1.34,
+            "mae": 0.849,
+            "bias": 0.051,
+            "actual_mean": 0.92,
+            "pred_mean": 0.971
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 1,
+            "rmse": 16.751,
+            "mae": 16.751,
+            "bias": -16.751,
+            "actual_mean": 21.0,
+            "pred_mean": 4.249
+          }
+        }
+      },
+      "30": {
+        "high_minutes": {
+          "n_total": 7031,
+          "overall": {
+            "label": "high_all",
+            "n": 7031,
+            "rmse": 2.594,
+            "mae": 1.961,
+            "bias": 0.013,
+            "actual_mean": 3.964,
+            "pred_mean": 3.978
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 6598,
+            "rmse": 2.276,
+            "mae": 1.759,
+            "bias": 0.345,
+            "actual_mean": 3.457,
+            "pred_mean": 3.802
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 5,
+            "rmse": 12.23,
+            "mae": 12.079,
+            "bias": -12.079,
+            "actual_mean": 20.8,
+            "pred_mean": 8.721
+          }
+        },
+        "low_minutes": {
+          "n_total": 38556,
+          "overall": {
+            "label": "low_all",
+            "n": 38556,
+            "rmse": 1.495,
+            "mae": 0.925,
+            "bias": 0.018,
+            "actual_mean": 1.072,
+            "pred_mean": 1.09
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 38315,
+            "rmse": 1.387,
+            "mae": 0.888,
+            "bias": 0.06,
+            "actual_mean": 1.008,
+            "pred_mean": 1.068
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 1,
+            "rmse": 16.751,
+            "mae": 16.751,
+            "bias": -16.751,
+            "actual_mean": 21.0,
+            "pred_mean": 4.249
+          }
+        }
+      },
+      "32": {
+        "high_minutes": {
+          "n_total": 5097,
+          "overall": {
+            "label": "high_all",
+            "n": 5097,
+            "rmse": 2.682,
+            "mae": 2.024,
+            "bias": 0.021,
+            "actual_mean": 4.219,
+            "pred_mean": 4.24
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 4734,
+            "rmse": 2.329,
+            "mae": 1.793,
+            "bias": 0.408,
+            "actual_mean": 3.637,
+            "pred_mean": 4.045
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 4,
+            "rmse": 11.674,
+            "mae": 11.539,
+            "bias": -11.539,
+            "actual_mean": 21.0,
+            "pred_mean": 9.461
+          }
+        },
+        "low_minutes": {
+          "n_total": 40490,
+          "overall": {
+            "label": "low_all",
+            "n": 40490,
+            "rmse": 1.546,
+            "mae": 0.966,
+            "bias": 0.017,
+            "actual_mean": 1.178,
+            "pred_mean": 1.195
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 40179,
+            "rmse": 1.43,
+            "mae": 0.925,
+            "bias": 0.066,
+            "actual_mean": 1.1,
+            "pred_mean": 1.166
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 2,
+            "rmse": 15.546,
+            "mae": 15.495,
+            "bias": -15.495,
+            "actual_mean": 20.5,
+            "pred_mean": 5.005
+          }
+        }
+      }
+    },
+    "3PM": {
+      "24": {
+        "high_minutes": {
+          "n_total": 13246,
+          "overall": {
+            "label": "high_all",
+            "n": 13246,
+            "rmse": 1.505,
+            "mae": 1.144,
+            "bias": 0.013,
+            "actual_mean": 1.625,
+            "pred_mean": 1.638
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 13239,
+            "rmse": 1.495,
+            "mae": 1.141,
+            "bias": 0.017,
+            "actual_mean": 1.62,
+            "pred_mean": 1.637
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 0
+          }
+        },
+        "low_minutes": {
+          "n_total": 32341,
+          "overall": {
+            "label": "low_all",
+            "n": 32341,
+            "rmse": 0.856,
+            "mae": 0.477,
+            "bias": -0.009,
+            "actual_mean": 0.431,
+            "pred_mean": 0.421
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 32339,
+            "rmse": 0.853,
+            "mae": 0.477,
+            "bias": -0.009,
+            "actual_mean": 0.43,
+            "pred_mean": 0.421
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 0
+          }
+        }
+      },
+      "26": {
+        "high_minutes": {
+          "n_total": 11104,
+          "overall": {
+            "label": "high_all",
+            "n": 11104,
+            "rmse": 1.531,
+            "mae": 1.168,
+            "bias": 0.007,
+            "actual_mean": 1.692,
+            "pred_mean": 1.699
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 11097,
+            "rmse": 1.52,
+            "mae": 1.164,
+            "bias": 0.011,
+            "actual_mean": 1.687,
+            "pred_mean": 1.698
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 0
+          }
+        },
+        "low_minutes": {
+          "n_total": 34483,
+          "overall": {
+            "label": "low_all",
+            "n": 34483,
+            "rmse": 0.895,
+            "mae": 0.511,
+            "bias": -0.006,
+            "actual_mean": 0.483,
+            "pred_mean": 0.477
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 34481,
+            "rmse": 0.893,
+            "mae": 0.511,
+            "bias": -0.005,
+            "actual_mean": 0.482,
+            "pred_mean": 0.477
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 0
+          }
+        }
+      },
+      "28": {
+        "high_minutes": {
+          "n_total": 9058,
+          "overall": {
+            "label": "high_all",
+            "n": 9058,
+            "rmse": 1.555,
+            "mae": 1.187,
+            "bias": 0.002,
+            "actual_mean": 1.755,
+            "pred_mean": 1.758
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 9051,
+            "rmse": 1.541,
+            "mae": 1.182,
+            "bias": 0.008,
+            "actual_mean": 1.748,
+            "pred_mean": 1.757
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 0
+          }
+        },
+        "low_minutes": {
+          "n_total": 36529,
+          "overall": {
+            "label": "low_all",
+            "n": 36529,
+            "rmse": 0.933,
+            "mae": 0.543,
+            "bias": -0.004,
+            "actual_mean": 0.535,
+            "pred_mean": 0.531
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 36527,
+            "rmse": 0.93,
+            "mae": 0.543,
+            "bias": -0.004,
+            "actual_mean": 0.535,
+            "pred_mean": 0.531
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 0
+          }
+        }
+      },
+      "30": {
+        "high_minutes": {
+          "n_total": 7031,
+          "overall": {
+            "label": "high_all",
+            "n": 7031,
+            "rmse": 1.576,
+            "mae": 1.206,
+            "bias": 0.003,
+            "actual_mean": 1.814,
+            "pred_mean": 1.817
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 7025,
+            "rmse": 1.561,
+            "mae": 1.201,
+            "bias": 0.01,
+            "actual_mean": 1.807,
+            "pred_mean": 1.816
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 0
+          }
+        },
+        "low_minutes": {
+          "n_total": 38556,
+          "overall": {
+            "label": "low_all",
+            "n": 38556,
+            "rmse": 0.969,
+            "mae": 0.574,
+            "bias": -0.004,
+            "actual_mean": 0.589,
+            "pred_mean": 0.585
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 38553,
+            "rmse": 0.966,
+            "mae": 0.573,
+            "bias": -0.003,
+            "actual_mean": 0.588,
+            "pred_mean": 0.584
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 0
+          }
+        }
+      },
+      "32": {
+        "high_minutes": {
+          "n_total": 5097,
+          "overall": {
+            "label": "high_all",
+            "n": 5097,
+            "rmse": 1.608,
+            "mae": 1.233,
+            "bias": -0.008,
+            "actual_mean": 1.896,
+            "pred_mean": 1.888
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 5091,
+            "rmse": 1.588,
+            "mae": 1.225,
+            "bias": 0.001,
+            "actual_mean": 1.886,
+            "pred_mean": 1.887
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 0
+          }
+        },
+        "low_minutes": {
+          "n_total": 40490,
+          "overall": {
+            "label": "low_all",
+            "n": 40490,
+            "rmse": 1.0,
+            "mae": 0.601,
+            "bias": -0.002,
+            "actual_mean": 0.637,
+            "pred_mean": 0.635
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 40487,
+            "rmse": 0.997,
+            "mae": 0.6,
+            "bias": -0.002,
+            "actual_mean": 0.636,
+            "pred_mean": 0.634
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 0
+          }
+        }
+      }
+    },
+    "PRA": {
+      "24": {
+        "high_minutes": {
+          "n_total": 13246,
+          "overall": {
+            "label": "high_all",
+            "n": 13246,
+            "rmse": 11.235,
+            "mae": 8.521,
+            "bias": 0.326,
+            "actual_mean": 22.174,
+            "pred_mean": 22.5
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 2348,
+            "rmse": 18.569,
+            "mae": 16.244,
+            "bias": 16.242,
+            "actual_mean": 2.868,
+            "pred_mean": 19.11
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 7550,
+            "rmse": 9.878,
+            "mae": 7.801,
+            "bias": -6.023,
+            "actual_mean": 31.429,
+            "pred_mean": 25.406
+          }
+        },
+        "low_minutes": {
+          "n_total": 32341,
+          "overall": {
+            "label": "low_all",
+            "n": 32341,
+            "rmse": 7.113,
+            "mae": 4.648,
+            "bias": 0.012,
+            "actual_mean": 5.872,
+            "pred_mean": 5.884
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 24001,
+            "rmse": 5.027,
+            "mae": 3.262,
+            "bias": 2.726,
+            "actual_mean": 1.319,
+            "pred_mean": 4.045
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 3121,
+            "rmse": 15.95,
+            "mae": 13.94,
+            "bias": -13.68,
+            "actual_mean": 27.316,
+            "pred_mean": 13.635
+          }
+        }
+      },
+      "26": {
+        "high_minutes": {
+          "n_total": 11104,
+          "overall": {
+            "label": "high_all",
+            "n": 11104,
+            "rmse": 11.398,
+            "mae": 8.604,
+            "bias": 0.218,
+            "actual_mean": 23.474,
+            "pred_mean": 23.692
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 1681,
+            "rmse": 20.22,
+            "mae": 17.966,
+            "bias": 17.966,
+            "actual_mean": 2.72,
+            "pred_mean": 20.687
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 6816,
+            "rmse": 9.708,
+            "mae": 7.619,
+            "bias": -5.694,
+            "actual_mean": 31.869,
+            "pred_mean": 26.175
+          }
+        },
+        "low_minutes": {
+          "n_total": 34483,
+          "overall": {
+            "label": "low_all",
+            "n": 34483,
+            "rmse": 7.355,
+            "mae": 4.862,
+            "bias": 0.067,
+            "actual_mean": 6.465,
+            "pred_mean": 6.532
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 24668,
+            "rmse": 5.436,
+            "mae": 3.495,
+            "bias": 2.974,
+            "actual_mean": 1.371,
+            "pred_mean": 4.345
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 3855,
+            "rmse": 15.18,
+            "mae": 13.094,
+            "bias": -12.803,
+            "actual_mean": 27.32,
+            "pred_mean": 14.517
+          }
+        }
+      },
+      "28": {
+        "high_minutes": {
+          "n_total": 9058,
+          "overall": {
+            "label": "high_all",
+            "n": 9058,
+            "rmse": 11.613,
+            "mae": 8.706,
+            "bias": 0.175,
+            "actual_mean": 24.773,
+            "pred_mean": 24.948
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 1194,
+            "rmse": 21.979,
+            "mae": 19.771,
+            "bias": 19.771,
+            "actual_mean": 2.504,
+            "pred_mean": 22.275
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 5946,
+            "rmse": 9.594,
+            "mae": 7.473,
+            "bias": -5.321,
+            "actual_mean": 32.394,
+            "pred_mean": 27.073
+          }
+        },
+        "low_minutes": {
+          "n_total": 36529,
+          "overall": {
+            "label": "low_all",
+            "n": 36529,
+            "rmse": 7.557,
+            "mae": 5.046,
+            "bias": 0.085,
+            "actual_mean": 7.096,
+            "pred_mean": 7.182
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 25155,
+            "rmse": 5.776,
+            "mae": 3.69,
+            "bias": 3.179,
+            "actual_mean": 1.407,
+            "pred_mean": 4.586
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 4725,
+            "rmse": 14.427,
+            "mae": 12.269,
+            "bias": -11.964,
+            "actual_mean": 27.497,
+            "pred_mean": 15.533
+          }
+        }
+      },
+      "30": {
+        "high_minutes": {
+          "n_total": 7031,
+          "overall": {
+            "label": "high_all",
+            "n": 7031,
+            "rmse": 11.741,
+            "mae": 8.777,
+            "bias": 0.155,
+            "actual_mean": 26.153,
+            "pred_mean": 26.309
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 808,
+            "rmse": 23.624,
+            "mae": 21.543,
+            "bias": 21.543,
+            "actual_mean": 2.401,
+            "pred_mean": 23.944
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 4925,
+            "rmse": 9.432,
+            "mae": 7.314,
+            "bias": -4.897,
+            "actual_mean": 32.966,
+            "pred_mean": 28.069
+          }
+        },
+        "low_minutes": {
+          "n_total": 38556,
+          "overall": {
+            "label": "low_all",
+            "n": 38556,
+            "rmse": 7.788,
+            "mae": 5.225,
+            "bias": 0.094,
+            "actual_mean": 7.774,
+            "pred_mean": 7.868
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 25541,
+            "rmse": 6.147,
+            "mae": 3.877,
+            "bias": 3.374,
+            "actual_mean": 1.427,
+            "pred_mean": 4.801
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 5746,
+            "rmse": 13.79,
+            "mae": 11.553,
+            "bias": -11.147,
+            "actual_mean": 27.877,
+            "pred_mean": 16.73
+          }
+        }
+      },
+      "32": {
+        "high_minutes": {
+          "n_total": 5097,
+          "overall": {
+            "label": "high_all",
+            "n": 5097,
+            "rmse": 11.943,
+            "mae": 8.874,
+            "bias": 0.149,
+            "actual_mean": 27.607,
+            "pred_mean": 27.756
+          },
+          "low_line": {
+            "label": "high_<10",
+            "n": 508,
+            "rmse": 25.765,
+            "mae": 23.773,
+            "bias": 23.773,
+            "actual_mean": 2.209,
+            "pred_mean": 25.982
+          },
+          "high_line": {
+            "label": "high_>=20",
+            "n": 3777,
+            "rmse": 9.343,
+            "mae": 7.247,
+            "bias": -4.49,
+            "actual_mean": 33.667,
+            "pred_mean": 29.177
+          }
+        },
+        "low_minutes": {
+          "n_total": 40490,
+          "overall": {
+            "label": "low_all",
+            "n": 40490,
+            "rmse": 7.984,
+            "mae": 5.383,
+            "bias": 0.098,
+            "actual_mean": 8.469,
+            "pred_mean": 8.566
+          },
+          "low_line": {
+            "label": "low_<10",
+            "n": 25841,
+            "rmse": 6.461,
+            "mae": 4.038,
+            "bias": 3.541,
+            "actual_mean": 1.442,
+            "pred_mean": 4.983
+          },
+          "high_line": {
+            "label": "low_>=20",
+            "n": 6894,
+            "rmse": 13.199,
+            "mae": 10.884,
+            "bias": -10.329,
+            "actual_mean": 28.34,
+            "pred_mean": 18.011
+          }
+        }
+      }
+    }
+  },
+  "live_board": {
+    "24": {
+      "buckets": {
+        "high_minutes": {
+          "total_props": 2086,
+          "over_count": 1853,
+          "under_count": 233,
+          "front_lines_passes": 45,
+          "safe_haven_passes": 18,
+          "passes_total": 63,
+          "pass_rate_pct": 3.02,
+          "avg_player_hit_rate_over_for_OVER_picks": 44.16,
+          "avg_player_hit_rate_over_for_UNDER_picks": 52.57
+        },
+        "low_minutes": {
+          "total_props": 1636,
+          "over_count": 1432,
+          "under_count": 204,
+          "front_lines_passes": 34,
+          "safe_haven_passes": 2,
+          "passes_total": 36,
+          "pass_rate_pct": 2.2,
+          "avg_player_hit_rate_over_for_OVER_picks": 44.45,
+          "avg_player_hit_rate_over_for_UNDER_picks": 53.01
+        }
+      },
+      "risky_over_passes_count": 30,
+      "top_10_risky_over_passes": [
+        {
+          "player": "Sam Merrill",
+          "stat": "PRA",
+          "line": 9.5,
+          "tier": "front_lines",
+          "model_projection": 15.52,
+          "hit_rate_over": 85.0,
+          "edge_pct": 14.5,
+          "ranking_score": 1.899296,
+          "L5": 15.6,
+          "L10": 18.4,
+          "tp": 63.1
+        },
+        {
+          "player": "Sam Merrill",
+          "stat": "PTS",
+          "line": 5.5,
+          "tier": "front_lines",
+          "model_projection": 10.21,
+          "hit_rate_over": 75.0,
+          "edge_pct": 14.9,
+          "ranking_score": 1.885305,
+          "L5": 15.6,
+          "L10": 18.4,
+          "tp": 64.3
+        },
+        {
+          "player": "Ayo Dosunmu",
+          "stat": "PTS",
+          "line": 10.5,
+          "tier": "front_lines",
+          "model_projection": 15.33,
+          "hit_rate_over": 85.0,
+          "edge_pct": 27.8,
+          "ranking_score": 1.503842,
+          "L5": 14.4,
+          "L10": 7.2,
+          "tp": 52.0
+        },
+        {
+          "player": "Scottie Barnes",
+          "stat": "AST",
+          "line": 3.5,
+          "tier": "safe_haven",
+          "model_projection": 6.5,
+          "hit_rate_over": 90.0,
+          "edge_pct": 14.4,
+          "ranking_score": 1.35986,
+          "L5": 17.6,
+          "L10": 16.7,
+          "tp": 81.7
+        },
+        {
+          "player": "Ayo Dosunmu",
+          "stat": "player_points_rebounds",
+          "line": 13.5,
+          "tier": "front_lines",
+          "model_projection": 19.68,
+          "hit_rate_over": 85.0,
+          "edge_pct": 27.5,
+          "ranking_score": 1.337513,
+          "L5": 14.4,
+          "L10": 7.2,
+          "tp": 52.0
+        },
+        {
+          "player": "Mark Williams",
+          "stat": "PRA",
+          "line": 13.5,
+          "tier": "front_lines",
+          "model_projection": 18.1,
+          "hit_rate_over": 70.0,
+          "edge_pct": 21.9,
+          "ranking_score": 1.168246,
+          "L5": 11.6,
+          "L10": 18.6,
+          "tp": 50.0
+        },
+        {
+          "player": "Ayo Dosunmu",
+          "stat": "PRA",
+          "line": 16.5,
+          "tier": "front_lines",
+          "model_projection": 21.14,
+          "hit_rate_over": 70.0,
+          "edge_pct": 19.6,
+          "ranking_score": 1.090083,
+          "L5": 14.4,
+          "L10": 7.2,
+          "tp": 52.5
+        },
+        {
+          "player": "Miles McBride",
+          "stat": "PRA",
+          "line": 7.5,
+          "tier": "front_lines",
+          "model_projection": 10.99,
+          "hit_rate_over": 80.0,
+          "edge_pct": 12.5,
+          "ranking_score": 1.044889,
+          "L5": 16.8,
+          "L10": 21.0,
+          "tp": 54.5
+        },
+        {
+          "player": "C.J. McCollum",
+          "stat": "AST",
+          "line": 2.5,
+          "tier": "safe_haven",
+          "model_projection": 4.46,
+          "hit_rate_over": 75.0,
+          "edge_pct": 12.1,
+          "ranking_score": 0.990258,
+          "L5": 13.6,
+          "L10": 9.1,
+          "tp": 75.4
+        },
+        {
+          "player": "Sam Merrill",
+          "stat": "player_points_rebounds",
+          "line": 9.5,
+          "tier": "front_lines",
+          "model_projection": 13.58,
+          "hit_rate_over": 70.0,
+          "edge_pct": 22.6,
+          "ranking_score": 0.962085,
+          "L5": 15.6,
+          "L10": 18.4,
+          "tp": 50.1
+        }
+      ]
+    },
+    "26": {
+      "buckets": {
+        "high_minutes": {
+          "total_props": 1865,
+          "over_count": 1657,
+          "under_count": 208,
+          "front_lines_passes": 37,
+          "safe_haven_passes": 15,
+          "passes_total": 52,
+          "pass_rate_pct": 2.79,
+          "avg_player_hit_rate_over_for_OVER_picks": 43.92,
+          "avg_player_hit_rate_over_for_UNDER_picks": 52.23
+        },
+        "low_minutes": {
+          "total_props": 1857,
+          "over_count": 1628,
+          "under_count": 229,
+          "front_lines_passes": 42,
+          "safe_haven_passes": 5,
+          "passes_total": 47,
+          "pass_rate_pct": 2.53,
+          "avg_player_hit_rate_over_for_OVER_picks": 44.66,
+          "avg_player_hit_rate_over_for_UNDER_picks": 53.28
+        }
+      },
+      "risky_over_passes_count": 41,
+      "top_10_risky_over_passes": [
+        {
+          "player": "Nickeil Alexander-Walker",
+          "stat": "PTS",
+          "line": 14.5,
+          "tier": "safe_haven",
+          "model_projection": 21.86,
+          "hit_rate_over": 95.0,
+          "edge_pct": 15.1,
+          "ranking_score": 2.267306,
+          "L5": 24.0,
+          "L10": 20.9,
+          "tp": 74.7
+        },
+        {
+          "player": "Sam Merrill",
+          "stat": "PRA",
+          "line": 9.5,
+          "tier": "front_lines",
+          "model_projection": 15.52,
+          "hit_rate_over": 85.0,
+          "edge_pct": 14.5,
+          "ranking_score": 1.899296,
+          "L5": 15.6,
+          "L10": 18.4,
+          "tp": 63.1
+        },
+        {
+          "player": "Sam Merrill",
+          "stat": "PTS",
+          "line": 5.5,
+          "tier": "front_lines",
+          "model_projection": 10.21,
+          "hit_rate_over": 75.0,
+          "edge_pct": 14.9,
+          "ranking_score": 1.885305,
+          "L5": 15.6,
+          "L10": 18.4,
+          "tp": 64.3
+        },
+        {
+          "player": "Naz Reid",
+          "stat": "PTS",
+          "line": 7.5,
+          "tier": "safe_haven",
+          "model_projection": 12.45,
+          "hit_rate_over": 80.0,
+          "edge_pct": 9.1,
+          "ranking_score": 1.776063,
+          "L5": 24.4,
+          "L10": 25.6,
+          "tp": 71.2
+        },
+        {
+          "player": "Ayo Dosunmu",
+          "stat": "PTS",
+          "line": 10.5,
+          "tier": "front_lines",
+          "model_projection": 15.33,
+          "hit_rate_over": 85.0,
+          "edge_pct": 27.8,
+          "ranking_score": 1.503842,
+          "L5": 14.4,
+          "L10": 7.2,
+          "tp": 52.0
+        },
+        {
+          "player": "Quentin Grimes",
+          "stat": "PRA",
+          "line": 11.5,
+          "tier": "front_lines",
+          "model_projection": 16.58,
+          "hit_rate_over": 75.0,
+          "edge_pct": 22.9,
+          "ranking_score": 1.414048,
+          "L5": 20.4,
+          "L10": 25.0,
+          "tp": 51.0
+        },
+        {
+          "player": "Scottie Barnes",
+          "stat": "AST",
+          "line": 3.5,
+          "tier": "safe_haven",
+          "model_projection": 6.5,
+          "hit_rate_over": 90.0,
+          "edge_pct": 14.4,
+          "ranking_score": 1.35986,
+          "L5": 17.6,
+          "L10": 16.7,
+          "tp": 81.7
+        },
+        {
+          "player": "Ayo Dosunmu",
+          "stat": "player_points_rebounds",
+          "line": 13.5,
+          "tier": "front_lines",
+          "model_projection": 19.68,
+          "hit_rate_over": 85.0,
+          "edge_pct": 27.5,
+          "ranking_score": 1.337513,
+          "L5": 14.4,
+          "L10": 7.2,
+          "tp": 52.0
+        },
+        {
+          "player": "Mitchell Robinson",
+          "stat": "REB",
+          "line": 4.5,
+          "tier": "safe_haven",
+          "model_projection": 8.01,
+          "hit_rate_over": 80.0,
+          "edge_pct": 16.6,
+          "ranking_score": 1.320221,
+          "L5": 25.4,
+          "L10": 22.9,
+          "tp": 76.1
+        },
+        {
+          "player": "Mark Williams",
+          "stat": "PRA",
+          "line": 13.5,
+          "tier": "front_lines",
+          "model_projection": 18.1,
+          "hit_rate_over": 70.0,
+          "edge_pct": 21.9,
+          "ranking_score": 1.168246,
+          "L5": 11.6,
+          "L10": 18.6,
+          "tp": 50.0
+        }
+      ]
+    },
+    "28": {
+      "buckets": {
+        "high_minutes": {
+          "total_props": 1701,
+          "over_count": 1510,
+          "under_count": 191,
+          "front_lines_passes": 34,
+          "safe_haven_passes": 13,
+          "passes_total": 47,
+          "pass_rate_pct": 2.76,
+          "avg_player_hit_rate_over_for_OVER_picks": 43.69,
+          "avg_player_hit_rate_over_for_UNDER_picks": 52.2
+        },
+        "low_minutes": {
+          "total_props": 2021,
+          "over_count": 1775,
+          "under_count": 246,
+          "front_lines_passes": 45,
+          "safe_haven_passes": 7,
+          "passes_total": 52,
+          "pass_rate_pct": 2.57,
+          "avg_player_hit_rate_over_for_OVER_picks": 44.8,
+          "avg_player_hit_rate_over_for_UNDER_picks": 53.23
+        }
+      },
+      "risky_over_passes_count": 46,
+      "top_10_risky_over_passes": [
+        {
+          "player": "Nickeil Alexander-Walker",
+          "stat": "PTS",
+          "line": 14.5,
+          "tier": "safe_haven",
+          "model_projection": 21.86,
+          "hit_rate_over": 95.0,
+          "edge_pct": 15.1,
+          "ranking_score": 2.267306,
+          "L5": 24.0,
+          "L10": 20.9,
+          "tp": 74.7
+        },
+        {
+          "player": "Sam Merrill",
+          "stat": "PRA",
+          "line": 9.5,
+          "tier": "front_lines",
+          "model_projection": 15.52,
+          "hit_rate_over": 85.0,
+          "edge_pct": 14.5,
+          "ranking_score": 1.899296,
+          "L5": 15.6,
+          "L10": 18.4,
+          "tp": 63.1
+        },
+        {
+          "player": "Sam Merrill",
+          "stat": "PTS",
+          "line": 5.5,
+          "tier": "front_lines",
+          "model_projection": 10.21,
+          "hit_rate_over": 75.0,
+          "edge_pct": 14.9,
+          "ranking_score": 1.885305,
+          "L5": 15.6,
+          "L10": 18.4,
+          "tp": 64.3
+        },
+        {
+          "player": "Naz Reid",
+          "stat": "PTS",
+          "line": 7.5,
+          "tier": "safe_haven",
+          "model_projection": 12.45,
+          "hit_rate_over": 80.0,
+          "edge_pct": 9.1,
+          "ranking_score": 1.776063,
+          "L5": 24.4,
+          "L10": 25.6,
+          "tp": 71.2
+        },
+        {
+          "player": "Ayo Dosunmu",
+          "stat": "PTS",
+          "line": 10.5,
+          "tier": "front_lines",
+          "model_projection": 15.33,
+          "hit_rate_over": 85.0,
+          "edge_pct": 27.8,
+          "ranking_score": 1.503842,
+          "L5": 14.4,
+          "L10": 7.2,
+          "tp": 52.0
+        },
+        {
+          "player": "Quentin Grimes",
+          "stat": "PRA",
+          "line": 11.5,
+          "tier": "front_lines",
+          "model_projection": 16.58,
+          "hit_rate_over": 75.0,
+          "edge_pct": 22.9,
+          "ranking_score": 1.414048,
+          "L5": 20.4,
+          "L10": 25.0,
+          "tp": 51.0
+        },
+        {
+          "player": "Scottie Barnes",
+          "stat": "AST",
+          "line": 3.5,
+          "tier": "safe_haven",
+          "model_projection": 6.5,
+          "hit_rate_over": 90.0,
+          "edge_pct": 14.4,
+          "ranking_score": 1.35986,
+          "L5": 17.6,
+          "L10": 16.7,
+          "tp": 81.7
+        },
+        {
+          "player": "Ayo Dosunmu",
+          "stat": "player_points_rebounds",
+          "line": 13.5,
+          "tier": "front_lines",
+          "model_projection": 19.68,
+          "hit_rate_over": 85.0,
+          "edge_pct": 27.5,
+          "ranking_score": 1.337513,
+          "L5": 14.4,
+          "L10": 7.2,
+          "tp": 52.0
+        },
+        {
+          "player": "Mitchell Robinson",
+          "stat": "REB",
+          "line": 4.5,
+          "tier": "safe_haven",
+          "model_projection": 8.01,
+          "hit_rate_over": 80.0,
+          "edge_pct": 16.6,
+          "ranking_score": 1.320221,
+          "L5": 25.4,
+          "L10": 22.9,
+          "tp": 76.1
+        },
+        {
+          "player": "Dennis Schroder",
+          "stat": "AST",
+          "line": 1.5,
+          "tier": "front_lines",
+          "model_projection": 3.31,
+          "hit_rate_over": 95.0,
+          "edge_pct": 27.3,
+          "ranking_score": 1.215489,
+          "L5": 27.6,
+          "L10": 21.8,
+          "tp": 58.4
+        }
+      ]
+    },
+    "30": {
+      "buckets": {
+        "high_minutes": {
+          "total_props": 1457,
+          "over_count": 1291,
+          "under_count": 166,
+          "front_lines_passes": 25,
+          "safe_haven_passes": 7,
+          "passes_total": 32,
+          "pass_rate_pct": 2.2,
+          "avg_player_hit_rate_over_for_OVER_picks": 42.27,
+          "avg_player_hit_rate_over_for_UNDER_picks": 50.33
+        },
+        "low_minutes": {
+          "total_props": 2265,
+          "over_count": 1994,
+          "under_count": 271,
+          "front_lines_passes": 54,
+          "safe_haven_passes": 13,
+          "passes_total": 67,
+          "pass_rate_pct": 2.96,
+          "avg_player_hit_rate_over_for_OVER_picks": 45.6,
+          "avg_player_hit_rate_over_for_UNDER_picks": 54.28
+        }
+      },
+      "risky_over_passes_count": 61,
+      "top_10_risky_over_passes": [
+        {
+          "player": "Jarrett Allen",
+          "stat": "PTS",
+          "line": 9.5,
+          "tier": "safe_haven",
+          "model_projection": 18.43,
+          "hit_rate_over": 95.0,
+          "edge_pct": 22.1,
+          "ranking_score": 3.404532,
+          "L5": 29.8,
+          "L10": 28.5,
+          "tp": 71.7
+        },
+        {
+          "player": "Jarrett Allen",
+          "stat": "player_points_rebounds_alternate",
+          "line": 14.5,
+          "tier": "safe_haven",
+          "model_projection": 28.12,
+          "hit_rate_over": 90.0,
+          "edge_pct": 12.0,
+          "ranking_score": 3.377918,
+          "L5": 29.8,
+          "L10": 28.5,
+          "tp": 82.4
+        },
+        {
+          "player": "Jarrett Allen",
+          "stat": "PTS",
+          "line": 11.5,
+          "tier": "front_lines",
+          "model_projection": 18.43,
+          "hit_rate_over": 75.0,
+          "edge_pct": 29.0,
+          "ranking_score": 2.305989,
+          "L5": 29.8,
+          "L10": 28.5,
+          "tp": 59.4
+        },
+        {
+          "player": "Nickeil Alexander-Walker",
+          "stat": "PTS",
+          "line": 14.5,
+          "tier": "safe_haven",
+          "model_projection": 21.86,
+          "hit_rate_over": 95.0,
+          "edge_pct": 15.1,
+          "ranking_score": 2.267306,
+          "L5": 24.0,
+          "L10": 20.9,
+          "tp": 74.7
+        },
+        {
+          "player": "Sam Merrill",
+          "stat": "PRA",
+          "line": 9.5,
+          "tier": "front_lines",
+          "model_projection": 15.52,
+          "hit_rate_over": 85.0,
+          "edge_pct": 14.5,
+          "ranking_score": 1.899296,
+          "L5": 15.6,
+          "L10": 18.4,
+          "tp": 63.1
+        },
+        {
+          "player": "Sam Merrill",
+          "stat": "PTS",
+          "line": 5.5,
+          "tier": "front_lines",
+          "model_projection": 10.21,
+          "hit_rate_over": 75.0,
+          "edge_pct": 14.9,
+          "ranking_score": 1.885305,
+          "L5": 15.6,
+          "L10": 18.4,
+          "tp": 64.3
+        },
+        {
+          "player": "Jarrett Allen",
+          "stat": "PTS",
+          "line": 12.5,
+          "tier": "front_lines",
+          "model_projection": 18.43,
+          "hit_rate_over": 75.0,
+          "edge_pct": 32.4,
+          "ranking_score": 1.828185,
+          "L5": 29.8,
+          "L10": 28.5,
+          "tp": 52.3
+        },
+        {
+          "player": "Naz Reid",
+          "stat": "PTS",
+          "line": 7.5,
+          "tier": "safe_haven",
+          "model_projection": 12.45,
+          "hit_rate_over": 80.0,
+          "edge_pct": 9.1,
+          "ranking_score": 1.776063,
+          "L5": 24.4,
+          "L10": 25.6,
+          "tp": 71.2
+        },
+        {
+          "player": "Evan Mobley",
+          "stat": "player_points_rebounds_alternate",
+          "line": 19.5,
+          "tier": "safe_haven",
+          "model_projection": 28.57,
+          "hit_rate_over": 85.0,
+          "edge_pct": 9.5,
+          "ranking_score": 1.757155,
+          "L5": 27.0,
+          "L10": 28.0,
+          "tp": 76.1
+        },
+        {
+          "player": "Evan Mobley",
+          "stat": "player_points_assists_alternate",
+          "line": 14.5,
+          "tier": "safe_haven",
+          "model_projection": 21.5,
+          "hit_rate_over": 85.0,
+          "edge_pct": 12.2,
+          "ranking_score": 1.643247,
+          "L5": 27.0,
+          "L10": 28.0,
+          "tp": 77.2
+        }
+      ]
+    },
+    "32": {
+      "buckets": {
+        "high_minutes": {
+          "total_props": 1203,
+          "over_count": 1069,
+          "under_count": 134,
+          "front_lines_passes": 19,
+          "safe_haven_passes": 5,
+          "passes_total": 24,
+          "pass_rate_pct": 2.0,
+          "avg_player_hit_rate_over_for_OVER_picks": 41.11,
+          "avg_player_hit_rate_over_for_UNDER_picks": 48.69
+        },
+        "low_minutes": {
+          "total_props": 2519,
+          "over_count": 2216,
+          "under_count": 303,
+          "front_lines_passes": 60,
+          "safe_haven_passes": 15,
+          "passes_total": 75,
+          "pass_rate_pct": 2.98,
+          "avg_player_hit_rate_over_for_OVER_picks": 45.82,
+          "avg_player_hit_rate_over_for_UNDER_picks": 54.59
+        }
+      },
+      "risky_over_passes_count": 69,
+      "top_10_risky_over_passes": [
+        {
+          "player": "Jarrett Allen",
+          "stat": "PTS",
+          "line": 9.5,
+          "tier": "safe_haven",
+          "model_projection": 18.43,
+          "hit_rate_over": 95.0,
+          "edge_pct": 22.1,
+          "ranking_score": 3.404532,
+          "L5": 29.8,
+          "L10": 28.5,
+          "tp": 71.7
+        },
+        {
+          "player": "Jarrett Allen",
+          "stat": "player_points_rebounds_alternate",
+          "line": 14.5,
+          "tier": "safe_haven",
+          "model_projection": 28.12,
+          "hit_rate_over": 90.0,
+          "edge_pct": 12.0,
+          "ranking_score": 3.377918,
+          "L5": 29.8,
+          "L10": 28.5,
+          "tp": 82.4
+        },
+        {
+          "player": "Dyson Daniels",
+          "stat": "PTS",
+          "line": 7.5,
+          "tier": "front_lines",
+          "model_projection": 14.59,
+          "hit_rate_over": 80.0,
+          "edge_pct": 21.4,
+          "ranking_score": 2.815926,
+          "L5": 30.6,
+          "L10": 31.5,
+          "tp": 67.5
+        },
+        {
+          "player": "Jarrett Allen",
+          "stat": "PTS",
+          "line": 11.5,
+          "tier": "front_lines",
+          "model_projection": 18.43,
+          "hit_rate_over": 75.0,
+          "edge_pct": 29.0,
+          "ranking_score": 2.305989,
+          "L5": 29.8,
+          "L10": 28.5,
+          "tp": 59.4
+        },
+        {
+          "player": "Nickeil Alexander-Walker",
+          "stat": "PTS",
+          "line": 14.5,
+          "tier": "safe_haven",
+          "model_projection": 21.86,
+          "hit_rate_over": 95.0,
+          "edge_pct": 15.1,
+          "ranking_score": 2.267306,
+          "L5": 24.0,
+          "L10": 20.9,
+          "tp": 74.7
+        },
+        {
+          "player": "Sam Merrill",
+          "stat": "PRA",
+          "line": 9.5,
+          "tier": "front_lines",
+          "model_projection": 15.52,
+          "hit_rate_over": 85.0,
+          "edge_pct": 14.5,
+          "ranking_score": 1.899296,
+          "L5": 15.6,
+          "L10": 18.4,
+          "tp": 63.1
+        },
+        {
+          "player": "Sam Merrill",
+          "stat": "PTS",
+          "line": 5.5,
+          "tier": "front_lines",
+          "model_projection": 10.21,
+          "hit_rate_over": 75.0,
+          "edge_pct": 14.9,
+          "ranking_score": 1.885305,
+          "L5": 15.6,
+          "L10": 18.4,
+          "tp": 64.3
+        },
+        {
+          "player": "Jarrett Allen",
+          "stat": "PTS",
+          "line": 12.5,
+          "tier": "front_lines",
+          "model_projection": 18.43,
+          "hit_rate_over": 75.0,
+          "edge_pct": 32.4,
+          "ranking_score": 1.828185,
+          "L5": 29.8,
+          "L10": 28.5,
+          "tp": 52.3
+        },
+        {
+          "player": "Naz Reid",
+          "stat": "PTS",
+          "line": 7.5,
+          "tier": "safe_haven",
+          "model_projection": 12.45,
+          "hit_rate_over": 80.0,
+          "edge_pct": 9.1,
+          "ranking_score": 1.776063,
+          "L5": 24.4,
+          "L10": 25.6,
+          "tp": 71.2
+        },
+        {
+          "player": "Evan Mobley",
+          "stat": "player_points_rebounds_alternate",
+          "line": 19.5,
+          "tier": "safe_haven",
+          "model_projection": 28.57,
+          "hit_rate_over": 85.0,
+          "edge_pct": 9.5,
+          "ranking_score": 1.757155,
+          "L5": 27.0,
+          "L10": 28.0,
+          "tp": 76.1
+        }
+      ]
+    }
+  }
+}
