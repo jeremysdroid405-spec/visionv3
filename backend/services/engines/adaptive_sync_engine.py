@@ -1200,17 +1200,12 @@ class AdaptiveSyncEngine:
                     last_ticker_sync = now
                 
                 # =================================================================
-                # BOARD INTELLIGENCE ENRICHMENT (Fire-and-Forget)
+                # BOARD INTELLIGENCE ENRICHMENT — DELETED 2026-04-22
+                # The legacy board_intelligence_service wrote vision/intel
+                # into dg_cached_board. The canonical scoring path
+                # (recompute_sport → {sport}_prop_scores) is the only
+                # board source now.
                 # =================================================================
-                async def _run_enrichment_background():
-                    try:
-                        from services.board_intelligence_service import run_board_intelligence_enrichment
-                        intel_result = await run_board_intelligence_enrichment(self.db)
-                        logger.info(f"[BOARD_INTEL] COMPLETE: {intel_result.get('enriched', 0)}/{intel_result.get('total', 0)} enriched")
-                    except Exception as e:
-                        logger.error(f"[BOARD_INTEL] Background enrichment failed: {e}")
-                
-                asyncio.create_task(_run_enrichment_background())
                 
                 # =================================================================
                 # DETERMINE NEXT POLL INTERVAL (Market Stability Logic)
@@ -1281,63 +1276,15 @@ class AdaptiveSyncEngine:
             logger.error(f"[ADAPTIVE_SYNC] Ticker sync error: {e}")
     
     async def _check_mlb_lineups(self) -> None:
-        """
-        MLB LINEUP GATE - Check if lineups are confirmed via BDL starting_lineups.
-        
-        During the Lock-In phase (30m-2h before first pitch), props are barred from
-        Safe Haven until lineup_confirmed == True.
-        
-        This is critical for MLB because:
-        - Lineups often drop 30-60 minutes before first pitch
-        - Late scratches can invalidate props
-        - ABS system affects strikeout props
-        """
-        try:
-            logger.info("[LINEUP_GATE] Checking MLB starting lineups...")
-            
-            # Get today's MLB games
-            from datetime import date
-            today = date.today().isoformat()
-            
-            # Query BDL for starting lineups (if available)
-            # Note: BDL may not have this endpoint - fallback to checking roster status
-            lineup_confirmed_teams = set()
-            
-            # For now, check if players have recent game activity as a proxy
-            # In production, this would call BDL's starting_lineups endpoint
-            mlb_props = await self.db["mlb_ferrari_safe_haven"].find({}).to_list(100)
-            
-            for prop in mlb_props:
-                player_name = prop.get("player_name")
-                if not player_name:
-                    continue
-                
-                # Check if player is in confirmed lineup
-                player = await self.db[COLL("master_hub", "mlb")].find_one(
-                    {"display_name": player_name},
-                    {"_id": 0, "lineup_confirmed": 1, "lineup_position": 1}
-                )
-                
-                if player:
-                    lineup_confirmed = player.get("lineup_confirmed", False)
-                    
-                    if not lineup_confirmed:
-                        # Update prop to indicate lineup not confirmed
-                        await self.db["mlb_ferrari_safe_haven"].update_one(
-                            {"_id": prop.get("_id")},
-                            {"$set": {"lineup_gate_passed": False, "lineup_warning": "Lineup not yet confirmed"}}
-                        )
-                        logger.debug(f"[LINEUP_GATE] {player_name}: Lineup NOT confirmed - barred from Safe Haven")
-                    else:
-                        await self.db["mlb_ferrari_safe_haven"].update_one(
-                            {"_id": prop.get("_id")},
-                            {"$set": {"lineup_gate_passed": True}}
-                        )
-            
-            logger.info(f"[LINEUP_GATE] MLB lineup check complete")
-            
-        except Exception as e:
-            logger.error(f"[LINEUP_GATE] MLB lineup check error: {e}")
+        """MLB LINEUP GATE — DELETED 2026-04-22.
+
+        The legacy implementation wrote `lineup_gate_passed` into
+        `mlb_ferrari_safe_haven` (a deleted collection). The canonical
+        path never consumed that field; the lineup-confirmation signal
+        now lives in the MLB scoring adapter via `lineup_confirmed` on
+        `mlb_master_hub_2026`. This stub is retained only so existing
+        callers don't error; it is a no-op."""
+        return None
     
     async def start(self) -> None:
         """Start the adaptive sync engine."""

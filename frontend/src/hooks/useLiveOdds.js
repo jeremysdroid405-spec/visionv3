@@ -44,21 +44,23 @@ const buildUrl = (endpoint, sport = 'nba') => {
 };
 
 /**
- * Fetch all active lines (full board)
+ * Fetch full board via the universal endpoint.
+ * Post Hard Consolidation (2026-04-22): the deleted
+ * `/api/v3/cached-props` is replaced by `/api/v3/board` which reads
+ * canonical `{sport}_prop_scores @ final-{sport}-rt`.
  */
 const fetchLiveOdds = async (sport = 'nba') => {
-  // MOCK DATA MODE - MLB ONLY
   if (USE_MOCK_DATA && sport === 'mlb') {
     console.log(`[MOCK] Returning mock props for MLB`);
     return getMockAllProps(sport);
   }
-  
-  const response = await fetch(buildUrl('/api/v3/cached-props', sport));
-  
+
+  const response = await fetch(buildUrl('/api/v3/board', sport));
+
   if (!response.ok) {
     throw new Error(`Live odds fetch failed: ${response.status}`);
   }
-  
+
   const data = await response.json();
   return data;
 };
@@ -201,15 +203,6 @@ const fetchMLBFrontLines = async () => {
   const data = await response.json();
   preloadImages(data.picks);
   return data;
-};
-
-/**
- * Fetch Most Popular Bets (by volume - all types)
- */
-const fetchMostPopularBets = async (sport = 'nba') => {
-  const response = await fetch(buildUrl('/api/v3/most-popular-bets', sport));
-  if (!response.ok) throw new Error('Most Popular fetch failed');
-  return response.json();
 };
 
 /**
@@ -375,51 +368,14 @@ export const useFrontLines = (options = {}) => {
 };
 
 /**
- * useMostPopularBets - Most Popular bets by volume (all types)
- * Sport-aware
+ * useMostPopularBets + useTrapGraveyard were removed in the 2026-04-22
+ * HARD CONSOLIDATION. No production caller uses them; the backend
+ * endpoints (`/api/v3/most-popular-bets`, `/api/v3/trap-graveyard`)
+ * were served by the deleted `routes/board.py` / `routes/cached_data.py`
+ * and are NOT coming back. If you need popularity or trap-style
+ * filters, filter the universal board client-side or add them as
+ * new Ferrari tiers.
  */
-export const useMostPopularBets = (options = {}) => {
-  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
-  const { currentSport, isTransitioning } = useSport();
-  
-  return useQuery({
-    queryKey: ['mostPopularBets', currentSport],
-    queryFn: () => fetchMostPopularBets(currentSport),
-    enabled: enabled && !isTransitioning,
-    staleTime: LIVE_ODDS_STALE_TIME,
-    refetchInterval,
-    refetchOnWindowFocus: true,
-  });
-};
-
-/**
- * Fetch Trap Graveyard picks (flagged hook/bait picks)
- */
-const fetchTrapGraveyard = async (sport = 'nba') => {
-  const response = await fetch(buildUrl('/api/v3/trap-graveyard', sport));
-  if (!response.ok) throw new Error('Trap Graveyard fetch failed');
-  const data = await response.json();
-  preloadImages(data.picks);
-  return data;
-};
-
-/**
- * useTrapGraveyard - Trap Graveyard (Hook Risk / Vegas Bait) picks
- * Sport-aware
- */
-export const useTrapGraveyard = (options = {}) => {
-  const { enabled = true, refetchInterval = LIVE_ODDS_REFETCH_INTERVAL } = options;
-  const { currentSport, isTransitioning } = useSport();
-  
-  return useQuery({
-    queryKey: ['trapGraveyard', currentSport],
-    queryFn: () => fetchTrapGraveyard(currentSport),
-    enabled: enabled && !isTransitioning,
-    staleTime: LIVE_ODDS_STALE_TIME,
-    refetchInterval,
-    refetchOnWindowFocus: true,
-  });
-};
 
 /**
  * useMLBGoblins - MLB Sharp Goblins (Pinnacle confirmed)

@@ -57,19 +57,14 @@ RECENCY_DEFAULT_HOURS = 12    # No games nearby
 RECENCY_PREGAME_HOURS = 6     # Within 2h of tipoff
 RECENCY_LIVE_HOURS = 2        # Game already started
 
-# Board tier collections per sport
-TIER_COLLECTIONS = {
-    "nba": ["elite_safe_haven", "elite_front_lines", "elite_war_zone"],
-    "mlb": ["mlb_safe_haven", "mlb_front_lines", "mlb_war_zone"],
-}
-
+# Board tier sources per sport — post Hard Consolidation (2026-04-22)
+# all sports read from `{sport}_prop_scores @ final-{sport}-rt` filtered
+# by the canonical `tier` field. Legacy collections (elite_*, mlb_*)
+# are deleted.
 TIER_LABELS = {
-    "elite_safe_haven": "Safe Haven",
-    "elite_front_lines": "Front Lines",
-    "elite_war_zone": "War Zone",
-    "mlb_safe_haven": "Safe Haven",
-    "mlb_front_lines": "Front Lines",
-    "mlb_war_zone": "War Zone",
+    "safe_haven": "Safe Haven",
+    "front_lines": "Front Lines",
+    "war_zone": "War Zone",
 }
 
 # Minutes boost estimates by injured player's role
@@ -139,14 +134,19 @@ async def _get_recency_window(db, sport: str) -> int:
 
 
 async def _get_board_picks(db, sport: str) -> List[dict]:
-    """Load all picks from visible board tiers for a sport."""
-    picks = []
-    for col_name in TIER_COLLECTIONS.get(sport, []):
-        cursor = db[col_name].find({}, {"_id": 0})
-        async for doc in cursor:
-            doc["_board_tier"] = TIER_LABELS.get(col_name, col_name)
-            doc["_board_collection"] = col_name
-            picks.append(doc)
+    """Load every visible-board pick from the canonical
+    `{sport}_prop_scores @ final-{sport}-rt` scored collection."""
+    picks: List[dict] = []
+    version_tag = f"final-{sport}-rt"
+    cursor = db[f"{sport}_prop_scores"].find(
+        {"version_tag": version_tag, "tier": {"$in": list(TIER_LABELS.keys())}},
+        {"_id": 0},
+    )
+    async for doc in cursor:
+        tier = doc.get("tier")
+        doc["_board_tier"] = TIER_LABELS.get(tier, tier)
+        doc["_board_collection"] = f"{sport}_prop_scores:{tier}"
+        picks.append(doc)
     return picks
 
 

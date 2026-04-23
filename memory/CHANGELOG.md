@@ -833,3 +833,55 @@ Tests / Scripts:
   The canonical replacements live under `/api/v3/ferrari/*` and
   work. The frontend should be updated to use them.
 
+
+## 2026-04-22 — Phase 2: Frontend Rewire + Legacy Collection Drop
+
+Direct follow-up to the HARD CONSOLIDATION. No compatibility paths.
+
+### Restored on the universal path
+- `GET /api/v3/player-with-badges/{name}?sport={sport}` — new `routes/player.py`, reads `{sport}_prop_scores @ final-{sport}-rt` + `{sport}_master_hub_2026`. Returns player metadata + props + derived demons/goblins buckets.
+- `GET /api/v3/board?sport={sport}` — also in `routes/player.py`. Board-wide player list grouped from `{sport}_prop_scores`. Replaces the deleted `/api/v3/cached-props`.
+
+### Frontend rewired
+- `useLiveOdds.js::fetchLiveOdds` → `/api/v3/board` (canonical).
+- `useMostPopularBets` + `useTrapGraveyard` hooks + their `fetchMostPopularBets` / `fetchTrapGraveyard` helpers **deleted** (zero production callers). Replacement endpoints are intentionally NOT coming back; filter the universal board client-side if needed.
+- All other fetches already pointed at `/api/v3/ferrari/*` or the universal sport endpoints.
+
+### Legacy tier collections dropped (all writers already deleted)
+Dropped via `db.drop_collection`:
+- `ferrari_safe_haven`, `ferrari_front_lines`, `ferrari_war_zone`
+- `ferrari_discarded`, `ferrari_scored`
+- `mlb_ferrari_safe_haven`, `mlb_ferrari_front_lines`, `mlb_ferrari_war_zone`
+- `mlb_safe_haven`, `mlb_front_lines`, `mlb_war_zone`
+- `elite_safe_haven`, `elite_front_lines`, `elite_war_zone`
+- `oracle_apex_analyzed`
+
+(15 collections.)
+
+### Callers rewired onto the canonical scored table
+- `services/forward_testing_service.py` — reads `{sport}_prop_scores @ final-{sport}-rt` filtered by `tier`. Legacy `TIER_COLLECTIONS` map deleted.
+- `services/injury_advantage.py` — same. Legacy `TIER_COLLECTIONS` + per-collection `TIER_LABELS` compressed.
+- `services/market_moves_engine.py` — `_read_live_board` and the `ferrari_scored` candidate-pool fallback both rewritten to read `{sport}_prop_scores`.
+- `routes/ferrari_tiers.py` — `/v3/mlb/ferrari/hrr-picks` rewired to read `mlb_prop_scores @ final-mlb-rt, tier=war_zone` instead of the deleted `mlb_war_zone` collection.
+- `server.py` MLB health check reads `mlb_prop_scores` counts and invokes `run_master_sync(db, "mlb")` on empty.
+- `scripts/init_database.py` already rewired in Phase 1.
+
+### Files deleted (Phase 2)
+- `services/board_intelligence_service.py` (legacy enrichment writer into `dg_cached_board`)
+- `services/background_worker.py` (dead; only caller was the above)
+- `routes/mlb_tiers.py` (duplicate with `ferrari_tiers.py` MLB endpoints)
+
+### Stubbed / gutted
+- `services/engines/adaptive_sync_engine.py`:
+  - removed the fire-and-forget `run_board_intelligence_enrichment` call;
+  - `_check_mlb_lineups` reduced to a documented no-op (was writing into the deleted `mlb_ferrari_safe_haven`).
+- `config/db_config.py` and `config/collections.py` — legacy tier-name mappings stripped.
+
+### Acceptance verification
+- All 6 Ferrari endpoints + `/v3/board` + `/v3/player-with-badges` + `/v3/mlb/sharp/*` + `/v3/mlb/ferrari/hrr-picks` return HTTP 200 after collection drops.
+- NBA: Safe Haven 10 / Front Lines 10 / War Zone 1; MLB: 0 / 0 / 10 (off-hours).
+- `/api/v3/board?sport=nba` returns 119 players / 3859 total props with hub-enriched team/position/photo.
+- Frontend landing loads clean (no white-screen, no console errors).
+- 108 / 108 consolidation-relevant pytest tests pass.
+- Grep proof: zero live references to any deleted tier collection in production code.
+

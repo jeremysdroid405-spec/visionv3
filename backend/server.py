@@ -412,67 +412,37 @@ scheduler = None  # APScheduler instance
 
 async def run_mlb_startup_health_check():
     """
-    MLB Startup Health Check - Auto-populate on pod fork.
-    
-    Checks if MLB collections are empty and automatically syncs:
-    1. mlb_live_props (from The Odds API)
-    2. mlb_cached_board (enriched board)
-    3. mlb_war_zone, mlb_safe_haven, mlb_front_lines (tier collections)
-    
-    This prevents the "empty MLB board" issue that occurs when:
-    - Pod is forked from a snapshot without MLB data
-    - Database is reset or collections are dropped
-    - Fresh environment deployment
-    
-    The sync runs in the background to not block startup.
+    MLB Startup Health Check — auto-populate on pod fork.
+
+    Post HARD CONSOLIDATION (2026-04-22) the universal path owns the
+    board: `mlb_live_props` → `mlb_prop_scores @ final-mlb-rt`. If
+    either is empty we kick the canonical `master_sync.run_master_sync`.
     """
     logger.info("=" * 70)
     logger.info("[MLB_HEALTH] MLB Startup Health Check - Checking collections...")
     logger.info("=" * 70)
-    
+
     try:
-        # Check MLB collection counts
         mlb_live_props_count = await db[COLL("live_props", "mlb")].count_documents({})
-        mlb_cached_board_count = await db[COLL("board_cache", "mlb")].count_documents({})
-        mlb_war_zone_count = await db.mlb_war_zone.count_documents({})
-        
+        mlb_scores_count = await db.mlb_prop_scores.count_documents(
+            {"version_tag": "final-mlb-rt"}
+        )
+
         logger.info(f"[MLB_HEALTH] mlb_live_props: {mlb_live_props_count} docs")
-        logger.info(f"[MLB_HEALTH] mlb_cached_board: {mlb_cached_board_count} docs")
-        logger.info(f"[MLB_HEALTH] mlb_war_zone: {mlb_war_zone_count} docs")
-        
-        needs_sync = False
-        
-        # If mlb_live_props is empty, sync from Odds API
-        if mlb_live_props_count == 0:
-            logger.warning("[MLB_HEALTH] mlb_live_props EMPTY - Triggering Odds API sync...")
-            needs_sync = True
-            
+        logger.info(f"[MLB_HEALTH] mlb_prop_scores (final-mlb-rt): {mlb_scores_count} docs")
+
+        if mlb_live_props_count == 0 or mlb_scores_count == 0:
+            logger.warning(
+                "[MLB_HEALTH] MLB canonical board is empty — running universal master sync…"
+            )
             try:
-                from services.universal_odds_sync import UniversalOddsSync
-                
-                odds_sync = UniversalOddsSync(db)
-                result = await odds_sync.sync_sport("mlb")
-                
-                logger.info(f"[MLB_HEALTH] Odds sync complete: {result.get('total_props', 0)} props from {result.get('events_count', 0)} events")
+                from services.master_sync import run_master_sync
+                result = await run_master_sync(db, "mlb")
+                logger.info(
+                    f"[MLB_HEALTH] Universal master sync complete: success={result.get('success')}"
+                )
             except Exception as e:
-                logger.error(f"[MLB_HEALTH] Odds sync failed: {e}")
-        
-        # If mlb_cached_board is empty, build it
-        if mlb_cached_board_count == 0 or needs_sync:
-            logger.warning("[MLB_HEALTH] mlb_cached_board EMPTY - Building enriched board...")
-            
-            try:
-                from services.mlb_cached_board_builder import run_mlb_board_build
-                
-                result = await run_mlb_board_build(db)
-                
-                logger.info(f"[MLB_HEALTH] Board build complete: {result.get('props_enriched', 0)} props enriched")
-            except Exception as e:
-                logger.error(f"[MLB_HEALTH] Board build failed: {e}")
-        
-        # If mlb_war_zone is empty (or we synced above), rebuild tiers
-        if mlb_war_zone_count == 0 or needs_sync:
-            logger.warning("[MLB_HEALTH] MLB tiers EMPTY - Rebuilding via universal master sync...")
+                logger.error(f"[MLB_HEALTH] Master sync failed: {e}")
 
             try:
                 from services.master_sync import run_master_sync
@@ -480,10 +450,9 @@ async def run_mlb_startup_health_check():
                 logger.info(f"[MLB_HEALTH] Universal master sync complete: success={result.get('success')}")
             except Exception as e:
                 logger.error(f"[MLB_HEALTH] Tier rebuild failed: {e}")
-        
-        if not needs_sync:
-            logger.info("[MLB_HEALTH] All MLB collections populated - No action needed")
-        
+        else:
+            logger.info("[MLB_HEALTH] MLB canonical collections populated — no action needed")
+
         logger.info("=" * 70)
         logger.info("[MLB_HEALTH] MLB Startup Health Check COMPLETE")
         logger.info("=" * 70)

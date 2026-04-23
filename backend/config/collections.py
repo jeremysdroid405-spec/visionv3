@@ -112,29 +112,22 @@ SPORT_OVERRIDES: Dict[str, Dict[str, str]] = {
         "master_roster":           _COLL("master_roster", "nba"),
         "player_stats":            _COLL("player_stats_agg", "nba"),
         "parlay_builder":          "dg_parlay_builder",
-        # Ferrari-branded un-prefixed legacy writers (still being written
-        # by unified_pipeline._atomic_publish; drops are Phase 5 Step 6)
-        "scoring_scored":          "ferrari_scored",
-        "scoring_discarded":       "ferrari_discarded",
-        # BDL-sourced NBA-only data — scheduled to dual-write in Phase C
+        # BDL-sourced NBA-only data
         "advanced_stats":          "bdl_advanced_stats",
         "historical_logs":         "bdl_historical_game_logs",
         "player_mapping":          "bdl_player_mapping",
         "player_badges":           "bdl_player_badges",
         # Un-prefixed NBA-only collections
-        "oracle_apex_analyzed":    "oracle_apex_analyzed",
         "referee_assignments":     _COLL("referee_assignments", "nba"),
         "ticker_cache":            _COLL.shared("ticker_cache"),
         "ticker_headlines":        _COLL.shared("ticker_headlines"),
         # prop_scores is already canonical — nba_prop_scores (no override needed)
     },
     "mlb": {
-        # MLB is mostly canonical. The retired tier-storage collections
-        # (mlb_safe_haven etc.) don't appear here because they're NOT
-        # concepts the board system consumes any more (board is a live
-        # query now). They'll be dropped in Phase 5 Step 6.
-        # cached_board, prop_scores, historical_logs, etc. are already
-        # mlb_* — nothing to override.
+        # MLB is fully canonical: nba_/mlb_ prefixing. The legacy tier
+        # collections (mlb_safe_haven, mlb_front_lines, mlb_war_zone,
+        # mlb_ferrari_*) were dropped in the 2026-04-22 HARD
+        # CONSOLIDATION. Board data lives in mlb_prop_scores only.
     },
 }
 

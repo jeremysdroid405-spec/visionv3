@@ -23,10 +23,10 @@ from .live import router as live_router, set_db as set_live_db
 from .qa_testing import router as qa_router, set_qa_db
 from .image_proxy import router as image_proxy_router
 from .ferrari_tiers import router as ferrari_router, set_ferrari_db
+from .player import router as player_router, set_player_db
 from .vacuum import router as vacuum_router, set_vacuum_db
 from .mlb_vacuum import router as mlb_vacuum_router, set_mlb_vacuum_db
 from .mlb_weather import router as mlb_weather_router
-from .mlb_tiers import router as mlb_tiers_router, set_mlb_tiers_db
 from .mlb_ripple import router as mlb_ripple_router, set_mlb_ripple_db
 from .forward_testing import router as forward_testing_router, set_forward_test_db
 from .intel_cache import router as intel_cache_router, set_db as set_intel_cache_db
@@ -126,6 +126,11 @@ def register_all_routes(
         set_ferrari_db(db)
     app.include_router(ferrari_router, prefix="/api")
 
+    # Universal Player endpoint (restored post Hard Consolidation)
+    if db is not None:
+        set_player_db(db)
+    app.include_router(player_router, prefix="/api")
+
     # Usage Vacuum
     if db is not None:
         set_vacuum_db(db)
@@ -138,11 +143,6 @@ def register_all_routes(
 
     # MLB Weather
     app.include_router(mlb_weather_router, prefix="/api")
-
-    # MLB Tiers (reads mlb_prop_scores)
-    if db is not None:
-        set_mlb_tiers_db(db)
-    app.include_router(mlb_tiers_router, prefix="/api")
 
     # MLB Lineup Ripple Engine
     if db is not None:

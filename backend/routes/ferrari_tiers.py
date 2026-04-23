@@ -3655,14 +3655,17 @@ async def get_mlb_hrr_picks(
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
-    # Query HRR props from war_zone (they end up there due to low R²)
-    collection = _db[get_collection_name("war_zone", "mlb")]
-    
-    # Find HRR props with edge and hit rate filters
+    # HRR picks — read from canonical `mlb_prop_scores @ final-mlb-rt`
+    # filtered by scoring-stack `tier=war_zone` (HRR props land in War
+    # Zone due to low R²). Hard Consolidation 2026-04-22.
+    collection = _db["mlb_prop_scores"]
+
     query = {
+        "version_tag": "final-mlb-rt",
+        "tier": "war_zone",
         "stat_type": "Hits+Runs+RBIs",
         "edge_pct": {"$gte": min_edge},
-        "hit_rate_l10": {"$gte": min_hit_rate}
+        "hit_rate_over": {"$gte": min_hit_rate},
     }
     
     picks = await collection.find(query, {"_id": 0}).to_list(length=None)

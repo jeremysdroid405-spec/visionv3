@@ -34,19 +34,10 @@ SNAPSHOTS_COLLECTION = "forward_test_snapshots"
 OUTCOMES_COLLECTION = "forward_test_outcomes"
 METRICS_COLLECTION = "forward_test_metrics"
 
-# Tier configurations
-TIER_COLLECTIONS = {
-    "nba": {
-        "safe_haven": "ferrari_safe_haven",
-        "front_lines": "ferrari_front_lines",
-        "war_zone": "ferrari_war_zone"
-    },
-    "mlb": {
-        "safe_haven": "mlb_safe_haven",
-        "front_lines": "mlb_front_lines",
-        "war_zone": "mlb_war_zone"
-    }
-}
+# Tier list — the canonical `tier` field on `{sport}_prop_scores`.
+# The legacy per-tier collection map (ferrari_*, mlb_*) was deleted in
+# the 2026-04-22 HARD CONSOLIDATION.
+CANONICAL_TIERS = ("safe_haven", "front_lines", "war_zone")
 
 
 class ForwardTestingService:
@@ -103,15 +94,16 @@ class ForwardTestingService:
             "total_props": 0
         }
         
-        tier_configs = TIER_COLLECTIONS[sport]
-        
-        for tier_name, collection_name in tier_configs.items():
-            collection = self.db[collection_name]
-            
-            # Fetch all current props from tier
-            props = await collection.find(
-                {},
-                {"_id": 0}  # Exclude MongoDB _id
+        # Post Hard Consolidation (2026-04-22): read from the canonical
+        # `{sport}_prop_scores` collection at `final-{sport}-rt`, filtered
+        # by the scoring_stack `tier` field. No legacy tier collections.
+        scores_collection = self.db[f"{sport}_prop_scores"]
+        version_tag = f"final-{sport}-rt"
+
+        for tier_name in ("safe_haven", "front_lines", "war_zone"):
+            props = await scores_collection.find(
+                {"version_tag": version_tag, "tier": tier_name},
+                {"_id": 0},
             ).to_list(length=None)
             
             tier_count = len(props)

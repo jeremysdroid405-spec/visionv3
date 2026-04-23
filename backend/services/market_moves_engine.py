@@ -36,19 +36,9 @@ EVENT_TTL_MINUTES = 20
 SNAPSHOT_COLLECTION = "market_moves_snapshots"
 EVENTS_COLLECTION = "market_moves"
 
-# Collection mappings per sport
-TIER_COLLECTIONS = {
-    "nba": {
-        "safe_haven": "elite_safe_haven",
-        "front_lines": "elite_front_lines",
-        "war_zone": "elite_war_zone",
-    },
-    "mlb": {
-        "safe_haven": "mlb_safe_haven",
-        "front_lines": "mlb_front_lines",
-        "war_zone": "mlb_war_zone",
-    },
-}
+# Canonical tiers — all sports read from `{sport}_prop_scores` post
+# Hard Consolidation (2026-04-22). No legacy per-tier collections.
+CANONICAL_TIERS = ("safe_haven", "front_lines", "war_zone")
 
 
 def _pick_id(sport: str, player_name: str, stat_type: str, line=None) -> str:
@@ -72,30 +62,33 @@ def _format_tier(tier_key: str) -> str:
 # =========================================================================
 
 async def _read_live_board(db, sport: str) -> Dict[str, dict]:
-    """Read the current published board directly from tier collections.
-    Captures market identity fields for exact line-change matching."""
-    cols = TIER_COLLECTIONS.get(sport, {})
-    snapshot = {}
-    for tier_name, col_name in cols.items():
-        cursor = db[col_name].find(
-            {},
-            {"_id": 0, "player_name": 1, "stat_type": 1, "line": 1, "market": 1, "price": 1, "direction": 1},
-        )
-        async for doc in cursor:
-            player = doc.get("player_name", "")
-            stat = doc.get("stat_type", "")
-            line = doc.get("line")
-            pid = _pick_id(sport, player, stat, line)
-            snapshot[pid] = {
-                "player_name": player,
-                "stat_type": stat,
-                "line": doc.get("line"),
-                "market": doc.get("market", ""),
-                "price": doc.get("price"),
-                "direction": doc.get("direction", "Over"),
-                "tier": tier_name,
-                "sport": sport,
-            }
+    """Read the live board from the canonical `{sport}_prop_scores`
+    at `final-{sport}-rt`, grouped by scoring-stack `tier`."""
+    snapshot: Dict[str, dict] = {}
+    version_tag = f"final-{sport}-rt"
+    cursor = db[f"{sport}_prop_scores"].find(
+        {"version_tag": version_tag, "tier": {"$in": list(CANONICAL_TIERS)}},
+        {
+            "_id": 0, "player_name": 1, "stat_type": 1, "line": 1,
+            "market": 1, "tier_reference_odds": 1, "recommendation": 1,
+            "tier": 1,
+        },
+    )
+    async for doc in cursor:
+        player = doc.get("player_name", "")
+        stat = doc.get("stat_type", "")
+        line = doc.get("line")
+        pid = _pick_id(sport, player, stat, line)
+        snapshot[pid] = {
+            "player_name": player,
+            "stat_type": stat,
+            "line": line,
+            "market": doc.get("market", ""),
+            "price": doc.get("tier_reference_odds"),
+            "direction": (doc.get("recommendation") or "OVER").title(),
+            "tier": doc.get("tier"),
+            "sport": sport,
+        }
     return snapshot
 
 
@@ -257,12 +250,26 @@ async def _classify_exits(
             key = f"{prop.get('player_name', '').lower()}|{prop.get('stat_type', '').lower()}|{prop.get('line', '')}"
             candidate_by_key[key] = prop
     else:
-        scored_cursor = db.ferrari_scored.find(
-            {},
-            {"_id": 0, "player_name": 1, "stat_type": 1, "board_score": 1, "line": 1, "market": 1, "validation": 1},
+        # Post Hard Consolidation (2026-04-22): the legacy `ferrari_scored`
+        # NBA scored table is deleted. Pull the candidate pool from the
+        # canonical `{sport}_prop_scores @ final-{sport}-rt` table.
+        sport_hint = None
+        if old_snapshot:
+            sport_hint = next(iter(old_snapshot.values())).get("sport")
+        sport_hint = sport_hint or "nba"
+        version_tag = f"final-{sport_hint}-rt"
+        scored_cursor = db[f"{sport_hint}_prop_scores"].find(
+            {"version_tag": version_tag},
+            {
+                "_id": 0, "player_name": 1, "stat_type": 1, "line": 1,
+                "market": 1, "tier": 1, "ranking_score_v2": 1,
+                "tier_reference_odds": 1, "recommendation": 1,
+            },
         )
         async for doc in scored_cursor:
             key = f"{doc.get('player_name', '').lower()}|{doc.get('stat_type', '').lower()}|{doc.get('line', '')}"
+            # Normalize field names expected downstream.
+            doc.setdefault("board_score", doc.get("ranking_score_v2"))
             candidate_by_key[key] = doc
 
     # ---- Classify each exit ----

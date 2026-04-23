@@ -41,17 +41,8 @@ BASE_COLLECTIONS = {
     "master_hub": "master_hub_2026",      # Player stats repository (BDL data)
     "cached_board": "cached_board",        # Enriched players with props
     "live_props": "live_props",            # Raw imported props from Odds API
-    
-    # Ferrari tier collections
-    "safe_haven": "ferrari_safe_haven",    # Safe Haven tier picks
-    "front_lines": "ferrari_front_lines",  # Front Lines tier picks
-    "war_zone": "ferrari_war_zone",        # War Zone tier picks
-    "discarded": "ferrari_discarded",      # Discarded/killed props
-    "scored": "ferrari_scored",            # All scored props before tier split
-    
-    # Analysis collections
-    "oracle_analyzed": "oracle_apex_analyzed",  # Vegas Killer model outputs
-    
+    "prop_scores": "prop_scores",          # Canonical scored props (universal path)
+
     # Supporting collections
     "injuries": "injuries",                # Injury reports
     "referee_stats": "referee_stats",      # Referee statistics
@@ -68,13 +59,8 @@ BASE_COLLECTIONS = {
 NBA_LEGACY_NAMES = {
     "cached_board": "nba_cached_board",
     "live_props": "nba_live_props",
+    "prop_scores": "nba_prop_scores",
     "injuries": "dg_injuries",
-    "safe_haven": "ferrari_safe_haven",
-    "front_lines": "ferrari_front_lines",
-    "war_zone": "ferrari_war_zone",
-    "discarded": "ferrari_discarded",
-    "scored": "ferrari_scored",
-    "oracle_analyzed": "oracle_apex_analyzed",
     "master_hub": "nba_master_hub_2026",
 }
 
@@ -93,8 +79,8 @@ def get_collection_name(base_name: str, sport: str = DEFAULT_SPORT) -> str:
     Examples:
         get_collection_name('cached_board', 'nba')  -> 'nba_cached_board'
         get_collection_name('cached_board', 'mlb')  -> 'mlb_cached_board'
-        get_collection_name('safe_haven', 'nba')    -> 'ferrari_safe_haven'
-        get_collection_name('safe_haven', 'mlb')    -> 'mlb_ferrari_safe_haven'
+        get_collection_name('prop_scores', 'nba')   -> 'nba_prop_scores'
+        get_collection_name('prop_scores', 'mlb')   -> 'mlb_prop_scores'
     """
     sport = (sport or DEFAULT_SPORT).lower()
     
@@ -110,12 +96,7 @@ def get_collection_name(base_name: str, sport: str = DEFAULT_SPORT) -> str:
     
     # MLB and other sports use consistent prefixing
     prefix = SPORT_PREFIXES.get(sport, f"{sport}_")
-    
-    # For MLB tier collections, use simple names (mlb_safe_haven, etc.)
-    # without the ferrari_ middle part
-    if sport == "mlb" and base_name in ["safe_haven", "front_lines", "war_zone"]:
-        return f"mlb_{base_name}"
-    
+
     # Get the base collection name from config, or use the provided name
     actual_base = BASE_COLLECTIONS.get(base_name, base_name)
     
