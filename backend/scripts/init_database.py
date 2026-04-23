@@ -84,22 +84,17 @@ async def test_connection():
 
 
 async def sync_master_roster(db):
-    """Sync player roster from BallDontLie API."""
+    """Legacy roster sync — delegated to universal master sync."""
     logger.info("\n" + "="*60)
-    logger.info("STEP 1: Syncing Master Roster from BallDontLie...")
+    logger.info("STEP 1: Universal master sync (nba)...")
     logger.info("="*60)
-    
     try:
-        from services.engines.demon_goblin_engine import DemonGoblinEngine
-        
-        engine = DemonGoblinEngine(db)
-        result = await engine.sync_master_roster()
-        
-        logger.info(f"✓ Players synced: {result.get('players_synced', 0)}")
-        logger.info(f"✓ Teams found: {result.get('teams_found', 0)}")
+        from services.master_sync import run_master_sync
+        result = await run_master_sync(db, "nba")
+        logger.info(f"✓ Master sync success={result.get('success')}")
         return True
     except Exception as e:
-        logger.error(f"✗ Roster sync failed: {e}")
+        logger.error(f"✗ Master sync failed: {e}")
         return False
 
 
@@ -147,24 +142,21 @@ async def sync_dvp_rankings(db):
 
 
 async def sync_odds_and_props(db):
-    """Sync odds and props from The Odds API."""
+    """Sync odds and props via the universal path."""
     logger.info("\n" + "="*60)
-    logger.info("STEP 4: Syncing Odds & Props from The Odds API...")
+    logger.info("STEP 4: Universal odds sync (nba)...")
     logger.info("="*60)
-    
+
     odds_key = os.environ.get('ODDS_API_KEY')
     if not odds_key:
         logger.warning("⚠ ODDS_API_KEY not set - skipping odds sync")
         return False
-    
+
     try:
-        from services.engines.demon_goblin_engine import DemonGoblinEngine
-        
-        engine = DemonGoblinEngine(db)
-        result = await engine.sync_odds_to_mongo()
-        
+        from services.universal_odds_sync import get_universal_odds_service
+        result = await get_universal_odds_service(db).sync_sport_props("nba")
         logger.info(f"✓ Props synced: {result.get('total_props', 0)}")
-        logger.info(f"✓ Unique players: {result.get('unique_players', 0)}")
+        logger.info(f"✓ Events: {result.get('events_count', 0)}")
         return True
     except Exception as e:
         logger.error(f"✗ Odds sync failed: {e}")

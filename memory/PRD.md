@@ -14,6 +14,11 @@ anomalies through market-consensus probabilities.
 - **Scoring:** `services/scoring/recompute.py` (ranking),
   `services/scoring/scoring_stack.py` (tier gates),
   `services/scoring/adapters/{nba,mlb}_scoring.py`.
+- **Master sync (universal):** `services/master_sync.py ::
+  run_master_sync(sport)` — SOLE orchestration path for NBA + MLB
+  (Hard Consolidation, 2026-04-22). Legacy paths (DemonGoblinEngine,
+  NBAMasterSync, UnifiedPipeline, adapters/{nba,mlb}_adapter.py)
+  are DELETED.
 - **Board reader (universal, sport-agnostic):** `services/board/reader.py`
   with adapters in `services/board/adapters/{nba,mlb}.py`.
 - **MLB pipeline:** `services/mlb_master_sync.py` (Steps 1-5) + XGBoost

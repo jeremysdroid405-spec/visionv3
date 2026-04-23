@@ -37,7 +37,7 @@ DELTA_PATH_GLOBS = [
 # Modules whose import inside a delta-path file constitutes a violation.
 FORBIDDEN_UPSTREAM_MODULES = [
     "services.universal_odds_sync",
-    "services.odds_sync_service",
+    "services.odds_sync_service",  # deleted 2026-04-22
     "services.bdl_splits_cache",
     "services.bdl_universal_sync",
     "services.bdl_comprehensive_sync",
@@ -51,14 +51,15 @@ FORBIDDEN_UPSTREAM_MODULES = [
     "services.historical_data_fetcher",
     "services.historical_odds_fetcher",
     "services.mlb_cached_board_builder",
-    "services.mlb_sync_engine",
+    "services.mlb_sync_engine",  # deleted 2026-04-22
     "services.mlb_deep_ingestion",
     "services.mlb_advanced_stats_sync",
     "services.mlb_headshot_sync",
     "services.master_hub_sync",
-    "services.insights_sync_service",
+    "services.insights_sync_service",  # deleted 2026-04-22
     "services.market_catalog",
     "services.odds_api_service",
+    "services.master_sync",
 ]
 
 

@@ -197,11 +197,9 @@ def test_vision_summary_service_has_no_own_prompt_building():
 # --- P2.3: unqualified skip across the two Gemini call sites ---------------
 
 def test_unified_pipeline_skips_unqualified_tier():
-    import services.unified_pipeline as up
-    src = inspect.getsource(up)
-    assert "_RENDERABLE_TIERS" in src
-    # The set MUST omit `unqualified` at both invocation sites.
-    # Two usages: (1) _run_gemini_enrichment payload build loop,
-    #             (2) _run_nba_under_enrichment loop.
-    assert src.count("_RENDERABLE_TIERS = {") == 2
-    assert "\"unqualified\"" not in src.split("_RENDERABLE_TIERS = {")[1].split("}")[0]
+    """Deprecated — `services.unified_pipeline` was deleted in the
+    2026-04-22 Hard Consolidation. The unqualified-tier skip contract
+    is preserved by the universal scoring path (only scored picks are
+    surfaced to the Ferrari endpoints via `_serve_ferrari_tier`)."""
+    import pytest
+    pytest.skip("services.unified_pipeline deleted in Hard Consolidation")

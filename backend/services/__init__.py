@@ -1,4 +1,9 @@
-"""Services module initialization"""
+"""Services module initialization — UNIVERSAL PATH ONLY.
+
+Legacy wrapper services (DemonGoblinEngine delegate shims, duplicate
+sync/tier/gate services) were deleted 2026-04-22. Only shared
+utilities + high-level non-legacy services are re-exported here.
+"""
 from .dvp_service import calculate_dvp_modifier, get_dvp_label, get_full_dvp_analysis
 from .stats_service import (
     calculate_hit_rates, calculate_heat_level, calculate_safety_level,
@@ -35,19 +40,6 @@ from .utils_service import (
 # High-level services using repository pattern
 from .picks_service import PicksService
 from .board_service import BoardService
-from .roster_service import RosterService
 from .photo_service import PhotoService
-from .props_service import PropsService
-from .sync_service import SyncService
-from .tier_builder_service import TierBuilderService
-from .parlay_builder_service import ParlayBuilderService
-from .cached_board_builder_service import CachedBoardBuilderService
 from .odds_api_service import OddsApiService
-from .stats_api_service import StatsApiService
 from .picks_getter_service import PicksGetterService
-from .data_integrity_service import DataIntegrityService
-from .stats_enrichment_service import StatsEnrichmentService
-from .odds_sync_service import OddsSyncService
-from .sync_orchestration_service import SyncOrchestrationService
-from .prop_processor_service import PropProcessorService
-from .insights_sync_service import InsightsSyncService

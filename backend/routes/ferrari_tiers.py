@@ -13,12 +13,10 @@ from typing import Dict, Any, List, Optional
 import logging
 import os
 
-from services.ferrari_tier_service import get_ferrari_tier_service
+from services.config.collection_names import COLL
 from services.referee_scraper_service import get_referee_service
 from services.mlb_matchup_math import get_mlb_matchup_analysis
 from services.market_gap import annotate_market_gap
-
-from services.config.collection_names import COLL
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Ferrari Tiers"])
@@ -818,13 +816,6 @@ def set_ferrari_db(db):
     """Set the database reference for Ferrari service."""
     global _db
     _db = db
-
-
-def get_service():
-    """Get the Ferrari tier service instance."""
-    if _db is None:
-        raise HTTPException(status_code=500, detail="Ferrari service not initialized")
-    return get_ferrari_tier_service(_db)
 
 
 def get_vegas_killer():
@@ -1691,66 +1682,17 @@ async def get_oracle_apex_picks(
     response: Response,
     limit: int = Query(10, ge=1, le=50)
 ):
-    """
-    ORACLE APEX - ML-powered Safe Haven picks.
-    
-    NEW TIER LOGIC using Vegas Killer predictions with stat-specific gates:
-    
-    | Stat | Max CV | Hit Rate | Min Edge |
-    |------|--------|----------|----------|
-    | PTS  | 0.22   | 18/20    | 2.0      |
-    | REB  | 0.35   | 16/20*   | 1.5      |
-    | AST  | 0.35   | 15/20    | 2.0      |
-    | PRA  | 0.20   | 18/20    | 2.0      |
-    
-    *REB: 14/20 OK if L20 Mean >= Line + 2.5
-    
-    Additional filters:
-    - Minutes >= 22
-    - Dedupe: Lowest line per player+stat (best goblin)
-    """
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    
-    if _db is None:
-        raise HTTPException(status_code=500, detail="Database not initialized")
-    
-    try:
-        from services.oracle_apex_service import get_oracle_apex_service
-        
-        vk_model = get_vegas_killer()
-        if not vk_model:
-            raise HTTPException(status_code=500, detail="Vegas Killer model not available")
-        
-        oracle_apex = get_oracle_apex_service(_db, vk_model)
-        result = await oracle_apex.scan_all_props()
-        
-        if not result.get('success'):
-            raise HTTPException(status_code=500, detail=result.get('error', 'Unknown error'))
-        
-        picks = result.get('apex_picks', [])[:limit]
-        picks = _guard_board_picks(picks)
-        picks = _dedupe_picks_by_player(picks)
+    """DELETED in 2026-04-22 Hard Consolidation.
 
-        return {
-            "tier": "oracle_apex",
-            "tier_label": "Oracle Apex (Safe Haven)",
-            "description": "ML-powered mathematically-proven safe plays",
-            "picks": picks,
-            "count": len(picks),
-            "total_scanned": result.get('total_scanned', 0),
-            "gate_stats": result.get('gate_stats', {}),
-            "config": {
-                "PTS": {"max_cv": 0.22, "hit_rate": "18/20", "min_edge": 2.0},
-                "REB": {"max_cv": 0.35, "hit_rate": "16/20 (14/20 w/ buffer)", "min_edge": 1.5},
-                "AST": {"max_cv": 0.35, "hit_rate": "15/20", "min_edge": 2.0},
-                "PRA": {"max_cv": 0.20, "hit_rate": "18/20", "min_edge": 2.0},
-            }
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[ORACLE_APEX] Endpoint error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    The Oracle Apex gate evaluator was a duplicate of the canonical
+    `services/scoring/scoring_stack.py` gates. Consumers should use
+    `GET /api/v3/ferrari/safe-haven?sport=nba` instead.
+    """
+    raise HTTPException(
+        status_code=410,
+        detail="oracle-apex endpoint deleted in Hard Consolidation. "
+               "Use /api/v3/ferrari/safe-haven?sport=nba for the canonical NBA Safe Haven.",
+    )
 
 
 
@@ -1944,34 +1886,13 @@ async def get_ferrari_safe_haven(
         raise HTTPException(status_code=400, detail=str(e))
     
     if legacy:
-        # Legacy behavior - run live Oracle Apex scan (no Vision Intel)
-        try:
-            from services.oracle_apex_service import get_oracle_apex_service
-            vk_model = get_vegas_killer()
-            if not vk_model:
-                raise HTTPException(status_code=500, detail="Vegas Killer model not available")
-            
-            oracle_apex = get_oracle_apex_service(_db, vk_model)
-            result = await oracle_apex.scan_all_props()
-            
-            if not result.get('success'):
-                raise HTTPException(status_code=500, detail=result.get('error', 'Unknown error'))
-            
-            picks = result.get('apex_picks', [])[:limit]
-            picks = _guard_board_picks(picks)
-            picks = _dedupe_picks_by_player(picks)
-            return {
-                "tier": "safe_haven",
-                "tier_label": "Safe Haven (Live Scan)",
-                "logic": "oracle_apex_live",
-                "sport": sport,
-                "picks": picks,
-                "count": len(picks),
-                "note": "Live scan - Vision Intel not applied. Use rebuild for full analysis."
-            }
-        except Exception as e:
-            logger.error(f"[SAFE_HAVEN] Legacy scan error: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+        # Legacy Oracle Apex scan was deleted in the 2026-04-22 Hard
+        # Consolidation (the gate logic lives in scoring_stack now).
+        raise HTTPException(
+            status_code=410,
+            detail="?legacy=true was backed by oracle_apex_service (deleted). "
+                   "Use the canonical endpoint without the legacy flag.",
+        )
     
     # Stage 6 (2026-04-21, MLB↔NBA carbon-copy): single dispatch path.
     # Eliminates D4 — no per-sport IF-chain. Preserves response shape
@@ -2310,52 +2231,17 @@ async def toggle_watcher(
 
 @router.post("/v3/ferrari/rebuild")
 async def rebuild_ferrari_tiers(
-    use_optimized: bool = True,
-    sport: str = Query("nba", description="Target sport to sync (nba or mlb)"),
-    refresh_intel: bool = Query(False, description="Force refresh all Vision Intel (ignores cache)")
+    sport: str = Query("nba", description="Target sport to rebuild (nba or mlb)"),
 ):
+    """Manually trigger a rebuild of all Ferrari tiers via the
+    universal master-sync path. All legacy use_optimized/use_legacy
+    flags were removed in the 2026-04-22 Hard Consolidation.
     """
-    Manually trigger a rebuild of all Ferrari tiers.
-    
-    **SPORT-EXCLUSIVE**: Syncs only the specified sport's data.
-    - sport=nba: Syncs NBA collections (dg_cached_board, ferrari_* tiers)
-    - sport=mlb: Syncs MLB collections (mlb_cached_board, mlb_ferrari_* tiers)
-    
-    With use_optimized=True (default):
-    1. Fetches ALL global data in parallel (standings, refs, momentum, vacuums)
-    2. Runs Ferrari pipeline with power score calculation
-    3. Enriches all picks with cached data
-    4. Generates AI summaries in batches (rate-limited)
-    5. Persists enriched data to sport-specific cached_board
-    
-    Target: Complete sync in under 5 seconds (excluding AI summaries)
-    
-    With refresh_intel=True:
-    - Forces Gemini to regenerate all Vision Intel (ignores cached intel)
-    - Use when Vision Intel prompt has been updated
-    
-    With use_optimized=False:
-    - Falls back to legacy sequential pipeline (NBA only)
-    """
-    from datetime import datetime, timezone
-    
-    # Normalize sport parameter
     target_sport = (sport or "nba").lower()
-    if target_sport not in ["nba", "mlb"]:
-        raise HTTPException(status_code=400, detail=f"Invalid sport '{sport}'. Must be 'nba' or 'mlb'.")
-    
-    if use_optimized:
-        # Use the new optimized sync engine with sport isolation
-        from services.optimized_sync_engine import run_optimized_sync
-        result = await run_optimized_sync(_db, target_sport=target_sport, refresh_intel=refresh_intel)
-        return result
-    else:
-        # Legacy path (NBA only for backwards compatibility)
-        if target_sport != "nba":
-            raise HTTPException(status_code=400, detail="Legacy sync only supports NBA. Use use_optimized=true for MLB.")
-        service = get_service()
-        result = await service.build_ferrari_tiers(datetime.now(timezone.utc), target_sport=target_sport, refresh_intel=refresh_intel)
-        return result
+    if target_sport not in ("nba", "mlb"):
+        raise HTTPException(status_code=400, detail=f"Invalid sport '{sport}'.")
+    from services.master_sync import run_master_sync
+    return await run_master_sync(_db, target_sport)
 
 
 @router.post("/v3/ferrari/sync-refs")
@@ -2439,42 +2325,29 @@ async def get_todays_refs(response: Response):
 @router.get("/v3/ferrari/all")
 async def get_all_ferrari_tiers(
     response: Response,
-    limit: int = Query(10, ge=1, le=50)
+    limit: int = Query(10, ge=1, le=50),
+    sport: str = Query("nba", description="Sport (nba or mlb)"),
 ):
-    """
-    Get all Ferrari tiers in a single response.
-    
-    Returns:
-    - safe_haven: Top 10 elite goblins
-    - front_lines: Top 10 battleground picks
-    - war_zone: Top 10 elite demons
-    - verification: Market Intel stats
-    """
+    """Return all three Ferrari tiers. Delegates to the canonical
+    single-tier handlers which read from `{sport}_prop_scores`."""
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    
-    service = get_service()
-    
-    safe_haven = await service.get_safe_haven(limit)
-    front_lines = await service.get_front_lines(limit)
-    war_zone = await service.get_war_zone(limit)
-    
-    # Get verification stats from any tier (they all share the same stats)
-    verification = safe_haven.get("verification", {})
-    active_props = verification.get("active_props_verified", 0)
-    output_total = safe_haven.get("count", 0) + front_lines.get("count", 0) + war_zone.get("count", 0)
-    
+    safe_haven = await _serve_ferrari_tier(
+        sport=sport, tier_name="safe_haven",
+        tier_label_prefix="Safe Haven", limit=limit, sort=None,
+    )
+    front_lines = await _serve_ferrari_tier(
+        sport=sport, tier_name="front_lines",
+        tier_label_prefix="Front Lines", limit=limit, sort=None,
+    )
+    war_zone = await _serve_ferrari_tier(
+        sport=sport, tier_name="war_zone",
+        tier_label_prefix="War Zone", limit=limit, sort=None,
+    )
     return {
+        "sport": sport,
         "safe_haven": safe_haven,
         "front_lines": front_lines,
         "war_zone": war_zone,
-        "verification": {
-            "active_props_verified": active_props,
-            "elite_opportunities": output_total,
-            "safe_haven_pool": verification.get("safe_haven_pool", 0),
-            "front_lines_pool": verification.get("front_lines_pool", 0),
-            "war_zone_pool": verification.get("war_zone_pool", 0),
-            "message": f"Verified {active_props} active props to identify these {output_total} Elite opportunities."
-        }
     }
 
 

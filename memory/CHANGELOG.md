@@ -719,3 +719,117 @@ Total passing: 19 (12 pre-existing + 7 new).
 ## 2026-04-14 - Automated Feature Discovery + Lasso Prediction Engine
 - AutoFE pipeline: 366 engineered features → Lasso L1 selection
 - 3 models trained for MLB, NBA
+
+## 2026-04-22 — HARD CONSOLIDATION (P0)
+
+Single universal path for sync / scoring / gate. No fallbacks, no
+parallel branches, no legacy shims.
+
+### Canonical path (the ONLY path now)
+1. **Sync:** `services/universal_odds_sync.py :: sync_sport_props(sport)` →
+   writes `{sport}_live_props`.
+2. **Scoring:** `services/scoring/recompute.py :: recompute_sport(sport, tag)`
+   driven by `services/scoring/adapters/{nba,mlb}_scoring.py` and gated by
+   `services/scoring/scoring_stack.py`. Writes `{sport}_prop_scores` at
+   `final-{sport}` AND `final-{sport}-rt`.
+3. **Orchestration:** `services/master_sync.py :: run_master_sync(sport)` —
+   sport-agnostic; `RebuildCoordinator.dispatch_master_sync(sport)` wraps
+   it in the `UpstreamSyncLock`.
+4. **Board reads:** `services/board/reader.py` reads
+   `{sport}_prop_scores` at `final-{sport}-rt`.
+
+### Files deleted (43 files, ≈ 10,000+ LOC)
+
+Services:
+- `services/engines/demon_goblin_engine.py`
+- `services/odds_sync_service.py`
+- `services/optimized_sync_engine.py`
+- `services/nba_master_sync.py`
+- `services/ferrari_tier_service.py`
+- `services/mlb_tier_service.py`
+- `services/oracle_apex_service.py`
+- `services/mlb_oracle_apex_service.py`
+- `services/cached_board_builder_service.py`
+- `services/unified_pipeline.py`
+- `services/adapters/nba_adapter.py`
+- `services/adapters/mlb_adapter.py`
+- `services/pipeline/master_steps.py`
+- `services/sync_orchestration_service.py`
+- `services/sync_service.py`
+- `services/tier_builder_service.py`
+- `services/prop_processor_service.py`
+- `services/parlay_builder_service.py`
+- `services/props_service.py`
+- `services/roster_service.py`
+- `services/stats_api_service.py`
+- `services/stats_enrichment_service.py`
+- `services/insights_sync_service.py`
+- `services/data_integrity_service.py`
+- `services/mlb_pipeline.py`
+- `services/mlb_sync_engine.py`
+
+Routes:
+- `routes/picks.py`, `routes/parlays.py`, `routes/board.py`
+- `routes/board_intel_v2.py`, `routes/cached_data.py`
+- `routes/core_v3.py`, `routes/intel_sync.py`, `routes/legacy.py`
+- `routes/roster_sync.py`, `routes/scheduler.py`, `routes/tiers.py`
+
+Tests / Scripts:
+- `tests/test_v3_api_refactoring.py`, `tests/test_v3_refactoring_phase3.py`
+- `tests/test_v3_new_services.py`, `tests/test_odds_sync_standard_market.py`
+- `tests/test_war_zone_cv_floor_removed.py`, `tests/test_betmgm_lookup.py`
+- `scripts/validate_consensus.py`
+
+### Callers rewired
+- `services/rebuild_coordinator.py :: dispatch_master_sync` →
+  `services/master_sync.run_master_sync(sport)` for NBA AND MLB (same
+  code path, no `if sport == "nba"` branch).
+- `services/rebuild_coordinator.py :: _execute_rebuild` → same.
+- `server.py` → deleted `DemonGoblinEngine` import, init, and
+  `register_all_routes(demon_goblin_engine, …)` kwargs. Adaptive sync
+  callback rewired to `run_master_sync(db, "nba")`.
+- `services/engines/adaptive_sync_engine.py` callback target is now
+  the universal master sync.
+- `routes/__init__.py` rewritten to remove all engine DI and drop
+  references to the 11 deleted route modules.
+- `routes/ferrari_tiers.py`:
+  - Removed `get_ferrari_tier_service`, `get_service()`.
+  - `/v3/ferrari/rebuild` → `run_master_sync(db, sport)`.
+  - `/v3/ferrari/oracle-apex` → HTTP 410 Gone.
+  - `/v3/ferrari/safe-haven?legacy=true` → HTTP 410 Gone.
+  - `/v3/ferrari/all` now reads via `_serve_ferrari_tier` (universal).
+- `server.py` MLB-health rebuild → `run_master_sync(db, "mlb")`.
+- `scripts/init_database.py` → `run_master_sync` + `universal_odds_sync`.
+
+### Data-path fixes caught during consolidation
+- `services/scoring/prop_scores_store.py :: write_versioned_scores`
+  now dedupes by `canonical_key` in replace mode. Upstream had rare
+  collisions from unknown markets with empty stat_type.
+- `services/scoring/adapters/nba_scoring.py :: build_context` now
+  reads `stat_type` / `market_key` / `pp_layer` / `dk_layer` /
+  `fd_layer` / `bol_layer` directly — the universal sync writes those
+  fields, the old DemonGoblinEngine wrote `market` + `sharp_market`.
+
+### Acceptance verification
+- `POST /api/nba/sync/master` → 202, completes in ~116 s,
+  `success=true, errors=[]`. `final-nba-rt` populated with tier
+  picks.
+- `POST /api/mlb/sync/master` → 202, completes in ~38 s,
+  `success=true, errors=[]`. `final-mlb-rt` populated.
+- All 6 Ferrari endpoints HTTP 200 with populated tier picks:
+  NBA safe_haven=10 / front_lines=10 / war_zone=1; MLB
+  safe_haven=0 / front_lines=0 / war_zone=10 (MLB off-hours).
+- `GET /api/v3/admin/delta/engine-status` → 200.
+- Grep proof: zero live references to `DemonGoblinEngine`,
+  `NBAMasterSync`, `UnifiedPipeline`, `NBAAdapter`, `MLBAdapter`,
+  `get_ferrari_tier_service`, `get_oracle_apex_service`,
+  `get_mlb_tier_service`, `run_optimized_sync`, `sync_odds_to_mongo`.
+- 108 / 108 consolidation-relevant pytest tests pass.
+
+### Temporarily broken (known — rewire if UI needs them)
+- Frontend endpoints served by deleted routes now return 404:
+  `/api/v3/war-zone`, `/api/v3/goblin-vault`, `/api/v3/front-lines`,
+  `/api/v3/player-with-badges/{name}`, `/api/v3/cached-props`.
+  The canonical replacements live under `/api/v3/ferrari/*` and
+  work. The frontend should be updated to use them.
+

@@ -225,26 +225,21 @@ class RebuildCoordinator:
             logger.info("=" * 70)
 
             try:
-                from services.unified_pipeline import UnifiedPipeline
+                from services.master_sync import run_master_sync
 
-                if sport == "nba":
-                    from services.adapters.nba_adapter import NBAAdapter
-                    adapter = NBAAdapter()
-                elif sport == "mlb":
-                    from services.adapters.mlb_adapter import MLBAdapter
-                    adapter = MLBAdapter()
-                else:
+                if sport not in ("nba", "mlb"):
                     raise ValueError(f"Unknown sport: {sport}")
 
-                pipeline = UnifiedPipeline(adapter, self._db)
-                result = await pipeline.run()
-
+                result = await run_master_sync(self._db, sport)
                 duration = time.monotonic() - start_time
 
-                # Collection counts
-                counts = {}
-                for tier_name, col_name in adapter.tier_collections.items():
-                    counts[col_name] = await self._db[col_name].count_documents({})
+                # Universal path writes to {sport}_prop_scores (not the
+                # legacy per-tier collections).
+                counts = {
+                    f"{sport}_prop_scores": await self._db[f"{sport}_prop_scores"].count_documents(
+                        {"version_tag": f"final-{sport}-rt"}
+                    )
+                }
 
                 # Market Moves count
                 mm_count = 0
@@ -255,7 +250,6 @@ class RebuildCoordinator:
                 except Exception:
                     pass
 
-                # Update metrics
                 self._metrics["rebuilds_completed"] += 1
                 durations = self._metrics["pipeline_durations"][sport]
                 durations.append(round(duration, 1))
@@ -267,21 +261,19 @@ class RebuildCoordinator:
                     "market_moves": mm_count,
                     "duration_s": round(duration, 1),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "run_id": result.run_id,
-                    "success": result.success,
+                    "success": result.get("success", False),
                     "trigger": event.event_type,
                     "source": event.source,
                 }
 
                 logger.info("=" * 70)
                 logger.info(f"[COORDINATOR] REBUILD COMPLETE: {sport.upper()} ({duration:.1f}s)")
-                logger.info(f"  Success: {result.success}")
-                logger.info(f"  Pipeline run_id: {result.run_id}")
+                logger.info(f"  Success: {result.get('success')}")
                 for col_name, count in counts.items():
                     logger.info(f"  {col_name}: {count} picks")
                 logger.info(f"  Market Moves events (active): {mm_count}")
-                if result.errors:
-                    logger.warning(f"  Errors: {result.errors}")
+                if result.get("errors"):
+                    logger.warning(f"  Errors: {result['errors']}")
                 logger.info("=" * 70)
 
             except Exception as e:
@@ -385,31 +377,15 @@ class RebuildCoordinator:
 
         async def _runner():
             try:
-                # Phase D4 (2026-04-21, Delta Engine): acquire the
-                # per-sport UpstreamSyncLock in exclusive mode so
-                # concurrent delta ticks for THIS sport cleanly skip
-                # and retry on the next cadence. Other sports are
-                # unaffected. Lock release is guaranteed by the
-                # async-context-manager.
+                # Hard Consolidation (2026-04-22): NBA + MLB now go
+                # through the single universal master-sync path.
+                # Upstream sync lock still guards concurrent delta
+                # ticks for THIS sport.
                 from services.upstream_sync_lock import get_upstream_sync_lock
+                from services.master_sync import run_master_sync
                 lock = get_upstream_sync_lock()
                 async with lock.exclusive(sport, holder=f"master_sync:{run_id}"):
-                    if sport == "nba":
-                        from services.nba_master_sync import get_nba_master_sync
-                        metrics = await get_nba_master_sync(self._db).run_full_pipeline()
-                    elif sport == "mlb":
-                        # Final carbon-copy enforcement (2026-04-21):
-                        # `services/mlb_master_sync.py` is deleted. MLB master
-                        # sync now runs through the sport-agnostic
-                        # `UnifiedPipeline.run_master_sync()` using the
-                        # `PipelineStep` chain registered on `MLBAdapter`.
-                        # Eliminates the D1 residual class dependency.
-                        from services.unified_pipeline import UnifiedPipeline
-                        from services.adapters.mlb_adapter import MLBAdapter
-                        pipeline = UnifiedPipeline(MLBAdapter(), self._db)
-                        metrics = await pipeline.run_master_sync()
-                    else:
-                        raise ValueError(f"Unsupported sport: {sport}")
+                    metrics = await run_master_sync(self._db, sport)
                 state["last_run"] = {
                     "run_id": run_id,
                     "success": metrics.get("success", True),

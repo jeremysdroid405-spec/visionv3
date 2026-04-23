@@ -562,21 +562,26 @@ class NBAScoringAdapter(ScoringAdapter):
             await self._preload_vk2_adv_map(db)
 
         player_name = prop.get("player_name")
-        # NBA market/prop_type → stat_type
-        market = prop.get("market", "")
-        stat_type = {
-            "player_points": "PTS", "player_rebounds": "REB", "player_assists": "AST",
-            "player_points_rebounds_assists": "PRA",
-            "player_points_alternate": "PTS", "player_rebounds_alternate": "REB",
-            "player_assists_alternate": "AST",
-            "player_points_rebounds_assists_alternate": "PRA",
-        }.get(market, prop.get("stat_type_extracted") or market)
+        # Hard Consolidation (2026-04-22): universal_odds_sync writes
+        # `stat_type` (PTS/REB/AST/PRA) and `market_key` directly.
+        # Prefer the persisted stat_type first; fall back to market-
+        # name mapping for any legacy rows still carrying `market`.
+        stat_type = prop.get("stat_type")
+        if not stat_type:
+            market = prop.get("market") or prop.get("market_key") or ""
+            stat_type = {
+                "player_points": "PTS", "player_rebounds": "REB", "player_assists": "AST",
+                "player_points_rebounds_assists": "PRA",
+                "player_points_alternate": "PTS", "player_rebounds_alternate": "REB",
+                "player_assists_alternate": "AST",
+                "player_points_rebounds_assists_alternate": "PRA",
+            }.get(market, prop.get("stat_type_extracted") or market)
 
         line = prop.get("line")
-        if player_name is None or line is None or stat_type is None:
+        if player_name is None or line is None or not stat_type:
             return None
 
-        direction = (prop.get("direction") or "OVER").upper()
+        direction = (prop.get("recommendation") or prop.get("direction") or "OVER").upper()
         side = "OVER" if "OVER" in direction else "UNDER"
         event_id = prop.get("event_id", "?")
 
@@ -584,30 +589,28 @@ class NBAScoringAdapter(ScoringAdapter):
             f"nba|{event_id}|{player_name}|{stat_type}|{float(line)}|{side}"
         )
 
-        # PP layer (primary)
-        pp_layer = {
+        # PP layer (primary) — prefer pre-built `pp_layer` from universal
+        # odds sync; fall back to the legacy flat `price` field.
+        pp_layer = prop.get("pp_layer") or {
             "book": "prizepicks",
             "line": float(line),
-            "odds": prop.get("price"),
+            "odds": prop.get("pp_odds") or prop.get("price"),
         }
 
-        # Sharp market → dk/sharp layers (line is assumed to match PP since dg_live_props
-        # stores one row per PP-anchored prop)
+        # Book layers — prefer nested layers from universal_odds_sync,
+        # fall back to flat odds fields or sharp_market (legacy shape).
         sm = prop.get("sharp_market") or {}
-        dk_price = sm.get("draftkings_price")
+        dk_price = (prop.get("dk_layer") or {}).get("odds") or prop.get("dk_odds") or sm.get("draftkings_price")
         dk_layer = (
             {"book": "draftkings", "line": float(line), "odds": dk_price}
             if dk_price is not None else None
         )
-        fd_price = sm.get("fanduel_price")
-        # NBA has no MGM in dg_live_props — use FanDuel as the second reference book
-        # but label it in the layer as 'fanduel'. The scoring_stack only uses
-        # dk/mgm/sharp; to keep compatibility, treat FanDuel as mgm_layer for NBA.
+        fd_price = (prop.get("fd_layer") or {}).get("odds") or prop.get("fd_odds") or sm.get("fanduel_price")
         mgm_layer = (
             {"book": "fanduel", "line": float(line), "odds": fd_price}
             if fd_price is not None else None
         )
-        bo_price = sm.get("betonline_price")
+        bo_price = (prop.get("bol_layer") or {}).get("odds") or prop.get("bol_odds") or sm.get("betonline_price")
         sharp_layer = (
             {"book": "betonline", "line": float(line), "odds": bo_price}
             if bo_price is not None else None

@@ -1,8 +1,11 @@
-"""Routes module initialization - CLEANED VERSION"""
-from .picks import router as picks_router, set_engine as set_picks_engine
-from .parlays import router as parlays_router, set_engine as set_parlays_engine
-from .board import router as board_router, set_engine as set_board_engine, set_photo_service
-from .board_intel_v2 import router as board_intel_v2_router, set_board_intel_deps
+"""Routes module initialization - UNIVERSAL PATH ONLY (post HARD CONSOLIDATION 2026-04-22).
+
+All legacy engine-driven routes (picks, parlays, board, tiers, legacy,
+core_v3, intel_sync, cached_data, board_intel_v2, roster_sync, scheduler)
+have been deleted along with DemonGoblinEngine. The only routes that
+remain are those backed by the universal path (ferrari_tiers read-side,
+auth, vision, master_hub, etc.) or pure utility/admin endpoints.
+"""
 from .auth import router as auth_router, profile_router
 from .injuries import router as injuries_router, set_injury_service, set_live_injury_service
 from .vision import router as vision_router, player_router as player_vision_router, context_router as context_router, set_vision_service
@@ -12,16 +15,9 @@ from .master_hub import router as master_hub_router, set_master_hub_deps
 from .odds_mapper import router as odds_mapper_router, set_odds_mapper_deps
 from .payouts import router as payouts_router
 from .social import router as social_router, set_social_signal_engine
-from .roster_sync import router as roster_sync_router, set_demon_goblin_engine as set_roster_engine
 from .game_lock import router as game_lock_router
 from .adaptive_sync import router as adaptive_sync_router
 from .admin import router as admin_router, set_admin_deps
-from .cached_data import router as cached_data_router, set_cached_data_engine
-from .scheduler import router as scheduler_router, set_scheduler_deps
-from .core_v3 import router as core_v3_router, set_core_v3_engine
-from .tiers import router as tiers_router, set_tier_engine
-from .intel_sync import router as intel_sync_router, set_intel_sync_engine
-from .legacy import router as legacy_router, set_legacy_deps
 from .command import router as command_router, set_db as set_command_db
 from .live import router as live_router, set_db as set_live_db
 from .qa_testing import router as qa_router, set_qa_db
@@ -38,54 +34,33 @@ from .scores import router as scores_router
 from .delta_admin import router as delta_admin_router, set_delta_admin_db
 from .gemini_admin import router as gemini_admin_router
 
-# ARCHIVED ROUTES (moved to routes_archive/):
-# - intel.py (duplicates of injuries.py, intel_sync.py, live_scores.py)
-# - board_intel.py (replaced by board_intel_v2.py)
-# - validation.py
-# - headshots.py
-# - momentum.py  
-# - roster.py
-# - regression.py
-# - pro_model.py
-# - vegas_killer.py
-# - bdl_advanced.py
-# - historical_odds.py
 
+def register_all_routes(
+    app,
+    db=None,
+    injury_service=None,
+    vision_service=None,
+    live_scores_engine=None,
+    ai_context_engine_class=None,
+    master_hub_funcs=None,
+    get_odds_mapper_func=None,
+    social_signal_engine=None,
+    stats_manager=None,
+):
+    """Register all route modules.
 
-def register_all_routes(app, engine, game_lock_engine=None, db=None, 
-                        injury_service=None, vision_service=None, 
-                        live_scores_engine=None, ai_context_engine_class=None,
-                        master_hub_funcs=None, get_odds_mapper_func=None,
-                        raw_stat_fetcher=None,
-                        social_signal_engine=None, demon_goblin_engine_class=None,
-                        stats_manager=None, scheduler=None, photo_service=None):
-    """Register all route modules and set engine"""
-    # Set engine for all route modules
-    set_picks_engine(engine)
-    set_parlays_engine(engine)
-    set_board_engine(engine)
-    set_roster_engine(engine)
-    set_cached_data_engine(engine)
-    set_core_v3_engine(engine)
-    set_tier_engine(engine)
-    set_intel_sync_engine(engine)
-    set_legacy_deps(engine, stats_manager)
-    
-    # Set photo service for board routes
-    if photo_service is not None:
-        set_photo_service(photo_service)
-    
-    # Set services for new routes
+    Universal path only. DemonGoblinEngine and all its dependent routes
+    were deleted as part of the 2026-04-22 HARD CONSOLIDATION.
+    """
+    # ---- Dependency injection for remaining routes ----
     if injury_service is not None:
         set_injury_service(injury_service)
-    
-    # Initialize and set live injury micro-sync service
+
     if db is not None:
         from services.live_injury_micro_sync import init_live_injury_service
         live_injury_svc = init_live_injury_service(db)
         set_live_injury_service(live_injury_svc)
-        
-    # Always set db for vision routes (needed for badge/context system)
+
     if db is not None:
         set_vision_service(vision_service, db)
     if live_scores_engine is not None:
@@ -98,118 +73,99 @@ def register_all_routes(app, engine, game_lock_engine=None, db=None,
         set_odds_mapper_deps(db, get_odds_mapper_func)
     if social_signal_engine is not None:
         set_social_signal_engine(social_signal_engine)
-    if db is not None and demon_goblin_engine_class is not None:
-        set_board_intel_deps(db, demon_goblin_engine_class)
     if stats_manager is not None and db is not None:
         set_admin_deps(stats_manager, db)
-    if engine is not None and live_scores_engine is not None:
-        set_scheduler_deps(engine, live_scores_engine, scheduler, db)
-    
-    # ==========================================
-    # CORE ROUTES (High Traffic)
-    # ==========================================
-    app.include_router(picks_router, prefix="/api")
-    app.include_router(parlays_router, prefix="/api")
-    app.include_router(board_router, prefix="/api")
-    
-    # Auth routes
+
+    # ---- Router registration ----
+    # Auth
     app.include_router(auth_router, prefix="/api")
     app.include_router(profile_router, prefix="/api")
-    
-    # AI/Vision routes
+
+    # AI/Vision
     app.include_router(injuries_router, prefix="/api")
     app.include_router(vision_router, prefix="/api")
     app.include_router(player_vision_router, prefix="/api")
     app.include_router(context_router, prefix="/api")
     app.include_router(ai_context_router, prefix="/api")
-    
+
     # Data routes
     app.include_router(live_scores_router, prefix="/api")
     app.include_router(command_center_router, prefix="/api")
     app.include_router(master_hub_router, prefix="/api")
     app.include_router(odds_mapper_router, prefix="/api")
-    
-    # Social/Roster routes
+
+    # Social
     app.include_router(payouts_router, prefix="/api")
     app.include_router(social_router, prefix="/api")
-    app.include_router(roster_sync_router, prefix="/api")
-    
-    app.include_router(board_intel_v2_router, prefix="/api")
+
+    # Game lock + adaptive sync + admin
     app.include_router(game_lock_router, prefix="/api")
     app.include_router(adaptive_sync_router, prefix="/api")
     app.include_router(admin_router, prefix="/api")
-    app.include_router(cached_data_router, prefix="/api")
-    app.include_router(scheduler_router, prefix="/api")
-    
-    # Core V3 routes
-    app.include_router(core_v3_router, prefix="/api")
-    app.include_router(tiers_router, prefix="/api")
-    app.include_router(intel_sync_router, prefix="/api")
-    app.include_router(legacy_router, prefix="/api")
-    
+
     # Command Post
     if db is not None:
         set_command_db(db)
     app.include_router(command_router, prefix="/api")
-    
+
     # Live Data
     if db is not None:
         set_live_db(db)
     app.include_router(live_router, prefix="/api")
-    
+
     # QA Testing
     if db is not None:
         set_qa_db(db)
     app.include_router(qa_router, prefix="/api")
-    
+
     # Image proxy
     app.include_router(image_proxy_router, prefix="/api")
-    
-    # Ferrari Tiers
+
+    # Ferrari Tiers (canonical read path — reads {sport}_prop_scores)
     if db is not None:
         set_ferrari_db(db)
     app.include_router(ferrari_router, prefix="/api")
-    
+
     # Usage Vacuum
     if db is not None:
         set_vacuum_db(db)
     app.include_router(vacuum_router, prefix="/api")
-    
+
     # MLB Usage Vacuum
     if db is not None:
         set_mlb_vacuum_db(db)
     app.include_router(mlb_vacuum_router, prefix="/api")
-    
+
     # MLB Weather
     app.include_router(mlb_weather_router, prefix="/api")
-    
-    # MLB Tiers (1:1 Clone of NBA Ferrari)
+
+    # MLB Tiers (reads mlb_prop_scores)
     if db is not None:
         set_mlb_tiers_db(db)
     app.include_router(mlb_tiers_router, prefix="/api")
-    
+
     # MLB Lineup Ripple Engine
     if db is not None:
         set_mlb_ripple_db(db)
     app.include_router(mlb_ripple_router, prefix="/api")
-    
-    # Forward Testing Infrastructure
+
+    # Forward Testing
     if db is not None:
         set_forward_test_db(db)
     app.include_router(forward_testing_router, prefix="/api")
-    
-    # Intel Cache (Rolling Cache Architecture)
+
+    # Intel Cache
     if db is not None:
         set_intel_cache_db(db)
     app.include_router(intel_cache_router)
 
-    # Scoring Recompute Framework (system-level, sport-agnostic)
+    # Scoring Recompute Framework
     app.include_router(scores_router)
 
-    # Delta Engine admin inspect endpoint (D1 — read-only, no writes)
+    # Delta Engine admin
     if db is not None:
         set_delta_admin_db(db)
     app.include_router(delta_admin_router, prefix="/api")
 
-    # Gemini admin (P3.3 — cache counters + real-call history)
+    # Gemini admin
     app.include_router(gemini_admin_router, prefix="/api")

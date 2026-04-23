@@ -235,8 +235,19 @@ async def write_versioned_scores(
     if prepared:
         # Strip any _id that may have leaked in from the raw prop dict.
         clean = [{k: v for k, v in d.items() if k != "_id"} for d in prepared]
-        await coll.insert_many(clean)
-        inserted = len(clean)
+        # Deduplicate by canonical_key (last write wins). Upstream can
+        # produce multiple rows with the same canonical_key when
+        # stat_type mapping falls back (e.g. unknown market → empty
+        # stat_type causes collisions).
+        seen: Dict[str, Dict[str, Any]] = {}
+        for d in clean:
+            ck = d.get("canonical_key")
+            if ck:
+                seen[ck] = d
+        deduped = list(seen.values())
+        if deduped:
+            await coll.insert_many(deduped, ordered=False)
+            inserted = len(deduped)
 
     logger.info(
         f"[SCORES_STORE:{sport}] mode=replace version='{version_tag}' "

@@ -24,7 +24,6 @@ from apscheduler.jobstores.mongodb import MongoDBJobStore
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from services.stats_manager_bdl import StatsManager
-from services.engines.demon_goblin_engine import DemonGoblinEngine
 from services.config.collection_names import COLL
 from services.vision_ai_service import VisionAIService, get_vision_service
 from services.injury_service import InjuryIntelligenceService, get_injury_service
@@ -473,20 +472,12 @@ async def run_mlb_startup_health_check():
         
         # If mlb_war_zone is empty (or we synced above), rebuild tiers
         if mlb_war_zone_count == 0 or needs_sync:
-            logger.warning("[MLB_HEALTH] MLB tiers EMPTY - Rebuilding via Oracle Apex...")
-            
+            logger.warning("[MLB_HEALTH] MLB tiers EMPTY - Rebuilding via universal master sync...")
+
             try:
-                from services.mlb_tier_service import get_mlb_tier_service
-                
-                tier_service = get_mlb_tier_service(db)
-                result = await tier_service.rebuild_tiers_static_v7()
-                
-                output = result.get("output", {})
-                sh_count = output.get("safe_haven", {}).get("total", 0)
-                fl_count = output.get("front_lines", {}).get("total", 0)
-                wz_count = output.get("war_zone", {}).get("total", 0)
-                
-                logger.info(f"[MLB_HEALTH] Tier rebuild complete: SH={sh_count}, FL={fl_count}, WZ={wz_count}")
+                from services.master_sync import run_master_sync
+                result = await run_master_sync(db, "mlb")
+                logger.info(f"[MLB_HEALTH] Universal master sync complete: success={result.get('success')}")
             except Exception as e:
                 logger.error(f"[MLB_HEALTH] Tier rebuild failed: {e}")
         
@@ -1029,13 +1020,7 @@ async def scheduled_mlb_daily_sync():
         ))
         logger.info("[SCHEDULER] MLB daily event dispatched to coordinator")
     except Exception as e:
-        logger.error(f"[SCHEDULER] Coordinator dispatch failed, falling back to legacy: {e}")
-        try:
-            from services.mlb_sync_engine import run_mlb_sync
-            result = await run_mlb_sync(db, save_to_db=True, target_sport="mlb")
-            logger.info(f"[SCHEDULER] MLB legacy fallback: {result.get('success', False)}")
-        except Exception as le:
-            logger.error(f"[SCHEDULER] MLB legacy fallback also failed: {le}")
+        logger.error(f"[SCHEDULER] Coordinator dispatch failed: {e}")
 
 
 async def scheduled_mlb_game_values_sync():
@@ -1355,10 +1340,9 @@ async def startup_event():
     invalidate_player_cache()
     logger.info("Player lookup cache invalidated (will rebuild on first request)")
     
-    # Initialize Demon & Goblin Engine (v3 - NEW)
-    demon_goblin_engine = DemonGoblinEngine(db)
-    logger.info("Demon & Goblin Engine v3.0 initialized")
-    
+    # Demon & Goblin Engine DELETED (hard consolidation 2026-04-22). NBA + MLB
+    # now go through the universal path: universal_odds_sync + recompute_sport.
+
     # Initialize Vision AI Service (Claude Sonnet 4.5)
     vision_ai_service = get_vision_service(db)
     logger.info("Vision AI Service initialized (Claude Sonnet 4.5)")
@@ -1394,11 +1378,12 @@ async def startup_event():
     adaptive_sync = init_adaptive_sync_engine(db, ODDS_API_KEY)
     logger.info("Adaptive Sync Engine initialized (Mission-Critical Polling)")
     
-    # CRITICAL FIX: Wire up the adaptive sync to use the proper sync function
-    # This ensures the adaptive sync uses CachedBoardBuilderService to create
-    # nested player documents (with props arrays) instead of flat documents
-    adaptive_sync.set_sync_callback(demon_goblin_engine.sync_odds_to_mongo)
-    logger.info("[ADAPTIVE_SYNC] Callback wired to DemonGoblinEngine.sync_odds_to_mongo")
+    # Wire adaptive sync callback to the universal master sync path.
+    async def _adaptive_sync_callback():
+        from services.master_sync import run_master_sync
+        return await run_master_sync(db, "nba")
+    adaptive_sync.set_sync_callback(_adaptive_sync_callback)
+    logger.info("[ADAPTIVE_SYNC] Callback wired to universal master_sync(nba)")
     
     # Initialize Intel Briefing Engine - Gemini 3 Flash
     intel_briefing_engine = init_intel_briefing_engine(db)
@@ -1482,9 +1467,7 @@ async def startup_event():
     photo_service = PhotoStorageService(sync_db)
     
     register_all_routes(
-        app, 
-        demon_goblin_engine, 
-        game_lock_engine=game_lock_engine, 
+        app,
         db=db,
         injury_service=injury_service,
         vision_service=vision_ai_service,
@@ -1492,12 +1475,8 @@ async def startup_event():
         ai_context_engine_class=AiContextEngine,
         master_hub_funcs=master_hub_funcs,
         get_odds_mapper_func=get_odds_api_mapper,
-        raw_stat_fetcher=raw_stat_fetcher,
         social_signal_engine=social_signal_engine,
-        demon_goblin_engine_class=DemonGoblinEngine,
         stats_manager=stats_manager,
-        scheduler=scheduler,
-        photo_service=photo_service
     )
     logger.info("[ROUTES] Modular routes registered from /routes/ directory (Phase 18: +4 new modules)")
     
