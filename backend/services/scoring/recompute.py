@@ -378,6 +378,11 @@ async def recompute_sport(
             "vk2_error": ctx.vk2_error,
             "hit_rate_over": ctx.hit_rate_over,
             "hit_rate_under": ctx.hit_rate_under,
+            # Global Identity Rule (2026-04-23) — persist identity
+            # decision on every score doc so observability /
+            # diagnostics can partition by identity_status.
+            "bdl_player_id": ctx.bdl_player_id,
+            "identity_status": ctx.identity_status,
             # ranking_score_v2 (2026-02-20 shadow G1):
             #   For OVER:  gap = model_projection - line
             #   For UNDER: gap = line - model_projection

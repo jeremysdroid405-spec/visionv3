@@ -1680,11 +1680,17 @@ class VegasKillerModel:
         line: float = None,
         opponent_team: str = None,
         team_total: float = None,
+        bdl_player_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Predict player's stat output using Vegas Killer model.
         
         NOW WITH V2 ADVANCED STATS when available!
+        
+        Global Identity Rule (2026-04-23): when `bdl_player_id` is
+        provided, resolve the master-hub row by ID (the canonical
+        identity). `player_name` is retained purely for back-compat
+        with legacy callers and is only used when no ID is supplied.
         """
         if stat_type not in self.models:
             return {"error": f"No model for {stat_type}"}
@@ -1693,14 +1699,28 @@ class VegasKillerModel:
         scaler = self.scalers[stat_type]
         feature_cols = self.feature_cols[stat_type]
         
-        # Get player
+        # Get player — prefer ID-based identity (Global Identity Rule).
         hub = self.db[COLL("master_hub", "nba")]
-        player = hub.find_one({
-            '$or': [
-                {'player_name': player_name},
-                {'display_name': player_name},
-            ]
-        })
+        player = None
+        if bdl_player_id is not None:
+            try:
+                pid_int = int(bdl_player_id)
+                player = hub.find_one({
+                    '$or': [
+                        {'bdl_player_id': pid_int},
+                        {'bdl_id': pid_int},
+                    ]
+                })
+            except (TypeError, ValueError):
+                player = None
+        if player is None and player_name:
+            # Legacy name lookup retained only when ID is absent.
+            player = hub.find_one({
+                '$or': [
+                    {'player_name': player_name},
+                    {'display_name': player_name},
+                ]
+            })
         
         if not player:
             return {"error": "Player not found"}

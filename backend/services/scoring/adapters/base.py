@@ -76,6 +76,15 @@ class ScoringContext:
     # Side-aware hit-rate diagnostics (the one passed to gates is stored in hit_rate)
     hit_rate_over: Optional[float] = None
     hit_rate_under: Optional[float] = None
+    # Global Identity Rule (2026-04-23): canonical player identity
+    # stamped at ingest. `bdl_player_id` is the join key for every
+    # downstream stat / projection computation; `player_name` is
+    # display-only. `identity_status` is "resolved" when a
+    # `bdl_player_id` is present on the raw prop, otherwise
+    # "missing_bdl_id" — in which case HR / CV / model projections
+    # must be skipped.
+    bdl_player_id: Optional[int] = None
+    identity_status: Optional[str] = None
 
 
 class ScoringAdapter(ABC):

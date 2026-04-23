@@ -6,6 +6,35 @@ architecture with multi-sport support, automated feature engineering, and
 a unified pipeline anchored on canonical odds data. Surface pricing
 anomalies through market-consensus probabilities.
 
+## Global Identity Rule (2026-04-23)
+Every prop MUST carry `bdl_player_id` (identity) + `player_name` (display).
+All scoring joins use `bdl_player_id` exclusively. Name-based matching is
+FORBIDDEN in the scoring pipeline. Identity resolution happens ONCE at
+ingest. Props without a resolvable ID are flagged
+`identity_status="missing_bdl_id"` and skip HR / CV / projection computation.
+
+- **Ingest** (`services/universal_odds_sync.py`): `_stamp_identity_on_props`
+  runs after flatten, stamps every prop with `bdl_player_id` +
+  `identity_status`. Hub aliases are built once per sync from
+  `{sport}_master_hub_2026.bdl_id`.
+- **Scoring** (`services/scoring/adapters/nba_scoring.py`):
+  `_logs_by_id` is the SOLE game-log cache (keyed on bdl_player_id).
+  `_get_logs_by_id` is the sole lookup. `_compute_cv_and_hit_rate`,
+  `_get_vk2_history_logs`, `_empirical_covariance`,
+  `_predict_combo_projection`, `_predict_model_prob_over`, and
+  `_predict_vk2_prob_over` ALL take `bdl_player_id` as the identity input.
+- **VK model** (`services/vegas_killer_model.py::predict`) now accepts
+  `bdl_player_id` and prefers ID-based hub lookup when provided.
+- **Persistence** (`services/scoring/prop_scores_store.py`):
+  `bdl_player_id` + `identity_status` added to `_SCORE_OUTPUT_FIELDS`.
+- **Status values**: `computed` | `unavailable_stat_family` |
+  `missing_source_distribution` | `missing_bdl_id`.
+
+**Verification (2026-04-23)**: `missing_source_distribution` dropped
+**536 → 0**. All 4,122 scored props resolve to `identity_status="resolved"`.
+All 6,164 live props stamp with `bdl_player_id` at ingest (0 missing).
+105 scoring-related tests pass, incl. 7 new `test_identity_rule_nba.py`.
+
 ## Architecture
 - **Frontend:** React + Shadcn UI — `/app/frontend/src/pages/Dashboard.jsx`,
   hooks in `/app/frontend/src/hooks/useLiveOdds.js`.

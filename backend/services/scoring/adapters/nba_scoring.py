@@ -111,7 +111,10 @@ class NBAScoringAdapter(ScoringAdapter):
 
     def __init__(self):
         self._cv_cache: dict = {}
-        self._logs_cache: dict = {}
+        # ID-identity lookup (2026-04-23, Global Identity Rule).
+        # Names are display-only; IDs are identity. `_logs_by_id` is
+        # the ONLY game-log cache. There is no name-keyed fallback.
+        self._logs_by_id: dict = {}      # bdl_player_id -> [logs]
         self._logs_loaded = False
         self._vk = None         # lazy-init legacy VegasKillerModel
         self._vk_sigmas: dict = {}   # stat_type -> residual SD (empirical, from test RMSE)
@@ -233,16 +236,24 @@ class NBAScoringAdapter(ScoringAdapter):
         return vk
 
     def _predict_model_prob_over(
-        self, db, player_name: str, stat_type: str,
-        line: float, opponent_team: Optional[str],
+        self, db, bdl_player_id: Optional[int], player_name: Optional[str],
+        stat_type: str, line: float, opponent_team: Optional[str],
     ) -> Dict[str, Optional[float]]:
         """Run VegasKiller projection + convert to prob_over via empirical
         residual calibration.
+
+        `bdl_player_id` is the canonical identity; `player_name` is
+        passed through to VK's legacy name-based resolver pending a
+        follow-up refactor to VK itself. When a prop has no
+        `bdl_player_id`, caller must skip this path.
 
         Returns {projection, sigma, p_over, error?}."""
         if stat_type not in self._MODEL_STATS:
             return {"projection": None, "sigma": None, "p_over": None,
                     "error": f"no_model_for_{stat_type}"}
+        if bdl_player_id is None:
+            return {"projection": None, "sigma": None, "p_over": None,
+                    "error": "missing_bdl_player_id"}
         vk = self._get_vk(db)
         if not vk.models:
             return {"projection": None, "sigma": None, "p_over": None,
@@ -251,6 +262,7 @@ class NBAScoringAdapter(ScoringAdapter):
             r = vk.predict(
                 player_name=player_name, stat_type=stat_type,
                 line=line, opponent_team=opponent_team,
+                bdl_player_id=bdl_player_id,
             )
         except Exception as e:
             return {"projection": None, "sigma": None, "p_over": None,
@@ -324,12 +336,14 @@ class NBAScoringAdapter(ScoringAdapter):
         self._vk2_adv_loaded = True
         logger.info(f"[NBA_SCORING] VK2 adv_map loaded rows={len(self._vk2_adv_map):,}")
 
-    def _get_vk2_history_logs(self, player_name: str, window: int = 20) -> List[Dict[str, Any]]:
-        """Pull newest-first historical logs for a player from the master hub
-        cache and normalize keys for VK2 feature builder.
+    def _get_vk2_history_logs(
+        self, bdl_player_id: Optional[int], window: int = 20
+    ) -> List[Dict[str, Any]]:
+        """Pull newest-first historical logs for a player from the ID-keyed
+        master hub cache, ready for the VK2 feature builder.
         Master hub stores `bdl_player_id` (== historical `player_id`) so we
         remap it to `player_id` for adv_map matching."""
-        raw = self._logs_cache.get((player_name or "").lower()) or []
+        raw = self._get_logs_by_id(bdl_player_id)
         if not raw:
             return []
         # Sort newest-first by date
@@ -346,7 +360,7 @@ class NBAScoringAdapter(ScoringAdapter):
         return out
 
     def _predict_vk2_prob_over(
-        self, player_name: str, stat_type: str, line: float,
+        self, bdl_player_id: Optional[int], stat_type: str, line: float,
     ) -> Dict[str, Optional[float]]:
         """VK2 predict + erf-based p_over calibration using per-stat empirical sigma.
         Returns {projection, sigma, p_over, error?}."""
@@ -359,7 +373,7 @@ class NBAScoringAdapter(ScoringAdapter):
         if not m:
             return {"projection": None, "sigma": None, "p_over": None,
                     "error": "vk2_not_loaded"}
-        history = self._get_vk2_history_logs(player_name, window=20)
+        history = self._get_vk2_history_logs(bdl_player_id, window=20)
         if len(history) < 5:
             return {"projection": None, "sigma": None, "p_over": None,
                     "error": "insufficient_history"}
@@ -411,7 +425,8 @@ class NBAScoringAdapter(ScoringAdapter):
     }
 
     def _empirical_covariance(
-        self, player_name: str, key_a: str, key_b: str, window: int = 20,
+        self, bdl_player_id: Optional[int], key_a: str, key_b: str,
+        window: int = 20,
     ) -> Optional[float]:
         """Sample covariance of two stats from the player's last-N
         game logs. Returns None if fewer than 5 paired observations
@@ -420,9 +435,7 @@ class NBAScoringAdapter(ScoringAdapter):
         field_b = self._STAT_KEY_TO_LOG_FIELD.get(key_b)
         if field_a is None or field_b is None:
             return None
-        logs = self._logs_cache.get((player_name or "").lower()) or []
-        if not logs:
-            return None
+        logs = self._get_logs_by_id(bdl_player_id)
         try:
             logs_sorted = sorted(
                 logs, key=lambda g: str(g.get("date") or ""), reverse=True,
@@ -451,8 +464,8 @@ class NBAScoringAdapter(ScoringAdapter):
         return cov
 
     def _predict_combo_projection(
-        self, db, player_name: str, line: float,
-        opponent_team: Optional[str], use_vk2: bool,
+        self, db, bdl_player_id: Optional[int], player_name: Optional[str],
+        line: float, opponent_team: Optional[str], use_vk2: bool,
         components: Sequence[str],
     ) -> Dict[str, Any]:
         """Synthesize an N-way combo projection from component models.
@@ -468,6 +481,11 @@ class NBAScoringAdapter(ScoringAdapter):
         Empirical covariances are drawn from L20 game logs; any pair
         that can't be computed falls back to ρ·σ_i·σ_j (ρ=0.25) and
         the whole row is labelled `fallback_rho`.
+
+        `bdl_player_id` is the identity key used for empirical
+        covariance / VK2 history lookups. `player_name` is passed
+        through to the legacy VK model (which still resolves by name
+        internally — flagged for follow-up refactor).
         """
         if not components or len(components) < 2:
             return {"projection": None, "sigma": None, "p_over": None,
@@ -477,11 +495,13 @@ class NBAScoringAdapter(ScoringAdapter):
         for key in components:
             if use_vk2:
                 r = self._predict_vk2_prob_over(
-                    player_name=player_name, stat_type=key, line=float(line),
+                    bdl_player_id=bdl_player_id, stat_type=key,
+                    line=float(line),
                 )
             else:
                 r = self._predict_model_prob_over(
-                    db=db, player_name=player_name, stat_type=key,
+                    db=db, bdl_player_id=bdl_player_id,
+                    player_name=player_name, stat_type=key,
                     line=float(line), opponent_team=opponent_team,
                 )
             comp_results.append({"key": key, **r})
@@ -499,7 +519,9 @@ class NBAScoringAdapter(ScoringAdapter):
             for j in range(i + 1, len(comp_results)):
                 ki, kj = comp_results[i]["key"], comp_results[j]["key"]
                 si, sj = float(comp_results[i]["sigma"]), float(comp_results[j]["sigma"])
-                cov = self._empirical_covariance(player_name, ki, kj, window=20)
+                cov = self._empirical_covariance(
+                    bdl_player_id, ki, kj, window=20,
+                )
                 if cov is None:
                     cov = self._COMBO_FALLBACK_RHO * si * sj
                     any_fallback = True
@@ -543,23 +565,59 @@ class NBAScoringAdapter(ScoringAdapter):
 
 
     async def _preload_game_logs(self, db) -> None:
-        """Pull NBA game logs from master hub once per recompute."""
+        """Pull NBA game logs from master hub once per recompute.
+
+        ID-mapping refactor (2026-04-23, Global Identity Rule):
+        Identity is strictly `bdl_player_id`. This preloader builds
+        ONLY an ID-keyed store (`_logs_by_id`). No name indexes, no
+        aliases, no fuzzy matching. The master hub's `bdl_id` is the
+        canonical identity (fully populated across every hub row).
+        Callers downstream receive `bdl_player_id` from the live-prop
+        doc (stamped at ingest) and look up logs by ID.
+        """
         if self._logs_loaded:
             return
         hub = db[COLL("master_hub", "nba")]
         cursor = hub.find(
             {"bdl_game_logs_count": {"$gt": 0}},
-            {"display_name": 1, "bdl_game_logs": 1, "_id": 0},
+            {"bdl_id": 1, "bdl_player_id": 1, "bdl_game_logs": 1, "_id": 0},
         )
         count = 0
         async for doc in cursor:
-            name = (doc.get("display_name") or "").strip()
-            if not name:
+            # Accept either field name — `bdl_id` is the canonical hub
+            # column, `bdl_player_id` is the alias some rows carry.
+            pid = doc.get("bdl_player_id") or doc.get("bdl_id")
+            if pid is None:
                 continue
-            self._logs_cache[name.lower()] = doc.get("bdl_game_logs") or []
+            try:
+                pid_int = int(pid)
+            except (TypeError, ValueError):
+                continue
+            self._logs_by_id[pid_int] = doc.get("bdl_game_logs") or []
             count += 1
         self._logs_loaded = True
-        logger.info(f"[NBA_SCORING] Cached game logs for {count} players")
+        logger.info(
+            f"[NBA_SCORING] Cached game logs by bdl_player_id: "
+            f"{count} players indexed"
+        )
+
+    def _get_logs_by_id(
+        self, bdl_player_id: Optional[int]
+    ) -> List[Dict[str, Any]]:
+        """Canonical game-log lookup by `bdl_player_id`.
+
+        GLOBAL IDENTITY RULE: no name-based fallback. If the prop has
+        no `bdl_player_id`, the caller must mark
+        `identity_status="missing_bdl_id"` and skip metric computation.
+        Returns [] when the ID is None or unknown to the hub.
+        """
+        if bdl_player_id is None:
+            return []
+        try:
+            pid = int(bdl_player_id)
+        except (TypeError, ValueError):
+            return []
+        return self._logs_by_id.get(pid) or []
 
     def _resolve_family(self, stat_type: Optional[str]) -> Optional[str]:
         """Canonical NBA stat-family for either a short stat_type (PTS)
@@ -578,7 +636,7 @@ class NBAScoringAdapter(ScoringAdapter):
         return family
 
     def _compute_cv_and_hit_rate(
-        self, player_name: str, stat_type: str, line: float,
+        self, bdl_player_id: Optional[int], stat_type: str, line: float,
         direction: str = "OVER", window: int = 20,
     ):
         """Compute line-independent CV and line-aware hit_rate / ceiling.
@@ -593,10 +651,10 @@ class NBAScoringAdapter(ScoringAdapter):
           (cv, cv_status, hit_rate, ceiling_rate,
            hit_rate_over, hit_rate_under, hit_rate_status)
 
-        `cv_status` and `hit_rate_status` share an identical state
-        machine (same source: L20 game logs for the resolved family):
+        `cv_status` and `hit_rate_status` share a state machine:
           * "computed"                    – real values produced
           * "unavailable_stat_family"     – no family spec yet
+          * "missing_bdl_id"              – prop has no bdl_player_id
           * "missing_source_distribution" – fewer than 5 L20 games
                                             (or, for CV only, a
                                             degenerate zero-mean).
@@ -606,6 +664,12 @@ class NBAScoringAdapter(ScoringAdapter):
         player never hit the line). In that case
         `hit_rate_status="computed"`, `cv_status="missing_source_distribution"`.
         """
+        # Global Identity Rule (2026-04-23): no name-based fallback.
+        # If the prop has no canonical ID, we cannot compute metrics.
+        if bdl_player_id is None:
+            return (None, "missing_bdl_id",
+                    None, None, None, None,
+                    "missing_bdl_id")
         family = self._resolve_family(stat_type)
         if family is None:
             return (None, "unavailable_stat_family",
@@ -617,7 +681,7 @@ class NBAScoringAdapter(ScoringAdapter):
                     None, None, None, None,
                     "unavailable_stat_family")
 
-        logs = self._logs_cache.get((player_name or "").lower()) or []
+        logs = self._get_logs_by_id(bdl_player_id)
         if not logs:
             return (None, "missing_source_distribution",
                     None, None, None, None,
@@ -657,10 +721,10 @@ class NBAScoringAdapter(ScoringAdapter):
             cv = round(float(arr.std(ddof=1) / mean), 4)
             cv_status = "computed"
 
-        # Cache CV per (player, family) so downstream code paths that
-        # re-query the same family on a different line can read a
+        # Cache CV per (bdl_player_id, family) so downstream code paths
+        # that re-query the same family on a different line read a
         # consistent value without re-traversing logs.
-        self._cv_cache[((player_name or "").lower(), family)] = (cv, cv_status)
+        self._cv_cache[(int(bdl_player_id), family)] = (cv, cv_status)
 
         # Side-aware hit rate (line-dependent). HR is a legitimate
         # value even when mean==0 — zero hit rate IS information.
@@ -703,6 +767,19 @@ class NBAScoringAdapter(ScoringAdapter):
             await self._preload_vk2_adv_map(db)
 
         player_name = prop.get("player_name")
+        # GLOBAL IDENTITY RULE (2026-04-23): bdl_player_id is the sole
+        # identity key for joins. `player_name` remains display-only.
+        # Stamped at ingest time by `universal_odds_sync`; absence is
+        # reported as `identity_status="missing_bdl_id"` on the score
+        # doc and skips all ID-based metric computation.
+        bdl_player_id_raw = prop.get("bdl_player_id")
+        bdl_player_id: Optional[int] = None
+        if bdl_player_id_raw is not None:
+            try:
+                bdl_player_id = int(bdl_player_id_raw)
+            except (TypeError, ValueError):
+                bdl_player_id = None
+        identity_status = "resolved" if bdl_player_id is not None else "missing_bdl_id"
         # Hard Consolidation (2026-04-22): universal_odds_sync writes
         # `stat_type` (PTS/REB/AST/PRA) and `market_key` directly.
         # Prefer the persisted stat_type first; fall back to market-
@@ -770,12 +847,11 @@ class NBAScoringAdapter(ScoringAdapter):
             round(season_rate * 100.0, 1) if season_rate is not None else None
         )
 
-        # CV + SIDE-AWARE hit_rate + ceiling_rate from master-hub game logs.
-        # Prefer computed over embedded; fall back to embedded if logs missing.
+        # CV + SIDE-AWARE hit_rate + ceiling_rate — ID-based join only.
         (cv, cv_status, computed_hit_rate, ceiling_rate,
          hit_rate_over, hit_rate_under, hit_rate_status) = \
             self._compute_cv_and_hit_rate(
-                player_name, stat_type, float(line),
+                bdl_player_id, stat_type, float(line),
                 direction=side, window=20,
             )
         hit_rate = computed_hit_rate if computed_hit_rate is not None else embedded_hit_rate
@@ -819,10 +895,13 @@ class NBAScoringAdapter(ScoringAdapter):
         model_sigma_direct: Optional[float] = None
         model_projection_synth: Optional[float] = None
         model_sigma_synth: Optional[float] = None
-        if model_key in self._MODEL_STATS:
+        # Model predictions only when identity resolved. Propagate the
+        # ID through every downstream scoring call.
+        if model_key in self._MODEL_STATS and bdl_player_id is not None:
             if not use_vk2_path:
                 mres = self._predict_model_prob_over(
-                    db=db, player_name=player_name, stat_type=model_key,
+                    db=db, bdl_player_id=bdl_player_id,
+                    player_name=player_name, stat_type=model_key,
                     line=float(line), opponent_team=opponent_team,
                 )
                 p_over = mres.get("p_over")
@@ -838,7 +917,8 @@ class NBAScoringAdapter(ScoringAdapter):
                     model_sigma_direct = model_sigma
             else:
                 v2res = self._predict_vk2_prob_over(
-                    player_name=player_name, stat_type=model_key, line=float(line),
+                    bdl_player_id=bdl_player_id, stat_type=model_key,
+                    line=float(line),
                 )
                 p_over_v2 = v2res.get("p_over")
                 if p_over_v2 is not None:
@@ -858,7 +938,8 @@ class NBAScoringAdapter(ScoringAdapter):
                 # PRA audit: always run synth in parallel so we can
                 # compare against the direct model row-by-row.
                 cres_audit = self._predict_combo_projection(
-                    db=db, player_name=player_name, line=float(line),
+                    db=db, bdl_player_id=bdl_player_id,
+                    player_name=player_name, line=float(line),
                     opponent_team=opponent_team, use_vk2=use_vk2_path,
                     components=synth_components,
                 )
@@ -881,12 +962,13 @@ class NBAScoringAdapter(ScoringAdapter):
                     model_projection = model_projection_synth
                     model_sigma = model_sigma_synth
                     projection_method = "combo_synth"
-        elif resolved_family in self._COMBO_COMPONENTS:
+        elif resolved_family in self._COMBO_COMPONENTS and bdl_player_id is not None:
             # Primary combo synthesis (2026-04-23): pts_reb / pts_ast /
             # reb_ast — no direct trained model exists, synth is the
             # only path. Gate config is unchanged.
             cres = self._predict_combo_projection(
-                db=db, player_name=player_name, line=float(line),
+                db=db, bdl_player_id=bdl_player_id,
+                player_name=player_name, line=float(line),
                 opponent_team=opponent_team, use_vk2=use_vk2_path,
                 components=self._COMBO_COMPONENTS[resolved_family],
             )
@@ -986,6 +1068,11 @@ class NBAScoringAdapter(ScoringAdapter):
             hit_rate_over=hit_rate_over,
             hit_rate_under=hit_rate_under,
             projection_method=projection_method,
+            # Global Identity Rule (2026-04-23): stamp both on the
+            # scoring context so the score doc persists the identity
+            # decision for downstream observability.
+            bdl_player_id=bdl_player_id,
+            identity_status=identity_status,
             # PRA dual-projection audit — both versions side by side
             # when the family has a synth recipe; None otherwise.
             model_projection_direct=model_projection_direct,

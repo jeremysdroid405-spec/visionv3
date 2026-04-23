@@ -103,6 +103,12 @@ _SCORE_OUTPUT_FIELDS = (
     # persisted on every scored prop so the UI / admin can explain the
     # gate outcome in the exact same structure regardless of sport.
     "gate_eval",
+    # Global Identity Rule (2026-04-23). `bdl_player_id` is the
+    # canonical join key stamped at ingest. `identity_status` is
+    # "resolved" when present, "missing_bdl_id" when absent — in the
+    # latter case HR / CV / model projections are skipped and their
+    # *_status fields report "missing_bdl_id".
+    "bdl_player_id", "identity_status",
 )
 
 _IDENTITY_FIELDS = (

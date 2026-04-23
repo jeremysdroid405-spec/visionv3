@@ -33,6 +33,161 @@ from services.market_catalog import MarketCatalog
 
 logger = logging.getLogger(__name__)
 
+# =============================================================================
+# GLOBAL IDENTITY RESOLVER (2026-04-23)
+# =============================================================================
+# Identity resolution happens ONCE at ingest time (the system boundary).
+# Every downstream scoring / game-log / projection join uses the stamped
+# `bdl_player_id` exclusively — no name-based joins.
+#
+# Failures are flagged (`identity_status="missing_bdl_id"`), not rejected,
+# so props without a resolvable ID still land in the live collection where
+# observability dashboards can surface the gap.
+
+def _normalize_player_name_for_ingest(name: Optional[str]) -> str:
+    """Identity-boundary name normalizer (INGEST ONLY).
+
+    The master hub's `normalized_name` column follows the convention:
+      lowercase, periods/apostrophes stripped (so "C.J." → "cj"),
+      hyphens/commas replaced with spaces, suffixes (Jr/Sr/II/III/IV/V)
+      dropped, whitespace collapsed. This function produces the same
+      shape so ingest-time ID resolution is deterministic.
+
+    This function is ONLY for identity resolution at ingest. Scoring
+    pipelines must NOT import it — they join on `bdl_player_id`.
+    """
+    if not name:
+        return ""
+    import re
+    s = str(name).lower().strip()
+    # Periods + apostrophes → removed (no whitespace inserted) so initials
+    # like "C.J." collapse to "cj" matching the hub format.
+    s = re.sub(r"[.'`]", "", s)
+    s = re.sub(r"[,\-]", " ", s)
+    s = re.sub(r"\b(jr|sr|ii|iii|iv|v)\b", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+async def _build_nba_identity_map(db) -> Dict[str, int]:
+    """Build normalized_name → bdl_player_id map from the NBA master hub.
+    The hub's `bdl_id` is the canonical identity (100% populated on
+    hub rows); `bdl_player_id` is an alias present on newer rows.
+    Prefer whichever is available."""
+    out: Dict[str, int] = {}
+    hub = db[COLL("master_hub", "nba")]
+    cursor = hub.find(
+        {},
+        {
+            "_id": 0,
+            "bdl_id": 1, "bdl_player_id": 1,
+            "normalized_name": 1, "display_name": 1,
+            "player_name": 1, "first_name": 1,
+        },
+    )
+    async for doc in cursor:
+        pid = doc.get("bdl_player_id") or doc.get("bdl_id")
+        if pid is None:
+            continue
+        try:
+            pid_int = int(pid)
+        except (TypeError, ValueError):
+            continue
+        aliases = set()
+        for raw in (
+            doc.get("normalized_name"),
+            doc.get("display_name"),
+            doc.get("player_name"),
+        ):
+            norm = _normalize_player_name_for_ingest(raw)
+            if norm:
+                aliases.add(norm)
+        fn = doc.get("first_name")
+        display = doc.get("display_name") or doc.get("player_name")
+        if fn and display:
+            combo = _normalize_player_name_for_ingest(f"{fn} {display}")
+            if combo:
+                aliases.add(combo)
+        for alias in aliases:
+            # First writer wins — keeps behavior deterministic on the
+            # rare alias collision.
+            if alias not in out:
+                out[alias] = pid_int
+    return out
+
+
+async def _build_mlb_identity_map(db) -> Dict[str, int]:
+    """Build normalized_name → bdl_player_id map from the MLB master hub."""
+    out: Dict[str, int] = {}
+    try:
+        hub = db[COLL("master_hub", "mlb")]
+    except Exception:
+        return out
+    cursor = hub.find(
+        {},
+        {
+            "_id": 0,
+            "bdl_id": 1, "bdl_player_id": 1,
+            "normalized_name": 1, "display_name": 1,
+            "player_name": 1, "first_name": 1,
+        },
+    )
+    async for doc in cursor:
+        pid = doc.get("bdl_player_id") or doc.get("bdl_id")
+        if pid is None:
+            continue
+        try:
+            pid_int = int(pid)
+        except (TypeError, ValueError):
+            continue
+        aliases = set()
+        for raw in (
+            doc.get("normalized_name"),
+            doc.get("display_name"),
+            doc.get("player_name"),
+        ):
+            norm = _normalize_player_name_for_ingest(raw)
+            if norm:
+                aliases.add(norm)
+        for alias in aliases:
+            if alias not in out:
+                out[alias] = pid_int
+    return out
+
+
+async def _stamp_identity_on_props(
+    db, sport: str, props: List[Dict[str, Any]]
+) -> tuple:
+    """Stamp `bdl_player_id` + `identity_status` on every prop in place.
+
+    Returns (resolved_count, missing_count).
+    """
+    if sport == "nba":
+        id_map = await _build_nba_identity_map(db)
+    elif sport == "mlb":
+        id_map = await _build_mlb_identity_map(db)
+    else:
+        id_map = {}
+    resolved = 0
+    missing = 0
+    for p in props:
+        norm = _normalize_player_name_for_ingest(p.get("player_name"))
+        pid = id_map.get(norm) if norm else None
+        if pid is not None:
+            p["bdl_player_id"] = pid
+            p["identity_status"] = "resolved"
+            resolved += 1
+        else:
+            p["bdl_player_id"] = None
+            p["identity_status"] = "missing_bdl_id"
+            missing += 1
+    logger.info(
+        f"[IDENTITY:{sport}] Stamped {resolved} resolved / "
+        f"{missing} missing bdl_player_id on {len(props)} props "
+        f"(hub aliases indexed: {len(id_map)})"
+    )
+    return resolved, missing
+
 # API Configuration
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
@@ -1014,6 +1169,20 @@ class UniversalOddsSyncService:
                 
                 # Strip _id before insert
                 clean_props = [{k: v for k, v in p.items() if k != "_id"} for p in all_props]
+
+                # Global Identity Rule (2026-04-23): stamp
+                # `bdl_player_id` + `identity_status` on every prop at
+                # ingest. Identity resolution happens ONCE here (the
+                # system boundary). Downstream scoring pipelines join
+                # strictly on `bdl_player_id` — no name-based joins.
+                # Failures are flagged, not rejected, so they surface
+                # in observability as `identity_status="missing_bdl_id"`.
+                identity_resolved, identity_missing = (
+                    await _stamp_identity_on_props(self.db, sport, clean_props)
+                )
+                results["identity_resolved"] = identity_resolved
+                results["identity_missing"] = identity_missing
+
                 await collection.insert_many(clean_props)
                 
                 inserted = len(clean_props)
