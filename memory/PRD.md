@@ -1624,6 +1624,26 @@ post-Stage-8 follow-up (D1 residual).
 - Google Gemini (user key)
 - Emergent LLM key available as fallback.
 
+## Gate Config Change: War Zone CV Floor Removed — 2026-04-23
+- **Design decision (not experiment):** War Zone must not penalize
+  consistency. If a prop qualifies by odds/tier logic, low or missing CV
+  cannot disqualify it.
+- Removed `cv_gate {"min_cv_floor": 0.45}` from `_NBA_WAR_ZONE_BASE` in
+  `/app/backend/services/scoring/gates/thresholds.py`. MLB and NFL War
+  Zone configs had no CV gate — unchanged.
+- `services.mlb_tier_sorter.war_zone_cv_modifier` (ranking score nudge)
+  retained; it is informational only and does not affect pass/fail.
+- Updated test `test_nba_war_zone_does_not_gate_cv` to assert low/high/
+  missing-CV all pass War Zone. Full 16-test suite green.
+- Recomputed `final-nba-rt` to refresh `gate_eval` on every prop.
+- **Impact (NBA War Zone, 471 props):**
+  - Before: 10 passing (2.12%), 460 cv_fail, 6 ceiling_fail.
+  - After: 465 passing (98.73%), 0 cv_fail, 6 ceiling_fail.
+  - Net unlock: +455 props. Alt-line markets (BLK/STL/THREES alternate)
+    now flow through War Zone instead of dying on null CV.
+- Primary remaining blocker: `ceiling_gate` (1.27% fail rate), as
+  intended. No other hidden consistency penalty was introduced.
+
 ## Feature: Admin Threshold Simulator — 2026-04-23
 - `POST /api/v3/admin/threshold-simulate` — preview single-gate threshold
   changes against live `{sport}_prop_scores @ final-{sport}-rt.gate_eval`.

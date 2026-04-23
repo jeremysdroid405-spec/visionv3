@@ -496,9 +496,11 @@ def compute_tier(
                 else details[failed_gates[0]].reason_code or ReasonCode.for_gate(failed_gates[0])
             )
 
-    # War-Zone CV scoring modifier — unchanged semantics (CV floor is
-    # applied by the NBA `cv_gate.min_cv_floor`; the modifier affects
-    # ranking only and survives regardless of gate outcome).
+    # War-Zone CV ranking modifier — INFORMATIONAL ONLY.
+    # The CV floor on War Zone eligibility was removed 2026-04-23 (design
+    # decision: War Zone must not penalize consistency). This modifier
+    # still adjusts the RANKING score so higher-volatility props sort
+    # above flatter ones within the tier, but it never affects pass/fail.
     war_zone_cv_mod = None
     if target_tier == "war_zone":
         try:

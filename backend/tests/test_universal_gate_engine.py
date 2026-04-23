@@ -70,24 +70,41 @@ def test_nba_safe_haven_hit_rate_failure_has_canonical_reason():
     assert r.gate_details["hit_rate_gate"].reason_code == ReasonCode.HIT_RATE_FAIL
 
 
-def test_nba_war_zone_inverts_cv_gate_into_floor():
-    # Low CV — should fail war_zone (cv must be >= 0.45)
+def test_nba_war_zone_does_not_gate_cv():
+    # 2026-04-23 design decision: War Zone must NOT penalize consistency.
+    # Previously War Zone required cv >= 0.45 ("min_cv_floor"); that floor
+    # was removed. Props with low, high, or missing CV must all be
+    # evaluated purely on coverage / ceiling / edge for War Zone.
+
+    # Very low CV — must PASS War Zone (previously would have failed the floor).
     low = get_engine().evaluate(NormalizedMetrics(
         sport="nba", tier="war_zone", stat_family="pts", side="OVER",
         reference_book="dk", reference_odds=200,
         book_count=1, ceiling_rate=25.0, cv=0.10, edge_pct=20.0,
     ))
-    assert low.passed is False
-    assert "cv_gate" in low.failed_gates
+    assert low.passed is True
+    assert "cv_gate" not in low.passed_gates
+    assert "cv_gate" not in low.failed_gates
+    assert "cv_gate" not in low.gate_details
 
-    # High CV — should pass the floor gate.
+    # Missing CV — must PASS (alt-line props have no CV; they must not be
+    # disqualified because of that).
+    null_cv = get_engine().evaluate(NormalizedMetrics(
+        sport="nba", tier="war_zone", stat_family="pts", side="OVER",
+        reference_book="dk", reference_odds=300,
+        book_count=1, ceiling_rate=25.0, cv=None, edge_pct=15.0,
+    ))
+    assert null_cv.passed is True
+    assert "cv_gate" not in null_cv.gate_details
+
+    # High CV also still passes (unchanged).
     hi = get_engine().evaluate(NormalizedMetrics(
         sport="nba", tier="war_zone", stat_family="pts", side="OVER",
         reference_book="dk", reference_odds=200,
         book_count=1, ceiling_rate=25.0, cv=0.55, edge_pct=20.0,
     ))
     assert hi.passed is True
-    assert "cv_gate" in hi.passed_gates
+    assert "cv_gate" not in hi.gate_details
 
 
 def test_nba_cv_cap_override_from_adapter():

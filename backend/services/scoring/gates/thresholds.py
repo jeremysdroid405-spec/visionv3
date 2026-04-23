@@ -87,7 +87,11 @@ _NBA_FRONT_LINES_BASE = {
 }
 _NBA_WAR_ZONE_BASE = {
     "coverage_gate": {"min_books": 1},
-    "cv_gate":       {"min_cv_floor": 0.45},   # inverted: cv must be >= floor
+    # CV is NOT gated in War Zone (2026-04-23 design decision).
+    # War Zone must not penalize consistency — if a prop qualifies by
+    # odds/tier logic, low or missing CV cannot disqualify it.
+    # `services.mlb_tier_sorter.war_zone_cv_modifier` still adjusts the
+    # RANKING score (informational only); see `scoring_stack.compute_tier`.
     "ceiling_gate":  {"min": 20.0},
     "edge_gate":     {"min": 10.0},
 }
