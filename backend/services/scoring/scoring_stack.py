@@ -268,62 +268,6 @@ def _pick_reference_odds(
     return None, "none"
 
 
-def _model_contradicts_anchor(prop: Dict, side: str) -> Optional[str]:
-    """PP-anchor direction veto (2026-04-19).
-
-    PrizePicks demons / goblins force a fixed OVER/UNDER payout side that the
-    scoring/selection layers otherwise honour. When every other evidence
-    stream points the opposite way, that anchor becomes a trap — we would
-    surface a bullish-looking card on a prop the core model doesn't believe in.
-
-    Veto fires when ALL three contradict the anchor side for an OVER pick:
-      - vk_edge (model_projection − line) is negative
-      - hit_rate_over (or hit_rate_under for UNDER) is below 50
-      - newest-L10 average is on the wrong side of the line
-
-    (Symmetric on UNDER.)
-
-    Returns a human-readable reason string when vetoed, else None.
-    """
-    side = (side or "OVER").upper()
-    line = prop.get("line")
-    if line is None:
-        return None
-
-    vk_edge = prop.get("vk_edge")
-    if vk_edge is None:
-        mp = prop.get("model_projection")
-        if isinstance(mp, (int, float)):
-            vk_edge = float(mp) - float(line)
-    hit_rate_over = prop.get("hit_rate_over")
-    hit_rate_under = prop.get("hit_rate_under")
-    l10_avg = prop.get("l10_avg")
-
-    if side == "OVER":
-        # Require all three to exist and all three to contradict OVER.
-        if not (isinstance(vk_edge, (int, float)) and vk_edge < 0):
-            return None
-        if not (isinstance(hit_rate_over, (int, float)) and hit_rate_over < 50):
-            return None
-        if not (isinstance(l10_avg, (int, float)) and l10_avg < line):
-            return None
-        return (
-            f"model_contradicts_anchor: vk_edge={vk_edge:.2f}<0, "
-            f"hit_rate_over={hit_rate_over}%<50, l10_avg={l10_avg}<line={line}"
-        )
-    # UNDER
-    if not (isinstance(vk_edge, (int, float)) and vk_edge > 0):
-        return None
-    if not (isinstance(hit_rate_under, (int, float)) and hit_rate_under < 50):
-        return None
-    if not (isinstance(l10_avg, (int, float)) and l10_avg > line):
-        return None
-    return (
-        f"model_contradicts_anchor: vk_edge={vk_edge:.2f}>0, "
-        f"hit_rate_under={hit_rate_under}%<50, l10_avg={l10_avg}>line={line}"
-    )
-
-
 def compute_tier(
     prop: Dict,
     cv: Optional[float],
@@ -370,33 +314,11 @@ def compute_tier(
             "tier_gate_results": {},
         }
 
-    # Direction veto — PP demon/goblin anchor can't force a side against
-    # converging negative evidence (model edge < 0, anchor-side hit rate < 50,
-    # newest-L10 avg on wrong side). Fires BEFORE gate evaluation so the pick
-    # never reaches the board.
-    veto_reason = _model_contradicts_anchor(prop, side)
-    if veto_reason:
-        return {
-            "tier": "unqualified",
-            "tier_reason": veto_reason,
-            "tier_reference_book": ref_book,
-            "tier_reference_odds": ref_odds,
-            "tier_gate_results": {},
-        }
-
-    # Historical profitable-signal gate (2026-02-20): the VK1 backtest
-    # that produced +19.26% real-odds AST ROI applied
-    # `confidence_threshold = 55.0` on the Gaussian p_over. Every prop
-    # below 0.55 model confidence is rejected to `unqualified` before
-    # the gate engine runs.
-    if p_model is not None and p_model < 0.55:
-        return {
-            "tier": "unqualified",
-            "tier_reason": "p_model<0.55",
-            "tier_reference_book": ref_book,
-            "tier_reference_odds": ref_odds,
-            "tier_gate_results": {},
-        }
+    # Pre-gate filters (direction veto, p_model<0.55 floor) were
+    # removed 2026-04-23 per operator request: tier eligibility is now
+    # determined strictly by the Universal Gate Engine configured in
+    # `services.scoring.gates.thresholds`. `__pass_all__` tiers are now
+    # genuinely filter-free end-to-end.
 
     # Route to a target tier via the sport-aware odds buckets in config.
     sport = (sport or "nba").lower()
