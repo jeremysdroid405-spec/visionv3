@@ -1,0 +1,257 @@
+{
+  "generated_at": "2026-04-23T13:38:07.583284+00:00",
+  "seed": 42,
+  "per_stat": {
+    "PTS": {
+      "core_count": 14,
+      "redundant_count": 120,
+      "noise_count": 52,
+      "baseline_rmse": 6.214574591024885,
+      "top10_cumulative_gain_pct": 75.49703998540586,
+      "ablation": [
+        {
+          "dropped_pct": 0.0,
+          "kept_count": 186,
+          "mae": 4.033915996551514,
+          "rmse": 6.0122783913486675
+        },
+        {
+          "dropped_pct": 20.0,
+          "kept_count": 149,
+          "mae": 4.034220218658447,
+          "rmse": 6.006924130718402
+        },
+        {
+          "dropped_pct": 40.0,
+          "kept_count": 112,
+          "mae": 4.033404350280762,
+          "rmse": 6.014648041103453
+        },
+        {
+          "dropped_pct": 60.0,
+          "kept_count": 74,
+          "mae": 4.030484199523926,
+          "rmse": 6.011558208342089
+        }
+      ]
+    },
+    "REB": {
+      "core_count": 14,
+      "redundant_count": 121,
+      "noise_count": 51,
+      "baseline_rmse": 2.497795563583961,
+      "top10_cumulative_gain_pct": 69.45097753922327,
+      "ablation": [
+        {
+          "dropped_pct": 0.0,
+          "kept_count": 186,
+          "mae": 1.656982421875,
+          "rmse": 2.4520356499101266
+        },
+        {
+          "dropped_pct": 20.0,
+          "kept_count": 149,
+          "mae": 1.65669846534729,
+          "rmse": 2.4518452604669845
+        },
+        {
+          "dropped_pct": 40.0,
+          "kept_count": 112,
+          "mae": 1.6568217277526855,
+          "rmse": 2.4526398780433314
+        },
+        {
+          "dropped_pct": 60.0,
+          "kept_count": 74,
+          "mae": 1.6601837873458862,
+          "rmse": 2.4555872326337695
+        }
+      ]
+    },
+    "AST": {
+      "core_count": 10,
+      "redundant_count": 120,
+      "noise_count": 56,
+      "baseline_rmse": 1.7196882288059727,
+      "top10_cumulative_gain_pct": 67.7359506797377,
+      "ablation": [
+        {
+          "dropped_pct": 0.0,
+          "kept_count": 186,
+          "mae": 1.0823380947113037,
+          "rmse": 1.7025473078626197
+        },
+        {
+          "dropped_pct": 20.0,
+          "kept_count": 149,
+          "mae": 1.0839895009994507,
+          "rmse": 1.7037657486096067
+        },
+        {
+          "dropped_pct": 40.0,
+          "kept_count": 112,
+          "mae": 1.0816009044647217,
+          "rmse": 1.699606033563891
+        },
+        {
+          "dropped_pct": 60.0,
+          "kept_count": 74,
+          "mae": 1.0831034183502197,
+          "rmse": 1.7030427545409879
+        }
+      ]
+    },
+    "3PM": {
+      "core_count": 13,
+      "redundant_count": 120,
+      "noise_count": 53,
+      "baseline_rmse": 1.1219626326058851,
+      "top10_cumulative_gain_pct": 59.76408160617337,
+      "ablation": [
+        {
+          "dropped_pct": 0.0,
+          "kept_count": 186,
+          "mae": 0.6714072823524475,
+          "rmse": 1.0827199899147397
+        },
+        {
+          "dropped_pct": 20.0,
+          "kept_count": 149,
+          "mae": 0.6722571849822998,
+          "rmse": 1.0835341609750373
+        },
+        {
+          "dropped_pct": 40.0,
+          "kept_count": 112,
+          "mae": 0.6717002987861633,
+          "rmse": 1.0842625716353338
+        },
+        {
+          "dropped_pct": 60.0,
+          "kept_count": 74,
+          "mae": 0.6710711717605591,
+          "rmse": 1.0835213987017986
+        }
+      ]
+    },
+    "PRA": {
+      "core_count": 13,
+      "redundant_count": 122,
+      "noise_count": 51,
+      "baseline_rmse": 8.728160086949481,
+      "top10_cumulative_gain_pct": 77.13182001095844,
+      "ablation": [
+        {
+          "dropped_pct": 0.0,
+          "kept_count": 186,
+          "mae": 5.797158241271973,
+          "rmse": 8.515854802661888
+        },
+        {
+          "dropped_pct": 20.0,
+          "kept_count": 149,
+          "mae": 5.788238525390625,
+          "rmse": 8.498029592676636
+        },
+        {
+          "dropped_pct": 40.0,
+          "kept_count": 112,
+          "mae": 5.78917121887207,
+          "rmse": 8.502138205471692
+        },
+        {
+          "dropped_pct": 60.0,
+          "kept_count": 74,
+          "mae": 5.786717414855957,
+          "rmse": 8.499314673228117
+        }
+      ]
+    }
+  },
+  "union_core_features": [
+    "adv_contested_shots_L5_mean",
+    "adv_distance_L5_mean",
+    "adv_missing_season",
+    "adv_net_rating_L5_mean",
+    "adv_passes_L5_mean",
+    "adv_pct_pts_3pt_L10_mean",
+    "adv_pie_L10_mean",
+    "adv_pie_L5_mean",
+    "adv_possessions_L10_mean",
+    "ast_L20_mean",
+    "ast_L20_std",
+    "ast_L3_mean",
+    "ast_L5_mean",
+    "fg3_pct_L10_mean",
+    "fg3a_L20_mean",
+    "fg3a_L3_mean",
+    "fg3a_L5_std",
+    "fg_pct_L10_mean",
+    "fga_L20_std",
+    "fga_L3_mean",
+    "fga_L3_std",
+    "fga_L5_std",
+    "min_played_L10_std",
+    "pra_L20_mean",
+    "pra_L3_mean",
+    "pts_L10_std",
+    "pts_L20_std",
+    "pts_L3_std",
+    "pts_L5_std",
+    "reb_L10_std",
+    "reb_L20_mean",
+    "reb_L20_std",
+    "reb_L3_mean",
+    "reb_L3_std",
+    "reb_L5_mean",
+    "reb_L5_std"
+  ],
+  "union_core_count": 36,
+  "features_flagged_noise_by_all_stats": [
+    "adv_contested_shots_L10_miss",
+    "adv_defensive_rating_L10_miss",
+    "adv_defensive_rating_L5_miss",
+    "adv_defensive_rebound_percentage_L10_miss",
+    "adv_defensive_rebound_percentage_L5_miss",
+    "adv_deflections_L10_miss",
+    "adv_deflections_L5_miss",
+    "adv_effective_field_goal_percentage_L10_miss",
+    "adv_effective_field_goal_percentage_L5_miss",
+    "adv_net_rating_L10_miss",
+    "adv_net_rating_L5_miss",
+    "adv_offensive_rating_L10_miss",
+    "adv_offensive_rating_L5_miss",
+    "adv_offensive_rebound_percentage_L10_miss",
+    "adv_offensive_rebound_percentage_L5_miss",
+    "adv_pace_L10_miss",
+    "adv_pace_L5_miss",
+    "adv_passes_L10_miss",
+    "adv_passes_L5_miss",
+    "adv_pct_fga_L10_miss",
+    "adv_pct_fga_L5_miss",
+    "adv_pct_pts_3pt_L10_miss",
+    "adv_pct_pts_fast_break_L10_miss",
+    "adv_pct_pts_free_throw_L10_miss",
+    "adv_pct_pts_free_throw_L5_miss",
+    "adv_pct_pts_paint_L10_miss",
+    "adv_pct_pts_paint_L5_miss",
+    "adv_pie_L10_miss",
+    "adv_pie_L5_miss",
+    "adv_possessions_L10_miss",
+    "adv_rebound_percentage_L10_miss",
+    "adv_rebound_percentage_L5_miss",
+    "adv_speed_L10_miss",
+    "adv_speed_L5_miss",
+    "adv_touches_L10_miss",
+    "adv_touches_L5_miss",
+    "adv_true_shooting_percentage_L10_miss",
+    "adv_true_shooting_percentage_L5_miss",
+    "adv_turnover_ratio_L10_miss",
+    "adv_turnover_ratio_L5_miss",
+    "adv_usage_percentage_L10_miss",
+    "adv_usage_percentage_L5_miss",
+    "is_home",
+    "min_played_L3_mean",
+    "minutes_proxy"
+  ]
+}
