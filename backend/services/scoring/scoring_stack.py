@@ -417,16 +417,24 @@ def compute_tier(
     # War Zone — long odds
     if ref_odds >= _REF_WAR_ZONE_MIN:
         passed, reason, gates = sorter.check_war_zone_gates(prop, cv, ceiling_rate, edge_pct)
+        # `check_war_zone_gates` stamps `prop["war_zone_cv_modifier"]`
+        # (2026-04-22 refactor); surface it on the stack result so
+        # `recompute.py` can persist it on the score doc. Mutations to
+        # `prop` here do NOT flow back to `ctx.raw_prop` because
+        # `recompute.compute_scoring_stack` passes a fresh splatted dict.
+        cv_mod = prop.get("war_zone_cv_modifier")
         if passed:
             return {
                 "tier": "war_zone", "tier_reason": "gates_passed",
                 "tier_reference_book": ref_book, "tier_reference_odds": ref_odds,
                 "tier_gate_results": gates,
+                "war_zone_cv_modifier": cv_mod,
             }
         return {
             "tier": "unqualified", "tier_reason": f"war_zone_failed: {reason}",
             "tier_reference_book": ref_book, "tier_reference_odds": ref_odds,
             "tier_gate_results": gates,
+            "war_zone_cv_modifier": cv_mod,
         }
 
     # Front Lines — middle band

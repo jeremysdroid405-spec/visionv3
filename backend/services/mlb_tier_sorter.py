@@ -45,13 +45,54 @@ FRONT_LINES_GATES = {
 }
 
 WAR_ZONE_GATES = {
-    "hits": {"min_cv": 1.0, "min_ceiling_rate": 35, "min_edge": 30},
-    "total_bases": {"min_cv": 1.0, "min_ceiling_rate": 35, "min_edge": 30},
-    "hits+runs+rbis": {"min_cv": 1.0, "min_ceiling_rate": 35, "min_edge": 30},
-    "rbis": {"min_cv": 1.0, "min_ceiling_rate": 35, "min_edge": 30},
-    "runs": {"min_cv": 1.0, "min_ceiling_rate": 35, "min_edge": 30},
-    "pitcher_strikeouts": {"min_cv": 0.8, "min_ceiling_rate": 30, "min_edge": 25},
+    # 2026-04-22 update: `min_cv` floor REMOVED per pricing-integrity
+    # refactor. War Zone eligibility no longer hard-fails low-CV picks.
+    # CV is applied as a scoring modifier only (see
+    # `war_zone_cv_modifier` below). Kept in the dict as `min_cv: 0.0`
+    # so every back-compat caller that still reads `gates["min_cv"]`
+    # computes a trivially-passing check.
+    "hits": {"min_cv": 0.0, "min_ceiling_rate": 35, "min_edge": 30},
+    "total_bases": {"min_cv": 0.0, "min_ceiling_rate": 35, "min_edge": 30},
+    "hits+runs+rbis": {"min_cv": 0.0, "min_ceiling_rate": 35, "min_edge": 30},
+    "rbis": {"min_cv": 0.0, "min_ceiling_rate": 35, "min_edge": 30},
+    "runs": {"min_cv": 0.0, "min_ceiling_rate": 35, "min_edge": 30},
+    "pitcher_strikeouts": {"min_cv": 0.0, "min_ceiling_rate": 30, "min_edge": 25},
 }
+
+
+def war_zone_cv_modifier(cv: Optional[float]) -> float:
+    """CV → War-Zone ranking score modifier.
+
+    After the 2026-04-22 floor removal, CV is strictly a scoring signal
+    (never a disqualification). Lower CV is **slightly positive**
+    (consistency implies the ceiling play is less speculative); higher
+    CV is neutral (capped so a wildly volatile prop doesn't override
+    its own hit-rate signal).
+
+    Mapping (piece-wise linear):
+        cv <= 0.40   →  +0.10   (very consistent — mild bonus)
+        cv <= 0.60   →  +0.05
+        cv <= 0.80   →   0.00
+        cv <= 1.00   →  -0.02
+        cv >  1.00   →  -0.05   (noise, small drag)
+
+    Missing/None CV returns 0.0 so scoring is unaffected.
+    """
+    if cv is None:
+        return 0.0
+    try:
+        cv_f = float(cv)
+    except (TypeError, ValueError):
+        return 0.0
+    if cv_f <= 0.40:
+        return 0.10
+    if cv_f <= 0.60:
+        return 0.05
+    if cv_f <= 0.80:
+        return 0.0
+    if cv_f <= 1.00:
+        return -0.02
+    return -0.05
 
 # DraftKings odds thresholds
 DK_SAFE_HAVEN_MAX = -240
@@ -626,46 +667,65 @@ class MLBTierSorter:
         ceiling_rate: Optional[float],
         edge_pct: Optional[float]
     ) -> Tuple[bool, str, Dict]:
-        """Check if prop passes War Zone gates (volatility required)."""
+        """Check if prop passes War Zone gates.
+
+        2026-04-22 refactor: the CV floor (``gate1_cv``) was removed.
+        War Zone now evaluates only:
+          - gate_ceiling (min ceiling hit rate)
+          - gate_edge    (min edge %)
+        …plus the book_count>=1 rule enforced upstream by the 0-Book
+        Exclusion filter, and the DK odds bucket enforced by the caller
+        (``dk_odds >= DK_WAR_ZONE_MIN``).
+
+        CV is recorded on the gate_results for diagnostics / scoring
+        modification (``war_zone_cv_modifier``) but never disqualifies
+        a prop. The ``gate1_cv`` key is retained as ``passed=True`` for
+        every prop so downstream dashboards that enumerate gate results
+        continue to render without code changes.
+        """
         stat_key = self._normalize_stat_type(prop.get("stat_type", ""))
         gates = WAR_ZONE_GATES.get(stat_key, WAR_ZONE_GATES.get("hits"))
-        
+
         gate_results = {
-            "gate1_cv": {"threshold": f">= {gates['min_cv']}", "value": cv, "passed": False},
+            # Retained for diagnostic parity with Safe Haven / Front
+            # Lines gate result dicts. Always passes post-refactor.
+            "gate1_cv": {
+                "threshold": "not_enforced",
+                "value": cv,
+                "passed": True,
+                "note": "CV floor removed 2026-04-22; scoring modifier only",
+            },
             "gate2_ceiling": {"threshold": gates["min_ceiling_rate"], "value": ceiling_rate, "passed": False},
             "gate3_edge": {"threshold": gates["min_edge"], "value": edge_pct, "passed": False},
         }
-        
-        # War Zone REQUIRES high volatility (CV >= threshold)
-        if cv is not None and cv >= gates["min_cv"]:
-            gate_results["gate1_cv"]["passed"] = True
-        elif cv is None:
-            # For war zone, assume high volatility if no data
-            gate_results["gate1_cv"]["passed"] = True
-            gate_results["gate1_cv"]["skipped"] = True
-        
-        # Ceiling rate check
+
+        # Ceiling rate check (still required).
         if ceiling_rate is not None and ceiling_rate >= gates["min_ceiling_rate"]:
             gate_results["gate2_ceiling"]["passed"] = True
         elif ceiling_rate is None:
             gate_results["gate2_ceiling"]["passed"] = True
             gate_results["gate2_ceiling"]["skipped"] = True
-        
-        # Edge check
+
+        # Edge check (still required).
         if edge_pct is not None and edge_pct >= gates["min_edge"]:
             gate_results["gate3_edge"]["passed"] = True
         elif edge_pct is None:
             gate_results["gate3_edge"]["passed"] = True
             gate_results["gate3_edge"]["skipped"] = True
-        
+
         all_passed = all(g["passed"] for g in gate_results.values())
-        
+
+        # CV is applied as a scoring modifier on the prop so downstream
+        # ranking/sort layers can pick it up. Never flipped into a
+        # disqualification.
+        prop["war_zone_cv_modifier"] = war_zone_cv_modifier(cv)
+
         if all_passed:
-            reason = f"Moonshot qualified: High volatility + ceiling upside"
+            reason = "Moonshot qualified: ceiling upside"
         else:
             failed = [k for k, v in gate_results.items() if not v["passed"]]
             reason = f"Failed gates: {', '.join(failed)}"
-        
+
         return all_passed, reason, gate_results
     
     async def sort_props(self, save_to_db: bool = True) -> Dict[str, Any]:

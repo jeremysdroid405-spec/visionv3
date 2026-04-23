@@ -379,6 +379,11 @@ async def recompute_sport(
             doc["coverage_class"] = raw["coverage_class"]
         if "books_anchored" in raw:
             doc["books_anchored"] = raw["books_anchored"]
+        # War Zone CV modifier (2026-04-22) — stamped on the raw prop by
+        # `check_war_zone_gates`; mirror onto the score doc so ranking
+        # layers / UI can read it without re-running the sorter.
+        if "war_zone_cv_modifier" in raw:
+            doc["war_zone_cv_modifier"] = raw["war_zone_cv_modifier"]
 
         score_docs.append(doc)
 
