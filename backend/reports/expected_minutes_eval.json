@@ -1,0 +1,733 @@
+{
+  "PTS": {
+    "baseline_model_version": "NBA_VK_v2_5yr_weighted_pruned52",
+    "minutes_model_version": "NBA_EXPECTED_MINUTES_v2_strict",
+    "test_rows": 45587,
+    "predicted_minutes_summary": {
+      "min": -1.662,
+      "max": 40.79,
+      "mean": 13.258,
+      "median": 11.669
+    },
+    "segments": {
+      "overall": {
+        "baseline": {
+          "n": 45587,
+          "rmse": 6.034,
+          "mae": 4.04,
+          "bias": 0.094,
+          "actual_mean": 6.552,
+          "pred_mean": 6.647
+        },
+        "rate_scaled": {
+          "n": 45587,
+          "rmse": 6.288,
+          "mae": 4.121,
+          "bias": -0.022,
+          "actual_mean": 6.552,
+          "pred_mean": 6.53
+        }
+      },
+      "PTS <10": {
+        "baseline": {
+          "n": 32348,
+          "rmse": 4.733,
+          "mae": 2.987,
+          "bias": 2.289,
+          "actual_mean": 1.821,
+          "pred_mean": 4.11
+        },
+        "rate_scaled": {
+          "n": 32348,
+          "rmse": 4.832,
+          "mae": 2.952,
+          "bias": 2.234,
+          "actual_mean": 1.821,
+          "pred_mean": 4.055
+        }
+      },
+      "bench (L10<20)": {
+        "baseline": {
+          "n": 30312,
+          "rmse": 4.653,
+          "mae": 2.908,
+          "bias": 0.042,
+          "actual_mean": 3.203,
+          "pred_mean": 3.244
+        },
+        "rate_scaled": {
+          "n": 30312,
+          "rmse": 5.062,
+          "mae": 3.006,
+          "bias": 0.16,
+          "actual_mean": 3.203,
+          "pred_mean": 3.363
+        }
+      },
+      "rotation (L10 18-28)": {
+        "baseline": {
+          "n": 10120,
+          "rmse": 7.253,
+          "mae": 5.708,
+          "bias": 0.219,
+          "actual_mean": 9.832,
+          "pred_mean": 10.051
+        },
+        "rate_scaled": {
+          "n": 10120,
+          "rmse": 7.374,
+          "mae": 5.723,
+          "bias": -0.212,
+          "actual_mean": 9.832,
+          "pred_mean": 9.62
+        }
+      },
+      "starter (L10>=28)": {
+        "baseline": {
+          "n": 7195,
+          "rmse": 8.822,
+          "mae": 6.785,
+          "bias": 0.177,
+          "actual_mean": 16.368,
+          "pred_mean": 16.546
+        },
+        "rate_scaled": {
+          "n": 7195,
+          "rmse": 8.884,
+          "mae": 6.854,
+          "bias": -0.697,
+          "actual_mean": 16.368,
+          "pred_mean": 15.672
+        }
+      },
+      "declining (L5-L20<-2)": {
+        "baseline": {
+          "n": 12775,
+          "rmse": 6.296,
+          "mae": 4.297,
+          "bias": 0.132,
+          "actual_mean": 5.577,
+          "pred_mean": 5.71
+        },
+        "rate_scaled": {
+          "n": 12775,
+          "rmse": 6.682,
+          "mae": 4.287,
+          "bias": -0.368,
+          "actual_mean": 5.577,
+          "pred_mean": 5.209
+        }
+      },
+      "PTS 10-20": {
+        "baseline": {
+          "n": 8695,
+          "rmse": 6.139,
+          "mae": 5.017,
+          "bias": -3.148,
+          "actual_mean": 13.905,
+          "pred_mean": 10.758
+        },
+        "rate_scaled": {
+          "n": 8695,
+          "rmse": 6.477,
+          "mae": 5.219,
+          "bias": -3.308,
+          "actual_mean": 13.905,
+          "pred_mean": 10.597
+        }
+      },
+      "PTS >=20": {
+        "baseline": {
+          "n": 4544,
+          "rmse": 11.562,
+          "mae": 9.666,
+          "bias": -9.321,
+          "actual_mean": 26.161,
+          "pred_mean": 16.84
+        },
+        "rate_scaled": {
+          "n": 4544,
+          "rmse": 12.258,
+          "mae": 10.344,
+          "bias": -9.795,
+          "actual_mean": 26.161,
+          "pred_mean": 16.365
+        }
+      }
+    }
+  },
+  "REB": {
+    "baseline_model_version": "NBA_VK_v2_5yr_weighted_pruned52",
+    "minutes_model_version": "NBA_EXPECTED_MINUTES_v2_strict",
+    "test_rows": 45587,
+    "predicted_minutes_summary": {
+      "min": -1.662,
+      "max": 40.79,
+      "mean": 13.258,
+      "median": 11.669
+    },
+    "segments": {
+      "overall": {
+        "baseline": {
+          "n": 45587,
+          "rmse": 2.458,
+          "mae": 1.653,
+          "bias": 0.005,
+          "actual_mean": 2.538,
+          "pred_mean": 2.543
+        },
+        "rate_scaled": {
+          "n": 45587,
+          "rmse": 2.543,
+          "mae": 1.683,
+          "bias": -0.028,
+          "actual_mean": 2.538,
+          "pred_mean": 2.51
+        }
+      },
+      "REB <10": {
+        "baseline": {
+          "n": 43273,
+          "rmse": 2.1,
+          "mae": 1.461,
+          "bias": 0.282,
+          "actual_mean": 2.017,
+          "pred_mean": 2.299
+        },
+        "rate_scaled": {
+          "n": 43273,
+          "rmse": 2.172,
+          "mae": 1.482,
+          "bias": 0.256,
+          "actual_mean": 2.017,
+          "pred_mean": 2.273
+        }
+      },
+      "bench (L10<20)": {
+        "baseline": {
+          "n": 30312,
+          "rmse": 2.069,
+          "mae": 1.304,
+          "bias": 0.003,
+          "actual_mean": 1.47,
+          "pred_mean": 1.473
+        },
+        "rate_scaled": {
+          "n": 30312,
+          "rmse": 2.203,
+          "mae": 1.345,
+          "bias": 0.055,
+          "actual_mean": 1.47,
+          "pred_mean": 1.525
+        }
+      },
+      "rotation (L10 18-28)": {
+        "baseline": {
+          "n": 10120,
+          "rmse": 2.949,
+          "mae": 2.248,
+          "bias": 0.016,
+          "actual_mean": 3.898,
+          "pred_mean": 3.914
+        },
+        "rate_scaled": {
+          "n": 10120,
+          "rmse": 2.987,
+          "mae": 2.254,
+          "bias": -0.158,
+          "actual_mean": 3.898,
+          "pred_mean": 3.739
+        }
+      },
+      "starter (L10>=28)": {
+        "baseline": {
+          "n": 7195,
+          "rmse": 3.193,
+          "mae": 2.424,
+          "bias": 0.006,
+          "actual_mean": 5.361,
+          "pred_mean": 5.366
+        },
+        "rate_scaled": {
+          "n": 7195,
+          "rmse": 3.211,
+          "mae": 2.43,
+          "bias": -0.273,
+          "actual_mean": 5.361,
+          "pred_mean": 5.088
+        }
+      },
+      "declining (L5-L20<-2)": {
+        "baseline": {
+          "n": 12775,
+          "rmse": 2.505,
+          "mae": 1.69,
+          "bias": 0.042,
+          "actual_mean": 2.112,
+          "pred_mean": 2.154
+        },
+        "rate_scaled": {
+          "n": 12775,
+          "rmse": 2.612,
+          "mae": 1.666,
+          "bias": -0.163,
+          "actual_mean": 2.112,
+          "pred_mean": 1.949
+        }
+      },
+      "REB 10-20": {
+        "baseline": {
+          "n": 2271,
+          "rmse": 5.866,
+          "mae": 5.129,
+          "bias": -5.047,
+          "actual_mean": 12.104,
+          "pred_mean": 7.057
+        },
+        "rate_scaled": {
+          "n": 2271,
+          "rmse": 6.087,
+          "mae": 5.327,
+          "bias": -5.218,
+          "actual_mean": 12.104,
+          "pred_mean": 6.886
+        }
+      },
+      "REB >=20": {
+        "baseline": {
+          "n": 43,
+          "rmse": 12.122,
+          "mae": 11.695,
+          "bias": -11.695,
+          "actual_mean": 21.419,
+          "pred_mean": 9.723
+        },
+        "rate_scaled": {
+          "n": 43,
+          "rmse": 12.439,
+          "mae": 11.953,
+          "bias": -11.953,
+          "actual_mean": 21.419,
+          "pred_mean": 9.466
+        }
+      }
+    }
+  },
+  "AST": {
+    "baseline_model_version": "NBA_VK_v2_5yr_weighted_pruned52",
+    "minutes_model_version": "NBA_EXPECTED_MINUTES_v2_strict",
+    "test_rows": 45587,
+    "predicted_minutes_summary": {
+      "min": -1.662,
+      "max": 40.79,
+      "mean": 13.258,
+      "median": 11.669
+    },
+    "segments": {
+      "overall": {
+        "baseline": {
+          "n": 45587,
+          "rmse": 1.711,
+          "mae": 1.084,
+          "bias": 0.017,
+          "actual_mean": 1.518,
+          "pred_mean": 1.535
+        },
+        "rate_scaled": {
+          "n": 45587,
+          "rmse": 1.763,
+          "mae": 1.098,
+          "bias": -0.012,
+          "actual_mean": 1.518,
+          "pred_mean": 1.506
+        }
+      },
+      "AST <10": {
+        "baseline": {
+          "n": 44913,
+          "rmse": 1.55,
+          "mae": 1.016,
+          "bias": 0.102,
+          "actual_mean": 1.368,
+          "pred_mean": 1.47
+        },
+        "rate_scaled": {
+          "n": 44913,
+          "rmse": 1.595,
+          "mae": 1.026,
+          "bias": 0.075,
+          "actual_mean": 1.368,
+          "pred_mean": 1.442
+        }
+      },
+      "bench (L10<20)": {
+        "baseline": {
+          "n": 30312,
+          "rmse": 1.296,
+          "mae": 0.751,
+          "bias": 0.0,
+          "actual_mean": 0.745,
+          "pred_mean": 0.745
+        },
+        "rate_scaled": {
+          "n": 30312,
+          "rmse": 1.387,
+          "mae": 0.77,
+          "bias": 0.024,
+          "actual_mean": 0.745,
+          "pred_mean": 0.769
+        }
+      },
+      "rotation (L10 18-28)": {
+        "baseline": {
+          "n": 10120,
+          "rmse": 2.021,
+          "mae": 1.525,
+          "bias": 0.057,
+          "actual_mean": 2.205,
+          "pred_mean": 2.262
+        },
+        "rate_scaled": {
+          "n": 10120,
+          "rmse": 2.035,
+          "mae": 1.517,
+          "bias": -0.039,
+          "actual_mean": 2.205,
+          "pred_mean": 2.165
+        }
+      },
+      "starter (L10>=28)": {
+        "baseline": {
+          "n": 7195,
+          "rmse": 2.589,
+          "mae": 1.959,
+          "bias": 0.049,
+          "actual_mean": 3.868,
+          "pred_mean": 3.917
+        },
+        "rate_scaled": {
+          "n": 7195,
+          "rmse": 2.598,
+          "mae": 1.963,
+          "bias": -0.157,
+          "actual_mean": 3.868,
+          "pred_mean": 3.711
+        }
+      },
+      "declining (L5-L20<-2)": {
+        "baseline": {
+          "n": 12775,
+          "rmse": 1.738,
+          "mae": 1.104,
+          "bias": 0.024,
+          "actual_mean": 1.283,
+          "pred_mean": 1.307
+        },
+        "rate_scaled": {
+          "n": 12775,
+          "rmse": 1.806,
+          "mae": 1.088,
+          "bias": -0.099,
+          "actual_mean": 1.283,
+          "pred_mean": 1.184
+        }
+      },
+      "AST 10-20": {
+        "baseline": {
+          "n": 668,
+          "rmse": 6.062,
+          "mae": 5.575,
+          "bias": -5.571,
+          "actual_mean": 11.47,
+          "pred_mean": 5.899
+        },
+        "rate_scaled": {
+          "n": 668,
+          "rmse": 6.302,
+          "mae": 5.804,
+          "bias": -5.759,
+          "actual_mean": 11.47,
+          "pred_mean": 5.711
+        }
+      }
+    }
+  },
+  "3PM": {
+    "baseline_model_version": "NBA_VK_v2_5yr_weighted_pruned52",
+    "minutes_model_version": "NBA_EXPECTED_MINUTES_v2_strict",
+    "test_rows": 45587,
+    "predicted_minutes_summary": {
+      "min": -1.662,
+      "max": 40.79,
+      "mean": 13.258,
+      "median": 11.669
+    },
+    "segments": {
+      "overall": {
+        "baseline": {
+          "n": 45587,
+          "rmse": 1.085,
+          "mae": 0.671,
+          "bias": -0.003,
+          "actual_mean": 0.778,
+          "pred_mean": 0.775
+        },
+        "rate_scaled": {
+          "n": 45587,
+          "rmse": 1.105,
+          "mae": 0.673,
+          "bias": -0.015,
+          "actual_mean": 0.778,
+          "pred_mean": 0.762
+        }
+      },
+      "3PM <10": {
+        "baseline": {
+          "n": 45578,
+          "rmse": 1.079,
+          "mae": 0.67,
+          "bias": -0.001,
+          "actual_mean": 0.776,
+          "pred_mean": 0.774
+        },
+        "rate_scaled": {
+          "n": 45578,
+          "rmse": 1.099,
+          "mae": 0.672,
+          "bias": -0.014,
+          "actual_mean": 0.776,
+          "pred_mean": 0.762
+        }
+      },
+      "bench (L10<20)": {
+        "baseline": {
+          "n": 30312,
+          "rmse": 0.81,
+          "mae": 0.446,
+          "bias": -0.005,
+          "actual_mean": 0.388,
+          "pred_mean": 0.383
+        },
+        "rate_scaled": {
+          "n": 30312,
+          "rmse": 0.844,
+          "mae": 0.452,
+          "bias": 0.009,
+          "actual_mean": 0.388,
+          "pred_mean": 0.398
+        }
+      },
+      "rotation (L10 18-28)": {
+        "baseline": {
+          "n": 10120,
+          "rmse": 1.372,
+          "mae": 1.012,
+          "bias": 0.004,
+          "actual_mean": 1.262,
+          "pred_mean": 1.266
+        },
+        "rate_scaled": {
+          "n": 10120,
+          "rmse": 1.381,
+          "mae": 1.004,
+          "bias": -0.046,
+          "actual_mean": 1.262,
+          "pred_mean": 1.215
+        }
+      },
+      "starter (L10>=28)": {
+        "baseline": {
+          "n": 7195,
+          "rmse": 1.568,
+          "mae": 1.195,
+          "bias": -0.002,
+          "actual_mean": 1.786,
+          "pred_mean": 1.784
+        },
+        "rate_scaled": {
+          "n": 7195,
+          "rmse": 1.573,
+          "mae": 1.189,
+          "bias": -0.097,
+          "actual_mean": 1.786,
+          "pred_mean": 1.689
+        }
+      },
+      "declining (L5-L20<-2)": {
+        "baseline": {
+          "n": 12775,
+          "rmse": 1.071,
+          "mae": 0.666,
+          "bias": 0.004,
+          "actual_mean": 0.673,
+          "pred_mean": 0.676
+        },
+        "rate_scaled": {
+          "n": 12775,
+          "rmse": 1.105,
+          "mae": 0.651,
+          "bias": -0.053,
+          "actual_mean": 0.673,
+          "pred_mean": 0.619
+        }
+      }
+    }
+  },
+  "PRA": {
+    "baseline_model_version": "NBA_VK_v2_5yr_weighted_pruned52",
+    "minutes_model_version": "NBA_EXPECTED_MINUTES_v2_strict",
+    "test_rows": 45587,
+    "predicted_minutes_summary": {
+      "min": -1.662,
+      "max": 40.79,
+      "mean": 13.258,
+      "median": 11.669
+    },
+    "segments": {
+      "overall": {
+        "baseline": {
+          "n": 45587,
+          "rmse": 8.518,
+          "mae": 5.773,
+          "bias": 0.103,
+          "actual_mean": 10.608,
+          "pred_mean": 10.712
+        },
+        "rate_scaled": {
+          "n": 45587,
+          "rmse": 8.972,
+          "mae": 5.954,
+          "bias": -0.069,
+          "actual_mean": 10.608,
+          "pred_mean": 10.54
+        }
+      },
+      "PRA <10": {
+        "baseline": {
+          "n": 26349,
+          "rmse": 7.331,
+          "mae": 4.418,
+          "bias": 3.931,
+          "actual_mean": 1.457,
+          "pred_mean": 5.388
+        },
+        "rate_scaled": {
+          "n": 26349,
+          "rmse": 7.501,
+          "mae": 4.374,
+          "bias": 3.849,
+          "actual_mean": 1.457,
+          "pred_mean": 5.306
+        }
+      },
+      "bench (L10<20)": {
+        "baseline": {
+          "n": 30312,
+          "rmse": 6.864,
+          "mae": 4.417,
+          "bias": 0.024,
+          "actual_mean": 5.418,
+          "pred_mean": 5.442
+        },
+        "rate_scaled": {
+          "n": 30312,
+          "rmse": 7.567,
+          "mae": 4.608,
+          "bias": 0.227,
+          "actual_mean": 5.418,
+          "pred_mean": 5.645
+        }
+      },
+      "rotation (L10 18-28)": {
+        "baseline": {
+          "n": 10120,
+          "rmse": 10.139,
+          "mae": 7.944,
+          "bias": 0.311,
+          "actual_mean": 15.934,
+          "pred_mean": 16.245
+        },
+        "rate_scaled": {
+          "n": 10120,
+          "rmse": 10.362,
+          "mae": 8.045,
+          "bias": -0.383,
+          "actual_mean": 15.934,
+          "pred_mean": 15.551
+        }
+      },
+      "starter (L10>=28)": {
+        "baseline": {
+          "n": 7195,
+          "rmse": 11.895,
+          "mae": 8.89,
+          "bias": 0.2,
+          "actual_mean": 25.597,
+          "pred_mean": 25.797
+        },
+        "rate_scaled": {
+          "n": 7195,
+          "rmse": 12.0,
+          "mae": 9.103,
+          "bias": -1.156,
+          "actual_mean": 25.597,
+          "pred_mean": 24.441
+        }
+      },
+      "declining (L5-L20<-2)": {
+        "baseline": {
+          "n": 12775,
+          "rmse": 9.147,
+          "mae": 6.311,
+          "bias": 0.19,
+          "actual_mean": 8.972,
+          "pred_mean": 9.162
+        },
+        "rate_scaled": {
+          "n": 12775,
+          "rmse": 9.763,
+          "mae": 6.36,
+          "bias": -0.627,
+          "actual_mean": 8.972,
+          "pred_mean": 8.345
+        }
+      },
+      "PRA 10-20": {
+        "baseline": {
+          "n": 8567,
+          "rmse": 6.493,
+          "mae": 5.177,
+          "bias": -1.248,
+          "actual_mean": 14.32,
+          "pred_mean": 13.071
+        },
+        "rate_scaled": {
+          "n": 8567,
+          "rmse": 6.861,
+          "mae": 5.321,
+          "bias": -1.291,
+          "actual_mean": 14.32,
+          "pred_mean": 13.029
+        }
+      },
+      "PRA >=20": {
+        "baseline": {
+          "n": 10671,
+          "rmse": 11.977,
+          "mae": 9.597,
+          "bias": -8.262,
+          "actual_mean": 30.226,
+          "pred_mean": 21.963
+        },
+        "rate_scaled": {
+          "n": 10671,
+          "rmse": 12.928,
+          "mae": 10.364,
+          "bias": -8.762,
+          "actual_mean": 30.226,
+          "pred_mean": 21.464
+        }
+      }
+    }
+  }
+}

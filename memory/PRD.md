@@ -2393,3 +2393,74 @@ matchup signal at the sample level.
 - `reports/opp_context_summary.md`                        — human summary
 - `tests/test_opponent_context.py`                        — NEW 10 unit tests
 
+
+
+---
+
+## Expected Minutes v2 — Rate-Scaling Experiment (REVERTED, 2026-04-23)
+
+### Scope
+Built the strict 12-feature expected-minutes model per spec and
+evaluated its proposed integration (universal rate-scaling:
+`adjusted = (model_projection / min_played_L10_mean) × predicted_minutes`
+for all stats) against the 52-feature baseline on the 2024 hold-out.
+
+### What was delivered
+- **NEW** `scripts/train_expected_minutes.py` — strict 12-feature
+  minutes trainer. R²=0.6096 / MAE=6.00 / RMSE=8.74 / bias=+0.20 min
+  / σ=8.74. Trained in 0.8s. Top feature `min_played_L3_mean` 61%.
+  Saved to `models/expected_minutes.pkl`
+  (`NBA_EXPECTED_MINUTES_v2_strict`).
+- **NEW** `scripts/eval_expected_minutes_v2.py` — head-to-head
+  segmented rate-scaling eval. Report:
+  `reports/expected_minutes_eval.json` +
+  `reports/expected_minutes_v2_summary.md`.
+
+### Honest finding: rate-scaling REGRESSES every stat at every segment
+
+| Stat | base overall RMSE | rate-scaled RMSE | Δ |
+|------|------:|------:|--:|
+| PTS  | 6.034 | 6.288 | **+0.254 (worse)** |
+| REB  | 2.458 | 2.543 | **+0.085 (worse)** |
+| AST  | 1.711 | 1.763 | **+0.052 (worse)** |
+| 3PM  | 1.085 | 1.105 | **+0.020 (worse)** |
+| PRA  | 8.518 | 8.972 | **+0.454 (worse)** |
+
+**Low-line (<10):** PTS RMSE +0.10, PRA RMSE +0.17 (worse). Bias shift
+is microscopic (−0.05 to −0.08).
+
+**Bench (L10<20):** PTS RMSE +0.41, PRA RMSE +0.70 (much worse).
+Bias gets WORSE (PRA +0.02 → +0.23).
+
+**Starter (L10>=28):** Slight RMSE drift but bias over-corrects
+DOWNWARD by 0.2–1.4 stat units — a new regression.
+
+### Root cause
+The minutes model has σ=8.74 min. Multiplying by historical per-min
+rate (0.4–1.0) injects ±3 to ±8 stat-units of noise, which is larger
+than the VK2 baseline's projection error. For players with tiny
+`min_played_L10` (2–5 min), `rate = projection/L10` explodes:
+concrete example (PTS test row 25398, L10=2.5 min) — baseline 23.31,
+rate 9.32, predicted_minutes 8.20 → **rate-scaled = 76.50**.
+
+### Recommendation: REVERT — DO NOT WIRE
+No changes made to `services/scoring/adapters/nba_scoring.py`. The
+existing narrow `blend_bench` composition (PTS/PRA only, bench regime
+only) that shipped earlier in this session remains the
+production-validated intervention:
+- Live board: 97 composed props / 24 unique bench players.
+- Offline: −14% low-line PTS/PRA bias; PRA RMSE improves.
+- No regression on starters / rotation / REB / AST / 3PM.
+
+### Artifacts kept for future research
+- `models/expected_minutes.pkl` (strict 12-feat, v2). Cleaner
+  drop-in replacement for the existing 15-feat model inside
+  `blend_bench` if we want to migrate (both give R²≈0.61).
+- `scripts/train_expected_minutes.py` / `eval_expected_minutes_v2.py`
+  — reusable for future composition experiments.
+- `reports/expected_minutes_eval.json` — full segmented JSON.
+
+### Verification
+- 74 regression tests pass.
+- Ferrari endpoints HTTP 200 (NBA 10/10/10, MLB 9/9/10).
+- Production VK2 + scoring adapter bytes unchanged.
