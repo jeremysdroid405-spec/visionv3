@@ -47,6 +47,30 @@ async def run_master_sync(db, sport: str) -> Dict[str, Any]:
     }
 
     # -----------------------------------------------------------------
+    # Step 0 — active-roster sync (Global Identity Rule, 2026-04-23).
+    # Keeps the sport's master hub up-to-date with BDL's
+    # `/players/active` roster so every live prop can be stamped with
+    # a canonical `bdl_player_id` at ingest. Cheap (cursor-paginated
+    # single endpoint) and safely idempotent via upsert on `bdl_id`.
+    # -----------------------------------------------------------------
+    t_roster = datetime.now(timezone.utc)
+    try:
+        from services.bdl_universal_sync import get_bdl_universal_service
+        svc = get_bdl_universal_service(db)
+        roster = await svc.sync_players(sport=sport)
+        metrics["steps"]["0_roster_sync"] = {
+            "duration_seconds": (datetime.now(timezone.utc) - t_roster).total_seconds(),
+            "players_count": roster.get("players_count", 0),
+            "saved_count": roster.get("saved_count", 0),
+        }
+    except Exception as exc:
+        logger.warning(f"[MASTER_SYNC:{sport}] roster sync failed: {exc}")
+        metrics["steps"]["0_roster_sync"] = {
+            "duration_seconds": (datetime.now(timezone.utc) - t_roster).total_seconds(),
+            "error": str(exc),
+        }
+
+    # -----------------------------------------------------------------
     # Step 1 — universal odds sync
     # -----------------------------------------------------------------
     t0 = datetime.now(timezone.utc)

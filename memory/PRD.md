@@ -42,14 +42,12 @@ ingest. Props without a resolvable ID are flagged
 - **Status values**: `computed` | `unavailable_stat_family` |
   `missing_source_distribution` | `missing_bdl_id`.
 
-**Verification (2026-04-23)**:
-- NBA: `missing_source_distribution` **536 → 0**. 6,156/6,156 live props
-  resolved (100%). 4,122/4,122 scored props have `identity_status=resolved`.
-- MLB: 3,457/3,606 live props resolved (95.87%). 2,483/2,601 scored props
-  `resolved`, 118 correctly flagged `missing_bdl_id`. Top unresolved
-  players surface in the admin panel for hub-coverage triage.
-- 147 scoring-pipeline tests pass, incl. 7 `test_identity_rule_nba.py`
-  + 5 `test_identity_rule_mlb.py` regressions.
+**Verification (2026-04-23, after MLB hub coverage improvement)**:
+- NBA: 100.00% resolution — 5,960/5,960 live, 3,732/3,732 scored. 0 `missing_source_distribution`, 0 `missing_bdl_id`.
+- MLB: 100.00% resolution — 3,606/3,606 live, 2,601/2,601 scored. Juan Soto, MJ Melendez, Royce Lewis etc. all resolved after `sync_players(mlb)` pulled BDL's `/players/active` roster and a one-shot backfill populated `bdl_id` on 5,802 hub stubs from `bdl_game_logs[0].player_id`.
+- `master_sync.py` now runs Step 0 (`get_bdl_universal_service(db).sync_players(sport)`) before odds sync, keeping hub coverage fresh automatically.
+- Frontend: `/admin/identity-status` page (read-only, token-gated) renders per-sport cards with traffic-light resolution badge (green ≥99%, yellow 95–99%, red <95%), scored-doc identity breakdown, HR/CV status counts, and top-20 unresolved player list.
+- 42 identity + gate + coverage tests pass.
 
 ## Architecture
 - **Frontend:** React + Shadcn UI — `/app/frontend/src/pages/Dashboard.jsx`,
