@@ -109,6 +109,13 @@ _SCORE_OUTPUT_FIELDS = (
     # latter case HR / CV / model projections are skipped and their
     # *_status fields report "missing_bdl_id".
     "bdl_player_id", "identity_status",
+    # Expected-minutes composition (2026-04-23). Narrow NBA rollout:
+    # PTS / PRA only, only in the bench regime. Stamp the audit trail
+    # so admin / eval can compare baseline vs composed.
+    "minutes_composition_applied",
+    "minutes_composition_baseline_projection",
+    "minutes_composition_predicted_minutes",
+    "minutes_composition_per_min_rate",
 )
 
 _IDENTITY_FIELDS = (

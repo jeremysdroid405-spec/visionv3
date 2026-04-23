@@ -1,0 +1,34 @@
+[compare] fetched 1624 PTS/PRA live props with bdl_id
+[compare] scored props: 1402
+[compare] composition applied (bench regime): 123 (8.8%)
+[compare] mean |Δ proj|: 0.1163
+[compare] max |Δ proj|:  2.8440
+
+[compare] TOP-10 DOWNWARD SHIFTS (composition pulled projection down):
+============================================================================================
+Player                   Stat  Line    Base  Composed      Δ PredMin  Rate L10Min
+--------------------------------------------------------------------------------------------
+Justin Edwards           PRA    9.5   13.54     10.69  -2.84   18.15  0.59  12.30
+Justin Edwards           PRA   14.5   13.54     10.69  -2.84   18.15  0.59  12.30
+Justin Edwards           PRA    4.5   13.54     10.69  -2.84   18.15  0.59  12.30
+Miles McBride            PRA   10.5   13.47     10.99  -2.48   20.50  0.54  18.90
+Miles McBride            PRA   12.5   13.47     10.99  -2.48   20.50  0.54  18.90
+Miles McBride            PRA    4.5   13.47     10.99  -2.48   20.50  0.54  18.90
+Miles McBride            PRA    5.5   13.47     10.99  -2.48   20.50  0.54  18.90
+Miles McBride            PRA    8.5   13.47     10.99  -2.48   20.50  0.54  18.90
+Miles McBride            PRA    7.5   13.47     10.99  -2.48   20.50  0.54  18.90
+Miles McBride            PRA   11.5   13.47     10.99  -2.48   20.50  0.54  18.90
+
+[compare] TOP-5 UPWARD SHIFTS:
+--------------------------------------------------------------------------------------------
+Dennis Schroder          PRA   14.5   11.38     14.00  +2.61   16.24  0.86  18.70
+Dennis Schroder          PRA    6.5   11.38     14.00  +2.61   16.24  0.86  18.70
+Dennis Schroder          PRA    7.5   11.38     14.00  +2.61   16.24  0.86  18.70
+Dennis Schroder          PRA    9.5   11.38     14.00  +2.61   16.24  0.86  18.70
+Mitchell Robinson        PRA   10.5   14.75     17.15  +2.39   17.71  0.97  19.10
+
+[compare] Adapter counters after run:
+  composition applied:        145
+  skipped (not bench):        1479
+  skipped (no per-min rate):  0
+  errors:                     0

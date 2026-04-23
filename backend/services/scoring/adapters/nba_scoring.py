@@ -109,6 +109,26 @@ class NBAScoringAdapter(ScoringAdapter):
         "PRA": "vk2_pra.pkl",
     }
 
+    # ---------------------------------------------------------------
+    # Expected-minutes composition (2026-04-23).
+    # Narrow rollout: apply to PTS / PRA ONLY. The segmented evaluation
+    # (reports/vk2_expected_minutes_segmented.json) showed `blend_bench`
+    # reduces low-line (<10) bias by ~14% on PTS and PRA with no RMSE
+    # penalty (PRA RMSE also improves 7.33 → 7.22). REB / AST / 3PM
+    # baseline is already near-zero bias so composition is intentionally
+    # off for them.
+    #
+    # Strategy: when `min_played_L10_mean < _MIN_BENCH_THRESHOLD`, the
+    # composed projection replaces the baseline VK2 projection as:
+    #     composed = predicted_minutes * (stat_L5_mean / min_played_L5_mean)
+    # Sigma is preserved (per-stat empirical residual SD). Gate/TP
+    # logic untouched.
+    # ---------------------------------------------------------------
+    _EXPECTED_MINUTES_PATH = "/app/backend/models/nba_expected_minutes.pkl"
+    _MIN_COMPOSITION_STATS = {"PTS", "PRA"}
+    _MIN_BENCH_THRESHOLD = 20.0   # min_played_L10_mean cutoff
+    _MIN_PER_MIN_RATE_CAP = 5.0   # sanity-clamp on historical per-min rate
+
     def __init__(self):
         self._cv_cache: dict = {}
         # ID-identity lookup (2026-04-23, Global Identity Rule).
@@ -129,6 +149,14 @@ class NBAScoringAdapter(ScoringAdapter):
         # recompute to monitor data-quality.
         self._combo_fallback_count: int = 0
         self._combo_success_count: int = 0
+        # Expected-minutes model (loaded lazily, shared across predicts).
+        self._min_model_loaded: bool = False
+        self._min_model_payload: dict = {}
+        # Observability counters for the blend_bench composition.
+        self._min_composition_applied: int = 0
+        self._min_composition_skipped_not_bench: int = 0
+        self._min_composition_skipped_no_rate: int = 0
+        self._min_composition_errors: int = 0
 
     @property
     def sport(self) -> str:
@@ -279,16 +307,56 @@ class NBAScoringAdapter(ScoringAdapter):
             # Fallback: widen slightly to avoid overconfidence
             sigma = max(1.0, float(r.get("full_features", {}).get(
                 "baseline", {}).get("std_dev_l10", 5) or 5))
+        # ---- Expected-minutes composition (PTS / PRA only) --------
+        # Path-agnostic: when the user-selected p_true_method is
+        # "model" (legacy VK), we still want the bench-regime
+        # composition from reports/vk2_expected_minutes_segmented.json
+        # to apply. Features are rebuilt via the shared VK2 builder
+        # so the bench detection and per-min rate match VK2 exactly.
+        composition_meta: Dict[str, Any] = {}
+        if stat_type in self._MIN_COMPOSITION_STATS:
+            try:
+                history = self._get_vk2_history_logs(bdl_player_id, window=20)
+                if len(history) >= 5:
+                    from services.scoring.nba_vk2_features import build_features
+                    feats = build_features(
+                        history_logs=history, target_game=history[0],
+                        adv_map=self._vk2_adv_map or None,
+                    )
+                    if feats is not None:
+                        composed = self._compose_minutes_adjusted_projection(
+                            stat_type=stat_type,
+                            baseline_projection=float(projection),
+                            feats=feats,
+                        )
+                        if composed.get("composition_applied"):
+                            composition_meta = {
+                                "minutes_composition_applied": True,
+                                "baseline_projection": round(float(projection), 3),
+                                "composed_from_minutes": composed["composed_from_minutes"],
+                                "per_min_rate": composed["per_min_rate"],
+                                "min_played_L10_mean": round(
+                                    composed["min_played_L10_mean"], 3,
+                                ),
+                            }
+                            projection = composed["projection"]
+            except Exception as e:
+                logger.warning(
+                    f"[NBA_SCORING] legacy-VK composition failed {stat_type}: {e}"
+                )
         # Normal CDF: P(stat > line) = 1 - Phi((line - mu) / sigma) = Phi((mu - line) / sigma)
         from math import erf, sqrt
         z = (float(projection) - float(line)) / float(sigma)
         p_over = 0.5 * (1.0 + erf(z / sqrt(2.0)))
-        return {
+        out = {
             "projection": round(float(projection), 3),
             "sigma": round(float(sigma), 3),
             "p_over": round(float(p_over), 4),
             "error": None,
         }
+        if composition_meta:
+            out.update(composition_meta)
+        return out
 
     # -----------------------------------------------------------------
     # VK2 (5-year, adv-stat-enriched) models — parallel to legacy VK
@@ -317,6 +385,175 @@ class NBAScoringAdapter(ScoringAdapter):
             "[NBA_SCORING] VK2 loaded: "
             f"{[(s, self._vk2_models[s]['sigma'], self._vk2_models[s]['version']) for s in self._vk2_models]}"
         )
+
+    # -----------------------------------------------------------------
+    # Expected-minutes model (2026-04-23) — used only for PTS / PRA
+    # when `min_played_L10_mean < _MIN_BENCH_THRESHOLD`.
+    # -----------------------------------------------------------------
+    def _load_min_model(self) -> None:
+        if self._min_model_loaded:
+            return
+        import os
+        import pickle
+        path = self._EXPECTED_MINUTES_PATH
+        if not os.path.exists(path):
+            logger.warning(f"[NBA_SCORING] expected-minutes model missing: {path}")
+            self._min_model_loaded = True  # don't retry every call
+            return
+        with open(path, "rb") as f:
+            payload = pickle.load(f)
+        self._min_model_payload = {
+            "model": payload["model"],
+            "scaler": payload["scaler"],
+            "features": list(payload["features"]),
+            "version": payload.get("version"),
+        }
+        self._min_model_loaded = True
+        logger.info(
+            f"[NBA_SCORING] expected-minutes model loaded: "
+            f"version={self._min_model_payload['version']} "
+            f"features={len(self._min_model_payload['features'])}"
+        )
+
+    def _build_minutes_feature_vector(self, feats: Dict[str, float]) -> Optional[list]:
+        """Derive the 15-feat minutes-model input row from the shared VK2
+        feature dict. Any missing moment aborts composition — we never
+        feed zero-filled rows through the minutes model."""
+        schema = self._min_model_payload.get("features") or []
+        if not schema:
+            return None
+        row: List[float] = []
+        m_mean_L5 = feats.get("min_played_L5_mean", 0.0)
+        m_mean_L10 = feats.get("min_played_L10_mean", 0.0)
+        m_mean_L20 = feats.get("min_played_L20_mean", 0.0)
+        m_std_L5 = feats.get("min_played_L5_std", 0.0)
+        m_std_L10 = feats.get("min_played_L10_std", 0.0)
+        m_std_L20 = feats.get("min_played_L20_std", 0.0)
+        # L3 not in VK2 schema; fallback to L5 as the closest recency signal.
+        m_mean_L3 = feats.get("min_played_L3_mean", m_mean_L5)
+        m_std_L3 = feats.get("min_played_L3_std", m_std_L5)
+        # Approximate floor/ceiling from mean ± 2σ (clamped at 0) since we
+        # don't have the raw minutes series at live-scoring time.
+        floor_L20 = max(0.0, m_mean_L20 - 2.0 * m_std_L20)
+        ceiling_L20 = m_mean_L20 + 2.0 * m_std_L20
+        # Rate approximations via a normal-CDF using erf.
+        from math import erf, sqrt
+        def _norm_cdf(x, mean, std):
+            std = max(std, 0.5)
+            return 0.5 * (1.0 + erf((x - mean) / (std * sqrt(2.0))))
+        dnp_rate_L20 = _norm_cdf(5.0, m_mean_L20, m_std_L20)
+        low_rate_L10 = _norm_cdf(15.0, m_mean_L10, m_std_L10)
+        appearances_L20 = 20.0 if m_mean_L20 > 0 else 0.0
+        vals = {
+            "min_L3_mean": m_mean_L3,
+            "min_L5_mean": m_mean_L5,
+            "min_L10_mean": m_mean_L10,
+            "min_L20_mean": m_mean_L20,
+            "min_L3_std": m_std_L3,
+            "min_L5_std": m_std_L5,
+            "min_L10_std": m_std_L10,
+            "min_L20_std": m_std_L20,
+            "min_L3_L10_diff": m_mean_L3 - m_mean_L10,
+            "min_L5_L20_diff": m_mean_L5 - m_mean_L20,
+            "min_floor_L20": floor_L20,
+            "min_ceiling_L20": ceiling_L20,
+            "min_dnp_rate_L20": dnp_rate_L20,
+            "min_low_rate_L10": low_rate_L10,
+            "appearances_L20": appearances_L20,
+        }
+        for f in schema:
+            if f not in vals:
+                return None
+            row.append(float(vals[f]))
+        return row
+
+    def _predict_expected_minutes(self, feats: Dict[str, float]) -> Optional[float]:
+        """Returns predicted next-game minutes, or None if model unavailable
+        or features insufficient."""
+        if not self._min_model_loaded:
+            self._load_min_model()
+        if not self._min_model_payload:
+            return None
+        row_list = self._build_minutes_feature_vector(feats)
+        if row_list is None:
+            return None
+        import numpy as np
+        row = np.asarray([row_list], dtype=np.float32)
+        try:
+            row_s = self._min_model_payload["scaler"].transform(row)
+            pred = float(self._min_model_payload["model"].predict(row_s)[0])
+        except Exception as e:
+            logger.warning(f"[NBA_SCORING] minutes-model predict failed: {e}")
+            return None
+        # Clamp to a sane NBA range [0, 48]; models can occasionally
+        # extrapolate slightly outside on tail inputs.
+        return max(0.0, min(48.0, pred))
+
+    def _compose_minutes_adjusted_projection(
+        self, stat_type: str, baseline_projection: float,
+        feats: Dict[str, float],
+    ) -> Dict[str, Any]:
+        """Apply the blend_bench strategy for PTS / PRA.
+
+        When the player is in the bench regime (min_played_L10_mean <
+        _MIN_BENCH_THRESHOLD), replace the baseline projection with
+        `predicted_minutes * historical_per_min_rate`. Otherwise return
+        the baseline unchanged. Sigma is never mutated here.
+
+        Returns:
+          {projection, composition_applied, composed_from_minutes,
+           per_min_rate, min_played_L10_mean, error}
+        """
+        result = {
+            "projection": baseline_projection,
+            "composition_applied": False,
+            "composed_from_minutes": None,
+            "per_min_rate": None,
+            "min_played_L10_mean": float(feats.get("min_played_L10_mean", 0.0)),
+            "error": None,
+        }
+        if stat_type not in self._MIN_COMPOSITION_STATS:
+            return result
+        min_L10 = float(feats.get("min_played_L10_mean", 0.0))
+        if min_L10 >= self._MIN_BENCH_THRESHOLD:
+            self._min_composition_skipped_not_bench += 1
+            return result
+        # Bench regime — compute historical per-min rate from L5 means.
+        if stat_type == "PTS":
+            stat_L5 = float(feats.get("pts_L5_mean", 0.0))
+        elif stat_type == "PRA":
+            stat_L5 = float(feats.get("pra_L5_mean", 0.0))
+            if stat_L5 <= 0:
+                # Fallback: rebuild from component means.
+                stat_L5 = (
+                    float(feats.get("pts_L5_mean", 0.0))
+                    + float(feats.get("reb_L5_mean", 0.0))
+                    + float(feats.get("ast_L5_mean", 0.0))
+                )
+        else:
+            return result
+        min_L5 = float(feats.get("min_played_L5_mean", 0.0))
+        if min_L5 <= 1.0 or stat_L5 <= 0.0:
+            # No usable historical minutes → keep baseline.
+            self._min_composition_skipped_no_rate += 1
+            result["error"] = "insufficient_per_min_rate_inputs"
+            return result
+        per_min_rate = stat_L5 / min_L5
+        per_min_rate = max(0.0, min(self._MIN_PER_MIN_RATE_CAP, per_min_rate))
+        pred_minutes = self._predict_expected_minutes(feats)
+        if pred_minutes is None:
+            self._min_composition_errors += 1
+            result["error"] = "minutes_model_unavailable"
+            return result
+        composed = pred_minutes * per_min_rate
+        self._min_composition_applied += 1
+        result.update({
+            "projection": float(composed),
+            "composition_applied": True,
+            "composed_from_minutes": round(pred_minutes, 3),
+            "per_min_rate": round(per_min_rate, 4),
+        })
+        return result
 
     async def _preload_vk2_adv_map(self, db) -> None:
         """Build {(player_id, game_id): adv_doc} for VK2 feature lookup.
@@ -393,6 +630,29 @@ class NBAScoringAdapter(ScoringAdapter):
         except Exception as e:
             return {"projection": None, "sigma": None, "p_over": None,
                     "error": f"predict_failed:{e}"}
+        # ---- Expected-minutes composition (PTS / PRA only) --------
+        # Narrow rollout per reports/vk2_expected_minutes_segmented.json.
+        composition_meta: Dict[str, Any] = {}
+        try:
+            composed = self._compose_minutes_adjusted_projection(
+                stat_type=stat_type, baseline_projection=projection,
+                feats=feats,
+            )
+            if composed.get("composition_applied"):
+                composition_meta = {
+                    "minutes_composition_applied": True,
+                    "baseline_projection": round(projection, 3),
+                    "composed_from_minutes": composed["composed_from_minutes"],
+                    "per_min_rate": composed["per_min_rate"],
+                    "min_played_L10_mean": round(
+                        composed["min_played_L10_mean"], 3
+                    ),
+                }
+                projection = composed["projection"]
+        except Exception as e:
+            logger.warning(
+                f"[NBA_SCORING] minutes composition failed for {stat_type}: {e}"
+            )
         sigma = float(m["sigma"])
         if sigma <= 0:
             return {"projection": round(projection, 3), "sigma": sigma,
@@ -400,12 +660,15 @@ class NBAScoringAdapter(ScoringAdapter):
         from math import erf, sqrt
         z = (projection - float(line)) / sigma
         p_over = 0.5 * (1.0 + erf(z / sqrt(2.0)))
-        return {
+        out = {
             "projection": round(projection, 3),
             "sigma": round(sigma, 3),
             "p_over": round(p_over, 4),
             "error": None,
         }
+        if composition_meta:
+            out.update(composition_meta)
+        return out
 
     # -----------------------------------------------------------------
     # Combo-family projection synthesis (2026-04-23)
@@ -895,6 +1158,15 @@ class NBAScoringAdapter(ScoringAdapter):
         model_sigma_direct: Optional[float] = None
         model_projection_synth: Optional[float] = None
         model_sigma_synth: Optional[float] = None
+        # Expected-minutes composition audit (2026-04-23). Populated
+        # only when `_predict_vk2_prob_over` returned
+        # `minutes_composition_applied=True` (i.e. PTS / PRA in the
+        # bench regime). Stamped on the ScoringContext so the score
+        # doc persists the baseline vs composed trail.
+        minutes_composition_applied: Optional[bool] = None
+        minutes_composition_baseline: Optional[float] = None
+        minutes_composition_predicted_minutes: Optional[float] = None
+        minutes_composition_per_min_rate: Optional[float] = None
         # Model predictions only when identity resolved. Propagate the
         # ID through every downstream scoring call.
         if model_key in self._MODEL_STATS and bdl_player_id is not None:
@@ -911,6 +1183,11 @@ class NBAScoringAdapter(ScoringAdapter):
                     )
                 model_projection = mres.get("projection")
                 model_sigma = mres.get("sigma")
+                if mres.get("minutes_composition_applied"):
+                    minutes_composition_applied = True
+                    minutes_composition_baseline = mres.get("baseline_projection")
+                    minutes_composition_predicted_minutes = mres.get("composed_from_minutes")
+                    minutes_composition_per_min_rate = mres.get("per_min_rate")
                 if model_projection is not None:
                     projection_method = "model"
                     model_projection_direct = model_projection
@@ -928,6 +1205,17 @@ class NBAScoringAdapter(ScoringAdapter):
                 vk2_projection = v2res.get("projection")
                 vk2_sigma = v2res.get("sigma")
                 vk2_error = v2res.get("error")
+                if v2res.get("minutes_composition_applied"):
+                    minutes_composition_applied = True
+                    minutes_composition_baseline = v2res.get(
+                        "baseline_projection"
+                    )
+                    minutes_composition_predicted_minutes = v2res.get(
+                        "composed_from_minutes"
+                    )
+                    minutes_composition_per_min_rate = v2res.get(
+                        "per_min_rate"
+                    )
                 if vk2_projection is not None:
                     projection_method = "model"
                     model_projection_direct = vk2_projection
@@ -1100,4 +1388,9 @@ class NBAScoringAdapter(ScoringAdapter):
                 else "neither"
             ),
             projection_primary_method=projection_method,
+            # Expected-minutes composition audit (2026-04-23).
+            minutes_composition_applied=minutes_composition_applied,
+            minutes_composition_baseline_projection=minutes_composition_baseline,
+            minutes_composition_predicted_minutes=minutes_composition_predicted_minutes,
+            minutes_composition_per_min_rate=minutes_composition_per_min_rate,
         )

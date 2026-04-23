@@ -54,12 +54,32 @@ def build_features(
         vals: List[float] = []
         for g in history_logs[:ROLLING_WINDOW]:
             v = g.get(field)
-            if field == 'min' and isinstance(v, str):
-                try:
-                    mm, ss = v.split(':')
-                    v = float(mm) + float(ss) / 60.0
-                except Exception:
-                    v = None
+            if field == 'min':
+                # BDL `min` ships as a string. Seen formats:
+                # - "30"       plain integer-minutes (2020–2026 production)
+                # - "31:24"    legacy MM:SS
+                # - 30 / 30.5  numeric (defensive)
+                # MUST match retrain_nba_vk2.build_features exactly.
+                if isinstance(v, str):
+                    s = v.strip()
+                    if not s:
+                        v = None
+                    elif ':' in s:
+                        try:
+                            mm, ss = s.split(':')
+                            v = float(mm) + float(ss) / 60.0
+                        except Exception:
+                            v = None
+                    else:
+                        try:
+                            v = float(s)
+                        except Exception:
+                            v = None
+                elif v is not None:
+                    try:
+                        v = float(v)
+                    except Exception:
+                        v = None
             if v is None:
                 continue
             try:

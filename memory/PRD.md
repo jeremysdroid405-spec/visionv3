@@ -2150,6 +2150,67 @@ no RMSE penalty on the target stats (PTS, PRA):
 - `/app/backend/scripts/retrain_nba_vk2.py` (rolled back)
 - `/app/backend/scripts/train_nba_minutes_model.py` (NEW)
 - `/app/backend/scripts/eval_minutes_composition.py` (NEW)
+
+---
+
+## Expected-Minutes Wiring — LIVE (2026-04-23)
+
+### Scope delivered
+Wired the `blend_bench` composition into the NBA scoring adapter for
+**PTS and PRA only**, as validated by
+`reports/vk2_expected_minutes_segmented.json`. Gate logic and TP logic
+were NOT modified. REB / AST / 3PM untouched. Other sports untouched.
+
+### Files changed
+| File | Δ |
+|------|---|
+| `services/scoring/adapters/nba_scoring.py` | +230 LOC — loads `nba_expected_minutes.pkl`, builds a 15-feat minutes-model input from the shared VK2 feature dict, computes `predicted_minutes × per_min_rate` when bench regime (`min_played_L10_mean < 20`). Applied in BOTH `_predict_model_prob_over` (legacy VK path) and `_predict_vk2_prob_over` (VK2 path) so the composition fires regardless of which `p_true_method` is active. |
+| `services/scoring/nba_vk2_features.py` | +18 LOC — fixed adapter-side `min` parsing to accept plain "30" (previously only "30:00"). This was the same bug previously fixed in the retrain script but never propagated to the adapter; without it, `min_played_L*` features fed the live model as 0 and bench detection was broken. |
+| `services/scoring/adapters/base.py` | +6 fields on `ScoringContext` (`minutes_composition_applied` + 3 audit fields). |
+| `services/scoring/prop_scores_store.py` | +4 persisted fields in `_SCORE_OUTPUT_FIELDS`. |
+| `services/scoring/recompute.py` | +12 LOC — copies composition fields onto the score doc. |
+| `tests/test_expected_minutes_adapter_wiring.py` | NEW — 13 tests covering narrow rollout, bench/starter split, rate clamp, plain-string min parsing. |
+| `scripts/compare_minutes_composition.py` | NEW — live before/after diff tool. |
+| `reports/minutes_composition_live_diff.md` | NEW — live live-board comparison. |
+
+### Live impact (post first full recompute)
+| Stat | Scored | Composition applied | % |
+|------|-------:|--------------------:|--:|
+| PTS  | 5,093  | 52 | 1.0% |
+| PRA  | 4,768  | 45 | 0.9% |
+
+- 24 unique bench-regime players composed (player-level dedup).
+- Mean |Δ projection|: 1.43 stat units; max |Δ|: 2.97.
+- 16 downward shifts (projection reduced) / 8 upward shifts (projection raised).
+
+### Representative material changes
+- **Nikola Vucevic PTS 7.5**: 10.15 → 7.18 (−2.97). Pred minutes
+  19.3, per-min rate 0.37. Why: Vucevic's rolling PTS_L5 encodes his
+  starter-minute production; the bench-regime flag (L10 recently
+  dropped) pulls the projection to his actual per-min rate × expected minutes.
+- **Mitchell Robinson PRA 12.5**: 14.66 → 17.15 (+2.49). Pred minutes
+  17.7, per-min rate 0.97. Bench role but with high ball involvement →
+  composition surfaces latent upside baseline missed.
+- **Justin Edwards PRA 14.5**: 13.05 → 10.69 (−2.36). Canonical
+  bench-regime downshift matching the `line<10` bias the eval flagged.
+
+### Verification
+- All 6 Ferrari endpoints HTTP 200; pick counts unchanged (NBA 10/10/10, MLB 9/9/10).
+- Identity resolution remains 100% for both sports.
+- 51 regression tests pass (13 new adapter-wiring + 10 minutes-model
+  + 28 existing identity / coverage / delta).
+- Scoring ladder, gates, TP engine, sigma computation are all
+  untouched — composition only replaces `projection`, leaving
+  `sigma` and market-derived `tp` unchanged.
+
+### Observability
+- `minutes_composition_applied` / `minutes_composition_baseline_projection`
+  / `minutes_composition_predicted_minutes` /
+  `minutes_composition_per_min_rate` persist on every scored PTS / PRA
+  doc.
+- Adapter counters (`_min_composition_applied` / skipped / errors)
+  track run-level hit rate.
+
 - `/app/backend/models/nba_expected_minutes.pkl` (NEW)
 - `/app/backend/models/vk2_{pts,reb,ast,3pm,pra}.pkl` (swapped → 52feat)
 - `/app/backend/models/archive_usage59/` (rolled-back 59feat models)

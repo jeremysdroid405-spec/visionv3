@@ -85,6 +85,16 @@ class ScoringContext:
     # must be skipped.
     bdl_player_id: Optional[int] = None
     identity_status: Optional[str] = None
+    # Expected-minutes composition (2026-04-23). Narrow rollout:
+    # NBA PTS / PRA only, only when min_played_L10_mean <
+    # _MIN_BENCH_THRESHOLD (bench regime). When applied,
+    # `vk2_projection` / `model_projection` already reflect the
+    # composed value; these fields capture the audit trail so we
+    # can replay baseline vs composed downstream.
+    minutes_composition_applied: Optional[bool] = None
+    minutes_composition_baseline_projection: Optional[float] = None
+    minutes_composition_predicted_minutes: Optional[float] = None
+    minutes_composition_per_min_rate: Optional[float] = None
 
 
 class ScoringAdapter(ABC):

@@ -475,6 +475,17 @@ async def recompute_sport(
         doc["projection_delta_pct"] = ctx.projection_delta_pct
         doc["projection_compare_status"] = ctx.projection_compare_status
         doc["projection_primary_method"] = ctx.projection_primary_method
+        # Expected-minutes composition audit (2026-04-23).
+        doc["minutes_composition_applied"] = ctx.minutes_composition_applied
+        doc["minutes_composition_baseline_projection"] = (
+            ctx.minutes_composition_baseline_projection
+        )
+        doc["minutes_composition_predicted_minutes"] = (
+            ctx.minutes_composition_predicted_minutes
+        )
+        doc["minutes_composition_per_min_rate"] = (
+            ctx.minutes_composition_per_min_rate
+        )
         if "tp_books_used" in raw:
             doc["tp_books_used"] = raw["tp_books_used"]
         if "tp_books_list" in raw:
