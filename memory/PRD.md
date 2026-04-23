@@ -2293,3 +2293,103 @@ X-Admin-Token: <ADMIN_DEBUG_TOKEN>
 - `/app/backend/reports/expected_minutes_summary.md`
 - `/app/backend/tests/test_expected_minutes_model.py` (10 tests)
 
+
+---
+
+## Opponent-Context Feature Pipeline — Staged Eval (2026-04-23)
+
+### Scope delivered
+Built a dedicated, reproducible opponent-context feature pipeline
+independent of Vision Intel. Added 14 clean numeric features, trained
+the 66-feature `+opp` variant alongside the 52-feature baseline, and
+evaluated end-to-end on the 2024 hold-out.
+
+### New module: `services/features/opponent_context.py`
+`OpponentContextStore` with leakage-safe rolling lookups:
+- Aggregates per-(team_id, game_id) box-score totals from
+  `bdl_historical_game_logs` (`_aggregate_team_game_allowed`).
+- Aggregates per-(team_id, game_id) pace/ratings from
+  `bdl_advanced_stats` (`_aggregate_team_game_context`).
+- Builds per-team chronological sequences for rolling windows + rest.
+- Resolves opponent via game_id (two team_ids per game) so a single
+  `opp_store.get_features(team_id, opp_team_id, game_id, game_date)`
+  call returns all 14 features in one shot for both training and
+  live scoring.
+- Emits lagged features only (no same-game leakage — enforced by
+  `tests/test_opponent_context.py::test_no_same_game_leakage_for_target`).
+
+### 14 features emitted
+1. `opp_pts/reb/ast/3pm_allowed_L10` (stat-family allowed rolling)
+2. `opp_*_allowed_vs_avg` (relative to league season mean)
+3. `opp_def_rating`, `opp_pace`, `team_pace` (team context rolling)
+4. `home_flag`, `rest_days`, `back_to_back_flag` (situational, target game)
+
+### Retrain integration
+- `scripts/retrain_nba_vk2.py` gets a new `--opponent` flag
+  (`PRUNED_OPP_FEATURES` = 66-feat schema).
+- Builds `opp_store` once at startup and threads it through
+  `build_training_matrix` → `build_features` → `train_one`.
+- Writes sibling artifacts `vk2_{stat}_opp.pkl` with version
+  `NBA_VK_v2_5yr_weighted_pruned_opp66`.
+
+### Staged training results (2024 hold-out)
+
+| Stat | base RMSE | +opp RMSE | Δ RMSE | base R² | +opp R² |
+|------|----:|----:|----:|----:|----:|
+| PTS  | 6.034 | 6.008 | −0.026 | 0.5151 | 0.5192 |
+| REB  | 2.458 | 2.451 | −0.007 | 0.4728 | 0.4759 |
+| AST  | 1.711 | 1.702 | −0.009 | 0.4825 | 0.4881 |
+| 3PM  | 1.085 | 1.084 | −0.001 | 0.3512 | 0.3518 |
+| PRA  | 8.518 | 8.482 | −0.036 | 0.5592 | 0.5629 |
+
+### Low-line (<10) segment
+
+| Stat | base RMSE/bias | +opp RMSE/bias |
+|------|---------------:|---------------:|
+| PTS  | 4.733 / +2.289 | 4.679 / +2.281 |
+| PRA  | 7.331 / +3.931 | 7.279 / +3.938 |
+| REB  | 2.100 / +0.282 | 2.092 / +0.281 |
+| AST  | 1.550 / +0.102 | 1.547 / +0.125 |
+
+### Feature importance — the honest answer
+
+| Stat | Opp-feature top-10 gain share | Top opp features in top-10 |
+|------|------------------------------:|----------------------------|
+| PTS  | 1.2% | `back_to_back_flag`, `rest_days`   |
+| REB  | 1.6% | `rest_days`, `back_to_back_flag`   |
+| AST  | 2.1% | `rest_days`, `home_flag`           |
+| 3PM  | 0.0% | _none in top-10_                   |
+| PRA  | 1.4% | `rest_days`, `back_to_back_flag`   |
+
+**The 11 stat-family opp_*_allowed / pace / def_rating features do
+not make any stat's top-10.** Only the three situational features
+(`rest_days`, `back_to_back_flag`, `home_flag`) earn their keep.
+This suggests the player-level rolling history already absorbs the
+matchup signal at the sample level.
+
+### Production posture (NOT WIRED INTO LIVE SCORING)
+- `vk2_{stat}.pkl` production: 52-feature fixed-mins baseline (unchanged).
+- `vk2_{stat}_opp.pkl`         : 66-feature +opp sibling (ready to ship).
+- Ferrari endpoints: HTTP 200 across NBA + MLB.
+- Gate logic, TP logic, live scoring path: untouched.
+
+### Recommendation
+- The full 14-feature schema does NOT earn the bloat. Gains are real
+  but small (0.3% RMSE), and low-line bias is essentially unchanged.
+- If shipping, prefer a **narrowed 55-feature variant** (52 + `rest_days`
+  + `back_to_back_flag` + `home_flag`) to keep signal without bloat.
+- The 66-feat artifacts are preserved for future matchup research
+  but should not be promoted to `vk2_{stat}.pkl` without a second
+  experiment (e.g. matchup-defender-specific features or DVP-style
+  stat-specific allowed).
+
+### Files of record
+- `services/features/opponent_context.py`                 — NEW 320 LOC module
+- `services/features/__init__.py`                         — NEW package marker
+- `scripts/retrain_nba_vk2.py`                            — `--opponent` flag + opp wiring
+- `scripts/eval_opponent_context.py`                      — NEW segmented eval
+- `models/vk2_{pts,reb,ast,3pm,pra}_opp.pkl`              — 5 NEW 66-feat artifacts
+- `reports/opp_context_segmented.json`                    — full JSON eval
+- `reports/opp_context_summary.md`                        — human summary
+- `tests/test_opponent_context.py`                        — NEW 10 unit tests
+

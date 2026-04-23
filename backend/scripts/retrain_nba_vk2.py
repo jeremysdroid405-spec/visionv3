@@ -98,6 +98,20 @@ assert len(PRUNED_FEATURES) == 52, (
 # `scripts/train_nba_minutes_model.py` regression (expected-minutes
 # model) which is composed downstream rather than merged into VK2.
 
+# -----------------------------------------------------------------------------
+# Opponent-context additions (2026-04-23). 14 features on top of the
+# 52-feature pruned baseline → 66-feature "+opp" schema.
+# Enabled via `--opponent` (requires `--pruned`). Writes
+# `vk2_{stat}_opp.pkl`. Source module: `services.features.opponent_context`.
+# -----------------------------------------------------------------------------
+from services.features.opponent_context import (
+    FEATURE_SCHEMA as OPPONENT_CONTEXT_FEATURES,
+    build_opponent_context_store,
+    resolve_opponent_team_id,
+)
+PRUNED_OPP_FEATURES = list(PRUNED_FEATURES) + list(OPPONENT_CONTEXT_FEATURES)
+assert len(PRUNED_OPP_FEATURES) == 66
+
 # Advanced-stat fields to incorporate as rolling features
 ADV_FIELDS = [
     'usage_percentage', 'true_shooting_percentage', 'effective_field_goal_percentage',
@@ -128,7 +142,7 @@ def preload_advanced_stats():
 
 # ---------- Feature builder (pure Python, fast) ----------
 def build_features(history_logs, target_game=None, adv_map=None,
-                   target_schema=None):
+                   target_schema=None, opp_store=None):
     """history_logs: chronological-descending (newest first) game logs BEFORE
     the target game. Returns a flat dict of features.
 
@@ -140,6 +154,12 @@ def build_features(history_logs, target_game=None, adv_map=None,
     matrix) and unused per-stat rolling windows are short-circuited.
     Passing None preserves the legacy "compute everything" behaviour
     so existing callers are unaffected.
+
+    opp_store (optional OpponentContextStore): when provided AND the
+    target_game carries a resolvable (team_id, game_id), emits the
+    14 opponent-context features from
+    `services/features/opponent_context.py`. Enabled by `--opponent`
+    (66-feature schema).
     """
     if len(history_logs) < 7:  # upstream guard; no behavioural change
         pass
@@ -263,6 +283,27 @@ def build_features(history_logs, target_game=None, adv_map=None,
     # Game-count features
     feats['logs_used'] = float(len(history_logs[:ROLLING_WINDOW]))
 
+    # --------- OPPONENT CONTEXT FEATURES (2026-04-23) ---------------------
+    # Emitted only when an opponent-context store is provided AND the
+    # target game carries a resolvable (team_id, game_id). All 14
+    # features are lagged: the target game's own stats never contribute.
+    # See `services/features/opponent_context.py` for schema + invariants.
+    if opp_store is not None and target_game is not None:
+        tgt_team_id = target_game.get('team_id')
+        tgt_game_id = target_game.get('game_id')
+        if tgt_team_id is not None and tgt_game_id is not None:
+            tgt_opp_id = resolve_opponent_team_id(
+                opp_store, int(tgt_team_id), int(tgt_game_id),
+            )
+            opp_feats = opp_store.get_features(
+                team_id=int(tgt_team_id),
+                opponent_team_id=tgt_opp_id,
+                game_id=int(tgt_game_id),
+                game_date=target_game.get('date'),
+                is_home=None,  # resolved internally from adv-stats row
+            )
+            feats.update(opp_feats)
+
     # -------- ADVANCED ROLLING FEATURES (from bdl_advanced_stats) ----------
     # Rolling means of each advanced field over L5 and L10 of the history window.
     # Missing advanced rows default to 0.0 ONLY when explicit missingness flags
@@ -329,13 +370,18 @@ def build_features(history_logs, target_game=None, adv_map=None,
 
 # ---------- Data assembly per stat (single pass over players) ----------
 def build_training_matrix(stat_label, stat_field, adv_map=None,
-                          target_schema=None):
+                          target_schema=None, opp_store=None):
     """Returns (X, y, sample_weights, feature_cols).
 
     `target_schema` (optional): passed through to `build_features` so
     the feature builder short-circuits columns that will be discarded
     downstream. Main perf win: the ADV loop only iterates the adv
     fields the schema actually needs (~16 of 24 for the pruned schema).
+
+    `opp_store` (optional): opponent-context store; when provided,
+    `build_features` emits the 14 opponent-context features per
+    sample. Adds ~3% to matrix build time but enables the 66-feature
+    "+opp" schema.
     """
     log.info(f'[{stat_label}] building training matrix...')
     t0 = time.monotonic()
@@ -382,7 +428,7 @@ def build_training_matrix(stat_label, stat_field, adv_map=None,
                 continue
             feats = build_features(
                 history_desc, target_game=tgt, adv_map=adv_map,
-                target_schema=target_schema,
+                target_schema=target_schema, opp_store=opp_store,
             )
             if feats is None:
                 continue
@@ -431,13 +477,17 @@ def build_training_matrix(stat_label, stat_field, adv_map=None,
 
 
 # ---------- Train + calibrate per stat ----------
-def train_one(stat_label, stat_field, adv_map=None, pruned=False):
+def train_one(stat_label, stat_field, adv_map=None, pruned=False,
+              opponent=False, opp_store=None):
     # Schema-aware feature build (2026-04-23) — when pruned is set,
     # pass the resolved schema into the builder so expensive loops
     # (ADV_FIELDS ≈ 47M ops) only iterate features the trainer will
     # actually consume. Matrix-build time drops ~55% in practice.
     if pruned:
-        active_schema = PRUNED_FEATURES
+        if opponent:
+            active_schema = PRUNED_OPP_FEATURES
+        else:
+            active_schema = PRUNED_FEATURES
         target_schema = set(active_schema)
     else:
         target_schema = None
@@ -445,12 +495,13 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False):
     X, y, sw, feature_cols = build_training_matrix(
         stat_label, stat_field, adv_map=adv_map,
         target_schema=target_schema,
+        opp_store=(opp_store if opponent else None),
     )
     if X is None:
         log.warning(f'[{stat_label}] no samples; SKIP')
         return
 
-    # Apply pruned 52-feature schema. Column subset is applied BEFORE
+    # Apply pruned schema (52 / 66 opp). Column subset is applied BEFORE
     # the temporal split so both scaler and XGB see the exact same
     # feature set.
     if pruned:
@@ -464,7 +515,11 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False):
         kept_idx = [feature_cols.index(f) for f in schema]
         X = X[:, kept_idx]
         feature_cols = list(schema)
-        log.info(f'[{stat_label}] pruned schema applied: {len(feature_cols)} features')
+        label_extra = '+opp' if opponent else ''
+        log.info(
+            f'[{stat_label}] pruned{label_extra} schema applied: '
+            f'{len(feature_cols)} features'
+        )
 
     # Temporal split: first 80% of rows (sorted by player_id, game_id in pipeline)
     # is close enough to temporal since game_id is monotonic within season
@@ -526,7 +581,10 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False):
 
     # Persist
     if pruned:
-        version_str = 'NBA_VK_v2_5yr_weighted_pruned52'
+        if opponent:
+            version_str = 'NBA_VK_v2_5yr_weighted_pruned_opp66'
+        else:
+            version_str = 'NBA_VK_v2_5yr_weighted_pruned52'
     else:
         version_str = 'NBA_VK_v2_5yr_weighted'
     payload = {
@@ -534,6 +592,7 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False):
         'stat_field': stat_field,
         'version': version_str,
         'pruned_schema': bool(pruned),
+        'opponent_schema': bool(opponent),
         'trained_at': datetime.now(timezone.utc).isoformat(),
         'seasons_used': SEASONS,
         'season_weights': SEASON_WEIGHTS,
@@ -554,7 +613,7 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False):
         'top_features': top_features,
     }
     if pruned:
-        suffix = '_pruned'
+        suffix = '_opp' if opponent else '_pruned'
     else:
         suffix = ''
     out_path = os.path.join(MODEL_DIR, f'vk2_{stat_label.lower()}{suffix}.pkl')
@@ -579,17 +638,30 @@ if __name__ == '__main__':
         help='Use the 2026-04-23 52-feature pruned schema. Writes to '
              'vk2_{stat}_pruned.pkl (sibling to production models).',
     )
+    ap.add_argument(
+        '--opponent', action='store_true',
+        help='Add 14 opponent-context features on top of --pruned '
+             '(66 features total). Writes to vk2_{stat}_opp.pkl. '
+             'Requires --pruned.',
+    )
     args = ap.parse_args()
+    if args.opponent and not args.pruned:
+        ap.error('--opponent requires --pruned (extends the pruned baseline)')
 
     t_all = time.monotonic()
     adv_map = preload_advanced_stats()
+    opp_store = None
+    if args.opponent:
+        log.info('[OPP_CTX] preloading opponent-context store...')
+        opp_store = build_opponent_context_store(db, SEASONS)
     results = {}
     for label, field in STATS.items():
-        tag = '[PRUNED]' if args.pruned else ''
+        tag = '[OPP]' if args.opponent else ('[PRUNED]' if args.pruned else '')
         log.info(f'=== {label} ({field}) {tag} ===')
         try:
             results[label] = train_one(
                 label, field, adv_map=adv_map, pruned=args.pruned,
+                opponent=args.opponent, opp_store=opp_store,
             )
         except Exception as e:
             log.exception(f'[{label}] FAILED: {e}')
