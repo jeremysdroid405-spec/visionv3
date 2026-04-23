@@ -134,6 +134,12 @@ class MLBScoringAdapter(ScoringAdapter):
 
         # Stats from hub (pure metric normalization — no gate logic)
         cv = stats._calculate_cv(player_name, stat_type)
+        # Universal cv_status (2026-04-23) — MLB delegates cv calc to the
+        # tier_sorter stats helper; report "computed" when a value came
+        # back, otherwise "missing_source_distribution". MLB has no
+        # unsupported stat-family case here because live props are
+        # already filtered by `load_live_props` to supported families.
+        cv_status = "computed" if cv is not None else "missing_source_distribution"
         hit_rate, _ = stats._calculate_hit_rate(player_name, stat_type, line, 20)
         ceiling_rate = stats._calculate_ceiling_hit_rate(player_name, stat_type, line)
 
@@ -242,6 +248,7 @@ class MLBScoringAdapter(ScoringAdapter):
             model_projection=model_projection,
             model_sigma=model_sigma,
             cv=cv,
+            cv_status=cv_status,
             hit_rate=hit_rate,
             edge_pct=edge_pct,
             tp=tp,

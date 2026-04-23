@@ -28,8 +28,34 @@ TIERS_ORDERED = ("safe_haven", "front_lines", "war_zone")
 # --------------------------------------------------------------------------
 STAT_FAMILY_ALIASES: Dict[str, Dict[str, str]] = {
     "nba": {
+        # Short canonical names (scoring adapter emits these directly)
         "PTS": "pts", "REB": "reb", "AST": "ast", "PRA": "pra",
         "STL": "stl", "BLK": "blk", "3PM": "threes", "TO": "turnovers",
+        # Raw odds-market names (both standard + alternate variants map
+        # to the SAME canonical family — a PTS alt-line has the same
+        # underlying stat distribution as the standard PTS market).
+        "player_points":                     "pts",
+        "player_points_alternate":           "pts",
+        "player_rebounds":                   "reb",
+        "player_rebounds_alternate":         "reb",
+        "player_assists":                    "ast",
+        "player_assists_alternate":          "ast",
+        "player_points_rebounds_assists":            "pra",
+        "player_points_rebounds_assists_alternate":  "pra",
+        "player_threes":                     "threes",
+        "player_threes_alternate":           "threes",
+        "player_steals":                     "stl",
+        "player_steals_alternate":           "stl",
+        "player_blocks":                     "blk",
+        "player_blocks_alternate":           "blk",
+        "player_points_rebounds":            "pts_reb",
+        "player_points_rebounds_alternate":  "pts_reb",
+        "player_points_assists":             "pts_ast",
+        "player_points_assists_alternate":   "pts_ast",
+        "player_rebounds_assists":           "reb_ast",
+        "player_rebounds_assists_alternate": "reb_ast",
+        "player_turnovers":                  "turnovers",
+        "player_turnovers_alternate":        "turnovers",
     },
     "mlb": {
         "hits": "hits", "total_bases": "total_bases",

@@ -72,6 +72,15 @@ _SCORE_OUTPUT_FIELDS = (
     #   tp_unavailable   — True when no book had both sides (hard-fails gate_tp)
     "tp", "edge_pct", "tp_books_used", "tp_books_list", "tp_method",
     "tp_unavailable",
+    # Universal CV persistence (2026-04-23). CV is computed per
+    # (player, stat_family) and is line-independent — the same value
+    # attaches to every line (standard + alt) of the same family. The
+    # `cv_status` field describes why `cv` is missing when it is None
+    # (unavailable_stat_family | missing_source_distribution |
+    # not_supported_yet). `cv` is no longer a derived-only
+    # gate_details.cv_gate.actual value; it is a first-class field on
+    # every score doc.
+    "cv", "cv_status",
     # Universal Gate Engine (2026-04-22). The normalized gate output is
     # persisted on every scored prop so the UI / admin can explain the
     # gate outcome in the exact same structure regardless of sport.

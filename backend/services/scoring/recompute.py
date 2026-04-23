@@ -388,6 +388,11 @@ async def recompute_sport(
         # computed-but-not-saved).
         doc["tp"] = ctx.tp
         doc["edge_pct"] = ctx.edge_pct
+        # Universal CV (2026-04-23): line-independent, derived from the
+        # player's stat-family distribution. See
+        # NBAScoringAdapter._compute_cv_and_hit_rate.
+        doc["cv"] = ctx.cv
+        doc["cv_status"] = ctx.cv_status
         if "tp_books_used" in raw:
             doc["tp_books_used"] = raw["tp_books_used"]
         if "tp_books_list" in raw:

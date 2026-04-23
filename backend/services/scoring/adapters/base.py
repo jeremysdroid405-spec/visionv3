@@ -24,6 +24,7 @@ class ScoringContext:
     # Model + stats inputs
     p_model: Optional[float] = None          # final model probability (0-1)
     cv: Optional[float] = None
+    cv_status: Optional[str] = None  # computed | unavailable_stat_family | missing_source_distribution | not_supported_yet
     hit_rate: Optional[float] = None
     edge_pct: Optional[float] = None
     tp: Optional[float] = None

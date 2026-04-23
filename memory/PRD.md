@@ -1624,6 +1624,54 @@ post-Stage-8 follow-up (D1 residual).
 - Google Gemini (user key)
 - Emergent LLM key available as fallback.
 
+## Feature: Universal Per-Prop CV Computation — 2026-04-23
+- **Problem:** ~1,300 NBA props (all alt-line + combo markets) had
+  null CV because the adapter's `_STAT_FIELD_MAP` only knew the 8
+  canonical short names (PTS, REB, AST, PRA, 3PM, STL, BLK, TO). Raw
+  odds-market names (`player_blocks_alternate`,
+  `player_points_rebounds`, etc.) fell through and returned
+  `(None, ...)`. Gate engine then treated the missing CV differently
+  per sport/tier, which was the root cause of the "War Zone kills
+  alt-lines" behavior we removed yesterday.
+- **Fix:**
+  1. Extended NBA `STAT_FAMILY_ALIASES` in
+     `/app/backend/services/scoring/gates/thresholds.py` to map every
+     raw market name (standard + alternate) to a canonical family
+     (`pts`, `reb`, `ast`, `pra`, `threes`, `stl`, `blk`, `pts_reb`,
+     `pts_ast`, `reb_ast`, `turnovers`). Single source of truth shared
+     by CV routing and gate-threshold resolution.
+  2. Added `_FAMILY_SPEC` in `NBAScoringAdapter` mapping each family
+     to the sum-of-game-log-fields that produces its per-game value.
+     Combo families inherit variance of the combined stat (PRA sums
+     pts+reb+ast per game, then takes stddev/mean of that vector).
+  3. Rewrote `_compute_cv_and_hit_rate` so CV is derived from the
+     resolved stat-family (line-independent) and cached per
+     `(player_lower, family)`. Every line / alt-line / side for the
+     same (player, family) now shares the exact same CV value.
+  4. Added explicit `cv_status` on `ScoringContext` with values
+     `computed | unavailable_stat_family | missing_source_distribution`.
+     MLB adapter updated to emit the same contract.
+  5. Persisted `cv` + `cv_status` as first-class fields on every
+     score doc via `_SCORE_OUTPUT_FIELDS`; `recompute.py` writes them
+     from `ctx.cv` / `ctx.cv_status`.
+- **Impact (NBA `final-nba-rt` after recompute of 3,766 props):**
+  - CV coverage: **0 → 3,522 docs (93.5%)**
+  - `cv_status=computed`: 3,522
+  - `cv_status=missing_source_distribution`: 244 (genuine data gaps —
+    players with <5 L20 games, e.g. two-way callups, traded players)
+  - `cv_status=unavailable_stat_family`: **0**
+  - (Player, family) pairs with inconsistent CV across lines: **0 / 637**
+  - War Zone: 95 props, 37 computed, 58 genuine-data-gap nulls (was
+    effectively 100% null on alt-lines).
+- **Files changed:**
+  - `/app/backend/services/scoring/gates/thresholds.py` (alias map)
+  - `/app/backend/services/scoring/adapters/base.py` (cv_status field)
+  - `/app/backend/services/scoring/adapters/nba_scoring.py`
+    (_FAMILY_SPEC + _resolve_family + rewritten cv/hit_rate computer)
+  - `/app/backend/services/scoring/adapters/mlb_scoring.py` (cv_status)
+  - `/app/backend/services/scoring/prop_scores_store.py` (persistence)
+  - `/app/backend/services/scoring/recompute.py` (doc emission)
+
 ## Gate Config Change: War Zone CV Floor Removed — 2026-04-23
 - **Design decision (not experiment):** War Zone must not penalize
   consistency. If a prop qualifies by odds/tier logic, low or missing CV

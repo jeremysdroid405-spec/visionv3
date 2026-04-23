@@ -27,7 +27,27 @@ logger = logging.getLogger(__name__)
 
 
 class NBAScoringAdapter(ScoringAdapter):
-    # Map our stat_type to the bdl_game_logs field
+    # Canonical stat-family → list of bdl_game_logs fields that sum to
+    # produce the per-game value of that family. CV is computed from the
+    # resulting distribution, so combo families (PRA, PTS_REB, etc.)
+    # naturally inherit the variance of the COMBINED stat.
+    _FAMILY_SPEC = {
+        "pts":       ["pts"],
+        "reb":       ["reb"],
+        "ast":       ["ast"],
+        "pra":       ["pts", "reb", "ast"],
+        "threes":    ["fg3m"],
+        "stl":       ["stl"],
+        "blk":       ["blk"],
+        "pts_reb":   ["pts", "reb"],
+        "pts_ast":   ["pts", "ast"],
+        "reb_ast":   ["reb", "ast"],
+        "turnovers": ["turnover"],
+    }
+
+    # Legacy alias — kept for any direct callers still passing canonical
+    # short stat types (PTS/REB/...). New code should go through
+    # `_resolve_family` → `_FAMILY_SPEC`.
     _STAT_FIELD_MAP = {
         "PTS": "pts",
         "REB": "reb",
@@ -347,33 +367,54 @@ class NBAScoringAdapter(ScoringAdapter):
         self._logs_loaded = True
         logger.info(f"[NBA_SCORING] Cached game logs for {count} players")
 
+    def _resolve_family(self, stat_type: Optional[str]) -> Optional[str]:
+        """Canonical NBA stat-family for either a short stat_type (PTS)
+        or a raw odds-market name (player_points_alternate).
+
+        Uses the SHARED `resolve_stat_family` helper so the family
+        mapping has one source of truth across CV + gate-threshold
+        routing. Returns None when the stat has no canonical family
+        yet (in which case CV is flagged unavailable_stat_family)."""
+        from services.scoring.gates.thresholds import resolve_stat_family
+        family = resolve_stat_family("nba", stat_type)
+        # resolve_stat_family never returns None, so filter out the
+        # non-family fallbacks explicitly.
+        if not family or family in ("_default", ""):
+            return None
+        return family
+
     def _compute_cv_and_hit_rate(
         self, player_name: str, stat_type: str, line: float,
         direction: str = "OVER", window: int = 20,
     ):
+        """Compute line-independent CV and line-aware hit_rate / ceiling.
+
+        CV is derived from the player's underlying stat-family
+        distribution and is IDENTICAL across every line / alt-line for
+        the same (player, family). Hit-rate and ceiling-rate still
+        depend on the line / side (they count games relative to the
+        threshold).
+
+        Returns:
+          (cv, cv_status, hit_rate, ceiling_rate, hit_rate_over, hit_rate_under)
+
+        cv_status values:
+          * "computed"                    – cv is a real stddev/mean
+          * "unavailable_stat_family"     – we have no family spec yet
+          * "missing_source_distribution" – fewer than 5 games, or
+                                            degenerate zero-mean
         """
-        Compute (cv, hit_rate, ceiling_rate, hit_rate_over, hit_rate_under)
-        from the player's last-N game logs.
+        family = self._resolve_family(stat_type)
+        if family is None:
+            return None, "unavailable_stat_family", None, None, None, None
+        fields = self._FAMILY_SPEC.get(family)
+        if not fields:
+            return None, "unavailable_stat_family", None, None, None, None
 
-        hit_rate is SIDE-AWARE:
-          - direction == OVER  → % games where stat > line
-          - direction == UNDER → % games where stat <= line  (i.e., 100 - over_rate)
-        hit_rate_over / hit_rate_under are always returned for diagnostics.
-
-        ceiling_rate is direction-aware too:
-          - OVER:  % games where stat >= max(1.5*line, line+0.5)   (tail up)
-          - UNDER: % games where stat <= max(0.5*line, line-0.5)   (tail down)
-
-        Returns (None, None, None, None, None) if unavailable.
-        """
-        field = self._STAT_FIELD_MAP.get(stat_type)
-        if field is None:
-            return None, None, None, None, None
         logs = self._logs_cache.get((player_name or "").lower()) or []
         if not logs:
-            return None, None, None, None, None
+            return None, "missing_source_distribution", None, None, None, None
 
-        # Newest-first order is NOT guaranteed; sort by date desc for the window.
         try:
             logs_sorted = sorted(
                 logs,
@@ -385,27 +426,33 @@ class NBAScoringAdapter(ScoringAdapter):
         window_logs = logs_sorted[:window]
 
         import numpy as np
-        # PRA synthesized
-        if stat_type == "PRA":
-            vals = [
-                (g.get("pts") or 0) + (g.get("reb") or 0) + (g.get("ast") or 0)
-                for g in window_logs
-                if g.get("pts") is not None
-            ]
-        else:
-            vals = [g.get(field) for g in window_logs if g.get(field) is not None]
-        vals = [float(v) for v in vals if v is not None]
+
+        # Build per-game value as sum of family component fields.
+        vals: List[float] = []
+        for g in window_logs:
+            per_field = [g.get(f) for f in fields]
+            if any(v is None for v in per_field):
+                continue
+            vals.append(float(sum(per_field)))
+
         if len(vals) < 5:
-            return None, None, None, None, None
+            return None, "missing_source_distribution", None, None, None, None
 
         arr = np.array(vals)
         mean = float(arr.mean())
         if mean <= 0:
             cv = None
+            cv_status = "missing_source_distribution"
         else:
             cv = round(float(arr.std(ddof=1) / mean), 4)
+            cv_status = "computed"
 
-        # Side-aware hit rate
+        # Cache CV per (player, family) so downstream code paths that
+        # re-query the same family on a different line can read a
+        # consistent value without re-traversing logs.
+        self._cv_cache[((player_name or "").lower(), family)] = (cv, cv_status)
+
+        # Side-aware hit rate (line-dependent)
         over_hits = int(sum(1 for v in vals if v > line))
         under_hits = int(sum(1 for v in vals if v <= line))
         hit_rate_over = round((over_hits / len(vals)) * 100.0, 1)
@@ -423,7 +470,7 @@ class NBAScoringAdapter(ScoringAdapter):
             tail_hits = int(sum(1 for v in vals if v >= ceiling_thresh))
         ceiling_rate = round((tail_hits / len(vals)) * 100.0, 1)
 
-        return cv, hit_rate, ceiling_rate, hit_rate_over, hit_rate_under
+        return cv, cv_status, hit_rate, ceiling_rate, hit_rate_over, hit_rate_under
 
     async def build_context(
         self, db, prop: Dict[str, Any], config: Dict[str, Any]
@@ -510,7 +557,7 @@ class NBAScoringAdapter(ScoringAdapter):
 
         # CV + SIDE-AWARE hit_rate + ceiling_rate from master-hub game logs.
         # Prefer computed over embedded; fall back to embedded if logs missing.
-        cv, computed_hit_rate, ceiling_rate, hit_rate_over, hit_rate_under = \
+        cv, cv_status, computed_hit_rate, ceiling_rate, hit_rate_over, hit_rate_under = \
             self._compute_cv_and_hit_rate(
                 player_name, stat_type, float(line),
                 direction=side, window=20,
@@ -628,7 +675,7 @@ class NBAScoringAdapter(ScoringAdapter):
             recommendation=side,
             pp_layer=pp_layer, dk_layer=dk_layer, mgm_layer=mgm_layer,
             sharp_layer=sharp_layer,
-            p_model=p_model, cv=cv, hit_rate=hit_rate, edge_pct=edge_pct,
+            p_model=p_model, cv=cv, cv_status=cv_status, hit_rate=hit_rate, edge_pct=edge_pct,
             tp=tp, ceiling_rate=ceiling_rate,
             books_available_count=books,
             raw_prop=prop,
