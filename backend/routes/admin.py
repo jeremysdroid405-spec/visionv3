@@ -520,4 +520,314 @@ async def board_drift_audit(
     return {"by_sport": {s: await _per_sport(s) for s in registered_sports()}}
 
 
+# ---------------------------------------------------------------------------
+# Universal Gate Stats — data-driven threshold tuning
+# ---------------------------------------------------------------------------
+# Pure aggregation over `{sport}_prop_scores @ final-{sport}-rt`. No recompute,
+# no scoring calls, no writes. Reads `gate_eval` (emitted by the Universal
+# Gate Engine) and returns per-gate failure rates, multi-fail combos,
+# near-miss deltas, and breakdowns by stat_family / tier so operators can
+# tune thresholds using data instead of guesswork.
+# ---------------------------------------------------------------------------
+from collections import Counter, defaultdict
+from statistics import median as _median
 
+# Gate-type → canonical reason-code name ("tp_gate" → "gate_tp_fail").
+# Kept in sync with ReasonCode._PER_GATE_FAIL but imported lazily so this
+# module has no hard dependency on services.scoring.gates at import time.
+_GATE_REASON_KEY = {
+    "coverage_gate": "gate_coverage_fail",
+    "hit_rate_gate": "gate_hit_rate_fail",
+    "tp_gate":       "gate_tp_fail",
+    "cv_gate":       "gate_cv_fail",
+    "edge_gate":     "gate_edge_fail",
+    "ceiling_gate":  "gate_ceiling_fail",
+    "context_gate":  "gate_context_fail",
+}
+
+# Near-miss thresholds (in metric-native units). hit_rate/tp/edge/ceiling
+# are in percentage points; cv is a raw ratio.
+_NEAR_MISS_BANDS = {
+    "tp_gate":       (2.0, 5.0),
+    "hit_rate_gate": (2.0, 5.0),
+    "edge_gate":     (2.0, 5.0),
+    "ceiling_gate":  (2.0, 5.0),
+    "cv_gate":       (0.02, 0.05),
+    "coverage_gate": (1.0, 2.0),
+}
+
+
+def _threshold_scalar(thr):
+    """Extract a numeric threshold from a gate_details.threshold value.
+    hit_rate_gate stores a dict ({"min": X, "window": ...}); all other
+    numeric gates store a scalar. Returns None for non-numeric (context)."""
+    if isinstance(thr, (int, float)):
+        return float(thr)
+    if isinstance(thr, dict):
+        for k in ("min", "min_cv_floor", "max", "min_books"):
+            if k in thr and isinstance(thr[k], (int, float)):
+                return float(thr[k])
+    return None
+
+
+def _signed_margin(actual, threshold_val, comparator):
+    """Margin against the pass-condition in metric-native units.
+    Positive ⇒ passed by this much; negative ⇒ failed by |this| much.
+    Returns None if inputs are not numeric."""
+    if actual is None or threshold_val is None:
+        return None
+    if not isinstance(actual, (int, float)):
+        return None
+    if comparator == ">=":
+        return float(actual) - float(threshold_val)
+    if comparator == "<=":
+        return float(threshold_val) - float(actual)
+    return None
+
+
+@router.get("/v3/admin/gate-stats")
+async def gate_stats(
+    sport: str,
+    tier: str | None = None,
+    stat_family: str | None = None,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Aggregate gate performance over `{sport}_prop_scores @ final-{sport}-rt`.
+
+    Query params:
+      - sport (required): 'nba' | 'mlb' | ...
+      - tier (optional): 'safe_haven' | 'front_lines' | 'war_zone'
+      - stat_family (optional): e.g. 'pts', 'hits', 'total_bases'
+
+    Filters apply against the Universal Gate Engine's own target tier /
+    stat_family (fields on `gate_eval.tier` / `gate_eval.stat_family`) so
+    the report always reflects what the engine was trying to evaluate —
+    regardless of whether the prop ultimately qualified.
+
+    Returns: total_props, total_passed, total_failed, per-gate failure
+    breakdown, multi-fail combos, near-miss deltas, by_stat_family, and
+    by_tier (only when the `tier` query param is not set).
+
+    Auth: `X-Admin-Token` header must match env `ADMIN_DEBUG_TOKEN`.
+    """
+    _require_admin_debug_token(x_admin_token)
+
+    if _db is None:
+        raise HTTPException(status_code=500, detail="db not initialised")
+
+    s = (sport or "").strip().lower()
+    if not s:
+        raise HTTPException(status_code=400, detail="sport query param is required")
+
+    version_tag = f"final-{s}-rt"
+    q: dict = {"version_tag": version_tag, "gate_eval": {"$exists": True}}
+    if tier:
+        q["gate_eval.tier"] = tier
+    if stat_family:
+        q["gate_eval.stat_family"] = stat_family
+
+    coll = _db[f"{s}_prop_scores"]
+    projection = {"_id": 0, "gate_eval": 1}
+
+    # Accumulators
+    total_props = 0
+    total_passed = 0
+    total_failed = 0
+
+    per_gate_pass: Counter = Counter()
+    per_gate_fail: Counter = Counter()
+    per_gate_eval: Counter = Counter()   # total times each gate actually ran
+
+    combo_counter: Counter = Counter()
+
+    # Per-gate delta lists (all evaluated props) + failed-only miss magnitudes
+    per_gate_deltas: dict = defaultdict(list)
+    per_gate_fail_miss: dict = defaultdict(list)
+    per_gate_near_miss_small: Counter = Counter()  # within tight band
+    per_gate_near_miss_wide: Counter = Counter()   # within wider band
+
+    # Breakdowns
+    by_stat_family_counts: dict = defaultdict(lambda: {
+        "total_props": 0, "passed": 0, "failed": 0,
+        "fail_by_gate": Counter(),
+    })
+    by_tier_counts: dict = defaultdict(lambda: {
+        "total_props": 0, "passed": 0, "failed": 0,
+        "fail_by_gate": Counter(),
+    })
+
+    cursor = coll.find(q, projection)
+    async for doc in cursor:
+        gate_eval = doc.get("gate_eval") or {}
+        if not gate_eval:
+            continue
+
+        total_props += 1
+        overall_passed = bool(gate_eval.get("passed"))
+        if overall_passed:
+            total_passed += 1
+        else:
+            total_failed += 1
+
+        passed_gates = list(gate_eval.get("passed_gates") or [])
+        failed_gates = list(gate_eval.get("failed_gates") or [])
+
+        # Per-gate pass/fail
+        for g in passed_gates:
+            per_gate_pass[g] += 1
+            per_gate_eval[g] += 1
+        for g in failed_gates:
+            per_gate_fail[g] += 1
+            per_gate_eval[g] += 1
+
+        # Multi-fail combos (only when something failed)
+        if failed_gates:
+            key = tuple(sorted(failed_gates))
+            combo_counter[key] += 1
+
+        # Near-miss / delta analysis per-gate
+        gate_details = gate_eval.get("gate_details") or {}
+        for g_type, detail in gate_details.items():
+            if not isinstance(detail, dict):
+                continue
+            thr_scalar = _threshold_scalar(detail.get("threshold"))
+            actual = detail.get("actual")
+            comparator = detail.get("comparator")
+            margin = _signed_margin(actual, thr_scalar, comparator)
+            if margin is None:
+                continue
+            per_gate_deltas[g_type].append(margin)
+            if not detail.get("passed", True):
+                miss_mag = -margin  # failed ⇒ margin is negative
+                per_gate_fail_miss[g_type].append(miss_mag)
+                tight_band, wide_band = _NEAR_MISS_BANDS.get(
+                    g_type, (2.0, 5.0)
+                )
+                if miss_mag <= tight_band:
+                    per_gate_near_miss_small[g_type] += 1
+                if miss_mag <= wide_band:
+                    per_gate_near_miss_wide[g_type] += 1
+
+        # Per-stat-family breakdown
+        fam = gate_eval.get("stat_family") or "_unknown"
+        rec = by_stat_family_counts[fam]
+        rec["total_props"] += 1
+        if overall_passed:
+            rec["passed"] += 1
+        else:
+            rec["failed"] += 1
+        for g in failed_gates:
+            rec["fail_by_gate"][g] += 1
+
+        # Per-tier breakdown (only computed/returned if no tier filter)
+        if not tier:
+            tkey = gate_eval.get("tier") or "_unknown"
+            trec = by_tier_counts[tkey]
+            trec["total_props"] += 1
+            if overall_passed:
+                trec["passed"] += 1
+            else:
+                trec["failed"] += 1
+            for g in failed_gates:
+                trec["fail_by_gate"][g] += 1
+
+    # ---- Build response ----
+    def _pct(num, den):
+        return round((num / den * 100.0), 2) if den else 0.0
+
+    gate_failures = {}
+    for g_type, fail_ct in per_gate_fail.items():
+        eval_ct = per_gate_eval.get(g_type, 0)
+        reason_key = _GATE_REASON_KEY.get(g_type, f"gate_{g_type}_fail")
+        gate_failures[reason_key] = {
+            "gate_type": g_type,
+            "fail_count": int(fail_ct),
+            "pass_count": int(per_gate_pass.get(g_type, 0)),
+            "evaluated": int(eval_ct),
+            "fail_rate": _pct(fail_ct, total_props),
+            "fail_rate_when_evaluated": _pct(fail_ct, eval_ct),
+        }
+    # Include pass-only gates (never failed) so the map is complete.
+    for g_type, pass_ct in per_gate_pass.items():
+        reason_key = _GATE_REASON_KEY.get(g_type, f"gate_{g_type}_fail")
+        if reason_key not in gate_failures:
+            gate_failures[reason_key] = {
+                "gate_type": g_type,
+                "fail_count": 0,
+                "pass_count": int(pass_ct),
+                "evaluated": int(per_gate_eval.get(g_type, 0)),
+                "fail_rate": 0.0,
+                "fail_rate_when_evaluated": 0.0,
+            }
+
+    multi_fail_combos = [
+        {"failed_gates": list(combo), "count": int(ct)}
+        for combo, ct in combo_counter.most_common(15)
+    ]
+
+    near_miss: dict = {}
+    for g_type, deltas in per_gate_deltas.items():
+        if not deltas:
+            continue
+        miss_list = per_gate_fail_miss.get(g_type) or []
+        near_miss[g_type] = {
+            "avg_delta": round(sum(deltas) / len(deltas), 4),
+            "median_delta": round(_median(deltas), 4),
+            "sample_size": len(deltas),
+            "avg_fail_miss": (
+                round(sum(miss_list) / len(miss_list), 4) if miss_list else None
+            ),
+            "fail_sample_size": len(miss_list),
+            "near_miss_tight": int(per_gate_near_miss_small.get(g_type, 0)),
+            "near_miss_wide": int(per_gate_near_miss_wide.get(g_type, 0)),
+            "near_miss_bands": {
+                "tight": _NEAR_MISS_BANDS.get(g_type, (2.0, 5.0))[0],
+                "wide":  _NEAR_MISS_BANDS.get(g_type, (2.0, 5.0))[1],
+            },
+        }
+
+    def _finalize_breakdown(rec: dict) -> dict:
+        total = rec["total_props"]
+        top_failing_gate = None
+        if rec["fail_by_gate"]:
+            top_g, _ct = rec["fail_by_gate"].most_common(1)[0]
+            top_failing_gate = _GATE_REASON_KEY.get(top_g, f"gate_{top_g}_fail")
+        return {
+            "total_props": total,
+            "passed": rec["passed"],
+            "failed": rec["failed"],
+            "pass_rate": _pct(rec["passed"], total),
+            "top_failing_gate": top_failing_gate,
+            "fail_by_gate": {
+                _GATE_REASON_KEY.get(g, f"gate_{g}_fail"): int(c)
+                for g, c in rec["fail_by_gate"].items()
+            },
+        }
+
+    by_stat_family = {
+        fam: _finalize_breakdown(rec)
+        for fam, rec in by_stat_family_counts.items()
+    }
+
+    response: dict = {
+        "sport": s,
+        "tier": tier,
+        "stat_family": stat_family,
+        "version_tag": version_tag,
+        "total_props": total_props,
+        "total_passed": total_passed,
+        "total_failed": total_failed,
+        "overall_pass_rate": _pct(total_passed, total_props),
+        "gate_failures": gate_failures,
+        "multi_fail_combos": multi_fail_combos,
+        "near_miss": near_miss,
+        "by_stat_family": by_stat_family,
+    }
+
+    if not tier:
+        response["by_tier"] = {
+            t: _finalize_breakdown(rec)
+            for t, rec in by_tier_counts.items()
+        }
+
+    return response

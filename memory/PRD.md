@@ -1624,6 +1624,20 @@ post-Stage-8 follow-up (D1 residual).
 - Google Gemini (user key)
 - Emergent LLM key available as fallback.
 
+## Feature: Admin Gate Stats Endpoint — 2026-04-23
+- `GET /api/v3/admin/gate-stats?sport={sport}&tier={optional}&stat_family={optional}`
+- Data-driven threshold tuning over `{sport}_prop_scores @ final-{sport}-rt`.
+- Pure aggregation of `gate_eval` — no recompute, no writes.
+- Returns: total/passed/failed counts, per-gate failure breakdown (reason-code
+  keyed), top multi-fail combos, per-gate near-miss deltas (avg / median /
+  tight-band / wide-band), and breakdowns by `stat_family` and `tier`
+  (tier only when no tier filter provided).
+- Auth: protected by `X-Admin-Token` header matching `ADMIN_DEBUG_TOKEN` env.
+- Implementation: `/app/backend/routes/admin.py :: gate_stats`.
+- Verified live: NBA (1184 props, 4.81% pass rate) and MLB (157 props,
+  11.46% pass rate). Filter + auth failure paths tested (401 / 422 / 200).
+
+
 ## Health
 - Broken: None
 - Mocked: None
