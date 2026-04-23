@@ -11,7 +11,7 @@ NBA has a real `multiplier` field + `is_demon`/`is_goblin` flags sourced
 from PP, so pp_utility gets actual multiplier-source data.
 """
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from services.scoring.adapters.base import ScoringAdapter, ScoringContext
 from services.config.collection_names import COLL
@@ -74,13 +74,23 @@ class NBAScoringAdapter(ScoringAdapter):
         "threes": "3PM",
     }
     # Combo-projection synthesis (2026-04-23). Each combo family is a
-    # sum of two component families that DO have trained models. We
-    # synthesize `proj_combo = proj_a + proj_b` with sigma from empirical
-    # covariance; see `_predict_combo_projection`. No new training.
+    # sum of N component families that DO have trained models. We
+    # synthesize `proj_combo = Σ proj_i` with sigma from
+    # `var_combo = Σ var_i + 2·Σ_{i<j} cov(i, j)`. No new training.
+    # 2-way families are primary users of synth (no direct model
+    # exists). 3-way (PRA) has a direct model — synth runs as a
+    # fallback when the direct model fails (see `_SYNTH_FALLBACK_COMPONENTS`).
     _COMBO_COMPONENTS = {
         "pts_reb": ("PTS", "REB"),
         "pts_ast": ("PTS", "AST"),
         "reb_ast": ("REB", "AST"),
+    }
+    # Fallback synth spec: direct-model family → components to synth
+    # from when the direct model returns no projection (missing
+    # features, opponent-free rows, player not in model training set,
+    # etc.). Ensures a useful projection reaches the score doc.
+    _SYNTH_FALLBACK_COMPONENTS = {
+        "pra": ("PTS", "REB", "AST"),
     }
     # Fallback correlation coefficient for combo sigma when we can't
     # compute empirical covariance from game logs (too few paired rows
@@ -441,64 +451,78 @@ class NBAScoringAdapter(ScoringAdapter):
         return cov
 
     def _predict_combo_projection(
-        self, db, player_name: str, family: str, line: float,
+        self, db, player_name: str, line: float,
         opponent_team: Optional[str], use_vk2: bool,
+        components: Sequence[str],
     ) -> Dict[str, Any]:
-        """Synthesize a combo-family projection from two component
-        model runs. Returns {projection, sigma, p_over, error,
-        covariance_source, component_a, component_b, covariance}."""
-        components = self._COMBO_COMPONENTS.get(family)
-        if not components:
+        """Synthesize an N-way combo projection from component models.
+
+        For arbitrary N ≥ 2 components:
+          proj_combo = Σ proj_i
+          var_combo  = Σ var_i + 2·Σ_{i<j} cov(i, j)
+
+        Returns {projection, sigma, p_over, error, covariance_source,
+        components, pairwise_covariances}. Supports both primary combo
+        families (no direct model) and fallback synthesis for families
+        whose direct model returned None (e.g., PRA → PTS+REB+AST).
+        Empirical covariances are drawn from L20 game logs; any pair
+        that can't be computed falls back to ρ·σ_i·σ_j (ρ=0.25) and
+        the whole row is labelled `fallback_rho`.
+        """
+        if not components or len(components) < 2:
             return {"projection": None, "sigma": None, "p_over": None,
-                    "error": f"no_combo_components_for_{family}",
-                    "covariance_source": None}
-        key_a, key_b = components
+                    "error": "too_few_components", "covariance_source": None}
 
-        if use_vk2:
-            ra = self._predict_vk2_prob_over(
-                player_name=player_name, stat_type=key_a, line=float(line),
-            )
-            rb = self._predict_vk2_prob_over(
-                player_name=player_name, stat_type=key_b, line=float(line),
-            )
-        else:
-            ra = self._predict_model_prob_over(
-                db=db, player_name=player_name, stat_type=key_a,
-                line=float(line), opponent_team=opponent_team,
-            )
-            rb = self._predict_model_prob_over(
-                db=db, player_name=player_name, stat_type=key_b,
-                line=float(line), opponent_team=opponent_team,
-            )
+        comp_results: List[Dict[str, Any]] = []
+        for key in components:
+            if use_vk2:
+                r = self._predict_vk2_prob_over(
+                    player_name=player_name, stat_type=key, line=float(line),
+                )
+            else:
+                r = self._predict_model_prob_over(
+                    db=db, player_name=player_name, stat_type=key,
+                    line=float(line), opponent_team=opponent_team,
+                )
+            comp_results.append({"key": key, **r})
 
-        proj_a, sigma_a = ra.get("projection"), ra.get("sigma")
-        proj_b, sigma_b = rb.get("projection"), rb.get("sigma")
-        if proj_a is None or proj_b is None or sigma_a is None or sigma_b is None:
+        if any(c.get("projection") is None or c.get("sigma") is None
+               for c in comp_results):
             return {"projection": None, "sigma": None, "p_over": None,
                     "error": "component_prediction_failed",
                     "covariance_source": None,
-                    "component_a": {"key": key_a, **ra},
-                    "component_b": {"key": key_b, **rb}}
+                    "components": comp_results}
 
-        cov = self._empirical_covariance(player_name, key_a, key_b, window=20)
-        covariance_source = "empirical"
-        if cov is None:
-            cov = self._COMBO_FALLBACK_RHO * float(sigma_a) * float(sigma_b)
-            covariance_source = "fallback_rho"
+        pairwise: Dict[str, float] = {}
+        any_fallback = False
+        for i in range(len(comp_results)):
+            for j in range(i + 1, len(comp_results)):
+                ki, kj = comp_results[i]["key"], comp_results[j]["key"]
+                si, sj = float(comp_results[i]["sigma"]), float(comp_results[j]["sigma"])
+                cov = self._empirical_covariance(player_name, ki, kj, window=20)
+                if cov is None:
+                    cov = self._COMBO_FALLBACK_RHO * si * sj
+                    any_fallback = True
+                pairwise[f"{ki}_{kj}"] = round(float(cov), 4)
+
+        covariance_source = "fallback_rho" if any_fallback else "empirical"
+        if any_fallback:
             self._combo_fallback_count += 1
         else:
             self._combo_success_count += 1
 
-        var_combo = (float(sigma_a) ** 2) + (float(sigma_b) ** 2) + 2.0 * float(cov)
+        projection = sum(float(c["projection"]) for c in comp_results)
+        var_combo = sum(float(c["sigma"]) ** 2 for c in comp_results)
+        var_combo += 2.0 * sum(pairwise.values())
+
         if var_combo <= 0:
             var_combo = max(
-                1.0, (float(sigma_a) ** 2) + (float(sigma_b) ** 2),
+                1.0, sum(float(c["sigma"]) ** 2 for c in comp_results),
             )
             covariance_source = "fallback_nonpositive_variance"
             self._combo_fallback_count += 1
 
         from math import erf, sqrt
-        projection = float(proj_a) + float(proj_b)
         sigma = sqrt(var_combo)
         z = (projection - float(line)) / sigma
         p_over = 0.5 * (1.0 + erf(z / sqrt(2.0)))
@@ -509,9 +533,11 @@ class NBAScoringAdapter(ScoringAdapter):
             "p_over": round(p_over, 4),
             "error": None,
             "covariance_source": covariance_source,
-            "component_a": {"key": key_a, "proj": proj_a, "sigma": sigma_a},
-            "component_b": {"key": key_b, "proj": proj_b, "sigma": sigma_b},
-            "covariance": round(float(cov), 4),
+            "components": [
+                {"key": c["key"], "proj": c.get("projection"), "sigma": c.get("sigma")}
+                for c in comp_results
+            ],
+            "pairwise_covariances": pairwise,
         }
 
 
@@ -760,9 +786,10 @@ class NBAScoringAdapter(ScoringAdapter):
         resolved_family = self._resolve_family(stat_type) or ""
         model_key = self._FAMILY_TO_MODEL_KEY.get(resolved_family)
         projection_method: Optional[str] = None
+        opponent_team = prop.get("opponent") or prop.get("away_team")
+        use_vk2_path = (active_method_early == "vk2")
         if model_key in self._MODEL_STATS:
-            opponent_team = prop.get("opponent") or prop.get("away_team")
-            if active_method_early != "vk2":
+            if not use_vk2_path:
                 mres = self._predict_model_prob_over(
                     db=db, player_name=player_name, stat_type=model_key,
                     line=float(line), opponent_team=opponent_team,
@@ -790,17 +817,39 @@ class NBAScoringAdapter(ScoringAdapter):
                 vk2_error = v2res.get("error")
                 if vk2_projection is not None:
                     projection_method = "model"
+
+            # 3-way synth FALLBACK (2026-04-23): if the direct model
+            # didn't produce a projection but this family has a synth
+            # recipe (e.g. PRA → PTS+REB+AST), try synthesizing. This
+            # rescues PRA props where the direct model training set
+            # doesn't include the player.
+            direct_proj = (
+                vk2_projection if use_vk2_path else model_projection
+            )
+            synth_components = self._SYNTH_FALLBACK_COMPONENTS.get(resolved_family)
+            if direct_proj is None and synth_components:
+                cres = self._predict_combo_projection(
+                    db=db, player_name=player_name, line=float(line),
+                    opponent_team=opponent_team, use_vk2=use_vk2_path,
+                    components=synth_components,
+                )
+                if cres.get("projection") is not None:
+                    p_over_c = cres.get("p_over")
+                    if p_over_c is not None:
+                        p_true_model = round(
+                            (1.0 - p_over_c) if side == "UNDER" else p_over_c, 4
+                        )
+                    model_projection = cres.get("projection")
+                    model_sigma = cres.get("sigma")
+                    projection_method = "combo_synth"
         elif resolved_family in self._COMBO_COMPONENTS:
-            # Combo synthesis (2026-04-23): pts_reb / pts_ast / reb_ast.
-            # Uses existing component models; no new training. Populates
-            # model_projection / model_sigma / p_true_model so ranking
-            # and the p_true ladder benefit from a real-valued projection
-            # on combos. Gate config is unchanged.
-            opponent_team = prop.get("opponent") or prop.get("away_team")
+            # Primary combo synthesis (2026-04-23): pts_reb / pts_ast /
+            # reb_ast — no direct trained model exists, synth is the
+            # only path. Gate config is unchanged.
             cres = self._predict_combo_projection(
-                db=db, player_name=player_name, family=resolved_family,
-                line=float(line), opponent_team=opponent_team,
-                use_vk2=(active_method_early == "vk2"),
+                db=db, player_name=player_name, line=float(line),
+                opponent_team=opponent_team, use_vk2=use_vk2_path,
+                components=self._COMBO_COMPONENTS[resolved_family],
             )
             if cres.get("projection") is not None:
                 p_over_c = cres.get("p_over")

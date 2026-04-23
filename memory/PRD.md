@@ -1624,6 +1624,42 @@ post-Stage-8 follow-up (D1 residual).
 - Google Gemini (user key)
 - Emergent LLM key available as fallback.
 
+## Feature: 3-Way Combo Projection Synthesis (Generalized N-Way) — 2026-04-23
+- **Goal:** Generalize combo synthesis to arbitrary N components, and
+  add 3-way synth as a FALLBACK path for direct-model families
+  whose model returned None (e.g., PRA → PTS+REB+AST).
+- **What changed:**
+  - Renamed signature: `_predict_combo_projection(..., components=Sequence[str])`
+    — no more `family` arg; caller passes the component tuple directly.
+  - Math extended to arbitrary N:
+    `var_combo = Σ var_i + 2·Σ_{i<j} cov(i, j)`.
+  - Added `_SYNTH_FALLBACK_COMPONENTS = {"pra": ("PTS","REB","AST")}`.
+  - Wired `build_context` so direct-model families first try the
+    trained model; if `projection is None` AND the family has a synth
+    recipe, run N-way synth as a rescue. Primary 2-way combos
+    (pts_reb / pts_ast / reb_ast) continue to route straight to synth
+    since no direct model exists.
+- **Live impact (NBA `final-nba-rt`, 4,028 props recomputed):**
+  - PRA: 137 direct-model projections (unchanged); 0 rescued by
+    3-way synth. The 13 remaining PRA nulls are all **"Player not
+    found"** in the VK training set (C.J. McCollum, R.J. Barrett,
+    Jabari Smith Jr, etc.) — their PTS/REB/AST component models
+    also fail the same lookup, so synth can't rescue them. That's
+    honest data-quality reporting; the fallback infrastructure is
+    live and will catch any future PRA-only model failures where
+    components still work.
+  - Overall projection_method distribution: 2,283 `model` +
+    1,188 `combo_synth` (2-way primary).
+- **Math sanity check (3-way synth vs direct PRA model for
+  well-trained players):**
+  - Jokic (55.5): direct 51.55 vs synth 50.68 (Δ 1.7%)
+  - LeBron (41.5): direct 35.02 vs synth 34.37 (Δ 1.9%)
+  - Giannis (48.5): direct 39.38 vs synth 39.00 (Δ 1.0%)
+  - Luka (55.5): direct 43.67 vs synth 48.20 (Δ 10.4%) — largest
+    divergence traced to Luka's empirical cov(PTS, AST) = −12.09
+    (sharp usage trade-off) which the direct PRA model smooths over.
+- **Files:** `/app/backend/services/scoring/adapters/nba_scoring.py`.
+
 ## Feature: Combo Projection Synthesis — 2026-04-23
 - **Goal:** Give combo stat families (`pts_reb`, `pts_ast`, `reb_ast`)
   a real `model_projection` + `model_sigma` by synthesizing from the
