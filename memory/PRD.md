@@ -1624,6 +1624,47 @@ post-Stage-8 follow-up (D1 residual).
 - Google Gemini (user key)
 - Emergent LLM key available as fallback.
 
+## Feature: Combo Projection Synthesis — 2026-04-23
+- **Goal:** Give combo stat families (`pts_reb`, `pts_ast`, `reb_ast`)
+  a real `model_projection` + `model_sigma` by synthesizing from the
+  two component family models (no new training).
+- **Math:**
+  - `proj_combo = proj_a + proj_b`
+  - `var_combo  = var_a + var_b + 2·cov(a,b)`
+  - `sigma_combo = sqrt(var_combo)`
+  - Covariance source: **empirical** (L20 paired game-log values via
+    `np.cov(ddof=1)`, ≥5 paired observations required) with a
+    **fallback** of `rho·sigma_a·sigma_b` (rho=0.25, deliberately
+    conservative — widens sigma vs independence).
+- **Wiring:** `NBAScoringAdapter._predict_combo_projection`. Called
+  after the family-to-model routing when `resolved_family ∈
+  {pts_reb, pts_ast, reb_ast}`. Reuses the existing
+  `_predict_model_prob_over` (or `_predict_vk2_prob_over` when
+  `active_method=='vk2'`) for each component, so VK2 activation
+  transparently propagates to combos.
+- **Persisted on every score doc:**
+  - `model_projection` / `model_sigma` (same fields as direct model)
+  - `projection_method` ∈ {"model","combo_synth",None}
+- **Impact (NBA `final-nba-rt` after recompute, 4,005 props):**
+  - `pts_reb`: 0 → **137** (+137) combo projections
+  - `pts_ast`: 0 → **123** (+123)
+  - `reb_ast`: 0 → **26** (+26)
+  - Total combo projections stamped (incl. combo props that never
+    reached gate eval): **1,173** `projection_method="combo_synth"`
+    rows, **2,278** direct `projection_method="model"` rows.
+  - **Empirical-covariance path: 286/286 (100%)** for combo props
+    that passed gate evaluation. Fallback_rho was unused in this
+    recompute.
+  - Canonical PTS / REB / AST / PRA / threes: unchanged (no
+    regression).
+- **Worked example (LeBron pts_reb 32.5 UNDER):**
+  - PTS proj 21.88 σ 5.80; REB proj 6.51 σ 2.41
+  - Empirical cov(PTS,REB) = +2.3474
+  - Combo proj = 28.39; combo σ = √(33.64 + 5.808 + 2·2.3474) = **6.644**
+  - p(over 32.5) = 0.268 ⇒ p_true_model(UNDER) = 0.732
+- **Files:** `adapters/base.py`, `adapters/nba_scoring.py`,
+  `prop_scores_store.py`, `recompute.py`.
+
 ## Feature: Family-Based Model Projection Routing — 2026-04-23
 - **Problem:** Projection model was gated on `stat_type in
   {"PTS","REB","AST","3PM","PRA"}`. Raw market names that didn't

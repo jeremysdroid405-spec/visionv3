@@ -81,6 +81,12 @@ _SCORE_OUTPUT_FIELDS = (
     # gate_details.cv_gate.actual value; it is a first-class field on
     # every score doc.
     "cv", "cv_status",
+    # Combo projection synthesis (2026-04-23). `projection_method`
+    # labels where `model_projection` / `model_sigma` came from:
+    # "model" = direct VK/VK2; "combo_synth" = synthesized from two
+    # component family models via empirical covariance. None means
+    # no model-derived projection is available for this prop.
+    "projection_method",
     # Universal Gate Engine (2026-04-22). The normalized gate output is
     # persisted on every scored prop so the UI / admin can explain the
     # gate outcome in the exact same structure regardless of sport.

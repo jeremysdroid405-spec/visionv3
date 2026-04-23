@@ -25,6 +25,13 @@ class ScoringContext:
     p_model: Optional[float] = None          # final model probability (0-1)
     cv: Optional[float] = None
     cv_status: Optional[str] = None  # computed | unavailable_stat_family | missing_source_distribution | not_supported_yet
+    # Source of `model_projection` / `model_sigma` on this prop:
+    #   "model"       — direct VK / VK2 model prediction
+    #   "combo_synth" — synthesized from two component model projections
+    #                   (e.g. pts_reb = pts_model + reb_model, sigma from
+    #                    empirical covariance of the two stats).
+    # None when no projection is available (family has no model).
+    projection_method: Optional[str] = None
     hit_rate: Optional[float] = None
     edge_pct: Optional[float] = None
     tp: Optional[float] = None

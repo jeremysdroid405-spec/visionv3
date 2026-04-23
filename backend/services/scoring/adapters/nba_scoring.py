@@ -73,6 +73,22 @@ class NBAScoringAdapter(ScoringAdapter):
         "pra":    "PRA",
         "threes": "3PM",
     }
+    # Combo-projection synthesis (2026-04-23). Each combo family is a
+    # sum of two component families that DO have trained models. We
+    # synthesize `proj_combo = proj_a + proj_b` with sigma from empirical
+    # covariance; see `_predict_combo_projection`. No new training.
+    _COMBO_COMPONENTS = {
+        "pts_reb": ("PTS", "REB"),
+        "pts_ast": ("PTS", "AST"),
+        "reb_ast": ("REB", "AST"),
+    }
+    # Fallback correlation coefficient for combo sigma when we can't
+    # compute empirical covariance from game logs (too few paired rows
+    # or degenerate variance). Empirically, same-game NBA box-score
+    # stats for the same player correlate mildly-positively; 0.25 is
+    # deliberately conservative — it WIDENS sigma vs independence (0.0)
+    # so the resulting p_over isn't overconfident.
+    _COMBO_FALLBACK_RHO = 0.25
     # VK v2 model file paths (new 5-season weighted models w/ advanced stats)
     _VK2_DIR = "/app/backend/models"
     _VK2_FILE_MAP = {
@@ -93,6 +109,13 @@ class NBAScoringAdapter(ScoringAdapter):
         self._vk2_models: dict = {}  # stat -> {model, scaler, features, sigma}
         self._vk2_adv_map: dict = {}      # (player_id, game_id) -> adv doc
         self._vk2_adv_loaded: bool = False
+        # Combo-projection synthesis diagnostics (2026-04-23).
+        # Incremented whenever `_predict_combo_projection` has to fall
+        # back to the correlation-based sigma because empirical
+        # covariance couldn't be computed. Inspected after each
+        # recompute to monitor data-quality.
+        self._combo_fallback_count: int = 0
+        self._combo_success_count: int = 0
 
     @property
     def sport(self) -> str:
@@ -360,6 +383,139 @@ class NBAScoringAdapter(ScoringAdapter):
             "error": None,
         }
 
+    # -----------------------------------------------------------------
+    # Combo-family projection synthesis (2026-04-23)
+    # -----------------------------------------------------------------
+    # Builds a projection + sigma for combo stat families (pts_reb /
+    # pts_ast / reb_ast) by summing the two component models' mean
+    # predictions and widening sigma via empirical covariance drawn
+    # from the player's recent game logs. No new model is trained;
+    # we reuse the existing VK / VK2 predictors for each component.
+    # Mathematically:
+    #     proj_combo = proj_a + proj_b
+    #     var_combo  = var_a + var_b + 2 * cov(a, b)
+    #     sigma_combo = sqrt(var_combo)
+    # -----------------------------------------------------------------
+    _STAT_KEY_TO_LOG_FIELD = {
+        "PTS": "pts", "REB": "reb", "AST": "ast", "3PM": "fg3m", "PRA": "pra",
+    }
+
+    def _empirical_covariance(
+        self, player_name: str, key_a: str, key_b: str, window: int = 20,
+    ) -> Optional[float]:
+        """Sample covariance of two stats from the player's last-N
+        game logs. Returns None if fewer than 5 paired observations
+        or either series is degenerate (near-zero variance)."""
+        field_a = self._STAT_KEY_TO_LOG_FIELD.get(key_a)
+        field_b = self._STAT_KEY_TO_LOG_FIELD.get(key_b)
+        if field_a is None or field_b is None:
+            return None
+        logs = self._logs_cache.get((player_name or "").lower()) or []
+        if not logs:
+            return None
+        try:
+            logs_sorted = sorted(
+                logs, key=lambda g: str(g.get("date") or ""), reverse=True,
+            )
+        except Exception:
+            logs_sorted = logs
+        window_logs = logs_sorted[:window]
+        paired: list = []
+        for g in window_logs:
+            a = g.get(field_a)
+            b = g.get(field_b)
+            if a is None or b is None:
+                continue
+            try:
+                paired.append((float(a), float(b)))
+            except (TypeError, ValueError):
+                continue
+        if len(paired) < 5:
+            return None
+        import numpy as np
+        xs = np.array([p[0] for p in paired])
+        ys = np.array([p[1] for p in paired])
+        if xs.std(ddof=1) < 1e-6 or ys.std(ddof=1) < 1e-6:
+            return None
+        cov = float(np.cov(xs, ys, ddof=1)[0, 1])
+        return cov
+
+    def _predict_combo_projection(
+        self, db, player_name: str, family: str, line: float,
+        opponent_team: Optional[str], use_vk2: bool,
+    ) -> Dict[str, Any]:
+        """Synthesize a combo-family projection from two component
+        model runs. Returns {projection, sigma, p_over, error,
+        covariance_source, component_a, component_b, covariance}."""
+        components = self._COMBO_COMPONENTS.get(family)
+        if not components:
+            return {"projection": None, "sigma": None, "p_over": None,
+                    "error": f"no_combo_components_for_{family}",
+                    "covariance_source": None}
+        key_a, key_b = components
+
+        if use_vk2:
+            ra = self._predict_vk2_prob_over(
+                player_name=player_name, stat_type=key_a, line=float(line),
+            )
+            rb = self._predict_vk2_prob_over(
+                player_name=player_name, stat_type=key_b, line=float(line),
+            )
+        else:
+            ra = self._predict_model_prob_over(
+                db=db, player_name=player_name, stat_type=key_a,
+                line=float(line), opponent_team=opponent_team,
+            )
+            rb = self._predict_model_prob_over(
+                db=db, player_name=player_name, stat_type=key_b,
+                line=float(line), opponent_team=opponent_team,
+            )
+
+        proj_a, sigma_a = ra.get("projection"), ra.get("sigma")
+        proj_b, sigma_b = rb.get("projection"), rb.get("sigma")
+        if proj_a is None or proj_b is None or sigma_a is None or sigma_b is None:
+            return {"projection": None, "sigma": None, "p_over": None,
+                    "error": "component_prediction_failed",
+                    "covariance_source": None,
+                    "component_a": {"key": key_a, **ra},
+                    "component_b": {"key": key_b, **rb}}
+
+        cov = self._empirical_covariance(player_name, key_a, key_b, window=20)
+        covariance_source = "empirical"
+        if cov is None:
+            cov = self._COMBO_FALLBACK_RHO * float(sigma_a) * float(sigma_b)
+            covariance_source = "fallback_rho"
+            self._combo_fallback_count += 1
+        else:
+            self._combo_success_count += 1
+
+        var_combo = (float(sigma_a) ** 2) + (float(sigma_b) ** 2) + 2.0 * float(cov)
+        if var_combo <= 0:
+            var_combo = max(
+                1.0, (float(sigma_a) ** 2) + (float(sigma_b) ** 2),
+            )
+            covariance_source = "fallback_nonpositive_variance"
+            self._combo_fallback_count += 1
+
+        from math import erf, sqrt
+        projection = float(proj_a) + float(proj_b)
+        sigma = sqrt(var_combo)
+        z = (projection - float(line)) / sigma
+        p_over = 0.5 * (1.0 + erf(z / sqrt(2.0)))
+
+        return {
+            "projection": round(projection, 3),
+            "sigma": round(sigma, 3),
+            "p_over": round(p_over, 4),
+            "error": None,
+            "covariance_source": covariance_source,
+            "component_a": {"key": key_a, "proj": proj_a, "sigma": sigma_a},
+            "component_b": {"key": key_b, "proj": proj_b, "sigma": sigma_b},
+            "covariance": round(float(cov), 4),
+        }
+
+
+
     async def _preload_game_logs(self, db) -> None:
         """Pull NBA game logs from master hub once per recompute."""
         if self._logs_loaded:
@@ -601,9 +757,9 @@ class NBAScoringAdapter(ScoringAdapter):
         # predictors (`_predict_model_prob_over`, `_predict_vk2_prob_over`)
         # still reject anything outside _MODEL_STATS / _VK2_FILE_MAP, so
         # we pass the RESOLVED uppercase model key, not the raw stat_type.
-        model_key = self._FAMILY_TO_MODEL_KEY.get(
-            self._resolve_family(stat_type) or "", None
-        )
+        resolved_family = self._resolve_family(stat_type) or ""
+        model_key = self._FAMILY_TO_MODEL_KEY.get(resolved_family)
+        projection_method: Optional[str] = None
         if model_key in self._MODEL_STATS:
             opponent_team = prop.get("opponent") or prop.get("away_team")
             if active_method_early != "vk2":
@@ -618,6 +774,8 @@ class NBAScoringAdapter(ScoringAdapter):
                     )
                 model_projection = mres.get("projection")
                 model_sigma = mres.get("sigma")
+                if model_projection is not None:
+                    projection_method = "model"
             else:
                 v2res = self._predict_vk2_prob_over(
                     player_name=player_name, stat_type=model_key, line=float(line),
@@ -630,6 +788,29 @@ class NBAScoringAdapter(ScoringAdapter):
                 vk2_projection = v2res.get("projection")
                 vk2_sigma = v2res.get("sigma")
                 vk2_error = v2res.get("error")
+                if vk2_projection is not None:
+                    projection_method = "model"
+        elif resolved_family in self._COMBO_COMPONENTS:
+            # Combo synthesis (2026-04-23): pts_reb / pts_ast / reb_ast.
+            # Uses existing component models; no new training. Populates
+            # model_projection / model_sigma / p_true_model so ranking
+            # and the p_true ladder benefit from a real-valued projection
+            # on combos. Gate config is unchanged.
+            opponent_team = prop.get("opponent") or prop.get("away_team")
+            cres = self._predict_combo_projection(
+                db=db, player_name=player_name, family=resolved_family,
+                line=float(line), opponent_team=opponent_team,
+                use_vk2=(active_method_early == "vk2"),
+            )
+            if cres.get("projection") is not None:
+                p_over_c = cres.get("p_over")
+                if p_over_c is not None:
+                    p_true_model = round(
+                        (1.0 - p_over_c) if side == "UNDER" else p_over_c, 4
+                    )
+                model_projection = cres.get("projection")
+                model_sigma = cres.get("sigma")
+                projection_method = "combo_synth"
 
         # tp from reference-market implied prob (dk preferred, else fanduel).
         # Prices on dg_live_props are OVER-side American odds, so convert and
@@ -714,4 +895,5 @@ class NBAScoringAdapter(ScoringAdapter):
             vk2_error=vk2_error,
             hit_rate_over=hit_rate_over,
             hit_rate_under=hit_rate_under,
+            projection_method=projection_method,
         )

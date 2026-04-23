@@ -393,6 +393,10 @@ async def recompute_sport(
         # NBAScoringAdapter._compute_cv_and_hit_rate.
         doc["cv"] = ctx.cv
         doc["cv_status"] = ctx.cv_status
+        # Combo projection synthesis (2026-04-23): label where
+        # model_projection / model_sigma came from ("model",
+        # "combo_synth", or None).
+        doc["projection_method"] = ctx.projection_method
         if "tp_books_used" in raw:
             doc["tp_books_used"] = raw["tp_books_used"]
         if "tp_books_list" in raw:
