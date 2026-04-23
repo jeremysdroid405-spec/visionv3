@@ -1624,6 +1624,63 @@ post-Stage-8 follow-up (D1 residual).
 - Google Gemini (user key)
 - Emergent LLM key available as fallback.
 
+## Feature: PRA Audit — Auto-Settle Cron + Admin UI — 2026-04-23
+
+### A. Auto-settle cron job
+- New `scheduled_pra_audit_settle()` in `/app/backend/server.py`
+  (wrapper) + `run_pra_audit_settle()` in
+  `/app/backend/services/cron_scheduler.py` (idempotent implementation).
+- Registered on the live APScheduler alongside the other daily
+  jobs — cron `4:30 AM EST` daily (15 min after the 4:15 EST BDL
+  Game Logs sync that refreshes last-night's pts/reb/ast).
+- Log format (per prompt):
+  `[PRA_AUDIT_CRON] settled=N skipped=M total=T pending=P`
+- Idempotent — walks only `{settled: {$ne: True}}`. Safe to run
+  repeatedly. Skips rows where the game hasn't concluded (no
+  matching date in game logs) or the player has no game logs yet.
+- Verified on startup: apscheduler log shows
+  "Added job '4:30 AM EST PRA Dual-Projection Audit Settle'".
+  Direct invocation test returned
+  `[PRA_AUDIT_CRON] settled=0 skipped=515 total=515 pending=515`
+  (0 settled is correct — tonight's slate hasn't started yet).
+
+### B. Admin UI
+- New page at `/admin/pra-audit` (no auth wrapper — the page
+  itself token-gates every fetch with `X-Admin-Token`).
+- File: `/app/frontend/src/pages/AdminPRAAudit.jsx` (single
+  component, ~380 LOC, zero new dependencies — uses only existing
+  `sonner` for toasts and inline styles to match shadcn's dark
+  palette).
+- Shows:
+  - **Audit counts** (total / both / direct_only / synth_only /
+    settled / pending)
+  - **Accuracy audit** (only populated when settled > 0): direct
+    MAE, synth MAE, direct/synth bias, direct/synth side-accuracy %
+    — winner color-coded green/red. Archetype and line-bucket MAE
+    tables with winner label. Top 10 synth-wins and direct-wins
+    samples (edge ≥ 2.0 PRA).
+  - **Divergence audit** (live, no actuals needed): overall,
+    by-archetype, by-line-bucket stats on `|direct − synth| / direct`.
+  - **Notes** from the API response.
+- Token is stored in `localStorage.adminDebugToken` (not cookies;
+  no server-side session). Re-paste on each device. Refresh and
+  "Run Settle Job" buttons for on-demand control; auto-fetches
+  on mount if a token is cached.
+- Route registered at `/admin/pra-audit` in `App.js`.
+- End-to-end verified via curl through the external preview URL:
+  - `GET /admin/pra-audit` → 200 (SPA serves the route)
+  - `GET /api/v3/admin/pra-audit/report` → 200, returns 515 rows,
+    avg divergence 5.19%, 3 archetypes, 5 line buckets
+  - `POST /api/v3/admin/pra-audit/settle` → 200, settles 0 (games
+    haven't concluded in current UTC wall-clock).
+
+### Scope boundaries honored
+- Live projection selection unchanged (`model_projection` still
+  direct-first, synth-fallback).
+- No gate logic changes.
+- No ranking logic changes.
+- No retraining.
+
 ## Feature: PRA Dual-Projection Audit (A/B Infrastructure) — 2026-04-23
 - **Goal:** Persist BOTH the direct PRA model projection and the 3-way
   component synth projection side-by-side on every PRA row so we can

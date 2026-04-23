@@ -898,6 +898,34 @@ async def scheduled_shadow_divergence_check():
         logger.error(traceback.format_exc())
 
 
+async def scheduled_pra_audit_settle():
+    """
+    PRA Dual-Projection Audit — daily settle job (2026-04-23).
+
+    Walks `nba_pra_projection_audit` and resolves `actual_pts`,
+    `actual_reb`, `actual_ast`, `actual_pra` on every row whose game
+    has concluded, by joining with `nba_master_hub_2026.bdl_game_logs`
+    on (player_name, date-of-game_start_utc ±1 day for UTC skew).
+
+    Idempotent — already-settled rows are skipped.
+
+    Log line format (post-run):
+      [PRA_AUDIT_CRON] settled=N skipped=M total=T pending=P
+
+    Scheduled 0430 EST daily, 30 min after the 0400 EST BDL Game
+    Logs sync has refreshed last-night's logs.
+    """
+    from services.cron_scheduler import run_pra_audit_settle
+    try:
+        await run_pra_audit_settle()
+    except Exception as e:
+        logger.error(f"[SCHEDULER] PRA audit settle failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+
+
+
 
 async def scheduled_bdl_game_logs_sync():
     """
@@ -1838,6 +1866,19 @@ async def startup_event():
         replace_existing=True
     )
 
+    # PRA Dual-Projection Audit settle (2026-04-23).
+    # Runs 4:30 AM EST, right after 4:15 AM BDL Game Logs sync has
+    # refreshed last-night's per-game pts/reb/ast. Walks
+    # `nba_pra_projection_audit` and joins actuals onto every row
+    # whose game has concluded. Idempotent + safe to run repeatedly.
+    scheduler.add_job(
+        scheduled_pra_audit_settle,
+        CronTrigger(hour=4, minute=30, timezone=SCHEDULER_TIMEZONE),
+        id='pra_audit_settle',
+        name='4:30 AM EST PRA Dual-Projection Audit Settle',
+        replace_existing=True
+    )
+
     # Wave 1 — Shadow-Write Divergence Monitor (every 60 seconds).
     # Compares primary vs shadow collections for every concept registered
     # in `services.config.collection_names._SHADOW_WRITES`. Writes
@@ -1869,6 +1910,7 @@ async def startup_event():
     logger.info(f"[SCHEDULER] 4:20 AM EST - NBA Daily Pipeline  | 4:23 AM - MLB (recalc HR)")
     logger.info(f"[SCHEDULER] 4:26 AM EST - Ticker Sync")
     logger.info(f"[SCHEDULER] 6:30 PM ET - Forward-Test Capture (NBA + MLB)")
+    logger.info(f"[SCHEDULER] 4:30 AM EST - PRA Dual-Projection Audit Settle")
     logger.info(f"[SCHEDULER] Sunday 00:00 UTC - Weekly Roster Sync")
     
     # AUTO-SYNC: Check if database is empty and trigger initial population

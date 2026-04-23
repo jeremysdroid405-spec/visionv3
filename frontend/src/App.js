@@ -9,6 +9,7 @@ import { Auth } from './pages/Auth';
 import Dashboard from './pages/Dashboard';
 import NBADashboard from './pages/NBADashboard';
 import MLBDashboard from './pages/MLBDashboard';
+import AdminPRAAudit from './pages/AdminPRAAudit';
 import { Toaster } from 'sonner';
 
 // Demo mode wrappers - passes isDemoMode prop to dashboards
@@ -75,6 +76,9 @@ function App() {
                 <Route path="/v4/demo" element={<Navigate to="/demo" replace />} />
                 <Route path="/full-board" element={<Navigate to="/dashboard" replace />} />
                 
+                {/* Admin — PRA dual-projection audit (token-protected via X-Admin-Token) */}
+                <Route path="/admin/pra-audit" element={<AdminPRAAudit />} />
+
                 {/* Demo pages - public for testing */}
                 <Route path="/demo" element={<DemoModeWrapper />} />
                 <Route path="/v3/demo" element={<DemoModeWrapper />} />

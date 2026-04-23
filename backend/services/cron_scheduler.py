@@ -181,6 +181,111 @@ async def run_forward_test_capture():
         logger.error(traceback.format_exc())
 
 
+
+async def run_pra_audit_settle():
+    """
+    PRA dual-projection audit settle job.
+
+    Walks `nba_pra_projection_audit` and resolves actual
+    pts / reb / ast for any row whose game has concluded by joining
+    with `nba_master_hub_2026.bdl_game_logs`. Idempotent — already-
+    settled rows are skipped. Safe to run repeatedly.
+
+    Scheduled to run 30 minutes after the 0400 EST master-hub sync
+    (which refreshes last-night's game logs), so by 0430 EST any
+    previous-slate PRA audit row should be resolvable.
+
+    Log line format (per prompt):
+      [PRA_AUDIT_CRON] settled=N skipped=M total=T pending=P
+    """
+    try:
+        import os
+        from motor.motor_asyncio import AsyncIOMotorClient
+        mongo_url = os.environ["MONGO_URL"]
+        db_name = os.environ["DB_NAME"]
+        client = AsyncIOMotorClient(mongo_url)
+        db = client[db_name]
+
+        audit = db["nba_pra_projection_audit"]
+        hub = db["nba_master_hub_2026"]
+
+        # Preload game logs by display_name (lowercased) — cheaper
+        # than N per-row DB lookups for a few hundred audit rows.
+        logs_by_name: dict = {}
+        async for h in hub.find(
+            {"bdl_game_logs_count": {"$gt": 0}},
+            {"_id": 0, "display_name": 1, "bdl_game_logs": 1},
+        ):
+            nm = (h.get("display_name") or "").lower()
+            logs_by_name[nm] = h.get("bdl_game_logs") or []
+
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        settled = 0
+        skipped = 0
+        async for row in audit.find({"settled": {"$ne": True}}, {"_id": 0}):
+            game_start = row.get("game_start_utc")
+            if not game_start:
+                skipped += 1
+                continue
+            try:
+                dt = game_start
+                if isinstance(dt, str):
+                    dt = _dt.fromisoformat(dt.replace("Z", "+00:00"))
+                target_dates = {
+                    dt.date().isoformat(),
+                    (dt.date() - _td(days=1)).isoformat(),
+                }
+            except Exception:
+                skipped += 1
+                continue
+            player_logs = logs_by_name.get(
+                (row.get("player_name") or "").lower()
+            ) or []
+            hit = None
+            for g in player_logs:
+                if str(g.get("date") or "") in target_dates:
+                    hit = g
+                    break
+            if hit is None:
+                skipped += 1
+                continue
+            pts = hit.get("pts"); reb = hit.get("reb"); ast = hit.get("ast")
+            if pts is None or reb is None or ast is None:
+                skipped += 1
+                continue
+            pra_actual = float(pts) + float(reb) + float(ast)
+            await audit.update_one(
+                {
+                    "event_id": row["event_id"],
+                    "player_name": row["player_name"],
+                    "line": row["line"],
+                    "recommendation": row["recommendation"],
+                },
+                {"$set": {
+                    "actual_pts": int(pts),
+                    "actual_reb": int(reb),
+                    "actual_ast": int(ast),
+                    "actual_pra": round(pra_actual, 2),
+                    "settled": True,
+                    "settled_at": _dt.now(_tz.utc),
+                }},
+            )
+            settled += 1
+
+        total = await audit.count_documents({})
+        pending = await audit.count_documents({"settled": {"$ne": True}})
+        logger.info(
+            f"[PRA_AUDIT_CRON] settled={settled} skipped={skipped} "
+            f"total={total} pending={pending}"
+        )
+    except Exception as exc:
+        logger.error(
+            f"[PRA_AUDIT_CRON] settle job failed: {exc!r}",
+            exc_info=True,
+        )
+
+
+
 def start_scheduler():
     """
     Start the CRON scheduler for daily Master Hub sync.
