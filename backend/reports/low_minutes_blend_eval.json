@@ -1,0 +1,1160 @@
+{
+  "PTS": {
+    "baseline_version": "NBA_VK_v2_5yr_weighted_pruned52",
+    "classifier_version": "NBA_LOW_MINUTES_CLASSIFIER_v1",
+    "test_rows": 45587,
+    "league_low_minutes_prior": 0.653,
+    "players_using_prior_fallback": 7050,
+    "players_with_history": 898,
+    "p_low_summary": {
+      "mean": 0.5557,
+      "median": 0.6311,
+      "p95": 0.9853,
+      "high_risk_count": 24785
+    },
+    "gate_fired_count": 24785,
+    "segments": {
+      "overall": {
+        "baseline": {
+          "n": 45587,
+          "rmse": 6.034,
+          "mae": 4.04,
+          "bias": 0.094,
+          "actual_mean": 6.552,
+          "pred_mean": 6.647,
+          "same_side_acc_pct": 80.45
+        },
+        "blend": {
+          "n": 45587,
+          "rmse": 6.313,
+          "mae": 4.025,
+          "bias": -1.232,
+          "actual_mean": 6.552,
+          "pred_mean": 5.321,
+          "same_side_acc_pct": 79.89
+        },
+        "gated_narrow": {
+          "n": 45587,
+          "rmse": 6.224,
+          "mae": 3.995,
+          "bias": -0.569,
+          "actual_mean": 6.552,
+          "pred_mean": 5.983,
+          "same_side_acc_pct": 80.11
+        }
+      },
+      "PTS <10": {
+        "baseline": {
+          "n": 32348,
+          "rmse": 4.733,
+          "mae": 2.987,
+          "bias": 2.289,
+          "actual_mean": 1.821,
+          "pred_mean": 4.11,
+          "same_side_acc_pct": 70.17
+        },
+        "blend": {
+          "n": 32348,
+          "rmse": 3.965,
+          "mae": 2.399,
+          "bias": 1.176,
+          "actual_mean": 1.821,
+          "pred_mean": 2.998,
+          "same_side_acc_pct": 74.68
+        },
+        "gated_narrow": {
+          "n": 32348,
+          "rmse": 4.495,
+          "mae": 2.687,
+          "bias": 1.608,
+          "actual_mean": 1.821,
+          "pred_mean": 3.429,
+          "same_side_acc_pct": 74.68
+        }
+      },
+      "bench (L10<20)": {
+        "baseline": {
+          "n": 30312,
+          "rmse": 4.653,
+          "mae": 2.908,
+          "bias": 0.042,
+          "actual_mean": 3.203,
+          "pred_mean": 3.244,
+          "same_side_acc_pct": 77.06
+        },
+        "blend": {
+          "n": 30312,
+          "rmse": 5.109,
+          "mae": 2.86,
+          "bias": -1.336,
+          "actual_mean": 3.203,
+          "pred_mean": 1.867,
+          "same_side_acc_pct": 78.78
+        },
+        "gated_narrow": {
+          "n": 30312,
+          "rmse": 5.009,
+          "mae": 2.84,
+          "bias": -0.943,
+          "actual_mean": 3.203,
+          "pred_mean": 2.259,
+          "same_side_acc_pct": 78.57
+        }
+      },
+      "rotation (L10 18-28)": {
+        "baseline": {
+          "n": 10120,
+          "rmse": 7.253,
+          "mae": 5.708,
+          "bias": 0.219,
+          "actual_mean": 9.832,
+          "pred_mean": 10.051,
+          "same_side_acc_pct": 64.46
+        },
+        "blend": {
+          "n": 10120,
+          "rmse": 7.428,
+          "mae": 5.733,
+          "bias": -1.34,
+          "actual_mean": 9.832,
+          "pred_mean": 8.491,
+          "same_side_acc_pct": 63.83
+        },
+        "gated_narrow": {
+          "n": 10120,
+          "rmse": 7.272,
+          "mae": 5.693,
+          "bias": 0.097,
+          "actual_mean": 9.832,
+          "pred_mean": 9.928,
+          "same_side_acc_pct": 64.5
+        }
+      },
+      "starter (L10>=28)": {
+        "baseline": {
+          "n": 7195,
+          "rmse": 8.822,
+          "mae": 6.785,
+          "bias": 0.177,
+          "actual_mean": 16.368,
+          "pred_mean": 16.546,
+          "same_side_acc_pct": 70.8
+        },
+        "blend": {
+          "n": 7195,
+          "rmse": 8.857,
+          "mae": 6.851,
+          "bias": -0.808,
+          "actual_mean": 16.368,
+          "pred_mean": 15.56,
+          "same_side_acc_pct": 69.94
+        },
+        "gated_narrow": {
+          "n": 7195,
+          "rmse": 8.822,
+          "mae": 6.785,
+          "bias": 0.177,
+          "actual_mean": 16.368,
+          "pred_mean": 16.546,
+          "same_side_acc_pct": 70.8
+        }
+      },
+      "declining (L5-L20<-2)": {
+        "baseline": {
+          "n": 12775,
+          "rmse": 6.296,
+          "mae": 4.297,
+          "bias": 0.132,
+          "actual_mean": 5.577,
+          "pred_mean": 5.71,
+          "same_side_acc_pct": 77.88
+        },
+        "blend": {
+          "n": 12775,
+          "rmse": 6.661,
+          "mae": 4.169,
+          "bias": -1.514,
+          "actual_mean": 5.577,
+          "pred_mean": 4.063,
+          "same_side_acc_pct": 77.6
+        },
+        "gated_narrow": {
+          "n": 12775,
+          "rmse": 6.574,
+          "mae": 4.152,
+          "bias": -0.895,
+          "actual_mean": 5.577,
+          "pred_mean": 4.682,
+          "same_side_acc_pct": 77.25
+        }
+      },
+      "PTS 10-20": {
+        "baseline": {
+          "n": 8695,
+          "rmse": 6.139,
+          "mae": 5.017,
+          "bias": -3.148,
+          "actual_mean": 13.905,
+          "pred_mean": 10.758,
+          "same_side_acc_pct": 58.52
+        },
+        "blend": {
+          "n": 8695,
+          "rmse": 7.352,
+          "mae": 6.109,
+          "bias": -4.854,
+          "actual_mean": 13.905,
+          "pred_mean": 9.051,
+          "same_side_acc_pct": 56.6
+        },
+        "gated_narrow": {
+          "n": 8695,
+          "rmse": 6.907,
+          "mae": 5.585,
+          "bias": -3.775,
+          "actual_mean": 13.905,
+          "pred_mean": 10.13,
+          "same_side_acc_pct": 58.0
+        }
+      },
+      "PTS >=20": {
+        "baseline": {
+          "n": 4544,
+          "rmse": 11.562,
+          "mae": 9.666,
+          "bias": -9.321,
+          "actual_mean": 26.161,
+          "pred_mean": 16.84,
+          "same_side_acc_pct": 64.35
+        },
+        "blend": {
+          "n": 4544,
+          "rmse": 13.581,
+          "mae": 11.611,
+          "bias": -11.441,
+          "actual_mean": 26.161,
+          "pred_mean": 14.72,
+          "same_side_acc_pct": 63.12
+        },
+        "gated_narrow": {
+          "n": 4544,
+          "rmse": 12.39,
+          "mae": 10.267,
+          "bias": -9.928,
+          "actual_mean": 26.161,
+          "pred_mean": 16.232,
+          "same_side_acc_pct": 64.3
+        }
+      }
+    }
+  },
+  "REB": {
+    "baseline_version": "NBA_VK_v2_5yr_weighted_pruned52",
+    "classifier_version": "NBA_LOW_MINUTES_CLASSIFIER_v1",
+    "test_rows": 45587,
+    "league_low_minutes_prior": 0.385,
+    "players_using_prior_fallback": 7050,
+    "players_with_history": 898,
+    "p_low_summary": {
+      "mean": 0.5557,
+      "median": 0.6311,
+      "p95": 0.9853,
+      "high_risk_count": 24785
+    },
+    "gate_fired_count": 0,
+    "segments": {
+      "overall": {
+        "baseline": {
+          "n": 45587,
+          "rmse": 2.458,
+          "mae": 1.653,
+          "bias": 0.005,
+          "actual_mean": 2.538,
+          "pred_mean": 2.543,
+          "same_side_acc_pct": 77.76
+        },
+        "blend": {
+          "n": 45587,
+          "rmse": 2.588,
+          "mae": 1.662,
+          "bias": -0.513,
+          "actual_mean": 2.538,
+          "pred_mean": 2.025,
+          "same_side_acc_pct": 77.21
+        },
+        "gated_narrow": {
+          "n": 45587,
+          "rmse": 2.458,
+          "mae": 1.653,
+          "bias": 0.005,
+          "actual_mean": 2.538,
+          "pred_mean": 2.543,
+          "same_side_acc_pct": 77.76
+        }
+      },
+      "REB <10": {
+        "baseline": {
+          "n": 43273,
+          "rmse": 2.1,
+          "mae": 1.461,
+          "bias": 0.282,
+          "actual_mean": 2.017,
+          "pred_mean": 2.299,
+          "same_side_acc_pct": 75.19
+        },
+        "blend": {
+          "n": 43273,
+          "rmse": 2.106,
+          "mae": 1.42,
+          "bias": -0.211,
+          "actual_mean": 2.017,
+          "pred_mean": 1.806,
+          "same_side_acc_pct": 76.86
+        },
+        "gated_narrow": {
+          "n": 43273,
+          "rmse": 2.1,
+          "mae": 1.461,
+          "bias": 0.282,
+          "actual_mean": 2.017,
+          "pred_mean": 2.299,
+          "same_side_acc_pct": 75.19
+        }
+      },
+      "bench (L10<20)": {
+        "baseline": {
+          "n": 30312,
+          "rmse": 2.069,
+          "mae": 1.304,
+          "bias": 0.003,
+          "actual_mean": 1.47,
+          "pred_mean": 1.473,
+          "same_side_acc_pct": 77.51
+        },
+        "blend": {
+          "n": 30312,
+          "rmse": 2.27,
+          "mae": 1.31,
+          "bias": -0.562,
+          "actual_mean": 1.47,
+          "pred_mean": 0.908,
+          "same_side_acc_pct": 77.93
+        },
+        "gated_narrow": {
+          "n": 30312,
+          "rmse": 2.069,
+          "mae": 1.304,
+          "bias": 0.003,
+          "actual_mean": 1.47,
+          "pred_mean": 1.473,
+          "same_side_acc_pct": 77.51
+        }
+      },
+      "rotation (L10 18-28)": {
+        "baseline": {
+          "n": 10120,
+          "rmse": 2.949,
+          "mae": 2.248,
+          "bias": 0.016,
+          "actual_mean": 3.898,
+          "pred_mean": 3.914,
+          "same_side_acc_pct": 67.13
+        },
+        "blend": {
+          "n": 10120,
+          "rmse": 3.032,
+          "mae": 2.265,
+          "bias": -0.568,
+          "actual_mean": 3.898,
+          "pred_mean": 3.33,
+          "same_side_acc_pct": 65.45
+        },
+        "gated_narrow": {
+          "n": 10120,
+          "rmse": 2.949,
+          "mae": 2.248,
+          "bias": 0.016,
+          "actual_mean": 3.898,
+          "pred_mean": 3.914,
+          "same_side_acc_pct": 67.13
+        }
+      },
+      "starter (L10>=28)": {
+        "baseline": {
+          "n": 7195,
+          "rmse": 3.193,
+          "mae": 2.424,
+          "bias": 0.006,
+          "actual_mean": 5.361,
+          "pred_mean": 5.366,
+          "same_side_acc_pct": 72.88
+        },
+        "blend": {
+          "n": 7195,
+          "rmse": 3.208,
+          "mae": 2.432,
+          "bias": -0.307,
+          "actual_mean": 5.361,
+          "pred_mean": 5.053,
+          "same_side_acc_pct": 73.02
+        },
+        "gated_narrow": {
+          "n": 7195,
+          "rmse": 3.193,
+          "mae": 2.424,
+          "bias": 0.006,
+          "actual_mean": 5.361,
+          "pred_mean": 5.366,
+          "same_side_acc_pct": 72.88
+        }
+      },
+      "declining (L5-L20<-2)": {
+        "baseline": {
+          "n": 12775,
+          "rmse": 2.505,
+          "mae": 1.69,
+          "bias": 0.042,
+          "actual_mean": 2.112,
+          "pred_mean": 2.154,
+          "same_side_acc_pct": 75.71
+        },
+        "blend": {
+          "n": 12775,
+          "rmse": 2.651,
+          "mae": 1.657,
+          "bias": -0.562,
+          "actual_mean": 2.112,
+          "pred_mean": 1.55,
+          "same_side_acc_pct": 76.74
+        },
+        "gated_narrow": {
+          "n": 12775,
+          "rmse": 2.505,
+          "mae": 1.69,
+          "bias": 0.042,
+          "actual_mean": 2.112,
+          "pred_mean": 2.154,
+          "same_side_acc_pct": 75.71
+        }
+      },
+      "REB 10-20": {
+        "baseline": {
+          "n": 2271,
+          "rmse": 5.866,
+          "mae": 5.129,
+          "bias": -5.047,
+          "actual_mean": 12.104,
+          "pred_mean": 7.057,
+          "same_side_acc_pct": 66.62
+        },
+        "blend": {
+          "n": 2271,
+          "rmse": 6.835,
+          "mae": 6.069,
+          "bias": -6.031,
+          "actual_mean": 12.104,
+          "pred_mean": 6.073,
+          "same_side_acc_pct": 66.27
+        },
+        "gated_narrow": {
+          "n": 2271,
+          "rmse": 5.866,
+          "mae": 5.129,
+          "bias": -5.047,
+          "actual_mean": 12.104,
+          "pred_mean": 7.057,
+          "same_side_acc_pct": 66.62
+        }
+      },
+      "REB >=20": {
+        "baseline": {
+          "n": 43,
+          "rmse": 12.122,
+          "mae": 11.695,
+          "bias": -11.695,
+          "actual_mean": 21.419,
+          "pred_mean": 9.723,
+          "same_side_acc_pct": 62.79
+        },
+        "blend": {
+          "n": 43,
+          "rmse": 13.121,
+          "mae": 12.669,
+          "bias": -12.669,
+          "actual_mean": 21.419,
+          "pred_mean": 8.75,
+          "same_side_acc_pct": 62.79
+        },
+        "gated_narrow": {
+          "n": 43,
+          "rmse": 12.122,
+          "mae": 11.695,
+          "bias": -11.695,
+          "actual_mean": 21.419,
+          "pred_mean": 9.723,
+          "same_side_acc_pct": 62.79
+        }
+      }
+    }
+  },
+  "AST": {
+    "baseline_version": "NBA_VK_v2_5yr_weighted_pruned52",
+    "classifier_version": "NBA_LOW_MINUTES_CLASSIFIER_v1",
+    "test_rows": 45587,
+    "league_low_minutes_prior": 0.151,
+    "players_using_prior_fallback": 7050,
+    "players_with_history": 898,
+    "p_low_summary": {
+      "mean": 0.5557,
+      "median": 0.6311,
+      "p95": 0.9853,
+      "high_risk_count": 24785
+    },
+    "gate_fired_count": 0,
+    "segments": {
+      "overall": {
+        "baseline": {
+          "n": 45587,
+          "rmse": 1.711,
+          "mae": 1.084,
+          "bias": 0.017,
+          "actual_mean": 1.518,
+          "pred_mean": 1.535,
+          "same_side_acc_pct": 78.93
+        },
+        "blend": {
+          "n": 45587,
+          "rmse": 1.77,
+          "mae": 1.061,
+          "bias": -0.284,
+          "actual_mean": 1.518,
+          "pred_mean": 1.234,
+          "same_side_acc_pct": 79.24
+        },
+        "gated_narrow": {
+          "n": 45587,
+          "rmse": 1.711,
+          "mae": 1.084,
+          "bias": 0.017,
+          "actual_mean": 1.518,
+          "pred_mean": 1.535,
+          "same_side_acc_pct": 78.93
+        }
+      },
+      "AST <10": {
+        "baseline": {
+          "n": 44913,
+          "rmse": 1.55,
+          "mae": 1.016,
+          "bias": 0.102,
+          "actual_mean": 1.368,
+          "pred_mean": 1.47,
+          "same_side_acc_pct": 77.95
+        },
+        "blend": {
+          "n": 44913,
+          "rmse": 1.574,
+          "mae": 0.982,
+          "bias": -0.194,
+          "actual_mean": 1.368,
+          "pred_mean": 1.174,
+          "same_side_acc_pct": 78.95
+        },
+        "gated_narrow": {
+          "n": 44913,
+          "rmse": 1.55,
+          "mae": 1.016,
+          "bias": 0.102,
+          "actual_mean": 1.368,
+          "pred_mean": 1.47,
+          "same_side_acc_pct": 77.95
+        }
+      },
+      "bench (L10<20)": {
+        "baseline": {
+          "n": 30312,
+          "rmse": 1.296,
+          "mae": 0.751,
+          "bias": 0.0,
+          "actual_mean": 0.745,
+          "pred_mean": 0.745,
+          "same_side_acc_pct": 76.85
+        },
+        "blend": {
+          "n": 30312,
+          "rmse": 1.395,
+          "mae": 0.719,
+          "bias": -0.313,
+          "actual_mean": 0.745,
+          "pred_mean": 0.433,
+          "same_side_acc_pct": 76.82
+        },
+        "gated_narrow": {
+          "n": 30312,
+          "rmse": 1.296,
+          "mae": 0.751,
+          "bias": 0.0,
+          "actual_mean": 0.745,
+          "pred_mean": 0.745,
+          "same_side_acc_pct": 76.85
+        }
+      },
+      "rotation (L10 18-28)": {
+        "baseline": {
+          "n": 10120,
+          "rmse": 2.021,
+          "mae": 1.525,
+          "bias": 0.057,
+          "actual_mean": 2.205,
+          "pred_mean": 2.262,
+          "same_side_acc_pct": 71.2
+        },
+        "blend": {
+          "n": 10120,
+          "rmse": 2.054,
+          "mae": 1.499,
+          "bias": -0.293,
+          "actual_mean": 2.205,
+          "pred_mean": 1.912,
+          "same_side_acc_pct": 72.29
+        },
+        "gated_narrow": {
+          "n": 10120,
+          "rmse": 2.021,
+          "mae": 1.525,
+          "bias": 0.057,
+          "actual_mean": 2.205,
+          "pred_mean": 2.262,
+          "same_side_acc_pct": 71.2
+        }
+      },
+      "starter (L10>=28)": {
+        "baseline": {
+          "n": 7195,
+          "rmse": 2.589,
+          "mae": 1.959,
+          "bias": 0.049,
+          "actual_mean": 3.868,
+          "pred_mean": 3.917,
+          "same_side_acc_pct": 73.0
+        },
+        "blend": {
+          "n": 7195,
+          "rmse": 2.595,
+          "mae": 1.962,
+          "bias": -0.184,
+          "actual_mean": 3.868,
+          "pred_mean": 3.684,
+          "same_side_acc_pct": 72.47
+        },
+        "gated_narrow": {
+          "n": 7195,
+          "rmse": 2.589,
+          "mae": 1.959,
+          "bias": 0.049,
+          "actual_mean": 3.868,
+          "pred_mean": 3.917,
+          "same_side_acc_pct": 73.0
+        }
+      },
+      "declining (L5-L20<-2)": {
+        "baseline": {
+          "n": 12775,
+          "rmse": 1.738,
+          "mae": 1.104,
+          "bias": 0.024,
+          "actual_mean": 1.283,
+          "pred_mean": 1.307,
+          "same_side_acc_pct": 77.39
+        },
+        "blend": {
+          "n": 12775,
+          "rmse": 1.821,
+          "mae": 1.052,
+          "bias": -0.35,
+          "actual_mean": 1.283,
+          "pred_mean": 0.933,
+          "same_side_acc_pct": 78.8
+        },
+        "gated_narrow": {
+          "n": 12775,
+          "rmse": 1.738,
+          "mae": 1.104,
+          "bias": 0.024,
+          "actual_mean": 1.283,
+          "pred_mean": 1.307,
+          "same_side_acc_pct": 77.39
+        }
+      },
+      "AST 10-20": {
+        "baseline": {
+          "n": 668,
+          "rmse": 6.062,
+          "mae": 5.575,
+          "bias": -5.571,
+          "actual_mean": 11.47,
+          "pred_mean": 5.899,
+          "same_side_acc_pct": 63.62
+        },
+        "blend": {
+          "n": 668,
+          "rmse": 6.741,
+          "mae": 6.252,
+          "bias": -6.249,
+          "actual_mean": 11.47,
+          "pred_mean": 5.221,
+          "same_side_acc_pct": 63.62
+        },
+        "gated_narrow": {
+          "n": 668,
+          "rmse": 6.062,
+          "mae": 5.575,
+          "bias": -5.571,
+          "actual_mean": 11.47,
+          "pred_mean": 5.899,
+          "same_side_acc_pct": 63.62
+        }
+      }
+    }
+  },
+  "3PM": {
+    "baseline_version": "NBA_VK_v2_5yr_weighted_pruned52",
+    "classifier_version": "NBA_LOW_MINUTES_CLASSIFIER_v1",
+    "test_rows": 45587,
+    "league_low_minutes_prior": 0.069,
+    "players_using_prior_fallback": 7050,
+    "players_with_history": 898,
+    "p_low_summary": {
+      "mean": 0.5557,
+      "median": 0.6311,
+      "p95": 0.9853,
+      "high_risk_count": 24785
+    },
+    "gate_fired_count": 0,
+    "segments": {
+      "overall": {
+        "baseline": {
+          "n": 45587,
+          "rmse": 1.085,
+          "mae": 0.671,
+          "bias": -0.003,
+          "actual_mean": 0.778,
+          "pred_mean": 0.775,
+          "same_side_acc_pct": 79.2
+        },
+        "blend": {
+          "n": 45587,
+          "rmse": 1.113,
+          "mae": 0.64,
+          "bias": -0.164,
+          "actual_mean": 0.778,
+          "pred_mean": 0.614,
+          "same_side_acc_pct": 79.13
+        },
+        "gated_narrow": {
+          "n": 45587,
+          "rmse": 1.085,
+          "mae": 0.671,
+          "bias": -0.003,
+          "actual_mean": 0.778,
+          "pred_mean": 0.775,
+          "same_side_acc_pct": 79.2
+        }
+      },
+      "3PM <10": {
+        "baseline": {
+          "n": 45578,
+          "rmse": 1.079,
+          "mae": 0.67,
+          "bias": -0.001,
+          "actual_mean": 0.776,
+          "pred_mean": 0.774,
+          "same_side_acc_pct": 79.19
+        },
+        "blend": {
+          "n": 45578,
+          "rmse": 1.107,
+          "mae": 0.639,
+          "bias": -0.162,
+          "actual_mean": 0.776,
+          "pred_mean": 0.613,
+          "same_side_acc_pct": 79.13
+        },
+        "gated_narrow": {
+          "n": 45578,
+          "rmse": 1.079,
+          "mae": 0.67,
+          "bias": -0.001,
+          "actual_mean": 0.776,
+          "pred_mean": 0.774,
+          "same_side_acc_pct": 79.19
+        }
+      },
+      "bench (L10<20)": {
+        "baseline": {
+          "n": 30312,
+          "rmse": 0.81,
+          "mae": 0.446,
+          "bias": -0.005,
+          "actual_mean": 0.388,
+          "pred_mean": 0.383,
+          "same_side_acc_pct": 77.07
+        },
+        "blend": {
+          "n": 30312,
+          "rmse": 0.857,
+          "mae": 0.405,
+          "bias": -0.175,
+          "actual_mean": 0.388,
+          "pred_mean": 0.213,
+          "same_side_acc_pct": 81.92
+        },
+        "gated_narrow": {
+          "n": 30312,
+          "rmse": 0.81,
+          "mae": 0.446,
+          "bias": -0.005,
+          "actual_mean": 0.388,
+          "pred_mean": 0.383,
+          "same_side_acc_pct": 77.07
+        }
+      },
+      "rotation (L10 18-28)": {
+        "baseline": {
+          "n": 10120,
+          "rmse": 1.372,
+          "mae": 1.012,
+          "bias": 0.004,
+          "actual_mean": 1.262,
+          "pred_mean": 1.266,
+          "same_side_acc_pct": 65.99
+        },
+        "blend": {
+          "n": 10120,
+          "rmse": 1.39,
+          "mae": 0.992,
+          "bias": -0.186,
+          "actual_mean": 1.262,
+          "pred_mean": 1.075,
+          "same_side_acc_pct": 67.71
+        },
+        "gated_narrow": {
+          "n": 10120,
+          "rmse": 1.372,
+          "mae": 1.012,
+          "bias": 0.004,
+          "actual_mean": 1.262,
+          "pred_mean": 1.266,
+          "same_side_acc_pct": 65.99
+        }
+      },
+      "starter (L10>=28)": {
+        "baseline": {
+          "n": 7195,
+          "rmse": 1.568,
+          "mae": 1.195,
+          "bias": -0.002,
+          "actual_mean": 1.786,
+          "pred_mean": 1.784,
+          "same_side_acc_pct": 64.67
+        },
+        "blend": {
+          "n": 7195,
+          "rmse": 1.571,
+          "mae": 1.187,
+          "bias": -0.109,
+          "actual_mean": 1.786,
+          "pred_mean": 1.678,
+          "same_side_acc_pct": 63.96
+        },
+        "gated_narrow": {
+          "n": 7195,
+          "rmse": 1.568,
+          "mae": 1.195,
+          "bias": -0.002,
+          "actual_mean": 1.786,
+          "pred_mean": 1.784,
+          "same_side_acc_pct": 64.67
+        }
+      },
+      "declining (L5-L20<-2)": {
+        "baseline": {
+          "n": 12775,
+          "rmse": 1.071,
+          "mae": 0.666,
+          "bias": 0.004,
+          "actual_mean": 0.673,
+          "pred_mean": 0.676,
+          "same_side_acc_pct": 77.4
+        },
+        "blend": {
+          "n": 12775,
+          "rmse": 1.108,
+          "mae": 0.614,
+          "bias": -0.198,
+          "actual_mean": 0.673,
+          "pred_mean": 0.474,
+          "same_side_acc_pct": 78.27
+        },
+        "gated_narrow": {
+          "n": 12775,
+          "rmse": 1.071,
+          "mae": 0.666,
+          "bias": 0.004,
+          "actual_mean": 0.673,
+          "pred_mean": 0.676,
+          "same_side_acc_pct": 77.4
+        }
+      }
+    }
+  },
+  "PRA": {
+    "baseline_version": "NBA_VK_v2_5yr_weighted_pruned52",
+    "classifier_version": "NBA_LOW_MINUTES_CLASSIFIER_v1",
+    "test_rows": 45587,
+    "league_low_minutes_prior": 1.19,
+    "players_using_prior_fallback": 7050,
+    "players_with_history": 898,
+    "p_low_summary": {
+      "mean": 0.5557,
+      "median": 0.6311,
+      "p95": 0.9853,
+      "high_risk_count": 24785
+    },
+    "gate_fired_count": 24785,
+    "segments": {
+      "overall": {
+        "baseline": {
+          "n": 45587,
+          "rmse": 8.518,
+          "mae": 5.773,
+          "bias": 0.103,
+          "actual_mean": 10.608,
+          "pred_mean": 10.712,
+          "same_side_acc_pct": 81.17
+        },
+        "blend": {
+          "n": 45587,
+          "rmse": 9.049,
+          "mae": 5.933,
+          "bias": -2.03,
+          "actual_mean": 10.608,
+          "pred_mean": 8.579,
+          "same_side_acc_pct": 79.92
+        },
+        "gated_narrow": {
+          "n": 45587,
+          "rmse": 8.88,
+          "mae": 5.801,
+          "bias": -0.963,
+          "actual_mean": 10.608,
+          "pred_mean": 9.645,
+          "same_side_acc_pct": 80.65
+        }
+      },
+      "PRA <10": {
+        "baseline": {
+          "n": 26349,
+          "rmse": 7.331,
+          "mae": 4.418,
+          "bias": 3.931,
+          "actual_mean": 1.457,
+          "pred_mean": 5.388,
+          "same_side_acc_pct": 54.93
+        },
+        "blend": {
+          "n": 26349,
+          "rmse": 5.832,
+          "mae": 3.287,
+          "bias": 2.316,
+          "actual_mean": 1.457,
+          "pred_mean": 3.773,
+          "same_side_acc_pct": 63.5
+        },
+        "gated_narrow": {
+          "n": 26349,
+          "rmse": 6.742,
+          "mae": 3.768,
+          "bias": 2.848,
+          "actual_mean": 1.457,
+          "pred_mean": 4.305,
+          "same_side_acc_pct": 63.5
+        }
+      },
+      "bench (L10<20)": {
+        "baseline": {
+          "n": 30312,
+          "rmse": 6.864,
+          "mae": 4.417,
+          "bias": 0.024,
+          "actual_mean": 5.418,
+          "pred_mean": 5.442,
+          "same_side_acc_pct": 78.49
+        },
+        "blend": {
+          "n": 30312,
+          "rmse": 7.689,
+          "mae": 4.541,
+          "bias": -2.214,
+          "actual_mean": 5.418,
+          "pred_mean": 3.204,
+          "same_side_acc_pct": 78.02
+        },
+        "gated_narrow": {
+          "n": 30312,
+          "rmse": 7.513,
+          "mae": 4.458,
+          "bias": -1.562,
+          "actual_mean": 5.418,
+          "pred_mean": 3.856,
+          "same_side_acc_pct": 78.0
+        }
+      },
+      "rotation (L10 18-28)": {
+        "baseline": {
+          "n": 10120,
+          "rmse": 10.139,
+          "mae": 7.944,
+          "bias": 0.311,
+          "actual_mean": 15.934,
+          "pred_mean": 16.245,
+          "same_side_acc_pct": 65.19
+        },
+        "blend": {
+          "n": 10120,
+          "rmse": 10.493,
+          "mae": 8.173,
+          "bias": -2.177,
+          "actual_mean": 15.934,
+          "pred_mean": 13.756,
+          "same_side_acc_pct": 63.91
+        },
+        "gated_narrow": {
+          "n": 10120,
+          "rmse": 10.18,
+          "mae": 7.935,
+          "bias": 0.124,
+          "actual_mean": 15.934,
+          "pred_mean": 16.058,
+          "same_side_acc_pct": 65.14
+        }
+      },
+      "starter (L10>=28)": {
+        "baseline": {
+          "n": 7195,
+          "rmse": 11.895,
+          "mae": 8.89,
+          "bias": 0.2,
+          "actual_mean": 25.597,
+          "pred_mean": 25.797,
+          "same_side_acc_pct": 71.91
+        },
+        "blend": {
+          "n": 7195,
+          "rmse": 11.962,
+          "mae": 9.11,
+          "bias": -1.33,
+          "actual_mean": 25.597,
+          "pred_mean": 24.267,
+          "same_side_acc_pct": 70.67
+        },
+        "gated_narrow": {
+          "n": 7195,
+          "rmse": 11.895,
+          "mae": 8.89,
+          "bias": 0.2,
+          "actual_mean": 25.597,
+          "pred_mean": 25.797,
+          "same_side_acc_pct": 71.91
+        }
+      },
+      "declining (L5-L20<-2)": {
+        "baseline": {
+          "n": 12775,
+          "rmse": 9.147,
+          "mae": 6.311,
+          "bias": 0.19,
+          "actual_mean": 8.972,
+          "pred_mean": 9.162,
+          "same_side_acc_pct": 78.36
+        },
+        "blend": {
+          "n": 12775,
+          "rmse": 9.791,
+          "mae": 6.322,
+          "bias": -2.412,
+          "actual_mean": 8.972,
+          "pred_mean": 6.56,
+          "same_side_acc_pct": 76.72
+        },
+        "gated_narrow": {
+          "n": 12775,
+          "rmse": 9.653,
+          "mae": 6.226,
+          "bias": -1.428,
+          "actual_mean": 8.972,
+          "pred_mean": 7.544,
+          "same_side_acc_pct": 77.01
+        }
+      },
+      "PRA 10-20": {
+        "baseline": {
+          "n": 8567,
+          "rmse": 6.493,
+          "mae": 5.177,
+          "bias": -1.248,
+          "actual_mean": 14.32,
+          "pred_mean": 13.071,
+          "same_side_acc_pct": 58.34
+        },
+        "blend": {
+          "n": 8567,
+          "rmse": 7.793,
+          "mae": 6.43,
+          "bias": -3.874,
+          "actual_mean": 14.32,
+          "pred_mean": 10.445,
+          "same_side_acc_pct": 57.63
+        },
+        "gated_narrow": {
+          "n": 8567,
+          "rmse": 7.657,
+          "mae": 6.166,
+          "bias": -2.386,
+          "actual_mean": 14.32,
+          "pred_mean": 11.934,
+          "same_side_acc_pct": 58.21
+        }
+      },
+      "PRA >=20": {
+        "baseline": {
+          "n": 10671,
+          "rmse": 11.977,
+          "mae": 9.597,
+          "bias": -8.262,
+          "actual_mean": 30.226,
+          "pred_mean": 21.963,
+          "same_side_acc_pct": 70.89
+        },
+        "blend": {
+          "n": 10671,
+          "rmse": 14.734,
+          "mae": 12.065,
+          "bias": -11.278,
+          "actual_mean": 30.226,
+          "pred_mean": 18.948,
+          "same_side_acc_pct": 68.09
+        },
+        "gated_narrow": {
+          "n": 10671,
+          "rmse": 13.326,
+          "mae": 10.528,
+          "bias": -9.233,
+          "actual_mean": 30.226,
+          "pred_mean": 20.992,
+          "same_side_acc_pct": 70.65
+        }
+      }
+    }
+  }
+}

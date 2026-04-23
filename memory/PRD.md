@@ -2464,3 +2464,91 @@ production-validated intervention:
 - 74 regression tests pass.
 - Ferrari endpoints HTTP 200 (NBA 10/10/10, MLB 9/9/10).
 - Production VK2 + scoring adapter bytes unchanged.
+
+---
+
+## Low-Minutes / DNP-Risk Classifier — Trained, Evaluated, REVERTED (2026-04-23)
+
+### Scope
+Built a dedicated binary classifier for `minutes_played ≤ 12` and tested
+the structural blend:
+```
+final_projection = (1 - p_low) * baseline + p_low * low_minutes_projection
+```
+against the 52-feature VK2 baseline on the 2024 hold-out.
+
+### Step 1 — Classifier (GOOD)
+`scripts/train_low_minutes_classifier.py` → `models/low_minutes_classifier.pkl`
+- 15 features (strict spec + situational home/rest/b2b).
+- Both `low_12` (≤12 min) and `very_low_8` (≤8 min) variants trained.
+- **AUC = 0.9124 overall**. AUC_bench = 0.879, AUC_rotation = 0.758,
+  AUC_starter = 0.665, AUC_declining = 0.872. Brier = 0.1163.
+  Well-calibrated (pred_mean 0.53 vs actual 0.51).
+- Top features: `min_played_L3_mean` 67.3%, `_L5_mean` 18.0%,
+  `_L10_std` 2.0%, `_L20_mean` 1.9%.
+
+### Step 3 — Blend (FAILED overall)
+Two variants evaluated:
+- **universal** (all stats, all samples)
+- **gated_narrow** (PTS/PRA only, fires when p_low ≥ 0.5)
+
+Gated_narrow results:
+
+| | PTS <10 | PRA <10 | PTS bench | PRA bench | PTS ≥20 | PRA ≥20 |
+|---|---:|---:|---:|---:|---:|---:|
+| Baseline RMSE/bias | 4.73/+2.29 | 7.33/+3.93 | 4.65/+0.04 | 6.86/+0.02 | 11.56/−9.32 | 11.98/−8.26 |
+| Gated RMSE/bias    | 4.50/+1.61 | 6.74/+2.85 | 5.01/−0.94 | 7.51/−1.56 | 12.39/−9.93 | 13.33/−9.23 |
+| Δ                  | **−0.23 / −30% bias ✓** | **−0.59 / −27% bias ✓** | **+0.36 ✗** | **+0.65 ✗** | **+0.83 ✗** | **+1.35 ✗** |
+
+### Why it fails
+Gate fires 70% of the time on actual PTS<10 cases (correct) but also
+9.8% of PTS≥20 cases (false positives). Concrete:
+- ✓ Player L10=7.0, actual=0, base=26.80 → gated 3.94 (−22.86) [WIN]
+- ✗ Player L10=19.6, actual=**39**, base=26.89 → gated 4.53 (−22.36) [LOSS]
+
+The wins and losses are symmetric in magnitude; PTS≥20 samples are
+~2× more common than PTS<10 → net aggregate loss.
+
+### Success-criteria scorecard
+| Criterion | Met? |
+|-----------|:----:|
+| Low-line bias meaningfully reduced on PTS<10 & PRA<10 | ✅ |
+| PTS<10 and PRA<10 RMSE improved | ✅ |
+| Bench-player error improved | ❌ (bench RMSE +0.36 PTS, +0.65 PRA) |
+| No major starter regression | ✅ (starter identical: gate doesn't fire) |
+| No major high-line regression | ❌ (PTS≥20 +0.83, PRA≥20 +1.35) |
+
+### Recommendation: **REVERT**
+Per spec ("If results are flat or worse: say so clearly, do NOT wire"):
+**no changes made** to `services/scoring/adapters/nba_scoring.py`.
+The existing `blend_bench` composition (14% low-line bias reduction,
+no aggregate regressions) remains the production-validated intervention.
+
+### Artifacts kept for future research
+- `scripts/train_low_minutes_classifier.py`
+- `scripts/eval_low_minutes_blend.py`
+- `models/low_minutes_classifier.pkl`
+- `reports/low_minutes_classifier_eval.json`
+- `reports/low_minutes_blend_eval.json`
+- `reports/low_minutes_blend_summary.md`
+- `tests/test_low_minutes_classifier.py` (8 regression tests including
+  a guard against accidental production wiring)
+
+### Possible next direction (NOT shipped this task)
+Use `p_low` at the **scoring layer**, not projection layer: widen sigma
+(confidence interval) for high-risk players. Asymmetrically penalizes
+OVER picks on bench lines without hurting projections on normal games.
+Different architecture — wait for user direction.
+
+### Collateral improvement kept from this task
+Added `collect_player_ids=True` option to
+`scripts/retrain_nba_vk2.py::build_training_matrix` so future
+per-player-aware evals don't need a separate re-sweep. Non-breaking
+(default is still 4-value return).
+
+### Verification
+- 84 regression tests pass (8 new low_minutes_classifier + 10 opponent_context +
+  others).
+- Ferrari endpoints HTTP 200 across NBA + MLB.
+- `vk2_*.pkl` + `nba_scoring.py` bytes unchanged.
+

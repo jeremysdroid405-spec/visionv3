@@ -1,0 +1,414 @@
+{
+  "low_12": {
+    "label": "low_12",
+    "overall": {
+      "n": 45587,
+      "pos_rate": 0.5107,
+      "auc": 0.9124,
+      "avg_precision": 0.9191,
+      "log_loss": 0.3756,
+      "brier": 0.1163,
+      "pred_mean": 0.5315
+    },
+    "thresholds": {
+      "0.30": {
+        "precision": 0.7642,
+        "recall": 0.9116,
+        "f1": 0.8314,
+        "tn": 15756,
+        "fp": 6548,
+        "fn": 2058,
+        "tp": 21225
+      },
+      "0.40": {
+        "precision": 0.8081,
+        "recall": 0.8802,
+        "f1": 0.8426,
+        "tn": 17438,
+        "fp": 4866,
+        "fn": 2790,
+        "tp": 20493
+      },
+      "0.50": {
+        "precision": 0.8434,
+        "recall": 0.8451,
+        "f1": 0.8443,
+        "tn": 18651,
+        "fp": 3653,
+        "fn": 3606,
+        "tp": 19677
+      },
+      "0.60": {
+        "precision": 0.8721,
+        "recall": 0.806,
+        "f1": 0.8378,
+        "tn": 19553,
+        "fp": 2751,
+        "fn": 4517,
+        "tp": 18766
+      },
+      "0.70": {
+        "precision": 0.8989,
+        "recall": 0.7588,
+        "f1": 0.8229,
+        "tn": 20316,
+        "fp": 1988,
+        "fn": 5617,
+        "tp": 17666
+      }
+    },
+    "calibration_deciles": [
+      {
+        "predicted": 0.0466,
+        "actual": 0.0559,
+        "delta": 0.0093
+      },
+      {
+        "predicted": 0.0795,
+        "actual": 0.0787,
+        "delta": -0.0007
+      },
+      {
+        "predicted": 0.1377,
+        "actual": 0.1213,
+        "delta": -0.0163
+      },
+      {
+        "predicted": 0.2458,
+        "actual": 0.2196,
+        "delta": -0.0262
+      },
+      {
+        "predicted": 0.4152,
+        "actual": 0.374,
+        "delta": -0.0412
+      },
+      {
+        "predicted": 0.6515,
+        "actual": 0.5919,
+        "delta": -0.0595
+      },
+      {
+        "predicted": 0.8472,
+        "actual": 0.8147,
+        "delta": -0.0325
+      },
+      {
+        "predicted": 0.9355,
+        "actual": 0.91,
+        "delta": -0.0255
+      },
+      {
+        "predicted": 0.9697,
+        "actual": 0.9592,
+        "delta": -0.0105
+      },
+      {
+        "predicted": 0.9867,
+        "actual": 0.9832,
+        "delta": -0.0036
+      }
+    ],
+    "segments": {
+      "bench (L10<20)": {
+        "n": 30312,
+        "pos_rate": 0.7019,
+        "auc": 0.8793,
+        "pred_mean": 0.7295,
+        "brier": 0.1257
+      },
+      "rotation (L10 18-28)": {
+        "n": 10120,
+        "pos_rate": 0.1911,
+        "auc": 0.7577,
+        "pred_mean": 0.2053,
+        "brier": 0.1273
+      },
+      "starter (L10>=28)": {
+        "n": 7195,
+        "pos_rate": 0.0884,
+        "auc": 0.665,
+        "pred_mean": 0.0905,
+        "brier": 0.0752
+      },
+      "declining (L5-L20<-2)": {
+        "n": 12775,
+        "pos_rate": 0.5849,
+        "auc": 0.8715,
+        "pred_mean": 0.6087,
+        "brier": 0.1404
+      }
+    },
+    "train_seconds": 1.08,
+    "samples_train": 150951,
+    "samples_test": 45587,
+    "top_features": [
+      [
+        "min_played_L3_mean",
+        0.6734057068824768
+      ],
+      [
+        "min_played_L5_mean",
+        0.18027018010616302
+      ],
+      [
+        "min_played_L10_std",
+        0.01946241781115532
+      ],
+      [
+        "min_played_L20_mean",
+        0.018473738804459572
+      ],
+      [
+        "games_played_last_10",
+        0.015940016135573387
+      ],
+      [
+        "back_to_back_flag",
+        0.014670469798147678
+      ],
+      [
+        "rest_days",
+        0.013407462276518345
+      ],
+      [
+        "min_played_L10_mean",
+        0.011086476035416126
+      ],
+      [
+        "min_played_L20_std",
+        0.010711380280554295
+      ],
+      [
+        "min_trend_L5_vs_L20",
+        0.009654943831264973
+      ],
+      [
+        "games_started_last_10",
+        0.009548481553792953
+      ],
+      [
+        "rotation_flag",
+        0.0062448144890367985
+      ],
+      [
+        "starter_flag",
+        0.0060483054257929325
+      ],
+      [
+        "home_flag",
+        0.0055794138461351395
+      ],
+      [
+        "bench_flag",
+        0.005496314726769924
+      ]
+    ]
+  },
+  "very_low_8": {
+    "label": "very_low_8",
+    "overall": {
+      "n": 45587,
+      "pos_rate": 0.4721,
+      "auc": 0.9106,
+      "avg_precision": 0.9048,
+      "log_loss": 0.3822,
+      "brier": 0.1177,
+      "pred_mean": 0.5106
+    },
+    "thresholds": {
+      "0.30": {
+        "precision": 0.7379,
+        "recall": 0.9102,
+        "f1": 0.8151,
+        "tn": 17109,
+        "fp": 6957,
+        "fn": 1932,
+        "tp": 19589
+      },
+      "0.40": {
+        "precision": 0.7859,
+        "recall": 0.8784,
+        "f1": 0.8296,
+        "tn": 18916,
+        "fp": 5150,
+        "fn": 2617,
+        "tp": 18904
+      },
+      "0.50": {
+        "precision": 0.8214,
+        "recall": 0.8471,
+        "f1": 0.8341,
+        "tn": 20102,
+        "fp": 3964,
+        "fn": 3290,
+        "tp": 18231
+      },
+      "0.60": {
+        "precision": 0.8519,
+        "recall": 0.8106,
+        "f1": 0.8307,
+        "tn": 21034,
+        "fp": 3032,
+        "fn": 4077,
+        "tp": 17444
+      },
+      "0.70": {
+        "precision": 0.8813,
+        "recall": 0.7635,
+        "f1": 0.8182,
+        "tn": 21853,
+        "fp": 2213,
+        "fn": 5089,
+        "tp": 16432
+      }
+    },
+    "calibration_deciles": [
+      {
+        "predicted": 0.0468,
+        "actual": 0.0504,
+        "delta": 0.0037
+      },
+      {
+        "predicted": 0.0783,
+        "actual": 0.0676,
+        "delta": -0.0108
+      },
+      {
+        "predicted": 0.1245,
+        "actual": 0.0957,
+        "delta": -0.0288
+      },
+      {
+        "predicted": 0.2122,
+        "actual": 0.1687,
+        "delta": -0.0436
+      },
+      {
+        "predicted": 0.3607,
+        "actual": 0.2854,
+        "delta": -0.0753
+      },
+      {
+        "predicted": 0.5961,
+        "actual": 0.5059,
+        "delta": -0.0902
+      },
+      {
+        "predicted": 0.8193,
+        "actual": 0.7521,
+        "delta": -0.0672
+      },
+      {
+        "predicted": 0.923,
+        "actual": 0.8785,
+        "delta": -0.0445
+      },
+      {
+        "predicted": 0.9619,
+        "actual": 0.9425,
+        "delta": -0.0194
+      },
+      {
+        "predicted": 0.9837,
+        "actual": 0.9755,
+        "delta": -0.0082
+      }
+    ],
+    "segments": {
+      "bench (L10<20)": {
+        "n": 30312,
+        "pos_rate": 0.6497,
+        "auc": 0.8832,
+        "pred_mean": 0.6974,
+        "brier": 0.1316
+      },
+      "rotation (L10 18-28)": {
+        "n": 10120,
+        "pos_rate": 0.1664,
+        "auc": 0.7715,
+        "pred_mean": 0.1944,
+        "brier": 0.1131
+      },
+      "starter (L10>=28)": {
+        "n": 7195,
+        "pos_rate": 0.0841,
+        "auc": 0.671,
+        "pred_mean": 0.099,
+        "brier": 0.0723
+      },
+      "declining (L5-L20<-2)": {
+        "n": 12775,
+        "pos_rate": 0.5477,
+        "auc": 0.8646,
+        "pred_mean": 0.5931,
+        "brier": 0.148
+      }
+    },
+    "train_seconds": 0.99,
+    "samples_train": 150951,
+    "samples_test": 45587,
+    "top_features": [
+      [
+        "min_played_L3_mean",
+        0.6725853085517883
+      ],
+      [
+        "min_played_L5_mean",
+        0.1516876220703125
+      ],
+      [
+        "games_played_last_10",
+        0.029217520728707314
+      ],
+      [
+        "min_played_L10_std",
+        0.021199526265263557
+      ],
+      [
+        "bench_flag",
+        0.020783059298992157
+      ],
+      [
+        "min_played_L20_mean",
+        0.015403731726109982
+      ],
+      [
+        "back_to_back_flag",
+        0.014156431891024113
+      ],
+      [
+        "rest_days",
+        0.0139321219176054
+      ],
+      [
+        "min_played_L20_std",
+        0.011264183558523655
+      ],
+      [
+        "min_played_L10_mean",
+        0.010819794610142708
+      ],
+      [
+        "min_trend_L5_vs_L20",
+        0.009880870580673218
+      ],
+      [
+        "games_started_last_10",
+        0.009317399002611637
+      ],
+      [
+        "starter_flag",
+        0.0086872149258852
+      ],
+      [
+        "rotation_flag",
+        0.005605097860097885
+      ],
+      [
+        "home_flag",
+        0.005460148677229881
+      ]
+    ]
+  }
+}

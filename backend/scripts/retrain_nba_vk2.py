@@ -370,8 +370,11 @@ def build_features(history_logs, target_game=None, adv_map=None,
 
 # ---------- Data assembly per stat (single pass over players) ----------
 def build_training_matrix(stat_label, stat_field, adv_map=None,
-                          target_schema=None, opp_store=None):
-    """Returns (X, y, sample_weights, feature_cols).
+                          target_schema=None, opp_store=None,
+                          collect_player_ids=False):
+    """Returns (X, y, sample_weights, feature_cols) — and, when
+    `collect_player_ids=True`, a fifth array `sample_player_ids`
+    aligned row-for-row with X/y.
 
     `target_schema` (optional): passed through to `build_features` so
     the feature builder short-circuits columns that will be discarded
@@ -396,6 +399,7 @@ def build_training_matrix(stat_label, stat_field, adv_map=None,
 
     feature_cols = None
     X_chunks, y_chunks, w_chunks = [], [], []
+    pid_chunks = []  # only populated when collect_player_ids=True
     total_samples = 0
     players_used = 0
 
@@ -406,7 +410,7 @@ def build_training_matrix(stat_label, stat_field, adv_map=None,
         if len(logs_chrono) < MIN_GAMES_PER_PLAYER:
             return
         # Produce samples by sweeping forward
-        px, py, pw = [], [], []
+        px, py, pw, ppid = [], [], [], []
         for i in range(5, len(logs_chrono)):
             tgt = logs_chrono[i]
             if tgt.get('season') not in SEASON_WEIGHTS:
@@ -438,10 +442,14 @@ def build_training_matrix(stat_label, stat_field, adv_map=None,
             px.append(row)
             py.append(tval)
             pw.append(SEASON_WEIGHTS.get(tgt.get('season'), 0.4))
+            if collect_player_ids:
+                ppid.append(pid)
         if px:
             X_chunks.append(np.asarray(px, dtype=np.float32))
             y_chunks.append(np.asarray(py, dtype=np.float32))
             w_chunks.append(np.asarray(pw, dtype=np.float32))
+            if collect_player_ids:
+                pid_chunks.append(np.asarray(ppid, dtype=np.int64))
 
     cursor = coll.aggregate(pipeline, allowDiskUse=True, batchSize=5000)
     seen_players = 0
@@ -463,6 +471,8 @@ def build_training_matrix(stat_label, stat_field, adv_map=None,
         players_used += 1
 
     if not X_chunks:
+        if collect_player_ids:
+            return None, None, None, None, None
         return None, None, None, None
 
     X = np.vstack(X_chunks)
@@ -473,6 +483,9 @@ def build_training_matrix(stat_label, stat_field, adv_map=None,
     log.info(f'[{stat_label}] matrix ready: X={X.shape}  y={y.shape}  '
              f'players={players_used}  samples={total_samples}  '
              f'weighted_sum={float(w.sum()):.1f}  elapsed={elapsed:.1f}s')
+    if collect_player_ids:
+        pids = np.concatenate(pid_chunks) if pid_chunks else np.array([], dtype=np.int64)
+        return X, y, w, feature_cols, pids
     return X, y, w, feature_cols
 
 
