@@ -119,14 +119,16 @@ _NBA_FRONT_LINES_BASE = {
     "edge_gate":     {"min": 5.0},
 }
 _NBA_WAR_ZONE_BASE = {
-    "coverage_gate": {"min_books": 1},
-    # CV is NOT gated in War Zone (2026-04-23 design decision).
-    # War Zone must not penalize consistency — if a prop qualifies by
-    # odds/tier logic, low or missing CV cannot disqualify it.
-    # `services.mlb_tier_sorter.war_zone_cv_modifier` still adjusts the
-    # RANKING score (informational only); see `scoring_stack.compute_tier`.
-    "ceiling_gate":  {"min": 20.0},
-    "edge_gate":     {"min": 10.0},
+    # All gates removed 2026-04-23 per user directive: "Remove all
+    # filters from war zone". Every War Zone-eligible prop (by odds
+    # bucket / demon qualification) now passes through to the board
+    # and is ranked purely by vision_score. No ceiling floor, no
+    # edge floor, no coverage check — raw exposure.
+    #
+    # The `__pass_all__` sentinel tells the engine this is an
+    # intentional empty config (not a missing-config bug). Engine
+    # short-circuits to passed=True, gates_passed reason_code.
+    "__pass_all__": True,
 }
 
 

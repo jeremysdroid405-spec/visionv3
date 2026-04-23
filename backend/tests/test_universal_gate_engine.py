@@ -71,24 +71,22 @@ def test_nba_safe_haven_hit_rate_failure_has_canonical_reason():
 
 
 def test_nba_war_zone_does_not_gate_cv():
-    # 2026-04-23 design decision: War Zone must NOT penalize consistency.
-    # Previously War Zone required cv >= 0.45 ("min_cv_floor"); that floor
-    # was removed. Props with low, high, or missing CV must all be
-    # evaluated purely on coverage / ceiling / edge for War Zone.
+    # 2026-04-23: War Zone is now a pass-all tier (explicit
+    # `__pass_all__: True` sentinel). Every War Zone-eligible prop
+    # (by odds bucket) passes the gate engine regardless of CV, HR,
+    # TP, edge, or ceiling. Ranking happens purely via vision_score.
 
-    # Very low CV — must PASS War Zone (previously would have failed the floor).
+    # Very low CV — must PASS (previously would have failed the floor).
     low = get_engine().evaluate(NormalizedMetrics(
         sport="nba", tier="war_zone", stat_family="pts", side="OVER",
         reference_book="dk", reference_odds=200,
         book_count=1, ceiling_rate=25.0, cv=0.10, edge_pct=20.0,
     ))
     assert low.passed is True
-    assert "cv_gate" not in low.passed_gates
-    assert "cv_gate" not in low.failed_gates
+    assert low.gate_summary == "PASS"
     assert "cv_gate" not in low.gate_details
 
-    # Missing CV — must PASS (alt-line props have no CV; they must not be
-    # disqualified because of that).
+    # Missing CV — must PASS.
     null_cv = get_engine().evaluate(NormalizedMetrics(
         sport="nba", tier="war_zone", stat_family="pts", side="OVER",
         reference_book="dk", reference_odds=300,
@@ -97,7 +95,7 @@ def test_nba_war_zone_does_not_gate_cv():
     assert null_cv.passed is True
     assert "cv_gate" not in null_cv.gate_details
 
-    # High CV also still passes (unchanged).
+    # High CV also passes.
     hi = get_engine().evaluate(NormalizedMetrics(
         sport="nba", tier="war_zone", stat_family="pts", side="OVER",
         reference_book="dk", reference_odds=200,
@@ -105,6 +103,17 @@ def test_nba_war_zone_does_not_gate_cv():
     ))
     assert hi.passed is True
     assert "cv_gate" not in hi.gate_details
+
+    # Zero-ceiling, zero-edge prop — under a pass-all config it
+    # STILL passes. Previously the ceiling ≥20 + edge ≥10 gates
+    # would have rejected this.
+    pathological = get_engine().evaluate(NormalizedMetrics(
+        sport="nba", tier="war_zone", stat_family="pts", side="OVER",
+        reference_book="dk", reference_odds=200,
+        book_count=0, ceiling_rate=0.0, cv=0.10, edge_pct=0.0,
+    ))
+    assert pathological.passed is True
+    assert pathological.gate_details == {}
 
 
 def test_nba_cv_cap_override_from_adapter():

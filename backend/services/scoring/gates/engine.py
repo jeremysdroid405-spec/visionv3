@@ -205,6 +205,23 @@ class UniversalGateEngine:
     def evaluate(self, metrics: NormalizedMetrics) -> GateEvalResult:
         cfg = resolve_thresholds(metrics.sport, metrics.tier, metrics.stat_family)
 
+        # Explicit "pass-all" opt-out (2026-04-23): a tier config may
+        # declare `__pass_all__: True` to signal that the operator has
+        # intentionally removed every gate. This bypasses the
+        # fail-closed behaviour below and marks every prop eligible.
+        # Distinguishable from an accidentally-missing config by the
+        # presence of the sentinel key.
+        if cfg.get("__pass_all__") is True:
+            return GateEvalResult(
+                sport=metrics.sport, tier=metrics.tier,
+                stat_family=metrics.stat_family,
+                gate_summary="PASS",
+                passed=True,
+                reason_code=ReasonCode.GATES_PASSED,
+                reference_book=metrics.reference_book,
+                reference_odds=metrics.reference_odds,
+            )
+
         # Empty config ⇒ nothing to evaluate. Treat as "no gate framework
         # configured for this sport yet" — fail closed with a dedicated
         # reason so ops can see the missing config in the score doc.
