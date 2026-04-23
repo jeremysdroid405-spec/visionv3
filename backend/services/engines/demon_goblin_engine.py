@@ -1490,6 +1490,12 @@ class DemonGoblinEngine:
                                             sharp_prices[lookup_key]["draftkings_price"] = price
                                         elif bm_key == "fanduel":
                                             sharp_prices[lookup_key]["fanduel_price"] = price
+                                        elif bm_key == "betonlineag":
+                                            sharp_prices[lookup_key].setdefault("betonline_price", None)
+                                            sharp_prices[lookup_key]["betonline_price"] = price
+                                        elif bm_key == "betmgm":
+                                            sharp_prices[lookup_key].setdefault("betmgm_price", None)
+                                            sharp_prices[lookup_key]["betmgm_price"] = price
                                             
                             logger.info(f"  [SHARP] {event.get('away_team')} @ {event.get('home_team')}: {len(sharp_prices)} prices")
                     except Exception as e:
@@ -1533,8 +1539,16 @@ class DemonGoblinEngine:
                                     sharp_data = sharp_prices.get(lookup_key, {})
                                     draftkings_price = sharp_data.get("draftkings_price")
                                     fanduel_price = sharp_data.get("fanduel_price")
+                                    betonline_price = sharp_data.get("betonline_price")
+                                    betmgm_price = sharp_data.get("betmgm_price")
                                     sharp_price = draftkings_price if draftkings_price is not None else fanduel_price
                                     sharp_source = "draftkings" if draftkings_price is not None else ("fanduel" if fanduel_price is not None else None)
+
+                                    # Opposite-side lookup for the multi-book
+                                    # de-vig TP engine (2026-04-22).
+                                    opp_dir = "under" if direction == "over" else "over"
+                                    opp_lookup_key = (player_name, market_key, line, opp_dir)
+                                    opp_sharp_data = sharp_prices.get(opp_lookup_key, {}) or {}
                                     
                                     # Classification logic
                                     if is_alternate_market:
@@ -1559,8 +1573,18 @@ class DemonGoblinEngine:
                                         # Sharp book prices
                                         "draftkings_price": draftkings_price,
                                         "fanduel_price": fanduel_price,
+                                        "betonline_price": betonline_price,
+                                        "betmgm_price": betmgm_price,
                                         "sharp_price": sharp_price,
-                                        "sharp_source": sharp_source
+                                        "sharp_source": sharp_source,
+                                        # Opposite-side book prices for
+                                        # the multi-book de-vig TP engine
+                                        # (2026-04-22). None when the book
+                                        # didn't quote the opposite side.
+                                        "dk_odds_opp": opp_sharp_data.get("draftkings_price"),
+                                        "fd_odds_opp": opp_sharp_data.get("fanduel_price"),
+                                        "bol_odds_opp": opp_sharp_data.get("betonline_price"),
+                                        "mgm_odds_opp": opp_sharp_data.get("betmgm_price"),
                                     }
                                     
                                     if player_name not in lines_by_player:

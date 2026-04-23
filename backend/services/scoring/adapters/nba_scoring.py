@@ -104,6 +104,7 @@ class _NBAGateSorter:
                 results["gate_tp"] = {
                     "threshold": gates_def["min_tp"], "value": tp,
                     "passed": tp is not None and tp >= gates_def["min_tp"],
+                    "tp_unavailable": tp is None,
                     "source": "market_implied_over" if side == "OVER" else "market_implied",
                 }
         failed = [k for k, v in results.items() if not v["passed"]]
@@ -243,6 +244,12 @@ class NBAScoringAdapter(ScoringAdapter):
         from services.scoring.coverage_filter import filter_priceable
         priceable, coverage_stats = filter_priceable(props, sport="nba")
         self.last_coverage_stats = coverage_stats
+
+        # Multi-book de-vig TP engine companion map (2026-04-22).
+        # Built over the full props list so UNDER-side TP still has an
+        # OVER companion even when the OVER was pp_only-filtered.
+        from services.scoring.tp_engine import build_companion_map
+        self._companion_map = build_companion_map(props)
         return priceable
 
     def get_sorter(self, db):
@@ -677,28 +684,22 @@ class NBAScoringAdapter(ScoringAdapter):
         # Prices on dg_live_props are OVER-side American odds, so convert and
         # flip for UNDER picks to keep the gate mathematically side-aware
         # (mirrors the existing side-aware fix applied to gate_hit_rate).
-        # Computed BEFORE the p_true ladder so the "fair" rung has tp.
-        def _amer(o):
-            if o is None: return None
-            try: o = float(o)
-            except (TypeError, ValueError): return None
-            return abs(o)/(abs(o)+100.0) if o < 0 else 100.0/(o+100.0)
-        dk_p = _amer(dk_price)
-        fd_p = _amer(fd_price)
-        if dk_p is not None and fd_p is not None:
-            tp_over = round(((dk_p + fd_p) / 2.0) * 100.0, 1)
-        elif dk_p is not None:
-            tp_over = round(dk_p * 100.0, 1)
-        elif fd_p is not None:
-            tp_over = round(fd_p * 100.0, 1)
-        else:
-            tp_over = None
-        # Flip to the recommended side so gate_tp and edge_pct reflect
-        # the market's implied probability for the SIDE we are picking.
-        if tp_over is None:
-            tp = None  # no reference market → fair rung disabled, tp default 50.0 for gates
-        else:
-            tp = round(100.0 - tp_over, 1) if side == "UNDER" else tp_over
+        # ---- Multi-book de-vigged TP (2026-04-22) ----------------------
+        # Single-prop path using `{book}_odds_opp` captured at extract
+        # time. Per-book de-vigged average across every book that
+        # quotes BOTH sides of the exact line. No 50% fallback.
+        from services.scoring.tp_engine import compute_tp
+        tp_result = compute_tp(prop=prop, side=side)
+        tp = tp_result["tp"]
+        tp_books_used = tp_result["tp_books_used"]
+        tp_books_list = tp_result["tp_books_list"]
+        tp_method = tp_result["tp_method"]
+        tp_unavailable = tp is None
+        prop["tp"] = tp
+        prop["tp_books_used"] = tp_books_used
+        prop["tp_books_list"] = tp_books_list
+        prop["tp_method"] = tp_method
+        prop["tp_unavailable"] = tp_unavailable
 
         # Select active method via the shared p_true ladder helper.
         # Canonical order: model → hit_rate → vk2 → fair.
@@ -718,14 +719,15 @@ class NBAScoringAdapter(ScoringAdapter):
             preferred_method=active_method_early,
         )
 
-        # Gates/edge keep the legacy tp default of 50.0 when no reference
-        # market exists, preserving behaviour for downstream gate checks.
-        tp_for_gates = tp if tp is not None else 50.0
-
-        if p_model is not None:
-            edge_pct = round(p_model * 100.0 - tp_for_gates, 1)
+        # Multi-book de-vig TP contract (2026-04-22): no 50% fallback.
+        # When TP is unavailable:
+        #   * edge_pct = None (not computable without a reference market)
+        #   * gates receive tp=None, causing the TP gate to fail hard
+        #     (see tiering/gate logic).
+        if tp is None or p_model is None:
+            edge_pct = None
         else:
-            edge_pct = 0.0
+            edge_pct = round(p_model * 100.0 - tp, 1)
 
         books = 1 + int(dk_layer is not None) + int(mgm_layer is not None) + int(sharp_layer is not None)
 
@@ -745,7 +747,7 @@ class NBAScoringAdapter(ScoringAdapter):
             pp_layer=pp_layer, dk_layer=dk_layer, mgm_layer=mgm_layer,
             sharp_layer=sharp_layer,
             p_model=p_model, cv=cv, hit_rate=hit_rate, edge_pct=edge_pct,
-            tp=tp_for_gates, ceiling_rate=ceiling_rate,
+            tp=tp, ceiling_rate=ceiling_rate,
             books_available_count=books,
             raw_prop=prop,
             pp_combo_multiplier=pp_multiplier,

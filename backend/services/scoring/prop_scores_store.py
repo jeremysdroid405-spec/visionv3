@@ -62,6 +62,16 @@ _SCORE_OUTPUT_FIELDS = (
     # ranking score. Stamped by
     # `services/mlb_tier_sorter.war_zone_cv_modifier`.
     "war_zone_cv_modifier",
+    # Multi-book de-vig TP engine (2026-04-22). Replaces the legacy
+    # avg(DK,FD) / avg(DK,MGM) implied-prob TP. Fields:
+    #   tp               — final de-vigged true probability (0..100) or None
+    #   edge_pct         — p_model*100 − tp; None if tp is None
+    #   tp_books_used    — count of books with BOTH sides available
+    #   tp_books_list    — ["DK","FD","MGM","BOL"]
+    #   tp_method        — "multi_book_devig_v1"
+    #   tp_unavailable   — True when no book had both sides (hard-fails gate_tp)
+    "tp", "edge_pct", "tp_books_used", "tp_books_list", "tp_method",
+    "tp_unavailable",
 )
 
 _IDENTITY_FIELDS = (

@@ -637,6 +637,11 @@ class UniversalOddsSyncService:
                     }
         
         # --- Pass 2: Attach DK/FD/BOL/MGM/Sharp as independent layers (exact match only) ---
+        # 2026-04-22: Capture BOTH over and under book prices per line
+        # so the multi-book de-vig TP engine can pair them at scoring
+        # time. Previously only the PP-anchored side was stored, which
+        # meant ~96% of MLB / ~82% of NBA lines had no UNDER companion
+        # and so couldn't de-vig.
         for bookmaker in odds_data.get("bookmakers", []):
             bm_key = bookmaker.get("key", "unknown")
             if bm_key == "prizepicks":
@@ -660,34 +665,46 @@ class UniversalOddsSyncService:
                     outcome_name = outcome.get("name", "").lower()
                     side = "OVER" if "over" in outcome_name else "UNDER"
                     price = outcome.get("price", -110)
-                    
                     event_id = odds_data.get("event_id", "")
+
+                    # Attach the book's price to the PP-anchored row for
+                    # this side (legacy behavior).
                     canon_key = f"{sport}|{event_id}|{player_name}|{stat_type}|{float(line)}|{side}"
-                    
-                    # EXACT MATCH ONLY — if no canonical prop exists, skip
-                    if canon_key not in canonical:
-                        continue
-                    
-                    layer = {
-                        "book": bm_key,
-                        "line": float(line),
-                        "odds": price,
-                        "fetched_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                    
-                    target = canonical[canon_key]
-                    
-                    if bm_key == "draftkings":
-                        target["dk_layer"] = layer
-                    elif bm_key == "fanduel":
-                        target["fd_layer"] = layer
-                    elif bm_key == "betonlineag":
-                        target["bol_layer"] = layer
-                    elif bm_key == "betmgm":
-                        target["mgm_layer"] = layer
-                    
-                    if is_sharp and target["sharp_layer"] is None:
-                        target["sharp_layer"] = layer
+                    if canon_key in canonical:
+                        layer = {
+                            "book": bm_key,
+                            "line": float(line),
+                            "odds": price,
+                            "fetched_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        target = canonical[canon_key]
+                        if bm_key == "draftkings":
+                            target["dk_layer"] = layer
+                        elif bm_key == "fanduel":
+                            target["fd_layer"] = layer
+                        elif bm_key == "betonlineag":
+                            target["bol_layer"] = layer
+                        elif bm_key == "betmgm":
+                            target["mgm_layer"] = layer
+                        if is_sharp and target["sharp_layer"] is None:
+                            target["sharp_layer"] = layer
+
+                    # Also stamp this book's price on the OPPOSITE-side
+                    # canonical row (if it exists) as `_opp_odds` so the
+                    # TP engine can pair both sides of the same book
+                    # without needing a separate UNDER row in live_props.
+                    opp_side = "UNDER" if side == "OVER" else "OVER"
+                    opp_key = f"{sport}|{event_id}|{player_name}|{stat_type}|{float(line)}|{opp_side}"
+                    if opp_key in canonical:
+                        opp_target = canonical[opp_key]
+                        opp_field = {
+                            "draftkings": "dk_odds_opp",
+                            "fanduel":    "fd_odds_opp",
+                            "betonlineag": "bol_odds_opp",
+                            "betmgm":     "mgm_odds_opp",
+                        }.get(bm_key)
+                        if opp_field:
+                            opp_target[opp_field] = price
         
         # --- Pass 3: Flatten canonical records into prop documents ---
         props = []
@@ -771,6 +788,14 @@ class UniversalOddsSyncService:
                 "sharp_line": sharp["line"] if sharp else None,
                 "sharp_odds": sharp_odds,
                 "sharp_book": sharp["book"] if sharp else None,
+                # Opposite-side prices per book (2026-04-22). Captured
+                # during Pass 2 so the multi-book de-vig TP engine can
+                # pair both sides of the same book without needing a
+                # separate companion row in live_props.
+                "dk_odds_opp": rec.get("dk_odds_opp"),
+                "fd_odds_opp": rec.get("fd_odds_opp"),
+                "bol_odds_opp": rec.get("bol_odds_opp"),
+                "mgm_odds_opp": rec.get("mgm_odds_opp"),
                 # Structured layers (full objects)
                 "pp_layer": pp,
                 "dk_layer": dk,

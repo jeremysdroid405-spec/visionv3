@@ -51,6 +51,15 @@ class MLBScoringAdapter(ScoringAdapter):
         priceable, coverage_stats = filter_priceable(props, sport="mlb")
         # Attach stats for the caller (pipeline logs / sync-result JSON).
         self.last_coverage_stats = coverage_stats
+
+        # Multi-book de-vig TP engine (2026-04-22). Build the companion
+        # (OVER ↔ UNDER) map over the FULL props list — not just the
+        # priceable subset — so UNDER picks whose OVER companion was
+        # pp_only-dropped still get their UNDER-side reference. The
+        # companion map is attached to the instance so build_context
+        # can reuse it without re-scanning live_props per prop.
+        from services.scoring.tp_engine import build_companion_map
+        self._companion_map = build_companion_map(props)
         return priceable
 
     def get_sorter(self, db):
@@ -158,24 +167,24 @@ class MLBScoringAdapter(ScoringAdapter):
         if mgm_layer: books += 1
         if sharp_layer: books += 1
 
-        # tp + edge_pct (MLB convention: tp based on reference-market implied prob)
-        def _amer_to_prob(o):
-            if o is None: return None
-            try:
-                o = float(o)
-            except (TypeError, ValueError):
-                return None
-            return abs(o) / (abs(o) + 100.0) if o < 0 else 100.0 / (o + 100.0)
-        dk_p = _amer_to_prob(dk_layer.get("odds") if dk_layer else None)
-        mgm_p = _amer_to_prob(mgm_layer.get("odds") if mgm_layer else None)
-        if dk_p is not None and mgm_p is not None:
-            tp = round(((dk_p + mgm_p) / 2.0) * 100.0, 1)
-        elif dk_p is not None:
-            tp = round(dk_p * 100.0, 1)
-        elif mgm_p is not None:
-            tp = round(mgm_p * 100.0, 1)
-        else:
-            tp = None  # No reference market → "fair" rung cannot fire
+        # ---- Multi-book de-vigged TP (2026-04-22) ----------------------
+        # Single-prop path using `{book}_odds_opp` captured at extract
+        # time — no companion-row lookup needed. Mathematically correct
+        # per-book de-vig average across every book (DK/FD/MGM/BOL)
+        # that quotes BOTH sides of this exact line. No 50% fallback.
+        from services.scoring.tp_engine import compute_tp
+        side_for_tp = (prop.get("recommendation") or "OVER").upper()
+        tp_result = compute_tp(prop=prop, side=side_for_tp)
+        tp = tp_result["tp"]
+        tp_books_used = tp_result["tp_books_used"]
+        tp_books_list = tp_result["tp_books_list"]
+        tp_method = tp_result["tp_method"]
+        tp_unavailable = tp is None
+        prop["tp"] = tp
+        prop["tp_books_used"] = tp_books_used
+        prop["tp_books_list"] = tp_books_list
+        prop["tp_method"] = tp_method
+        prop["tp_unavailable"] = tp_unavailable
 
         # ---- Shared p_true ladder (carbon-copy with NBA) ---------------
         # Ladder order: model → hit_rate → vk2 → fair
@@ -192,10 +201,16 @@ class MLBScoringAdapter(ScoringAdapter):
             tp=tp,  # enables the "fair" rung when a reference market exists
         )
 
-        if p_model is not None:
-            edge_pct = round((p_model * 100.0) - (tp if tp is not None else 50.0), 1)
+        # Multi-book de-vig TP contract (2026-04-22): no 50% fallback.
+        # edge_pct is None when tp or model-prob are both missing so
+        # downstream gates receive an explicit "unknown" signal rather
+        # than a fabricated 0.0.
+        if tp is None or (p_model is None and hit_rate is None):
+            edge_pct = None
+        elif p_model is not None:
+            edge_pct = round((p_model * 100.0) - tp, 1)
         else:
-            edge_pct = round((hit_rate or 0) - (tp if tp is not None else 50.0), 1)
+            edge_pct = round((hit_rate or 0) - tp, 1)
 
         # MLB has no verified PP multiplier data yet
         return ScoringContext(
@@ -220,7 +235,7 @@ class MLBScoringAdapter(ScoringAdapter):
             cv=cv,
             hit_rate=hit_rate,
             edge_pct=edge_pct,
-            tp=tp if tp is not None else 50.0,
+            tp=tp,
             ceiling_rate=ceiling_rate,
             books_available_count=books,
             raw_prop=prop,

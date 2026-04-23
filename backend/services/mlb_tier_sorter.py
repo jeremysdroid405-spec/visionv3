@@ -589,8 +589,13 @@ class MLBTierSorter:
             gate_results["gate3_edge"]["skipped"] = True
         
         # Gate 4: TP Check (required)
+        # 2026-04-22: when TP is None (multi-book de-vig returned no
+        # valid books), this gate HARD FAILS. No 50% fallback.
         required_count += 1
-        if tp_odds >= gates["min_tp"]:
+        if tp_odds is None:
+            gate_results["gate4_tp"]["value"] = None
+            gate_results["gate4_tp"]["tp_unavailable"] = True
+        elif tp_odds >= gates["min_tp"]:
             gate_results["gate4_tp"]["passed"] = True
             passed_count += 1
         
@@ -647,7 +652,11 @@ class MLBTierSorter:
             gate_results["gate3_edge"]["skipped"] = True
         
         # Gate 4: TP Check
-        if tp_odds >= gates["min_tp"]:
+        # 2026-04-22: None → hard fail (multi-book de-vig TP contract).
+        if tp_odds is None:
+            gate_results["gate4_tp"]["value"] = None
+            gate_results["gate4_tp"]["tp_unavailable"] = True
+        elif tp_odds >= gates["min_tp"]:
             gate_results["gate4_tp"]["passed"] = True
         
         all_passed = all(g["passed"] for g in gate_results.values())

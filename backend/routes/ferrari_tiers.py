@@ -1110,6 +1110,15 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     prop["coverage_class"] = score.get("coverage_class")
     prop["books_anchored"] = score.get("books_anchored")
 
+    # Multi-book de-vig TP engine (2026-04-22) — surface tp/edge and
+    # provenance so the UI can show "TP 57.3% · edge +12.1 · 3 books".
+    prop["tp"] = score.get("tp")
+    prop["edge_pct"] = score.get("edge_pct")
+    prop["tp_books_used"] = score.get("tp_books_used")
+    prop["tp_books_list"] = score.get("tp_books_list")
+    prop["tp_method"] = score.get("tp_method")
+    prop["tp_unavailable"] = score.get("tp_unavailable")
+
     # Side-aware VK probabilities from p_true_active (percent)
     p_true = score.get("p_true_active")
     if p_true is not None:
@@ -1346,6 +1355,14 @@ async def _get_mlb_tier_picks_from_scores(
         pick["book_count"] = sc.get("book_count")
         pick["coverage_class"] = sc.get("coverage_class")
         pick["books_anchored"] = sc.get("books_anchored")
+
+        # Multi-book de-vig TP engine (2026-04-22).
+        pick["tp"] = sc.get("tp")
+        pick["edge_pct"] = sc.get("edge_pct")
+        pick["tp_books_used"] = sc.get("tp_books_used")
+        pick["tp_books_list"] = sc.get("tp_books_list")
+        pick["tp_method"] = sc.get("tp_method")
+        pick["tp_unavailable"] = sc.get("tp_unavailable")
 
         # Stash the score doc so any later post-overlay pass can re-read
         # authoritative fields, parallel to the NBA `_nba_score_doc` stash.

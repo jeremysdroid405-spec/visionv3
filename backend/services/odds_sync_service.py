@@ -247,6 +247,33 @@ class OddsSyncService:
                     lookup_key = (player_name, market_key, line, direction)
                     sharp_data = sharp_prices.get(lookup_key, {}) or {}
 
+                    # Opposite-side lookup (2026-04-22) — for the multi-
+                    # book de-vig TP engine. Find the opposite direction
+                    # in the sharp_prices dict and stamp per-book opp
+                    # prices so the scoring adapter can pair both sides
+                    # of each book at TP time.
+                    opp_dir = "under" if direction == "over" else "over"
+                    opp_lookup_key = (player_name, market_key, line, opp_dir)
+                    opp_sharp_data = sharp_prices.get(opp_lookup_key, {}) or {}
+                    if is_alternate:
+                        opp_std_key = (
+                            player_name,
+                            market_key.replace("_alternate", ""),
+                            line,
+                            opp_dir,
+                        )
+                        opp_std_data = sharp_prices.get(opp_std_key, {}) or {}
+                        opp_sharp_data = {
+                            "draftkings_price": opp_sharp_data.get("draftkings_price")
+                                or opp_std_data.get("draftkings_price"),
+                            "fanduel_price": opp_sharp_data.get("fanduel_price")
+                                or opp_std_data.get("fanduel_price"),
+                            "betonline_price": opp_sharp_data.get("betonline_price")
+                                or opp_std_data.get("betonline_price"),
+                            "betmgm_price": opp_sharp_data.get("betmgm_price")
+                                or opp_std_data.get("betmgm_price"),
+                        }
+
                     # Per-book fallback: if the alt-market lookup is missing
                     # a book, fall back to the standard-market lookup at the
                     # same line.  Matches the "pulling standard lines as well"
@@ -311,6 +338,13 @@ class OddsSyncService:
                     prop["betmgm_price"] = betmgm_price
                     prop["sort_price"] = sort_price
                     prop["sort_source"] = sort_source
+
+                    # Opposite-side prices per book (2026-04-22) —
+                    # consumed by the multi-book de-vig TP engine.
+                    prop["dk_odds_opp"] = opp_sharp_data.get("draftkings_price")
+                    prop["fd_odds_opp"] = opp_sharp_data.get("fanduel_price")
+                    prop["bol_odds_opp"] = opp_sharp_data.get("betonline_price")
+                    prop["mgm_odds_opp"] = opp_sharp_data.get("betmgm_price")
             
             # Step 3: Normalize all props
             logger.info(f"[NORMALIZATION] Processing {len(all_props)} props...")

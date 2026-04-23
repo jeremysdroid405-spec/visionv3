@@ -385,10 +385,40 @@ async def recompute_sport(
         if "war_zone_cv_modifier" in raw:
             doc["war_zone_cv_modifier"] = raw["war_zone_cv_modifier"]
 
+        # Multi-book de-vig TP engine (2026-04-22). `tp`/`edge_pct` come
+        # from `ctx` (authoritative); the meta fields are stamped on the
+        # raw prop by the adapter. Persisting these on the score doc is
+        # what makes TP/edge visible to the API + UI (previously
+        # computed-but-not-saved).
+        doc["tp"] = ctx.tp
+        doc["edge_pct"] = ctx.edge_pct
+        if "tp_books_used" in raw:
+            doc["tp_books_used"] = raw["tp_books_used"]
+        if "tp_books_list" in raw:
+            doc["tp_books_list"] = raw["tp_books_list"]
+        if "tp_method" in raw:
+            doc["tp_method"] = raw["tp_method"]
+        if "tp_unavailable" in raw:
+            doc["tp_unavailable"] = raw["tp_unavailable"]
+
         score_docs.append(doc)
 
     # 3. Percentile-normalize vision_score across the sport's slate.
     _apply_vision_score_normalization(score_docs)
+
+    # 3b. Multi-book de-vig TP engine summary (2026-04-22).
+    # Per user spec: log `[TP Engine] props_with_tp / props_missing_tp /
+    # avg_books_used` once per recompute run.
+    if score_docs:
+        _props_with_tp = sum(1 for d in score_docs if d.get("tp") is not None)
+        _props_missing_tp = len(score_docs) - _props_with_tp
+        _books_vals = [d.get("tp_books_used") or 0 for d in score_docs if d.get("tp") is not None]
+        _avg_books = (sum(_books_vals) / len(_books_vals)) if _books_vals else 0.0
+        logger.info(
+            f"[TP_ENGINE] [{sport.upper()}] props_with_tp={_props_with_tp} "
+            f"props_missing_tp={_props_missing_tp} "
+            f"avg_books_used={_avg_books:.2f} method=multi_book_devig_v1"
+        )
 
     # 4. Persist (unless dry_run)
     write_result = await write_versioned_scores(
