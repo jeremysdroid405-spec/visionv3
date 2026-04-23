@@ -4,7 +4,9 @@ Admin Routes
 Administrative and cache management endpoints.
 """
 import os
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Body
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)
@@ -831,3 +833,281 @@ async def gate_stats(
         }
 
     return response
+
+
+# ---------------------------------------------------------------------------
+# Threshold Simulator — preview how changing one gate threshold would
+# affect prop qualification. Pure aggregation over `gate_eval`: no
+# recompute, no scoring calls, no writes.
+# ---------------------------------------------------------------------------
+
+# Short gate name → canonical gate_type key used in `gate_eval.gate_details`.
+_GATE_SHORT_TO_TYPE: Dict[str, str] = {
+    "tp": "tp_gate",
+    "cv": "cv_gate",
+    "hit_rate": "hit_rate_gate",
+    "edge": "edge_gate",
+    "ceiling": "ceiling_gate",
+    "coverage": "coverage_gate",
+}
+
+
+class ThresholdSimulateRequest(BaseModel):
+    sport: str
+    tier: str
+    stat_family: Optional[str] = None
+    gate: str = Field(..., description="Short gate name: tp|cv|hit_rate|edge|ceiling|coverage")
+    current_threshold: float
+    proposed_threshold: float
+    mode: Optional[str] = Field(
+        default=None,
+        description="'min' (actual>=threshold passes) or 'max' (actual<=threshold passes). "
+                    "Inferred from the stored gate comparator if omitted.",
+    )
+    sample_limit: int = Field(default=25, ge=1, le=500)
+
+
+def _proposed_gate_pass(actual: Any, threshold: float, mode: str) -> bool:
+    """Re-evaluate ONE gate under a proposed threshold. Returns False if
+    actual is missing/non-numeric so missing-signal props don't get
+    quietly unlocked."""
+    if actual is None or not isinstance(actual, (int, float)):
+        return False
+    if mode == "max":
+        return float(actual) <= float(threshold)
+    return float(actual) >= float(threshold)  # default: min
+
+
+@router.post("/v3/admin/threshold-simulate")
+async def threshold_simulate(
+    payload: ThresholdSimulateRequest = Body(...),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Simulate a single-gate threshold change over live
+    `{sport}_prop_scores @ final-{sport}-rt.gate_eval` — no recompute,
+    no writes.
+
+    Reads the persisted `gate_details[<gate>].actual` for each prop and
+    re-evaluates ONLY that one gate under `proposed_threshold`, keeping
+    every other gate's outcome fixed as originally stored. This answers
+    "how many picks would unlock if we move this knob?" without touching
+    scoring logic.
+
+    Classification per prop:
+      * newly_qualified  : currently failing overall → would pass overall
+                           under the proposed threshold
+      * newly_rejected   : currently passing overall → would fail overall
+                           under the proposed threshold (only relevant
+                           when tightening)
+      * unchanged_pass   : passes overall before and after
+      * unchanged_fail   : still blocked overall (by this gate or others)
+
+    Response also flags `blocked_by_other_gates`: props whose simulated
+    gate *would* pass but who still fail overall because other gates
+    remain failed. Those are NOT "real unlocks".
+
+    Auth: `X-Admin-Token` matching `ADMIN_DEBUG_TOKEN`.
+    """
+    _require_admin_debug_token(x_admin_token)
+
+    if _db is None:
+        raise HTTPException(status_code=500, detail="db not initialised")
+
+    sport = (payload.sport or "").strip().lower()
+    tier = (payload.tier or "").strip()
+    if not sport or not tier:
+        raise HTTPException(status_code=400, detail="sport and tier are required")
+
+    gate_key = (payload.gate or "").strip().lower()
+    gate_type = _GATE_SHORT_TO_TYPE.get(gate_key)
+    if gate_type is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown gate '{payload.gate}'; allowed: "
+                   f"{sorted(_GATE_SHORT_TO_TYPE.keys())}",
+        )
+
+    mode = (payload.mode or "").strip().lower() or None
+    if mode is not None and mode not in ("min", "max"):
+        raise HTTPException(status_code=400, detail="mode must be 'min' or 'max'")
+
+    version_tag = f"final-{sport}-rt"
+    q: Dict[str, Any] = {
+        "version_tag": version_tag,
+        "gate_eval": {"$exists": True},
+        "gate_eval.tier": tier,
+        f"gate_eval.gate_details.{gate_type}": {"$exists": True},
+    }
+    if payload.stat_family:
+        q["gate_eval.stat_family"] = payload.stat_family
+
+    projection = {
+        "_id": 0,
+        "gate_eval": 1,
+        "player_name": 1,
+        "stat_type": 1,
+        "line": 1,
+        "recommendation": 1,
+        "tier_reference_book": 1,
+        "tier_reference_odds": 1,
+    }
+
+    coll = _db[f"{sport}_prop_scores"]
+
+    # Accumulators
+    total_props = 0
+    currently_passing = 0
+    newly_qualified: List[Dict[str, Any]] = []
+    newly_rejected: List[Dict[str, Any]] = []
+    blocked_by_other_gates: List[Dict[str, Any]] = []
+
+    unchanged_pass = 0
+    unchanged_fail = 0
+
+    near_miss_1 = 0
+    near_miss_2 = 0
+    near_miss_5 = 0
+
+    inferred_mode: Optional[str] = None
+
+    cursor = coll.find(q, projection)
+    async for doc in cursor:
+        gate_eval = doc.get("gate_eval") or {}
+        gate_details = gate_eval.get("gate_details") or {}
+        detail = gate_details.get(gate_type)
+        if not isinstance(detail, dict):
+            continue
+
+        total_props += 1
+
+        comparator = detail.get("comparator")
+        # Infer mode from stored comparator if caller didn't set one.
+        if mode is None:
+            if comparator == "<=":
+                inferred_mode = "max"
+            else:
+                inferred_mode = "min"
+            effective_mode = inferred_mode
+        else:
+            effective_mode = mode
+
+        actual = detail.get("actual")
+        originally_passed_this_gate = bool(detail.get("passed"))
+        overall_passed_original = bool(gate_eval.get("passed"))
+
+        if overall_passed_original:
+            currently_passing += 1
+
+        # Re-evaluate ONLY this gate under proposed threshold.
+        proposed_pass_this_gate = _proposed_gate_pass(
+            actual, payload.proposed_threshold, effective_mode
+        )
+
+        # Other gates' outcomes are frozen. Overall pass under the
+        # proposed change = (every other gate still passes) AND
+        # (this gate now passes).
+        failed_gates_orig = list(gate_eval.get("failed_gates") or [])
+        other_failed = [g for g in failed_gates_orig if g != gate_type]
+        overall_passed_proposed = (len(other_failed) == 0) and proposed_pass_this_gate
+
+        # Near-miss distribution — distance from CURRENT threshold in
+        # metric-native units, for props where THIS gate failed.
+        if (not originally_passed_this_gate) and isinstance(actual, (int, float)):
+            try:
+                dist = abs(float(actual) - float(payload.current_threshold))
+                if dist <= 1.0:
+                    near_miss_1 += 1
+                if dist <= 2.0:
+                    near_miss_2 += 1
+                if dist <= 5.0:
+                    near_miss_5 += 1
+            except (TypeError, ValueError):
+                pass
+
+        # Classify
+        def _sample_shape() -> Dict[str, Any]:
+            return {
+                "player": doc.get("player_name"),
+                "stat": doc.get("stat_type"),
+                "line": doc.get("line"),
+                "recommendation": doc.get("recommendation"),
+                "reference_book": doc.get("tier_reference_book"),
+                "reference_odds": doc.get("tier_reference_odds"),
+                "actual": actual,
+                "old_threshold": payload.current_threshold,
+                "new_threshold": payload.proposed_threshold,
+                "delta": (
+                    round(float(actual) - float(payload.current_threshold), 4)
+                    if isinstance(actual, (int, float)) else None
+                ),
+                "other_failed_gates": other_failed,
+            }
+
+        if (not overall_passed_original) and overall_passed_proposed:
+            if len(newly_qualified) < payload.sample_limit:
+                newly_qualified.append(_sample_shape())
+            else:
+                # Still count; just don't store the full sample.
+                newly_qualified.append(None)  # sentinel for counting below
+        elif overall_passed_original and (not overall_passed_proposed):
+            if len(newly_rejected) < payload.sample_limit:
+                newly_rejected.append(_sample_shape())
+            else:
+                newly_rejected.append(None)
+        elif overall_passed_original and overall_passed_proposed:
+            unchanged_pass += 1
+        else:
+            unchanged_fail += 1
+            # If this gate would now pass but prop still blocked → fake unlock.
+            if proposed_pass_this_gate and (not originally_passed_this_gate):
+                if len(blocked_by_other_gates) < payload.sample_limit:
+                    blocked_by_other_gates.append({
+                        "player": doc.get("player_name"),
+                        "stat": doc.get("stat_type"),
+                        "line": doc.get("line"),
+                        "actual": actual,
+                        "reason": [
+                            _GATE_REASON_KEY.get(g, f"gate_{g}_fail")
+                            for g in other_failed
+                        ],
+                    })
+
+    # Separate real counts from the truncated sample lists.
+    newly_qualified_total = len(newly_qualified)
+    newly_rejected_total = len(newly_rejected)
+    newly_qualified_samples = [s for s in newly_qualified if s is not None]
+    newly_rejected_samples = [s for s in newly_rejected if s is not None]
+
+    summary = {
+        "total_props": total_props,
+        "currently_passing": currently_passing,
+        "newly_qualified": newly_qualified_total,
+        "newly_rejected": newly_rejected_total,
+        "net_change": newly_qualified_total - newly_rejected_total,
+        "projected_passing": currently_passing + newly_qualified_total - newly_rejected_total,
+        "unchanged_pass": unchanged_pass,
+        "unchanged_fail": unchanged_fail,
+    }
+
+    return {
+        "sport": sport,
+        "tier": tier,
+        "stat_family": payload.stat_family,
+        "gate": gate_key,
+        "gate_type": gate_type,
+        "mode": mode or inferred_mode,
+        "mode_source": "explicit" if mode is not None else "inferred_from_comparator",
+        "current_threshold": payload.current_threshold,
+        "proposed_threshold": payload.proposed_threshold,
+        "version_tag": version_tag,
+        "summary": summary,
+        "newly_qualified_samples": newly_qualified_samples,
+        "newly_rejected_samples": newly_rejected_samples,
+        "blocked_by_other_gates": blocked_by_other_gates,
+        "near_miss_distribution": {
+            "within_1pct": near_miss_1,
+            "within_2pct": near_miss_2,
+            "within_5pct": near_miss_5,
+            "note": "units are metric-native (percentage points for tp/hit_rate/edge/ceiling; raw ratio for cv)",
+        },
+    }

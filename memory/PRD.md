@@ -1624,6 +1624,26 @@ post-Stage-8 follow-up (D1 residual).
 - Google Gemini (user key)
 - Emergent LLM key available as fallback.
 
+## Feature: Admin Threshold Simulator — 2026-04-23
+- `POST /api/v3/admin/threshold-simulate` — preview single-gate threshold
+  changes against live `{sport}_prop_scores @ final-{sport}-rt.gate_eval`.
+- No recompute, no writes, no scoring logic touched. Re-evaluates ONE
+  gate under a proposed threshold; every other gate's outcome stays
+  frozen as originally stored.
+- Returns: summary (currently_passing, newly_qualified, newly_rejected,
+  net_change, projected_passing, unchanged_pass/fail), sample lists for
+  each transition, `blocked_by_other_gates` (fake unlocks that would
+  still fail other gates), and near-miss distribution vs current
+  threshold (within 1/2/5 metric units).
+- Auto-infers `mode` ('min'/'max') from each prop's stored gate
+  comparator when not explicitly provided.
+- Auth: `X-Admin-Token` (same as gate-stats).
+- Implementation: `/app/backend/routes/admin.py :: threshold_simulate`.
+- Verified live: NBA tp 55→52 unlocks 35 (net +35); tp 55→60 drops 12
+  (net -6, flagged SGA AST as a rejection); cv 0.75→0.90 auto-infers
+  'max' mode; MLB stat_family filter scopes correctly; 401/400/422
+  error paths validated.
+
 ## Feature: Admin Gate Stats Endpoint — 2026-04-23
 - `GET /api/v3/admin/gate-stats?sport={sport}&tier={optional}&stat_family={optional}`
 - Data-driven threshold tuning over `{sport}_prop_scores @ final-{sport}-rt`.
