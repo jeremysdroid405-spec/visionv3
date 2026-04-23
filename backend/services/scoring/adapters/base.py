@@ -25,6 +25,10 @@ class ScoringContext:
     p_model: Optional[float] = None          # final model probability (0-1)
     cv: Optional[float] = None
     cv_status: Optional[str] = None  # computed | unavailable_stat_family | missing_source_distribution | not_supported_yet
+    # Universal HR status (2026-04-23). Mirror of cv_status for the
+    # hit-rate pipeline so a null hit_rate is distinguishable from a
+    # legitimate 0% and callers can act on the distinction.
+    hit_rate_status: Optional[str] = None  # computed | unavailable_stat_family | missing_source_distribution
     # Source of `model_projection` / `model_sigma` on this prop:
     #   "model"       — direct VK / VK2 model prediction
     #   "combo_synth" — synthesized from two component model projections

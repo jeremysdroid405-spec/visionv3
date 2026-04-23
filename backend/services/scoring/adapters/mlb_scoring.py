@@ -141,6 +141,10 @@ class MLBScoringAdapter(ScoringAdapter):
         # already filtered by `load_live_props` to supported families.
         cv_status = "computed" if cv is not None else "missing_source_distribution"
         hit_rate, _ = stats._calculate_hit_rate(player_name, stat_type, line, 20)
+        # HR status mirrors the same state machine as cv_status. MLB
+        # stats helper returns None on insufficient-data, otherwise a
+        # computed percentage.
+        hit_rate_status = "computed" if hit_rate is not None else "missing_source_distribution"
         ceiling_rate = stats._calculate_ceiling_hit_rate(player_name, stat_type, line)
 
         # Model
@@ -250,6 +254,7 @@ class MLBScoringAdapter(ScoringAdapter):
             cv=cv,
             cv_status=cv_status,
             hit_rate=hit_rate,
+            hit_rate_status=hit_rate_status,
             edge_pct=edge_pct,
             tp=tp,
             ceiling_rate=ceiling_rate,

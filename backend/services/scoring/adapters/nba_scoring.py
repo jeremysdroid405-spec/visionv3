@@ -590,24 +590,38 @@ class NBAScoringAdapter(ScoringAdapter):
         threshold).
 
         Returns:
-          (cv, cv_status, hit_rate, ceiling_rate, hit_rate_over, hit_rate_under)
+          (cv, cv_status, hit_rate, ceiling_rate,
+           hit_rate_over, hit_rate_under, hit_rate_status)
 
-        cv_status values:
-          * "computed"                    – cv is a real stddev/mean
-          * "unavailable_stat_family"     – we have no family spec yet
-          * "missing_source_distribution" – fewer than 5 games, or
-                                            degenerate zero-mean
+        `cv_status` and `hit_rate_status` share an identical state
+        machine (same source: L20 game logs for the resolved family):
+          * "computed"                    – real values produced
+          * "unavailable_stat_family"     – no family spec yet
+          * "missing_source_distribution" – fewer than 5 L20 games
+                                            (or, for CV only, a
+                                            degenerate zero-mean).
+        HR and CV can disagree on one edge case: when mean is 0 across
+        the window (e.g. a specialist with zero steals in L20), CV
+        becomes None (degenerate) but HR is a legitimate 0% (the
+        player never hit the line). In that case
+        `hit_rate_status="computed"`, `cv_status="missing_source_distribution"`.
         """
         family = self._resolve_family(stat_type)
         if family is None:
-            return None, "unavailable_stat_family", None, None, None, None
+            return (None, "unavailable_stat_family",
+                    None, None, None, None,
+                    "unavailable_stat_family")
         fields = self._FAMILY_SPEC.get(family)
         if not fields:
-            return None, "unavailable_stat_family", None, None, None, None
+            return (None, "unavailable_stat_family",
+                    None, None, None, None,
+                    "unavailable_stat_family")
 
         logs = self._logs_cache.get((player_name or "").lower()) or []
         if not logs:
-            return None, "missing_source_distribution", None, None, None, None
+            return (None, "missing_source_distribution",
+                    None, None, None, None,
+                    "missing_source_distribution")
 
         try:
             logs_sorted = sorted(
@@ -630,7 +644,9 @@ class NBAScoringAdapter(ScoringAdapter):
             vals.append(float(sum(per_field)))
 
         if len(vals) < 5:
-            return None, "missing_source_distribution", None, None, None, None
+            return (None, "missing_source_distribution",
+                    None, None, None, None,
+                    "missing_source_distribution")
 
         arr = np.array(vals)
         mean = float(arr.mean())
@@ -646,11 +662,13 @@ class NBAScoringAdapter(ScoringAdapter):
         # consistent value without re-traversing logs.
         self._cv_cache[((player_name or "").lower(), family)] = (cv, cv_status)
 
-        # Side-aware hit rate (line-dependent)
+        # Side-aware hit rate (line-dependent). HR is a legitimate
+        # value even when mean==0 — zero hit rate IS information.
         over_hits = int(sum(1 for v in vals if v > line))
         under_hits = int(sum(1 for v in vals if v <= line))
         hit_rate_over = round((over_hits / len(vals)) * 100.0, 1)
         hit_rate_under = round((under_hits / len(vals)) * 100.0, 1)
+        hit_rate_status = "computed"
 
         side = (direction or "OVER").upper()
         hit_rate = hit_rate_under if "UNDER" in side else hit_rate_over
@@ -664,7 +682,10 @@ class NBAScoringAdapter(ScoringAdapter):
             tail_hits = int(sum(1 for v in vals if v >= ceiling_thresh))
         ceiling_rate = round((tail_hits / len(vals)) * 100.0, 1)
 
-        return cv, cv_status, hit_rate, ceiling_rate, hit_rate_over, hit_rate_under
+        return (cv, cv_status,
+                hit_rate, ceiling_rate,
+                hit_rate_over, hit_rate_under,
+                hit_rate_status)
 
     async def build_context(
         self, db, prop: Dict[str, Any], config: Dict[str, Any]
@@ -751,7 +772,8 @@ class NBAScoringAdapter(ScoringAdapter):
 
         # CV + SIDE-AWARE hit_rate + ceiling_rate from master-hub game logs.
         # Prefer computed over embedded; fall back to embedded if logs missing.
-        cv, cv_status, computed_hit_rate, ceiling_rate, hit_rate_over, hit_rate_under = \
+        (cv, cv_status, computed_hit_rate, ceiling_rate,
+         hit_rate_over, hit_rate_under, hit_rate_status) = \
             self._compute_cv_and_hit_rate(
                 player_name, stat_type, float(line),
                 direction=side, window=20,
@@ -944,7 +966,9 @@ class NBAScoringAdapter(ScoringAdapter):
             recommendation=side,
             pp_layer=pp_layer, dk_layer=dk_layer, mgm_layer=mgm_layer,
             sharp_layer=sharp_layer,
-            p_model=p_model, cv=cv, cv_status=cv_status, hit_rate=hit_rate, edge_pct=edge_pct,
+            p_model=p_model, cv=cv, cv_status=cv_status,
+            hit_rate=hit_rate, hit_rate_status=hit_rate_status,
+            edge_pct=edge_pct,
             tp=tp, ceiling_rate=ceiling_rate,
             books_available_count=books,
             raw_prop=prop,

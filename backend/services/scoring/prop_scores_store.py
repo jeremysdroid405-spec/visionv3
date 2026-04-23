@@ -81,6 +81,9 @@ _SCORE_OUTPUT_FIELDS = (
     # gate_details.cv_gate.actual value; it is a first-class field on
     # every score doc.
     "cv", "cv_status",
+    # Universal HR status (2026-04-23). Like cv_status, distinguishes
+    # a legitimate 0% hit rate from a null "insufficient data" case.
+    "hit_rate_status",
     # Combo projection synthesis (2026-04-23). `projection_method`
     # labels where `model_projection` / `model_sigma` came from:
     # "model" = direct VK/VK2; "combo_synth" = synthesized from two

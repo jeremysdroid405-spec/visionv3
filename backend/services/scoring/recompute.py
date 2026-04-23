@@ -453,6 +453,8 @@ async def recompute_sport(
         # NBAScoringAdapter._compute_cv_and_hit_rate.
         doc["cv"] = ctx.cv
         doc["cv_status"] = ctx.cv_status
+        # Universal HR status (2026-04-23) — mirror of cv_status.
+        doc["hit_rate_status"] = ctx.hit_rate_status
         # Combo projection synthesis (2026-04-23): label where
         # model_projection / model_sigma came from ("model",
         # "combo_synth", or None).

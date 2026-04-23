@@ -1624,6 +1624,62 @@ post-Stage-8 follow-up (D1 residual).
 - Google Gemini (user key)
 - Emergent LLM key available as fallback.
 
+## Feature: Universal Hit-Rate Status Field — 2026-04-23
+- **Spec:** Compute hit_rate for every prop using L20 game logs; no
+  exceptions for alt-lines or combos; if insufficient data, mark
+  `hit_rate_status = missing` (no silent fallback).
+- **Investigation:** The existing
+  `NBAScoringAdapter._compute_cv_and_hit_rate` already computed HR
+  from L20 for every supported family (pts, reb, ast, pra, threes,
+  stl, blk, pts_reb, pts_ast, reb_ast, turnovers). What was missing
+  was an explicit `hit_rate_status` field to disambiguate a
+  legitimate 0% HR from a null "no data" case.
+- **Implementation:**
+  - Extended `_compute_cv_and_hit_rate` to return a 7-tuple,
+    adding `hit_rate_status` as a peer of `cv_status`. Same state
+    machine (computed / unavailable_stat_family / missing_source_distribution).
+  - Diverges from `cv_status` on exactly one edge: when the L20
+    window has ≥5 observations but mean=0 (e.g. a specialist with
+    zero L20 steals), `cv_status = missing_source_distribution`
+    (degenerate) but `hit_rate_status = computed` with `hit_rate = 0`
+    — because 0% HR is a real, actionable signal. HR never silently
+    falls back to CV's failure mode.
+  - Added `hit_rate_status` to `ScoringContext` (base.py),
+    `_SCORE_OUTPUT_FIELDS` (prop_scores_store.py), and
+    `recompute.py` doc emission.
+  - MLB adapter updated to emit the same contract.
+- **Post-recompute verification (NBA `final-nba-rt`, 4,091 props):**
+  - `hit_rate_status=computed`: **3,826 (93.5%)**
+  - `hit_rate_status=missing_source_distribution`: 265 (6.5%)
+  - No `unavailable_stat_family` — every family is covered.
+  - Coverage mirrors CV exactly, as expected (same L20 source).
+- **War Zone drilldown (110 props):**
+  - 42 computed HR, 68 missing.
+  - Every missing-HR War Zone prop maps 1:1 to a player whose
+    `cv_status` is also missing — every row is C.J. McCollum /
+    R.J. Barrett / Jabari Smith Jr / Robert Williams / Kelly Oubre
+    / etc. i.e. players whose L20 game logs aren't in
+    `nba_master_hub_2026` yet. Honest data-quality reporting.
+- **No silent fallback:** Consumers that previously inferred "HR
+  null = low quality" can now distinguish "HR=0.0 computed" (real
+  signal, player never hit this line) from "HR=None status=missing"
+  (insufficient data, re-pull game logs to fix).
+- **Files:** `adapters/base.py`, `adapters/nba_scoring.py`,
+  `adapters/mlb_scoring.py`, `prop_scores_store.py`, `recompute.py`.
+
+## Gate Config Change: War Zone — All Filters Removed — 2026-04-23
+- **Change:** `_NBA_WAR_ZONE_BASE = {"__pass_all__": True}`. Every
+  War Zone-eligible prop now passes the gate engine. No ceiling,
+  edge, or coverage filter.
+- **Engine support:** Added `__pass_all__` sentinel handling to
+  `UniversalGateEngine.evaluate` — short-circuits to passed=True
+  with `reason_code=GATES_PASSED`. Distinguishable from a
+  misconfigured/missing tier (which still fail-closes).
+- **Impact:** 98/110 → **110/110 passing** (0 failing).
+- **Tests:** 16/16 green. New `test_nba_war_zone_does_not_gate_cv`
+  also asserts that a pathological prop (zero ceiling, zero edge,
+  zero books, null CV) passes under the new config.
+
 ## Gate Config Change: Front Lines TP/HR Tradeoff — Scenario B — 2026-04-23
 - **Change:** NBA Front Lines threshold tuned from the simulator's
   Scenario B result.
