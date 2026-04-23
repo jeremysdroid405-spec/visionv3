@@ -44,6 +44,52 @@ STATS = {
     'PRA': 'pra',  # synthesized
 }
 
+# -----------------------------------------------------------------------------
+# Pruned feature schema (2026-04-23) — from /reports/vk2_feature_audit.
+#
+# 52 features = union(core across 5 stats) ∪ (top representative of each
+# |r|>=0.85 correlation cluster). Ablation confirmed removing bottom 60%
+# of features costs essentially zero RMSE; this schema formalises that
+# result as the new baseline BEFORE we add opponent-context features.
+#
+# Enabled via `python retrain_nba_vk2.py --pruned`. Writes sibling
+# `vk2_{stat}_pruned.pkl` so production models remain untouched until
+# the head-to-head comparison passes and you explicitly swap.
+# -----------------------------------------------------------------------------
+PRUNED_FEATURES = [
+    # --- Base stat rolling / deviation family (26) -------------------
+    'fga_L3_mean', 'fga_L3_std', 'fga_L5_std', 'fga_L20_std',
+    'pra_L3_mean', 'pra_L20_mean',
+    'pts_L3_std', 'pts_L5_std', 'pts_L10_std', 'pts_L20_std',
+    'fg_pct_L10_mean',
+    'fg3a_L3_mean', 'fg3a_L20_mean', 'fg3a_L5_std', 'fg3_pct_L10_mean',
+    'ast_L3_mean', 'ast_L5_mean', 'ast_L20_mean', 'ast_L20_std',
+    'reb_L3_mean', 'reb_L3_std', 'reb_L5_mean', 'reb_L5_std',
+    'reb_L10_std', 'reb_L20_mean', 'reb_L20_std',
+    # --- Minutes family (6) -----------------------------------------
+    'min_played_L5_mean', 'min_played_L10_mean',
+    'min_played_L20_mean',
+    'min_played_L5_std', 'min_played_L10_std', 'min_played_L20_std',
+    # --- Advanced tracking — kept (19) ------------------------------
+    'adv_assist_percentage_L5_mean', 'adv_assist_percentage_L10_mean',
+    'adv_contested_shots_L5_mean', 'adv_contested_shots_L10_mean',
+    'adv_defensive_rebound_percentage_L5_mean',
+    'adv_defensive_rebound_percentage_L10_mean',
+    'adv_deflections_L5_mean', 'adv_deflections_L10_mean',
+    'adv_distance_L5_mean',
+    'adv_net_rating_L5_mean',
+    'adv_passes_L5_mean',
+    'adv_pct_pts_3pt_L5_mean', 'adv_pct_pts_3pt_L10_mean',
+    'adv_pct_pts_paint_L5_mean', 'adv_pct_pts_paint_L10_mean',
+    'adv_pie_L5_mean', 'adv_pie_L10_mean',
+    'adv_possessions_L10_mean',
+    'adv_rebound_percentage_L10_mean',
+    'adv_missing_season',
+]
+assert len(PRUNED_FEATURES) == 52, (
+    f'PRUNED_FEATURES must be exactly 52, got {len(PRUNED_FEATURES)}'
+)
+
 # Advanced-stat fields to incorporate as rolling features
 ADV_FIELDS = [
     'usage_percentage', 'true_shooting_percentage', 'effective_field_goal_percentage',
@@ -289,11 +335,27 @@ def build_training_matrix(stat_label, stat_field, adv_map=None):
 
 
 # ---------- Train + calibrate per stat ----------
-def train_one(stat_label, stat_field, adv_map=None):
+def train_one(stat_label, stat_field, adv_map=None, pruned=False):
     X, y, sw, feature_cols = build_training_matrix(stat_label, stat_field, adv_map=adv_map)
     if X is None:
         log.warning(f'[{stat_label}] no samples; SKIP')
         return
+
+    # Apply 2026-04-23 pruned 52-feature schema if requested. Column
+    # subset is applied BEFORE the temporal split so both scaler and
+    # XGB see the exact same feature set. The production schema
+    # (feature_cols) is preserved on the return path when not pruned.
+    if pruned:
+        missing = [f for f in PRUNED_FEATURES if f not in feature_cols]
+        if missing:
+            raise RuntimeError(
+                f'[{stat_label}] pruned schema references {len(missing)} '
+                f'features not produced by build_features: {missing[:5]}...'
+            )
+        kept_idx = [feature_cols.index(f) for f in PRUNED_FEATURES]
+        X = X[:, kept_idx]
+        feature_cols = list(PRUNED_FEATURES)
+        log.info(f'[{stat_label}] pruned schema applied: {len(feature_cols)} features')
 
     # Temporal split: first 80% of rows (sorted by player_id, game_id in pipeline)
     # is close enough to temporal since game_id is monotonic within season
@@ -357,7 +419,11 @@ def train_one(stat_label, stat_field, adv_map=None):
     payload = {
         'stat_label': stat_label,
         'stat_field': stat_field,
-        'version': 'NBA_VK_v2_5yr_weighted',
+        'version': (
+            'NBA_VK_v2_5yr_weighted_pruned52' if pruned
+            else 'NBA_VK_v2_5yr_weighted'
+        ),
+        'pruned_schema': bool(pruned),
         'trained_at': datetime.now(timezone.utc).isoformat(),
         'seasons_used': SEASONS,
         'season_weights': SEASON_WEIGHTS,
@@ -377,7 +443,8 @@ def train_one(stat_label, stat_field, adv_map=None):
         'calibration_buckets': calib_rows,
         'top_features': top_features,
     }
-    out_path = os.path.join(MODEL_DIR, f'vk2_{stat_label.lower()}.pkl')
+    suffix = '_pruned' if pruned else ''
+    out_path = os.path.join(MODEL_DIR, f'vk2_{stat_label.lower()}{suffix}.pkl')
     with open(out_path, 'wb') as f:
         pickle.dump(payload, f)
 
@@ -392,13 +459,24 @@ def train_one(stat_label, stat_field, adv_map=None):
 
 # ---------- Main ----------
 if __name__ == '__main__':
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        '--pruned', action='store_true',
+        help='Use the 2026-04-23 52-feature pruned schema. Writes to '
+             'vk2_{stat}_pruned.pkl (sibling to production models).',
+    )
+    args = ap.parse_args()
+
     t_all = time.monotonic()
     adv_map = preload_advanced_stats()
     results = {}
     for label, field in STATS.items():
-        log.info(f'=== {label} ({field}) ===')
+        log.info(f'=== {label} ({field}) {"[PRUNED]" if args.pruned else ""} ===')
         try:
-            results[label] = train_one(label, field, adv_map=adv_map)
+            results[label] = train_one(
+                label, field, adv_map=adv_map, pruned=args.pruned,
+            )
         except Exception as e:
             log.exception(f'[{label}] FAILED: {e}')
         gc.collect()
