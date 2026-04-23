@@ -6,6 +6,35 @@ architecture with multi-sport support, automated feature engineering, and
 a unified pipeline anchored on canonical odds data. Surface pricing
 anomalies through market-consensus probabilities.
 
+## VK2 Opportunity-Feature Integration (2026-04-23, COMPLETED — INERT)
+**Objective:** feed Universal Opportunity Model outputs into VK2 as features
+(not as projection override / blend). Status: built, trained, evaluated, kept
+INERT — did not promote to production.
+
+- `scripts/retrain_nba_vk2.py` gained a `--opportunity` flag (requires
+  `--pruned`) that extends the 52-feature pruned baseline with 4 opportunity
+  features (`opp_expected_minutes`, `opp_risk_score`, `opp_bucket_high`,
+  `opp_bucket_low`). Writes `vk2_{stat}_oppmodel.pkl` siblings — production
+  `vk2_{stat}.pkl` untouched.
+- `(player_id, game_id)` cache added so opportunity predictions are reused
+  across the 5 stat runs (3× matrix-build speedup).
+- `scripts/evaluate_vk2_oppmodel.py` + `reports/vk2_oppmodel_eval.md` +
+  `reports/vk2_oppmodel_summary.md` contain the head-to-head audit.
+
+**Result:** opportunity features rank in **top-20 importance for every stat**
+(opp_expected_minutes #1 for PTS, opp_bucket_low #1 for PRA at 0.63). Bench
+MAE improves slightly (-0.005 to -0.027), low-line bias flips from small +
+to small − (directional correction). **Starters regress** on PRA (RMSE
++0.12, |bias| +0.14) and PTS (|bias| +0.09). Net: **not promoted**. The
+decision plus three follow-up paths (temporal-fold retrain of the source
+minutes model, single-feature variant, role-conditional promotion) live in
+`reports/vk2_oppmodel_summary.md`.
+
+**Architecture invariant upheld:** opportunity model ONLY emits features;
+VK2 remains the sole projection model. No blend / override path added.
+
+
+
 ## Global Identity Rule (2026-04-23)
 Every prop MUST carry `bdl_player_id` (identity) + `player_name` (display).
 All scoring joins use `bdl_player_id` exclusively. Name-based matching is

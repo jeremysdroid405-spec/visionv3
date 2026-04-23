@@ -112,6 +112,47 @@ from services.features.opponent_context import (
 PRUNED_OPP_FEATURES = list(PRUNED_FEATURES) + list(OPPONENT_CONTEXT_FEATURES)
 assert len(PRUNED_OPP_FEATURES) == 66
 
+# -----------------------------------------------------------------------------
+# OPPORTUNITY-MODEL additions (2026-04-23). 4 features appended on top of
+# the 52-feature pruned baseline → 56-feature "+oppmodel" schema.
+#
+# These come from `services/opportunity/nba.py` (the universal adapter),
+# which wraps the already-trained `expected_minutes.pkl` and
+# `low_minutes_classifier.pkl` artifacts. The adapter is STRICTLY a
+# feature generator — it never overrides / blends with VK2 output.
+# VK2 consumes these as plain features and learns how to use them
+# internally.
+#
+# Feature contract injected per training sample (one-hot bucket):
+#   opp_expected_minutes  : regressor output (0..48 clamp)
+#   opp_risk_score        : P(min_played <= 12) from classifier
+#   opp_bucket_high       : 1 if expected_minutes >= 26 else 0
+#   opp_bucket_low        : 1 if expected_minutes <  16 else 0
+#
+# Enabled via `--opportunity` (requires `--pruned`). Writes
+# `vk2_{stat}_oppmodel.pkl` sibling — production models stay untouched
+# until a head-to-head evaluation passes. --opportunity and --opponent
+# are currently mutually exclusive (future: combined 70-feat schema).
+# -----------------------------------------------------------------------------
+OPPORTUNITY_FEATURES = [
+    'opp_expected_minutes',
+    'opp_risk_score',
+    'opp_bucket_high',
+    'opp_bucket_low',
+]
+PRUNED_OPPMODEL_FEATURES = list(PRUNED_FEATURES) + list(OPPORTUNITY_FEATURES)
+assert len(PRUNED_OPPMODEL_FEATURES) == 56
+
+from services.opportunity import (  # noqa: E402
+    NBAOpportunityAdapter, PlayerContext,
+)
+
+# (player_id, game_id) → dict of 4 opportunity features. Populated
+# lazily the first time a target is scored; reused across all 5 stat
+# runs (PTS/REB/AST/3PM/PRA) to avoid 4x redundant sklearn predictions.
+# Cleared between runs by the caller (`main`) for memory hygiene.
+_OPPORTUNITY_CACHE: dict = {}
+
 # Advanced-stat fields to incorporate as rolling features
 ADV_FIELDS = [
     'usage_percentage', 'true_shooting_percentage', 'effective_field_goal_percentage',
@@ -142,7 +183,8 @@ def preload_advanced_stats():
 
 # ---------- Feature builder (pure Python, fast) ----------
 def build_features(history_logs, target_game=None, adv_map=None,
-                   target_schema=None, opp_store=None):
+                   target_schema=None, opp_store=None,
+                   opportunity_adapter=None):
     """history_logs: chronological-descending (newest first) game logs BEFORE
     the target game. Returns a flat dict of features.
 
@@ -160,6 +202,11 @@ def build_features(history_logs, target_game=None, adv_map=None,
     14 opponent-context features from
     `services/features/opponent_context.py`. Enabled by `--opponent`
     (66-feature schema).
+
+    opportunity_adapter (optional NBAOpportunityAdapter): when provided,
+    emits 4 opportunity features (expected_minutes, risk_score, two
+    bucket one-hot flags). Enabled by `--opportunity` (56-feature
+    schema). Strictly feature-generation — NEVER replaces VK2 output.
     """
     if len(history_logs) < 7:  # upstream guard; no behavioural change
         pass
@@ -365,12 +412,76 @@ def build_features(history_logs, target_game=None, adv_map=None,
         # target minutes proxy from rolling avg (we use pre-game info only)
         feats['minutes_proxy'] = feats.get('min_played_L5_mean', 0.0)
 
+    # --------- OPPORTUNITY MODEL FEATURES (2026-04-23) --------------------
+    # Injected when an NBA opportunity adapter is supplied. The adapter
+    # derives its own rolling-minutes base from history_logs (same
+    # descending-chrono convention), predicts expected_minutes via the
+    # 12-feat regressor, risk via the 15-feat classifier, and maps into
+    # a 3-way bucket (high/medium/low). We emit a one-hot encoding of
+    # high vs low (medium = both 0) so XGBoost can split cleanly on
+    # role without the ordinal artefact.
+    #
+    # NOTE on leakage: both source models were trained on the same
+    # 2020-2024 range VK2 trains on. For the VK2 TRAIN mask (2020-2023)
+    # the opportunity model had in-sample exposure to each target
+    # game's minutes label; for the VK2 TEST mask (2024) the
+    # opportunity model trained on 80% of 2024 too. This means
+    # opportunity-feature importance will be biased high during VK2
+    # training. The true generalization gain is captured by the
+    # test-set metrics (bias at low lines, starter RMSE) which are
+    # what we gate the promotion decision on.
+    if opportunity_adapter is not None and target_game is not None:
+        try:
+            pid = target_game.get('player_id')
+            gid = target_game.get('game_id')
+            cache_key = (pid, gid)
+            cached = _OPPORTUNITY_CACHE.get(cache_key)
+            if cached is not None:
+                feats.update(cached)
+            else:
+                ctx = PlayerContext(
+                    sport='nba',
+                    player_id=str(pid) if pid is not None else '',
+                    bdl_player_id=int(pid) if pid is not None else None,
+                    game_id=int(gid) if gid is not None else None,
+                    game_date=target_game.get('date'),
+                    team_id=target_game.get('team_id'),
+                    history_logs=history_logs,
+                    situational={
+                        'home_flag': feats.get('is_home', 0.0),
+                        # rest_days / back_to_back not cheaply available
+                        # during training; adapter default (3.0 / 0.0) is
+                        # the same policy used at inference time when
+                        # situational isn't populated. Kept consistent to
+                        # avoid train/serve skew.
+                    },
+                )
+                opp_out = opportunity_adapter.predict(ctx)
+                opp_feats = {
+                    'opp_expected_minutes': float(opp_out.expected_opportunity),
+                    'opp_risk_score': float(opp_out.opportunity_risk_score),
+                    'opp_bucket_high': 1.0 if opp_out.opportunity_bucket == 'high' else 0.0,
+                    'opp_bucket_low':  1.0 if opp_out.opportunity_bucket == 'low'  else 0.0,
+                }
+                if pid is not None and gid is not None:
+                    _OPPORTUNITY_CACHE[cache_key] = opp_feats
+                feats.update(opp_feats)
+        except Exception:
+            # On any adapter failure, emit safe zeros and a 'missing'
+            # marker via the bucket one-hot (both off = 'medium'
+            # default). Never fail a training row because of it.
+            feats.setdefault('opp_expected_minutes', 0.0)
+            feats.setdefault('opp_risk_score', 1.0)
+            feats.setdefault('opp_bucket_high', 0.0)
+            feats.setdefault('opp_bucket_low', 1.0)
+
     return feats
 
 
 # ---------- Data assembly per stat (single pass over players) ----------
 def build_training_matrix(stat_label, stat_field, adv_map=None,
                           target_schema=None, opp_store=None,
+                          opportunity_adapter=None,
                           collect_player_ids=False):
     """Returns (X, y, sample_weights, feature_cols) — and, when
     `collect_player_ids=True`, a fifth array `sample_player_ids`
@@ -385,6 +496,10 @@ def build_training_matrix(stat_label, stat_field, adv_map=None,
     `build_features` emits the 14 opponent-context features per
     sample. Adds ~3% to matrix build time but enables the 66-feature
     "+opp" schema.
+
+    `opportunity_adapter` (optional): NBA opportunity adapter. When
+    provided, `build_features` emits the 4 opportunity features per
+    sample. Enables the 56-feature "+oppmodel" schema.
     """
     log.info(f'[{stat_label}] building training matrix...')
     t0 = time.monotonic()
@@ -433,6 +548,7 @@ def build_training_matrix(stat_label, stat_field, adv_map=None,
             feats = build_features(
                 history_desc, target_game=tgt, adv_map=adv_map,
                 target_schema=target_schema, opp_store=opp_store,
+                opportunity_adapter=opportunity_adapter,
             )
             if feats is None:
                 continue
@@ -491,7 +607,8 @@ def build_training_matrix(stat_label, stat_field, adv_map=None,
 
 # ---------- Train + calibrate per stat ----------
 def train_one(stat_label, stat_field, adv_map=None, pruned=False,
-              opponent=False, opp_store=None):
+              opponent=False, opp_store=None,
+              opportunity=False, opportunity_adapter=None):
     # Schema-aware feature build (2026-04-23) — when pruned is set,
     # pass the resolved schema into the builder so expensive loops
     # (ADV_FIELDS ≈ 47M ops) only iterate features the trainer will
@@ -499,6 +616,8 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False,
     if pruned:
         if opponent:
             active_schema = PRUNED_OPP_FEATURES
+        elif opportunity:
+            active_schema = PRUNED_OPPMODEL_FEATURES
         else:
             active_schema = PRUNED_FEATURES
         target_schema = set(active_schema)
@@ -509,14 +628,15 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False,
         stat_label, stat_field, adv_map=adv_map,
         target_schema=target_schema,
         opp_store=(opp_store if opponent else None),
+        opportunity_adapter=(opportunity_adapter if opportunity else None),
     )
     if X is None:
         log.warning(f'[{stat_label}] no samples; SKIP')
         return
 
-    # Apply pruned schema (52 / 66 opp). Column subset is applied BEFORE
-    # the temporal split so both scaler and XGB see the exact same
-    # feature set.
+    # Apply pruned schema (52 / 56 oppmodel / 66 opp). Column subset is
+    # applied BEFORE the temporal split so both scaler and XGB see the
+    # exact same feature set.
     if pruned:
         schema = active_schema
         missing = [f for f in schema if f not in feature_cols]
@@ -528,7 +648,12 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False,
         kept_idx = [feature_cols.index(f) for f in schema]
         X = X[:, kept_idx]
         feature_cols = list(schema)
-        label_extra = '+opp' if opponent else ''
+        if opponent:
+            label_extra = '+opp'
+        elif opportunity:
+            label_extra = '+oppmodel'
+        else:
+            label_extra = ''
         log.info(
             f'[{stat_label}] pruned{label_extra} schema applied: '
             f'{len(feature_cols)} features'
@@ -596,6 +721,8 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False,
     if pruned:
         if opponent:
             version_str = 'NBA_VK_v2_5yr_weighted_pruned_opp66'
+        elif opportunity:
+            version_str = 'NBA_VK_v2_5yr_weighted_pruned_oppmodel56'
         else:
             version_str = 'NBA_VK_v2_5yr_weighted_pruned52'
     else:
@@ -606,6 +733,7 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False,
         'version': version_str,
         'pruned_schema': bool(pruned),
         'opponent_schema': bool(opponent),
+        'opportunity_schema': bool(opportunity),
         'trained_at': datetime.now(timezone.utc).isoformat(),
         'seasons_used': SEASONS,
         'season_weights': SEASON_WEIGHTS,
@@ -626,7 +754,12 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False,
         'top_features': top_features,
     }
     if pruned:
-        suffix = '_opp' if opponent else '_pruned'
+        if opponent:
+            suffix = '_opp'
+        elif opportunity:
+            suffix = '_oppmodel'
+        else:
+            suffix = '_pruned'
     else:
         suffix = ''
     out_path = os.path.join(MODEL_DIR, f'vk2_{stat_label.lower()}{suffix}.pkl')
@@ -657,9 +790,20 @@ if __name__ == '__main__':
              '(66 features total). Writes to vk2_{stat}_opp.pkl. '
              'Requires --pruned.',
     )
+    ap.add_argument(
+        '--opportunity', action='store_true',
+        help='Add 4 opportunity-model features (expected_minutes, risk, '
+             'bucket one-hot) on top of --pruned (56 features total). '
+             'Writes to vk2_{stat}_oppmodel.pkl. Requires --pruned. '
+             'Mutually exclusive with --opponent.',
+    )
     args = ap.parse_args()
     if args.opponent and not args.pruned:
         ap.error('--opponent requires --pruned (extends the pruned baseline)')
+    if args.opportunity and not args.pruned:
+        ap.error('--opportunity requires --pruned (extends the pruned baseline)')
+    if args.opportunity and args.opponent:
+        ap.error('--opportunity and --opponent are mutually exclusive (future: combined schema)')
 
     t_all = time.monotonic()
     adv_map = preload_advanced_stats()
@@ -667,14 +811,33 @@ if __name__ == '__main__':
     if args.opponent:
         log.info('[OPP_CTX] preloading opponent-context store...')
         opp_store = build_opponent_context_store(db, SEASONS)
+    opportunity_adapter = None
+    if args.opportunity:
+        log.info('[OPP_MODEL] loading NBA opportunity adapter...')
+        opportunity_adapter = NBAOpportunityAdapter()
+        # Eager-load so the first training sample doesn't absorb the cost.
+        opportunity_adapter._load()
+        log.info(
+            f'[OPP_MODEL] loaded minutes={opportunity_adapter.minutes_model_version} '
+            f'classifier={opportunity_adapter.classifier_version}'
+        )
     results = {}
     for label, field in STATS.items():
-        tag = '[OPP]' if args.opponent else ('[PRUNED]' if args.pruned else '')
+        if args.opportunity:
+            tag = '[OPPMODEL]'
+        elif args.opponent:
+            tag = '[OPP]'
+        elif args.pruned:
+            tag = '[PRUNED]'
+        else:
+            tag = ''
         log.info(f'=== {label} ({field}) {tag} ===')
         try:
             results[label] = train_one(
                 label, field, adv_map=adv_map, pruned=args.pruned,
                 opponent=args.opponent, opp_store=opp_store,
+                opportunity=args.opportunity,
+                opportunity_adapter=opportunity_adapter,
             )
         except Exception as e:
             log.exception(f'[{label}] FAILED: {e}')
