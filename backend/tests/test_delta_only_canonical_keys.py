@@ -51,9 +51,6 @@ class _StubAdapter:
     async def load_live_props(self, db, limit=None):
         return _sample_props()
 
-    def get_sorter(self, db):
-        return None
-
     async def build_context(self, db, prop, config):
         # Return a context stub that recompute_sport treats as "skip".
         return None

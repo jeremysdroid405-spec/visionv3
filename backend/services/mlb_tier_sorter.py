@@ -19,64 +19,27 @@ from services.config.collection_names import COLL
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# TIER THRESHOLDS - STAT-SPECIFIC GATES
+# MLB gate constants & tables — DELETED 2026-04-22.
+# All MLB gate thresholds (SAFE_HAVEN_GATES, FRONT_LINES_GATES,
+# WAR_ZONE_GATES) plus the DK odds-bucket constants live exclusively in
+# `services/scoring/gates/thresholds.py`. This file now carries only
+# metric-normalization helpers consumed by the MLB scoring adapter.
 # =============================================================================
-
-SAFE_HAVEN_GATES = {
-    "hits": {"max_cv": 0.60, "min_hit_rate": 80, "min_edge": 15, "min_tp": 70},
-    "total_bases": {"max_cv": 0.75, "min_hit_rate": 75, "min_edge": 20, "min_tp": 70},
-    "hits+runs+rbis": {"max_cv": 0.55, "min_hit_rate": 80, "min_edge": 18, "min_tp": 70},
-    "rbis": {"max_cv": 0.55, "min_hit_rate": 80, "min_edge": 18, "min_tp": 70},
-    "runs": {"max_cv": 0.55, "min_hit_rate": 80, "min_edge": 18, "min_tp": 70},
-    "pitching_outs": {"max_cv": 0.30, "min_hit_rate": 85, "min_edge": 8, "min_tp": 80},
-    "pitcher_strikeouts": {"max_cv": 0.45, "min_hit_rate": 75, "min_edge": 12, "min_tp": 75},
-    "earned_runs": {"max_cv": 0.40, "min_hit_rate": 75, "min_edge": 10, "min_tp": 75},
-}
-
-FRONT_LINES_GATES = {
-    "hits": {"max_cv": 0.85, "min_hit_rate": 65, "min_edge": 10, "min_tp": 58},
-    "total_bases": {"max_cv": 0.95, "min_hit_rate": 60, "min_edge": 15, "min_tp": 58},
-    "hits+runs+rbis": {"max_cv": 0.75, "min_hit_rate": 65, "min_edge": 12, "min_tp": 58},
-    "rbis": {"max_cv": 0.75, "min_hit_rate": 65, "min_edge": 12, "min_tp": 58},
-    "runs": {"max_cv": 0.75, "min_hit_rate": 65, "min_edge": 12, "min_tp": 58},
-    "pitching_outs": {"max_cv": 0.50, "min_hit_rate": 70, "min_edge": 6, "min_tp": 70},
-    "pitcher_strikeouts": {"max_cv": 0.60, "min_hit_rate": 65, "min_edge": 10, "min_tp": 65},
-    "earned_runs": {"max_cv": 0.55, "min_hit_rate": 65, "min_edge": 8, "min_tp": 65},
-}
-
-WAR_ZONE_GATES = {
-    # 2026-04-22 update: `min_cv` floor REMOVED per pricing-integrity
-    # refactor. War Zone eligibility no longer hard-fails low-CV picks.
-    # CV is applied as a scoring modifier only (see
-    # `war_zone_cv_modifier` below). Kept in the dict as `min_cv: 0.0`
-    # so every back-compat caller that still reads `gates["min_cv"]`
-    # computes a trivially-passing check.
-    "hits": {"min_cv": 0.0, "min_ceiling_rate": 35, "min_edge": 30},
-    "total_bases": {"min_cv": 0.0, "min_ceiling_rate": 35, "min_edge": 30},
-    "hits+runs+rbis": {"min_cv": 0.0, "min_ceiling_rate": 35, "min_edge": 30},
-    "rbis": {"min_cv": 0.0, "min_ceiling_rate": 35, "min_edge": 30},
-    "runs": {"min_cv": 0.0, "min_ceiling_rate": 35, "min_edge": 30},
-    "pitcher_strikeouts": {"min_cv": 0.0, "min_ceiling_rate": 30, "min_edge": 25},
-}
 
 
 def war_zone_cv_modifier(cv: Optional[float]) -> float:
     """CV → War-Zone ranking score modifier.
 
-    After the 2026-04-22 floor removal, CV is strictly a scoring signal
-    (never a disqualification). Lower CV is **slightly positive**
-    (consistency implies the ceiling play is less speculative); higher
-    CV is neutral (capped so a wildly volatile prop doesn't override
-    its own hit-rate signal).
+    CV is a scoring signal, not a gate, so this helper survived the
+    gate-engine consolidation. Lower CV is slightly positive; higher CV
+    is neutral/negative. Missing CV returns 0.
 
     Mapping (piece-wise linear):
-        cv <= 0.40   →  +0.10   (very consistent — mild bonus)
+        cv <= 0.40   →  +0.10
         cv <= 0.60   →  +0.05
         cv <= 0.80   →   0.00
         cv <= 1.00   →  -0.02
-        cv >  1.00   →  -0.05   (noise, small drag)
-
-    Missing/None CV returns 0.0 so scoring is unaffected.
+        cv >  1.00   →  -0.05
     """
     if cv is None:
         return 0.0
@@ -93,12 +56,6 @@ def war_zone_cv_modifier(cv: Optional[float]) -> float:
     if cv_f <= 1.00:
         return -0.02
     return -0.05
-
-# DraftKings odds thresholds
-DK_SAFE_HAVEN_MAX = -240
-DK_FRONT_LINES_MIN = -240
-DK_FRONT_LINES_MAX = -145
-DK_WAR_ZONE_MIN = 150
 
 
 class MLBTierSorter:
@@ -533,222 +490,4 @@ class MLBTierSorter:
     # in services.scoring.gates.thresholds.THRESHOLDS.
     # ------------------------------------------------------------------
 
-    
-    async def sort_props(self, save_to_db: bool = True) -> Dict[str, Any]:
-        """
-        Sort all props from cached board into Ferrari tiers.
-        
-        Returns:
-            Dict with sorted tiers and statistics
-        """
-        logger.info("[TIER_SORTER] ========================================")
-        logger.info("[TIER_SORTER] Starting MLB Ferrari Pipeline - Phase 1")
-        logger.info("[TIER_SORTER] ========================================")
-        
-        # Load caches
-        await self._load_caches()
-        
-        # Load props from cached board
-        cached_board = self.db[COLL("board_cache", "mlb")]
-        players = await cached_board.find({}, {"_id": 0}).to_list(length=None)
-        
-        # Flatten props - combine props, goblins, and demons arrays, then deduplicate
-        all_props = []
-        seen_keys = set()
-        for player in players:
-            combined = player.get("props", []) + player.get("goblins", []) + player.get("demons", [])
-            for prop in combined:
-                key = f"{player.get('player_name')}|{prop.get('stat_type')}|{prop.get('line')}"
-                if key in seen_keys:
-                    continue
-                seen_keys.add(key)
-                prop["player_name"] = player.get("player_name")
-                prop["team"] = player.get("team")
-                prop["position"] = player.get("position")
-                all_props.append(prop)
-        
-        logger.info(f"[TIER_SORTER] Processing {len(all_props)} props")
-        
-        results = {
-            "safe_haven": [],
-            "front_lines": [],
-            "war_zone": [],
-            "discarded": [],
-            "stats": {
-                "total_processed": len(all_props),
-                "safe_haven_qualified": 0,
-                "front_lines_qualified": 0,
-                "war_zone_qualified": 0,
-            }
-        }
-        
-        for prop in all_props:
-            player_name = prop.get("player_name", "")
-            stat_type = prop.get("stat_type", "")
-            line = prop.get("line", 0)
-            
-            # Get DK odds
-            all_odds = prop.get("all_odds", {})
-            dk_odds = all_odds.get("draftkings")
-            sharp_odds = all_odds.get("pinnacle") or all_odds.get("prizepicks")
-            
-            # Calculate metrics - prefer cached values, fallback to prop data
-            cv = self._calculate_cv(player_name, stat_type)
-            if cv is None:
-                # Get from prop, normalize if it's a percentage
-                prop_cv = prop.get("cv")
-                if prop_cv is not None:
-                    # If CV > 5, it's likely a percentage - convert to decimal
-                    cv = prop_cv / 100 if prop_cv > 5 else prop_cv
-            
-            hit_rate, avg = self._calculate_hit_rate(player_name, stat_type, line, 20)
-            if hit_rate is None:
-                # Use existing L10 hit rate from prop
-                hit_rate = prop.get("hit_rate_l10") or prop.get("h10_rate")
-                avg = prop.get("season_average")
-            
-            # Calculate L5 and L10 hit rates for frontend display
-            h5_rate, l5_avg = self._calculate_hit_rate(player_name, stat_type, line, 5)
-            h10_rate, l10_avg = self._calculate_hit_rate(player_name, stat_type, line, 10)
-            
-            # Fallback to prop data if calculated values are None
-            if h5_rate is None:
-                h5_rate = prop.get("h5_rate") or prop.get("hit_rate_l5")
-                l5_avg = prop.get("l5_avg")
-            if h10_rate is None:
-                h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10")
-                l10_avg = prop.get("l10_avg")
-            
-            ceiling_rate = self._calculate_ceiling_hit_rate(player_name, stat_type, line)
-            
-            # Get VK projection - try multiple sources
-            vk = self._get_vk_projection(player_name, stat_type, line)
-            vk_edge = vk.get("edge_pct") or prop.get("edge_pct") or prop.get("edge") or prop.get("sharp_edge")
-            vk_predicted = vk.get("projected_value") or prop.get("vk_predicted") or prop.get("projected_value")
-            
-            # Calculate TP from DK odds (primary) or sharp odds (fallback)
-            # The tier rules are based on DK odds, so use those for TP
-            tp_odds = self._calculate_tp_odds(dk_odds or sharp_odds)
-            
-            # Calculate edge properly: Edge = Hit Rate - Implied Probability
-            # If no VK edge available, calculate from hit rate and TP odds
-            if vk_edge is not None and vk_edge != 0:
-                edge_pct = vk_edge
-            elif hit_rate is not None and tp_odds is not None:
-                # Edge = (Hit Rate - True Probability) as percentage points
-                edge_pct = round(hit_rate - tp_odds, 1)
-            else:
-                edge_pct = None
-            
-            # Get recent game logs for Oracle context
-            recent_logs = self._get_recent_game_logs(player_name, stat_type, 5)
-            
-            # Enrich prop with all hit rate data
-            prop["cv"] = cv
-            prop["h5_rate"] = h5_rate
-            prop["h10_rate"] = h10_rate
-            prop["h20_rate"] = hit_rate
-            prop["l5_avg"] = l5_avg
-            prop["l10_avg"] = l10_avg
-            prop["l20_avg"] = avg
-            prop["ceiling_rate"] = ceiling_rate
-            prop["vk_predicted"] = vk_predicted
-            prop["edge_pct"] = edge_pct
-            prop["tp_odds"] = tp_odds
-            prop["game_logs"] = recent_logs  # For Oracle summaries
-            
-            # DK ODDS-BASED TIER CLASSIFICATION (Primary)
-            # Safe Haven: DK <= -240
-            # Front Lines: -240 < DK <= -145
-            # War Zone: DK > +150
-            # No DK odds: try stat gates for Front Lines
-            
-            # TIER 1: Safe Haven (The Locks)
-            if dk_odds is not None and dk_odds <= DK_SAFE_HAVEN_MAX:
-                passed, reason, gate_results = self.check_safe_haven_gates(
-                    prop, cv, hit_rate, edge_pct, tp_odds
-                )
-                prop["safe_haven_gate_results"] = gate_results
-                prop["safe_haven_reason"] = reason
-                
-                if passed:
-                    prop["ferrari_tier"] = "safe_haven"
-                    prop["tier_label"] = "Safe Haven"
-                    results["safe_haven"].append(prop)
-                    results["stats"]["safe_haven_qualified"] += 1
-                    continue
-            
-            # TIER 3: War Zone (The Moonshots) — check before Front Lines
-            if dk_odds is not None and dk_odds >= DK_WAR_ZONE_MIN:
-                passed, reason, gate_results = self.check_war_zone_gates(
-                    prop, cv, ceiling_rate, edge_pct
-                )
-                prop["war_zone_gate_results"] = gate_results
-                prop["war_zone_reason"] = reason
-                
-                if passed:
-                    prop["ferrari_tier"] = "war_zone"
-                    prop["tier_label"] = "War Zone"
-                    results["war_zone"].append(prop)
-                    results["stats"]["war_zone_qualified"] += 1
-                    continue
-            
-            # TIER 2: Front Lines (The Value Plays) — everything in between
-            if dk_odds is None or (dk_odds > DK_SAFE_HAVEN_MAX and dk_odds < DK_WAR_ZONE_MIN):
-                passed, reason, gate_results = self.check_front_lines_gates(
-                    prop, cv, hit_rate, edge_pct, tp_odds
-                )
-                prop["front_lines_gate_results"] = gate_results
-                prop["front_lines_reason"] = reason
-                
-                if passed:
-                    prop["ferrari_tier"] = "front_lines"
-                    prop["tier_label"] = "Front Lines"
-                    results["front_lines"].append(prop)
-                    results["stats"]["front_lines_qualified"] += 1
-                    continue
-            
-            # Didn't qualify for any tier
-            results["discarded"].append(prop)
-        
-        # Sort tiers
-        # Safe Haven: Sort by board score (TP + Edge + Hit Rate)
-        for prop in results["safe_haven"]:
-            board_score = (prop.get("tp_odds") or 50) + (prop.get("edge_pct") or 0) + ((prop.get("h20_rate") or 0) / 10)
-            prop["board_score"] = round(board_score, 1)
-        results["safe_haven"].sort(key=lambda x: x.get("board_score", 0), reverse=True)
-        
-        # Front Lines: Sort by edge %
-        results["front_lines"].sort(key=lambda x: x.get("edge_pct") or 0, reverse=True)
-        
-        # War Zone: Sort by ceiling rate
-        results["war_zone"].sort(key=lambda x: x.get("ceiling_rate") or 0, reverse=True)
-        
-        logger.info(f"[TIER_SORTER] Phase 1 Complete:")
-        logger.info(f"  Safe Haven: {len(results['safe_haven'])}")
-        logger.info(f"  Front Lines: {len(results['front_lines'])}")
-        logger.info(f"  War Zone: {len(results['war_zone'])}")
-        logger.info(f"  Discarded: {len(results['discarded'])}")
-        
-        return results
 
-
-# Singleton
-_tier_sorter: Optional[MLBTierSorter] = None
-
-
-def get_tier_sorter(db: AsyncIOMotorDatabase) -> MLBTierSorter:
-    """Get or create Tier Sorter instance."""
-    global _tier_sorter
-    if _tier_sorter is None:
-        _tier_sorter = MLBTierSorter(db)
-    return _tier_sorter
-
-
-async def run_mlb_tier_sorting(
-    db: AsyncIOMotorDatabase,
-    save_to_db: bool = True
-) -> Dict[str, Any]:
-    """Run MLB Tier Sorting pipeline."""
-    sorter = get_tier_sorter(db)
-    return await sorter.sort_props(save_to_db)

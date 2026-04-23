@@ -29,7 +29,8 @@ class ScoringContext:
     tp: Optional[float] = None
     ceiling_rate: Optional[float] = None
     books_available_count: int = 0
-    # Passthrough full prop for tier-gate evaluation
+    # Passthrough full prop (used by Universal Gate Engine input
+    # normalization + diagnostic enrichers)
     raw_prop: Dict[str, Any] = field(default_factory=dict)
     # Multiplier hints (for pp_utility when real data exists)
     pp_combo_multiplier: Optional[float] = None
@@ -91,16 +92,6 @@ class ScoringAdapter(ABC):
         self, db, prop: Dict[str, Any], config: Dict[str, Any]
     ) -> Optional[ScoringContext]:
         """Normalize a raw prop into a ScoringContext. Return None to skip."""
-
-    @abstractmethod
-    def get_sorter(self, db) -> Any:
-        """
-        Return an object exposing:
-          check_safe_haven_gates(prop, cv, hit_rate, edge_pct, tp)
-          check_front_lines_gates(prop, cv, hit_rate, edge_pct, tp)
-          check_war_zone_gates(prop, cv, ceiling_rate, edge_pct)
-        Each returns (passed: bool, reason: str, gate_results: dict).
-        """
 
     # ---------------------------------------------------------
     # Optional: Enrich a score doc at WRITE time.

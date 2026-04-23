@@ -6,10 +6,10 @@ the full-sync pipeline and the near-real-time delta engine.
 
 DESIGN CONTRACT
 ---------------
-Per-prop `tier` assignment is produced INSIDE the scoring stack
-(`compute_scoring_stack` → gate evaluation via
-`ScoringAdapter.get_sorter()`). Both full-sync and delta paths already
-converge on that single code path — nothing to "extract" there.
+Per-prop `tier` assignment is produced INSIDE the scoring stack via the
+Universal Gate Engine (`services.scoring.gates.UniversalGateEngine`,
+invoked from `compute_scoring_stack → compute_tier`). Both full-sync
+and delta paths converge on that single code path.
 
 What a delta engine's tier rebalance DOES need is a single place to
 handle the RETIRED signal: when a prop's live row flips `active=False`

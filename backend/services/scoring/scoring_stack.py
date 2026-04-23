@@ -19,7 +19,8 @@ LOCKED SPEC (user 2026-04-17):
     - null if no valid reference market (quality_source="insufficient_market")
 
   tier:
-    - Driven by reference odds (dk → mgm fallback) + existing MLBTierSorter gates
+    - Driven by reference odds (dk → mgm fallback) + Universal Gate Engine
+      (`services.scoring.gates.UniversalGateEngine`)
     - "unqualified" if no reference market (tier_reason="no_reference_market")
 
   pp_utility:
@@ -245,25 +246,12 @@ def compute_vision_score(
 
 
 # =============================================================================
-# 2. TIER — Risk bucket via reference-market gates
+# 2. TIER — Risk bucket via the Universal Gate Engine
 # =============================================================================
-
-# =============================================================================
-# Reference-odds hard admission bands (LOCKED 2026-04-17)
-# =============================================================================
-# A prop must FIRST fall inside the correct band based on reference-market
-# odds. Only then are quality gates (CV, hit_rate, edge, ceiling, vision_score)
-# evaluated. If the prop is inside the band but fails quality gates, it goes
-# to `unqualified` — never to a different tier.
-#
-#   Safe Haven    : ref_odds <= -240
-#   Front Lines   : -239 <= ref_odds <= +149
-#   War Zone      : ref_odds >= +150
-#
-# These constants are the SINGLE source of truth for tier admission and
-# MUST NOT be overridden by sport adapters.
-_REF_SAFE_HAVEN_MAX = -240
-_REF_WAR_ZONE_MIN = 150
+# Reference-odds buckets + per-sport/tier/stat thresholds live entirely in
+# `services/scoring/gates/thresholds.py`. Hard-coded `_REF_SAFE_HAVEN_MAX`
+# / `_REF_WAR_ZONE_MIN` constants were deleted 2026-04-22 (Universal Gate
+# Engine cleanup pass).
 
 
 def _pick_reference_odds(
@@ -337,7 +325,6 @@ def _model_contradicts_anchor(prop: Dict, side: str) -> Optional[str]:
 
 
 def compute_tier(
-    sorter,
     prop: Dict,
     cv: Optional[float],
     hit_rate: Optional[float],
@@ -346,23 +333,21 @@ def compute_tier(
     ceiling_rate: Optional[float],
     dk_layer: Optional[Dict],
     mgm_layer: Optional[Dict],
+    sport: str,
     p_model: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Assign risk bucket via the UNIVERSAL GATE ENGINE.
 
-    Post 2026-04-22 Hard Consolidation / Gate Engine refactor:
-      • sport-specific gate evaluators (`_NBAGateSorter`,
-        `MLBTierSorter.check_*_gates`) are NOT called;
-      • this function assembles a `NormalizedMetrics` record and
-        delegates the decision to `services.scoring.gates.UniversalGateEngine`;
+    Post 2026-04-22 HARD GATE CLEANUP:
+      • the `sorter` parameter is gone — the engine is sport-agnostic
+        and gates, thresholds, and reason codes all live in
+        `services.scoring.gates`;
+      • `sport` is now passed explicitly by the adapter driver
+        (`recompute.compute_scoring_stack`);
       • the returned contract (`tier`, `tier_reason`,
         `tier_reference_book`, `tier_reference_odds`,
-        `tier_gate_results`, optional `war_zone_cv_modifier`) is
-        preserved for `recompute.py` and all UI consumers.
-
-    The `sorter` parameter is retained only as a carrier of the adapter
-    identity (``sorter.sport`` when the adapter exposes it) and any
-    stat-specific CV cap override (via `_resolve_cv_cap_override`).
+        `tier_gate_results`, `gate_eval`, optional
+        `war_zone_cv_modifier`) is preserved.
     """
     from services.scoring.gates import (
         NormalizedMetrics, ReasonCode, get_engine,
@@ -414,7 +399,7 @@ def compute_tier(
         }
 
     # Route to a target tier via the sport-aware odds buckets in config.
-    sport = _infer_sport(sorter, prop)
+    sport = (sport or "nba").lower()
     target_tier = resolve_target_tier(sport, ref_odds) or "front_lines"
     stat_raw = prop.get("stat_type")
     stat_family = resolve_stat_family(sport, stat_raw)
@@ -561,23 +546,9 @@ def compute_tier(
     return out
 
 
-def _infer_sport(sorter, prop: Dict) -> str:
-    """Best-effort sport resolution without breaking sorter-less calls."""
-    if isinstance(prop, dict):
-        s = prop.get("sport")
-        if s:
-            return str(s).lower()
-    if sorter is not None:
-        for attr in ("sport", "SPORT", "_sport"):
-            s = getattr(sorter, attr, None)
-            if s:
-                return str(s).lower()
-        mod = type(sorter).__module__ or ""
-        if "mlb" in mod.lower():
-            return "mlb"
-        if "nba" in mod.lower():
-            return "nba"
-    return "nba"
+# `_infer_sport` was deleted 2026-04-22 along with the `sorter` parameter
+# on compute_tier. The driver (recompute.compute_scoring_stack) passes
+# `sport` explicitly now.
 
 
 # =============================================================================
@@ -826,11 +797,12 @@ def compute_scoring_stack(
     tp: Optional[float],
     ceiling_rate: Optional[float],
     books_available_count: int,
-    sorter,
+    sport: str,
 ) -> Dict[str, Any]:
     """
     Compose all three scoring dimensions for a canonical prop.
-    No field produced by one dimension is used as input to another.
+    Gate evaluation is delegated to the Universal Gate Engine via
+    `compute_tier(..., sport=sport)`. No sport-specific gate code runs here.
     """
     pp_layer = prop.get("pp_layer")
     dk_layer = prop.get("dk_layer")
@@ -843,9 +815,10 @@ def compute_scoring_stack(
         cv=cv, hit_rate=hit_rate, books_available_count=books_available_count,
     )
     t = compute_tier(
-        sorter=sorter, prop=prop,
+        prop=prop,
         cv=cv, hit_rate=hit_rate, edge_pct=edge_pct, tp=tp, ceiling_rate=ceiling_rate,
         dk_layer=dk_layer, mgm_layer=mgm_layer,
+        sport=sport,
         p_model=p_model,
     )
     pp = compute_pp_utility(

@@ -224,10 +224,8 @@ async def recompute_sport(
             f"/ {len(props)} matched"
         )
 
-    # 2. Build scoring contexts + compute stack
-    sorter = adapter.get_sorter(db)
-    if sorter is None and hasattr(adapter, "_build_sorter"):
-        sorter = adapter._build_sorter(config)
+    # 2. Build scoring contexts + compute stack — no sorter plumbing
+    # needed; Universal Gate Engine reads `sport` directly.
     score_docs: List[Dict[str, Any]] = []
     samples: List[Dict[str, Any]] = []
     skipped = 0
@@ -251,8 +249,6 @@ async def recompute_sport(
         if ctx is None:
             skipped += 1
             continue
-        # Get up-to-date sorter (NBA may have rebuilt it with config overrides)
-        sorter = adapter.get_sorter(db) or sorter
 
         # Run the three independent scoring functions through the composed entry.
         stack = compute_scoring_stack(
@@ -263,7 +259,7 @@ async def recompute_sport(
                 "pp_combo_multiplier": ctx.pp_combo_multiplier,
                 "pp_label": ctx.pp_label,
                 "pp_multiplier_model": ctx.pp_multiplier_model,
-                # raw fields used by MLBTierSorter gate evaluation
+                # raw fields the engine reads from NormalizedMetrics.extras
                 **ctx.raw_prop,
                 # Authoritative direction for side-aware gate paths — placed
                 # AFTER the raw_prop splat so nothing can shadow it.
@@ -276,7 +272,7 @@ async def recompute_sport(
             tp=ctx.tp,
             ceiling_rate=ctx.ceiling_rate,
             books_available_count=ctx.books_available_count,
-            sorter=sorter,
+            sport=sport,
         )
         # -------- Universal pool fields (multi-sport lifecycle) --------
         # Every {sport}_prop_scores document carries the same universal

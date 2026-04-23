@@ -1,7 +1,8 @@
 """
 MLB Scoring Adapter — reads mlb_live_props, produces ScoringContext.
 
-Reuses MLBHighFrictionModel (XGBoost) + MLBTierSorter gates.
+Reuses MLBHighFrictionModel (XGBoost) for p_true predictions; all gate
+evaluation routes through the Universal Gate Engine.
 No odds-sync, no mutation of live props or cached_board.
 """
 import os
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class MLBScoringAdapter(ScoringAdapter):
     def __init__(self):
-        self._sorter = None
+        self._stats_cache = None
         self._hf_model = None
 
     @property
@@ -62,11 +63,17 @@ class MLBScoringAdapter(ScoringAdapter):
         self._companion_map = build_companion_map(props)
         return priceable
 
-    def get_sorter(self, db):
-        if self._sorter is None:
+    def _get_stats_cache(self, db):
+        """Return the MLB stat-utility cache (hit-rate / CV / ceiling rate
+        lookups backed by BDL splits + historical logs). POST 2026-04-22
+        Universal Gate Engine cleanup this helper no longer holds any
+        gate logic; every threshold / reason code lives in
+        `services.scoring.gates`. The class is kept as a stats cache
+        only."""
+        if self._stats_cache is None:
             from services.mlb_tier_sorter import MLBTierSorter
-            self._sorter = MLBTierSorter(db)
-        return self._sorter
+            self._stats_cache = MLBTierSorter(db)
+        return self._stats_cache
 
     def _get_hf_model(self, db):
         if self._hf_model is None:
@@ -83,10 +90,12 @@ class MLBScoringAdapter(ScoringAdapter):
         self, db, prop: Dict[str, Any], config: Dict[str, Any]
     ) -> Optional[ScoringContext]:
         """Normalize an mlb_live_props doc into a ScoringContext."""
-        # Ensure sorter caches loaded on first build
-        sorter = self.get_sorter(db)
-        if not getattr(sorter, "_player_logs_cache", None):
-            await sorter._load_caches()
+        # Stats cache (hit-rate / CV / ceiling lookups). Name kept
+        # intentionally generic post Universal Gate Engine cleanup —
+        # no gate logic lives here.
+        stats = self._get_stats_cache(db)
+        if not getattr(stats, "_player_logs_cache", None):
+            await stats._load_caches()
 
         player_name = prop.get("player_name")
         stat_type = prop.get("stat_type")
@@ -123,10 +132,10 @@ class MLBScoringAdapter(ScoringAdapter):
             if prop.get("sharp_odds") is not None else None
         )
 
-        # Stats from hub
-        cv = sorter._calculate_cv(player_name, stat_type)
-        hit_rate, _ = sorter._calculate_hit_rate(player_name, stat_type, line, 20)
-        ceiling_rate = sorter._calculate_ceiling_hit_rate(player_name, stat_type, line)
+        # Stats from hub (pure metric normalization — no gate logic)
+        cv = stats._calculate_cv(player_name, stat_type)
+        hit_rate, _ = stats._calculate_hit_rate(player_name, stat_type, line, 20)
+        ceiling_rate = stats._calculate_ceiling_hit_rate(player_name, stat_type, line)
 
         # Model
         hf_model = self._get_hf_model(db)

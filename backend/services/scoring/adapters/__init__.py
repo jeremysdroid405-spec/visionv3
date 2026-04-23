@@ -1,16 +1,19 @@
 """
-Scoring Adapters — Sport-Specific Scoring Bridges
-==================================================
+Scoring Adapters — Sport-Specific METRIC NORMALIZATION Bridges
+===============================================================
 Each sport adapter:
   - Declares its live props collection name
   - Declares its output scores collection name
-  - Normalizes a raw live prop into a standard "scoring context"
-    (canonical_key, layer dicts, p_model, cv, hit_rate, edge_pct, tp, etc.)
-  - Provides a tier sorter with the three check_*_gates methods
-    required by services.scoring.scoring_stack.compute_tier
+  - Normalizes a raw live prop into a standard ``ScoringContext``
+    (canonical_key, layer dicts, p_model, cv, hit_rate, edge_pct, tp,
+    ceiling_rate, book_count, etc.)
 
-The orchestration layer (services.scoring.recompute) is 100% sport-agnostic
-and composes these adapters to recompute and persist scoring stacks.
+Adapters contain ONLY metric-normalization logic. Every eligibility
+decision — including tier gates, reason codes, and per-stat / per-tier
+thresholds — is handled by the single Universal Gate Engine in
+`services.scoring.gates`. Adding a new sport is a pure config change
+(drop thresholds into `services.scoring.gates.thresholds.THRESHOLDS`)
+plus one metric-normalization adapter.
 """
 from services.scoring.adapters.base import ScoringAdapter, ScoringContext
 from services.scoring.adapters.mlb_scoring import MLBScoringAdapter

@@ -19,25 +19,11 @@ from services.config.collection_names import COLL
 logger = logging.getLogger(__name__)
 
 
-class _NBAGateSorter:
-    """Thin carrier kept so `recompute.py` can call
-    `adapter.get_sorter()` and pass *some* non-None object to
-    `compute_tier(sorter=...)`. Post Hard Consolidation / Universal
-    Gate Engine refactor (2026-04-22) this class contains NO gate
-    logic — gate evaluation lives exclusively in
-    `services.scoring.gates.UniversalGateEngine`. The `sport` attribute
-    is the only piece of information the engine still reads off the
-    sorter (via `_infer_sport` in `scoring_stack.compute_tier`).
-    """
-
-    sport = "nba"
-
-    def __init__(self, overrides: Optional[Dict[str, Any]] = None):
-        # Retained for API compatibility. Overrides targeted at the
-        # legacy `_NBAGateSorter.SAFE_HAVEN/FRONT_LINES/WAR_ZONE` dicts
-        # are now applied via `services/scoring/gates/thresholds.py`.
-        # No-op here.
-        self._overrides = overrides or {}
+# `_NBAGateSorter` / `get_sorter` / `_build_sorter` were DELETED
+# 2026-04-22 in the Universal Gate Engine cleanup pass. NBA scoring no
+# longer maintains any sport-specific gate evaluator — gate decisions
+# run through `services.scoring.gates.UniversalGateEngine` driven by
+# config in `services.scoring.gates.thresholds.THRESHOLDS['nba']`.
 
 
 class NBAScoringAdapter(ScoringAdapter):
@@ -66,7 +52,6 @@ class NBAScoringAdapter(ScoringAdapter):
     }
 
     def __init__(self):
-        self._sorter = None
         self._cv_cache: dict = {}
         self._logs_cache: dict = {}
         self._logs_loaded = False
@@ -155,14 +140,6 @@ class NBAScoringAdapter(ScoringAdapter):
         from services.scoring.tp_engine import build_companion_map
         self._companion_map = build_companion_map(props)
         return priceable
-
-    def get_sorter(self, db):
-        return self._sorter  # populated per-recompute with config
-
-    def _build_sorter(self, config):
-        overrides = ((config or {}).get("override_config") or {}).get("tier")
-        self._sorter = _NBAGateSorter(overrides)
-        return self._sorter
 
     def _get_vk(self, db):
         """Lazy-load the legacy VegasKillerModel + cache stat-specific residual SDs."""
@@ -451,8 +428,6 @@ class NBAScoringAdapter(ScoringAdapter):
     async def build_context(
         self, db, prop: Dict[str, Any], config: Dict[str, Any]
     ) -> Optional[ScoringContext]:
-        if self._sorter is None:
-            self._build_sorter(config)
         # Ensure game logs loaded once
         await self._preload_game_logs(db)
 
