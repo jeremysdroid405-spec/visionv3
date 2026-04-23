@@ -2066,3 +2066,94 @@ post-Stage-8 follow-up (D1 residual).
 ## Health
 - Broken: None
 - Mocked: None
+
+---
+
+## Expected-Minutes Model — Rollback + New Regression (2026-04-23)
+
+### Scope delivered
+
+1. **Rollback.** `scripts/retrain_nba_vk2.py` reverted to the 52-feat
+   fixed-mins pruned baseline. Removed: `USAGE_FEATURES` (7 cols),
+   `MINUTES_FEATURES` (17 cols), `PRUNED_USAGE_FEATURES`,
+   `PRUNED_MINUTES_FEATURES`, the in-model per-minute / expected_minutes
+   / usage_trend / fga_per_min / touches_per_min computation in
+   `build_features`, and the `--usage` / `--minutes` CLI flags. Only
+   the clean 52-feat `PRUNED_FEATURES` schema + `--pruned` flag remain.
+2. **Production artifact swap.** Moved the live `vk2_{stat}.pkl`
+   (59-feat usage models) to `models/archive_usage59/` and copied
+   `models/archive_fixedmins_52feat/vk2_{stat}_52fixedmins.pkl` into
+   the production paths. All 5 artifacts now report
+   `version=NBA_VK_v2_5yr_weighted_pruned52`, `feature_count=52`.
+   Backend restart clean. Ferrari endpoints HTTP 200.
+3. **NEW: expected-minutes regression.**
+   `scripts/train_nba_minutes_model.py` trains a 15-feature
+   XGBRegressor predicting `minutes_tonight` per player per game.
+   Artifact: `/app/backend/models/nba_expected_minutes.pkl`
+   (`NBA_EXPECTED_MINUTES_v1`). Metrics on 2024 hold-out:
+   R²=0.611, MAE=5.99 min, RMSE=8.73, bias=-0.21, σ=8.72. Top
+   feature `min_L3_mean` 72% of gain.
+4. **NEW: segmented composition eval.**
+   `scripts/eval_minutes_composition.py` runs the 2024 hold-out across
+   4 predictors (baseline / min_only / blend_05 / blend_bench) and 7
+   segments (bench, starter, declining, line<10, line 10-20, line≥20,
+   overall). Report:
+   `/app/backend/reports/vk2_expected_minutes_segmented.json` +
+   `expected_minutes_summary.md`.
+5. **Regression tests.** `tests/test_expected_minutes_model.py` adds
+   10 new tests locking in the rollback (VK2 version + feature count,
+   forbidden-feature guard on `build_features`, grep-guard on the
+   retrain script CLI) and the new minutes model (artifact exists,
+   R² ≥ 0.5, MAE < 8, bias < ±1, top feature is a recency-minutes
+   rolling mean). All 10 pass.
+
+### Rollback resolved the structural bench regression
+
+After rollback, the 52-feat fixed-mins baseline is near-zero bias on
+bench and declining regimes:
+
+| Stat | bias (bench)  | bias (declining) |
+|------|---------------|------------------|
+| PTS  | +0.04         | +0.13            |
+| REB  | +0.00         | +0.04            |
+| AST  | +0.00         | +0.02            |
+| 3PM  | -0.01         | +0.00            |
+| PRA  | +0.02         | +0.19            |
+
+### Residual low-line over-prediction quantified
+
+The baseline still over-predicts on `line<10`. The minutes model
+composition (`blend_bench`: `predicted_minutes × historical per-min
+rate` when `min_L10 < 20`, else baseline) trims the bias ~14% with
+no RMSE penalty on the target stats (PTS, PRA):
+
+| Stat | segment | baseline RMSE/bias | blend_bench RMSE/bias |
+|------|---------|--------------------|------------------------|
+| PTS  | line<10 | 4.73 / +2.29       | 4.73 / +1.96          |
+| PRA  | line<10 | 7.33 / +3.93       | **7.22** / +3.39 (RMSE also improves) |
+| REB  | line<10 | 2.10 / +0.28       | 2.14 / +0.19          |
+| AST  | line<10 | 1.55 / +0.10       | 1.57 / +0.05          |
+| 3PM  | line<10 | 1.08 / -0.00       | 1.10 / -0.03          |
+
+### Success-condition status
+
+- ✅ Low-line over-prediction reduced (PRA -14% bias + RMSE win,
+  PTS -14% bias with unchanged RMSE).
+- ✅ Bench + declining segments improved by the rollback itself.
+- ✅ Expected-minutes model trained, validated, and ready to compose.
+- ⚠️ **NOT YET WIRED INTO PRODUCTION SCORING.** The NBA scoring
+  adapter (`services/scoring/adapters/nba_scoring.py`) still calls the
+  VK2 baseline only. Adapter integration is a follow-up P0 gated on
+  user approval.
+
+### Files of record
+- `/app/backend/scripts/retrain_nba_vk2.py` (rolled back)
+- `/app/backend/scripts/train_nba_minutes_model.py` (NEW)
+- `/app/backend/scripts/eval_minutes_composition.py` (NEW)
+- `/app/backend/models/nba_expected_minutes.pkl` (NEW)
+- `/app/backend/models/vk2_{pts,reb,ast,3pm,pra}.pkl` (swapped → 52feat)
+- `/app/backend/models/archive_usage59/` (rolled-back 59feat models)
+- `/app/backend/reports/vk2_expected_minutes_segmented.json`
+- `/app/backend/reports/expected_minutes_summary.md`
+- `/app/backend/tests/test_expected_minutes_model.py` (10 tests)
+
