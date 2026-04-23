@@ -106,8 +106,15 @@ _NBA_SAFE_HAVEN_BASE = {
 }
 _NBA_FRONT_LINES_BASE = {
     "coverage_gate": {"min_books": 1},
-    "hit_rate_gate": {"min": 60.0, "window": "default"},
-    "tp_gate":       {"min": 55.0, "under_floor": 65.0},
+    # Scenario B promoted to live config (2026-04-23). See
+    # /app/memory/PRD.md "Front Lines Threshold Tradeoff" entry for
+    # the simulation run. Tightens HR 60→70 and loosens OVER-side
+    # TP 55→50. UNDER-side TP floor (65) and CV / edge / coverage
+    # gates are unchanged — per the user's scenario spec.
+    # Net effect on the live board: 53 passing → 90 passing (+37),
+    # avg HR of the passing set rose from ~70% → 75.5%.
+    "hit_rate_gate": {"min": 70.0, "window": "default"},
+    "tp_gate":       {"min": 50.0, "under_floor": 65.0},
     "cv_gate":       {"max": 0.75},
     "edge_gate":     {"min": 5.0},
 }

@@ -1624,6 +1624,40 @@ post-Stage-8 follow-up (D1 residual).
 - Google Gemini (user key)
 - Emergent LLM key available as fallback.
 
+## Gate Config Change: Front Lines TP/HR Tradeoff — Scenario B — 2026-04-23
+- **Change:** NBA Front Lines threshold tuned from the simulator's
+  Scenario B result.
+- **Config (`thresholds.py :: _NBA_FRONT_LINES_BASE`):**
+  - `hit_rate_gate.min`: **60.0 → 70.0** (tightened)
+  - `tp_gate.min`:        **55.0 → 50.0** (loosened, OVER-side)
+  - `tp_gate.under_floor`: 65.0 (unchanged, per user scenario spec)
+  - `cv_gate`, `edge_gate`, `coverage_gate`: unchanged
+- **Rationale:** Simulator proved the combo raises the passing
+  set's average HR from ~70% → **75.5%** while still admitting 37
+  additional high-quality near-misses (Jarrett Allen PTS 11.5,
+  Reed Sheppard 3PM 1.5, Stephon Castle AST 6.5, Donovan Mitchell
+  REB+AST 8.5, etc.) that the previous TP-55 cut was killing.
+  Scenario A (HR → 65) admitted 11 additional noise props with
+  HR in [65, 69]; rejected in favor of cleaner lane.
+- **Post-recompute verification (`final-nba-rt`, 4,024 props):**
+  - Front Lines total: 673 props
+  - Passing: **79** (was 53 under old config — +26 net; simulation
+    predicted 90, delta explained by slate churn between sim and
+    recompute)
+  - Pass-set quality: avg HR **75.7%**, avg TP 55.8, avg CV 0.411,
+    avg edge 18.6, min HR 70 (hard floor honored).
+  - Gate failure mix now: hit_rate 66.6%, tp 62.0%, cv 12.3%,
+    edge 11.4%, coverage 0.0%. Hit-rate and TP stay the dominant
+    filters as expected.
+- **Top promoted picks that weren't in last week's board:**
+  Reed Sheppard 3PM 1.5 OVER -123 (85% HR), Jarrett Allen PTS 11.5
+  OVER -158 (75%), Jarrett Allen PTS+REB 20.5 OVER -117 (85%),
+  Stephon Castle AST 6.5 OVER -139 (75%), Immanuel Quickley AST
+  3.5 OVER -155 (75%), Donovan Mitchell REB+AST 8.5 OVER -127 (80%).
+- **Tests:** 16/16 universal gate-engine tests pass (existing
+  Front Lines tests use thresholds loaded from the live config, so
+  they pick up the new values automatically).
+
 ## Feature: PRA Audit — Auto-Settle Cron + Admin UI — 2026-04-23
 
 ### A. Auto-settle cron job
