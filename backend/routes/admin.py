@@ -1504,3 +1504,210 @@ async def pra_audit_report(
             "Before the first game concludes, only divergence_audit is meaningful.",
         ],
     }
+
+
+
+@router.get("/v3/admin/minutes-composition-stats")
+async def minutes_composition_stats(
+    sport: str = "nba",
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Expected-minutes composition observability panel (2026-04-23).
+
+    Read-only aggregation over `{sport}_prop_scores@final-{sport}-rt`.
+    Surfaces the impact of the `blend_bench` composition (PTS / PRA,
+    bench regime `min_played_L10_mean < 20`) on the live board so we
+    can validate the rollout over 1-2 slates before expanding.
+
+    Does NOT recompute. Does NOT modify any scoring / gate logic. All
+    fields read are persisted by the scoring pipeline.
+
+    Query params:
+      - sport (default 'nba'): lowercase sport key. Currently the
+        composition is implemented for NBA only; passing 'mlb' will
+        return zero-composed summaries.
+
+    Auth: `X-Admin-Token` header must match env `ADMIN_DEBUG_TOKEN`.
+    """
+    _require_admin_debug_token(x_admin_token)
+    if _db is None:
+        raise HTTPException(status_code=500, detail="db not initialised")
+
+    sport = (sport or "nba").strip().lower()
+    scores = _db[f"{sport}_prop_scores"]
+    version_tag = f"final-{sport}-rt"
+
+    base_match = {"version_tag": version_tag}
+    composed_match = {
+        **base_match,
+        "minutes_composition_applied": True,
+        "minutes_composition_baseline_projection": {"$ne": None},
+        "model_projection": {"$ne": None},
+    }
+
+    total_props = await scores.count_documents(base_match)
+    composed_count = await scores.count_documents(composed_match)
+
+    # Pull the composed rows once — small result set (24-200 docs/slate).
+    projection = {
+        "_id": 0,
+        "canonical_key": 1,
+        "player_name": 1,
+        "stat_type": 1,
+        "line": 1,
+        "recommendation": 1,
+        "model_projection": 1,
+        "minutes_composition_baseline_projection": 1,
+        "minutes_composition_predicted_minutes": 1,
+        "minutes_composition_per_min_rate": 1,
+        "tp": 1,
+        "tp_books_used": 1,
+    }
+    rows = await scores.find(composed_match, projection).to_list(length=None)
+    for r in rows:
+        baseline = r.get("minutes_composition_baseline_projection")
+        composed = r.get("model_projection")
+        r["_delta"] = (
+            float(composed) - float(baseline)
+            if baseline is not None and composed is not None
+            else None
+        )
+
+    deltas = [r["_delta"] for r in rows if r["_delta"] is not None]
+
+    def _stat_summary(vals):
+        if not vals:
+            return {"count": 0, "avg": None, "min": None,
+                    "max": None, "median": None}
+        s = sorted(vals)
+        mid = len(s) // 2
+        median = s[mid] if len(s) % 2 == 1 else 0.5 * (s[mid - 1] + s[mid])
+        return {
+            "count": len(vals),
+            "avg": round(sum(vals) / len(vals), 4),
+            "min": round(min(vals), 4),
+            "max": round(max(vals), 4),
+            "median": round(median, 4),
+        }
+
+    upward = [d for d in deltas if d > 0]
+    downward = [d for d in deltas if d < 0]
+
+    # Regime counts over ALL scored PTS/PRA rows (not just composed)
+    # so operators can see the bench vs starter slate split.
+    regime_rows = await scores.find(
+        {**base_match, "stat_type": {"$in": ["PTS", "PRA"]},
+         "model_projection": {"$ne": None}},
+        {"_id": 0, "stat_type": 1,
+         "minutes_composition_applied": 1,
+         "minutes_composition_baseline_projection": 1,
+         "model_projection": 1}
+    ).to_list(length=None)
+    bench_deltas: list = []
+    bench_count = 0
+    starter_count = 0
+    for r in regime_rows:
+        applied = bool(r.get("minutes_composition_applied"))
+        if applied:
+            bench_count += 1
+            base = r.get("minutes_composition_baseline_projection")
+            comp = r.get("model_projection")
+            if base is not None and comp is not None:
+                bench_deltas.append(float(comp) - float(base))
+        else:
+            starter_count += 1
+
+    def _row_view(r):
+        return {
+            "player_name": r.get("player_name"),
+            "stat_type": r.get("stat_type"),
+            "line": r.get("line"),
+            "side": r.get("recommendation"),
+            "baseline_projection": round(
+                float(r.get("minutes_composition_baseline_projection") or 0.0), 3
+            ),
+            "composed_projection": round(
+                float(r.get("model_projection") or 0.0), 3
+            ),
+            "delta": round(float(r.get("_delta") or 0.0), 3),
+            "predicted_minutes": r.get("minutes_composition_predicted_minutes"),
+            "per_min_rate": r.get("minutes_composition_per_min_rate"),
+            "tp": r.get("tp"),
+            "tp_books_used": r.get("tp_books_used"),
+        }
+
+    rows_sorted_desc = sorted(
+        [r for r in rows if r["_delta"] is not None],
+        key=lambda r: -r["_delta"],
+    )
+    rows_sorted_asc = sorted(
+        [r for r in rows if r["_delta"] is not None],
+        key=lambda r: r["_delta"],
+    )
+    top_positive = [_row_view(r) for r in rows_sorted_desc[:10]]
+    top_negative = [_row_view(r) for r in rows_sorted_asc[:10]]
+
+    # Stat-family breakdown (PTS vs PRA).
+    by_stat: Dict[str, Any] = {}
+    for st in ("PTS", "PRA"):
+        st_rows = [r for r in rows if r.get("stat_type") == st]
+        st_deltas = [r["_delta"] for r in st_rows if r["_delta"] is not None]
+        by_stat[st] = {
+            "composed_count": len(st_rows),
+            "avg_delta": (
+                round(sum(st_deltas) / len(st_deltas), 4)
+                if st_deltas else None
+            ),
+            "upward_count": sum(1 for d in st_deltas if d > 0),
+            "downward_count": sum(1 for d in st_deltas if d < 0),
+        }
+
+    summary = _stat_summary(deltas)
+    result = {
+        "sport": sport,
+        "version_tag": version_tag,
+        "global": {
+            "total_props": total_props,
+            "composed_props_count": composed_count,
+            "composed_pct": round(
+                100.0 * composed_count / max(total_props, 1), 3,
+            ),
+            "avg_projection_delta": summary["avg"],
+            "median_projection_delta": summary["median"],
+            "max_positive_delta": summary["max"],
+            "max_negative_delta": summary["min"],
+        },
+        "directional": {
+            "count_upward_adjustments": len(upward),
+            "count_downward_adjustments": len(downward),
+            "avg_upward_delta": (
+                round(sum(upward) / len(upward), 4) if upward else None
+            ),
+            "avg_downward_delta": (
+                round(sum(downward) / len(downward), 4) if downward else None
+            ),
+        },
+        "regime": {
+            "bench_count": bench_count,
+            "starter_count": starter_count,
+            "avg_delta_bench": (
+                round(sum(bench_deltas) / len(bench_deltas), 4)
+                if bench_deltas else None
+            ),
+            "avg_delta_starters": 0.0 if starter_count else None,
+        },
+        "by_stat_family": by_stat,
+        "top_positive_delta": top_positive,
+        "top_negative_delta": top_negative,
+        "notes": [
+            "Composition is applied only for stat_type in {PTS, PRA} "
+            "and min_played_L10_mean < 20. Other stats / starter rows "
+            "return 0 delta by construction.",
+            "Fields read: minutes_composition_applied, "
+            "minutes_composition_baseline_projection, "
+            "minutes_composition_predicted_minutes, "
+            "minutes_composition_per_min_rate.",
+        ],
+    }
+    return result
+

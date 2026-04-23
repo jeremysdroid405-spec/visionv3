@@ -2214,6 +2214,81 @@ were NOT modified. REB / AST / 3PM untouched. Other sports untouched.
 - `/app/backend/models/nba_expected_minutes.pkl` (NEW)
 - `/app/backend/models/vk2_{pts,reb,ast,3pm,pra}.pkl` (swapped → 52feat)
 - `/app/backend/models/archive_usage59/` (rolled-back 59feat models)
+
+---
+
+## Admin Observability — `/api/v3/admin/minutes-composition-stats` (2026-04-23)
+
+### Scope delivered
+Read-only observability endpoint for the NBA PTS/PRA minutes
+composition. Paginates the live scoring table (no recompute, no
+mutation), surfaces aggregate counters + top-10 material-change props
+so we can validate the rollout over 1-2 slates.
+
+### Endpoint
+```
+GET /api/v3/admin/minutes-composition-stats?sport=nba
+X-Admin-Token: <ADMIN_DEBUG_TOKEN>
+```
+
+### Response shape
+```json
+{
+  "sport": "nba",
+  "version_tag": "final-nba-rt",
+  "global": {
+    "total_props": 4318,
+    "composed_props_count": 97,
+    "composed_pct": 2.25,
+    "avg_projection_delta": -0.42,
+    "median_projection_delta": -0.61,
+    "max_positive_delta":  2.71,
+    "max_negative_delta": -3.01
+  },
+  "directional": {
+    "count_upward_adjustments": 34,
+    "count_downward_adjustments": 63,
+    "avg_upward_delta":  1.51,
+    "avg_downward_delta": -1.46
+  },
+  "regime": {
+    "bench_count": 97,
+    "starter_count": 1209,
+    "avg_delta_bench": -0.42,
+    "avg_delta_starters": 0.0
+  },
+  "by_stat_family": {
+    "PTS": {"composed_count": 52, "avg_delta": -0.73, "upward_count": 17, "downward_count": 35},
+    "PRA": {"composed_count": 45, "avg_delta": -0.06, "upward_count": 17, "downward_count": 28}
+  },
+  "top_positive_delta": [ { player_name, stat_type, line, side, baseline_projection,
+                            composed_projection, delta, predicted_minutes, per_min_rate, tp, tp_books_used }, ... up to 10 ],
+  "top_negative_delta": [ ... up to 10 ],
+  "notes": [...]
+}
+```
+
+### Files changed
+| File | Δ |
+|------|---|
+| `routes/admin.py` | +210 LOC — `/v3/admin/minutes-composition-stats` endpoint. |
+| `tests/test_minutes_composition_stats_endpoint.py` | NEW — 15 tests covering auth, response shape, field presence, sort invariants, stat-family sum invariant, idempotency, MLB zero-composed guard. |
+
+### Verification
+- Auth: missing token ⇒ 401 ✓, wrong token ⇒ 401 ✓, correct token ⇒ 200 ✓.
+- Latency: **140–210 ms** across 5 consecutive calls (under the 200 ms target at p50).
+- Idempotent: consecutive calls return identical global counts.
+- All 64 relevant regression tests pass (15 new + 49 existing).
+- Ferrari endpoints HTTP 200 (NBA 10/10/10, MLB 9/9/10) — no regressions.
+
+### Read-only invariants (enforced by code review + tests)
+- Does NOT call `recompute_sport` or any scoring helper.
+- Does NOT write to any collection.
+- Reads only the four persisted composition audit fields plus
+  `model_projection`, `tp`, `tp_books_used`, `recommendation`, etc.
+- Returns `composed_props_count == 0` for MLB (composition is
+  NBA-only by design).
+
 - `/app/backend/reports/vk2_expected_minutes_segmented.json`
 - `/app/backend/reports/expected_minutes_summary.md`
 - `/app/backend/tests/test_expected_minutes_model.py` (10 tests)
