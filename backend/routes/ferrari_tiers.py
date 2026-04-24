@@ -1298,6 +1298,17 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
             except (TypeError, ValueError):
                 pass
 
+    # Headshot URL path rewrite (2026-04-24). Master_hub stores
+    # headshots as `/static/player-headshots/{id}.png`. The k8s
+    # ingress routes `/static/*` to the React dev-server (which serves
+    # the app shell HTML, breaking the <img>). Rewrite to
+    # `/api/static/player-headshots/{id}.png` so the request hits the
+    # backend's mirror mount.
+    for fld in ("photo_url", "headshot_url"):
+        v = prop.get(fld)
+        if isinstance(v, str) and v.startswith("/static/"):
+            prop[fld] = "/api" + v
+
     return prop
 
 

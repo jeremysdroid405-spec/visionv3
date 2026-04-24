@@ -341,6 +341,12 @@ else:
     
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# Mirror mount under /api/static so the k8s ingress (which routes /api/*
+# to the backend and /static/* to the frontend) can reach these files.
+# Frontend payloads carry /api/static/player-headshots/{id}.png URLs so
+# the browser hits the backend, not the React dev-server which replies
+# with the app shell HTML (broken avatar images).
+app.mount("/api/static", StaticFiles(directory=str(STATIC_DIR)), name="api-static")
 
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()

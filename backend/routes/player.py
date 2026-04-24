@@ -269,6 +269,34 @@ async def get_player_with_badges(
 
     version_tag = f"final-{sport}-rt"
 
+    # ID-first resolution (2026-04-24). If the path param is a numeric
+    # bdl_player_id, resolve to the canonical display_name via
+    # master_hub first, then continue by name. Stable identity —
+    # immune to event_id / canonical_key / line drift.
+    identity_path = None  # diagnostic flag returned in payload
+    param = str(player_name or "").strip()
+    if param.isdigit():
+        try:
+            bdl_int = int(param)
+        except (TypeError, ValueError):
+            bdl_int = None
+        if bdl_int is not None:
+            hub_by_id = await _db[f"{sport}_master_hub_2026"].find_one(
+                {"$or": [
+                    {"bdl_player_id": bdl_int},
+                    {"bdl_id": bdl_int},
+                    {"nba_id": bdl_int},
+                ]},
+                {"_id": 0, "display_name": 1, "player_name": 1},
+            )
+            if hub_by_id:
+                resolved = hub_by_id.get("display_name") or hub_by_id.get("player_name")
+                if resolved:
+                    player_name = resolved
+                    identity_path = "bdl_player_id"
+    if identity_path is None:
+        identity_path = "player_name"
+
     # Case-insensitive player lookup on the canonical scores collection.
     name_rx = re.compile(f"^{_escape_regex(player_name)}$", re.I)
     cursor = _db[f"{sport}_prop_scores"].find(
@@ -284,6 +312,17 @@ async def get_player_with_badges(
             {"version_tag": version_tag, "player_name": name_rx},
             {"_id": 0},
         ).sort([("ranking_score_v2", -1)]).to_list(length=500)
+
+    # Route-level fallback (2026-04-24): even when score_docs is empty,
+    # if the player exists in master_hub return a 200 with whatever
+    # identity + cached_board enrichment is available. Only 404 when
+    # the player genuinely doesn't exist in master_hub.
+    hub_preview = await _lookup_player_hub(sport, player_name)
+    if not score_docs and not hub_preview:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Player '{player_name}' not found in scores or master_hub ({sport})",
+        )
 
     # Hub enrichment.
     canonical_name = score_docs[0].get("player_name") if score_docs else player_name
@@ -371,6 +410,14 @@ async def get_player_with_badges(
                     p["away_team"] = lp["away_team"]
                 if not p.get("bdl_player_id") and lp.get("bdl_player_id"):
                     p["bdl_player_id"] = lp["bdl_player_id"]
+            # Headshot URL rewrite — see routes/ferrari_tiers.py for the
+            # ingress-routing rationale. /static/* hits the React dev
+            # server and returns the app shell; /api/static/* is mounted
+            # on the backend and serves the PNG directly.
+            for fld in ("photo_url", "headshot_url"):
+                v = p.get(fld)
+                if isinstance(v, str) and v.startswith("/static/"):
+                    p[fld] = "/api" + v
 
     demons = [p for p in props if _classify_demon_goblin(p) == "demon"]
     goblins = [p for p in props if _classify_demon_goblin(p) == "goblin"]
@@ -404,6 +451,10 @@ async def get_player_with_badges(
         hub.get("photo_url") or hub.get("headshot_url")
         or board_fallback.get("photo_url") or board_fallback.get("headshot_url")
     )
+    # Rewrite /static/... → /api/static/... so the k8s ingress routes
+    # to the backend (not the React dev server which serves app-shell HTML).
+    if isinstance(photo_url, str) and photo_url.startswith("/static/"):
+        photo_url = "/api" + photo_url
     bdl_player_id = hub.get("bdl_id") or hub.get("bdl_player_id") or hub.get("player_id")
     jersey = hub.get("jersey")
     height = hub.get("height")
