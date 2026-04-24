@@ -196,6 +196,32 @@ class MLBScoringAdapter(ScoringAdapter):
                 model_projection = result.get("predicted")
                 model_sigma = result.get("std_dev")
 
+                # --- Empirical-Bayes post-shrinkage (2026-04-24, flagged) ---
+                # On whitelisted zero-heavy stat families only
+                # (home_runs / rbis / total_bases / hits+runs+rbis),
+                # pull the HF projection toward the player's historical
+                # career mean with per-stat Bayesian weights. Flagged
+                # OFF by default via MLB_HF_EB_SHRINKAGE_ENABLED. When
+                # applied, the shrunk projection is what feeds the
+                # ECDF probability lookup below AND what persists as
+                # `model_projection` on the score doc. Audit trail is
+                # persisted regardless so observability can diff raw
+                # vs shrunk.
+                try:
+                    from services.scoring.mlb_eb_shrinkage import apply_eb_shrinkage
+                    _shrunk, _eb_audit = apply_eb_shrinkage(
+                        db=db,
+                        bdl_player_id=bdl_player_id,
+                        stat_type=stat_type,
+                        raw_projection=model_projection,
+                    )
+                    for _k, _v in _eb_audit.items():
+                        prop[_k] = _v
+                    if _shrunk is not None:
+                        model_projection = _shrunk
+                except Exception as _eb_exc:
+                    logger.debug(f"[MLB_SCORING] EB shrinkage skipped: {_eb_exc}")
+
                 # --- Universal ECDF probability override (2026-04-24) ---
                 # When a per-stat ECDF artifact exists at
                 # models/probability/ecdf/mlb/{stat_family}.pkl,

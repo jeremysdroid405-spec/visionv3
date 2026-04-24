@@ -9,6 +9,61 @@ anomalies through market-consensus probabilities.
 ## MLB ECDF Cutover — VALIDATED (2026-04-24)
 Universal ECDF probability layer is now fully live for MLB.
 
+## MLB Empirical-Bayes Post-Shrinkage (2026-04-24, FLAGGED OFF)
+Prototype behind `MLB_HF_EB_SHRINKAGE_ENABLED=false` (default) targeting
+the 4 zero-heavy stat families whose projections the audit proved
+over-inflated (HR +97%, RBI +48%, TB +25%, HRR +14%).
+
+- **Helper**: `services/scoring/mlb_eb_shrinkage.py`
+  (`apply_eb_shrinkage(db, bdl_player_id, stat_type, raw_projection)`
+  → `(shrunk | None, audit_dict)`). Formula:
+  `shrunk = w_model·raw + w_player·career_mean` with per-stat weights
+  (HR 0.30/0.70, RBI 0.40/0.60, TB 0.50/0.50, HRR 0.60/0.40).
+  Career mean is computed in-adapter from
+  `mlb_master_hub_2026.bdl_game_logs` (batter-AB games only, minimum
+  20 games, ID-based lookup). Negative projections are floored at 0.
+- **Wired** into `mlb_scoring.py` AFTER HF predict and BEFORE the ECDF
+  probability call so downstream ECDF sees the shrunk projection when
+  the flag is on. When flag is off, helper is a no-op.
+- **Audit fields persisted** (when flag on, every MLB score doc):
+  `raw_hf_projection`, `eb_shrunk_projection`, `eb_player_career_mean`,
+  `eb_weight_model`, `eb_weight_player`, `eb_shrinkage_applied`,
+  `eb_skip_reason`, `eb_career_sample_n`. Added to
+  `_SCORE_OUTPUT_FIELDS` and mirrored in `recompute.py`.
+- **14 unit tests** (`tests/test_mlb_eb_shrinkage.py`) — all pass,
+  covering flag-off/on, whitelist filtering, min-games gate, negative
+  floor, non-batter filtering, cache behaviour.
+- **Shadow evaluation** (`scripts/eval_mlb_eb_shrinkage_shadow.py`
+  → `reports/mlb_eb_shrinkage_shadow_eval.md`) — read-only replay
+  across 2,165 live-scored docs. Verdict: **KEEP**.
+
+| stat | actual mean | proj mean before | proj mean after | bias Δ | % reduction |
+|------|------------:|-----------------:|----------------:|-------:|------------:|
+| home_runs | 0.118 | 0.233 | 0.188 | +0.115 → +0.070 | **−39.0%** |
+| rbis | 0.448 | 0.665 | 0.548 | +0.217 → +0.100 | **−53.9%** |
+| total_bases | 1.339 | 1.676 | 1.508 | +0.337 → +0.169 | **−49.8%** |
+| hits+runs+rbis | 1.691 | 1.937 | 1.845 | +0.246 → +0.153 | **−37.7%** |
+
+- **Outlier fix confirmed**: Brandon Marsh TB 5.87→3.60, Mickey Moniak
+  TB 6.88→4.46, Leody Taveras RBIs 3.04→1.58, Michael Busch RBIs
+  2.79→1.33 — the exact "impossible projection" pattern is gone.
+- **ECDF stability**: mean Δp_over: HR −0.084, RBI −0.029, TB −0.013,
+  HRR unchanged. median Δ = 0 on all stats (ECDF buckets absorb the
+  shrinkage smoothly).
+- **Gate movement**: lost 30 OVER gates (all false-OVER candidates) /
+  gained 0; lost 0 UNDER gates / gained 1.
+- **Invariants checked**: 0 negative projections · 0 non-whitelist
+  changes · 144 insufficient_games skips (correctly fall through to
+  raw HF projection).
+- **Grid-search caveat**: mechanical mean-minimisation returns
+  `w_model ≈ 0` as optimal — but that would wipe out ALL HF
+  game-specific signal (park, pitcher matchup, discipline features).
+  The requested 0.30–0.60 weights deliver ~50% bias reduction while
+  preserving half the model's per-game signal. Recommended operating
+  point.
+- **To enable in production**: set `MLB_HF_EB_SHRINKAGE_ENABLED=true`
+  in `/app/backend/.env` and trigger a MLB rescore.
+
 ## MLB Projection Residual Audit — Diagnostic (2026-04-24, READ-ONLY)
 Diagnosis-only audit (no model changes, no caps, no ECDF tweaks) of
 why the MLB HF model over-projects rare events.

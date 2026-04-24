@@ -116,6 +116,20 @@ _SCORE_OUTPUT_FIELDS = (
     "minutes_composition_baseline_projection",
     "minutes_composition_predicted_minutes",
     "minutes_composition_per_min_rate",
+    # Empirical-Bayes post-shrinkage (2026-04-24, MLB zero-heavy stats).
+    # When the flag MLB_HF_EB_SHRINKAGE_ENABLED is on and the stat is
+    # whitelisted (home_runs / rbis / total_bases / hits+runs+rbis),
+    # `model_projection` is overwritten with the shrunk value and these
+    # audit fields record the raw value, the player's career mean, the
+    # weights used, and whether the shrinkage actually applied.
+    "raw_hf_projection",
+    "eb_shrunk_projection",
+    "eb_player_career_mean",
+    "eb_weight_model",
+    "eb_weight_player",
+    "eb_shrinkage_applied",
+    "eb_skip_reason",
+    "eb_career_sample_n",
 )
 
 _IDENTITY_FIELDS = (

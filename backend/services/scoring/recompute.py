@@ -440,6 +440,17 @@ async def recompute_sport(
             doc["coverage_class"] = raw["coverage_class"]
         if "books_anchored" in raw:
             doc["books_anchored"] = raw["books_anchored"]
+        # Empirical-Bayes post-shrinkage audit fields (2026-04-24).
+        # Stamped by mlb_scoring.build_context onto raw_prop regardless of
+        # whether shrinkage applied; surface them on the score doc so
+        # observability can partition (raw vs shrunk) without rescoring.
+        for _eb_k in (
+            "raw_hf_projection", "eb_shrunk_projection",
+            "eb_player_career_mean", "eb_weight_model", "eb_weight_player",
+            "eb_shrinkage_applied", "eb_skip_reason", "eb_career_sample_n",
+        ):
+            if _eb_k in raw:
+                doc[_eb_k] = raw[_eb_k]
         # War Zone CV modifier (2026-04-22) — stamped on the raw prop by
         # `check_war_zone_gates`; mirror onto the score doc so ranking
         # layers / UI can read it without re-running the sorter.
