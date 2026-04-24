@@ -9,6 +9,47 @@ anomalies through market-consensus probabilities.
 ## MLB ECDF Cutover — VALIDATED (2026-04-24)
 Universal ECDF probability layer is now fully live for MLB.
 
+## MLB Projection Residual Audit — Diagnostic (2026-04-24, READ-ONLY)
+Diagnosis-only audit (no model changes, no caps, no ECDF tweaks) of
+why the MLB HF model over-projects rare events.
+
+**Bias table** (proj mean vs actual mean on same player pool):
+
+| stat | proj mean | actual mean | bias | +% vs actual | proj>1 | actual>1 |
+|---|---:|---:|---:|---:|---:|---:|
+| home_runs | 0.233 | 0.118 | **+0.115** | **+97%** | 1.3% | 0.8% |
+| rbis | 0.665 | 0.450 | **+0.215** | **+48%** | 14.5% | 10.8% |
+| total_bases | 1.676 | 1.345 | **+0.331** | **+25%** | **67.9%** | 32.5% |
+| hits+runs+rbis | 1.937 | 1.696 | **+0.241** | **+14%** | **90.7%** | 42.9% |
+
+**Failure modes identified (per-stat flags):**
+- ❌ **Base-rate blindness on zero-heavy stats** — HR projections run
+  97% above actual; RBI 48% above
+- ❌ **Per-player upward inflation** — mean(proj − player career mean)
+  > 0 on ALL four stats (HR +0.074, RBI +0.211, TB +0.327, HRR +0.258);
+  model regresses UP toward league mean instead of DOWN toward the
+  player's own baseline
+- ❌ **Discrete-event blindness on RBIs** — median actual = 0 (70.8%
+  zero-rate), median projection = 0.54. MSE regression smears
+  continuous mass across a discrete event space dominated by zeros
+- ❌ **Tail overshoot on TB / HRR** — P(proj > 1) roughly 2× P(actual > 1)
+- ✅ **Recency bias is NOT the cause** — corr(L5-hot-streak, proj-
+  deviation) < 0.1 on every stat
+
+**Structural hypothesis** (documented, not applied):
+1. XGBoost regression head optimises MSE on zero-inflated targets →
+   systematically overshoots the mode
+2. `final_pred = raw_pred × park_factor × opp_k_rate` compounds
+   multiplicatively → hitter-friendly park + K-prone opponent pushes
+   rare-event tails past physical limits
+3. No shrinkage toward player career rate applied
+4. Volatility floor (`std_dev = l10_avg × 0.35` when CV < 0.35) widens
+   Gaussian but ECDF cutover already absorbed the probability side of
+   that
+
+Reports: `reports/mlb_projection_residual_audit.md`.
+Script: `scripts/audit_mlb_projection_residuals.py`.
+
 ## MLB Live-Board ECDF Audit (2026-04-24, PLAYABLE)
 Shadow audit of the current live slate (`final-mlb-rt`, 2,306 active
 docs, 2,165 with full projection+sigma+line) confirms the board is
