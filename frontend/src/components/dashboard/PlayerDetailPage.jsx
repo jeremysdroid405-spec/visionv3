@@ -1237,41 +1237,20 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     />
                   )}
                   
-                  {/* Fallback: matchup_dvp (lightweight intel_suite DVP signal)
-                      when `momentum_data` is unavailable. The previous
-                      `intel_suite.defensive_momentum` branch was LEGACY —
-                      the backend no longer emits that key (removed when
-                      momentum_data became the authoritative source). */}
-                  {!(currentSport === 'nba' && selectedVisionProp.momentum_data) && currentSport !== 'mlb' && selectedVisionProp.intel_suite?.matchup_dvp && (
-                    <div className="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4" data-testid="matchup-dvp-fallback">
-                      <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
-                        <Target className="w-4 h-4 text-cyan-400" />
-                        MATCHUP ANALYSIS
-                      </h3>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-2xl font-bold text-cyan-300">
-                            {selectedVisionProp.intel_suite.matchup_dvp?.display || '-'}
-                          </div>
-                          <div className="text-xs text-zinc-400 mt-1">
-                            vs {selectedVisionProp.intel_suite.matchup_dvp?.opponent || 'Opponent'}
-                          </div>
-                        </div>
-                        <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          selectedVisionProp.intel_suite.matchup_dvp?.color === 'green' 
-                            ? 'bg-green-500 text-white' 
-                            : selectedVisionProp.intel_suite.matchup_dvp?.color === 'red'
-                              ? 'bg-red-500 text-white'
-                              : 'bg-yellow-500 text-black'
-                        }`}>
-                          {selectedVisionProp.intel_suite.matchup_dvp?.friction_level || 'Unknown'}
-                        </div>
-                      </div>
-                      <div className="text-xs text-cyan-400/70 mt-2">
-                        {selectedVisionProp.intel_suite.matchup_dvp?.friction_label || 'Data pending'}
-                      </div>
-                    </div>
-                  )}
+                  {/* Fallback removed (2026-04-24, user directive Option B):
+                      When `momentum_data` is missing, render NOTHING in
+                      the Defensive Momentum slot. The previous
+                      `intel_suite.matchup_dvp` block is intentionally
+                      not rendered here — it is not Defensive Momentum,
+                      and showing it as a substitute is misleading.
+                      
+                      Strict rule:
+                        - momentum_data present → MomentumTrackerFull
+                        - momentum_data missing → render nothing
+                      
+                      `intel_suite.matchup_dvp` continues to be available
+                      to other sections (Tempo / Variance / etc.) but is
+                      not rendered as a Defensive Momentum substitute. */}
                   
                   {/* Pace Delta (Tempo Multiplier) + Stability Index */}
                   <div className="grid grid-cols-2 gap-2 sm:gap-4">
