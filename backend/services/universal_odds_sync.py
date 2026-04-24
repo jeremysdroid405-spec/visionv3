@@ -19,9 +19,10 @@ Each sport saves to its own collection:
 - MLB: mlb_live_props
 """
 import os
+import time
 import logging
 import asyncio
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Set
 from datetime import datetime, timezone
 
 import httpx
@@ -566,6 +567,14 @@ class UniversalOddsSyncService:
         every event in the current sync reuses the same discovered list
         — we only pay the discovery credits once per sport per sync.
 
+        **2026-04-24**: now honours ``NBA_PULL_ALL_MARKETS=true`` (default
+        true) which flips discovery to ``include_all_markets=True`` —
+        every market key the sportsbook exposes (player_*, game_*,
+        team_totals, period/quarter/half, novelty) gets pulled. A
+        persistent Mongo cache (``dg_market_catalog_cache``) with
+        ``NBA_MARKETS_CACHE_TTL_SECONDS`` TTL (default 3600) is used
+        before hitting the Odds API.
+
         Falls back to the sport's hardcoded ``SPORT_API_CONFIG[sport].markets``
         list if the catalog returns nothing (e.g. API glitch, pre-season
         window).
@@ -574,6 +583,34 @@ class UniversalOddsSyncService:
         if cached is not None:
             return cached
 
+        # ---- 0. env flags -----------------------------------------------
+        pull_all = os.environ.get(
+            "NBA_PULL_ALL_MARKETS", "true"
+        ).strip().lower() in ("1", "true", "yes", "on")
+        ttl_seconds = int(os.environ.get(
+            "NBA_MARKETS_CACHE_TTL_SECONDS", "3600") or 3600)
+
+        # ---- 1. persistent mongo cache (1h by default) -------------------
+        cache_coll = self.db["dg_market_catalog_cache"]
+        cache_key = f"{sport}:all={pull_all}:books={','.join(sorted(bookmakers))}"
+        try:
+            cache_doc = await cache_coll.find_one({"cache_key": cache_key})
+        except Exception:
+            cache_doc = None
+        now_ts = time.time()
+        if cache_doc and (now_ts - float(cache_doc.get("cached_at_ts", 0))) < ttl_seconds:
+            cached_markets = list(cache_doc.get("markets") or [])
+            if cached_markets:
+                logger.info(
+                    f"[UNIVERSAL_ODDS] {sport}: market catalog cache HIT "
+                    f"({len(cached_markets)} markets, "
+                    f"age={int(now_ts - cache_doc['cached_at_ts'])}s, "
+                    f"ttl={ttl_seconds}s, pull_all={pull_all})"
+                )
+                self._sport_market_union[sport] = cached_markets
+                return cached_markets
+
+        # ---- 2. live discovery ------------------------------------------
         event_ids = [e.get("id") for e in sample_events if e.get("id")]
         client = await self._get_client()
 
@@ -585,7 +622,8 @@ class UniversalOddsSyncService:
                 event_ids=event_ids,
                 regions=regions_str,
                 bookmakers=bookmakers,
-                include_game_markets=False,
+                include_game_markets=pull_all,      # h2h / spreads / totals etc
+                include_all_markets=pull_all,       # + team_totals + period + novelty
                 max_events=3,
             )
             # Each probe event = 1 credit.
@@ -593,20 +631,142 @@ class UniversalOddsSyncService:
 
         if not discovered:
             # Fall back to the sport-specific hardcoded list so we never
-            # silently serve zero props when discovery fails.
-            config = self._get_sport_config(sport)
-            discovered = list(config.get("markets", []))
-            logger.warning(
-                f"[UNIVERSAL_ODDS] {sport}: dynamic market discovery returned "
-                f"no markets; falling back to {len(discovered)} hardcoded markets"
-            )
+            # silently serve zero props when discovery fails. If a prior
+            # cache entry exists (even stale) prefer it to the hardcoded
+            # subset — matches the "do NOT silently fall back to a tiny
+            # default list" requirement.
+            if cache_doc and cache_doc.get("markets"):
+                discovered = list(cache_doc["markets"])
+                logger.warning(
+                    f"[UNIVERSAL_ODDS] {sport}: discovery returned 0 markets; "
+                    f"re-using STALE cache ({len(discovered)} markets, "
+                    f"age={int(now_ts - cache_doc['cached_at_ts'])}s)"
+                )
+            else:
+                config = self._get_sport_config(sport)
+                discovered = list(config.get("markets", []))
+                logger.warning(
+                    f"[UNIVERSAL_ODDS] {sport}: dynamic market discovery returned "
+                    f"no markets AND no cache; falling back to "
+                    f"{len(discovered)} hardcoded markets"
+                )
+
+        # ---- 3. persist cache -------------------------------------------
+        if discovered:
+            try:
+                await cache_coll.update_one(
+                    {"cache_key": cache_key},
+                    {"$set": {
+                        "cache_key": cache_key,
+                        "sport": sport,
+                        "bookmakers": sorted(bookmakers),
+                        "pull_all_markets": pull_all,
+                        "markets": discovered,
+                        "market_count": len(discovered),
+                        "cached_at_ts": now_ts,
+                        "cached_at_iso": datetime.now(timezone.utc).isoformat(),
+                        "ttl_seconds": ttl_seconds,
+                    }},
+                    upsert=True,
+                )
+            except Exception as e:
+                logger.warning(f"[UNIVERSAL_ODDS] cache persist failed: {e}")
 
         self._sport_market_union[sport] = discovered
         logger.info(
             f"[UNIVERSAL_ODDS] {sport}: using {len(discovered)} markets for this "
-            f"sync across books={bookmakers}"
+            f"sync across books={bookmakers} (pull_all={pull_all}, "
+            f"cache_ttl={ttl_seconds}s)"
         )
         return discovered
+
+    async def _persist_raw_markets(
+        self,
+        odds_data: Dict[str, Any],
+        event_info: Dict[str, Any],
+        sport: str,
+    ) -> Dict[str, Any]:
+        """Write every outcome from every bookmaker × market into
+        ``dg_raw_odds_markets`` — one row per (bookmaker, market, outcome).
+
+        This is the durable record of ALL markets the sportsbook exposed,
+        including markets we don't map into scoring yet. The record
+        preserves the exact spec requirements:
+          market_key, player_or_team, line/point, price, sportsbook,
+          game_id, timestamp, mapped-vs-unmapped flag.
+
+        The return summary lets the caller report mapped vs unmapped
+        counts in the sync validation block.
+        """
+        config = self._get_sport_config(sport)
+        stat_type_map = config.get("stat_type_map", {}) or {}
+
+        event_id = odds_data.get("event_id") or event_info.get("id") or ""
+        home = event_info.get("home_team")
+        away = event_info.get("away_team")
+        commence = event_info.get("commence_time")
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        mapped = 0
+        unmapped = 0
+        unmapped_keys: Set[str] = set()
+        rows: List[Dict[str, Any]] = []
+
+        for bm in odds_data.get("bookmakers") or []:
+            bm_key = bm.get("key")
+            if not bm_key:
+                continue
+            for market in bm.get("markets") or []:
+                mkey = market.get("key")
+                if not mkey:
+                    continue
+                is_mapped = mkey in stat_type_map
+                if is_mapped:
+                    mapped += 1
+                else:
+                    unmapped += 1
+                    unmapped_keys.add(mkey)
+
+                for outcome in market.get("outcomes") or []:
+                    # `description` holds player name on player_* markets;
+                    # team-level markets use `name` for the team / side.
+                    player = outcome.get("description")
+                    team_or_side = outcome.get("name")
+                    rows.append({
+                        "sport": sport,
+                        "event_id": event_id,
+                        "home_team": home,
+                        "away_team": away,
+                        "commence_time": commence,
+                        "bookmaker": bm_key,
+                        "market_key": mkey,
+                        "mapped_stat_type": stat_type_map.get(mkey),
+                        "is_mapped": is_mapped,
+                        "player_name": player,
+                        "team_or_side": team_or_side,
+                        "line": outcome.get("point"),
+                        "price": outcome.get("price"),
+                        "fetched_at": now_iso,
+                    })
+
+        coll = self.db["dg_raw_odds_markets"]
+        # Replace every row for this (sport, event_id) each sync so the
+        # collection stays fresh — dg_raw_odds_markets is an observability
+        # table, not a history store. If ever we want history we'd
+        # timestamp-partition.
+        try:
+            await coll.delete_many({"sport": sport, "event_id": event_id})
+            if rows:
+                await coll.insert_many(rows, ordered=False)
+        except Exception as e:
+            logger.warning(f"[UNIVERSAL_ODDS] raw-markets write error: {e}")
+
+        return {
+            "written": len(rows),
+            "mapped": mapped,
+            "unmapped": unmapped,
+            "unmapped_keys": sorted(unmapped_keys),
+        }
 
     async def fetch_event_odds(
         self,
@@ -1155,6 +1315,35 @@ class UniversalOddsSyncService:
                 self.credits_used["event_odds"] += 1
                 
                 if odds_data:
+                    # --- Persist raw odds for ALL markets (2026-04-24) ---
+                    # When NBA_PULL_ALL_MARKETS=true we also pull game-level,
+                    # team-totals, period/quarter/half, and novelty markets.
+                    # None of those flow through scoring (which expects
+                    # player_* mapped stat types), but we still want a
+                    # durable record so future mapping work has a source.
+                    # Writes happen once per event into
+                    # ``dg_raw_odds_markets`` (flat one row per outcome).
+                    try:
+                        raw_stats = await self._persist_raw_markets(
+                            odds_data, event, sport,
+                        )
+                        results["raw_markets_written"] = (
+                            results.get("raw_markets_written", 0)
+                            + raw_stats.get("written", 0)
+                        )
+                        results["mapped_markets_seen"] = (
+                            results.get("mapped_markets_seen", 0)
+                            + raw_stats.get("mapped", 0)
+                        )
+                        results["unmapped_markets_seen"] = (
+                            results.get("unmapped_markets_seen", 0)
+                            + raw_stats.get("unmapped", 0)
+                        )
+                        for mk in raw_stats.get("unmapped_keys", []):
+                            results.setdefault("unmapped_market_keys", set()).add(mk)
+                    except Exception as _pe:
+                        logger.warning(f"[UNIVERSAL_ODDS] raw-markets persist failed: {_pe}")
+
                     # Extract props
                     props = self.extract_props_from_odds(odds_data, event, sport)
                     all_props.extend(props)
@@ -1178,6 +1367,10 @@ class UniversalOddsSyncService:
             
             results["total_props"] = len(all_props)
             results["unique_players"] = len(results["unique_players"])
+            # JSON-safe: convert unmapped_market_keys set -> sorted list.
+            if isinstance(results.get("unmapped_market_keys"), set):
+                results["unmapped_market_keys"] = sorted(
+                    results["unmapped_market_keys"])
             results["credits_used"] = dict(self.credits_used)
             
             # Step 3: Save to sport-specific collection

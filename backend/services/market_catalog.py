@@ -38,6 +38,8 @@ Invariants
 from __future__ import annotations
 
 import logging
+import os
+import time
 from typing import Iterable, List, Optional, Sequence, Set
 
 import httpx
@@ -103,13 +105,19 @@ class MarketCatalog:
         regions: str,
         bookmakers: Sequence[str],
         include_game_markets: bool = False,
+        include_all_markets: bool = False,
     ) -> List[str]:
         """Return every market key the specified bookmakers currently
         expose for the given event.
 
         Only *player* markets are returned by default. Pass
         ``include_game_markets=True`` to also include ``h2h`` / ``spreads``
-        / ``totals`` / etc.
+        / ``totals`` / etc. Pass ``include_all_markets=True`` to return
+        EVERYTHING the API emitted (player + game + period/quarter/half
+        + team_totals + any novelty markets like ``halftime_fulltime``
+        or ``first_team_to_score``) — used by the ``NBA_PULL_ALL_MARKETS``
+        path so the ingest pulls the complete sportsbook catalog rather
+        than a curated subset.
 
         Failures (network error, 4xx) fall back to an empty list — the
         caller is responsible for selecting a sensible hardcoded fallback
@@ -120,7 +128,10 @@ class MarketCatalog:
             return []
 
         bm_tuple = tuple(sorted(set(bookmakers)))
-        cache_key = (sport_key, event_id, regions, bm_tuple, include_game_markets)
+        cache_key = (
+            sport_key, event_id, regions, bm_tuple,
+            include_game_markets, include_all_markets,
+        )
         if cache_key in self._cache:
             return list(self._cache[cache_key])
 
@@ -159,7 +170,17 @@ class MarketCatalog:
                 key = (market or {}).get("key")
                 if not key:
                     continue
-                if _is_player_market(key):
+                if include_all_markets:
+                    # NBA_PULL_ALL_MARKETS path — preserve everything
+                    # (player_* + game_* + period/quarter/half variants +
+                    # team_totals + novelty markets like halftime_fulltime,
+                    # first_team_to_score, odd_even, overtime, etc.).
+                    # Scoring only acts on markets it knows how to map;
+                    # the rest are stored raw by the caller for future
+                    # expansion — see `nba_unmapped_odds_markets` storage
+                    # in universal_odds_sync extract pass.
+                    seen.add(key)
+                elif _is_player_market(key):
                     seen.add(key)
                 elif include_game_markets and _is_game_market(key):
                     seen.add(key)
@@ -181,6 +202,7 @@ class MarketCatalog:
         regions: str,
         bookmakers: Sequence[str],
         include_game_markets: bool = False,
+        include_all_markets: bool = False,
         max_events: int = 3,
     ) -> List[str]:
         """Shortcut: union of markets seen across the first ``max_events``
@@ -203,6 +225,7 @@ class MarketCatalog:
                 regions=regions,
                 bookmakers=bookmakers,
                 include_game_markets=include_game_markets,
+                include_all_markets=include_all_markets,
             )
             union.update(discovered)
         ordered = sorted(union)

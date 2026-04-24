@@ -9,6 +9,51 @@ anomalies through market-consensus probabilities.
 ## MLB ECDF Cutover — VALIDATED (2026-04-24)
 Universal ECDF probability layer is now fully live for MLB.
 
+## NBA "Pull All Markets" — IMPLEMENTED (2026-04-24)
+Default NBA odds sync now pulls the complete per-event market catalog
+each sportsbook exposes — 105 markets discovered live, up from 8
+hardcoded. Full report: `reports/nba_pull_all_markets_validation.md`.
+
+### What landed
+- `services/market_catalog.py` — `include_all_markets=True` bypasses
+  player/game prefix filters, returns every market key the API emits
+  (player_*, game_*, team_totals, period/quarter/half, novelty markets
+  like `halftime_fulltime`, `first_team_to_score`, `odd_even`, etc.).
+- `services/universal_odds_sync.py::_resolve_markets_for_sport` —
+  now reads `NBA_PULL_ALL_MARKETS=true` (default) and
+  `NBA_MARKETS_CACHE_TTL_SECONDS=3600` from env. Persistent Mongo
+  cache in `dg_market_catalog_cache` survives restarts and shares
+  across sync invocations. Stale cache preferred over hardcoded
+  fallback on discovery failure (no silent coverage shrink).
+- `services/universal_odds_sync.py::_persist_raw_markets` — new
+  method writing one row per `(bookmaker × market × outcome)` into
+  `dg_raw_odds_markets`. 29,250 rows per live sync including 8,211
+  previously-discarded unmapped-market outcomes (h2h/spreads/totals,
+  team_totals, period markets, novelty). Mapped/unmapped flag, raw
+  market_key, player_or_team, line, price, bookmaker, game_id,
+  timestamp — exactly the spec's unknown-market policy.
+- `/app/backend/.env` — persisted `NBA_PULL_ALL_MARKETS=true` +
+  `NBA_MARKETS_CACHE_TTL_SECONDS=3600`.
+
+### Key numbers (live sync validation)
+- markets discovered: **8 → 105**
+- `nba_live_props` stat_types: **4 → 28**
+- `nba_live_props` rows: 2,950 → **4,731**
+- `dg_raw_odds_markets` rows: **29,250** (21,039 mapped + 8,211 unmapped)
+- credits used: 12 (1 events + 3 discovery + 8 event-odds)
+- `tp_unavailable` NBA rejects: 1,887 → **1,805** (fewer structural
+  misses; remaining are alt-line one-sided and the 522
+  newly-revealed `market_not_mapped_downstream` — aliases need a
+  follow-up config-only fix)
+- 164/164 relevant tests pass
+
+### The Odds API test findings (documented for future reference)
+- `/v4/sports/<sport>/odds-markets` — **404, endpoint does not exist**
+- `markets=all` param — **422 INVALID_MARKET**
+- Omitted `markets` → returns only `h2h`
+- Per-event `/events/<id>/markets` is the only discovery surface;
+  yields 89+ markets per NBA event; 1 credit each probe.
+
 ## MLB ECDF Coverage Completion — 100% (2026-04-24)
 Three previously-missing ECDF artifacts trained and serving live:
 `hits+runs+rbis`, `doubles`, `stolen_bases`. MLB artifact count
