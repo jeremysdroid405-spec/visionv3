@@ -72,6 +72,16 @@ _SCORE_OUTPUT_FIELDS = (
     #   tp_unavailable   — True when no book had both sides (hard-fails gate_tp)
     "tp", "edge_pct", "tp_books_used", "tp_books_list", "tp_method",
     "tp_unavailable",
+    # Typed reason for tp=None (2026-04-24). One of:
+    #   None                      – tp was successfully computed
+    #   "unsupported_stat_family" – stat_type has no alias / no family
+    #   "no_live_props_quote"     – no book quoted either side
+    #   "alt_line_one_sided"      – at least one side priced but no book
+    #                               returned the opposite side (inherent
+    #                               DK/FD alt-market behaviour)
+    #   "standard_line_missing_opp" – standard market that should have
+    #                                 paired but didn't (upstream gap)
+    "tp_unavailable_reason",
     # Universal CV persistence (2026-04-23). CV is computed per
     # (player, stat_family) and is line-independent — the same value
     # attaches to every line (standard + alt) of the same family. The

@@ -520,6 +520,8 @@ async def recompute_sport(
             doc["tp_method"] = raw["tp_method"]
         if "tp_unavailable" in raw:
             doc["tp_unavailable"] = raw["tp_unavailable"]
+        if "tp_unavailable_reason" in raw:
+            doc["tp_unavailable_reason"] = raw["tp_unavailable_reason"]
 
         score_docs.append(doc)
 

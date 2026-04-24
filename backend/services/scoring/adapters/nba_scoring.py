@@ -1368,6 +1368,47 @@ class NBAScoringAdapter(ScoringAdapter):
         prop["tp_method"] = tp_method
         prop["tp_unavailable"] = tp_unavailable
 
+        # Spec step 4 (2026-04-24): explicit reason code for tp=None.
+        # Replaces the catch-all `tp_unavailable=True` with a typed
+        # reason so audits can distinguish genuine downstream bugs
+        # (missing alias, unsupported stat, no live_props row) from
+        # inherent sportsbook behaviour (alt-line one-sided quote).
+        tp_reason = None
+        if tp_unavailable:
+            from services.scoring.gates.thresholds import (
+                resolve_stat_family, STAT_FAMILY_ALIASES,
+            )
+            nba_aliases = STAT_FAMILY_ALIASES.get("nba", {}) or {}
+            resolved_family = resolve_stat_family("nba", stat_type)
+            has_explicit_alias = stat_type in nba_aliases
+            market_key = (prop.get("market_key") or "").lower()
+            is_alt = bool(prop.get("is_alternate_market")) or market_key.endswith(
+                "_alternate"
+            )
+            has_any_side = any(
+                prop.get(f"{b}_odds") is not None
+                for b in ("dk", "fd", "mgm", "bol")
+            ) or prop.get("draftkings_price") is not None
+
+            if not has_explicit_alias and resolved_family == stat_type.strip().lower().replace(" ", "_"):
+                # resolve_stat_family fell back to the raw lowercase key
+                # — means we have no canonical family for this stat_type
+                # and scoring cannot resolve a projection distribution.
+                tp_reason = "unsupported_stat_family"
+            elif not has_any_side:
+                tp_reason = "no_live_props_quote"
+            elif is_alt:
+                # This side has a price on at least one book but no book
+                # returned the opposite side — inherent alt-line one-
+                # sided pattern (DK/FD alt markets typically publish a
+                # single boosted price per point value).
+                tp_reason = "alt_line_one_sided"
+            else:
+                # Standard market that should have paired — upstream
+                # odds-extract gap.
+                tp_reason = "standard_line_missing_opp"
+        prop["tp_unavailable_reason"] = tp_reason
+
         # Select active method via the shared p_true ladder helper.
         # Canonical order: model → hit_rate → vk2 → fair.
         # `preferred_method` lets override_config.vision_score.p_true_method

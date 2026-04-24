@@ -9,6 +9,42 @@ anomalies through market-consensus probabilities.
 ## MLB ECDF Cutover — VALIDATED (2026-04-24)
 Universal ECDF probability layer is now fully live for MLB.
 
+## NBA Downstream Alias Audit — Definitive (2026-04-24)
+The earlier "522 market_not_mapped_downstream" rejects were a
+**misclassification** from my prior audit — I used a too-narrow
+`NBA_MAPPED_STATS` set that excluded combo-alt markets. Confirmed by
+adding a typed `tp_unavailable_reason` field to every scored doc:
+
+| reason | count | share |
+|---|---:|---:|
+| `alt_line_one_sided` | **2,038** | **99.8%** |
+| `standard_line_missing_opp` | 5 | 0.2% |
+| `unsupported_stat_family` | **0** | **0%** |
+| `no_live_props_quote` | 0 | 0% |
+
+**Zero NBA props sit in tp_unavailable because of a missing alias.**
+Every stat_type resolves correctly; `pts_reb` / `pts_ast` / `reb_ast`
+combo synthesis is wired (`nba_scoring.py::_combo_factor_map`).
+
+**What landed** (spec step 4 — the actual deliverable):
+- `services/scoring/adapters/nba_scoring.py` — inline classifier emits
+  `tp_unavailable_reason` in {`unsupported_stat_family`,
+  `no_live_props_quote`, `alt_line_one_sided`, `standard_line_missing_opp`}
+- `services/scoring/prop_scores_store.py` — field added to
+  `_SCORE_OUTPUT_FIELDS`
+- `services/scoring/recompute.py` — mirrored from raw_prop
+- `tests/test_nba_tp_unavailable_reason.py` — 7 tests, all pass
+- 171/171 relevant tests pass
+
+**Tiered picks (final-nba-rt):**
+safe_haven 12 → 13 · front_lines 60 → **67** · war_zone 1,036 → **1,209** (+173 from all-markets pull landing combo synth properly).
+
+**Remaining tp_unavailable is structural**: 99.8% is DK/FD alt-line
+one-sided behaviour. No alias fix recovers it — only cross-line
+synthetic pairing (non-trivial math) could.
+
+Report: `reports/nba_downstream_alias_audit.md`.
+
 ## NBA "Pull All Markets" — IMPLEMENTED (2026-04-24)
 Default NBA odds sync now pulls the complete per-event market catalog
 each sportsbook exposes — 105 markets discovered live, up from 8
