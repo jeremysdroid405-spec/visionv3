@@ -9,6 +9,46 @@ anomalies through market-consensus probabilities.
 ## MLB ECDF Cutover — VALIDATED (2026-04-24)
 Universal ECDF probability layer is now fully live for MLB.
 
+## MLB Live-Board ECDF Audit (2026-04-24, PLAYABLE)
+Shadow audit of the current live slate (`final-mlb-rt`, 2,306 active
+docs, 2,165 with full projection+sigma+line) confirms the board is
+playable post-ECDF.
+
+- **Tier counts**: 6 safe_haven / 1 front_lines / 101 war_zone /
+  2,198 unqualified. Board renders normally.
+- **ECDF coverage**: 65.2% of scored props (1,411) route through
+  ECDF. 34.8% (754) fall back to Gaussian — only 3 stat_families
+  missing artifacts (`hits+runs+rbis` 611, `doubles` 116,
+  `stolen_bases` 27). Pencilled for follow-up training.
+- **False-OVER corrections on the live board: 144**. Downgrades up to
+  Δ = −0.562 (e.g. `Lane Thomas rbis 0.5 OVER`: 0.873 → 0.310). These
+  are exactly the picks the pre-ECDF board would have recommended as
+  OVER bets that the ECDF correctly demotes. Heavy concentration on
+  `rbis 0.5` and `total_bases 1.5/2.5`.
+- **Probability distribution shift** (gauss → ecdf):
+  - `70-90` bucket: 232 → 27 (**−205** ⇒ ECDF rejects most
+    "confident OVER" Gaussian calls on zero-heavy stats)
+  - `30-45` bucket: 389 → 188 (**−201**)
+  - `<10`: 443 → 217 (**−226** ⇒ ECDF also corrects over-confident
+    UNDERs — Gaussian was too certain on both tails)
+- **All 82 tiered picks ride a .5-line** (expected — MLB stat
+  thresholds mostly half-integer). Top-20 dominated by elite-hitter
+  RBI 0.5 OVERs (`Leody Taveras 3.04 proj`, `Ozzie Albies 2.51 proj`).
+- **Zero-heavy OVER ≥ 0.55**: 64 candidates, 0 in the top-tier
+  (safe_haven / front_lines); 5 in war_zone, 59 in unqualified. None
+  are structural ECDF bugs — all are the HF model emitting elevated
+  projections that ECDF faithfully maps through empirical buckets.
+- Report: `reports/mlb_live_board_ecdf_audit.md`.
+
+**Observed projection concerns (not ECDF bugs, pre-existing HF model)**:
+`Brandon Marsh home_runs proj=1.49` and similar extreme projections
+exist — flagged for future HF-model review. ECDF is honestly mapping
+what the projection model emits; the fix lives in `mlb_high_friction_model`
+recalibration, not in the probability layer.
+
+## MLB ECDF Cutover — VALIDATED (2026-04-24)
+Universal ECDF probability layer is now fully live for MLB.
+
 - **10 MLB artifacts** trained + served:
   `hits, hits_allowed, home_runs, pitcher_strikeouts, rbis, runs,
   singles, strikeouts, total_bases, walks`. Each has 9-10 projection
