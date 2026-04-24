@@ -294,16 +294,41 @@ SPORT_API_CONFIG = {
     "nba": {
         "sport_key": "basketball_nba",
         "display_name": "NBA",
-        # NBA Markets - Standard props
+        # NBA Markets — 2026-04-24: expanded market list so universal-odds-sync
+        # pulls BOTH sides (and thus `{book}_odds_opp`) for every stat_type
+        # the NBA adapter scores. Previously only PTS/REB/AST/PRA (standard
+        # + alternate) were pulled, which caused 888 NBA scored props — on
+        # threes/steals/blocks, two-stat combos, and turnovers — to enter
+        # the board via the PrizePicks-anchored path without any paired
+        # DK/FD quotes. Those rows were routed to `gate_tp_unavailable`.
+        # Adding these markets closes the market-coverage half of the
+        # TP-anchor gap (the other half, alt-line one-sided quotes, is
+        # inherent to the US sportsbook alt-market API shape).
         "markets": [
             "player_points",
             "player_rebounds",
             "player_assists",
-            "player_points_rebounds_assists",  # PRA combo
+            "player_points_rebounds_assists",          # PRA combo
             "player_points_alternate",
             "player_rebounds_alternate",
             "player_assists_alternate",
             "player_points_rebounds_assists_alternate",
+            # 2026-04-24 additions — every stat_type scored by NBA adapter
+            "player_threes",
+            "player_threes_alternate",
+            "player_steals",
+            "player_steals_alternate",
+            "player_blocks",
+            "player_blocks_alternate",
+            "player_turnovers",
+            "player_turnovers_alternate",
+            # Two-stat combos — heavily subscribed by PrizePicks.
+            "player_points_rebounds",
+            "player_points_rebounds_alternate",
+            "player_points_assists",
+            "player_points_assists_alternate",
+            "player_rebounds_assists",
+            "player_rebounds_assists_alternate",
         ],
         # Map Odds API market names to our stat types
         "stat_type_map": {
@@ -315,6 +340,23 @@ SPORT_API_CONFIG = {
             "player_assists_alternate": "AST",
             "player_points_rebounds_assists": "PRA",
             "player_points_rebounds_assists_alternate": "PRA",
+            # 2026-04-24 additions
+            "player_threes": "3PM",
+            "player_threes_alternate": "3PM",
+            "player_steals": "STL",
+            "player_steals_alternate": "STL",
+            "player_blocks": "BLK",
+            "player_blocks_alternate": "BLK",
+            "player_turnovers": "TO",
+            "player_turnovers_alternate": "TO",
+            # Preserve raw combo keys — scoring adapter / gate aliases
+            # already handle them downstream.
+            "player_points_rebounds": "player_points_rebounds",
+            "player_points_rebounds_alternate": "player_points_rebounds_alternate",
+            "player_points_assists": "player_points_assists",
+            "player_points_assists_alternate": "player_points_assists_alternate",
+            "player_rebounds_assists": "player_rebounds_assists",
+            "player_rebounds_assists_alternate": "player_rebounds_assists_alternate",
         },
         # PrizePicks anchor + DK + FD + BetOnline + BetMGM
         # (2026-04-22 update: BetMGM added).
