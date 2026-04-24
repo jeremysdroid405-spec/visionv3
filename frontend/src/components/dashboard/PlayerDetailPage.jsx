@@ -550,8 +550,45 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     adjusted_confidence: clickedProp.adjusted_confidence ?? prop.adjusted_confidence,
                     // Oracle summary (MLB)
                     oracle_summary: clickedProp.oracle_summary || prop.oracle_summary,
-                    // Scout badges
+                    // Badges — Ferrari tier payload is the current source of
+                    // truth. `/player-with-badges` does not return
+                    // momentum_data / scout_badges / active_badges, so the
+                    // clicked-pick copies must win.
                     scout_badges: clickedProp.scout_badges || prop.scout_badges,
+                    context_badges: clickedProp.context_badges || prop.context_badges,
+                    active_badges: clickedProp.active_badges || prop.active_badges,
+                    // Defensive Momentum (NBA) — current SoT is the root-level
+                    // `momentum_data` emitted by Ferrari scoring. `intel_suite
+                    // .defensive_momentum` is the legacy field and is no
+                    // longer emitted by the backend; do NOT fall back to it.
+                    momentum_data: clickedProp.momentum_data || prop.momentum_data,
+                    has_momentum_modifier:
+                      clickedProp.has_momentum_modifier ?? prop.has_momentum_modifier,
+                    momentum_modifier:
+                      clickedProp.momentum_modifier ?? prop.momentum_modifier,
+                    // Officiating / vacuum modifier fields (also only present
+                    // on the Ferrari payload).
+                    crew_chief: clickedProp.crew_chief || prop.crew_chief,
+                    whistle_class: clickedProp.whistle_class || prop.whistle_class,
+                    whistle_modifier:
+                      clickedProp.whistle_modifier ?? prop.whistle_modifier,
+                    has_whistle_modifier:
+                      clickedProp.has_whistle_modifier ?? prop.has_whistle_modifier,
+                    point_lift: clickedProp.point_lift ?? prop.point_lift,
+                    lift_label: clickedProp.lift_label || prop.lift_label,
+                    lift_type: clickedProp.lift_type || prop.lift_type,
+                    has_vacuum_modifier:
+                      clickedProp.has_vacuum_modifier ?? prop.has_vacuum_modifier,
+                    vacuum_modifier:
+                      clickedProp.vacuum_modifier ?? prop.vacuum_modifier,
+                    vacuum_data: clickedProp.vacuum_data || prop.vacuum_data,
+                    // Opponent — prefer clicked pick's normalized opponent
+                    opponent: clickedProp.opponent || prop.opponent,
+                    opponent_abbr:
+                      clickedProp.opponent_abbr || prop.opponent_abbr,
+                    // MLB matchup analysis (split / pitcher)
+                    matchup_analysis:
+                      clickedProp.matchup_analysis || prop.matchup_analysis,
                     // INTEL SUITE - Critical for Tempo, Badges, etc.
                     // Merge both intel_suite objects to preserve all fields (lasso from tier, tempo/stability from player detail)
                     intel_suite: {
@@ -1013,18 +1050,28 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   {Object.entries(BADGE_REGISTRY)
                     .filter(([_, badge]) => (!badge.sport || badge.sport === currentSport) && badge.category !== 'scout')
                     .map(([badgeKey, badge]) => {
-                    // Check if this badge is active for this player
-                    // For MLB, check context_badges array for badge keys
-                    const contextBadges = selectedVisionProp.intel_suite?.context_badges || [];
+                    // Current SoT for context badges on NBA Ferrari picks is
+                    // ROOT-level `context_badges` (objects with badge_key).
+                    // `intel_suite.context_badges` is a legacy/MLB array of
+                    // strings — we keep reading it for MLB compatibility.
+                    const rootContextBadges = selectedVisionProp.context_badges || [];
+                    const suiteContextBadges = selectedVisionProp.intel_suite?.context_badges || [];
+                    const allContextBadges = [...rootContextBadges, ...suiteContextBadges];
                     const isActive = selectedVisionProp.active_badges?.includes(badgeKey) || 
-                                     contextBadges.includes(badgeKey) ||
-                                     contextBadges.some(b => typeof b === 'object' && b.badge_key === badgeKey) ||
+                                     allContextBadges.includes(badgeKey) ||
+                                     allContextBadges.some(b => typeof b === 'object' && b.badge_key === badgeKey) ||
                                      selectedVisionProp.scout_badges?.some(b => b.id === badgeKey || b.badge_key === badgeKey);
                     
-                    // Get custom description from player badges if available
+                    // Get custom description from the matching context badge
+                    // (NBA Ferrari supplies a human-readable `description`).
+                    const ctxBadgeMatch = allContextBadges.find(
+                      (b) => typeof b === 'object' && b.badge_key === badgeKey
+                    );
                     const playerBadge = player?.badges?.find(b => b.badge_key === badgeKey);
                     const mlbBadge = selectedVisionProp.scout_badges?.find(b => b.id === badgeKey);
-                    const customDescription = isActive ? (playerBadge?.description || mlbBadge?.name) : null;
+                    const customDescription = isActive
+                      ? (ctxBadgeMatch?.description || playerBadge?.description || mlbBadge?.name)
+                      : null;
                     
                     return (
                       <BadgeGridItem 
@@ -1038,19 +1085,26 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 </div>
                 
                 {/* Active Badges Summary */}
-                {(selectedVisionProp.active_badges?.length > 0 || selectedVisionProp.intel_suite?.context_badges?.length > 0) && (
+                {(() => {
+                  const rootContextBadges = selectedVisionProp.context_badges || [];
+                  const suiteContextBadges = selectedVisionProp.intel_suite?.context_badges || [];
+                  const activeBadges = selectedVisionProp.active_badges || [];
+                  const combined = [...activeBadges, ...rootContextBadges, ...suiteContextBadges];
+                  if (combined.length === 0) return null;
+                  return (
                     <div className="mt-4 pt-4 border-t border-zinc-700">
                       <div className="text-xs text-amber-400 font-semibold mb-2">
                         ACTIVE FOR {playerName?.toUpperCase()}:
                       </div>
-                      <BadgeRow 
-                        badges={(selectedVisionProp.active_badges || selectedVisionProp.intel_suite?.context_badges || []).map(b => ({
-                          badge_key: typeof b === 'string' ? b : b.badge_key
+                      <BadgeRow
+                        badges={combined.map((b) => ({
+                          badge_key: typeof b === 'string' ? b : b.badge_key,
                         }))}
                         size="md"
                       />
                     </div>
-                )}
+                  );
+                })()}
               </div>
               
               {/* ===== SCOUT BADGES - AI & Model-Driven Indicators ===== */}
@@ -1146,7 +1200,9 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   </div>
                   
                   {/* Matchup Analysis - Sport-specific primary, shared fallback */}
-                  {/* NBA: Momentum Tracker */}
+                  {/* NBA: Momentum Tracker — CURRENT SOURCE OF TRUTH for
+                      defensive momentum. Reads `momentum_data` (scoring
+                      output emitted by Ferrari tier enrichment). */}
                   {currentSport === 'nba' && selectedVisionProp.momentum_data && (
                     <MomentumTrackerFull
                       momentumData={selectedVisionProp.momentum_data}
@@ -1164,43 +1220,13 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     />
                   )}
                   
-                  {/* Shared fallback: Defensive Momentum from intel_suite */}
-                  {!(currentSport === 'nba' && selectedVisionProp.momentum_data) && selectedVisionProp.intel_suite?.defensive_momentum && (
-                    <div className="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4">
-                      <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
-                        <Target className="w-4 h-4 text-cyan-400" />
-                        DEFENSIVE MOMENTUM
-                      </h3>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-2xl font-bold text-cyan-300">
-                            {selectedVisionProp.intel_suite.defensive_momentum?.display || 'N/A'}
-                          </div>
-                          <div className="text-xs text-zinc-400 mt-1">
-                            vs {selectedVisionProp.intel_suite?.matchup_dvp?.opponent || selectedVisionProp.opponent || 'Opponent'}
-                          </div>
-                        </div>
-                        <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          selectedVisionProp.intel_suite.defensive_momentum?.is_weak 
-                            ? 'bg-green-500 text-white' 
-                            : selectedVisionProp.intel_suite.defensive_momentum?.is_elite
-                              ? 'bg-red-500 text-white'
-                              : 'bg-yellow-500 text-black'
-                        }`}>
-                          {selectedVisionProp.intel_suite.defensive_momentum?.is_weak ? 'Soft' : selectedVisionProp.intel_suite.defensive_momentum?.is_elite ? 'Elite' : 'Average'}
-                        </div>
-                      </div>
-                      {selectedVisionProp.intel_suite.defensive_momentum?.tooltip && (
-                        <div className="text-xs text-cyan-400/70 mt-2">
-                          {selectedVisionProp.intel_suite.defensive_momentum.tooltip}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  {/* Shared fallback: matchup_dvp when no other matchup data */}
-                  {!(currentSport === 'nba' && selectedVisionProp.momentum_data) && !selectedVisionProp.intel_suite?.defensive_momentum && selectedVisionProp.intel_suite?.matchup_dvp && (
-                    <div className="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4">
+                  {/* Fallback: matchup_dvp (lightweight intel_suite DVP signal)
+                      when `momentum_data` is unavailable. The previous
+                      `intel_suite.defensive_momentum` branch was LEGACY —
+                      the backend no longer emits that key (removed when
+                      momentum_data became the authoritative source). */}
+                  {!(currentSport === 'nba' && selectedVisionProp.momentum_data) && currentSport !== 'mlb' && selectedVisionProp.intel_suite?.matchup_dvp && (
+                    <div className="bg-gradient-to-r from-cyan-950/40 to-zinc-900 border border-cyan-500/30 rounded-lg p-4" data-testid="matchup-dvp-fallback">
                       <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
                         <Target className="w-4 h-4 text-cyan-400" />
                         MATCHUP ANALYSIS

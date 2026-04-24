@@ -1,6 +1,49 @@
 # Changelog
 
-## 2026-04-24 — Player Detail Page (Click Path) — Data Contract Fix (P0)
+## 2026-04-24 — Player Detail Card — Badges + Defensive Momentum (Legacy Purge)
+
+**User report:** Clicked detail view was using stale/legacy badge sources;
+defensive momentum appearing "wrong/legacy"; badges not populating.
+
+**Root cause trace (backend + frontend, read-only where instructed):**
+
+| Signal | Current SoT (Ferrari tier payload @ root) | `/player-with-badges` response | Frontend behavior BEFORE fix |
+|---|---|---|---|
+| `momentum_data` | Full 22-key object (scoring output from `services/defensive_momentum_service.py`) | `None` on every prop | Merge did NOT copy → `MomentumTrackerFull` never rendered |
+| `scout_badges` | list @ root | `None` @ root | Merge included this field (OK) |
+| `context_badges` | list of `{badge_key, display, icon, color, description}` @ root | list (same) | `intel_suite.context_badges` read only — MISSED root copy |
+| `active_badges` | `None` (not set) | `None` | Not merged |
+| `intel_suite.defensive_momentum` | **not emitted** (legacy) | **not emitted** | UI had fallback block reading it → dead "N/A" branch |
+| `intel_suite.matchup_dvp` | full current DVP object | full current DVP object | OK (used) |
+| `has_momentum_modifier`, `momentum_modifier`, `crew_chief`, `whistle_*`, `vacuum_*` | @ root (Ferrari) | `None` | Not merged |
+
+**Legacy references found:**
+- `PlayerDetailPage.jsx` lines 1167–1199 (removed) — read `selectedVisionProp.intel_suite.defensive_momentum` and rendered a "DEFENSIVE MOMENTUM" card. The backend no longer emits this key (it was replaced by the root-level `momentum_data` object emitted by Ferrari scoring). The branch always produced "N/A" but masked the correct fallback.
+- Environmental Factors "ACTIVE FOR …" summary checked only `intel_suite.context_badges`, which is empty for NBA (context_badges live at root).
+
+**Current (authoritative) sources used:**
+- Defensive momentum → `pick.momentum_data` (NBA scoring) OR `pick.intel_suite.matchup_dvp` (fallback). Both come from `services/defensive_momentum_service.py` / Ferrari enrichment. No other source is read.
+- Scout badges → `pick.scout_badges` (root) OR `pick.intel_suite.scout_badges`.
+- Context badges → `pick.context_badges` (root) + `pick.intel_suite.context_badges` (MLB string array).
+- `defensive_momentum_cache` Mongo collection is referenced ONLY by `vegas_killer_model.py`, `vegas_pro_model.py`, `vegas_regression_model.py`, `defensive_momentum_service.py` (authoritative writer). Not read by `ferrari_tiers.py`, `player.py`, or any frontend path.
+
+**Files changed (frontend only):**
+- `frontend/src/components/dashboard/PlayerDetailPage.jsx`
+  1. Merge block now copies `momentum_data`, `active_badges`, `context_badges`, `has_momentum_modifier`, `momentum_modifier`, `crew_chief`, `whistle_class`, `whistle_modifier`, `has_whistle_modifier`, `point_lift`, `lift_label`, `lift_type`, `has_vacuum_modifier`, `vacuum_modifier`, `vacuum_data`, `matchup_analysis`, `opponent`, `opponent_abbr` from the clicked Ferrari pick into the refetched prop.
+  2. Removed the legacy `intel_suite.defensive_momentum` render branch.
+  3. Environmental Factors grid now unions root-level `context_badges` with `intel_suite.context_badges` for `isActive` detection and custom descriptions.
+  4. "ACTIVE FOR {player}" summary now renders whenever `active_badges`, root `context_badges`, OR `intel_suite.context_badges` has entries.
+
+**Before/After payload — Jokic AST 7.5 (Safe Haven):**
+- `[A] Ferrari`: momentum_data=dict(22), context_badges=list(1), intel_suite.matchup_dvp="Rank #10 vs. Playmakers"
+- `[B] /player-with-badges` (raw, before fix): momentum_data=None, scout_badges=None, active_badges=None → UI showed blank "DEFENSIVE MOMENTUM: N/A"
+- `[C] Post-merge (after fix)`: momentum_data=dict(22), context_badges=list(1), intel_suite.matchup_dvp="Rank #10 vs. Playmakers" → UI renders `MomentumTrackerFull` when momentum_data present, else current matchup_dvp. Legacy path gone.
+
+**Validation (Playwright on preview):**
+- Safe Haven #0 (Jalen Duren PTS 11.5): ENVIRONMENTAL FACTORS ✓, PERFORMANCE INDICATORS ✓, "ACTIVE FOR JALEN DUREN:" ✓ (shows HOME COOKIN' pill), "DEFENSIVE MOMENTUM" heading = 0 sightings, current `matchup-dvp-fallback` = 1 (vs ORL Rank #13 Medium), no "No game data", bar charts present.
+- Identical merge path used by Front Lines (`handleRadarClick`) and War Zone (`handleRadarClick`) — covered by the same fix.
+
+
 
 **Context:** Clicking a Safe Haven / Front Lines / War Zone card opened a
 detail view with broken bar charts ("No game data"), missing hit rates,
