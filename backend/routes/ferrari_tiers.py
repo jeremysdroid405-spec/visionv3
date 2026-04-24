@@ -930,56 +930,110 @@ def _generate_under_vision_gritty(score: Dict[str, Any], prop: Dict[str, Any]) -
     return ""
 
 
+# Cross-pipeline stat-name alias (2026-04-24). The Odds-API ingestion
+# writes raw market names like `player_points_assists_alternate`, but
+# `cached_board_builder_service` normalises combo markets to compact
+# `P+A` / `P+R` / `R+A` / `BLK+STL` tokens. These are the SAME family —
+# cached_board just never adopted the alternate-market naming. Aliasing
+# both sides to a stable family token lets stat-level enrichment join
+# without requiring a scoring-pipeline rename.
+_STAT_FAMILY_ALIAS = {
+    "PLAYER_POINTS_ALTERNATE":                 "PTS",
+    "PLAYER_REBOUNDS_ALTERNATE":               "REB",
+    "PLAYER_ASSISTS_ALTERNATE":                "AST",
+    "PLAYER_THREES_ALTERNATE":                 "3PM",
+    "PLAYER_POINTS_ASSISTS":                   "P+A",
+    "PLAYER_POINTS_ASSISTS_ALTERNATE":         "P+A",
+    "PLAYER_POINTS_REBOUNDS":                  "P+R",
+    "PLAYER_POINTS_REBOUNDS_ALTERNATE":        "P+R",
+    "PLAYER_REBOUNDS_ASSISTS":                 "R+A",
+    "PLAYER_REBOUNDS_ASSISTS_ALTERNATE":       "R+A",
+    "PLAYER_POINTS_REBOUNDS_ASSISTS":          "PRA",
+    "PLAYER_POINTS_REBOUNDS_ASSISTS_ALTERNATE":"PRA",
+    "PLAYER_BLOCKS":                           "BLK",
+    "PLAYER_STEALS":                           "STL",
+    "PLAYER_BLOCKS_STEALS":                    "BLK+STL",
+    "PLAYER_TURNOVERS":                        "TO",
+    "PLAYER_FANTASY_POINTS":                   "PLAYER_FANTASY_POINTS",
+    # Compact tokens already used by cached_board — pass through.
+    "PTS": "PTS", "REB": "REB", "AST": "AST", "PRA": "PRA",
+    "3PM": "3PM", "STL": "STL", "BLK": "BLK", "TO": "TO",
+    "P+A": "P+A", "P+R": "P+R", "R+A": "R+A", "BLK+STL": "BLK+STL",
+}
+
+def _canonical_stat_family(stat: Optional[str]) -> str:
+    """Return the cross-pipeline stat-family token for a raw stat_type.
+    Unknown stats pass through uppercased so aliasing is additive only."""
+    if not stat:
+        return ""
+    key = str(stat).strip().upper()
+    return _STAT_FAMILY_ALIAS.get(key, key)
+
+
 async def _build_nba_board_lookup() -> Dict[tuple, Dict[str, Any]]:
-    """Flatten `dg_cached_board` (player-grain) into a prop-grain lookup keyed
-    by (event_id, player_name_lower, STAT_UPPER, line_float, DIR_UPPER).
+    """Flatten `dg_cached_board` (player-grain) into multiple lookup
+    indices, progressively more tolerant to key drift:
 
-    Also builds a SECONDARY event-id-agnostic index keyed by
-    (player_name_lower, STAT_UPPER, line_float, DIR_UPPER) so a score
-    doc whose `event_id` drifted from the cached_board snapshot (e.g.
-    after a fresh odds sync that re-hashed event ids) still enriches.
-    A player can only be in one NBA game per slate, so the 4-tuple is
-    unambiguous; the 5-tuple stays the preferred match.
+      * 5-tuple exact:   (event_id, player_l, STAT_U, line_f, DIR_U)
+      * 4-tuple line-exact, event-agnostic:  (player_l, STAT_U, line_f, DIR_U)
+      * 2-tuple stat-level, line/direction agnostic:  (player_l, STAT_U)
 
-    Each entry carries both the prop dict (full enrichment) and the
-    parent player doc (headshot_url, team, opponent, nba_id, position,
-    etc.). Re-built on every call — dg_cached_board is ~126 player
-    docs, negligible.
+    The cached_board is built by a separate pipeline than `nba_prop_scores`
+    and its snapshot drifts: different event_id hashes, stale line values
+    (e.g. PTS 13.5 vs the scored PTS 11.5), and sometimes it carries
+    props for entirely different stats. Line-agnostic enrichment
+    fields (player-stat averages, hit-rate history, intel_suite,
+    context_badges) are IDENTICAL across lines for a given
+    (player, stat), so falling back to the 2-tuple is safe for those
+    fields. Line-specific fields should still prefer the 5/4-tuple
+    match; that's handled at the call site.
     """
     lookup: Dict[tuple, Dict[str, Any]] = {}
-    fallback: Dict[tuple, Dict[str, Any]] = {}
+    fallback_4tuple: Dict[tuple, Dict[str, Any]] = {}
+    fallback_stat: Dict[tuple, Dict[str, Any]] = {}
     if _db is None:
-        return lookup
+        return {
+            "__by_5tuple__": lookup,
+            "__by_4tuple__": fallback_4tuple,
+            "__by_player_stat__": fallback_stat,
+        }
     async for player_doc in _db[COLL("board_cache", "nba")].find({}):
         for p in (player_doc.get("props") or []):
             if not isinstance(p, dict):
                 continue
-            line = p.get("line")
             try:
-                line_f = float(line) if line is not None else None
+                line_f = float(p.get("line")) if p.get("line") is not None else None
             except (TypeError, ValueError):
                 line_f = None
-            player_l = (p.get("player_name") or "").strip().lower()
-            stat_u = (p.get("stat_type") or "").strip().upper()
+            player_l = (p.get("player_name") or player_doc.get("player_name") or "").strip().lower()
+            raw_stat = (p.get("stat_type") or "").strip().upper()
+            stat_u = _canonical_stat_family(raw_stat)
             dir_u = (p.get("direction") or "").strip().upper()
-            key = (p.get("event_id"), player_l, stat_u, line_f, dir_u)
-            if key[0] and key[1] and key[2] and key[3] is not None and key[4]:
-                lbl = (p.get("pp_multiplier_label") or "").lower()
-                bucket_lbl = (
-                    "demons" if lbl == "demon"
-                    else "goblins" if lbl == "goblin"
-                    else "standard"
+            if not (player_l and stat_u):
+                continue
+            lbl = (p.get("pp_multiplier_label") or "").lower()
+            bucket_lbl = (
+                "demons" if lbl == "demon"
+                else "goblins" if lbl == "goblin"
+                else "standard"
+            )
+            entry = {"player": player_doc, "prop": p, "bucket": bucket_lbl}
+
+            if line_f is not None and dir_u:
+                key5 = (p.get("event_id"), player_l, stat_u, line_f, dir_u)
+                if key5[0]:
+                    lookup.setdefault(key5, entry)
+                fallback_4tuple.setdefault(
+                    (player_l, stat_u, line_f, dir_u), entry
                 )
-                entry = {"player": player_doc, "prop": p, "bucket": bucket_lbl}
-                lookup[key] = entry
-                # Event-id-agnostic fallback — populated once per 4-tuple.
-                fallback.setdefault((player_l, stat_u, line_f, dir_u), entry)
-    # Stash the fallback on the lookup dict as a reserved sentinel key
-    # so downstream call sites can access it without a second
-    # signature change. Uses a tuple that can never match a real key
-    # (leading sentinel string).
-    lookup[("__fallback_by_4tuple__",)] = fallback  # type: ignore[assignment]
-    return lookup
+            # Stat-level fallback — first prop for this player/stat wins.
+            fallback_stat.setdefault((player_l, stat_u), entry)
+
+    return {
+        "__by_5tuple__": lookup,
+        "__by_4tuple__": fallback_4tuple,
+        "__by_player_stat__": fallback_stat,
+    }
 
 
 def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] | None) -> Dict[str, Any]:
@@ -1053,6 +1107,14 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     prop["version_tag"] = score.get("version_tag")
     prop["computed_at"] = score.get("computed_at")
 
+    # Identity — surface the authoritative bdl_player_id from the score doc.
+    # (The frontend uses this for the player-detail route + headshot URL
+    # fallback; leaving it off the payload shows up as card breakage.)
+    if score.get("bdl_player_id") is not None:
+        prop["bdl_player_id"] = score.get("bdl_player_id")
+    if score.get("canonical_key") is not None:
+        prop.setdefault("canonical_key", score.get("canonical_key"))
+
     # PrizePicks layer
     prop["pp_utility"] = score.get("pp_utility")
     prop["pp_utility_category"] = score.get("pp_utility_category")
@@ -1088,6 +1150,18 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     prop["vk2_sigma"] = score.get("vk2_sigma")
     prop["model_projection"] = score.get("model_projection")
     prop["model_sigma"] = score.get("model_sigma")
+    # Frontend card reads `vk_predicted` as the primary projection field.
+    # If vk2_projection didn't populate it (not every score doc has vk2),
+    # fall back to the score-doc's model_projection so the card renders
+    # a number instead of a dash. Pure plumbing — same value, different
+    # name for the legacy UI contract.
+    if prop.get("vk_predicted") in (None, "") and score.get("model_projection") is not None:
+        try:
+            mp = float(score["model_projection"])
+            prop["vk_predicted"] = round(mp, 2)
+            prop["vk_edge"] = round(mp - float(score.get("line") or 0), 2)
+        except (TypeError, ValueError):
+            pass
     prop["p_true_active"] = score.get("p_true_active")
     prop["p_true_method"] = score.get("p_true_method")
     prop["p_true_vk2"] = score.get("p_true_vk2")
@@ -1204,6 +1278,26 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         ),
     }
 
+    # Card-display fallbacks (2026-04-24). The frontend card reads
+    # `h10_rate` and `season_avg` directly; cached_board's combo-market
+    # props sometimes carry only l5/l10 aggregates (no l20/season).
+    # Promote equivalent values to the expected field so cards render
+    # numbers instead of dashes — pure alias, no new data invented.
+    if prop.get("season_avg") in (None, "") and prop.get("l20_avg") is not None:
+        prop["season_avg"] = prop["l20_avg"]
+    if prop.get("season_avg") in (None, "") and prop.get("l10_avg") is not None:
+        prop["season_avg"] = prop["l10_avg"]
+    if prop.get("h10_rate") in (None, "") and prop.get("h5_rate") is not None:
+        prop["h10_rate"] = prop["h5_rate"]
+    if prop.get("h10_rate") in (None, ""):
+        side = (prop.get("recommendation") or "").upper()
+        hr = score.get("hit_rate_over") if side == "OVER" else score.get("hit_rate_under")
+        if hr is not None:
+            try:
+                prop["h10_rate"] = int(round(float(hr)))
+            except (TypeError, ValueError):
+                pass
+
     return prop
 
 
@@ -1240,7 +1334,22 @@ async def _get_nba_tier_picks_from_scores(
         return []
 
     lookup = await _build_nba_board_lookup()
-    fallback_4tuple = lookup.get(("__fallback_by_4tuple__",), {}) or {}
+    by_5tuple = lookup.get("__by_5tuple__") or {}
+    by_4tuple = lookup.get("__by_4tuple__") or {}
+    by_player_stat = lookup.get("__by_player_stat__") or {}
+
+    # Fields that are line-agnostic at the player-stat level (averages,
+    # intel_suite, badges, history). Safe to pull from ANY cached_board
+    # entry for the same (player, stat) even if the line has drifted.
+    STAT_LEVEL_FIELDS = (
+        "l5_avg", "l10_avg", "l20_avg", "season_avg",
+        "intel_suite", "scout_badges", "context_badges", "active_badges",
+        "vision_intel", "vision_summary",
+        "movement_delta", "movement_direction", "movement_strength",
+        "is_anomaly", "is_goblin_anomaly", "is_demon_anomaly",
+        "is_vision_enriched",
+        "season_margin", "hit_rates",
+    )
 
     picks: List[Dict[str, Any]] = []
     for sc in scores:
@@ -1250,29 +1359,67 @@ async def _get_nba_tier_picks_from_scores(
             line_f = None
         direction_upper = (sc.get("recommendation") or "OVER").strip().upper()
         player_l = (sc.get("player_name") or "").strip().lower()
-        stat_u = (sc.get("stat_type") or "").strip().upper()
-        key_exact = (
-            sc.get("event_id"), player_l, stat_u, line_f, direction_upper,
-        )
-        entry = lookup.get(key_exact)
-        # Fallback 1: opposite direction under the same event_id (pulls
-        # player/intel context when the picked side isn't priced).
+        stat_u = _canonical_stat_family((sc.get("stat_type") or "").strip().upper())
+        key_exact = (sc.get("event_id"), player_l, stat_u, line_f, direction_upper)
+
+        # 5-tuple exact
+        entry = by_5tuple.get(key_exact)
+        # 5-tuple opposite direction
         if entry is None:
             opp = "UNDER" if direction_upper == "OVER" else "OVER"
-            key_opp = (key_exact[0], player_l, stat_u, line_f, opp)
-            entry = lookup.get(key_opp)
-        # Fallback 2: event-id-agnostic 4-tuple match. Handles the case
-        # where cached_board and nba_prop_scores computed different
-        # event_ids for the same NBA game (odds-sync hash drift) — a
-        # player can only be in one NBA game per slate, so the 4-tuple
-        # is unambiguous.
+            entry = by_5tuple.get((key_exact[0], player_l, stat_u, line_f, opp))
+        # 4-tuple event-agnostic exact
         if entry is None:
-            entry = fallback_4tuple.get((player_l, stat_u, line_f, direction_upper))
-        # Fallback 3: event-id-agnostic + opposite direction.
+            entry = by_4tuple.get((player_l, stat_u, line_f, direction_upper))
+        # 4-tuple event-agnostic opposite direction
         if entry is None:
             opp = "UNDER" if direction_upper == "OVER" else "OVER"
-            entry = fallback_4tuple.get((player_l, stat_u, line_f, opp))
+            entry = by_4tuple.get((player_l, stat_u, line_f, opp))
+
         merged = _merge_score_with_board(sc, entry)
+
+        # Stat-level overlay (line-agnostic). Runs on TOP of the 5/4-tuple
+        # merge so line-specific fields keep their values; missing fields
+        # get filled from any (player, stat) entry.
+        stat_entry = by_player_stat.get((player_l, stat_u))
+        if stat_entry:
+            board_prop = stat_entry.get("prop") or {}
+            player_doc = stat_entry.get("player") or {}
+            for fld in STAT_LEVEL_FIELDS:
+                if merged.get(fld) in (None, "", []):
+                    val = board_prop.get(fld)
+                    if val is not None:
+                        merged[fld] = val
+            # Player-level fields (team/photo/opponent) from the same entry.
+            for fld in ("headshot_url", "photo_url", "team", "team_name",
+                        "team_logo_url", "position", "jersey_number",
+                        "opponent", "opponent_abbr", "context_badges",
+                        "scout_badges", "nba_id", "nba_com_id", "espn_id"):
+                if merged.get(fld) in (None, "", []):
+                    val = player_doc.get(fld)
+                    if val is not None:
+                        merged[fld] = val
+
+        # Re-run card-display fallbacks AFTER stat-level overlay. The
+        # first invocation inside _merge_score_with_board saw only the
+        # line-specific entry (which often has l10/l20 = None for
+        # alt-combo markets); the stat-level overlay may have just
+        # filled those in. Run the promotion once more so the card
+        # actually sees the filled value.
+        if merged.get("season_avg") in (None, "") and merged.get("l20_avg") is not None:
+            merged["season_avg"] = merged["l20_avg"]
+        if merged.get("season_avg") in (None, "") and merged.get("l10_avg") is not None:
+            merged["season_avg"] = merged["l10_avg"]
+        if merged.get("h10_rate") in (None, "") and merged.get("h5_rate") is not None:
+            merged["h10_rate"] = merged["h5_rate"]
+        if merged.get("h10_rate") in (None, ""):
+            side = (merged.get("recommendation") or "").upper()
+            hr = sc.get("hit_rate_over") if side == "OVER" else sc.get("hit_rate_under")
+            if hr is not None:
+                try:
+                    merged["h10_rate"] = int(round(float(hr)))
+                except (TypeError, ValueError):
+                    pass
         # Stash the score doc so downstream post-overlay passes can rewire
         # side-aware fields (UNDER badges, UNDER vision_intel) after the
         # enrichment cache overlay injects OVER-side data.
@@ -1914,6 +2061,43 @@ async def _serve_ferrari_tier(
     has_any_gemini = sum(1 for p in picks if (p.get("validation") or {}).get("has_gemini", False))
     status = "full" if fully_validated == len(picks) and picks else ("partial" if picks else "no_data")
 
+    # Enrichment-coverage guard (2026-04-24). Two dimensions:
+    #   * card_ready_*: What the UI actually renders (pure plumbing)
+    #   * source_*: Underlying cached_board coverage (data-producer view)
+    # `enrichment_healthy` uses the card-ready view because it's the
+    # contract the frontend honors — source-side gaps show up in the
+    # detail fields but don't blank the card.
+    def _has(p, f):
+        v = p.get(f)
+        return v not in (None, "", [], {})
+    n = len(picks) or 1
+    coverage = {
+        "total_picks":            len(picks),
+        "picks_with_photo":       sum(1 for p in picks if _has(p, "photo_url") or _has(p, "headshot_url")),
+        "picks_with_team":        sum(1 for p in picks if _has(p, "team")),
+        "picks_with_opponent":    sum(1 for p in picks if _has(p, "opponent")),
+        # Card-ready: projection + hit_rate + season_avg all populated
+        "card_ready_chart_data":  sum(1 for p in picks if _has(p, "vk_predicted") and _has(p, "h10_rate") and _has(p, "season_avg")),
+        # Source-side: full l5+l10+l20 window from cached_board
+        "source_chart_window":    sum(1 for p in picks if _has(p, "l5_avg") and _has(p, "l10_avg") and _has(p, "l20_avg")),
+        "picks_with_recent_logs": sum(1 for p in picks if _has(p, "h5_rate") or _has(p, "h10_rate") or _has(p, "h20_rate")),
+        "picks_with_vision_intel": sum(1 for p in picks if _has(p, "intel_suite") or _has(p, "vision_intel")),
+        "picks_with_glow_fields": sum(1 for p in picks if _has(p, "vision_score") and _has(p, "tier") and (_has(p, "is_vision_enriched") or _has(p, "intel_suite"))),
+        "picks_with_context_badges": sum(1 for p in picks if _has(p, "context_badges")),
+        "picks_with_hit_rate":    sum(1 for p in picks if _has(p, "hit_rate_over") or _has(p, "hit_rate_under")),
+        "picks_with_bdl_id":      sum(1 for p in picks if _has(p, "bdl_player_id")),
+    }
+    coverage["enrichment_healthy"] = bool(
+        len(picks) == 0 or (
+            coverage["picks_with_team"]           / n >= 0.95 and
+            coverage["picks_with_photo"]          / n >= 0.95 and
+            coverage["card_ready_chart_data"]     / n >= 0.95 and
+            coverage["picks_with_vision_intel"]   / n >= 0.95 and
+            coverage["picks_with_glow_fields"]    / n >= 0.95 and
+            coverage["picks_with_recent_logs"]    / n >= 0.95
+        )
+    )
+
     return {
         "tier": tier_name,
         "tier_label": f"{tier_label_prefix} ({sport.upper()})",
@@ -1927,6 +2111,7 @@ async def _serve_ferrari_tier(
             "with_mlr": has_any_mlr,
             "with_gemini": has_any_gemini,
         },
+        "enrichment_coverage": coverage,
     }
 
 

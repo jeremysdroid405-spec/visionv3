@@ -93,9 +93,14 @@ def _score_to_prop(doc: Dict[str, Any]) -> Dict[str, Any]:
         "pp_playable": doc.get("pp_playable"),
         "pp_utility": doc.get("pp_utility"),
         "vision_score": doc.get("vision_score"),
+        "vision_score_raw": doc.get("vision_score_raw"),
         "event_id": doc.get("event_id"),
         "game_start_utc": doc.get("game_start_utc"),
         "canonical_key": doc.get("canonical_key"),
+        "bdl_player_id": doc.get("bdl_player_id"),
+        "cv": doc.get("cv"),
+        "model_projection": doc.get("model_projection"),
+        "sport": doc.get("sport"),
     }
 
 
@@ -164,36 +169,72 @@ _BOARD_PLAYER_FIELDS = (
 )
 
 
-async def _build_nba_cached_board_index(player_name: str) -> Dict[tuple, Dict[str, Any]]:
-    """Index `nba_cached_board` props for ONE player, keyed by
-    (STAT_UPPER, line_float, DIR_UPPER). Player-grain storage keeps
-    this a O(props-for-one-player) operation, ~tens of entries.
-    Returns empty dict on miss."""
+# Cross-pipeline stat-name alias (2026-04-24).
+# See routes/ferrari_tiers.py for the canonical definition. Duplicated
+# here (not imported) to avoid a route-module cross-import dependency.
+_STAT_FAMILY_ALIAS = {
+    "PLAYER_POINTS_ALTERNATE":                 "PTS",
+    "PLAYER_REBOUNDS_ALTERNATE":               "REB",
+    "PLAYER_ASSISTS_ALTERNATE":                "AST",
+    "PLAYER_THREES_ALTERNATE":                 "3PM",
+    "PLAYER_POINTS_ASSISTS":                   "P+A",
+    "PLAYER_POINTS_ASSISTS_ALTERNATE":         "P+A",
+    "PLAYER_POINTS_REBOUNDS":                  "P+R",
+    "PLAYER_POINTS_REBOUNDS_ALTERNATE":        "P+R",
+    "PLAYER_REBOUNDS_ASSISTS":                 "R+A",
+    "PLAYER_REBOUNDS_ASSISTS_ALTERNATE":       "R+A",
+    "PLAYER_POINTS_REBOUNDS_ASSISTS":          "PRA",
+    "PLAYER_POINTS_REBOUNDS_ASSISTS_ALTERNATE":"PRA",
+    "PLAYER_BLOCKS":                           "BLK",
+    "PLAYER_STEALS":                           "STL",
+    "PLAYER_BLOCKS_STEALS":                    "BLK+STL",
+    "PLAYER_TURNOVERS":                        "TO",
+}
+
+def _canonical_stat_family(stat: Optional[str]) -> str:
+    if not stat:
+        return ""
+    key = str(stat).strip().upper()
+    return _STAT_FAMILY_ALIAS.get(key, key)
+
+
+async def _build_nba_cached_board_index(player_name: str) -> Dict[str, Dict[tuple, Dict[str, Any]]]:
+    """Return three indices for ONE player:
+       by_line:  (STAT_U, line_f, DIR_U) -> {"prop","player"}
+       by_stat:  (STAT_U,)               -> {"prop","player"}  (first match)
+       player_doc: the parent cached_board doc
+    Accommodates line drift between `nba_cached_board` and
+    `nba_prop_scores` — averages/intel are line-agnostic at the
+    player-stat level, so the stat-level index lets us enrich even
+    when lines have drifted (or the line isn't in cached_board).
+    """
+    empty = {"by_line": {}, "by_stat": {}, "player_doc": None}
     if _db is None:
-        return {}
+        return empty
     rx = re.compile(f"^{_escape_regex(player_name)}$", re.I)
     player_doc = await _db["nba_cached_board"].find_one(
         {"player_name": rx}, {"_id": 0}
     )
     if not player_doc:
-        return {}
-    index: Dict[tuple, Dict[str, Any]] = {}
+        return empty
+    by_line: Dict[tuple, Dict[str, Any]] = {}
+    by_stat: Dict[tuple, Dict[str, Any]] = {}
     for p in (player_doc.get("props") or []):
         if not isinstance(p, dict):
+            continue
+        stat_u = _canonical_stat_family(p.get("stat_type"))
+        if not stat_u:
             continue
         try:
             line_f = float(p.get("line")) if p.get("line") is not None else None
         except (TypeError, ValueError):
             line_f = None
-        if line_f is None:
-            continue
-        key = (
-            (p.get("stat_type") or "").strip().upper(),
-            line_f,
-            (p.get("direction") or "").strip().upper(),
-        )
-        index[key] = {"prop": p, "player": player_doc}
-    return index
+        dir_u = (p.get("direction") or "").strip().upper()
+        entry = {"prop": p, "player": player_doc}
+        if line_f is not None and dir_u:
+            by_line.setdefault((stat_u, line_f, dir_u), entry)
+        by_stat.setdefault((stat_u,), entry)
+    return {"by_line": by_line, "by_stat": by_stat, "player_doc": player_doc}
 
 
 async def _fetch_live_props_for_player(sport: str, player_name: str) -> Dict[str, Dict[str, Any]]:
@@ -263,35 +304,41 @@ async def get_player_with_badges(
     # intel_suite, scout/context badges, margin, movement, or anomaly
     # flags. Those live in `nba_cached_board` (built by
     # cached_board_builder_service) and `nba_live_props` (event/team).
-    # We merge both, same way the Ferrari tier endpoints do, so the
-    # PlayerDetailPage has the fields it needs to render stats, bar
-    # charts, glow, and the Vision Intel modal. No scoring changes.
+    # The cached_board lines often drift from the scored lines (e.g.
+    # PTS 13.5 in cached_board vs PTS 11.5 in the score doc) because
+    # both pipelines sync independently. Line-agnostic fields
+    # (player-stat averages, intel_suite, badges, season margin) are
+    # IDENTICAL across lines for a given (player, stat), so we fall
+    # back to a stat-level match when the exact (stat, line, dir)
+    # triple misses.
+    STAT_LEVEL_FIELDS = {
+        "l5_avg", "l10_avg", "l20_avg", "season_avg",
+        "intel_suite", "scout_badges", "context_badges", "active_badges",
+        "vision_intel", "vision_summary",
+        "movement_delta", "movement_direction", "movement_strength",
+        "is_anomaly", "is_goblin_anomaly", "is_demon_anomaly",
+        "is_vision_enriched",
+        "season_margin", "hit_rates",
+    }
     if sport == "nba" and props:
-        board_index = await _build_nba_cached_board_index(canonical_name)
+        idx = await _build_nba_cached_board_index(canonical_name)
+        by_line = idx["by_line"]
+        by_stat = idx["by_stat"]
+        cb_player = idx["player_doc"] or {}
         live_by_key = await _fetch_live_props_for_player(sport, canonical_name)
-        parent_player_fields: Dict[str, Any] = {}
-        for entry in board_index.values():
-            pp = entry.get("player") or {}
-            for fld in _BOARD_PLAYER_FIELDS:
-                if parent_player_fields.get(fld) in (None, "", []):
-                    val = pp.get(fld)
-                    if val not in (None, "", []):
-                        parent_player_fields[fld] = val
-            if parent_player_fields:
-                break
         for p in props:
-            # Exact 3-tuple board match
             try:
                 line_f = float(p["line"])
             except (TypeError, ValueError):
                 line_f = None
-            stat_u = (p.get("stat_type") or "").strip().upper()
+            stat_u = _canonical_stat_family(p.get("stat_type"))
             dir_u = (p.get("recommendation") or "").strip().upper()
-            entry = board_index.get((stat_u, line_f, dir_u))
-            # Fallback: opposite side (pulls per-stat context at least)
+            # Exact (stat, line, dir)
+            entry = by_line.get((stat_u, line_f, dir_u))
             if entry is None:
                 opp = "UNDER" if dir_u == "OVER" else "OVER"
-                entry = board_index.get((stat_u, line_f, opp))
+                entry = by_line.get((stat_u, line_f, opp))
+            # Line-level overlay (full enrichment, incl. line-specific fields)
             if entry:
                 board_prop = entry.get("prop") or {}
                 for fld in _BOARD_ENRICHMENT_FIELDS:
@@ -299,7 +346,23 @@ async def get_player_with_badges(
                         val = board_prop.get(fld)
                         if val is not None:
                             p[fld] = val
-            # Live props: event/team fields
+            # Stat-level overlay (line-agnostic fields). Fires whether
+            # or not the line-level match succeeded.
+            stat_entry = by_stat.get((stat_u,))
+            if stat_entry:
+                sp = stat_entry.get("prop") or {}
+                for fld in STAT_LEVEL_FIELDS:
+                    if p.get(fld) in (None, "", []):
+                        val = sp.get(fld)
+                        if val is not None:
+                            p[fld] = val
+            # Player-level fields from cached_board parent
+            for fld in _BOARD_PLAYER_FIELDS:
+                if p.get(fld) in (None, "", []):
+                    val = cb_player.get(fld)
+                    if val not in (None, "", []):
+                        p[fld] = val
+            # Live props: event/team
             lp = live_by_key.get(p.get("canonical_key") or "")
             if lp:
                 if not p.get("home_team") and lp.get("home_team"):
@@ -308,11 +371,6 @@ async def get_player_with_badges(
                     p["away_team"] = lp["away_team"]
                 if not p.get("bdl_player_id") and lp.get("bdl_player_id"):
                     p["bdl_player_id"] = lp["bdl_player_id"]
-            # Player-level fields (team/photo/opponent) backfill —
-            # useful when hub lookup returned empty but cached_board has it.
-            for fld in _BOARD_PLAYER_FIELDS:
-                if p.get(fld) in (None, "", []) and parent_player_fields.get(fld) is not None:
-                    p[fld] = parent_player_fields[fld]
 
     demons = [p for p in props if _classify_demon_goblin(p) == "demon"]
     goblins = [p for p in props if _classify_demon_goblin(p) == "goblin"]
@@ -328,21 +386,16 @@ async def get_player_with_badges(
 
     # Hub defaults — fall back to cached_board parent when hub is empty.
     hub = hub or {}
-    # Collect any cached_board parent fields we captured during overlay
-    # (parent_player_fields was populated inside the NBA overlay block).
+    # Collect any cached_board parent fields captured above (or re-derive).
     board_fallback: Dict[str, Any] = {}
     if sport == "nba" and score_docs:
-        # Re-derive once for the player-level payload.
         try:
-            bi = await _build_nba_cached_board_index(canonical_name)
-            for e in bi.values():
-                pp = e.get("player") or {}
-                for fld in _BOARD_PLAYER_FIELDS:
-                    if board_fallback.get(fld) in (None, "", []):
-                        v = pp.get(fld)
-                        if v not in (None, "", []):
-                            board_fallback[fld] = v
-                break
+            idx2 = await _build_nba_cached_board_index(canonical_name)
+            pp = idx2.get("player_doc") or {}
+            for fld in _BOARD_PLAYER_FIELDS:
+                v = pp.get(fld)
+                if v not in (None, "", []):
+                    board_fallback[fld] = v
         except Exception:
             pass
     team = hub.get("team") or hub.get("team_full") or board_fallback.get("team")
