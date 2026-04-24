@@ -6,6 +6,44 @@ architecture with multi-sport support, automated feature engineering, and
 a unified pipeline anchored on canonical odds data. Surface pricing
 anomalies through market-consensus probabilities.
 
+## ECDF Probability Cutover (2026-04-23 → 24, SHIPPED BEHIND FLAG)
+The 2026-04-23 distribution audit proved Gaussian P(over) is structurally
+wrong for every NBA stat (skew +0.07 to +1.46; excess kurtosis +3.3 to
++6.0; 6.1-6.4% tail-beyond-2σ vs 4.55% Gaussian). Empirical CDF won on
+all 5 stats with 79-99% weighted-|gap| improvement. Cutover now shipped:
+
+- **5 ECDF artifacts** trained (`/app/backend/models/prob_ecdf_{stat}.pkl`)
+  via `scripts/train_prob_ecdf_calibrators.py`. Each has 10
+  projection-quantile buckets × sorted residuals (min_bucket_n ≥ 3,389).
+- **`apply_empirical_cdf_probability(stat, projection, line)`** in
+  `services/scoring/calibration.py` — non-parametric per-bucket lookup.
+  Returns `None` when flag is off / pkl missing / bucket too small
+  (<20), forcing caller fallback.
+- **`_predict_vk2_prob_over` fallback chain**:
+  `intercept → ECDF → isotonic → raw Gaussian`. Persists
+  `raw_gaussian_p_over`, `isotonic_p_over` (if computed), `ecdf_p_over`,
+  `ecdf_bucket`, `ecdf_bucket_n`, `ecdf_version`,
+  `probability_method ∈ {gaussian, isotonic, ecdf}`. `p_over`
+  (the consumed final) points to whichever method was chosen.
+- **New feature flags**: `VK2_ECDF_PROBABILITY_ENABLED=true` (master),
+  `VK2_ECDF_PROBABILITY_STATS=PTS,REB,AST,3PM,PRA` (whitelist).
+  Isotonic flags retained as fallback switch.
+- **Observability endpoint extended**: `/api/v3/admin/calibration-stats`
+  now reports `probability_method_counts {gaussian, isotonic, ecdf}` +
+  ECDF flag state; top-20 / edge-change summaries now key off
+  `raw_gaussian_p_over − p_over`.
+- **Validation (`reports/vk2_ecdf_cutover_validation.md`)**: 3PM@0.5 raw
+  gap +0.214 → ECDF −0.001; AST@1.5 +0.135 → −0.001; REB@2.5 +0.075 →
+  −0.001; PTS@29.5 −0.093 → −0.011; PRA@45.5 −0.078 → −0.005. Gate
+  pass/fail movement: OVER-gate passes drop 0.3% (PRA) to 4.6% (3PM) —
+  correcting over-triggered picks; UNDER-gate passes grow
+  correspondingly.
+- **Tests**: 11 ECDF unit tests + refreshed endpoint tests + flag tests.
+  Full calibration suite = **35 passing**; broader VK2 scoring regression
+  = **101 passing**; zero regressions introduced.
+
+
+
 ## Calibration Observability Endpoint (2026-04-23, SHIPPED)
 `GET /api/v3/admin/calibration-stats` — read-only live panel over
 `{sport}_prop_scores@final-{sport}-rt`. Returns total scored docs, counts

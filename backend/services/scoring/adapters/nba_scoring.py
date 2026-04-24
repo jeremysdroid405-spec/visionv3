@@ -668,6 +668,8 @@ class NBAScoringAdapter(ScoringAdapter):
             apply_projection_intercept, intercept_for,
             apply_probability_calibration,
             prob_calibrator_available,
+            apply_empirical_cdf_probability,
+            ecdf_available, ecdf_flag_enabled,
             calibration_flag_enabled,
             prob_calibration_flag_enabled,
         )
@@ -687,16 +689,49 @@ class NBAScoringAdapter(ScoringAdapter):
         z = (projection - float(line)) / sigma
         raw_p_over = 0.5 * (1.0 + erf(z / sqrt(2.0)))
 
-        # --- Isotonic probability calibration (2026-04-23) ------------
-        # Rewrites ONLY p_over; projection and sigma are unchanged.
-        # Trained per-stat on 2024 held-out residuals; see
-        # `reports/vk2_prob_calibration.md`. No-op when the pkl is
-        # missing or the calibration flag is off.
-        p_over = apply_probability_calibration(stat_type, raw_p_over)
-        if (prob_calibration_flag_enabled()
-                and prob_calibrator_available(stat_type)
-                and p_over is not None and raw_p_over is not None
-                and abs(float(p_over) - float(raw_p_over)) > 1e-9):
+        # Always persist the raw Gaussian value so observability /
+        # shadow eval can A/B without rescoring.
+        calibration_meta["raw_gaussian_p_over"] = round(float(raw_p_over), 4)
+
+        # --- Fallback chain (2026-04-23 distribution-audit order) -----
+        # 1. Empirical CDF (winner on every stat: 91-99% weighted-|gap|
+        #    improvement vs Gaussian). Strictly non-parametric per-stat
+        #    lookup; handles skew + heavy tails natively.
+        # 2. Isotonic global (prior layer; kept for fallback when ECDF
+        #    pkl missing).
+        # 3. Raw Gaussian CDF.
+        # All three values are persisted for audit when computed.
+        probability_method = "gaussian"
+        p_over: float = float(raw_p_over)
+
+        ecdf_out = apply_empirical_cdf_probability(
+            stat_type, projection, float(line),
+        )
+        if ecdf_out is not None:
+            p_over = float(ecdf_out["p_over"])
+            probability_method = "ecdf"
+            calibration_meta["ecdf_p_over"] = round(p_over, 4)
+            calibration_meta["ecdf_bucket"] = int(ecdf_out["bucket"])
+            calibration_meta["ecdf_bucket_n"] = int(ecdf_out["bucket_n"])
+            calibration_meta["ecdf_version"] = ecdf_out["version"]
+
+        iso_out = apply_probability_calibration(stat_type, float(raw_p_over))
+        if (iso_out is not None and raw_p_over is not None
+                and abs(float(iso_out) - float(raw_p_over)) > 1e-9):
+            calibration_meta["isotonic_p_over"] = round(float(iso_out), 4)
+
+        if probability_method == "gaussian":
+            # ECDF missing/skipped — try isotonic fallback before
+            # returning raw Gaussian.
+            if (prob_calibration_flag_enabled()
+                    and prob_calibrator_available(stat_type)
+                    and iso_out is not None
+                    and abs(float(iso_out) - float(raw_p_over)) > 1e-9):
+                p_over = float(iso_out)
+                probability_method = "isotonic"
+
+        calibration_meta["probability_method"] = probability_method
+        if probability_method == "isotonic":
             calibration_meta["probability_calibration_applied"] = True
             calibration_meta["raw_p_over"] = round(float(raw_p_over), 4)
 

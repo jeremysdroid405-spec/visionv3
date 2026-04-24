@@ -91,10 +91,22 @@ def test_response_shape(headers):
                 "projection_intercept_applied_count",
                 "probability_calibration_applied_count",
                 "projection_intercept_applied_pct",
-                "probability_calibration_applied_pct"):
+                "probability_calibration_applied_pct",
+                "probability_method_counts"):
         assert key in totals, f"missing totals.{key}"
+    # Numeric for scalar keys; dict for method counts
+    for key in ("total_scored_docs",
+                "projection_intercept_applied_count",
+                "probability_calibration_applied_count",
+                "projection_intercept_applied_pct",
+                "probability_calibration_applied_pct"):
         assert isinstance(totals[key], (int, float)), (
             f"totals.{key} not numeric"
+        )
+    assert isinstance(totals["probability_method_counts"], dict)
+    for m in ("gaussian", "isotonic", "ecdf"):
+        assert m in totals["probability_method_counts"], (
+            f"missing totals.probability_method_counts.{m}"
         )
 
     # Per-stat breakdown contains every canonical NBA stat and the
@@ -119,7 +131,9 @@ def test_response_shape(headers):
     # Flags block
     for flag in ("VK2_CALIBRATION_ENABLED",
                  "VK2_PROB_CALIBRATION_ENABLED",
-                 "VK2_PROB_CALIBRATION_STATS"):
+                 "VK2_PROB_CALIBRATION_STATS",
+                 "VK2_ECDF_PROBABILITY_ENABLED",
+                 "VK2_ECDF_PROBABILITY_STATS"):
         assert flag in body["flags"], f"missing flag: {flag}"
         assert "raw" in body["flags"][flag]
         assert "effective" in body["flags"][flag]

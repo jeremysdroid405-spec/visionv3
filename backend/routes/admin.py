@@ -1758,6 +1758,12 @@ async def calibration_stats(
     prob_count = await scores.count_documents(
         {**base_match, "probability_calibration_applied": True}
     )
+    # Breakdown by probability_method (gaussian / isotonic / ecdf)
+    method_counts: Dict[str, int] = {}
+    for m in ("gaussian", "isotonic", "ecdf"):
+        method_counts[m] = await scores.count_documents(
+            {**base_match, "probability_method": m}
+        )
 
     # Pull the calibrated rows once — small result set (a few hundred
     # at most per slate).  Project only the fields we need.
@@ -1770,11 +1776,18 @@ async def calibration_stats(
         "pre_intercept_projection": 1,
         "probability_calibration_applied": 1,
         "raw_p_over": 1,
+        "raw_gaussian_p_over": 1,
+        "isotonic_p_over": 1,
+        "ecdf_p_over": 1,
+        "ecdf_bucket": 1,
+        "ecdf_bucket_n": 1,
+        "probability_method": 1,
     }
     calibrated_rows = await scores.find(
         {**base_match, "$or": [
             {"projection_intercept_applied": True},
             {"probability_calibration_applied": True},
+            {"probability_method": {"$in": ["isotonic", "ecdf"]}},
         ]},
         proj,
     ).to_list(length=None)
@@ -1787,12 +1800,18 @@ async def calibration_stats(
             and r.get("projection_intercept_delta") is not None
             else None
         )
-        raw_p = r.get("raw_p_over")
+        # p_over_delta = raw_gaussian_p_over - final_p_over
+        # (positive ⇒ final probability lower than raw Gaussian, i.e.
+        # calibrator deflated over-confidence).
+        raw_gauss = r.get("raw_gaussian_p_over")
+        if raw_gauss is None:
+            # Legacy rows (pre-ECDF) stored raw under `raw_p_over`.
+            raw_gauss = r.get("raw_p_over")
         cal_p = r.get("p_over")
-        if (r.get("probability_calibration_applied")
-                and raw_p is not None and cal_p is not None):
-            # p_over_delta = raw_p_over - calibrated_p_over  (request spec)
-            r["_p_over_delta"] = float(raw_p) - float(cal_p)
+        if raw_gauss is not None and cal_p is not None and r.get(
+            "probability_method"
+        ) in ("isotonic", "ecdf"):
+            r["_p_over_delta"] = float(raw_gauss) - float(cal_p)
         else:
             r["_p_over_delta"] = None
 
@@ -1883,7 +1902,9 @@ async def calibration_stats(
     # Current flag state (reads env at request time — no caching).
     from services.scoring.calibration import (
         FLAG_ENV, PROB_FLAG_ENV, PROB_STATS_ENV,
+        ECDF_FLAG_ENV, ECDF_STATS_ENV,
         calibration_flag_enabled, prob_calibration_flag_enabled,
+        ecdf_flag_enabled,
     )
     flags = {
         "VK2_CALIBRATION_ENABLED": {
@@ -1903,6 +1924,19 @@ async def calibration_stats(
                 or None
             ),
         },
+        "VK2_ECDF_PROBABILITY_ENABLED": {
+            "raw": os.environ.get(ECDF_FLAG_ENV),
+            "effective": ecdf_flag_enabled(),
+        },
+        "VK2_ECDF_PROBABILITY_STATS": {
+            "raw": os.environ.get(ECDF_STATS_ENV),
+            "effective": (
+                [s.strip().upper()
+                 for s in (os.environ.get(ECDF_STATS_ENV) or "").split(",")
+                 if s.strip()]
+                or None
+            ),
+        },
     }
 
     return {
@@ -1918,6 +1952,7 @@ async def calibration_stats(
             "probability_calibration_applied_pct": round(
                 100.0 * prob_count / max(total_props, 1), 3,
             ),
+            "probability_method_counts": method_counts,
         },
         "intercept_delta_summary": _stat_summary(intercept_deltas),
         "p_over_delta_summary": _stat_summary(p_over_deltas),
