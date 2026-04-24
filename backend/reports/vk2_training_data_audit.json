@@ -1,0 +1,317 @@
+[
+  {
+    "stat": "PTS",
+    "field": "pts",
+    "elapsed_s": 1.41,
+    "total_rows": 196538,
+    "total_weighted": 144413.6,
+    "train_rows": 150951,
+    "test_rows": 45587,
+    "train_weighted_sum": 98826.6,
+    "unique_players": 927,
+    "unique_games": 6384,
+    "per_season_rows": {
+      "2020": 28930,
+      "2021": 33279,
+      "2022": 43197,
+      "2023": 45545,
+      "2024": 45587
+    },
+    "per_season_weighted": {
+      "2020": 11572.0,
+      "2021": 18303.45,
+      "2022": 30237.9,
+      "2023": 38713.25,
+      "2024": 45587.0
+    },
+    "per_season_pct": {
+      "2020": 14.72,
+      "2021": 16.93,
+      "2022": 21.98,
+      "2023": 23.17,
+      "2024": 23.2
+    },
+    "missing_seasons": [],
+    "underrep_seasons_lt_5pct": [],
+    "train_test_overlap_count": 0,
+    "cross_season_game_count": 0,
+    "pkl": {
+      "present": true,
+      "seasons_used": [
+        2020,
+        2021,
+        2022,
+        2023,
+        2024
+      ],
+      "season_weights": {
+        "2024": 1.0,
+        "2023": 0.85,
+        "2022": 0.7,
+        "2021": 0.55,
+        "2020": 0.4
+      },
+      "samples_train": 150951,
+      "samples_test": 45587,
+      "weighted_sum_train": 98826.59375,
+      "samples_train_match": true,
+      "samples_test_match": true,
+      "weighted_sum_match": true,
+      "season_weights_match_expected": true,
+      "seasons_match_expected": true
+    },
+    "verdict": "PASS"
+  },
+  {
+    "stat": "REB",
+    "field": "reb",
+    "elapsed_s": 1.47,
+    "total_rows": 196538,
+    "total_weighted": 144413.6,
+    "train_rows": 150951,
+    "test_rows": 45587,
+    "train_weighted_sum": 98826.6,
+    "unique_players": 927,
+    "unique_games": 6384,
+    "per_season_rows": {
+      "2020": 28930,
+      "2021": 33279,
+      "2022": 43197,
+      "2023": 45545,
+      "2024": 45587
+    },
+    "per_season_weighted": {
+      "2020": 11572.0,
+      "2021": 18303.45,
+      "2022": 30237.9,
+      "2023": 38713.25,
+      "2024": 45587.0
+    },
+    "per_season_pct": {
+      "2020": 14.72,
+      "2021": 16.93,
+      "2022": 21.98,
+      "2023": 23.17,
+      "2024": 23.2
+    },
+    "missing_seasons": [],
+    "underrep_seasons_lt_5pct": [],
+    "train_test_overlap_count": 0,
+    "cross_season_game_count": 0,
+    "pkl": {
+      "present": true,
+      "seasons_used": [
+        2020,
+        2021,
+        2022,
+        2023,
+        2024
+      ],
+      "season_weights": {
+        "2024": 1.0,
+        "2023": 0.85,
+        "2022": 0.7,
+        "2021": 0.55,
+        "2020": 0.4
+      },
+      "samples_train": 150951,
+      "samples_test": 45587,
+      "weighted_sum_train": 98826.59375,
+      "samples_train_match": true,
+      "samples_test_match": true,
+      "weighted_sum_match": true,
+      "season_weights_match_expected": true,
+      "seasons_match_expected": true
+    },
+    "verdict": "PASS"
+  },
+  {
+    "stat": "AST",
+    "field": "ast",
+    "elapsed_s": 1.45,
+    "total_rows": 196538,
+    "total_weighted": 144413.6,
+    "train_rows": 150951,
+    "test_rows": 45587,
+    "train_weighted_sum": 98826.6,
+    "unique_players": 927,
+    "unique_games": 6384,
+    "per_season_rows": {
+      "2020": 28930,
+      "2021": 33279,
+      "2022": 43197,
+      "2023": 45545,
+      "2024": 45587
+    },
+    "per_season_weighted": {
+      "2020": 11572.0,
+      "2021": 18303.45,
+      "2022": 30237.9,
+      "2023": 38713.25,
+      "2024": 45587.0
+    },
+    "per_season_pct": {
+      "2020": 14.72,
+      "2021": 16.93,
+      "2022": 21.98,
+      "2023": 23.17,
+      "2024": 23.2
+    },
+    "missing_seasons": [],
+    "underrep_seasons_lt_5pct": [],
+    "train_test_overlap_count": 0,
+    "cross_season_game_count": 0,
+    "pkl": {
+      "present": true,
+      "seasons_used": [
+        2020,
+        2021,
+        2022,
+        2023,
+        2024
+      ],
+      "season_weights": {
+        "2024": 1.0,
+        "2023": 0.85,
+        "2022": 0.7,
+        "2021": 0.55,
+        "2020": 0.4
+      },
+      "samples_train": 150951,
+      "samples_test": 45587,
+      "weighted_sum_train": 98826.59375,
+      "samples_train_match": true,
+      "samples_test_match": true,
+      "weighted_sum_match": true,
+      "season_weights_match_expected": true,
+      "seasons_match_expected": true
+    },
+    "verdict": "PASS"
+  },
+  {
+    "stat": "3PM",
+    "field": "fg3m",
+    "elapsed_s": 1.47,
+    "total_rows": 196538,
+    "total_weighted": 144413.6,
+    "train_rows": 150951,
+    "test_rows": 45587,
+    "train_weighted_sum": 98826.6,
+    "unique_players": 927,
+    "unique_games": 6384,
+    "per_season_rows": {
+      "2020": 28930,
+      "2021": 33279,
+      "2022": 43197,
+      "2023": 45545,
+      "2024": 45587
+    },
+    "per_season_weighted": {
+      "2020": 11572.0,
+      "2021": 18303.45,
+      "2022": 30237.9,
+      "2023": 38713.25,
+      "2024": 45587.0
+    },
+    "per_season_pct": {
+      "2020": 14.72,
+      "2021": 16.93,
+      "2022": 21.98,
+      "2023": 23.17,
+      "2024": 23.2
+    },
+    "missing_seasons": [],
+    "underrep_seasons_lt_5pct": [],
+    "train_test_overlap_count": 0,
+    "cross_season_game_count": 0,
+    "pkl": {
+      "present": true,
+      "seasons_used": [
+        2020,
+        2021,
+        2022,
+        2023,
+        2024
+      ],
+      "season_weights": {
+        "2024": 1.0,
+        "2023": 0.85,
+        "2022": 0.7,
+        "2021": 0.55,
+        "2020": 0.4
+      },
+      "samples_train": 150951,
+      "samples_test": 45587,
+      "weighted_sum_train": 98826.59375,
+      "samples_train_match": true,
+      "samples_test_match": true,
+      "weighted_sum_match": true,
+      "season_weights_match_expected": true,
+      "seasons_match_expected": true
+    },
+    "verdict": "PASS"
+  },
+  {
+    "stat": "PRA",
+    "field": "pra",
+    "elapsed_s": 1.51,
+    "total_rows": 196538,
+    "total_weighted": 144413.6,
+    "train_rows": 150951,
+    "test_rows": 45587,
+    "train_weighted_sum": 98826.6,
+    "unique_players": 927,
+    "unique_games": 6384,
+    "per_season_rows": {
+      "2020": 28930,
+      "2021": 33279,
+      "2022": 43197,
+      "2023": 45545,
+      "2024": 45587
+    },
+    "per_season_weighted": {
+      "2020": 11572.0,
+      "2021": 18303.45,
+      "2022": 30237.9,
+      "2023": 38713.25,
+      "2024": 45587.0
+    },
+    "per_season_pct": {
+      "2020": 14.72,
+      "2021": 16.93,
+      "2022": 21.98,
+      "2023": 23.17,
+      "2024": 23.2
+    },
+    "missing_seasons": [],
+    "underrep_seasons_lt_5pct": [],
+    "train_test_overlap_count": 0,
+    "cross_season_game_count": 0,
+    "pkl": {
+      "present": true,
+      "seasons_used": [
+        2020,
+        2021,
+        2022,
+        2023,
+        2024
+      ],
+      "season_weights": {
+        "2024": 1.0,
+        "2023": 0.85,
+        "2022": 0.7,
+        "2021": 0.55,
+        "2020": 0.4
+      },
+      "samples_train": 150951,
+      "samples_test": 45587,
+      "weighted_sum_train": 98826.59375,
+      "samples_train_match": true,
+      "samples_test_match": true,
+      "weighted_sum_match": true,
+      "season_weights_match_expected": true,
+      "seasons_match_expected": true
+    },
+    "verdict": "PASS"
+  }
+]
