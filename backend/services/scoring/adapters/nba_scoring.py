@@ -657,17 +657,59 @@ class NBAScoringAdapter(ScoringAdapter):
         if sigma <= 0:
             return {"projection": round(projection, 3), "sigma": sigma,
                     "p_over": None, "error": "sigma_invalid"}
+
+        # --- Projection intercept calibration (2026-04-23) -----------
+        # Audit-derived per-stat additive shift (PTS -0.094, PRA -0.103,
+        # others 0). Applied AFTER minutes composition so the final
+        # projection hitting prob_over carries the correction regardless
+        # of the composition path. Sigma / gates are untouched. Toggle
+        # via env var VK2_CALIBRATION_ENABLED.
+        from services.scoring.calibration import (
+            apply_projection_intercept, intercept_for,
+            apply_probability_calibration,
+            prob_calibrator_available,
+            calibration_flag_enabled,
+            prob_calibration_flag_enabled,
+        )
+        pre_intercept_projection = projection
+        projection = apply_projection_intercept(stat_type, projection)
+        calibration_meta: Dict[str, Any] = {}
+        if calibration_flag_enabled() and intercept_for(stat_type):
+            calibration_meta = {
+                "projection_intercept_applied": True,
+                "projection_intercept_delta": round(intercept_for(stat_type), 4),
+                "pre_intercept_projection": round(
+                    float(pre_intercept_projection), 3,
+                ),
+            }
+
         from math import erf, sqrt
         z = (projection - float(line)) / sigma
-        p_over = 0.5 * (1.0 + erf(z / sqrt(2.0)))
+        raw_p_over = 0.5 * (1.0 + erf(z / sqrt(2.0)))
+
+        # --- Isotonic probability calibration (2026-04-23) ------------
+        # Rewrites ONLY p_over; projection and sigma are unchanged.
+        # Trained per-stat on 2024 held-out residuals; see
+        # `reports/vk2_prob_calibration.md`. No-op when the pkl is
+        # missing or the calibration flag is off.
+        p_over = apply_probability_calibration(stat_type, raw_p_over)
+        if (prob_calibration_flag_enabled()
+                and prob_calibrator_available(stat_type)
+                and p_over is not None and raw_p_over is not None
+                and abs(float(p_over) - float(raw_p_over)) > 1e-9):
+            calibration_meta["probability_calibration_applied"] = True
+            calibration_meta["raw_p_over"] = round(float(raw_p_over), 4)
+
         out = {
             "projection": round(projection, 3),
             "sigma": round(sigma, 3),
-            "p_over": round(p_over, 4),
+            "p_over": round(float(p_over), 4) if p_over is not None else None,
             "error": None,
         }
         if composition_meta:
             out.update(composition_meta)
+        if calibration_meta:
+            out.update(calibration_meta)
         return out
 
     # -----------------------------------------------------------------

@@ -6,6 +6,40 @@ architecture with multi-sport support, automated feature engineering, and
 a unified pipeline anchored on canonical odds data. Surface pricing
 anomalies through market-consensus probabilities.
 
+## VK2 Calibration Layer — Intercept + Isotonic Probability (2026-04-23, SHIPPED BEHIND FLAGS)
+Audit-driven calibration of production VK2; projections and sigmas on the
+source models remain untouched.
+
+- **Projection intercept shift** (PTS −0.094, PRA −0.103; REB/AST/3PM = 0)
+  applied AFTER composition inside `_predict_vk2_prob_over`. Removes the
+  1-1.5% global over-projection the audit identified on PTS and PRA only.
+- **Per-stat isotonic probability calibrator** trained on 2024 held-out
+  data (`scripts/train_prob_calibrators.py` →
+  `models/prob_calibrator_{stat}.pkl`). Rewrites ONLY `p_over`; projection
+  and sigma are unchanged. Weighted-improvement: 3PM +62%, AST +55%,
+  REB +53%, PTS +1%, PRA −16%. Recommended config limits the calibrator
+  to the three clear winners via
+  `VK2_PROB_CALIBRATION_STATS=REB,AST,3PM` (set in `backend/.env`).
+- **Three feature flags**, all default ON:
+  - `VK2_CALIBRATION_ENABLED` — master kill switch
+  - `VK2_PROB_CALIBRATION_ENABLED` — prob-only kill switch
+  - `VK2_PROB_CALIBRATION_STATS` — comma-separated stat whitelist
+- **Tier movement** caused by calibration = **0** (tiers come from market
+  odds, not model probability). Only gate pass/fail and edge magnitude
+  inside a tier change.
+- **Audit trail** added to scored docs: `projection_intercept_applied`,
+  `projection_intercept_delta`, `pre_intercept_projection`,
+  `probability_calibration_applied`, `raw_p_over`.
+- **Tests:** `tests/test_calibration_intercept.py` (9) +
+  `tests/test_calibration_probability.py` (10) = 19 new, all pass.
+  Broader VK2 / NBA scoring regression: 85 passing.
+- **Reports:** `reports/vk2_calibration_audit.md` (pre-work audit),
+  `reports/vk2_prob_calibration.md` (before/after line-bucket tables),
+  `reports/vk2_prob_calibration_verdict.md` (weighted-improvement +
+  KEEP/REJECT matrix).
+
+
+
 ## VK2 Opportunity-Feature Integration (2026-04-23, COMPLETED — INERT)
 **Objective:** feed Universal Opportunity Model outputs into VK2 as features
 (not as projection override / blend). Status: built, trained, evaluated, kept
