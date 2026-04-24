@@ -298,25 +298,22 @@ def apply_empirical_cdf_probability(
     projection: Optional[float],
     line: Optional[float],
 ) -> Optional[Dict[str, Any]]:
-    """Compute P(stat > line) from the per-stat ECDF artifact.
+    """Compute P(stat > line) for an NBA prop via the universal ECDF
+    probability layer (`services/probability/ecdf.py`).
 
-    Returns None when:
-      - the master or ECDF flag is disabled,
-      - the stat isn't in the ECDF whitelist,
-      - the ECDF pkl is missing or malformed,
-      - projection / line is None,
-      - the selected bucket has too few residuals (<20) — caller
-        must fall back to isotonic/Gaussian.
+    Contract:
+      - Delegates to `UniversalECDFProbability` with sport='nba' and
+        stat_family=stat_type.lower().
+      - Returns None when the layer declines (flag off, artifact
+        missing, bucket too small, bad inputs) so the caller falls
+        back to isotonic → raw Gaussian.
+      - On success returns the legacy dict shape
+        {p_over, bucket, bucket_n, version} so existing call sites
+        (scoring adapter, tests) keep working unchanged.
 
-    On success returns:
-        {"p_over": float in [0, 1], "bucket": int, "bucket_n": int,
-         "version": str}
-
-    Inference:
-        bucket = np.digitize(projection, bucket_edges[1:-1])
-        needed = line - projection                 # want P(ε > needed)
-        r = sorted_residuals_by_bucket[bucket]     # sorted asc
-        p_over = 1 - searchsorted(r, needed, side="right") / len(r)
+    Kept in this module as the NBA-side entry-point; sport-specific
+    routing for MLB/NFL adapters should call
+    `get_universal_ecdf().predict_over_probability(...)` directly.
     """
     if projection is None or line is None:
         return None
@@ -324,6 +321,27 @@ def apply_empirical_cdf_probability(
         return None
     if not _ecdf_stat_allowed(stat_type):
         return None
+    # 1. Try the universal layer first (canonical path).
+    from services.probability import get_universal_ecdf
+    uni = get_universal_ecdf()
+    pred = uni.predict_over_probability(
+        sport="nba",
+        stat_family=stat_type,
+        projection=projection,
+        line=line,
+    )
+    if pred is not None:
+        return {
+            "p_over": pred.p_over,
+            "bucket": pred.bucket,
+            "bucket_n": pred.bucket_n,
+            "version": pred.version,
+        }
+    # 2. Legacy fallback — the old flat `models/prob_ecdf_{stat}.pkl`
+    # path exists for a short deprecation window. The 10 legacy ECDF
+    # unit tests still exercise this path with a monkeypatched
+    # PROB_CALIBRATOR_DIR; once they migrate to the universal stub
+    # this block can be deleted.
     art = _load_ecdf(stat_type)
     if art is None:
         return None
@@ -347,7 +365,7 @@ def apply_empirical_cdf_probability(
         }
     except Exception as e:
         logger.warning(
-            f"[CALIBRATION] ECDF lookup failed for {stat_type}: {e}"
+            f"[CALIBRATION] legacy-ECDF lookup failed for {stat_type}: {e}"
         )
         return None
 

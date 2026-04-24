@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from services.scoring import calibration
+from services.probability import ecdf as universal_ecdf_mod
 
 
 @pytest.fixture(autouse=True)
@@ -22,9 +23,16 @@ def _reset_env_and_caches(monkeypatch, tmp_path):
     monkeypatch.delenv(calibration.ECDF_STATS_ENV, raising=False)
     calibration.reset_prob_calibrator_cache()
     calibration.reset_ecdf_cache()
+    # Redirect the universal-ECDF singleton to an empty tmp root so
+    # the legacy-fallback code path exercised by these tests doesn't
+    # shadow-read real migrated artifacts from the default root.
+    universal_ecdf_mod._SINGLETON = universal_ecdf_mod.UniversalECDFProbability(
+        root=str(tmp_path / "universal_ecdf_empty"),
+    )
     yield
     calibration.reset_prob_calibrator_cache()
     calibration.reset_ecdf_cache()
+    universal_ecdf_mod.reset_universal_ecdf_singleton()
 
 
 def _write_ecdf(tmp_path: Path, stat: str,

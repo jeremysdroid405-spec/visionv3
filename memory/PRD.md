@@ -6,6 +6,43 @@ architecture with multi-sport support, automated feature engineering, and
 a unified pipeline anchored on canonical odds data. Surface pricing
 anomalies through market-consensus probabilities.
 
+## Universal Probability Layer (ECDF) — Promotion from NBA-only → System-level (2026-04-24)
+ECDF promoted from an NBA-specific one-off to a sport-agnostic system
+service that sits alongside VK2: VK2 = projection engine, Universal
+ECDF = probability translator.
+
+- **New module** `services/probability/ecdf.py` with
+  `UniversalECDFProbability` class (`fit`, `save`, `load`,
+  `predict_over_probability`, `is_available`). Sport-agnostic core;
+  sport adapters only supply `sport` + `stat_family` + training
+  records. `ECDFPrediction` dataclass carries {p_over, p_under, bucket,
+  bucket_n, version}. Context parameter reserved for future 2-D
+  conditioning (minutes_bucket, odds_bucket, etc.) and silently
+  ignored today.
+- **Artifact layout** `models/probability/ecdf/{sport}/{stat_family}.pkl`
+  with metadata: sport, stat_family, version, source_model_version,
+  projection_bucket_edges, sorted_residuals_by_bucket, bucket_ns,
+  sample_count, min_bucket_n, trained_at.
+- **Migration** `scripts/migrate_ecdf_to_universal.py` moved the 5
+  existing NBA artifacts from `models/prob_ecdf_{stat}.pkl` →
+  `models/probability/ecdf/nba/{stat}.pkl` and scaffolded empty
+  MLB/NFL directories with README.
+- **Scoring adapter rewired**: `apply_empirical_cdf_probability`
+  delegates to `UniversalECDFProbability` as primary path; legacy
+  flat-pkl code path retained as short-term fallback (with comment
+  marking deprecation).
+- **Parity verified**: 2 dedicated parity tests confirm (a) the
+  migrated universal artifacts are structurally identical to the
+  legacy pkls and (b) `predict_over_probability` reproduces the
+  legacy inline digitize + searchsorted math bit-for-bit.
+- **17 new unit tests** (`tests/test_universal_ecdf.py`). Total suite
+  touched = **128 passing, zero regressions**.
+- **Live sanity check**: backend healthy (HTTP 200), all 5 NBA stats
+  return valid predictions through the universal service; MLB / NFL
+  correctly return None (no artifacts yet, no crash).
+
+
+
 ## Distribution-Profile Sibling Experiment (2026-04-24, INERT)
 Per-player hit-rate + zero-rate feature builder with shrinkage across
 L20 / L50 / career windows. Added as sibling experiment to test the
