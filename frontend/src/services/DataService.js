@@ -42,16 +42,14 @@ export const fetchDashboardData = async () => {
       parlayBuilder,
       goblinRecon,
       syncStatus,
-      boardIntelStatus,
       liveScores,
       lockStatus,
     ] = await Promise.all([
-      apiClient.get('/v3/war-zone').catch(() => ({ data: { picks: [] } })),
-      apiClient.get('/v3/goblin-vault').catch(() => ({ data: { picks: [] } })),
+      apiClient.get('/v3/ferrari/war-zone?sport=nba').catch(() => ({ data: { picks: [] } })),
+      apiClient.get('/v3/ferrari/safe-haven?sport=nba').catch(() => ({ data: { picks: [] } })),
       apiClient.get('/v3/parlay-builder').catch(() => ({ data: { demon_parlays: {}, goblin_parlays: {} } })),
       apiClient.get('/v3/goblin-recon').catch(() => ({ data: { parlays: {} } })),
       apiClient.get('/v3/sync-status').catch(() => ({ data: { engine_status: 'offline' } })),
-      apiClient.get('/v3/board-intel/status').catch(() => ({ data: { time_since_sync_display: 'N/A' } })),
       apiClient.get('/v3/live-scores').catch(() => ({ data: { games: [] } })),
       apiClient.get('/v3/lock-status').catch(() => ({ data: { locked_games: 0 } })),
     ]);
@@ -64,7 +62,7 @@ export const fetchDashboardData = async () => {
         parlayBuilder: parlayBuilder.data || { demon_parlays: {}, goblin_parlays: {} },
         goblinRecon: goblinRecon.data?.parlays || goblinRecon.data || {},
         syncStatus: syncStatus.data || {},
-        boardIntelStatus: boardIntelStatus.data || {},
+        boardIntelStatus: syncStatus.data || {},
         liveScores: liveScores.data?.games || [],
         lockStatus: lockStatus.data || {},
       },
@@ -80,7 +78,7 @@ export const fetchDashboardData = async () => {
  */
 export const fetchWarZone = async () => {
   try {
-    const response = await apiClient.get('/v3/war-zone');
+    const response = await apiClient.get('/v3/ferrari/war-zone?sport=nba');
     return { success: true, picks: response.data?.picks || response.data || [] };
   } catch (error) {
     console.error('[DataService] fetchWarZone error:', error);
@@ -93,7 +91,7 @@ export const fetchWarZone = async () => {
  */
 export const fetchGoblinVault = async () => {
   try {
-    const response = await apiClient.get('/v3/goblin-vault');
+    const response = await apiClient.get('/v3/ferrari/safe-haven?sport=nba');
     return { success: true, picks: response.data?.picks || response.data || [] };
   } catch (error) {
     console.error('[DataService] fetchGoblinVault error:', error);
@@ -138,15 +136,13 @@ export const fetchGoblinRecon = async () => {
  */
 export const fetchSyncStatus = async () => {
   try {
-    const [syncStatus, boardIntelStatus] = await Promise.all([
-      apiClient.get('/v3/sync-status').catch(() => ({ data: {} })),
-      apiClient.get('/v3/board-intel/status').catch(() => ({ data: {} })),
-    ]);
-
+    // Canonical universal sync-status is a single endpoint on the shared
+    // Ferrari architecture. Fetch once and surface under both legacy keys
+    // for backwards compatibility with existing UI consumers.
+    const response = await apiClient.get('/v3/sync-status').catch(() => ({ data: {} }));
     return {
       success: true,
-      ...syncStatus.data,
-      ...boardIntelStatus.data,
+      ...(response.data || {}),
     };
   } catch (error) {
     console.error('[DataService] fetchSyncStatus error:', error);
@@ -155,11 +151,13 @@ export const fetchSyncStatus = async () => {
 };
 
 /**
- * Trigger a full sync (manual refresh)
+ * Trigger a full sync (manual refresh) via the canonical universal
+ * master-sync endpoint. Per-sport — NBA/MLB follow the same contract.
  */
-export const triggerFullSync = async () => {
+export const triggerFullSync = async (sport = 'nba') => {
   try {
-    const response = await apiClient.post('/v3/sync', {}, { timeout: 300000 });
+    const path = sport === 'mlb' ? '/mlb/sync/master' : '/nba/sync/master';
+    const response = await apiClient.post(path, {}, { timeout: 300000 });
     return { success: true, ...response.data };
   } catch (error) {
     console.error('[DataService] triggerFullSync error:', error);
@@ -168,11 +166,12 @@ export const triggerFullSync = async () => {
 };
 
 /**
- * Trigger a delta refresh (odds only)
+ * Trigger a delta refresh (odds only) via the canonical universal
+ * priority-refresh endpoint.
  */
 export const triggerDeltaRefresh = async () => {
   try {
-    const response = await apiClient.post('/v3/board-intel/delta-refresh', {}, { timeout: 120000 });
+    const response = await apiClient.post('/v3/priority-refresh', {}, { timeout: 120000 });
     return { success: true, ...response.data };
   } catch (error) {
     console.error('[DataService] triggerDeltaRefresh error:', error);
@@ -270,7 +269,7 @@ export const searchPlayersInHub = async (query) => {
  */
 export const fetchInjuryAlerts = async () => {
   try {
-    const response = await apiClient.get('/v3/injuries/alerts');
+    const response = await apiClient.get('/v3/vacuum/live-alerts?sport=nba');
     return { success: true, alerts: response.data?.alerts || {} };
   } catch (error) {
     console.error('[DataService] fetchInjuryAlerts error:', error);
@@ -320,16 +319,19 @@ export const fetchScoutingProjections = async () => {
 // ==================== HYDRATED BOARD (FULL DATA) ====================
 
 /**
- * Fetch hydrated board with all player data enriched
+ * Fetch hydrated board — DEPRECATED.
+ *
+ * The legacy `/v3/hydrated-board` endpoint no longer exists on the
+ * universal Ferrari architecture. Enriched player data is already
+ * delivered on every tier response (`/v3/ferrari/safe-haven`,
+ * `/v3/ferrari/front-lines`, `/v3/ferrari/war-zone`) — callers should
+ * consume those directly.
+ *
+ * This shim remains to preserve the DataService surface; it returns an
+ * empty success payload so existing consumers degrade gracefully.
  */
 export const fetchHydratedBoard = async () => {
-  try {
-    const response = await apiClient.get('/v3/hydrated-board');
-    return { success: true, players: response.data?.players || response.data || [] };
-  } catch (error) {
-    console.error('[DataService] fetchHydratedBoard error:', error);
-    return { success: false, players: [], error: error.message };
-  }
+  return { success: true, players: [] };
 };
 
 // ==================== ROSTER ENDPOINTS (Semantic Separation) ====================
