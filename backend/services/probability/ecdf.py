@@ -136,14 +136,31 @@ class UniversalECDFProbability:
         # ±inf so inference is safe for OOS projections.
         quantiles = np.linspace(0.0, 1.0, n_buckets + 1)
         edges = np.quantile(projs, quantiles).astype(np.float64)
-        edges[0], edges[-1] = -np.inf, np.inf
 
-        # digitize against inner edges only (see predict_over_probability
-        # for matching logic).
+        # De-duplicate inner edges to handle discrete / zero-heavy
+        # projection distributions (MLB total_bases, home_runs, walks
+        # are the canonical case — many predictions cluster at 0, so
+        # multiple quantile edges land on the same value, creating
+        # empty buckets downstream). After dedup we may have FEWER
+        # than n_buckets effective buckets; that's deliberate.
+        inner = edges[1:-1]
+        unique_inner = np.unique(inner)
+        # Build the final edges with deduped inner set + ±inf guards
+        edges = np.concatenate([[-np.inf], unique_inner, [np.inf]]).astype(
+            np.float64
+        )
+        effective_buckets = len(edges) - 1
+        if effective_buckets < n_buckets:
+            logger.info(
+                f"[UNIVERSAL_ECDF] {sport}/{stat_family}: quantile edges "
+                f"collapsed from {n_buckets} to {effective_buckets} "
+                f"unique buckets (discrete / zero-heavy distribution)."
+            )
+
         bins = np.digitize(projs, edges[1:-1])
         sorted_res: Dict[int, np.ndarray] = {}
         bucket_ns: Dict[int, int] = {}
-        for b in range(n_buckets):
+        for b in range(effective_buckets):
             mask = bins == b
             sorted_res[int(b)] = np.sort(residuals[mask])
             bucket_ns[int(b)] = int(mask.sum())
@@ -166,7 +183,7 @@ class UniversalECDFProbability:
             "bucket_ns": bucket_ns,
             "sample_count": int(len(projs)),
             "min_bucket_n": min_bucket,
-            "n_buckets": int(n_buckets),
+            "n_buckets": int(effective_buckets),
         }
         self.save(sport, stat_family, artifact)
         # refresh cache with new artifact so immediate predicts hit it

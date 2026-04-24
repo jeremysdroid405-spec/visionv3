@@ -196,6 +196,46 @@ class MLBScoringAdapter(ScoringAdapter):
                 model_projection = result.get("predicted")
                 model_sigma = result.get("std_dev")
 
+                # --- Universal ECDF probability override (2026-04-24) ---
+                # When a per-stat ECDF artifact exists at
+                # models/probability/ecdf/mlb/{stat_family}.pkl,
+                # replace the Gaussian `prob_over` returned by the hf
+                # model with the distribution-aware ECDF output. This
+                # mirrors the NBA wiring and preserves the invariant
+                # that projections are UNCHANGED — only p_over flips.
+                # Falls back to the hf-native prob_over when the
+                # artifact is missing / the bucket is too small.
+                if model_projection is not None:
+                    try:
+                        from services.probability import get_universal_ecdf
+                        canonical_stat = hf_model._normalize_stat(stat_type)
+                        ecdf_pred = get_universal_ecdf().predict_over_probability(
+                            sport="mlb",
+                            stat_family=canonical_stat,
+                            projection=float(model_projection),
+                            line=float(line),
+                        )
+                    except Exception as _exc:
+                        ecdf_pred = None
+                    if ecdf_pred is not None:
+                        if "UNDER" in side:
+                            p_true_model = round(ecdf_pred.p_under, 4)
+                        else:
+                            p_true_model = round(ecdf_pred.p_over, 4)
+                        # Record audit fields so the calibration-stats
+                        # observability endpoint can surface MLB ECDF
+                        # usage the same way it surfaces NBA.
+                        prop["raw_gaussian_p_over"] = round(
+                            float(prob_over_pct) / 100.0, 4,
+                        )
+                        prop["ecdf_p_over"] = round(ecdf_pred.p_over, 4)
+                        prop["ecdf_bucket"] = int(ecdf_pred.bucket)
+                        prop["ecdf_bucket_n"] = int(ecdf_pred.bucket_n)
+                        prop["ecdf_version"] = ecdf_pred.version
+                        prop["probability_method"] = "ecdf"
+                    else:
+                        prop["probability_method"] = "gaussian"
+
         # Books available
         books = 0
         if pp_layer: books += 1
