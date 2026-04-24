@@ -210,6 +210,31 @@ async def run_master_sync(db, sport: str) -> Dict[str, Any]:
             logger.exception(f"[MASTER_SYNC:{sport}] momentum enrichment failed")
             metrics["errors"].append(f"momentum_enrichment: {exc}")
 
+    # -----------------------------------------------------------------
+    # Step 5 — read-side enrichment: tempo / pace_delta (NBA only)
+    #
+    # Replaces stale legacy cached_board pace_delta values
+    # ({display:"0.0", tempo_label:"Neutral Pace", expected_game_pace:"98.0"}
+    # written by deleted `optimized_sync_engine` / `cached_board_builder_service`
+    # before 2026-04-22) with current
+    # `IntelSuiteCalculator._calculate_pace_delta(team, opponent, board_pick)`
+    # output. NOT scoring. Does not affect projections, gates, ECDF,
+    # tiers, recompute math, or thresholds.
+    # -----------------------------------------------------------------
+    if sport == "nba":
+        try:
+            ts = datetime.now(timezone.utc)
+            pd_metrics = await _enrich_nba_pace_delta(db)
+            pd_metrics["duration_seconds"] = (
+                datetime.now(timezone.utc) - ts
+            ).total_seconds()
+            metrics["steps"]["5_pace_delta_enrichment_nba"] = pd_metrics
+        except Exception as exc:
+            logger.exception(
+                f"[MASTER_SYNC:{sport}] pace_delta enrichment failed"
+            )
+            metrics["errors"].append(f"pace_delta_enrichment: {exc}")
+
     completed = datetime.now(timezone.utc)
     metrics["completed_at"] = completed.isoformat()
     metrics["total_duration_seconds"] = (completed - started).total_seconds()
@@ -579,5 +604,282 @@ async def _enrich_nba_momentum(db) -> dict:
         f"{metrics['props_enriched']}/{metrics['props_total']} "
         f"pairs={metrics['pairs_computed']}/{metrics['pairs_total']} "
         f"skipped={metrics['props_skipped']}"
+    )
+    return metrics
+
+
+
+# =====================================================================
+# NBA Tempo / Pace Delta Read-Side Enrichment Helper
+#
+# Purpose:
+#   Replace stale legacy `intel_suite.pace_delta` values currently sitting
+#   in `nba_cached_board.props[*]` (written by the deleted
+#   `optimized_sync_engine` / `cached_board_builder_service` ≈2026-04-21
+#   with flat `team_pace=98.0, opp_pace=98.0, tempo_label="Neutral Pace"`
+#   defaults across all teams) with current per-(team, opponent) output
+#   from `IntelSuiteCalculator._calculate_pace_delta`.
+#
+# Strict scope:
+#   - Read `nba_prop_scores` at `version_tag=final-nba-rt`
+#   - Group by (team_abbr, opponent_team_abbr) — pace_delta is stat- and
+#     line-agnostic, depending only on the matchup
+#   - Call `IntelSuiteCalculator._calculate_pace_delta` once per pair
+#   - Write `intel_suite.pace_delta` onto every matching score doc
+#   - Mirror onto `nba_cached_board.props[*].intel_suite.pace_delta` for
+#     all of the player's props (line/direction/stat agnostic)
+#
+# Out of scope (per directive):
+#   - Scoring math / projections
+#   - Gates / Universal Gate Engine / thresholds
+#   - ECDF / probability layer
+#   - Recompute / Ferrari tier logic
+#   - Frontend layout
+# =====================================================================
+
+
+async def _enrich_nba_pace_delta(db) -> dict:
+    """
+    Refresh `intel_suite.pace_delta` for every NBA prop on today's
+    slate using the current `IntelSuiteCalculator._calculate_pace_delta`.
+
+    Read-only with respect to scoring. Writes only the `pace_delta`
+    sub-key of `intel_suite`, leaving every other intel_suite field
+    untouched (`matchup_dvp`, `momentum_data`, `vision_insight`, etc.).
+    """
+    from collections import defaultdict
+    from pymongo import UpdateMany
+    from services.intel_suite_calculator import IntelSuiteCalculator
+
+    metrics = {
+        "props_total": 0,
+        "props_enriched": 0,
+        "props_skipped": 0,
+        "skip_reasons": {},
+        "pairs_total": 0,
+        "pairs_computed": 0,
+        "pairs_failed": 0,
+        "pairs_no_profile": 0,
+        "cached_board_updates": 0,
+        "cached_board_skipped": 0,
+        "stale_neutral_pace_before": 0,
+    }
+    skip = metrics["skip_reasons"]
+
+    def _bump(reason: str, n: int = 1) -> None:
+        skip[reason] = skip.get(reason, 0) + n
+        metrics["props_skipped"] += n
+
+    # ------------------------------------------------------------------
+    # Step A: event_id → (home_abbr, away_abbr) and team_abbr → today's
+    # opponent_abbr (slate-wide). Reuse the same maps the momentum
+    # helper builds above; this helper rebuilds them locally to keep
+    # the function self-contained.
+    # ------------------------------------------------------------------
+    event_map: dict = {}
+    team_to_opp_today: dict = {}
+    async for lp in db["nba_live_props"].find(
+        {}, {"_id": 0, "event_id": 1, "home_team": 1, "away_team": 1}
+    ):
+        eid = lp.get("event_id")
+        if not eid or eid in event_map:
+            continue
+        home = _to_team_abbr(lp.get("home_team"))
+        away = _to_team_abbr(lp.get("away_team"))
+        if home and away:
+            event_map[eid] = (home, away)
+            team_to_opp_today.setdefault(home, away)
+            team_to_opp_today.setdefault(away, home)
+
+    # ------------------------------------------------------------------
+    # Step B: bdl_player_id → team_abbr from `nba_master_hub_2026`
+    # ------------------------------------------------------------------
+    player_team: dict = {}
+    async for mh in db["nba_master_hub_2026"].find(
+        {}, {"_id": 0, "bdl_id": 1, "bdl_player_id": 1, "team_abbr": 1, "team": 1}
+    ):
+        pid = mh.get("bdl_id") or mh.get("bdl_player_id")
+        ta = mh.get("team_abbr") or mh.get("team")
+        if pid is None or not ta:
+            continue
+        try:
+            player_team[int(pid)] = ta
+        except (TypeError, ValueError):
+            continue
+
+    # ------------------------------------------------------------------
+    # Stale fingerprint count (before)
+    # ------------------------------------------------------------------
+    metrics["stale_neutral_pace_before"] = await db["nba_cached_board"].count_documents(
+        {"props.intel_suite.pace_delta.tempo_label": "Neutral Pace"}
+    )
+
+    # ------------------------------------------------------------------
+    # Step C: Walk score docs, derive (team_abbr, opp_abbr) per doc,
+    # group by canonical_key for bulk write.
+    # ------------------------------------------------------------------
+    bulk_by_pair: dict = defaultdict(list)
+    cursor = db["nba_prop_scores"].find(
+        {"version_tag": "final-nba-rt"},
+        {
+            "_id": 0, "event_id": 1, "bdl_player_id": 1,
+            "canonical_key": 1, "player_name": 1,
+        },
+    )
+
+    async for d in cursor:
+        metrics["props_total"] += 1
+        ck = d.get("canonical_key")
+        eid = d.get("event_id")
+        bid = d.get("bdl_player_id")
+
+        if not ck:
+            _bump("no_canonical_key")
+            continue
+        if not eid or eid not in event_map:
+            _bump("no_event_match")
+            continue
+        if bid is None:
+            _bump("no_bdl_id")
+            continue
+        try:
+            team_abbr = player_team.get(int(bid))
+        except (TypeError, ValueError):
+            team_abbr = None
+        if not team_abbr:
+            _bump("no_team_lookup")
+            continue
+
+        home, away = event_map[eid]
+        if team_abbr == home:
+            opp = away
+        elif team_abbr == away:
+            opp = home
+        else:
+            _bump("team_not_in_event")
+            continue
+
+        bulk_by_pair[(team_abbr, opp)].append(ck)
+
+    # ------------------------------------------------------------------
+    # Step D: Compute pace_delta once per (team, opp) pair via the
+    # current producer. `_calculate_pace_delta` is a pure synchronous
+    # table lookup with no I/O, so we call it inline.
+    # ------------------------------------------------------------------
+    calc = IntelSuiteCalculator(db)
+    pair_cache: dict = {}
+    metrics["pairs_total"] = len(bulk_by_pair)
+
+    bulk_ops: list = []
+    for (team_abbr, opp_abbr), keys in bulk_by_pair.items():
+        try:
+            pd = calc._calculate_pace_delta(team_abbr, opp_abbr, None)
+            metrics["pairs_computed"] += 1
+        except Exception as exc:
+            logger.warning(
+                f"[MASTER_SYNC:nba] pace_delta calc failed for "
+                f"{team_abbr}/{opp_abbr}: {exc}"
+            )
+            metrics["pairs_failed"] += 1
+            _bump("pace_delta_calc_failed", len(keys))
+            continue
+
+        if not pd:
+            metrics["pairs_no_profile"] += 1
+            _bump("no_pace_delta_profile", len(keys))
+            continue
+
+        pair_cache[(team_abbr, opp_abbr)] = pd
+        # Write `intel_suite.pace_delta` onto matching score docs.
+        # `$set` on a nested path creates the parent `intel_suite` sub-doc
+        # if absent (score docs do not currently carry intel_suite). We
+        # write only this single sub-key — no other intel_suite fields
+        # are touched.
+        bulk_ops.append(
+            UpdateMany(
+                {
+                    "version_tag": "final-nba-rt",
+                    "canonical_key": {"$in": keys},
+                },
+                {"$set": {"intel_suite.pace_delta": pd}},
+            )
+        )
+        metrics["props_enriched"] += len(keys)
+
+    if bulk_ops:
+        await db["nba_prop_scores"].bulk_write(bulk_ops, ordered=False)
+
+    # ------------------------------------------------------------------
+    # Step E: Mirror into `nba_cached_board.props[*].intel_suite.pace_delta`
+    # so that the existing `routes/ferrari_tiers.py` and
+    # `routes/player.py` overlay paths (which read intel_suite from
+    # cached_board, NOT from score docs) deliver fresh values to the UI.
+    # pace_delta is line/direction/stat-agnostic, so we update ALL of a
+    # player's cached_board props in a single arrayFilters write per
+    # player.
+    # ------------------------------------------------------------------
+    cb_bulk: list = []
+    async for cb_doc in db["nba_cached_board"].find(
+        {}, {"_id": 1, "player_name": 1}
+    ):
+        cb_player = cb_doc.get("player_name")
+        if not cb_player:
+            metrics["cached_board_skipped"] += 1
+            continue
+        mh_doc = await db["nba_master_hub_2026"].find_one(
+            {"display_name": cb_player},
+            {"_id": 0, "team_abbr": 1, "team": 1},
+        )
+        team_abbr = (mh_doc or {}).get("team_abbr") or (mh_doc or {}).get("team")
+        if not team_abbr:
+            metrics["cached_board_skipped"] += 1
+            continue
+        opp = team_to_opp_today.get(team_abbr)
+        if not opp:
+            metrics["cached_board_skipped"] += 1
+            continue
+        pd = pair_cache.get((team_abbr, opp))
+        if pd is None:
+            try:
+                pd = calc._calculate_pace_delta(team_abbr, opp, None)
+                pair_cache[(team_abbr, opp)] = pd
+            except Exception:
+                metrics["cached_board_skipped"] += 1
+                continue
+        if not pd:
+            metrics["cached_board_skipped"] += 1
+            continue
+        # Update every prop in this player's cached_board doc — pace
+        # depends only on (team, opp), not on stat or line. arrayFilter
+        # `el: {}` matches all elements of the props array.
+        cb_bulk.append(
+            UpdateMany(
+                {"_id": cb_doc["_id"]},
+                {"$set": {"props.$[el].intel_suite.pace_delta": pd}},
+                array_filters=[{"el": {"$exists": True}}],
+            )
+        )
+        metrics["cached_board_updates"] += 1
+
+    if cb_bulk:
+        CHUNK = 500
+        for i in range(0, len(cb_bulk), CHUNK):
+            await db["nba_cached_board"].bulk_write(
+                cb_bulk[i : i + CHUNK], ordered=False
+            )
+
+    # Stale fingerprint count (after) — for parity with the metric we
+    # surface in the sync result.
+    metrics["stale_neutral_pace_after"] = await db["nba_cached_board"].count_documents(
+        {"props.intel_suite.pace_delta.tempo_label": "Neutral Pace"}
+    )
+
+    logger.info(
+        f"[MASTER_SYNC:nba] pace_delta_enrichment: enriched="
+        f"{metrics['props_enriched']}/{metrics['props_total']} "
+        f"pairs={metrics['pairs_computed']}/{metrics['pairs_total']} "
+        f"cb_updates={metrics['cached_board_updates']} "
+        f"stale_before={metrics['stale_neutral_pace_before']} "
+        f"stale_after={metrics.get('stale_neutral_pace_after', 0)}"
     )
     return metrics

@@ -1,6 +1,46 @@
 # Changelog
 
-## 2026-04-24 — Defensive Momentum Producer Wired Back into Universal Sync (Option 1)
+## 2026-04-24 — Tempo / Pace Delta Producer Wired Back into Universal Sync (Option A)
+
+**Goal:** `intel_suite.pace_delta` was stale legacy data (every team showing flat `team_pace=98.0, opp_pace=98.0, tempo_label="Neutral Pace", display="0.0"`) written by deleted `optimized_sync_engine` / `cached_board_builder_service` ≈2026-04-21. Coverage of the stale signature: 122 cached_board docs. Score docs had no `intel_suite.pace_delta` at all. PlayerDetailPage TEMPO panel showed "0.0 / Neutral Pace" for every player.
+
+**Approved scope (Option A only):** Wire `IntelSuiteCalculator._calculate_pace_delta` back into `master_sync.py` as Step 5 read-side enrichment. Pure UI decoration — does not affect projections, gates, ECDF, tiers, recompute math, or thresholds.
+
+**Files changed (1):**
+- **`backend/services/master_sync.py`**
+  - Added Step 5 hook (NBA-only) after Step 4 momentum: calls `_enrich_nba_pace_delta(db)` and reports metrics under `steps.5_pace_delta_enrichment_nba`.
+  - Added inline helper `_enrich_nba_pace_delta` (~170 LOC) that:
+    - Builds `event_id → (home_abbr, away_abbr)` and `team_abbr → today_opponent_abbr` maps from `nba_live_props`.
+    - Builds `bdl_player_id → team_abbr` map from `nba_master_hub_2026`.
+    - Walks `nba_prop_scores` at `version_tag=final-nba-rt`, derives `(team_abbr, opponent_abbr)` per doc, dedupes by pair.
+    - Calls `IntelSuiteCalculator._calculate_pace_delta(team, opp, None)` once per pair (pure synchronous static-table lookup, no I/O).
+    - Bulk-writes `{$set: {"intel_suite.pace_delta": pd}}` onto matching score docs (creates `intel_suite` sub-doc when absent — no other intel_suite fields touched).
+    - Mirrors line/direction/stat-agnostically into `nba_cached_board.props[*].intel_suite.pace_delta` via `arrayFilters` (one update per cached_board player doc).
+  - Reuses the `_NBA_TEAM_NAME_TO_ABBR` and `_to_team_abbr` constants added in the momentum step.
+
+**Did NOT touch (per directive):**
+Scoring · gates · UniversalGateEngine · thresholds · ECDF · recompute · Ferrari tier logic · `_score_to_prop` whitelist · frontend · `routes/player.py` overlay (already passes `intel_suite` through via `_BOARD_ENRICHMENT_FIELDS`).
+
+**Verification (live, 2026-04-24):**
+
+| Metric | Before | After |
+|---|---|---|
+| `nba_cached_board` docs with stale `tempo_label="Neutral Pace"` | 122 | **13** (remaining = stale-slate players not playing today) |
+| `nba_prop_scores` with `intel_suite.pace_delta` @ final-nba-rt | 0 / 3,829 | **3,829 / 3,829 (100%)** |
+| `_enrich_nba_pace_delta` metrics | n/a | `props_total=3829, props_enriched=3829, props_skipped=0, pairs_total=16, pairs_computed=16, pairs_failed=0, cached_board_updates=109, cached_board_skipped=13` |
+| Jalen Duren PTS 11.5 OVER `intel_suite.pace_delta` (`/player-with-badges`) | `{display:"0.0", tempo_label:"Neutral Pace", expected_game_pace:"98.0"}` | `{possessions:-1.2, display:"-1.2 Possessions", pace_factor:1.0, tempo_label:"Standard Tempo", team_pace:96.0, opponent_pace:96.5, expected_game_pace:96.2}` |
+| Ferrari tier counts (gating signal) | safe-haven=7, front-lines=10, war-zone=7 | unchanged (7 / 10 / 7) ← scoring untouched |
+| Per-tier fresh pace coverage on Ferrari payload | n/a | safe-haven 7/7, front-lines 8/10, war-zone 7/7 |
+
+**UI validation (Playwright on preview, Jalen Duren detail):**
+- TEMPO panel: **"-1.2 Possessions / Standard Tempo"** (current per-team value)
+- VARIANCE: 65% Variable (unchanged, fresh)
+- DEFENSIVE MOMENTUM: SZN #15 / L10 #5 / L5 #6 / Composite #10 (current, from Step 4)
+- ACTIVE FOR: HOME COOKIN' badge (current)
+- 0 "Neutral Pace" sightings, 1 "Standard Tempo" rendered
+- Bar charts, hit rates, header stats, target-lock rationale all unchanged
+
+
 
 **Goal:** `momentum_data` was orphaned since the legacy `optimized_sync_engine` was deleted on 2026-04-22. Coverage was 8/5,754 cached props (0.14%) and 0/3,731 score docs. PlayerDetailPage `MomentumTrackerFull` could not render for Jalen Duren PTS 11.5 OVER (or 99.86% of the slate).
 
