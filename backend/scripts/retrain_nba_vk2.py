@@ -143,6 +143,13 @@ OPPORTUNITY_FEATURES = [
 PRUNED_OPPMODEL_FEATURES = list(PRUNED_FEATURES) + list(OPPORTUNITY_FEATURES)
 assert len(PRUNED_OPPMODEL_FEATURES) == 56
 
+from services.features.distribution_profile import (  # noqa: E402
+    FEATURE_SCHEMA as DIST_PROFILE_FEATURES,
+    build as build_distribution_profile,
+)
+PRUNED_DISTPROFILE_FEATURES = list(PRUNED_FEATURES) + list(DIST_PROFILE_FEATURES)
+assert len(PRUNED_DISTPROFILE_FEATURES) == 175
+
 from services.opportunity import (  # noqa: E402
     NBAOpportunityAdapter, PlayerContext,
 )
@@ -184,7 +191,7 @@ def preload_advanced_stats():
 # ---------- Feature builder (pure Python, fast) ----------
 def build_features(history_logs, target_game=None, adv_map=None,
                    target_schema=None, opp_store=None,
-                   opportunity_adapter=None):
+                   opportunity_adapter=None, dist_profile=False):
     """history_logs: chronological-descending (newest first) game logs BEFORE
     the target game. Returns a flat dict of features.
 
@@ -475,6 +482,26 @@ def build_features(history_logs, target_game=None, adv_map=None,
             feats.setdefault('opp_bucket_high', 0.0)
             feats.setdefault('opp_bucket_low', 1.0)
 
+    # --------- DISTRIBUTION-PROFILE FEATURES (2026-04-24) ---------------
+    # Per-player historical hit-rate profile: 123 features covering
+    # P(stat >= N) at several N values for each of PTS/REB/AST/3PM/PRA,
+    # plus explicit zero-rate features, computed over L20 / L50 / career
+    # windows. Strictly uses history_logs (games BEFORE the target), so
+    # no future leakage. L20 is Bayes-shrunk toward a 0.5 prior (α=3);
+    # L50 / career use the raw empirical rate. Enabled by
+    # `--dist_profile` (175-feature schema).
+    if dist_profile:
+        try:
+            prof = build_distribution_profile(history_logs)
+            feats.update(prof)
+        except Exception:
+            # Distribution-profile feature builder should never throw,
+            # but on defence emit the prior for every feature so the
+            # row isn't dropped.
+            for name in DIST_PROFILE_FEATURES:
+                if name not in feats:
+                    feats[name] = 0.5 if "hit_" in name else 0.0
+
     return feats
 
 
@@ -482,6 +509,7 @@ def build_features(history_logs, target_game=None, adv_map=None,
 def build_training_matrix(stat_label, stat_field, adv_map=None,
                           target_schema=None, opp_store=None,
                           opportunity_adapter=None,
+                          dist_profile=False,
                           collect_player_ids=False):
     """Returns (X, y, sample_weights, feature_cols) — and, when
     `collect_player_ids=True`, a fifth array `sample_player_ids`
@@ -549,6 +577,7 @@ def build_training_matrix(stat_label, stat_field, adv_map=None,
                 history_desc, target_game=tgt, adv_map=adv_map,
                 target_schema=target_schema, opp_store=opp_store,
                 opportunity_adapter=opportunity_adapter,
+                dist_profile=dist_profile,
             )
             if feats is None:
                 continue
@@ -608,7 +637,8 @@ def build_training_matrix(stat_label, stat_field, adv_map=None,
 # ---------- Train + calibrate per stat ----------
 def train_one(stat_label, stat_field, adv_map=None, pruned=False,
               opponent=False, opp_store=None,
-              opportunity=False, opportunity_adapter=None):
+              opportunity=False, opportunity_adapter=None,
+              dist_profile=False):
     # Schema-aware feature build (2026-04-23) — when pruned is set,
     # pass the resolved schema into the builder so expensive loops
     # (ADV_FIELDS ≈ 47M ops) only iterate features the trainer will
@@ -618,6 +648,8 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False,
             active_schema = PRUNED_OPP_FEATURES
         elif opportunity:
             active_schema = PRUNED_OPPMODEL_FEATURES
+        elif dist_profile:
+            active_schema = PRUNED_DISTPROFILE_FEATURES
         else:
             active_schema = PRUNED_FEATURES
         target_schema = set(active_schema)
@@ -629,6 +661,7 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False,
         target_schema=target_schema,
         opp_store=(opp_store if opponent else None),
         opportunity_adapter=(opportunity_adapter if opportunity else None),
+        dist_profile=dist_profile,
     )
     if X is None:
         log.warning(f'[{stat_label}] no samples; SKIP')
@@ -652,6 +685,8 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False,
             label_extra = '+opp'
         elif opportunity:
             label_extra = '+oppmodel'
+        elif dist_profile:
+            label_extra = '+distprofile'
         else:
             label_extra = ''
         log.info(
@@ -723,6 +758,8 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False,
             version_str = 'NBA_VK_v2_5yr_weighted_pruned_opp66'
         elif opportunity:
             version_str = 'NBA_VK_v2_5yr_weighted_pruned_oppmodel56'
+        elif dist_profile:
+            version_str = 'NBA_VK_v2_5yr_weighted_pruned_distprofile175'
         else:
             version_str = 'NBA_VK_v2_5yr_weighted_pruned52'
     else:
@@ -734,6 +771,7 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False,
         'pruned_schema': bool(pruned),
         'opponent_schema': bool(opponent),
         'opportunity_schema': bool(opportunity),
+        'dist_profile_schema': bool(dist_profile),
         'trained_at': datetime.now(timezone.utc).isoformat(),
         'seasons_used': SEASONS,
         'season_weights': SEASON_WEIGHTS,
@@ -758,6 +796,8 @@ def train_one(stat_label, stat_field, adv_map=None, pruned=False,
             suffix = '_opp'
         elif opportunity:
             suffix = '_oppmodel'
+        elif dist_profile:
+            suffix = '_distprofile'
         else:
             suffix = '_pruned'
     else:
@@ -797,13 +837,24 @@ if __name__ == '__main__':
              'Writes to vk2_{stat}_oppmodel.pkl. Requires --pruned. '
              'Mutually exclusive with --opponent.',
     )
+    ap.add_argument(
+        '--dist_profile', action='store_true',
+        help='Add 123 distribution-profile features (hit_N_rate + '
+             'zero_rate across L20/L50/career) on top of --pruned '
+             '(175 features total). Writes to vk2_{stat}_distprofile.pkl. '
+             'Requires --pruned. Mutually exclusive with --opponent / '
+             '--opportunity.',
+    )
     args = ap.parse_args()
     if args.opponent and not args.pruned:
         ap.error('--opponent requires --pruned (extends the pruned baseline)')
     if args.opportunity and not args.pruned:
         ap.error('--opportunity requires --pruned (extends the pruned baseline)')
-    if args.opportunity and args.opponent:
-        ap.error('--opportunity and --opponent are mutually exclusive (future: combined schema)')
+    if args.dist_profile and not args.pruned:
+        ap.error('--dist_profile requires --pruned (extends the pruned baseline)')
+    exclusives = [args.opponent, args.opportunity, args.dist_profile]
+    if sum(1 for x in exclusives if x) > 1:
+        ap.error('--opponent, --opportunity, --dist_profile are mutually exclusive')
 
     t_all = time.monotonic()
     adv_map = preload_advanced_stats()
@@ -827,6 +878,8 @@ if __name__ == '__main__':
             tag = '[OPPMODEL]'
         elif args.opponent:
             tag = '[OPP]'
+        elif args.dist_profile:
+            tag = '[DISTPROFILE]'
         elif args.pruned:
             tag = '[PRUNED]'
         else:
@@ -838,6 +891,7 @@ if __name__ == '__main__':
                 opponent=args.opponent, opp_store=opp_store,
                 opportunity=args.opportunity,
                 opportunity_adapter=opportunity_adapter,
+                dist_profile=args.dist_profile,
             )
         except Exception as e:
             log.exception(f'[{label}] FAILED: {e}')

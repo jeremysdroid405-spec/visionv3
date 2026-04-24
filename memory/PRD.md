@@ -6,6 +6,34 @@ architecture with multi-sport support, automated feature engineering, and
 a unified pipeline anchored on canonical odds data. Surface pricing
 anomalies through market-consensus probabilities.
 
+## Distribution-Profile Sibling Experiment (2026-04-24, INERT)
+Per-player hit-rate + zero-rate feature builder with shrinkage across
+L20 / L50 / career windows. Added as sibling experiment to test the
+hypothesis that zero-outcome frequency is the missing signal on low
+props (threes / AST / BLK-style stats).
+
+- `services/features/distribution_profile.py` — 123 features
+  (5 stats × [zero_rate + hit_N_rate at spec'd thresholds] × 3 windows).
+  History-only, L20 Bayes-shrunk (α=3, prior=0.5).
+- `scripts/retrain_nba_vk2.py --dist_profile` flag (requires --pruned;
+  mutually exclusive with --opponent / --opportunity). Writes siblings
+  to `models/vk2_{stat}_distprofile.pkl` (175-feat).
+- 10 new unit tests (total suite: 111 passing).
+- **Evaluated on 2024 held-out:** global MAE effectively flat on every
+  stat (only AST improves by -0.003). Distribution features dominate
+  top-importance rankings (rank #1 on REB and PRA) but XGBoost
+  substitutes them for rolling means without net predictive gain.
+- **Starter bias reduction is real:** PTS |bias| -0.057, PRA |bias|
+  -0.080 on the starter segment (min_played_L5 ≥ 28). But bench
+  segment grows by comparable magnitude, so slate-level net is zero.
+- **Verdict: INERT, not promoted.** Low-line win thesis not borne out
+  by data; the real low-line gains live in the ECDF probability layer
+  (shipped 2026-04-23) at 91-99% weighted-|gap| improvement.
+- Reports: `reports/vk2_distprofile_eval.md` (per-stat),
+  `reports/vk2_distprofile_verdict.md` (recommendation).
+
+
+
 ## ECDF Probability Cutover (2026-04-23 → 24, SHIPPED BEHIND FLAG)
 The 2026-04-23 distribution audit proved Gaussian P(over) is structurally
 wrong for every NBA stat (skew +0.07 to +1.46; excess kurtosis +3.3 to
