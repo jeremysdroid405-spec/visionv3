@@ -15,15 +15,16 @@ from typing import Any, Dict, List, Optional
 # These are the ONLY gate types known to the engine. A threshold dict may
 # activate any subset of them; unknown keys are ignored.
 CANONICAL_GATE_TYPES = (
-    "coverage_gate",      # book_count >= min_books
-    "hit_rate_gate",      # hit_rate_l20 (or configured window) >= min pp
-    "tp_gate",            # multi-book de-vig TP >= min pp
-    "cv_gate",            # cv <= max (or stat-family-keyed `caps` map)
-    "edge_gate",          # edge_pct >= min
-    "ceiling_gate",       # ceiling_rate >= min pp
-    "context_gate",       # no blowout / injury / lineup veto
-    "vision_score_gate",  # vision_score >= min (optional per-tp_source floors)
-    "market_trap_gate",   # reject mid-odds weak signals (pricing trap)
+    "coverage_gate",         # book_count >= min_books
+    "hit_rate_gate",         # hit_rate_l20 (or configured window) >= min pp
+    "tp_gate",               # multi-book de-vig TP >= min pp
+    "cv_gate",               # cv <= max (or stat-family-keyed `caps` map)
+    "edge_gate",             # edge_pct >= min
+    "ceiling_gate",          # ceiling_rate >= min pp
+    "context_gate",          # no blowout / injury / lineup veto
+    "vision_score_gate",     # vision_score >= min (optional per-tp_source floors)
+    "market_trap_gate",      # reject mid-odds weak signals (pricing trap)
+    "market_structure_gate", # reject when all listed structural conditions match
 )
 
 
@@ -52,6 +53,7 @@ class ReasonCode:
     CONTEXT_FAIL = "gate_context_fail"
     VISION_SCORE_FAIL = "gate_vision_score_fail"
     MARKET_TRAP_FAIL = "gate_market_trap_fail"
+    MARKET_STRUCTURE_FAIL = "gate_market_structure_fail"
 
     _PER_GATE_FAIL: Dict[str, str] = {
         "coverage_gate": COVERAGE_FAIL,
@@ -63,6 +65,7 @@ class ReasonCode:
         "context_gate": CONTEXT_FAIL,
         "vision_score_gate": VISION_SCORE_FAIL,
         "market_trap_gate": MARKET_TRAP_FAIL,
+        "market_structure_gate": MARKET_STRUCTURE_FAIL,
     }
 
     @classmethod
@@ -120,6 +123,12 @@ class NormalizedMetrics:
     # differentiated floors to rigorous-de-vig vs single-side-implied
     # market anchors.
     tp_source: Optional[str] = None
+
+    # Alternate-market flag — True iff the raw stat_type is an
+    # alternate line (e.g. `player_points_alternate`). Set by the
+    # adapter; `market_structure_gate` reads this to discriminate
+    # standard vs alt markets in structural reject rules.
+    is_alt: Optional[bool] = None
 
     # Model-confidence floor (side-aware: for UNDER picks the adapter
     # pipes p_model_pct through here so tp_gate can use it directly).

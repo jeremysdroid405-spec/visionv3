@@ -369,6 +369,7 @@ def compute_tier(
         book_count=book_count,
         tp=tp,
         tp_source=prop.get("tp_source"),
+        is_alt="alternate" in (stat_raw or "").lower(),
         vision_score=prop.get("vision_score"),
         hit_rate=hit_rate,
         hit_rate_l20=prop.get("hit_rate_over") or prop.get("hit_rate_l20"),

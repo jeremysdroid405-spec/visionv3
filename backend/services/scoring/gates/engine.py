@@ -325,16 +325,59 @@ class UniversalGateEngine:
             reason_code=None if passed else ReasonCode.MARKET_TRAP_FAIL,
         )
 
+    @staticmethod
+    def _eval_market_structure(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
+        """Generic structural reject rule. Config shape:
+
+            {"reject_when": {"is_alt": True, "tp_source": "one_sided"}}
+
+        Rejects ONLY when EVERY listed key/value pair matches the
+        metrics. Any listed key missing from metrics (None) blocks
+        the match — rule fails open rather than rejecting on absent
+        data. Supported keys: any scalar field on NormalizedMetrics
+        (e.g. `is_alt`, `tp_source`, `side`, `stat_family`, `sport`).
+        """
+        rules = cfg.get("reject_when") or {}
+        if not rules:
+            return GateDetail(
+                gate_type="market_structure_gate", threshold=cfg,
+                actual=None, passed=True, comparator="!=",
+                reason_code=None, note="no_reject_rules_configured",
+            )
+        actuals: Dict[str, Any] = {}
+        for key in rules:
+            raw = getattr(m, key, None)
+            if isinstance(raw, str):
+                actuals[key] = raw.lower() or None
+            else:
+                actuals[key] = _py(raw)
+        normalized_rules = {
+            k: (v.lower() if isinstance(v, str) else v) for k, v in rules.items()
+        }
+        match = all(
+            actuals.get(k) is not None and actuals.get(k) == v
+            for k, v in normalized_rules.items()
+        )
+        passed = not match
+        return GateDetail(
+            gate_type="market_structure_gate",
+            threshold={"reject_when": normalized_rules},
+            actual=actuals,
+            passed=passed, comparator="!=",
+            reason_code=None if passed else ReasonCode.MARKET_STRUCTURE_FAIL,
+        )
+
     _GATE_DISPATCH = {
-        "coverage_gate":     _eval_coverage,
-        "hit_rate_gate":     _eval_hit_rate,
-        "tp_gate":           _eval_tp,
-        "cv_gate":           _eval_cv,
-        "edge_gate":         _eval_edge,
-        "ceiling_gate":      _eval_ceiling,
-        "context_gate":      _eval_context,
-        "vision_score_gate": _eval_vision_score,
-        "market_trap_gate":  _eval_market_trap,
+        "coverage_gate":         _eval_coverage,
+        "hit_rate_gate":         _eval_hit_rate,
+        "tp_gate":               _eval_tp,
+        "cv_gate":               _eval_cv,
+        "edge_gate":             _eval_edge,
+        "ceiling_gate":          _eval_ceiling,
+        "context_gate":          _eval_context,
+        "vision_score_gate":     _eval_vision_score,
+        "market_trap_gate":      _eval_market_trap,
+        "market_structure_gate": _eval_market_structure,
     }
 
     # ------------------------------------------------------------------

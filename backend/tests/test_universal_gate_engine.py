@@ -47,15 +47,21 @@ def test_target_tier_odds_buckets():
 # Sport-agnostic pass/fail — NBA
 # --------------------------------------------------------------------------
 def test_nba_safe_haven_passes_when_all_gates_green():
+    # Safe Haven rebuild (2026-04-24): HR>=85, VS>=85, stat-aware CV
+    # caps (pts=0.40), market_structure_gate (rejects alt+one_sided).
     r = get_engine().evaluate(NormalizedMetrics(
         sport="nba", tier="safe_haven", stat_family="pts", side="OVER",
         reference_book="dk", reference_odds=-300,
-        book_count=2, tp=80.0, hit_rate=78.0, cv=0.40, edge_pct=12.0,
+        book_count=2, tp=80.0, hit_rate=90.0, cv=0.40,
+        vision_score=92.0, tp_source="devig", is_alt=False,
     ))
     assert r.passed is True
     assert r.gate_summary == "PASS"
     assert r.reason_code == ReasonCode.GATES_PASSED
-    assert set(r.passed_gates) >= {"coverage_gate", "hit_rate_gate", "tp_gate", "cv_gate", "edge_gate"}
+    assert set(r.passed_gates) >= {
+        "hit_rate_gate", "cv_gate", "vision_score_gate",
+        "market_structure_gate",
+    }
     assert r.failed_gates == []
 
 
@@ -63,11 +69,89 @@ def test_nba_safe_haven_hit_rate_failure_has_canonical_reason():
     r = get_engine().evaluate(NormalizedMetrics(
         sport="nba", tier="safe_haven", stat_family="pts", side="OVER",
         reference_book="dk", reference_odds=-300,
-        book_count=2, tp=80.0, hit_rate=50.0, cv=0.40, edge_pct=12.0,
+        book_count=2, tp=80.0, hit_rate=50.0, cv=0.40,
+        vision_score=92.0, tp_source="devig", is_alt=False,
     ))
     assert r.passed is False
     assert "hit_rate_gate" in r.failed_gates
     assert r.gate_details["hit_rate_gate"].reason_code == ReasonCode.HIT_RATE_FAIL
+
+
+def test_nba_safe_haven_rejects_alt_one_sided():
+    """Market-structure gate: reject alt market + tp_source=one_sided."""
+    r = get_engine().evaluate(NormalizedMetrics(
+        sport="nba", tier="safe_haven", stat_family="pts", side="OVER",
+        reference_book="dk", reference_odds=-300,
+        book_count=2, tp=80.0, hit_rate=90.0, cv=0.40,
+        vision_score=92.0, tp_source="one_sided", is_alt=True,
+    ))
+    assert r.passed is False
+    assert "market_structure_gate" in r.failed_gates
+    assert r.gate_details["market_structure_gate"].reason_code == (
+        ReasonCode.MARKET_STRUCTURE_FAIL
+    )
+
+
+def test_nba_safe_haven_accepts_std_one_sided():
+    """Standard market + one_sided is allowed (only alt+one_sided rejected)."""
+    r = get_engine().evaluate(NormalizedMetrics(
+        sport="nba", tier="safe_haven", stat_family="pts", side="OVER",
+        reference_book="dk", reference_odds=-300,
+        book_count=2, tp=80.0, hit_rate=90.0, cv=0.40,
+        vision_score=92.0, tp_source="one_sided", is_alt=False,
+    ))
+    assert r.passed is True
+
+
+def test_nba_safe_haven_accepts_alt_devig():
+    """Alt market + devig is allowed (only alt+one_sided rejected)."""
+    r = get_engine().evaluate(NormalizedMetrics(
+        sport="nba", tier="safe_haven", stat_family="pts", side="OVER",
+        reference_book="dk", reference_odds=-300,
+        book_count=2, tp=80.0, hit_rate=90.0, cv=0.40,
+        vision_score=92.0, tp_source="devig", is_alt=True,
+    ))
+    assert r.passed is True
+
+
+def test_nba_safe_haven_stat_aware_cv_caps():
+    # PTS cap = 0.40 — 0.41 fails
+    r = get_engine().evaluate(NormalizedMetrics(
+        sport="nba", tier="safe_haven", stat_family="pts", side="OVER",
+        reference_book="dk", reference_odds=-300,
+        book_count=2, hit_rate=90.0, cv=0.41,
+        vision_score=92.0, tp_source="devig", is_alt=False,
+    ))
+    assert r.passed is False
+    assert "cv_gate" in r.failed_gates
+    # REB cap = 0.45 — 0.45 passes
+    r = get_engine().evaluate(NormalizedMetrics(
+        sport="nba", tier="safe_haven", stat_family="reb", side="OVER",
+        reference_book="dk", reference_odds=-300,
+        book_count=2, hit_rate=90.0, cv=0.45,
+        vision_score=92.0, tp_source="devig", is_alt=False,
+    ))
+    assert r.passed is True
+
+
+def test_nba_safe_haven_vision_score_floor():
+    # VS=84.9 fails, VS=85.0 passes
+    low = get_engine().evaluate(NormalizedMetrics(
+        sport="nba", tier="safe_haven", stat_family="pts", side="OVER",
+        reference_book="dk", reference_odds=-300,
+        book_count=2, hit_rate=90.0, cv=0.30,
+        vision_score=84.9, tp_source="devig", is_alt=False,
+    ))
+    assert low.passed is False
+    assert "vision_score_gate" in low.failed_gates
+
+    hi = get_engine().evaluate(NormalizedMetrics(
+        sport="nba", tier="safe_haven", stat_family="pts", side="OVER",
+        reference_book="dk", reference_odds=-300,
+        book_count=2, hit_rate=90.0, cv=0.30,
+        vision_score=85.0, tp_source="devig", is_alt=False,
+    ))
+    assert hi.passed is True
 
 
 def test_nba_war_zone_gates_are_native_in_engine():
@@ -113,17 +197,25 @@ def test_nba_war_zone_gates_are_native_in_engine():
 
 
 def test_nba_cv_cap_override_from_adapter():
-    # PTS cap is 0.50. REB cap via cv_caps.resolve_cv_cap is higher;
-    # we simulate the adapter passing an override on metrics.extras.
-    r = get_engine().evaluate(NormalizedMetrics(
-        sport="nba", tier="safe_haven", stat_family="reb", side="OVER",
-        reference_book="dk", reference_odds=-300,
-        book_count=2, tp=80.0, hit_rate=78.0, cv=0.65, edge_pct=12.0,
-        extras={"cv_cap_override": 0.75},
-    ))
-    assert r.passed is True
-    assert r.gate_details["cv_gate"].note == "cv_cap_override_from_adapter"
-    assert r.gate_details["cv_gate"].threshold == 0.75
+    # Adapter-level cv_cap_override still works when `caps` map is not
+    # present (used by legacy config paths). Simulated via a tier/family
+    # combo whose config doesn't declare `caps`.
+    from services.scoring.gates import thresholds as T
+    T.THRESHOLDS["nba"]["safe_haven"]["_cv_override_test"] = {
+        "cv_gate": {"max": 0.50},
+    }
+    try:
+        r = get_engine().evaluate(NormalizedMetrics(
+            sport="nba", tier="safe_haven", stat_family="_cv_override_test",
+            side="OVER", reference_book="dk", reference_odds=-300,
+            book_count=2, cv=0.65,
+            extras={"cv_cap_override": 0.75},
+        ))
+        assert r.passed is True
+        assert r.gate_details["cv_gate"].note == "cv_cap_override_from_adapter"
+        assert r.gate_details["cv_gate"].threshold == 0.75
+    finally:
+        T.THRESHOLDS["nba"]["safe_haven"].pop("_cv_override_test", None)
 
 
 # --------------------------------------------------------------------------
@@ -152,26 +244,32 @@ def test_mlb_per_stat_threshold_difference():
 
 
 # --------------------------------------------------------------------------
-# Side-aware TP gate (UNDER uses model-confidence floor)
+# --------------------------------------------------------------------------
+# Side-aware TP gate (UNDER uses model-confidence floor) — covered via MLB
+# which still uses tp_gate. NBA Safe Haven's rebuild (2026-04-24) removed
+# tp_gate; MLB Safe Haven retains it, so the engine behaviour stays tested.
 # --------------------------------------------------------------------------
 def test_tp_gate_under_uses_p_model_floor():
+    # NBA Front Lines still has `{"min": 50, "under_floor": 65}` in
+    # tp_gate — exercises the side-aware branch independent of the
+    # NBA Safe Haven rebuild.
     r = get_engine().evaluate(NormalizedMetrics(
-        sport="nba", tier="safe_haven", stat_family="pts", side="UNDER",
-        reference_book="dk", reference_odds=-300,
-        book_count=2, tp=40.0, hit_rate=80.0, cv=0.40, edge_pct=12.0,
-        p_model_pct=78.0,
+        sport="nba", tier="front_lines", stat_family="pts", side="UNDER",
+        reference_book="dk", reference_odds=-100,
+        book_count=2, tp=40.0, hit_rate=60.0, cv=0.60, edge_pct=10.0,
+        p_model_pct=70.0,
     ))
-    # TP=40 would fail OVER path; but UNDER floor uses p_model_pct=78 vs 75
-    assert r.passed is True
+    # TP=40 would fail OVER path; under_floor=65 with p_model_pct=70 passes.
+    assert r.gate_details["tp_gate"].passed is True
     assert r.gate_details["tp_gate"].note == "model_confidence_under"
-    assert r.gate_details["tp_gate"].actual == 78.0
+    assert r.gate_details["tp_gate"].actual == 70.0
 
 
 def test_tp_gate_unavailable_reason():
     r = get_engine().evaluate(NormalizedMetrics(
-        sport="nba", tier="safe_haven", stat_family="pts", side="OVER",
-        reference_book="dk", reference_odds=-300,
-        book_count=2, tp=None, hit_rate=80.0, cv=0.40, edge_pct=12.0,
+        sport="mlb", tier="safe_haven", stat_family="total_bases",
+        side="OVER", reference_book="dk", reference_odds=-280,
+        book_count=2, tp=None, hit_rate=80.0, cv=0.55, edge_pct=22.0,
     ))
     assert r.passed is False
     assert "tp_gate" in r.failed_gates
@@ -183,9 +281,10 @@ def test_tp_gate_unavailable_reason():
 # --------------------------------------------------------------------------
 def test_result_to_dict_has_canonical_shape():
     r = get_engine().evaluate(NormalizedMetrics(
-        sport="nba", tier="safe_haven", stat_family="pts",
+        sport="nba", tier="safe_haven", stat_family="pts", side="OVER",
         reference_book="dk", reference_odds=-300,
-        book_count=2, tp=80, hit_rate=78, cv=0.40, edge_pct=12.0,
+        book_count=2, tp=80, hit_rate=90, cv=0.40,
+        vision_score=92.0, tp_source="devig", is_alt=False,
     ))
     d = r.to_dict()
     # Top-level fields
@@ -221,9 +320,10 @@ def test_engine_ignores_unknown_gate_types():
     # via a tiny monkey-patch on thresholds — but simpler: just check that
     # the gate_eval for a normal call still succeeds.
     r = get_engine().evaluate(NormalizedMetrics(
-        sport="nba", tier="safe_haven", stat_family="pts",
+        sport="nba", tier="safe_haven", stat_family="pts", side="OVER",
         reference_book="dk", reference_odds=-300,
-        book_count=2, tp=80, hit_rate=78, cv=0.40, edge_pct=12.0,
+        book_count=2, tp=80, hit_rate=90, cv=0.40,
+        vision_score=92.0, tp_source="devig", is_alt=False,
     ))
     assert r.passed is True
 

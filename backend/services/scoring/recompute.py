@@ -200,22 +200,26 @@ def _apply_vision_score_normalization(score_docs: List[Dict[str, Any]]) -> None:
             d["vision_score"] = round((rank / len(raw)) * 100.0, 1)
 
 
-def _reevaluate_war_zone_post_vision(score_docs: List[Dict[str, Any]]) -> None:
-    """Re-run the UniversalGateEngine on every `tier=war_zone` doc after
-    slate-level `vision_score` normalization has populated the
-    percentile field. Gates that deferred on the first pass
-    (`vision_score_gate`, `market_trap_gate`) now evaluate with the
-    authoritative percentile value. Failing docs are demoted to
-    `unqualified` with the engine's reason_code; passing docs retain
-    their war_zone tier. Mutates `tier`, `tier_reason`,
-    `tier_gate_results`, and `gate_eval` in place.
+def _reevaluate_tiers_post_vision(score_docs: List[Dict[str, Any]]) -> None:
+    """Re-run the UniversalGateEngine on every doc in a tier that uses
+    a slate-percentile field (`vision_score`). These gates
+    (`vision_score_gate`, `market_trap_gate`) defer on the first pass
+    because `vision_score` is populated only after
+    `_apply_vision_score_normalization`. This second pass is
+    authoritative: passing docs retain their tier, failing docs are
+    demoted to `unqualified` with the engine's canonical reason_code.
+    Mutates `tier`, `tier_reason`, `tier_gate_results`, and
+    `gate_eval` in place. Sport-agnostic — runs wherever a tier's
+    config references a deferred gate.
     """
     from services.scoring.gates import NormalizedMetrics, ReasonCode, get_engine
     from services.scoring.gates.thresholds import resolve_stat_family
 
+    TIERS_TO_REEVAL = ("safe_haven", "war_zone")
     engine = get_engine()
     for doc in score_docs:
-        if doc.get("tier") != "war_zone":
+        current_tier = doc.get("tier")
+        if current_tier not in TIERS_TO_REEVAL:
             continue
         sport = (doc.get("sport") or "").lower()
         stat_family = resolve_stat_family(sport, doc.get("stat_type"))
@@ -224,7 +228,7 @@ def _reevaluate_war_zone_post_vision(score_docs: List[Dict[str, Any]]) -> None:
 
         metrics = NormalizedMetrics(
             sport=sport,
-            tier="war_zone",
+            tier=current_tier,
             stat_family=stat_family,
             side=side,
             reference_book=doc.get("tier_reference_book"),
@@ -232,6 +236,7 @@ def _reevaluate_war_zone_post_vision(score_docs: List[Dict[str, Any]]) -> None:
             book_count=doc.get("book_count"),
             tp=doc.get("tp"),
             tp_source=doc.get("tp_source"),
+            is_alt="alternate" in (doc.get("stat_type") or "").lower(),
             vision_score=doc.get("vision_score"),
             hit_rate=hr,
             hit_rate_l20=doc.get("hit_rate_over"),
@@ -256,7 +261,7 @@ def _reevaluate_war_zone_post_vision(score_docs: List[Dict[str, Any]]) -> None:
             doc["tier_reason"] = ReasonCode.GATES_PASSED
         else:
             doc["tier"] = "unqualified"
-            doc["tier_reason"] = f"war_zone_failed: {result.reason_code}"
+            doc["tier_reason"] = f"{current_tier}_failed: {result.reason_code}"
 
 
 async def recompute_sport(
@@ -591,14 +596,14 @@ async def recompute_sport(
     # 3. Percentile-normalize vision_score across the sport's slate.
     _apply_vision_score_normalization(score_docs)
 
-    # 3a. War Zone native re-evaluation (2026-04-24). The
-    # `vision_score_gate` and `market_trap_gate` defer on the first
-    # pass because vision_score is slate-percentile and populated only
-    # in step 3 above. Re-run the UniversalGateEngine on war_zone docs
-    # so the authoritative decision is recorded. All gating config
-    # lives in `services/scoring/gates/thresholds.py` —
-    # no sport-specific logic here.
-    _reevaluate_war_zone_post_vision(score_docs)
+    # 3a. Post-vision re-evaluation (2026-04-24). Tiers whose configs
+    # reference slate-percentile gates (`vision_score_gate`,
+    # `market_trap_gate`) defer those gates on the first pass. Re-run
+    # the UniversalGateEngine so the authoritative decision is
+    # recorded. All gating config lives in
+    # `services/scoring/gates/thresholds.py` — no sport-specific
+    # logic here.
+    _reevaluate_tiers_post_vision(score_docs)
 
     # 3b. Multi-book de-vig TP engine summary (2026-04-22).
     # Per user spec: log `[TP Engine] props_with_tp / props_missing_tp /

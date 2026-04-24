@@ -94,15 +94,33 @@ def resolve_stat_family(sport: str, raw_stat: Optional[str]) -> str:
 # --------------------------------------------------------------------------
 # Gate thresholds — config-driven, sport × tier × stat_family
 # --------------------------------------------------------------------------
-# CV thresholds for NBA Safe Haven are stat-dependent; we read the
-# canonical cap via `services.scoring.cv_caps.resolve_cv_cap` inside
-# the engine rather than duplicating it here.
+# Safe Haven rebuild (2026-04-24) — four-gate spec:
+#   1. vision_score_gate (VS >= 85)
+#   2. hit_rate_gate (HR >= 85)
+#   3. stat-aware cv_gate (PTS/PRA 0.40, REB/AST 0.45, 3PM 0.55, combos 0.45)
+#   4. market_structure_gate (reject alt AND tp_source=one_sided)
+# No tp_gate / edge_gate / coverage_gate / context_gate in Safe Haven.
 _NBA_SAFE_HAVEN_BASE = {
-    "coverage_gate": {"min_books": 1},
-    "hit_rate_gate": {"min": 75.0, "window": "default"},
-    "tp_gate":       {"min": 70.0, "under_floor": 75.0},
-    "cv_gate":       {"max": 0.50},  # PTS/PRA default; overridden per-stat by resolve_cv_cap
-    "edge_gate":     {"min": 8.0},
+    "hit_rate_gate":  {"min": 85.0, "window": "default"},
+    "vision_score_gate": {"min": 85.0},
+    "cv_gate": {
+        "caps": {
+            "pts":         0.40,
+            "pra":         0.40,
+            "reb":         0.45,
+            "ast":         0.45,
+            "threes":      0.55,   # preserved — not lowering
+            "pts_reb":     0.45,
+            "pts_ast":     0.45,
+            "reb_ast":     0.45,
+            "stl":         0.55,
+            "blk":         0.55,
+            "turnovers":   0.55,
+        },
+    },
+    "market_structure_gate": {
+        "reject_when": {"is_alt": True, "tp_source": "one_sided"},
+    },
 }
 _NBA_FRONT_LINES_BASE = {
     "coverage_gate": {"min_books": 1},
