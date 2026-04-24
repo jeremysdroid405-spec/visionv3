@@ -9,6 +9,41 @@ anomalies through market-consensus probabilities.
 ## MLB ECDF Cutover — VALIDATED (2026-04-24)
 Universal ECDF probability layer is now fully live for MLB.
 
+## MLB ECDF Coverage Completion — 100% (2026-04-24)
+Three previously-missing ECDF artifacts trained and serving live:
+`hits+runs+rbis`, `doubles`, `stolen_bases`. MLB artifact count
+10 → **13**. Scored-prop ECDF coverage: **2,165 / 2,165 = 100%**
+(pre: 65%). Zero Gaussian fallback on any scored prop.
+
+- **hits+runs+rbis**: 82,023 samples, 10 buckets, min_bucket_n=2
+  (bucket 0 < 0.19 projections — effectively unused in production;
+  bucket 1+ all ≥ 8,200)
+- **doubles**: 5,912 samples, 10 buckets, min_bucket_n=433. Trained
+  off `mlb_master_hub_2026.bdl_game_logs` (`doubles` field absent
+  from `mlb_historical_logs`); trainer auto-routes via `USE_HUB_LOGS`.
+- **stolen_bases**: 82,023 samples, 5 buckets, min_bucket_n=7,319
+
+**Observability fix (same pass)**: added 12 fields to
+`_SCORE_OUTPUT_FIELDS` (`probability_method`, `ecdf_p_over`,
+`ecdf_bucket`, `ecdf_bucket_n`, `ecdf_version`, `raw_gaussian_p_over`,
+`isotonic_p_over`, `probability_calibration_applied`, `raw_p_over`,
+`projection_intercept_applied`, `projection_intercept_delta`,
+`pre_intercept_projection`). Mirrored from `raw_prop` in
+`recompute.py`. These were set by both adapters but never persisted —
+now readable directly off the scored collection.
+
+**Notable corrections** confirmed on live .5-line props:
+Marcus Semien HRR gauss 0.916 → ecdf 0.657 (-0.26) · Jose Caballero
+HRR 0.815 → 0.657 · Marcelo Mayer doubles 0.803 → 0.891 (+0.09).
+
+**Invariants**: projections unchanged · EB shrinkage unchanged ·
+gate thresholds unchanged · tier counts stable (6/1/101/2198) ·
+7 pre-existing negatives unchanged · 142/142 tests pass.
+
+Reports: `reports/mlb_ecdf_coverage_completion.md`.
+Scripts: `scripts/train_mlb_ecdf_missing_stats.py`,
+`scripts/validate_mlb_ecdf_completion.py`.
+
 ## MLB Empirical-Bayes Post-Shrinkage — PROMOTED TO PRODUCTION (2026-04-24)
 Flag `MLB_HF_EB_SHRINKAGE_ENABLED=true` persisted in `/app/backend/.env`.
 Full rescore of `final-mlb-rt` applied the shrinkage on 1,356 of 2,165

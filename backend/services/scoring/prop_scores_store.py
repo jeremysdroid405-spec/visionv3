@@ -130,6 +130,19 @@ _SCORE_OUTPUT_FIELDS = (
     "eb_shrinkage_applied",
     "eb_skip_reason",
     "eb_career_sample_n",
+    # Universal ECDF probability-layer audit fields (2026-04-24).
+    # Populated by adapters when the ECDF artifact for this stat
+    # family is present and the selected bucket has >= min-bucket-n
+    # residuals. NBA sets these via `calibration_meta`; MLB sets them
+    # directly on raw_prop in `mlb_scoring.build_context`. When ECDF
+    # is consumed, `probability_method="ecdf"`; when it falls back,
+    # `probability_method in {"gaussian", "isotonic"}`.
+    "probability_method",
+    "ecdf_p_over", "ecdf_bucket", "ecdf_bucket_n", "ecdf_version",
+    "raw_gaussian_p_over", "isotonic_p_over",
+    "probability_calibration_applied", "raw_p_over",
+    "projection_intercept_applied", "projection_intercept_delta",
+    "pre_intercept_projection",
 )
 
 _IDENTITY_FIELDS = (

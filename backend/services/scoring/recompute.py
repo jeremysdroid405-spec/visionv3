@@ -451,6 +451,21 @@ async def recompute_sport(
         ):
             if _eb_k in raw:
                 doc[_eb_k] = raw[_eb_k]
+        # Universal ECDF probability-layer audit (2026-04-24). Mirror from
+        # raw_prop onto the score doc so observability can count method
+        # distribution without re-running the scoring pass. MLB sets
+        # these directly on raw_prop; NBA currently writes them via
+        # calibration_meta → extras, so they will arrive through the
+        # stack splat above — duplicate-safe write here is fine.
+        for _prob_k in (
+            "probability_method", "ecdf_p_over", "ecdf_bucket",
+            "ecdf_bucket_n", "ecdf_version", "raw_gaussian_p_over",
+            "isotonic_p_over", "probability_calibration_applied",
+            "raw_p_over", "projection_intercept_applied",
+            "projection_intercept_delta", "pre_intercept_projection",
+        ):
+            if _prob_k in raw:
+                doc[_prob_k] = raw[_prob_k]
         # War Zone CV modifier (2026-04-22) — stamped on the raw prop by
         # `check_war_zone_gates`; mirror onto the score doc so ranking
         # layers / UI can read it without re-running the sorter.

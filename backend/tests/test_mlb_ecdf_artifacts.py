@@ -57,9 +57,13 @@ def test_pitcher_outs_alias_resolves_to_pitcher_strikeouts(ecdf):
 
 def test_missing_mlb_stat_family_returns_none(ecdf):
     # No artifact for these families — caller falls back to gaussian.
-    assert ecdf.predict_over_probability(
-        "mlb", "stolen_bases", 0.15, 0.5,
-    ) is None
+    # `stolen_bases` and `doubles` were trained 2026-04-24 to complete
+    # MLB coverage; `earned_runs` remains untrained and is expected to
+    # fall through to Gaussian — so it continues to serve as a valid
+    # negative-case probe.
     assert ecdf.predict_over_probability(
         "mlb", "earned_runs", 2.5, 2.5,
+    ) is None
+    assert ecdf.predict_over_probability(
+        "mlb", "triples", 0.5, 0.5,
     ) is None
