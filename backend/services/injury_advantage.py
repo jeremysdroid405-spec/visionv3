@@ -135,7 +135,14 @@ async def _get_recency_window(db, sport: str) -> int:
 
 async def _get_board_picks(db, sport: str) -> List[dict]:
     """Load every visible-board pick from the canonical
-    `{sport}_prop_scores @ final-{sport}-rt` scored collection."""
+    `{sport}_prop_scores @ final-{sport}-rt` scored collection.
+
+    Enriches each pick with `team` (abbreviation) from the sport's
+    master_hub so the downstream same-team injury match in
+    `compute_injury_advantages` can join against `injuries_normalized`
+    (which stores team abbreviations). Score docs don't persist team
+    directly — the master_hub is the system of record.
+    """
     picks: List[dict] = []
     version_tag = f"final-{sport}-rt"
     cursor = db[f"{sport}_prop_scores"].find(
@@ -147,6 +154,31 @@ async def _get_board_picks(db, sport: str) -> List[dict]:
         doc["_board_tier"] = TIER_LABELS.get(tier, tier)
         doc["_board_collection"] = f"{sport}_prop_scores:{tier}"
         picks.append(doc)
+
+    # Bulk-resolve team from master_hub for every unique player name on
+    # the board. One query per sport — O(players_on_board).
+    unique_names = {p.get("player_name") for p in picks if p.get("player_name")}
+    if unique_names:
+        hub_coll = COLL("master_hub", sport)
+        hub_cursor = db[hub_coll].find(
+            {"$or": [
+                {"display_name": {"$in": list(unique_names)}},
+                {"player_name":  {"$in": list(unique_names)}},
+            ]},
+            {"_id": 0, "display_name": 1, "player_name": 1, "team_abbr": 1, "team": 1},
+        )
+        name_to_team: Dict[str, str] = {}
+        async for h in hub_cursor:
+            abbr = h.get("team_abbr") or h.get("team")
+            if not abbr:
+                continue
+            for key in (h.get("display_name"), h.get("player_name")):
+                if key:
+                    name_to_team.setdefault(key, abbr)
+        for p in picks:
+            if not p.get("team"):
+                p["team"] = name_to_team.get(p.get("player_name"))
+
     return picks
 
 
