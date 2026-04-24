@@ -163,16 +163,10 @@ const MomentumTrackerFull = memo(({
   const [showTooltip, setShowTooltip] = useState(false);
   
   if (!momentumData) {
-    return (
-      <div className="bg-zinc-800/50 rounded-lg p-3 border border-zinc-700/50">
-        <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-2">
-          Defensive Momentum
-        </div>
-        <div className="text-sm text-zinc-400">
-          No momentum data available for this matchup
-        </div>
-      </div>
-    );
+    // No current-source momentum data available for this pick.
+    // Render nothing — `PlayerDetailPage` shows a separate "MATCHUP
+    // ANALYSIS" box driven by `intel_suite.matchup_dvp` in that case.
+    return null;
   }
 
   const {
