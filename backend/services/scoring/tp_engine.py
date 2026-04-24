@@ -36,6 +36,17 @@ logger = logging.getLogger(__name__)
 
 TP_METHOD = "multi_book_devig_v1"
 
+# tp_source enumeration per 2026-04-24 one-sided alt-market recovery:
+#   "devig"       — both sides present on at least one book, standard
+#                   per-book de-vig average (preserves rigor)
+#   "one_sided"   — no book had both sides, but at least one book quoted
+#                   the picked side. Raw implied probability averaged
+#                   across the quoting books; carries the full vig so
+#                   edge estimates are CONSERVATIVE (market_probability
+#                   is over-estimated by ~2–4pp) — NOT fabricated.
+TP_SOURCE_DEVIG = "devig"
+TP_SOURCE_ONE_SIDED = "one_sided"
+
 # Canonical (legacy_price_field, universal_odds_field, short_code) per book.
 # Either field, if not None, yields the book's American odds.
 _BOOKS = (
@@ -156,11 +167,61 @@ def compute_tp(
             books_used.append(code)
 
     if not p_true_values:
+        # ---- One-sided fallback (2026-04-24) --------------------------
+        # When NO book quotes BOTH sides but at least one book quotes
+        # the picked side, use the raw (non-devigged) implied probability
+        # averaged across those books. Flag via `tp_source=one_sided`
+        # so the caller can distinguish from a rigorous de-vig TP.
+        # Carries the full vig → market_probability is systematically
+        # over-estimated by ~2–4pp, so edge = p_true - market is
+        # CONSERVATIVE (pessimistic for the picked side). We do NOT
+        # fabricate the missing side.
+        raw_values: List[float] = []
+        raw_books: List[str] = []
+
+        if prop is not None:
+            for code, (self_key, _opp_key, legacy_key) in {
+                "DK":  ("dk_odds",  "dk_odds_opp",  "draftkings_price"),
+                "FD":  ("fd_odds",  "fd_odds_opp",  "fanduel_price"),
+                "MGM": ("mgm_odds", "mgm_odds_opp", "betmgm_price"),
+                "BOL": ("bol_odds", "bol_odds_opp", "betonline_price"),
+            }.items():
+                this_odds = prop.get(self_key)
+                if this_odds is None:
+                    this_odds = prop.get(legacy_key)
+                p_raw = _amer_to_prob(this_odds)
+                if p_raw is None:
+                    continue
+                raw_values.append(p_raw)
+                raw_books.append(code)
+        else:
+            target_prop = over_prop if side_norm == "OVER" else under_prop
+            for legacy_key, universal_key, code in _BOOKS:
+                odds = _get_price(target_prop, legacy_key, universal_key)
+                p_raw = _amer_to_prob(odds)
+                if p_raw is None:
+                    continue
+                raw_values.append(p_raw)
+                raw_books.append(code)
+
+        if raw_values:
+            tp_raw = sum(raw_values) / len(raw_values)
+            return {
+                "tp": round(tp_raw * 100.0, 1),
+                "tp_books_used": len(raw_values),
+                "tp_books_list": raw_books,
+                "tp_method": TP_METHOD,
+                "tp_source": TP_SOURCE_ONE_SIDED,
+                "market_probability": round(tp_raw, 4),
+            }
+
         return {
             "tp": None,
             "tp_books_used": 0,
             "tp_books_list": [],
             "tp_method": TP_METHOD,
+            "tp_source": None,
+            "market_probability": None,
         }
 
     tp_float = sum(p_true_values) / len(p_true_values)
@@ -169,6 +230,8 @@ def compute_tp(
         "tp_books_used": len(p_true_values),
         "tp_books_list": books_used,
         "tp_method": TP_METHOD,
+        "tp_source": TP_SOURCE_DEVIG,
+        "market_probability": round(tp_float, 4),
     }
 
 
@@ -219,6 +282,8 @@ def lookup_companion_sides(
 
 __all__ = [
     "TP_METHOD",
+    "TP_SOURCE_DEVIG",
+    "TP_SOURCE_ONE_SIDED",
     "compute_tp",
     "build_companion_map",
     "lookup_companion_sides",

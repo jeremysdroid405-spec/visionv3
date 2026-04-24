@@ -82,6 +82,14 @@ _SCORE_OUTPUT_FIELDS = (
     #   "standard_line_missing_opp" – standard market that should have
     #                                 paired but didn't (upstream gap)
     "tp_unavailable_reason",
+    # One-sided alt-market TP recovery (2026-04-24, spec step 5).
+    #   tp_source           : "devig" | "one_sided" | None
+    #   market_probability  : 0..1 scale market-implied prob (either
+    #                         rigorous de-vig or raw one-sided implied);
+    #                         duplicates `tp/100` for convenience — UIs
+    #                         should prefer this field over `tp`.
+    "tp_source",
+    "market_probability",
     # Universal CV persistence (2026-04-23). CV is computed per
     # (player, stat_family) and is line-independent — the same value
     # attaches to every line (standard + alt) of the same family. The

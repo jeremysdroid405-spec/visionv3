@@ -135,19 +135,30 @@ def test_book_missing_one_side_is_skipped():
 
 
 def test_zero_books_gives_none_tp():
-    """Per spec: if ZERO books have both sides → TP = None, no 50% fallback."""
+    """With no book quotes whatsoever → TP = None, no 50% fallback."""
     out = compute_tp(over_prop={}, under_prop={}, side="OVER")
     assert out["tp"] is None
     assert out["tp_books_used"] == 0
     assert out["tp_books_list"] == []
     assert out["tp_method"] == TP_METHOD
+    assert out["tp_source"] is None
+    assert out["market_probability"] is None
 
 
-def test_zero_books_when_one_side_completely_missing():
-    """Only OVER data given, no UNDER data at all → no de-vig possible."""
+def test_one_sided_fallback_when_one_side_completely_missing():
+    """2026-04-24 spec: only OVER given across books → raw-implied
+    one-sided TP with explicit tp_source='one_sided'. No UNDER
+    fabrication; no synthetic de-vig."""
+    from services.scoring.tp_engine import TP_SOURCE_ONE_SIDED
     over = {"dk_odds": -110, "fd_odds": -120, "mgm_odds": -115}
     out = compute_tp(over_prop=over, under_prop=None, side="OVER")
-    assert out["tp"] is None
+    assert out["tp_source"] == TP_SOURCE_ONE_SIDED
+    assert out["tp"] is not None
+    assert out["tp_books_used"] == 3
+    # Raw implied averaged across the 3 books:
+    expected_pct = (110/210 + 120/220 + 115/215) / 3 * 100
+    assert out["tp"] == pytest.approx(expected_pct, abs=0.2)
+    assert out["market_probability"] == pytest.approx(expected_pct / 100, abs=0.003)
 
 
 def test_one_book_only_still_valid():
@@ -219,11 +230,34 @@ def test_single_prop_path_skips_books_with_only_one_side():
     assert out["tp_books_list"] == ["DK"]
 
 
-def test_single_prop_path_returns_none_with_no_paired_books():
+def test_single_prop_path_one_sided_fallback():
+    """2026-04-24: single-prop path with only one side priced
+    falls back to raw-implied one-sided TP."""
+    from services.scoring.tp_engine import TP_SOURCE_ONE_SIDED
     prop = {"dk_odds": -110}  # only one side
     out = compute_tp(prop=prop, side="OVER")
-    assert out["tp"] is None
-    assert out["tp_books_used"] == 0
+    assert out["tp"] is not None
+    assert out["tp_source"] == TP_SOURCE_ONE_SIDED
+    assert out["tp_books_used"] == 1
+    assert out["tp_books_list"] == ["DK"]
+    assert out["tp"] == pytest.approx(110 / 210 * 100, abs=0.1)
+    assert out["market_probability"] == pytest.approx(110 / 210, abs=0.002)
+
+
+def test_devig_preferred_over_one_sided_when_any_book_pairs():
+    """If ANY book has both sides → devig path is used, ignoring
+    books that only have one side."""
+    from services.scoring.tp_engine import TP_SOURCE_DEVIG
+    prop = {
+        "dk_odds": -110, "dk_odds_opp": -110,  # paired → used
+        "fd_odds": -115,                        # opp missing → ignored
+        "mgm_odds": -120,                       # opp missing → ignored
+    }
+    out = compute_tp(prop=prop, side="OVER")
+    assert out["tp_source"] == TP_SOURCE_DEVIG
+    assert out["tp_books_list"] == ["DK"]
+    # devig at -110/-110 is exactly 50.0, not ~52.4 (raw implied)
+    assert out["tp"] == pytest.approx(50.0, abs=0.2)
 
 
 def test_single_prop_path_under_side_is_devigged_correctly():

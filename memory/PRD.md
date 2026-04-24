@@ -9,6 +9,58 @@ anomalies through market-consensus probabilities.
 ## MLB ECDF Cutover — VALIDATED (2026-04-24)
 Universal ECDF probability layer is now fully live for MLB.
 
+## One-Sided Alt-Market TP Recovery — LIVE (2026-04-24)
+Fixed the structural tp_unavailable gap (was 99.8% of NBA rejects).
+No UNDER fabrication; no synthetic de-vig. Explicit `tp_source`
+labelling so callers can distinguish rigor.
+
+**Formula:**
+- `tp_source="devig"` — ≥1 book pairs both sides → rigorous per-book
+  de-vig average (unchanged behavior)
+- `tp_source="one_sided"` — no book pairs but ≥1 book quotes picked
+  side → raw implied probability averaged across those books. Carries
+  full vig so `edge = p_true − market_probability` is systematically
+  CONSERVATIVE (~2–4pp pessimistic for the picked side)
+- `tp_source=None` — no book quoted either side → `tp_unavailable=True`
+
+**Files changed:**
+- `services/scoring/tp_engine.py` — `TP_SOURCE_DEVIG` / `TP_SOURCE_ONE_SIDED`
+  constants, one-sided fallback in `compute_tp`
+  (covers both single-prop and companion paths), returns now include
+  `tp_source` + `market_probability`
+- `services/scoring/adapters/nba_scoring.py` — threads `tp_source`
+  and `market_probability` onto raw_prop
+- `services/scoring/prop_scores_store.py` — `tp_source` and
+  `market_probability` added to `_SCORE_OUTPUT_FIELDS`
+- `services/scoring/recompute.py` — mirror from raw_prop
+- `tests/test_tp_engine_devig.py` — updated 1 test + 2 new tests
+  covering the `one_sided` fallback + the "devig preferred when any
+  book pairs" invariant
+
+**Live validation (post-rescore):**
+
+| metric | before | after | Δ |
+|---|---:|---:|---:|
+| `tp_source=devig` rows | 1,635 | 1,635 | **+0 (two-sided markets untouched)** |
+| `tp_source=one_sided` rows | 0 | **1,948** | +1,948 |
+| `tp_source=None` / tp=None rows | 1,948 | **0** | −1,948 |
+| `tp_unavailable_reason` rows | 2,043 | **0** | −2,043 |
+| safe_haven picks | 16 | **60** | +44 |
+| front_lines picks | 74 | **136** | +62 |
+| war_zone picks | 1,235 | 1,235 | +0 |
+| **tiered total** | 1,325 | **1,431** | **+106** |
+
+**Sample one_sided result**: Nikola Jokic AST 8.5 OVER →
+`p_true_model=0.932`, `market_probability=0.61`, `edge=+32.2pp` →
+front_lines tier.
+
+**Invariants confirmed:**
+- ECDF still drives `p_true` (unchanged)
+- Two-sided de-vig markets: **zero** behavior change (1,635 → 1,635)
+- War zone count stable (gates still `__pass_all__`)
+- No odds fabrication; every `one_sided` row has ≥1 real book price
+- 172/172 relevant tests pass
+
 ## NBA Downstream Alias Audit — Definitive (2026-04-24)
 The earlier "522 market_not_mapped_downstream" rejects were a
 **misclassification** from my prior audit — I used a too-narrow

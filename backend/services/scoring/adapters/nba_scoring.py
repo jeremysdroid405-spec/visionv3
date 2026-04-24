@@ -1361,11 +1361,15 @@ class NBAScoringAdapter(ScoringAdapter):
         tp_books_used = tp_result["tp_books_used"]
         tp_books_list = tp_result["tp_books_list"]
         tp_method = tp_result["tp_method"]
+        tp_source = tp_result.get("tp_source")
+        market_probability = tp_result.get("market_probability")
         tp_unavailable = tp is None
         prop["tp"] = tp
         prop["tp_books_used"] = tp_books_used
         prop["tp_books_list"] = tp_books_list
         prop["tp_method"] = tp_method
+        prop["tp_source"] = tp_source
+        prop["market_probability"] = market_probability
         prop["tp_unavailable"] = tp_unavailable
 
         # Spec step 4 (2026-04-24): explicit reason code for tp=None.
