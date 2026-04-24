@@ -135,6 +135,84 @@ async def _lookup_player_hub(sport: str, name: str) -> Optional[Dict[str, Any]]:
     )
 
 
+# Enrichment fields pulled from `nba_cached_board.props[*]` per prop.
+# Score docs don't carry these; they live in the cached_board snapshot
+# built by `cached_board_builder_service`.
+_BOARD_ENRICHMENT_FIELDS = (
+    "l5_avg", "l10_avg", "l20_avg", "season_avg",
+    "h5_rate", "h10_rate", "h20_rate",
+    "hit_rates",
+    "intel_suite", "scout_badges", "context_badges",
+    "active_badges", "vision_intel", "vision_summary",
+    "margin", "season_margin",
+    "movement_delta", "movement_direction", "movement_strength",
+    "is_anomaly", "is_goblin_anomaly", "is_demon_anomaly",
+    "is_vision_enriched", "is_goblin", "is_demon", "is_standard",
+    "prop_type", "pp_utility_category",
+    "draftkings_price", "fanduel_price", "betmgm_price",
+    "l5_hits", "l10_hits", "l20_hits",
+    "apex_reason", "volatility_label", "volatility_score", "volatility_family",
+)
+# Player-level enrichment from the cached_board parent doc.
+_BOARD_PLAYER_FIELDS = (
+    "headshot_url", "photo_url", "team", "team_name", "team_logo_url",
+    "position", "jersey_number", "opponent", "opponent_abbr",
+    "injury_status", "injured_teammates", "nba_id", "nba_com_id", "espn_id",
+    "home_team", "away_team",
+    # Badges live at player grain on nba_cached_board (not per-prop).
+    "context_badges", "scout_badges",
+)
+
+
+async def _build_nba_cached_board_index(player_name: str) -> Dict[tuple, Dict[str, Any]]:
+    """Index `nba_cached_board` props for ONE player, keyed by
+    (STAT_UPPER, line_float, DIR_UPPER). Player-grain storage keeps
+    this a O(props-for-one-player) operation, ~tens of entries.
+    Returns empty dict on miss."""
+    if _db is None:
+        return {}
+    rx = re.compile(f"^{_escape_regex(player_name)}$", re.I)
+    player_doc = await _db["nba_cached_board"].find_one(
+        {"player_name": rx}, {"_id": 0}
+    )
+    if not player_doc:
+        return {}
+    index: Dict[tuple, Dict[str, Any]] = {}
+    for p in (player_doc.get("props") or []):
+        if not isinstance(p, dict):
+            continue
+        try:
+            line_f = float(p.get("line")) if p.get("line") is not None else None
+        except (TypeError, ValueError):
+            line_f = None
+        if line_f is None:
+            continue
+        key = (
+            (p.get("stat_type") or "").strip().upper(),
+            line_f,
+            (p.get("direction") or "").strip().upper(),
+        )
+        index[key] = {"prop": p, "player": player_doc}
+    return index
+
+
+async def _fetch_live_props_for_player(sport: str, player_name: str) -> Dict[str, Dict[str, Any]]:
+    """Return {canonical_key: live_prop} for a player — one query."""
+    if _db is None:
+        return {}
+    rx = re.compile(f"^{_escape_regex(player_name)}$", re.I)
+    out: Dict[str, Dict[str, Any]] = {}
+    async for lp in _db[f"{sport}_live_props"].find(
+        {"player_name": rx},
+        {"_id": 0, "canonical_key": 1, "home_team": 1, "away_team": 1,
+         "event_id": 1, "bdl_player_id": 1},
+    ):
+        ck = lp.get("canonical_key")
+        if ck:
+            out[ck] = lp
+    return out
+
+
 @router.get("/v3/player-with-badges/{player_name}")
 async def get_player_with_badges(
     player_name: str,
@@ -179,6 +257,63 @@ async def get_player_with_badges(
         }
 
     props = [_score_to_prop(d) for d in score_docs]
+
+    # --- Enrichment overlay (2026-04-24) ---------------------------------
+    # Score docs don't carry l5/l10/l20 averages, hit-rate history,
+    # intel_suite, scout/context badges, margin, movement, or anomaly
+    # flags. Those live in `nba_cached_board` (built by
+    # cached_board_builder_service) and `nba_live_props` (event/team).
+    # We merge both, same way the Ferrari tier endpoints do, so the
+    # PlayerDetailPage has the fields it needs to render stats, bar
+    # charts, glow, and the Vision Intel modal. No scoring changes.
+    if sport == "nba" and props:
+        board_index = await _build_nba_cached_board_index(canonical_name)
+        live_by_key = await _fetch_live_props_for_player(sport, canonical_name)
+        parent_player_fields: Dict[str, Any] = {}
+        for entry in board_index.values():
+            pp = entry.get("player") or {}
+            for fld in _BOARD_PLAYER_FIELDS:
+                if parent_player_fields.get(fld) in (None, "", []):
+                    val = pp.get(fld)
+                    if val not in (None, "", []):
+                        parent_player_fields[fld] = val
+            if parent_player_fields:
+                break
+        for p in props:
+            # Exact 3-tuple board match
+            try:
+                line_f = float(p["line"])
+            except (TypeError, ValueError):
+                line_f = None
+            stat_u = (p.get("stat_type") or "").strip().upper()
+            dir_u = (p.get("recommendation") or "").strip().upper()
+            entry = board_index.get((stat_u, line_f, dir_u))
+            # Fallback: opposite side (pulls per-stat context at least)
+            if entry is None:
+                opp = "UNDER" if dir_u == "OVER" else "OVER"
+                entry = board_index.get((stat_u, line_f, opp))
+            if entry:
+                board_prop = entry.get("prop") or {}
+                for fld in _BOARD_ENRICHMENT_FIELDS:
+                    if p.get(fld) in (None, "", []):
+                        val = board_prop.get(fld)
+                        if val is not None:
+                            p[fld] = val
+            # Live props: event/team fields
+            lp = live_by_key.get(p.get("canonical_key") or "")
+            if lp:
+                if not p.get("home_team") and lp.get("home_team"):
+                    p["home_team"] = lp["home_team"]
+                if not p.get("away_team") and lp.get("away_team"):
+                    p["away_team"] = lp["away_team"]
+                if not p.get("bdl_player_id") and lp.get("bdl_player_id"):
+                    p["bdl_player_id"] = lp["bdl_player_id"]
+            # Player-level fields (team/photo/opponent) backfill —
+            # useful when hub lookup returned empty but cached_board has it.
+            for fld in _BOARD_PLAYER_FIELDS:
+                if p.get(fld) in (None, "", []) and parent_player_fields.get(fld) is not None:
+                    p[fld] = parent_player_fields[fld]
+
     demons = [p for p in props if _classify_demon_goblin(p) == "demon"]
     goblins = [p for p in props if _classify_demon_goblin(p) == "goblin"]
 
@@ -191,15 +326,37 @@ async def get_player_with_badges(
         event_id = score_docs[0].get("event_id")
         game_start = score_docs[0].get("game_start_utc")
 
-    # Hub defaults
+    # Hub defaults — fall back to cached_board parent when hub is empty.
     hub = hub or {}
-    team = hub.get("team") or hub.get("team_full")
-    position = hub.get("position")
-    photo_url = hub.get("photo_url") or hub.get("headshot_url")
+    # Collect any cached_board parent fields we captured during overlay
+    # (parent_player_fields was populated inside the NBA overlay block).
+    board_fallback: Dict[str, Any] = {}
+    if sport == "nba" and score_docs:
+        # Re-derive once for the player-level payload.
+        try:
+            bi = await _build_nba_cached_board_index(canonical_name)
+            for e in bi.values():
+                pp = e.get("player") or {}
+                for fld in _BOARD_PLAYER_FIELDS:
+                    if board_fallback.get(fld) in (None, "", []):
+                        v = pp.get(fld)
+                        if v not in (None, "", []):
+                            board_fallback[fld] = v
+                break
+        except Exception:
+            pass
+    team = hub.get("team") or hub.get("team_full") or board_fallback.get("team")
+    position = hub.get("position") or board_fallback.get("position")
+    photo_url = (
+        hub.get("photo_url") or hub.get("headshot_url")
+        or board_fallback.get("photo_url") or board_fallback.get("headshot_url")
+    )
     bdl_player_id = hub.get("bdl_id") or hub.get("bdl_player_id") or hub.get("player_id")
     jersey = hub.get("jersey")
     height = hub.get("height")
     weight = hub.get("weight")
+    if opponent in (None, "") and board_fallback.get("opponent"):
+        opponent = board_fallback["opponent"]
 
     player_payload = {
         "player_name": canonical_name,
