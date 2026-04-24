@@ -1973,3 +1973,108 @@ async def calibration_stats(
         ],
     }
 
+@router.get("/v3/admin/probability/ecdf/artifacts")
+async def probability_ecdf_artifacts(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Universal ECDF artifact inventory (2026-04-24).
+
+    Read-only sanity panel: walks the universal-ECDF artifact root
+    (`/app/backend/models/probability/ecdf/`), loads each .pkl for
+    metadata, and returns one row per (sport, stat_family) found on
+    disk. Does NOT recompute, does NOT mutate the loaded-artifact
+    cache beyond the normal first-read fill.
+
+    Also returns:
+      - `totals_by_sport` — count of artifacts per sport
+      - `missing_expected_nba` — list of NBA stat families that
+        are expected (PTS/REB/AST/3PM/PRA) but have no pkl on disk
+      - `root_path`, `version_expected`
+
+    Scaffold-only sport directories (MLB/NFL with just a README.md
+    today) produce empty entries but do NOT cause errors.
+
+    Auth: `X-Admin-Token` header must match env `ADMIN_DEBUG_TOKEN`.
+    """
+    _require_admin_debug_token(x_admin_token)
+    from services.probability.ecdf import (
+        DEFAULT_ROOT, VERSION, get_universal_ecdf,
+    )
+
+    root = DEFAULT_ROOT
+    expected_nba = ["pts", "reb", "ast", "3pm", "pra"]
+    uni = get_universal_ecdf()
+
+    artifacts: List[Dict[str, Any]] = []
+    totals_by_sport: Dict[str, int] = {}
+    if os.path.isdir(root):
+        # Sorted for deterministic output.
+        for sport_dir in sorted(os.listdir(root)):
+            sport_path = os.path.join(root, sport_dir)
+            if not os.path.isdir(sport_path):
+                continue
+            count_for_sport = 0
+            for fname in sorted(os.listdir(sport_path)):
+                full = os.path.join(sport_path, fname)
+                if not os.path.isfile(full) or not fname.endswith(".pkl"):
+                    continue
+                stat_family = fname[:-4]  # strip .pkl
+                loaded = uni.load(sport_dir, stat_family)
+                if loaded is None:
+                    artifacts.append({
+                        "sport": sport_dir,
+                        "stat_family": stat_family,
+                        "version": None,
+                        "source_model_version": None,
+                        "sample_count": None,
+                        "min_bucket_n": None,
+                        "bucket_count": None,
+                        "trained_at": None,
+                        "artifact_path": full,
+                        "loaded_available": False,
+                    })
+                    continue
+                edges = loaded.get("projection_bucket_edges")
+                bucket_count = (
+                    int(loaded.get("n_buckets")
+                        or (len(edges) - 1 if edges is not None else 0))
+                )
+                artifacts.append({
+                    "sport": sport_dir,
+                    "stat_family": stat_family,
+                    "version": loaded.get("version"),
+                    "source_model_version": loaded.get("source_model_version"),
+                    "sample_count": int(loaded.get("sample_count") or 0),
+                    "min_bucket_n": int(loaded.get("min_bucket_n") or 0),
+                    "bucket_count": bucket_count,
+                    "trained_at": loaded.get("trained_at"),
+                    "artifact_path": full,
+                    "loaded_available": True,
+                })
+                count_for_sport += 1
+            totals_by_sport[sport_dir] = count_for_sport
+
+    nba_seen = {
+        a["stat_family"] for a in artifacts
+        if a["sport"] == "nba" and a["loaded_available"]
+    }
+    missing_expected_nba = [s for s in expected_nba if s not in nba_seen]
+
+    return {
+        "root_path": root,
+        "version_expected": VERSION,
+        "total_artifacts": len(artifacts),
+        "totals_by_sport": totals_by_sport,
+        "missing_expected_nba": missing_expected_nba,
+        "artifacts": artifacts,
+        "notes": [
+            "Read-only. No recompute. No writes.",
+            "Scaffold-only sport directories (containing only README.md, "
+            "no .pkl) appear with zero artifacts and do not crash.",
+            "loaded_available=False indicates the pkl exists on disk but "
+            "failed to unpickle — inspect server logs for the specific "
+            "UniversalECDFProbability.load warning.",
+        ],
+    }
+
+

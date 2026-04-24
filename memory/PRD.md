@@ -6,6 +6,26 @@ architecture with multi-sport support, automated feature engineering, and
 a unified pipeline anchored on canonical odds data. Surface pricing
 anomalies through market-consensus probabilities.
 
+## ECDF Artifact Inventory Endpoint (2026-04-24, SHIPPED)
+`GET /api/v3/admin/probability/ecdf/artifacts` — read-only sanity
+panel for the universal-ECDF artifact layout. Walks
+`/app/backend/models/probability/ecdf/` and returns one row per
+(sport, stat_family) pkl found on disk, plus totals_by_sport and
+`missing_expected_nba` (checked against PTS/REB/AST/3PM/PRA).
+
+Per-artifact metadata: sport, stat_family, version,
+source_model_version, sample_count, min_bucket_n, bucket_count,
+trained_at, artifact_path, loaded_available. Scaffold-only sport
+directories (README.md but no pkls) produce zero-count totals with
+no errors. Auth: `X-Admin-Token` matching `ADMIN_DEBUG_TOKEN`.
+
+Live probe: returns 5 NBA artifacts (version=`UNIVERSAL_ECDF_v1`,
+sample_count 45,587 each, min_bucket_n 3,389-4,514), zero missing,
+MLB/NFL scaffolds correctly returning 0 counts. 7 new smoke tests
+pass; total suite = **135 passing**.
+
+
+
 ## Universal Probability Layer (ECDF) — Promotion from NBA-only → System-level (2026-04-24)
 ECDF promoted from an NBA-specific one-off to a sport-agnostic system
 service that sits alongside VK2: VK2 = projection engine, Universal
