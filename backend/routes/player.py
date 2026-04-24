@@ -149,6 +149,7 @@ _BOARD_ENRICHMENT_FIELDS = (
     "hit_rates",
     "intel_suite", "scout_badges", "context_badges",
     "active_badges", "vision_intel", "vision_summary",
+    "momentum_data",
     "margin", "season_margin",
     "movement_delta", "movement_direction", "movement_strength",
     "is_anomaly", "is_goblin_anomaly", "is_demon_anomaly",

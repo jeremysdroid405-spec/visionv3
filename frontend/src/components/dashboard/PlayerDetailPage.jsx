@@ -631,9 +631,26 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 .then((hub) => {
                   if (!hub) return;
                   const hubPlayer = hub.player || hub;
-                  const gameLogs = Array.isArray(hubPlayer.game_logs)
+                  // Prefer `bdl_game_logs` when it has richer usable
+                  // opponent data than `game_logs`. The Tank01-shape
+                  // `game_logs` array sometimes lacks `opponent_team_id`,
+                  // `matchup`, and `home_game`, while the BDL-shape
+                  // `bdl_game_logs` array carries `opponent_team_id` +
+                  // `home_game` reliably.
+                  const tank = Array.isArray(hubPlayer.game_logs)
                     ? hubPlayer.game_logs
                     : [];
+                  const bdl = Array.isArray(hubPlayer.bdl_game_logs)
+                    ? hubPlayer.bdl_game_logs
+                    : [];
+                  const tankFirst = tank[0] || {};
+                  const tankHasOpponent =
+                    tankFirst.opponent_team_id != null ||
+                    (typeof tankFirst.matchup === 'string' && tankFirst.matchup.trim() !== '') ||
+                    (typeof tankFirst.opp === 'string' && tankFirst.opp.trim() !== '');
+                  const preferBdl =
+                    bdl.length > 0 && (!tankHasOpponent || bdl.length > tank.length);
+                  const gameLogs = preferBdl ? bdl : tank;
                   const baselineStats = hubPlayer.baseline_stats || {};
                   setPlayer((prev) => {
                     if (!prev) return prev;

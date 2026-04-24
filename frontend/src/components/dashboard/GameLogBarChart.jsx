@@ -168,29 +168,19 @@ const GameLogBarChart = memo(({
     
     const values = recentGames.map(game => {
       const oppId = game.opponent_team_id;
-      // Tank01-style logs use `opp` (abbr string). BDL logs use
-      // `opponent_team_id`. Legacy logs sometimes fill `opponent` or the
-      // `matchup` field. Check all in priority order.
       const oppAbbr =
         TEAM_ID_TO_ABBR[oppId] ||
         game.opponent ||
-        game.opp ||
-        game.opp_abbr ||
-        game.opponent_abbr ||
         parseOpponentFromMatchup(game.matchup) ||
         '???';
-      // Tank01 uses `home` (bool), BDL uses `home_game`.
-      const homeRaw =
+      const isHome =
         game.home_game !== undefined && game.home_game !== null
           ? game.home_game
-          : game.home !== undefined && game.home !== null
-            ? game.home
-            : parseIsHomeFromMatchup(game.matchup);
-      const isHome = homeRaw === true || homeRaw === 'home' || homeRaw === 1;
+          : parseIsHomeFromMatchup(game.matchup);
       
       return {
         value: getStatValue(game, statType),
-        opponent: typeof oppAbbr === 'string' ? oppAbbr.toUpperCase() : '???',
+        opponent: oppAbbr,
         isHome
       };
     }).filter(v => v.value !== null);

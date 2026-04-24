@@ -1,6 +1,37 @@
 # Changelog
 
-## 2026-04-24 — Player Detail Card — Badges + Defensive Momentum (Legacy Purge)
+## 2026-04-24 — Fix A + Fix B (Approved Read-Only-Audit Outcome)
+
+**Audit identified two surgical fixes:**
+
+### Fix A — `momentum_data` overlay through `/player-with-badges`
+**File:** `backend/routes/player.py` (1 line)
+- Added `"momentum_data"` to `_BOARD_ENRICHMENT_FIELDS` tuple.
+- Pure projection of the existing `nba_cached_board.props[*].momentum_data` field through the existing line-level overlay path (lines 376–387).
+- **Did not touch:** `_score_to_prop`, scoring, gates, ECDF, Ferrari tier logic, dvp_service, intel_suite_calculator, defensive_momentum_service. The cached_board is already populated by upstream scoring; this just stops dropping the field on read.
+- **Verified:** `curl /api/v3/player-with-badges/Nikola%20Jokic` now returns `momentum_data` populated for Jokic AST 7.5 (composite_rank=6.9, season_rank=5, l5_rank=8). Coverage = 1/51 props (rest are upstream cached_board gaps, not this overlay's scope).
+
+### Fix B — Prefer `bdl_game_logs` when richer (no Tank01-shape fallbacks)
+**File:** `frontend/src/components/dashboard/PlayerDetailPage.jsx` (~6 LOC inside the existing master-hub secondary fetch handler, lines ~628–660)
+- When master-hub returns BOTH `game_logs` (Tank01-shape) and `bdl_game_logs` (BDL-shape), prefer `bdl_game_logs` if `game_logs[0]` lacks usable opponent identity (no `opponent_team_id`, no `matchup`, empty `opp`) OR `bdl_game_logs.length > game_logs.length`.
+- BDL logs carry `opponent_team_id` (resolved by existing `TEAM_ID_TO_ABBR` map in `GameLogBarChart`). No new fallback fields, no Tank01 patches.
+- **Did not touch:** `GameLogBarChart` opponent-resolver semantics. Reverted the speculative `game.opp` / `game.home` / `.toUpperCase()` additions — selection happens upstream where it should.
+
+### Files changed (final, total)
+- `backend/routes/player.py` — 1 addition to `_BOARD_ENRICHMENT_FIELDS`
+- `frontend/src/components/dashboard/PlayerDetailPage.jsx` — secondary-fetch handler enhanced to choose richer game-log array
+- `frontend/src/components/dashboard/GameLogBarChart.jsx` — REVERTED to pre-session state (speculative `game.opp` / `game.home` removed)
+
+### Validation (Playwright on preview, 5 fresh clicks)
+- 5/5 detail pages render bar charts and Vision Intel Suite
+- **0 "???" labels across all 5 detail views** (Fix B working — Amen-class players whose `game_logs` array is empty now read `bdl_game_logs` with `opponent_team_id`)
+- 1 `momentum-tracker-full` instance (Jokic — Fix A working; the only player on slate with cached_board momentum_data)
+- 4 `matchup-dvp-fallback` instances (current `intel_suite._calculate_matchup_dvp` source — not legacy)
+- 0 legacy "DEFENSIVE MOMENTUM" header text sightings
+- 0 "No game data" placeholders
+- No 404s
+
+
 
 **User report:** Clicked detail view was using stale/legacy badge sources;
 defensive momentum appearing "wrong/legacy"; badges not populating.
