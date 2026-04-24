@@ -210,7 +210,7 @@ class MLBScoringAdapter(ScoringAdapter):
                 try:
                     from services.scoring.mlb_eb_shrinkage import apply_eb_shrinkage
                     _shrunk, _eb_audit = apply_eb_shrinkage(
-                        db=db,
+                        master_hub=hf_model.master_hub,
                         bdl_player_id=bdl_player_id,
                         stat_type=stat_type,
                         raw_projection=model_projection,

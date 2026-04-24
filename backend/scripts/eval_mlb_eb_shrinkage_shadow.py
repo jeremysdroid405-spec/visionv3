@@ -90,13 +90,9 @@ async def main(force_flag_on: bool = True):
         if pid is not None:
             hubs[int(pid)] = d
 
-    class _SyncLikeDB:
-        """Tiny shim exposing a `.find_one` that the shrinkage helper
-        expects. Backed by our pre-fetched hub dict so we don't hit
-        Mongo from the sync helper."""
-
-        def __getitem__(self, name):
-            return self
+    class _SyncHub:
+        """Fake sync pymongo collection backed by the pre-fetched hub dict
+        so we don't hit Mongo from the helper."""
 
         def find_one(self, q, proj=None):
             ors = q.get("$or") or [q]
@@ -108,7 +104,7 @@ async def main(force_flag_on: bool = True):
                         return hubs[int(v)]
             return None
 
-    sync_db = _SyncLikeDB()
+    sync_hub = _SyncHub()
 
     uni = get_universal_ecdf()
 
@@ -165,7 +161,7 @@ async def main(force_flag_on: bool = True):
         p_true_before = d.get("p_true_model")
 
         shrunk, audit = ebs.apply_eb_shrinkage(
-            sync_db, int(pid) if pid is not None else None,
+            sync_hub, int(pid) if pid is not None else None,
             raw_stat, proj_before,
         )
         proj_after = float(shrunk) if shrunk is not None else proj_before

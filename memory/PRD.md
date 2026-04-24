@@ -9,6 +9,52 @@ anomalies through market-consensus probabilities.
 ## MLB ECDF Cutover — VALIDATED (2026-04-24)
 Universal ECDF probability layer is now fully live for MLB.
 
+## MLB Empirical-Bayes Post-Shrinkage — PROMOTED TO PRODUCTION (2026-04-24)
+Flag `MLB_HF_EB_SHRINKAGE_ENABLED=true` persisted in `/app/backend/.env`.
+Full rescore of `final-mlb-rt` applied the shrinkage on 1,356 of 2,165
+whitelisted props. Audit report: `reports/mlb_eb_shrinkage_production_promotion.md`.
+
+### Bug fix required during promotion
+First rescore attempt silently no-op'd — shrinkage helper had been
+written for async Motor but the hub collection is owned by the sync
+pymongo client. Fix: helper now takes `hf_model.master_hub` directly
+(the sync collection the HF model already owns). Unit tests + shadow
+eval script updated.
+
+### Projection means — live verification
+
+| stat | actual mean | pre-EB | post-EB | pre max | post max |
+|------|------------:|-------:|--------:|--------:|---------:|
+| home_runs | 0.118 | 0.233 | **0.180** | 1.49 | **0.52** |
+| rbis | 0.448 | 0.665 | **0.543** | 3.04 | **1.59** |
+| total_bases | 1.339 | 1.676 | **1.507** | 6.88 | **4.46** |
+| hits+runs+rbis | 1.691 | 1.937 | **1.839** | 5.31 | **3.84** |
+
+### Invariants verified on live docs
+- 2,165 whitelisted docs carry EB audit fields; 1,356 have
+  `eb_shrinkage_applied=True`
+- `model_projection == eb_shrunk_projection` on every applied row
+  (0 mismatches)
+- Non-whitelist docs with EB applied: 0
+- HR projections > 1.0: **0** (was 1 — Brandon Marsh outlier pattern gone)
+- Tier counts unchanged (6/1/101/2198)
+- Ferrari endpoints HTTP 200 with picks intact
+
+### Top-of-board transformation
+- Leody Taveras RBIs 0.5: **3.04 → 1.58**
+- Ozzie Albies RBIs 0.5: **2.51 → 1.35**
+- Nolan Schanuel RBIs 0.5: **2.58 → 1.33**
+- Dansby Swanson RBIs 0.5: **1.59 → 1.04**
+- Mickey Moniak RBIs 0.5: **1.23 → 0.86**
+- Brandon Marsh HR 0.5: removed from > 1 tail
+
+### 7 negative projections (pre-existing, NOT EB-caused)
+`Max Muncy Total Bases = −0.06` and similar raw HF outputs whose
+`raw_hf_projection` is already negative. EB floor at 0 would catch
+them if shrinkage applied; these rows either fall outside the
+whitelist (`doubles`) or skip on `insufficient_games`. Flagged
+for future HF model review.
+
 ## MLB Empirical-Bayes Post-Shrinkage (2026-04-24, FLAGGED OFF)
 Prototype behind `MLB_HF_EB_SHRINKAGE_ENABLED=false` (default) targeting
 the 4 zero-heavy stat families whose projections the audit proved

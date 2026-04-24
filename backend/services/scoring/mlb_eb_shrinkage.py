@@ -23,7 +23,10 @@ Usage (from `mlb_scoring.py::build_context`):
 
     from services.scoring.mlb_eb_shrinkage import apply_eb_shrinkage
     shrunk, audit = apply_eb_shrinkage(
-        db, bdl_player_id, stat_type, raw_projection=model_projection,
+        master_hub=hf_model.master_hub,  # SYNC pymongo collection
+        bdl_player_id=bdl_player_id,
+        stat_type=stat_type,
+        raw_projection=model_projection,
     )
     # `audit` is a dict with the six persistable fields.
     # `shrunk` is None when not applied; caller keeps the raw projection.
@@ -116,10 +119,14 @@ def _career_mean_from_logs(
 _PLAYER_CACHE: Dict[int, Dict[str, Any]] = {}
 
 
-def _lookup_player(db, bdl_player_id: int) -> Optional[Dict[str, Any]]:
+def _lookup_player(master_hub, bdl_player_id: int) -> Optional[Dict[str, Any]]:
+    """`master_hub` is a SYNC pymongo collection (not a motor handle).
+    Caller is expected to pass `hf_model.master_hub` from
+    `MLBHighFrictionModel` which already owns a synchronous pymongo
+    client initialised in `_get_hf_model()`."""
     if bdl_player_id in _PLAYER_CACHE:
         return _PLAYER_CACHE[bdl_player_id]
-    doc = db["mlb_master_hub_2026"].find_one(
+    doc = master_hub.find_one(
         {"$or": [
             {"bdl_player_id": int(bdl_player_id)},
             {"bdl_id": int(bdl_player_id)},
@@ -135,13 +142,18 @@ def reset_cache() -> None:
 
 
 def apply_eb_shrinkage(
-    db,
+    master_hub,
     bdl_player_id: Optional[int],
     stat_type: str,
     raw_projection: Optional[float],
 ) -> Tuple[Optional[float], Dict[str, Any]]:
     """Apply empirical-Bayes shrinkage to `raw_projection` for a single
     MLB prop. Returns `(shrunk_or_None, audit_dict)`.
+
+    `master_hub` MUST be a synchronous pymongo collection (the
+    `mlb_master_hub_2026` collection). Caller in production is
+    `MLBScoringAdapter.build_context`, which already owns a
+    sync-pymongo HF model and can reuse its `master_hub` attribute.
 
     When `shrunk_or_None` is None, the caller retains the raw
     projection. The audit dict is always returned so the caller can
@@ -178,7 +190,7 @@ def apply_eb_shrinkage(
         return None, audit
 
     try:
-        player = _lookup_player(db, int(bdl_player_id))
+        player = _lookup_player(master_hub, int(bdl_player_id))
     except Exception:
         player = None
     if not player:

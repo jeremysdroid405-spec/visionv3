@@ -29,11 +29,19 @@ class _FakeColl:
 
 
 class _FakeDB:
+    """Back-compat shim so existing tests that pass a 'db'-like object
+    keep working. In production code the helper takes a `master_hub`
+    pymongo collection directly."""
     def __init__(self, rows):
         self._c = _FakeColl(rows)
 
     def __getitem__(self, name):
         return self._c
+
+
+def _fake_hub(rows):
+    """Return a fake sync pymongo-like collection with the given rows."""
+    return _FakeColl(rows)
 
 
 def _logs(counts, stat_key="home_runs", include_non_batter=0):
@@ -64,10 +72,10 @@ def setup_function(_):
 
 
 def test_flag_off_by_default_skips():
-    db = _FakeDB([{
+    hub = _fake_hub([{
         "bdl_player_id": 1, "bdl_game_logs": _logs([0] * 25, "home_runs"),
     }])
-    shrunk, audit = ebs.apply_eb_shrinkage(db, 1, "home_runs", 0.8)
+    shrunk, audit = ebs.apply_eb_shrinkage(hub, 1, "home_runs", 0.8)
     assert shrunk is None
     assert audit["eb_shrinkage_applied"] is False
     assert audit["eb_skip_reason"] == "flag_off"
@@ -77,8 +85,8 @@ def test_flag_off_by_default_skips():
 def test_flag_on_applies_home_runs_shrinkage():
     os.environ["MLB_HF_EB_SHRINKAGE_ENABLED"] = "true"
     logs = _logs([0] * 25, "home_runs")  # 25 games, mean=0
-    db = _FakeDB([{"bdl_player_id": 42, "bdl_game_logs": logs}])
-    shrunk, audit = ebs.apply_eb_shrinkage(db, 42, "home_runs", 1.0)
+    hub = _fake_hub([{"bdl_player_id": 42, "bdl_game_logs": logs}])
+    shrunk, audit = ebs.apply_eb_shrinkage(hub, 42, "home_runs", 1.0)
     # w_model=0.3, w_player=0.7, career_mean=0 → 0.3*1.0 + 0.7*0 = 0.3
     assert shrunk == pytest.approx(0.3, abs=1e-6)
     assert audit["eb_shrinkage_applied"] is True
@@ -91,8 +99,8 @@ def test_flag_on_applies_home_runs_shrinkage():
 def test_flag_on_rbis_different_weights():
     os.environ["MLB_HF_EB_SHRINKAGE_ENABLED"] = "true"
     logs = _logs([1] * 30, "rbis")  # career mean = 1.0
-    db = _FakeDB([{"bdl_id": 99, "bdl_game_logs": logs}])
-    shrunk, audit = ebs.apply_eb_shrinkage(db, 99, "rbis", 2.0)
+    hub = _fake_hub([{"bdl_id": 99, "bdl_game_logs": logs}])
+    shrunk, audit = ebs.apply_eb_shrinkage(hub, 99, "rbis", 2.0)
     # w_model=0.4 -> 0.4*2.0 + 0.6*1.0 = 1.4
     assert shrunk == pytest.approx(1.4, abs=1e-4)
     assert audit["eb_weight_model"] == 0.4
@@ -106,8 +114,8 @@ def test_hits_runs_rbis_composite_stat():
     for _ in range(25):
         logs.append({"at_bats": 4, "plate_appearances": 4,
                      "hits": 1, "runs": 0, "rbis": 0})
-    db = _FakeDB([{"bdl_player_id": 7, "bdl_game_logs": logs}])
-    shrunk, audit = ebs.apply_eb_shrinkage(db, 7, "hits+runs+rbis", 3.0)
+    hub = _fake_hub([{"bdl_player_id": 7, "bdl_game_logs": logs}])
+    shrunk, audit = ebs.apply_eb_shrinkage(hub, 7, "hits+runs+rbis", 3.0)
     # w_model=0.6, w_player=0.4. career_mean=1. 0.6*3 + 0.4*1 = 2.2
     assert shrunk == pytest.approx(2.2, abs=1e-4)
     assert audit["eb_shrinkage_applied"] is True
@@ -116,8 +124,8 @@ def test_hits_runs_rbis_composite_stat():
 def test_stat_outside_whitelist_skipped():
     os.environ["MLB_HF_EB_SHRINKAGE_ENABLED"] = "true"
     logs = _logs([1] * 25, "hits")
-    db = _FakeDB([{"bdl_player_id": 1, "bdl_game_logs": logs}])
-    shrunk, audit = ebs.apply_eb_shrinkage(db, 1, "hits", 1.5)
+    hub = _fake_hub([{"bdl_player_id": 1, "bdl_game_logs": logs}])
+    shrunk, audit = ebs.apply_eb_shrinkage(hub, 1, "hits", 1.5)
     assert shrunk is None
     assert audit["eb_skip_reason"] == "stat_not_whitelisted"
     assert audit["eb_shrinkage_applied"] is False
@@ -125,8 +133,8 @@ def test_stat_outside_whitelist_skipped():
 
 def test_missing_bdl_id_skipped():
     os.environ["MLB_HF_EB_SHRINKAGE_ENABLED"] = "true"
-    db = _FakeDB([])
-    shrunk, audit = ebs.apply_eb_shrinkage(db, None, "home_runs", 0.5)
+    hub = _fake_hub([])
+    shrunk, audit = ebs.apply_eb_shrinkage(hub, None, "home_runs", 0.5)
     assert shrunk is None
     assert audit["eb_skip_reason"] == "missing_bdl_id"
 
@@ -134,8 +142,8 @@ def test_missing_bdl_id_skipped():
 def test_insufficient_games_skipped():
     os.environ["MLB_HF_EB_SHRINKAGE_ENABLED"] = "true"
     logs = _logs([1] * 5, "home_runs")  # 5 < MIN_CAREER_GAMES=20
-    db = _FakeDB([{"bdl_player_id": 1, "bdl_game_logs": logs}])
-    shrunk, audit = ebs.apply_eb_shrinkage(db, 1, "home_runs", 0.5)
+    hub = _fake_hub([{"bdl_player_id": 1, "bdl_game_logs": logs}])
+    shrunk, audit = ebs.apply_eb_shrinkage(hub, 1, "home_runs", 0.5)
     assert shrunk is None
     assert audit["eb_skip_reason"].startswith("insufficient_games_5")
     assert audit["eb_career_sample_n"] == 5
@@ -145,8 +153,8 @@ def test_non_batter_games_filtered_out():
     os.environ["MLB_HF_EB_SHRINKAGE_ENABLED"] = "true"
     # Only 15 batter games, even though 25 total logs.
     logs = _logs([1] * 15, "home_runs", include_non_batter=10)
-    db = _FakeDB([{"bdl_player_id": 1, "bdl_game_logs": logs}])
-    shrunk, audit = ebs.apply_eb_shrinkage(db, 1, "home_runs", 0.5)
+    hub = _fake_hub([{"bdl_player_id": 1, "bdl_game_logs": logs}])
+    shrunk, audit = ebs.apply_eb_shrinkage(hub, 1, "home_runs", 0.5)
     assert shrunk is None
     assert audit["eb_career_sample_n"] == 15
     assert "insufficient_games" in audit["eb_skip_reason"]
@@ -154,8 +162,8 @@ def test_non_batter_games_filtered_out():
 
 def test_no_raw_projection_skipped():
     os.environ["MLB_HF_EB_SHRINKAGE_ENABLED"] = "true"
-    db = _FakeDB([])
-    shrunk, audit = ebs.apply_eb_shrinkage(db, 1, "home_runs", None)
+    hub = _fake_hub([])
+    shrunk, audit = ebs.apply_eb_shrinkage(hub, 1, "home_runs", None)
     assert shrunk is None
     assert audit["eb_skip_reason"] == "no_raw_projection"
     assert audit["raw_hf_projection"] is None
@@ -164,9 +172,9 @@ def test_no_raw_projection_skipped():
 def test_negative_shrinkage_floored_to_zero():
     os.environ["MLB_HF_EB_SHRINKAGE_ENABLED"] = "true"
     logs = _logs([0] * 25, "home_runs")
-    db = _FakeDB([{"bdl_player_id": 1, "bdl_game_logs": logs}])
+    hub = _fake_hub([{"bdl_player_id": 1, "bdl_game_logs": logs}])
     # Raw proj = -0.5 should floor to 0.0 (0.3*-0.5 + 0.7*0 = -0.15 → 0.0)
-    shrunk, audit = ebs.apply_eb_shrinkage(db, 1, "home_runs", -0.5)
+    shrunk, audit = ebs.apply_eb_shrinkage(hub, 1, "home_runs", -0.5)
     assert shrunk == 0.0
     assert audit["eb_shrinkage_applied"] is True
 
@@ -180,17 +188,12 @@ def test_player_lookup_cache_hit():
             hits["n"] += 1
             return super().find_one(q, proj)
 
-    class DB:
-        def __init__(self):
-            self._c = CountingColl([{
-                "bdl_player_id": 1,
-                "bdl_game_logs": _logs([1] * 25, "rbis"),
-            }])
-        def __getitem__(self, _): return self._c
-
-    db = DB()
-    ebs.apply_eb_shrinkage(db, 1, "rbis", 2.0)
-    ebs.apply_eb_shrinkage(db, 1, "rbis", 1.5)
+    hub = CountingColl([{
+        "bdl_player_id": 1,
+        "bdl_game_logs": _logs([1] * 25, "rbis"),
+    }])
+    ebs.apply_eb_shrinkage(hub, 1, "rbis", 2.0)
+    ebs.apply_eb_shrinkage(hub, 1, "rbis", 1.5)
     # Both calls use same player → only 1 Mongo hit.
     assert hits["n"] == 1
 
