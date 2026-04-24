@@ -1711,3 +1711,230 @@ async def minutes_composition_stats(
     }
     return result
 
+
+@router.get("/v3/admin/calibration-stats")
+async def calibration_stats(
+    sport: str = "nba",
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """VK2 calibration-layer observability panel (2026-04-23).
+
+    Read-only aggregation over `{sport}_prop_scores@final-{sport}-rt`.
+    Surfaces live counts + deltas for the two calibration corrections
+    wired into `_predict_vk2_prob_over`:
+
+      1. Projection intercept shift   (PTS / PRA only, audit-derived)
+      2. Isotonic probability calibration   (per-stat, trained on
+         2024 held-out data; default whitelist = REB/AST/3PM)
+
+    Does NOT recompute. Does NOT modify any scoring / gate logic.
+    All fields read are persisted by the scoring pipeline:
+      - `projection_intercept_applied` (bool)
+      - `projection_intercept_delta`   (float)
+      - `pre_intercept_projection`     (float)
+      - `probability_calibration_applied` (bool)
+      - `raw_p_over` (float)
+      - `p_over`    (float)
+
+    Query params:
+      - sport (default 'nba'): lowercase sport key. Calibration is
+        NBA-only today; non-NBA sports return zero counters.
+
+    Auth: `X-Admin-Token` header must match env `ADMIN_DEBUG_TOKEN`.
+    """
+    _require_admin_debug_token(x_admin_token)
+    if _db is None:
+        raise HTTPException(status_code=500, detail="db not initialised")
+
+    sport = (sport or "nba").strip().lower()
+    scores = _db[f"{sport}_prop_scores"]
+    version_tag = f"final-{sport}-rt"
+    base_match = {"version_tag": version_tag}
+
+    total_props = await scores.count_documents(base_match)
+    intercept_count = await scores.count_documents(
+        {**base_match, "projection_intercept_applied": True}
+    )
+    prob_count = await scores.count_documents(
+        {**base_match, "probability_calibration_applied": True}
+    )
+
+    # Pull the calibrated rows once — small result set (a few hundred
+    # at most per slate).  Project only the fields we need.
+    proj = {
+        "_id": 0,
+        "player_name": 1, "stat_type": 1, "line": 1, "recommendation": 1,
+        "model_projection": 1, "p_over": 1,
+        "projection_intercept_applied": 1,
+        "projection_intercept_delta": 1,
+        "pre_intercept_projection": 1,
+        "probability_calibration_applied": 1,
+        "raw_p_over": 1,
+    }
+    calibrated_rows = await scores.find(
+        {**base_match, "$or": [
+            {"projection_intercept_applied": True},
+            {"probability_calibration_applied": True},
+        ]},
+        proj,
+    ).to_list(length=None)
+
+    # Compute per-row derived deltas.
+    for r in calibrated_rows:
+        r["_intercept_delta"] = (
+            float(r["projection_intercept_delta"])
+            if r.get("projection_intercept_applied")
+            and r.get("projection_intercept_delta") is not None
+            else None
+        )
+        raw_p = r.get("raw_p_over")
+        cal_p = r.get("p_over")
+        if (r.get("probability_calibration_applied")
+                and raw_p is not None and cal_p is not None):
+            # p_over_delta = raw_p_over - calibrated_p_over  (request spec)
+            r["_p_over_delta"] = float(raw_p) - float(cal_p)
+        else:
+            r["_p_over_delta"] = None
+
+    def _stat_summary(vals):
+        vals = [v for v in vals if v is not None]
+        if not vals:
+            return {"count": 0, "avg": None, "median": None,
+                    "min": None, "max": None}
+        s = sorted(vals)
+        mid = len(s) // 2
+        med = s[mid] if len(s) % 2 == 1 else 0.5 * (s[mid - 1] + s[mid])
+        return {
+            "count": len(vals),
+            "avg": round(sum(vals) / len(vals), 4),
+            "median": round(med, 4),
+            "min": round(min(vals), 4),
+            "max": round(max(vals), 4),
+        }
+
+    intercept_deltas = [r["_intercept_delta"] for r in calibrated_rows]
+    p_over_deltas    = [r["_p_over_delta"]    for r in calibrated_rows]
+
+    # Stat-family breakdown — how many docs per stat received each
+    # correction.  Direct Mongo aggregation keeps the payload small
+    # even when a slate balloons.
+    by_stat: Dict[str, Any] = {}
+    stat_keys = ["PTS", "REB", "AST", "3PM", "PRA"]
+    for st in stat_keys:
+        ic = await scores.count_documents(
+            {**base_match, "stat_type": st, "projection_intercept_applied": True}
+        )
+        pc = await scores.count_documents(
+            {**base_match, "stat_type": st,
+             "probability_calibration_applied": True}
+        )
+        st_intercept = [r["_intercept_delta"]
+                        for r in calibrated_rows
+                        if r.get("stat_type") == st
+                        and r["_intercept_delta"] is not None]
+        st_p = [r["_p_over_delta"] for r in calibrated_rows
+                if r.get("stat_type") == st and r["_p_over_delta"] is not None]
+        by_stat[st] = {
+            "intercept_applied_count": ic,
+            "prob_calibration_applied_count": pc,
+            "avg_intercept_delta": (
+                round(sum(st_intercept) / len(st_intercept), 4)
+                if st_intercept else None
+            ),
+            "avg_p_over_delta": (
+                round(sum(st_p) / len(st_p), 4) if st_p else None
+            ),
+        }
+
+    def _row_view(r):
+        return {
+            "player_name": r.get("player_name"),
+            "stat_type": r.get("stat_type"),
+            "line": r.get("line"),
+            "side": r.get("recommendation"),
+            "model_projection": r.get("model_projection"),
+            "pre_intercept_projection": r.get("pre_intercept_projection"),
+            "intercept_delta": r.get("_intercept_delta"),
+            "raw_p_over": r.get("raw_p_over"),
+            "p_over": r.get("p_over"),
+            "p_over_delta": (
+                round(r["_p_over_delta"], 4)
+                if r["_p_over_delta"] is not None else None
+            ),
+        }
+
+    # Top-20 by |p_over_delta| (largest probability corrections).
+    prob_rows = [r for r in calibrated_rows if r["_p_over_delta"] is not None]
+    prob_rows.sort(key=lambda r: -abs(r["_p_over_delta"]))
+    top_prob_corrections = [_row_view(r) for r in prob_rows[:20]]
+
+    # Top-20 by absolute edge change. Edge = p_true - implied_prob;
+    # since the model doesn't persist implied market prob directly in
+    # every scored doc, we approximate "edge change" as the absolute
+    # p_over delta itself (raw vs calibrated). Directionally: OVER
+    # edge shrinks by `_p_over_delta`; UNDER edge grows by the same.
+    top_edge_changes = [
+        {**_row_view(r),
+         "over_edge_delta": round(-r["_p_over_delta"], 4),
+         "under_edge_delta": round(r["_p_over_delta"], 4)}
+        for r in prob_rows[:20]
+    ]
+
+    # Current flag state (reads env at request time — no caching).
+    from services.scoring.calibration import (
+        FLAG_ENV, PROB_FLAG_ENV, PROB_STATS_ENV,
+        calibration_flag_enabled, prob_calibration_flag_enabled,
+    )
+    flags = {
+        "VK2_CALIBRATION_ENABLED": {
+            "raw": os.environ.get(FLAG_ENV),
+            "effective": calibration_flag_enabled(),
+        },
+        "VK2_PROB_CALIBRATION_ENABLED": {
+            "raw": os.environ.get(PROB_FLAG_ENV),
+            "effective": prob_calibration_flag_enabled(),
+        },
+        "VK2_PROB_CALIBRATION_STATS": {
+            "raw": os.environ.get(PROB_STATS_ENV),
+            "effective": (
+                [s.strip().upper()
+                 for s in (os.environ.get(PROB_STATS_ENV) or "").split(",")
+                 if s.strip()]
+                or None
+            ),
+        },
+    }
+
+    return {
+        "sport": sport,
+        "version_tag": version_tag,
+        "totals": {
+            "total_scored_docs": total_props,
+            "projection_intercept_applied_count": intercept_count,
+            "probability_calibration_applied_count": prob_count,
+            "projection_intercept_applied_pct": round(
+                100.0 * intercept_count / max(total_props, 1), 3,
+            ),
+            "probability_calibration_applied_pct": round(
+                100.0 * prob_count / max(total_props, 1), 3,
+            ),
+        },
+        "intercept_delta_summary": _stat_summary(intercept_deltas),
+        "p_over_delta_summary": _stat_summary(p_over_deltas),
+        "by_stat_family": by_stat,
+        "top_probability_corrections": top_prob_corrections,
+        "top_edge_changes": top_edge_changes,
+        "flags": flags,
+        "notes": [
+            "Read-only snapshot. No recompute, no writes, no scoring changes.",
+            "Fields read: projection_intercept_applied, projection_intercept_delta, "
+            "pre_intercept_projection, probability_calibration_applied, "
+            "raw_p_over, p_over.",
+            "p_over_delta = raw_p_over - calibrated_p_over (positive ⇒ "
+            "calibrator reduced the over-probability, i.e. deflated "
+            "raw over-confidence).",
+            "Edge deltas: OVER edge shrinks by p_over_delta; UNDER edge "
+            "grows by the same amount. Tier is unchanged (odds-based).",
+        ],
+    }
+

@@ -6,6 +6,20 @@ architecture with multi-sport support, automated feature engineering, and
 a unified pipeline anchored on canonical odds data. Surface pricing
 anomalies through market-consensus probabilities.
 
+## Calibration Observability Endpoint (2026-04-23, SHIPPED)
+`GET /api/v3/admin/calibration-stats` — read-only live panel over
+`{sport}_prop_scores@final-{sport}-rt`. Returns total scored docs, counts
+of `projection_intercept_applied` / `probability_calibration_applied`,
+rolling intercept-delta + p_over-delta summaries (count/avg/median/min/max),
+per-stat-family breakdown (PTS/REB/AST/3PM/PRA), top-20 largest
+probability corrections, top-20 edge changes, and the live state of
+`VK2_CALIBRATION_ENABLED` / `VK2_PROB_CALIBRATION_ENABLED` /
+`VK2_PROB_CALIBRATION_STATS`. Auth via `X-Admin-Token` matching
+`ADMIN_DEBUG_TOKEN`. 5 endpoint tests + 19 layer-unit tests (24 total)
+all pass.
+
+
+
 ## VK2 Calibration Layer — Intercept + Isotonic Probability (2026-04-23, SHIPPED BEHIND FLAGS)
 Audit-driven calibration of production VK2; projections and sigmas on the
 source models remain untouched.
