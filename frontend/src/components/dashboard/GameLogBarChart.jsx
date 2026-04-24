@@ -151,14 +151,37 @@ const GameLogBarChart = memo(({
     
     const recentGames = gameLogs.slice(0, showGames);
     
+    // Parse opponent abbreviation from `matchup` (format: "DET vs. NYK" or
+    // "DET @ NYK"). Tank01/BDL game logs do not always include an
+    // opponent_team_id, but `matchup` is consistently populated.
+    const parseOpponentFromMatchup = (matchup) => {
+      if (!matchup || typeof matchup !== 'string') return null;
+      const m = matchup.match(/[A-Z]{2,4}\s*(?:vs\.?|@)\s*([A-Z]{2,4})/i);
+      return m ? m[1].toUpperCase() : null;
+    };
+    const parseIsHomeFromMatchup = (matchup) => {
+      if (!matchup || typeof matchup !== 'string') return undefined;
+      if (/\bvs\.?\b/i.test(matchup)) return true;
+      if (/@/.test(matchup)) return false;
+      return undefined;
+    };
+    
     const values = recentGames.map(game => {
       const oppId = game.opponent_team_id;
-      const oppAbbr = TEAM_ID_TO_ABBR[oppId] || game.opponent || '???';
+      const oppAbbr =
+        TEAM_ID_TO_ABBR[oppId] ||
+        game.opponent ||
+        parseOpponentFromMatchup(game.matchup) ||
+        '???';
+      const isHome =
+        game.home_game !== undefined && game.home_game !== null
+          ? game.home_game
+          : parseIsHomeFromMatchup(game.matchup);
       
       return {
         value: getStatValue(game, statType),
         opponent: oppAbbr,
-        isHome: game.home_game
+        isHome
       };
     }).filter(v => v.value !== null);
     

@@ -100,9 +100,40 @@ export function normalizeFerrariPick(pick) {
   }
 
   // Extracted stat for grouping on the player-detail page. Prefer the
-  // already-set backend value; fall back to `stat_type`.
+  // already-set backend value; fall back to `stat_type`. When `stat_type`
+  // arrives as a raw market key (e.g. `player_points_assists_alternate`),
+  // collapse it to the short code the detail page uses (`PA`, `PR`, etc.).
+  const MARKET_TO_SHORT = {
+    player_points: "PTS",
+    player_rebounds: "REB",
+    player_assists: "AST",
+    player_threes: "3PM",
+    player_steals: "STL",
+    player_blocks: "BLK",
+    player_turnovers: "TO",
+    player_points_rebounds_assists: "PRA",
+    player_points_rebounds: "PR",
+    player_points_assists: "PA",
+    player_rebounds_assists: "RA",
+    player_steals_blocks: "BLST",
+    player_double_double: "DD",
+    player_triple_double: "TD",
+    player_field_goals: "FGM",
+    player_free_throws_made: "FTM",
+  };
+
+  const collapseToShortCode = (val) => {
+    if (typeof val !== "string") return val;
+    const key = val.replace(/_alternate$/i, "").toLowerCase();
+    return MARKET_TO_SHORT[key] || val;
+  };
+
+  const statType = collapseToShortCode(pick.stat_type);
   const statTypeExtracted =
-    pick.stat_type_extracted || pick.stat_type || null;
+    pick.stat_type_extracted ||
+    collapseToShortCode(pick.stat_type_extracted) ||
+    statType ||
+    null;
 
   // Market normalization: strip `_alternate` suffix so the detail page's
   // `getCategoryKey(market)` resolves to the correct category.
@@ -112,9 +143,10 @@ export function normalizeFerrariPick(pick) {
       .replace(/_alternate$/i, "")
       .toLowerCase();
   }
-  if (!marketNormalized && pick.stat_type) {
-    // Map short stat codes to canonical market keys when no market is
-    // present on the payload (some war-zone combo picks).
+  // When `market` is absent (common on `/player-with-badges`), derive it
+  // from either the short code (already collapsed above) or the raw
+  // stat_type which may itself be a full market string.
+  if (!marketNormalized) {
     const STAT_TO_MARKET = {
       PTS: "player_points",
       REB: "player_rebounds",
@@ -131,9 +163,17 @@ export function normalizeFerrariPick(pick) {
       "R+A": "player_rebounds_assists",
       RA: "player_rebounds_assists",
       "BLK+STL": "player_steals_blocks",
+      BLST: "player_steals_blocks",
     };
-    const k = String(pick.stat_type).toUpperCase().trim();
-    marketNormalized = STAT_TO_MARKET[k] || null;
+    const shortKey = String(statType || pick.stat_type || "")
+      .toUpperCase()
+      .trim();
+    marketNormalized = STAT_TO_MARKET[shortKey] || null;
+    if (!marketNormalized && typeof pick.stat_type === "string") {
+      marketNormalized = pick.stat_type
+        .replace(/_alternate$/i, "")
+        .toLowerCase();
+    }
   }
 
   return {
@@ -147,6 +187,7 @@ export function normalizeFerrariPick(pick) {
     season_avg: seasonAvg,
     chart_data: chartData,
     recent_games: chartData,
+    stat_type: statType ?? pick.stat_type,
     stat_type_extracted: statTypeExtracted,
     market: marketNormalized ?? pick.market,
     // Keep the raw market accessible for debugging / alt-market display.

@@ -1,5 +1,50 @@
 # Changelog
 
+## 2026-04-24 — Player Detail Page (Click Path) — Data Contract Fix (P0)
+
+**Context:** Clicking a Safe Haven / Front Lines / War Zone card opened a
+detail view with broken bar charts ("No game data"), missing hit rates,
+missing L5/L10/Season averages, and raw market keys in category headers
+(e.g. `PLAYER_POINTS_ASSISTS_ALTERNATE`). Backend payload was already
+healthy — the break was purely frontend contract mismatches on the inner
+click-path components.
+
+**Diff (3 files, frontend-only — no backend touched):**
+- `frontend/src/components/dashboard/PlayerDetailPage.jsx`
+  - Import + apply `normalizeFerrariPicks` to the direct XHR response from
+    `/api/v3/player-with-badges/:name` (props previously bypassed the
+    adapter that runs on the Ferrari tier hooks, so `stat_type_extracted`,
+    `direction`, `market`, and synthetic `chart_data` were all `null`).
+  - Added a secondary fetch to `/api/v3/master-hub/player/:bdl_id` to
+    populate `game_logs` (bar chart input) and `baseline_stats` (PPG/RPG/
+    APG header strip). `/player-with-badges` does not include these; the
+    master-hub endpoint does.
+- `frontend/src/utils/normalizeFerrariPick.js`
+  - Extended adapter with a `MARKET_TO_SHORT` inverse map so `stat_type`
+    values arriving as raw market strings (e.g.
+    `player_points_assists_alternate`) collapse to short codes (`PA`, `PR`,
+    `PRA`, …). Enables both category grouping and the GameLogBarChart
+    `STAT_FIELD_MAP` lookup.
+  - Market derivation now also considers the collapsed short code when
+    `pick.market` is null.
+- `frontend/src/components/dashboard/GameLogBarChart.jsx`
+  - Fallback parses opponent abbreviation + home/away flag from the
+    `matchup` string (`DET vs. NYK` / `DET @ NYK`) when
+    `opponent_team_id` / `home_game` are absent in BDL/Tank01 game logs.
+
+**Verification (live, 2026-04-24, Playwright on preview env):**
+- Safe Haven click (Jalen Duren): 46 prop rows, 1 VISION-highlighted prop,
+  Intel Suite modal opens with Environmental Factors + Performance
+  Indicators, bar charts render with values (24/19/17/12/16/15/6/24/8/21),
+  opponent labels, L5/L10 hit + averages visible, PPG/RPG/APG/STL/BLK
+  header populated.
+- War Zone click (Shaedon Sharpe): 30 prop rows, 1 VISION highlight,
+  category headers now show `PTS+AST` (not raw market key), PRA/PR/PA
+  charts all render — "No game data" count = 0.
+- Auto-scroll to highlighted prop + gold-glow ring both working.
+
+
+
 ## 2026-04-21 — Injury-Rank Phase 2: usage-sorted beneficiaries (multi-sport)
 
 **Context:** `services/injury_advantage.py::compute_injury_advantages` was

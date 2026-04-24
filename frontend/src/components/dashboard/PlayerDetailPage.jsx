@@ -35,6 +35,7 @@ const API = BACKEND_URL || process.env.REACT_APP_BACKEND_URL || '';
 // SSOT Global State Hooks
 import { useMasterStats } from '../../hooks/useMasterStats';
 import { useSport } from '../../context/SportContext';
+import { normalizeFerrariPicks } from '../../utils/normalizeFerrariPick';
 
 // ==================== PROP CATEGORY CONFIG ====================
 const PROP_LABELS = {
@@ -490,11 +491,21 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
           const data = JSON.parse(xhr.responseText);
           
           if (data.success && data.player) {
+            // Normalize props from /player-with-badges — the endpoint returns
+            // raw cached-board shape (stat_type_extracted=None, market=None,
+            // direction=None, chart_data=None). Apply the same adapter used
+            // by the Ferrari tier hooks so the detail list grouping, bar
+            // charts, and direction filtering all work.
+            const normalizedProps = Array.isArray(data.player.props)
+              ? normalizeFerrariPicks(data.player.props)
+              : [];
+
             // Merge with any passed playerData (to preserve goblin/demon flags)
             const mergedPlayer = {
               ...data.player,
               name: data.player.name || playerName,
               player_name: playerName,
+              props: normalizedProps,
             };
             
             // If we had partial playerData with flags, merge those flags into matching props
@@ -567,6 +578,42 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
             }
             
             setPlayer(mergedPlayer);
+
+            // Secondary fetch: master-hub by bdl_player_id for game_logs +
+            // baseline_stats. `/api/v3/player-with-badges` does not return
+            // these and the detail view's bar chart + PPG/RPG/APG header
+            // stats strip both depend on them.
+            const bdlId =
+              mergedPlayer.bdl_player_id ||
+              mergedPlayer.bdl_id ||
+              playerData?.props?.[0]?.bdl_player_id ||
+              playerData?.props?.[0]?.bdl_id;
+            if (bdlId && currentSport !== 'mlb') {
+              fetch(`${API}/api/v3/master-hub/player/${bdlId}`)
+                .then((r) => (r.ok ? r.json() : null))
+                .then((hub) => {
+                  if (!hub) return;
+                  const hubPlayer = hub.player || hub;
+                  const gameLogs = Array.isArray(hubPlayer.game_logs)
+                    ? hubPlayer.game_logs
+                    : [];
+                  const baselineStats = hubPlayer.baseline_stats || {};
+                  setPlayer((prev) => {
+                    if (!prev) return prev;
+                    return {
+                      ...prev,
+                      game_logs: gameLogs,
+                      baseline_stats:
+                        Object.keys(prev.baseline_stats || {}).length > 0
+                          ? prev.baseline_stats
+                          : baselineStats,
+                    };
+                  });
+                })
+                .catch(() => {
+                  /* silent — master-hub is a secondary enrichment */
+                });
+            }
           } else {
             setError('No available Bets today');
           }
