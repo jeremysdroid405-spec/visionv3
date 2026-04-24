@@ -142,6 +142,16 @@ async def _get_board_picks(db, sport: str) -> List[dict]:
     `compute_injury_advantages` can join against `injuries_normalized`
     (which stores team abbreviations). Score docs don't persist team
     directly — the master_hub is the system of record.
+
+    Resolution strategy (per user 2026-04-24):
+      1. `bdl_player_id` on the score doc → master_hub.bdl_player_id
+         (authoritative ID-first join).
+      2. Fallback to display_name / player_name lookup (covers players
+         missing bdl_player_id in master_hub — e.g. 100% of MLB hub
+         rows, ~52% of NBA hub rows).
+
+    Unresolved picks are counted and logged at WARNING so a silent
+    mapping regression cannot happen undetected.
     """
     picks: List[dict] = []
     version_tag = f"final-{sport}-rt"
@@ -155,30 +165,64 @@ async def _get_board_picks(db, sport: str) -> List[dict]:
         doc["_board_collection"] = f"{sport}_prop_scores:{tier}"
         picks.append(doc)
 
-    # Bulk-resolve team from master_hub for every unique player name on
-    # the board. One query per sport — O(players_on_board).
-    unique_names = {p.get("player_name") for p in picks if p.get("player_name")}
-    if unique_names:
-        hub_coll = COLL("master_hub", sport)
-        hub_cursor = db[hub_coll].find(
-            {"$or": [
-                {"display_name": {"$in": list(unique_names)}},
-                {"player_name":  {"$in": list(unique_names)}},
-            ]},
-            {"_id": 0, "display_name": 1, "player_name": 1, "team_abbr": 1, "team": 1},
-        )
-        name_to_team: Dict[str, str] = {}
-        async for h in hub_cursor:
-            abbr = h.get("team_abbr") or h.get("team")
-            if not abbr:
-                continue
-            for key in (h.get("display_name"), h.get("player_name")):
-                if key:
-                    name_to_team.setdefault(key, abbr)
-        for p in picks:
-            if not p.get("team"):
-                p["team"] = name_to_team.get(p.get("player_name"))
+    if not picks:
+        return picks
 
+    # Collect unique IDs + names in one pass.
+    unique_ids = {p.get("bdl_player_id") for p in picks if p.get("bdl_player_id")}
+    unique_names = {p.get("player_name") for p in picks if p.get("player_name")}
+
+    hub_coll = COLL("master_hub", sport)
+    hub_cursor = db[hub_coll].find(
+        {"$or": [
+            {"bdl_player_id": {"$in": list(unique_ids)}},
+            {"display_name":  {"$in": list(unique_names)}},
+            {"player_name":   {"$in": list(unique_names)}},
+        ]},
+        {"_id": 0, "bdl_player_id": 1, "display_name": 1,
+         "player_name": 1, "team_abbr": 1, "team": 1},
+    )
+    id_to_team: Dict[int, str] = {}
+    name_to_team: Dict[str, str] = {}
+    async for h in hub_cursor:
+        abbr = h.get("team_abbr") or h.get("team")
+        if not abbr:
+            continue
+        bdl_id = h.get("bdl_player_id")
+        if bdl_id is not None:
+            id_to_team.setdefault(bdl_id, abbr)
+        for key in (h.get("display_name"), h.get("player_name")):
+            if key:
+                name_to_team.setdefault(key, abbr)
+
+    resolved_via_id = resolved_via_name = unresolved = 0
+    for p in picks:
+        if p.get("team"):
+            continue
+        bdl_id = p.get("bdl_player_id")
+        if bdl_id is not None and bdl_id in id_to_team:
+            p["team"] = id_to_team[bdl_id]
+            resolved_via_id += 1
+            continue
+        team = name_to_team.get(p.get("player_name"))
+        if team:
+            p["team"] = team
+            resolved_via_name += 1
+        else:
+            unresolved += 1
+
+    if unresolved:
+        logger.warning(
+            f"[INJURY_ADV:{sport.upper()}] unresolved team for {unresolved}/"
+            f"{len(picks)} picks — via_id={resolved_via_id} "
+            f"via_name={resolved_via_name}"
+        )
+    else:
+        logger.info(
+            f"[INJURY_ADV:{sport.upper()}] team resolved for all "
+            f"{len(picks)} picks (via_id={resolved_via_id} "
+            f"via_name={resolved_via_name})"
+        )
     return picks
 
 
