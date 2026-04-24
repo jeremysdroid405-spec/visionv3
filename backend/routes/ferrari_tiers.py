@@ -934,20 +934,20 @@ async def _build_nba_board_lookup() -> Dict[tuple, Dict[str, Any]]:
     """Flatten `dg_cached_board` (player-grain) into a prop-grain lookup keyed
     by (event_id, player_name_lower, STAT_UPPER, line_float, DIR_UPPER).
 
-    Each entry carries both the prop dict (full enrichment) and the parent
-    player doc (headshot_url, team, opponent, nba_id, position, etc.).
-    Re-built on every call — dg_cached_board is ~126 player docs, negligible.
+    Also builds a SECONDARY event-id-agnostic index keyed by
+    (player_name_lower, STAT_UPPER, line_float, DIR_UPPER) so a score
+    doc whose `event_id` drifted from the cached_board snapshot (e.g.
+    after a fresh odds sync that re-hashed event ids) still enriches.
+    A player can only be in one NBA game per slate, so the 4-tuple is
+    unambiguous; the 5-tuple stays the preferred match.
 
-    **Reads from `props[]`, not `standard/goblins/demons` buckets.** The persist
-    step in `optimized_sync_engine._persist_enriched_picks` writes modern
-    `intel_suite` (momentum_data, vacuum_data, whistle_data, board, sport,
-    ferrari_power_score) by positional index into `props.{idx}.intel_suite`.
-    The bucket arrays are rebuilt by `cached_board_builder_service` and carry
-    whatever `intel_suite` shape was live when they were categorized — which
-    drifts out of sync with the persist output. Reading from `props[]`
-    eliminates the drift (single source of truth, guaranteed fresh).
+    Each entry carries both the prop dict (full enrichment) and the
+    parent player doc (headshot_url, team, opponent, nba_id, position,
+    etc.). Re-built on every call — dg_cached_board is ~126 player
+    docs, negligible.
     """
     lookup: Dict[tuple, Dict[str, Any]] = {}
+    fallback: Dict[tuple, Dict[str, Any]] = {}
     if _db is None:
         return lookup
     async for player_doc in _db[COLL("board_cache", "nba")].find({}):
@@ -959,23 +959,26 @@ async def _build_nba_board_lookup() -> Dict[tuple, Dict[str, Any]]:
                 line_f = float(line) if line is not None else None
             except (TypeError, ValueError):
                 line_f = None
-            key = (
-                p.get("event_id"),
-                (p.get("player_name") or "").strip().lower(),
-                (p.get("stat_type") or "").strip().upper(),
-                line_f,
-                (p.get("direction") or "").strip().upper(),
-            )
+            player_l = (p.get("player_name") or "").strip().lower()
+            stat_u = (p.get("stat_type") or "").strip().upper()
+            dir_u = (p.get("direction") or "").strip().upper()
+            key = (p.get("event_id"), player_l, stat_u, line_f, dir_u)
             if key[0] and key[1] and key[2] and key[3] is not None and key[4]:
-                # Derive bucket label from pp_multiplier_label for downstream
-                # display components that still expect it (goblin/demon/std).
                 lbl = (p.get("pp_multiplier_label") or "").lower()
                 bucket_lbl = (
                     "demons" if lbl == "demon"
                     else "goblins" if lbl == "goblin"
                     else "standard"
                 )
-                lookup[key] = {"player": player_doc, "prop": p, "bucket": bucket_lbl}
+                entry = {"player": player_doc, "prop": p, "bucket": bucket_lbl}
+                lookup[key] = entry
+                # Event-id-agnostic fallback — populated once per 4-tuple.
+                fallback.setdefault((player_l, stat_u, line_f, dir_u), entry)
+    # Stash the fallback on the lookup dict as a reserved sentinel key
+    # so downstream call sites can access it without a second
+    # signature change. Uses a tuple that can never match a real key
+    # (leading sentinel string).
+    lookup[("__fallback_by_4tuple__",)] = fallback  # type: ignore[assignment]
     return lookup
 
 
@@ -1237,6 +1240,7 @@ async def _get_nba_tier_picks_from_scores(
         return []
 
     lookup = await _build_nba_board_lookup()
+    fallback_4tuple = lookup.get(("__fallback_by_4tuple__",), {}) or {}
 
     picks: List[Dict[str, Any]] = []
     for sc in scores:
@@ -1245,26 +1249,100 @@ async def _get_nba_tier_picks_from_scores(
         except (TypeError, ValueError):
             line_f = None
         direction_upper = (sc.get("recommendation") or "OVER").strip().upper()
+        player_l = (sc.get("player_name") or "").strip().lower()
+        stat_u = (sc.get("stat_type") or "").strip().upper()
         key_exact = (
-            sc.get("event_id"),
-            (sc.get("player_name") or "").strip().lower(),
-            (sc.get("stat_type") or "").strip().upper(),
-            line_f,
-            direction_upper,
+            sc.get("event_id"), player_l, stat_u, line_f, direction_upper,
         )
         entry = lookup.get(key_exact)
-        # Fallback: if the exact direction isn't in the board, fall back to
-        # the opposite direction row so we at least pull player/intel context.
+        # Fallback 1: opposite direction under the same event_id (pulls
+        # player/intel context when the picked side isn't priced).
         if entry is None:
             opp = "UNDER" if direction_upper == "OVER" else "OVER"
-            key_opp = (key_exact[0], key_exact[1], key_exact[2], key_exact[3], opp)
+            key_opp = (key_exact[0], player_l, stat_u, line_f, opp)
             entry = lookup.get(key_opp)
+        # Fallback 2: event-id-agnostic 4-tuple match. Handles the case
+        # where cached_board and nba_prop_scores computed different
+        # event_ids for the same NBA game (odds-sync hash drift) — a
+        # player can only be in one NBA game per slate, so the 4-tuple
+        # is unambiguous.
+        if entry is None:
+            entry = fallback_4tuple.get((player_l, stat_u, line_f, direction_upper))
+        # Fallback 3: event-id-agnostic + opposite direction.
+        if entry is None:
+            opp = "UNDER" if direction_upper == "OVER" else "OVER"
+            entry = fallback_4tuple.get((player_l, stat_u, line_f, opp))
         merged = _merge_score_with_board(sc, entry)
         # Stash the score doc so downstream post-overlay passes can rewire
         # side-aware fields (UNDER badges, UNDER vision_intel) after the
         # enrichment cache overlay injects OVER-side data.
         merged["_nba_score_doc"] = sc
         picks.append(merged)
+
+    # --- Identity fallback for picks missing from cached_board ---
+    # A subset of picks can miss both the 5-tuple and 4-tuple lookups
+    # (cached_board coverage gap). For those, backfill identity /
+    # team / event fields from nba_live_props and nba_master_hub so
+    # the UI card still renders with photo, team, opponent, event_id.
+    # Deep enrichment (intel_suite, l5/l10/l20, badges) genuinely
+    # lives in cached_board and cannot be synthesized — those cards
+    # render as "awaiting enrichment" rather than broken.
+    gap_picks = [p for p in picks if not p.get("photo_url") or not p.get("team")]
+    if gap_picks:
+        names = list({p["player_name"] for p in gap_picks if p.get("player_name")})
+        canonical_keys = [p.get("canonical_key") for p in gap_picks if p.get("canonical_key")]
+
+        # Live props → event_id, home/away, bdl_player_id
+        lp_by_key: Dict[str, Dict[str, Any]] = {}
+        if canonical_keys:
+            async for lp in _db["nba_live_props"].find(
+                {"canonical_key": {"$in": canonical_keys}},
+                {"_id": 0, "canonical_key": 1, "event_id": 1,
+                 "home_team": 1, "away_team": 1, "bdl_player_id": 1},
+            ):
+                lp_by_key[lp["canonical_key"]] = lp
+
+        # Master hub → photo_url, headshot_url, team_abbr, nba_id
+        hub_by_name: Dict[str, Dict[str, Any]] = {}
+        if names:
+            async for h in _db[COLL("master_hub", "nba")].find(
+                {"$or": [{"display_name": {"$in": names}},
+                         {"player_name":  {"$in": names}}]},
+                {"_id": 0, "display_name": 1, "player_name": 1,
+                 "team_abbr": 1, "team": 1, "headshot_url": 1,
+                 "photo_url": 1, "nba_id": 1, "bdl_player_id": 1},
+            ):
+                for key in (h.get("display_name"), h.get("player_name")):
+                    if key:
+                        hub_by_name.setdefault(key, h)
+
+        for p in gap_picks:
+            lp = lp_by_key.get(p.get("canonical_key") or "", {})
+            hub = hub_by_name.get(p.get("player_name") or "", {})
+            if not p.get("event_id") and lp.get("event_id"):
+                p["event_id"] = lp["event_id"]
+            if not p.get("home_team") and lp.get("home_team"):
+                p["home_team"] = lp["home_team"]
+            if not p.get("away_team") and lp.get("away_team"):
+                p["away_team"] = lp["away_team"]
+            if not p.get("bdl_player_id"):
+                p["bdl_player_id"] = lp.get("bdl_player_id") or hub.get("bdl_player_id")
+            if not p.get("headshot_url") and hub.get("headshot_url"):
+                p["headshot_url"] = hub["headshot_url"]
+            if not p.get("photo_url") and (hub.get("photo_url") or hub.get("headshot_url")):
+                p["photo_url"] = hub.get("photo_url") or hub.get("headshot_url")
+            if not p.get("team") and (hub.get("team_abbr") or hub.get("team")):
+                p["team"] = hub.get("team_abbr") or hub.get("team")
+            if not p.get("nba_id") and hub.get("nba_id"):
+                p["nba_id"] = hub["nba_id"]
+            # Opponent: derive from home/away + team
+            if not p.get("opponent") and p.get("team") and p.get("home_team") and p.get("away_team"):
+                team = p["team"]
+                home = p["home_team"]; away = p["away_team"]
+                # crude but reliable: if team abbr doesn't match home, opponent is home
+                p["opponent"] = home if team not in (home or "").upper() and team not in (home or "") else away
+            # Mark as identity-only so the card can show "awaiting enrichment" state
+            p.setdefault("enrichment_source", "identity_fallback")
 
     return picks
 
