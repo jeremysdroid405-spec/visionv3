@@ -28,6 +28,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSport } from '../context/SportContext';
 import { USE_MOCK_DATA, getMockTierData, getMockAllProps } from '../config/mockData';
+import { normalizeFerrariPicks } from '../utils/normalizeFerrariPick';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -81,6 +82,11 @@ const fetchWarZone = async (sport = 'nba', sort = null) => {
   const response = await fetch(url);
   if (!response.ok) throw new Error('War Zone fetch failed');
   const data = await response.json();
+  // Normalize payload shape (fills h5/h20 fallbacks, builds chart_data,
+  // sets stat_type_extracted, normalizes market for categorization).
+  if (data && Array.isArray(data.picks)) {
+    data.picks = normalizeFerrariPicks(data.picks);
+  }
   preloadImages(data.picks);
   return data;
 };
@@ -101,6 +107,9 @@ const fetchSafeHaven = async (sport = 'nba', sort = null) => {
   const response = await fetch(url);
   if (!response.ok) throw new Error('Safe Haven fetch failed');
   const data = await response.json();
+  if (data && Array.isArray(data.picks)) {
+    data.picks = normalizeFerrariPicks(data.picks);
+  }
   preloadImages(data.picks);
   return data;
 };
@@ -140,6 +149,9 @@ const fetchFrontLines = async (sport = 'nba', sort = null) => {
   const response = await fetch(url);
   if (!response.ok) throw new Error('Front Lines fetch failed');
   const data = await response.json();
+  if (data && Array.isArray(data.picks)) {
+    data.picks = normalizeFerrariPicks(data.picks);
+  }
   // Preload images immediately after fetch
   preloadImages(data.picks);
   return data;

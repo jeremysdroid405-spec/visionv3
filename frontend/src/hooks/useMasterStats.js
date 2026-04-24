@@ -17,6 +17,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
+import { normalizeFerrariPicks } from '../utils/normalizeFerrariPick';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -53,7 +54,14 @@ const fetchMasterStats = async (playerIdentifier) => {
     const data = await cachedResponse.json();
     console.log('[fetchMasterStats] Got response:', { success: data.success, hasPlayer: !!data.player, propsCount: data.player?.props?.length });
     if (data.success && data.player) {
-      return data.player;
+      // Normalize every prop so the detail page's grouping (via
+      // stat_type_extracted + getCategoryKey(market)) and charts
+      // (chart_data) receive the shape they read.
+      const player = data.player;
+      if (Array.isArray(player.props)) {
+        player.props = normalizeFerrariPicks(player.props);
+      }
+      return player;
     }
   } else {
     console.log('[fetchMasterStats] Response not OK:', cachedResponse.status);
