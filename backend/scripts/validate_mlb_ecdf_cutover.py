@@ -117,9 +117,10 @@ def main():
                 emp = float(np.mean(residuals > needed))
                 delta_g = gauss_p - emp
                 delta_e = (ecdf_p - emp) if ecdf_p is not None else None
+                ecdf_p_str = f"{ecdf_p:.3f}" if ecdf_p is not None else "None"
                 md.append(
                     f"| {line} | {proj:.2f} (b={b}) | {gauss_p:.3f} | "
-                    f"{ecdf_p:.3f if ecdf_p is not None else 'None'} | {emp:.3f} | "
+                    f"{ecdf_p_str} | {emp:.3f} | "
                     f"{delta_g:+.3f} | "
                     f"{(delta_e if delta_e is not None else 0):+.3f} |"
                 )

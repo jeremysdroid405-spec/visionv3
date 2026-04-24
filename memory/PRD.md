@@ -6,6 +6,33 @@ architecture with multi-sport support, automated feature engineering, and
 a unified pipeline anchored on canonical odds data. Surface pricing
 anomalies through market-consensus probabilities.
 
+## MLB ECDF Cutover — VALIDATED (2026-04-24)
+Universal ECDF probability layer is now fully live for MLB.
+
+- **10 MLB artifacts** trained + served:
+  `hits, hits_allowed, home_runs, pitcher_strikeouts, rbis, runs,
+  singles, strikeouts, total_bases, walks`. Each has 9-10 projection
+  buckets with `min_bucket_n` ≥ 50. Artifact endpoint
+  `GET /api/v3/admin/probability/ecdf/artifacts` returns
+  `totals_by_sport: {mlb: 10, nba: 5, nfl: 0}`.
+- **Wired into `services/scoring/adapters/mlb_scoring.py`** via the
+  same `UniversalECDFProbability` service used by NBA. Silently
+  returns `None` on buckets with `< 20` samples so caller fallback
+  chain (isotonic → gaussian) still works.
+- **Validation report**: `reports/mlb_ecdf_cutover_validation.md`.
+  Gaussian→ECDF gap collapses to ±0.000 (ECDF = empirical). Gate
+  pass/fail movement on .5 lines:
+  - `total_bases` OVER-gates **90,226 → 41,012 (-49,214 false OVERs)**
+  - `home_runs` OVER-gates **8,430 → 0** (Gaussian was triggering
+    10% of HR props as OVER when true rate is near zero)
+  - `walks`, `rbis`, `runs` similar: ~8K false OVER triggers each
+    eliminated
+  - Mean Δp: walks -0.132, home_runs -0.109, total_bases -0.097,
+    rbis -0.087 (all gaussian over-predicts OVER corrected downward)
+- **128/128 directly-relevant tests pass** (ECDF / calibration /
+  MLB+NBA scoring / coverage / probability / opportunity / vk2).
+  Projection models, residual σ, tier-gate thresholds unchanged.
+
 ## ECDF Artifact Inventory Endpoint (2026-04-24, SHIPPED)
 `GET /api/v3/admin/probability/ecdf/artifacts` — read-only sanity
 panel for the universal-ECDF artifact layout. Walks
