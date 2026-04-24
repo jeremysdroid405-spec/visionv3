@@ -1,6 +1,46 @@
 # Changelog
 
-## 2026-04-24 — Fix A + Fix B (Approved Read-Only-Audit Outcome)
+## 2026-04-24 — Defensive Momentum Producer Wired Back into Universal Sync (Option 1)
+
+**Goal:** `momentum_data` was orphaned since the legacy `optimized_sync_engine` was deleted on 2026-04-22. Coverage was 8/5,754 cached props (0.14%) and 0/3,731 score docs. PlayerDetailPage `MomentumTrackerFull` could not render for Jalen Duren PTS 11.5 OVER (or 99.86% of the slate).
+
+**Approved scope (Option 1 only):** Wire the existing `DefensiveMomentumService.calculate_momentum_modifier` back into `master_sync.py` as a read-side enrichment Step 4. Pure UI decoration — does not affect projections, gates, ECDF, tiers, recompute math, or thresholds.
+
+**Files changed (3):**
+1. **`backend/services/master_sync.py`**
+   - Added Step 4 hook (NBA-only) after scoring (Step 3): calls `_enrich_nba_momentum(db)` and reports metrics under `steps.4_momentum_enrichment_nba`.
+   - Added inline helper `_enrich_nba_momentum` (~140 LOC) that:
+     - Builds `event_id → (home_abbr, away_abbr)` and `team_abbr → today_opponent_abbr` maps from `nba_live_props`.
+     - Builds `bdl_player_id → team_abbr` map from `nba_master_hub_2026`.
+     - Calls `momentum.ensure_cache()` once (loads/builds the existing `defensive_momentum_cache` Mongo collection).
+     - Walks `nba_prop_scores` at `version_tag=final-nba-rt`, derives canonical `(opponent_abbr, stat_family)` per doc, dedupes by pair, computes `momentum_data` once per pair, and bulk-writes via `UpdateMany` keyed by `canonical_key`.
+     - **Mirrors** `momentum_data` into `nba_cached_board.props[*]` using `arrayFilters` keyed by `stat_type` (line-and-direction-agnostic — momentum_data depends only on `(opp, stat)`). Resolves opponent from `team_to_opp_today` (NOT cached_board's stale `event_id`).
+     - Adds new `_NBA_TEAM_NAME_TO_ABBR` and `_STAT_FAMILY_ALIAS` constants for translation.
+2. **`backend/routes/player.py`**
+   - One-line addition to `_score_to_prop` whitelist: `"momentum_data": doc.get("momentum_data")`. Required because score docs now carry the field but the read function was stripping it. This is the "any small helper if absolutely needed" exception — without it, score-doc-only paths (where cached_board lacks the line, e.g. Duren PTS 11.5) cannot surface momentum_data to the UI.
+
+**Did NOT touch (per directive):**
+Scoring · gates · UniversalGateEngine · thresholds · ECDF / probability layer · recompute · Ferrari tier logic · `_score_to_prop` field semantics for scoring fields · `defensive_momentum_cache` UI usage · routes_archive · Tank01 fallbacks.
+
+**Verification (live, 2026-04-24):**
+
+| Metric | Before | After |
+|---|---|---|
+| `nba_prop_scores` momentum_data coverage @ final-nba-rt | 0 / 3,731 | **3,731 / 3,731 (100%)** |
+| `nba_cached_board.props[*]` momentum_data coverage | 8 / 6,005 | **5,322 / 6,005 (88.6%)** — remainder is stale-slate players |
+| `/api/v3/player-with-badges/Jalen%20Duren` momentum_data per prop | 0 / 53 | **53 / 53 (100%)** including PTS 11.5 OVER (composite=10.2, season=15, l5=6) |
+| `/api/v3/ferrari/safe-haven` picks with momentum_data | 1 / 7 | **4 / 7** (gap is line-drift between cached_board & pick lines — not in scope) |
+| Ferrari tier counts (gating signal) | safe-haven=7, front-lines=10, war-zone=7 | unchanged (7 / 10 / 7) ← scoring untouched |
+| `_enrich_nba_momentum` metrics | n/a | `props_total=3731, props_enriched=3731, props_skipped=0, pairs_total=159, pairs_computed=159, pairs_failed=0, cached_board_updates=1579, cached_board_skipped=13` |
+
+**UI validation (Playwright, 5 fresh clicks):**
+- Jalen Duren · Nikola Jokic · James Harden · Stephon Castle · Donovan Clingan
+- **5/5 detail pages render `MomentumTrackerFull`** with full SZN/L10/L5 ranks + Composite Rank
+- **0 `matchup-dvp-fallback` boxes** rendered (rule from prior commit holds)
+- 5/5 Vision Intel Suite intact (Environmental Factors + Performance Indicators + Target-Lock Rationale)
+- Bar charts, hit rates, header stats, Add Pick to Command Center button — all unchanged
+
+
 
 **Audit identified two surgical fixes:**
 

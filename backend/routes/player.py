@@ -101,6 +101,10 @@ def _score_to_prop(doc: Dict[str, Any]) -> Dict[str, Any]:
         "cv": doc.get("cv"),
         "model_projection": doc.get("model_projection"),
         "sport": doc.get("sport"),
+        # Read-side decoration written by master_sync Step 4
+        # (`_enrich_nba_momentum`). Pure UI display field; not part of
+        # scoring math.
+        "momentum_data": doc.get("momentum_data"),
     }
 
 
