@@ -15,13 +15,15 @@ from typing import Any, Dict, List, Optional
 # These are the ONLY gate types known to the engine. A threshold dict may
 # activate any subset of them; unknown keys are ignored.
 CANONICAL_GATE_TYPES = (
-    "coverage_gate",   # book_count >= min_books
-    "hit_rate_gate",   # hit_rate_l20 (or configured window) >= min pp
-    "tp_gate",         # multi-book de-vig TP >= min pp
-    "cv_gate",         # cv <= max
-    "edge_gate",       # edge_pct >= min
-    "ceiling_gate",    # ceiling_rate >= min pp
-    "context_gate",    # no blowout / injury / lineup veto
+    "coverage_gate",      # book_count >= min_books
+    "hit_rate_gate",      # hit_rate_l20 (or configured window) >= min pp
+    "tp_gate",            # multi-book de-vig TP >= min pp
+    "cv_gate",            # cv <= max (or stat-family-keyed `caps` map)
+    "edge_gate",          # edge_pct >= min
+    "ceiling_gate",       # ceiling_rate >= min pp
+    "context_gate",       # no blowout / injury / lineup veto
+    "vision_score_gate",  # vision_score >= min (optional per-tp_source floors)
+    "market_trap_gate",   # reject mid-odds weak signals (pricing trap)
 )
 
 
@@ -48,6 +50,8 @@ class ReasonCode:
     EDGE_FAIL = "gate_edge_fail"
     CEILING_FAIL = "gate_ceiling_fail"
     CONTEXT_FAIL = "gate_context_fail"
+    VISION_SCORE_FAIL = "gate_vision_score_fail"
+    MARKET_TRAP_FAIL = "gate_market_trap_fail"
 
     _PER_GATE_FAIL: Dict[str, str] = {
         "coverage_gate": COVERAGE_FAIL,
@@ -57,6 +61,8 @@ class ReasonCode:
         "edge_gate": EDGE_FAIL,
         "ceiling_gate": CEILING_FAIL,
         "context_gate": CONTEXT_FAIL,
+        "vision_score_gate": VISION_SCORE_FAIL,
+        "market_trap_gate": MARKET_TRAP_FAIL,
     }
 
     @classmethod
@@ -103,6 +109,17 @@ class NormalizedMetrics:
     # Volatility / edge
     cv: Optional[float] = None                 # L20 coefficient of variation (unitless)
     edge_pct: Optional[float] = None           # model edge vs market (pp)
+
+    # Vision score — slate-percentile model-confidence signal (0-100).
+    # Populated AFTER per-prop scoring in the slate-level pass (see
+    # `recompute.py::_apply_vision_score_normalization`). Used by
+    # `vision_score_gate` and `market_trap_gate`.
+    vision_score: Optional[float] = None
+
+    # TP source flag — "devig" | "one_sided" | None. Lets gates apply
+    # differentiated floors to rigorous-de-vig vs single-side-implied
+    # market anchors.
+    tp_source: Optional[str] = None
 
     # Model-confidence floor (side-aware: for UNDER picks the adapter
     # pipes p_model_pct through here so tp_gate can use it directly).

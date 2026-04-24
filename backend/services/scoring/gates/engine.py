@@ -124,9 +124,34 @@ class UniversalGateEngine:
                 passed=passed, comparator=">=",
                 reason_code=None if passed else ReasonCode.CV_FAIL,
             )
-        override = m.extras.get("cv_cap_override") if m.extras else None
-        cap = float(override) if override is not None else float(cfg.get("max", 9999.0))
-        note = None if override is None else "cv_cap_override_from_adapter"
+
+        # Stat-family-keyed caps (2026-04-24). A `caps` dict keyed by
+        # stat_family overrides the scalar `max` for this eval.
+        # Family lookup is strict — an unknown family AND no default
+        # `max` means the CV gate fails fail-closed.
+        caps: Optional[Dict[str, float]] = cfg.get("caps")
+        note: Optional[str] = None
+        if caps:
+            family_cap = caps.get((m.stat_family or "").strip().lower())
+            if family_cap is None and "default" in caps:
+                family_cap = caps["default"]
+                note = "cv_gate_caps_default"
+            if family_cap is None and "max" not in cfg:
+                return GateDetail(
+                    gate_type="cv_gate",
+                    threshold={"caps": caps, "family": m.stat_family},
+                    actual=_py(m.cv), passed=False, comparator="<=",
+                    reason_code=ReasonCode.CV_FAIL,
+                    note="cv_gate_no_cap_for_stat_family",
+                )
+            cap = float(family_cap) if family_cap is not None else float(cfg["max"])
+        else:
+            override = m.extras.get("cv_cap_override") if m.extras else None
+            cap = float(override) if override is not None else float(
+                cfg.get("max", 9999.0))
+            if override is not None:
+                note = "cv_cap_override_from_adapter"
+
         actual = _py(m.cv)
         if actual is None:
             return GateDetail(
@@ -204,6 +229,17 @@ class UniversalGateEngine:
     # ------------------------------------------------------------------
     def evaluate(self, metrics: NormalizedMetrics) -> GateEvalResult:
         cfg = resolve_thresholds(metrics.sport, metrics.tier, metrics.stat_family)
+
+        # NOTE (2026-04-24): NBA war_zone final-hybrid filter is applied
+        # post-scoring in `recompute.py::recompute_sport` step 3a —
+        # because one of the filter's thresholds (`vision_score >= 85 /
+        # 90`) is a slate-percentile-normalised field that isn't
+        # populated until AFTER the scoring stack runs on every prop.
+        # At gate-engine time `vision_score` is always None. The war
+        # zone engine block below therefore remains `__pass_all__` so
+        # every eligible prop enters war_zone as a candidate; the
+        # recompute-level filter is the authority that decides which
+        # candidates survive.
 
         # Explicit "pass-all" opt-out (2026-04-23): a tier config may
         # declare `__pass_all__: True` to signal that the operator has
