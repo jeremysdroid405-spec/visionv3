@@ -200,6 +200,65 @@ def _apply_vision_score_normalization(score_docs: List[Dict[str, Any]]) -> None:
             d["vision_score"] = round((rank / len(raw)) * 100.0, 1)
 
 
+def _reevaluate_war_zone_post_vision(score_docs: List[Dict[str, Any]]) -> None:
+    """Re-run the UniversalGateEngine on every `tier=war_zone` doc after
+    slate-level `vision_score` normalization has populated the
+    percentile field. Gates that deferred on the first pass
+    (`vision_score_gate`, `market_trap_gate`) now evaluate with the
+    authoritative percentile value. Failing docs are demoted to
+    `unqualified` with the engine's reason_code; passing docs retain
+    their war_zone tier. Mutates `tier`, `tier_reason`,
+    `tier_gate_results`, and `gate_eval` in place.
+    """
+    from services.scoring.gates import NormalizedMetrics, ReasonCode, get_engine
+    from services.scoring.gates.thresholds import resolve_stat_family
+
+    engine = get_engine()
+    for doc in score_docs:
+        if doc.get("tier") != "war_zone":
+            continue
+        sport = (doc.get("sport") or "").lower()
+        stat_family = resolve_stat_family(sport, doc.get("stat_type"))
+        side = (doc.get("recommendation") or "OVER").upper()
+        hr = doc.get("hit_rate_over") if side == "OVER" else doc.get("hit_rate_under")
+
+        metrics = NormalizedMetrics(
+            sport=sport,
+            tier="war_zone",
+            stat_family=stat_family,
+            side=side,
+            reference_book=doc.get("tier_reference_book"),
+            reference_odds=doc.get("tier_reference_odds"),
+            book_count=doc.get("book_count"),
+            tp=doc.get("tp"),
+            tp_source=doc.get("tp_source"),
+            vision_score=doc.get("vision_score"),
+            hit_rate=hr,
+            hit_rate_l20=doc.get("hit_rate_over"),
+            cv=doc.get("cv"),
+            edge_pct=doc.get("edge_pct"),
+        )
+        result = engine.evaluate(metrics)
+
+        legacy_gate_results = {
+            name: {
+                "threshold": d.threshold,
+                "value": d.actual,
+                "passed": bool(d.passed),
+                **({"note": d.note} if d.note else {}),
+                "reason_code": d.reason_code,
+            }
+            for name, d in result.gate_details.items()
+        }
+        doc["tier_gate_results"] = legacy_gate_results
+        doc["gate_eval"] = result.to_dict()
+        if result.passed:
+            doc["tier_reason"] = ReasonCode.GATES_PASSED
+        else:
+            doc["tier"] = "unqualified"
+            doc["tier_reason"] = f"war_zone_failed: {result.reason_code}"
+
+
 async def recompute_sport(
     db,
     sport: str,
@@ -531,6 +590,15 @@ async def recompute_sport(
 
     # 3. Percentile-normalize vision_score across the sport's slate.
     _apply_vision_score_normalization(score_docs)
+
+    # 3a. War Zone native re-evaluation (2026-04-24). The
+    # `vision_score_gate` and `market_trap_gate` defer on the first
+    # pass because vision_score is slate-percentile and populated only
+    # in step 3 above. Re-run the UniversalGateEngine on war_zone docs
+    # so the authoritative decision is recorded. All gating config
+    # lives in `services/scoring/gates/thresholds.py` —
+    # no sport-specific logic here.
+    _reevaluate_war_zone_post_vision(score_docs)
 
     # 3b. Multi-book de-vig TP engine summary (2026-04-22).
     # Per user spec: log `[TP Engine] props_with_tp / props_missing_tp /

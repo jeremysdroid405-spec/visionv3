@@ -119,16 +119,44 @@ _NBA_FRONT_LINES_BASE = {
     "edge_gate":     {"min": 5.0},
 }
 _NBA_WAR_ZONE_BASE = {
-    # All gates removed 2026-04-23 per user directive: "Remove all
-    # filters from war zone". Every War Zone-eligible prop (by odds
-    # bucket / demon qualification) now passes through to the board
-    # and is ranked purely by vision_score. No ceiling floor, no
-    # edge floor, no coverage check — raw exposure.
-    #
-    # The `__pass_all__` sentinel tells the engine this is an
-    # intentional empty config (not a missing-config bug). Engine
-    # short-circuits to passed=True, gates_passed reason_code.
-    "__pass_all__": True,
+    # Final War Zone gating spec (2026-04-24, native gate config).
+    # All logic lives here — the UniversalGateEngine evaluates these
+    # exactly like any other tier. Re-evaluated in `recompute.py`
+    # AFTER slate-level `vision_score` normalization.
+    "coverage_gate": {"min_books": 1},
+    # Stat-aware CV caps (HARD reject). Unknown stat_family fails
+    # closed (no `default` / `max` on purpose).
+    "cv_gate": {
+        "caps": {
+            "pts":        0.45,
+            "pra":        0.45,
+            "reb":        0.55,
+            "ast":        0.55,
+            "threes":     0.75,
+            "pts_ast":    0.45,
+            "pts_reb":    0.45,
+            "reb_ast":    0.55,
+            "stl":        0.75,
+            "blk":        0.75,
+            "turnovers":  0.75,
+        },
+    },
+    # Vision-score floor, branched on tp_source (single gate, OR
+    # semantics for `one_sided`):
+    #   devig      → vs >= 85
+    #   one_sided  → vs >= 90 OR hr >= 60
+    # Missing tp_source fails closed.
+    "vision_score_gate": {
+        "by_tp_source": {
+            "devig":     {"min_vs": 85.0},
+            "one_sided": {"min_vs": 90.0, "or_min_hr": 60.0},
+        },
+    },
+    # Pricing-trap: reject mid-odds/mid-signal props.
+    "market_trap_gate": {
+        "odds_low": 150, "odds_high": 220,
+        "hr_max": 60.0, "vs_max": 90.0,
+    },
 }
 
 

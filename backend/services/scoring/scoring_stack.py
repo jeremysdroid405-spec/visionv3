@@ -368,6 +368,8 @@ def compute_tier(
         reference_odds=ref_odds,
         book_count=book_count,
         tp=tp,
+        tp_source=prop.get("tp_source"),
+        vision_score=prop.get("vision_score"),
         hit_rate=hit_rate,
         hit_rate_l20=prop.get("hit_rate_over") or prop.get("hit_rate_l20"),
         hit_rate_l10=prop.get("hit_rate_l10"),

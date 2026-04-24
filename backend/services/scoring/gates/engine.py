@@ -214,14 +214,127 @@ class UniversalGateEngine:
             reason_code=None if passed else ReasonCode.CONTEXT_FAIL,
         )
 
+    @staticmethod
+    def _eval_vision_score(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
+        """Vision-score floor with optional per-tp_source branching.
+
+        Config shape:
+          {"min": 85.0}                          # flat floor
+          {"by_tp_source": {
+              "devig":     {"min_vs": 85.0},
+              "one_sided": {"min_vs": 90.0, "or_min_hr": 60.0},
+           }}                                    # branch on tp_source
+
+        `or_min_hr` makes the branch pass if EITHER vs >= min_vs OR
+        hr >= or_min_hr (single-gate OR semantics per spec).
+        Missing tp_source / vision_score fails closed.
+        """
+        vs = _py(m.vision_score)
+        tp_source = (m.tp_source or "").lower() or None
+
+        # First-pass deferral: vision_score is a slate-percentile field
+        # populated AFTER per-prop scoring. When it's missing we defer
+        # to the slate-level re-eval pass in recompute.py. Skipped =
+        # passes with a diagnostic note, never fails closed.
+        if vs is None:
+            return GateDetail(
+                gate_type="vision_score_gate",
+                threshold=cfg, actual=None,
+                passed=True, comparator=">=",
+                reason_code=None,
+                note="vision_score_deferred_to_slate_pass",
+            )
+
+        by_src = cfg.get("by_tp_source")
+        if by_src:
+            if tp_source is None or tp_source not in by_src:
+                return GateDetail(
+                    gate_type="vision_score_gate",
+                    threshold={"by_tp_source": by_src},
+                    actual={"vision_score": vs, "tp_source": tp_source},
+                    passed=False, comparator=">=",
+                    reason_code=ReasonCode.VISION_SCORE_FAIL,
+                    note="no_tp_source_branch",
+                )
+            branch = by_src[tp_source]
+            min_vs = float(branch.get("min_vs", 0.0))
+            or_min_hr = branch.get("or_min_hr")
+            hr = _py(m.hit_rate if m.hit_rate is not None else m.hit_rate_l20)
+            vs_ok = vs is not None and vs >= min_vs
+            hr_ok = (
+                or_min_hr is not None
+                and hr is not None
+                and hr >= float(or_min_hr)
+            )
+            passed = bool(vs_ok or hr_ok)
+            return GateDetail(
+                gate_type="vision_score_gate",
+                threshold={"tp_source": tp_source, **branch},
+                actual={"vision_score": vs, "hit_rate": hr},
+                passed=passed, comparator=">=",
+                reason_code=None if passed else ReasonCode.VISION_SCORE_FAIL,
+                note=f"tp_source_branch={tp_source}",
+            )
+
+        min_vs = float(cfg.get("min", 0.0))
+        passed = bool(vs is not None and vs >= min_vs)
+        return GateDetail(
+            gate_type="vision_score_gate",
+            threshold={"min": min_vs}, actual=vs,
+            passed=passed, comparator=">=",
+            reason_code=None if passed else ReasonCode.VISION_SCORE_FAIL,
+        )
+
+    @staticmethod
+    def _eval_market_trap(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
+        """Reject mid-odds weak-signal props (pricing trap).
+
+        FAIL when ALL of:
+          reference_odds in [odds_low, odds_high]
+          AND hit_rate < hr_max
+          AND vision_score < vs_max
+
+        Any missing input → pass (nothing to trap on).
+        """
+        odds_low = int(cfg.get("odds_low", 0))
+        odds_high = int(cfg.get("odds_high", 0))
+        hr_max = float(cfg.get("hr_max", 0.0))
+        vs_max = float(cfg.get("vs_max", 0.0))
+
+        odds = _py(m.reference_odds)
+        hr = _py(m.hit_rate if m.hit_rate is not None else m.hit_rate_l20)
+        vs = _py(m.vision_score)
+
+        if odds is None or hr is None or vs is None:
+            return GateDetail(
+                gate_type="market_trap_gate",
+                threshold=cfg,
+                actual={"odds": odds, "hit_rate": hr, "vision_score": vs},
+                passed=True, comparator="!=",
+                reason_code=None, note="market_trap_missing_inputs_skipped",
+            )
+
+        in_band = odds_low <= int(odds) <= odds_high
+        trap = in_band and hr < hr_max and vs < vs_max
+        passed = not trap
+        return GateDetail(
+            gate_type="market_trap_gate",
+            threshold=cfg,
+            actual={"odds": int(odds), "hit_rate": hr, "vision_score": vs},
+            passed=passed, comparator="!=",
+            reason_code=None if passed else ReasonCode.MARKET_TRAP_FAIL,
+        )
+
     _GATE_DISPATCH = {
-        "coverage_gate": _eval_coverage,
-        "hit_rate_gate": _eval_hit_rate,
-        "tp_gate":       _eval_tp,
-        "cv_gate":       _eval_cv,
-        "edge_gate":     _eval_edge,
-        "ceiling_gate":  _eval_ceiling,
-        "context_gate":  _eval_context,
+        "coverage_gate":     _eval_coverage,
+        "hit_rate_gate":     _eval_hit_rate,
+        "tp_gate":           _eval_tp,
+        "cv_gate":           _eval_cv,
+        "edge_gate":         _eval_edge,
+        "ceiling_gate":      _eval_ceiling,
+        "context_gate":      _eval_context,
+        "vision_score_gate": _eval_vision_score,
+        "market_trap_gate":  _eval_market_trap,
     }
 
     # ------------------------------------------------------------------
@@ -230,16 +343,13 @@ class UniversalGateEngine:
     def evaluate(self, metrics: NormalizedMetrics) -> GateEvalResult:
         cfg = resolve_thresholds(metrics.sport, metrics.tier, metrics.stat_family)
 
-        # NOTE (2026-04-24): NBA war_zone final-hybrid filter is applied
-        # post-scoring in `recompute.py::recompute_sport` step 3a —
-        # because one of the filter's thresholds (`vision_score >= 85 /
-        # 90`) is a slate-percentile-normalised field that isn't
-        # populated until AFTER the scoring stack runs on every prop.
-        # At gate-engine time `vision_score` is always None. The war
-        # zone engine block below therefore remains `__pass_all__` so
-        # every eligible prop enters war_zone as a candidate; the
-        # recompute-level filter is the authority that decides which
-        # candidates survive.
+        # NOTE: Gates that depend on slate-percentile fields (e.g.
+        # `vision_score_gate`, `market_trap_gate`) require a second
+        # evaluation pass AFTER `_apply_vision_score_normalization` has
+        # populated `NormalizedMetrics.vision_score`. The driver
+        # (`recompute.py`) handles this by re-evaluating war_zone docs
+        # post-normalization. First-pass callers may see those gates
+        # fail on missing vision_score — the re-eval is authoritative.
 
         # Explicit "pass-all" opt-out (2026-04-23): a tier config may
         # declare `__pass_all__: True` to signal that the operator has

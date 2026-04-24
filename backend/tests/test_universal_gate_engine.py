@@ -70,50 +70,46 @@ def test_nba_safe_haven_hit_rate_failure_has_canonical_reason():
     assert r.gate_details["hit_rate_gate"].reason_code == ReasonCode.HIT_RATE_FAIL
 
 
-def test_nba_war_zone_does_not_gate_cv():
-    # 2026-04-23: War Zone is now a pass-all tier (explicit
-    # `__pass_all__: True` sentinel). Every War Zone-eligible prop
-    # (by odds bucket) passes the gate engine regardless of CV, HR,
-    # TP, edge, or ceiling. Ranking happens purely via vision_score.
-
-    # Very low CV — must PASS (previously would have failed the floor).
-    low = get_engine().evaluate(NormalizedMetrics(
+def test_nba_war_zone_gates_are_native_in_engine():
+    # 2026-04-24: War Zone has explicit native gating via
+    # `_NBA_WAR_ZONE_BASE` in thresholds.py. All logic runs through
+    # UniversalGateEngine — no sport-specific modules.
+    #
+    # A strong prop (vs>=85, devig, cv<=cap, not in trap band) passes.
+    strong = get_engine().evaluate(NormalizedMetrics(
         sport="nba", tier="war_zone", stat_family="pts", side="OVER",
-        reference_book="dk", reference_odds=200,
-        book_count=1, ceiling_rate=25.0, cv=0.10, edge_pct=20.0,
+        reference_book="dk", reference_odds=250,
+        book_count=2, cv=0.30, hit_rate=65.0,
+        vision_score=90.0, tp_source="devig",
     ))
-    assert low.passed is True
-    assert low.gate_summary == "PASS"
-    assert "cv_gate" not in low.gate_details
+    assert strong.passed is True
+    assert "cv_gate" in strong.gate_details
+    assert "vision_score_gate" in strong.gate_details
+    assert "market_trap_gate" in strong.gate_details
 
-    # Missing CV — must PASS.
-    null_cv = get_engine().evaluate(NormalizedMetrics(
+    # A prop over the stat-aware CV cap — must FAIL.
+    over_cv = get_engine().evaluate(NormalizedMetrics(
+        sport="nba", tier="war_zone", stat_family="pts", side="OVER",
+        reference_book="dk", reference_odds=250,
+        book_count=2, cv=0.55, hit_rate=70.0,
+        vision_score=92.0, tp_source="devig",
+    ))
+    assert over_cv.passed is False
+    assert over_cv.reason_code == ReasonCode.CV_FAIL
+
+    # First-pass semantics: vision_score=None defers the vision gate
+    # (authoritative re-eval is driven by recompute.py after the
+    # slate-level percentile normalization runs).
+    deferred = get_engine().evaluate(NormalizedMetrics(
         sport="nba", tier="war_zone", stat_family="pts", side="OVER",
         reference_book="dk", reference_odds=300,
-        book_count=1, ceiling_rate=25.0, cv=None, edge_pct=15.0,
+        book_count=2, cv=0.30, hit_rate=65.0,
+        vision_score=None, tp_source="devig",
     ))
-    assert null_cv.passed is True
-    assert "cv_gate" not in null_cv.gate_details
-
-    # High CV also passes.
-    hi = get_engine().evaluate(NormalizedMetrics(
-        sport="nba", tier="war_zone", stat_family="pts", side="OVER",
-        reference_book="dk", reference_odds=200,
-        book_count=1, ceiling_rate=25.0, cv=0.55, edge_pct=20.0,
-    ))
-    assert hi.passed is True
-    assert "cv_gate" not in hi.gate_details
-
-    # Zero-ceiling, zero-edge prop — under a pass-all config it
-    # STILL passes. Previously the ceiling ≥20 + edge ≥10 gates
-    # would have rejected this.
-    pathological = get_engine().evaluate(NormalizedMetrics(
-        sport="nba", tier="war_zone", stat_family="pts", side="OVER",
-        reference_book="dk", reference_odds=200,
-        book_count=0, ceiling_rate=0.0, cv=0.10, edge_pct=0.0,
-    ))
-    assert pathological.passed is True
-    assert pathological.gate_details == {}
+    assert deferred.passed is True
+    assert deferred.gate_details["vision_score_gate"].note == (
+        "vision_score_deferred_to_slate_pass"
+    )
 
 
 def test_nba_cv_cap_override_from_adapter():

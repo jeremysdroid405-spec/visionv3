@@ -6,6 +6,61 @@ architecture with multi-sport support, automated feature engineering, and
 a unified pipeline anchored on canonical odds data. Surface pricing
 anomalies through market-consensus probabilities.
 
+## NBA Final War Zone Gating — LIVE (2026-04-24)
+Native War Zone gating through the UniversalGateEngine — all logic
+lives in `services/scoring/gates/thresholds.py::_NBA_WAR_ZONE_BASE`.
+No parallel modules, no sport-specific hardcode in `recompute.py` or
+`scoring_stack.py`.
+
+**Gates applied (NBA war_zone):**
+- `coverage_gate`: min_books ≥ 1
+- `cv_gate` (stat-aware caps): pts/pra/pts_ast/pts_reb = 0.45 ·
+  reb/ast/reb_ast = 0.55 · threes/stl/blk/turnovers = 0.75 ·
+  unknown stat_family fails closed
+- `vision_score_gate` (branched on `tp_source`):
+  - devig → VS ≥ 85
+  - one_sided → VS ≥ 90 OR HR ≥ 60 (single-gate OR semantics)
+  - missing tp_source → fail closed
+- `market_trap_gate`: reject if odds ∈ [+150, +220] AND HR < 60 AND VS < 90
+
+**Two-pass execution model:**
+Because `vision_score` is a slate-percentile field populated only
+AFTER per-prop scoring (`_apply_vision_score_normalization`), the
+engine defers `vision_score_gate` on the first pass. `recompute.py`
+then re-runs `UniversalGateEngine.evaluate()` on every `tier=war_zone`
+doc post-normalization — that pass is authoritative. Demoted docs
+become `tier=unqualified` with the engine's canonical reason_code.
+
+**Files changed:**
+- `services/scoring/gates/engine.py` — new `_eval_vision_score`,
+  `_eval_market_trap`; extended `_eval_cv` with stat-family `caps`
+- `services/scoring/gates/schema.py` — `vision_score`, `tp_source`
+  fields on `NormalizedMetrics`; `vision_score_gate` +
+  `market_trap_gate` canonical + reason codes
+- `services/scoring/gates/thresholds.py` — full `_NBA_WAR_ZONE_BASE`
+  config (replaces `__pass_all__: True`)
+- `services/scoring/scoring_stack.py::compute_tier` — pipes
+  `tp_source` and `vision_score` into NormalizedMetrics
+- `services/scoring/recompute.py` — `_reevaluate_war_zone_post_vision`
+  runs after `_apply_vision_score_normalization`
+- `tests/test_nba_war_zone_gates.py` — 23 native engine tests
+- `tests/test_universal_gate_engine.py` — obsolete pass-all test
+  replaced with native-gates test
+- DELETED: `services/scoring/gates/war_zone.py` and the parallel
+  test file (architectural hack from previous session)
+
+**Live NBA slate validation (3,740 props):**
+- Passing tier_distribution: safe_haven=65, front_lines=139,
+  war_zone=21, unqualified=3,515
+- War Zone demotion reasons (engine-native):
+  gate_vision_score_fail=693, gate_cv_fail=523,
+  gate_market_trap_fail=4
+- 21 passing War Zone plays in the target band (~10–15 per slate)
+
+**Test coverage:** 23 new + 39 gate-engine total, 156 total unit
+tests pass (non-HTTP).
+
+
 ## MLB ECDF Cutover — VALIDATED (2026-04-24)
 Universal ECDF probability layer is now fully live for MLB.
 
