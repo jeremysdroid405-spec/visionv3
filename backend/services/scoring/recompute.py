@@ -261,6 +261,59 @@ def _reevaluate_tiers_post_vision(score_docs: List[Dict[str, Any]]) -> None:
         )
         result = engine.evaluate(metrics)
 
+        # MLB goblin-line override (Fix B, 2026-04-25): mirror the
+        # inline override already applied during first-pass tiering at
+        # `services/scoring/scoring_stack.py:391-422`. Without this,
+        # MLB Safe-Haven props on binary lines (line < 1.0) — which
+        # passed first pass under relaxed thresholds — would be re-
+        # evaluated against the strict base thresholds and fail. Scope
+        # is exactly the same as the first-pass override: MLB only, SH
+        # only, line<1.0 only. No new thresholds, no global gate
+        # change, no FL/WZ touch.
+        if (
+            sport == "mlb"
+            and current_tier == "safe_haven"
+            and result.gate_summary == "FAIL"
+        ):
+            try:
+                line_val = float(doc.get("line") or 0)
+            except (TypeError, ValueError):
+                line_val = 0.0
+            if line_val < 1.0:
+                from services.scoring.gates.engine import UniversalGateEngine
+                from services.scoring.gates.thresholds import resolve_thresholds as _rt
+                thresholds = dict(_rt(sport, current_tier, stat_family))
+                if thresholds:
+                    thresholds["cv_gate"]       = {"max": 1.10}
+                    thresholds["hit_rate_gate"] = {"min": 75.0, "window": "default"}
+                    thresholds["tp_gate"]       = {"min": 60.0}
+                    thresholds["edge_gate"]     = {"min": -9999.0}
+                    details = {}
+                    passed_gates = []
+                    failed_gates = []
+                    _engine = UniversalGateEngine()
+                    for gate_type, gate_cfg in thresholds.items():
+                        fn = _engine._GATE_DISPATCH.get(gate_type)
+                        if fn is None:
+                            continue
+                        detail = (
+                            fn.__func__(gate_cfg, metrics)
+                            if hasattr(fn, "__func__") else fn(gate_cfg, metrics)
+                        )
+                        details[gate_type] = detail
+                        (passed_gates if detail.passed else failed_gates).append(gate_type)
+                    overall_passed = len(failed_gates) == 0
+                    result.gate_details = details
+                    result.passed_gates = passed_gates
+                    result.failed_gates = failed_gates
+                    result.passed = overall_passed
+                    result.gate_summary = "PASS" if overall_passed else "FAIL"
+                    result.reason_code = (
+                        ReasonCode.GATES_PASSED if overall_passed
+                        else details[failed_gates[0]].reason_code
+                            or ReasonCode.for_gate(failed_gates[0])
+                    )
+
         legacy_gate_results = {
             name: {
                 "threshold": d.threshold,
