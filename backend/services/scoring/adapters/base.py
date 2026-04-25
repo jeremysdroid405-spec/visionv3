@@ -102,18 +102,6 @@ class ScoringContext:
     minutes_composition_baseline_projection: Optional[float] = None
     minutes_composition_predicted_minutes: Optional[float] = None
     minutes_composition_per_min_rate: Optional[float] = None
-    # TP-for-vision-score override (2026-04-25, MLB one_sided fix).
-    # When non-None, `compute_vision_score` uses this value (decimal
-    # 0..1) as the comparison anchor for the model-edge calculation,
-    # bypassing the raw single-book `fair_prob`. Set by the MLB
-    # adapter after `compute_tp` to:
-    #   tp_source == "devig"      → tp / 100  (rigorous de-vigged anchor)
-    #   tp_source == "one_sided"  → market_probability (vig-laden;
-    #                               vision_score gets a 0.7× confidence
-    #                               penalty to rank below devig rows)
-    # NBA leaves this None → legacy `fair_prob` path unchanged.
-    tp_for_vs: Optional[float] = None
-    tp_for_vs_source: Optional[str] = None  # "devig" | "one_sided_market" | None
 
 
 class ScoringAdapter(ABC):

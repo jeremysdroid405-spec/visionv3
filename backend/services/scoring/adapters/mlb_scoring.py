@@ -158,17 +158,14 @@ class MLBScoringAdapter(ScoringAdapter):
         else:
             cv = stats._calculate_cv(bdl_player_id, stat_type)
             cv_status = "computed" if cv is not None else "missing_source_distribution"
-            # Side-aware HR (2026-04-25, HR v3 sample-size aware).
-            # `_calculate_hit_rate_sides` returns the OVER/UNDER pair,
-            # the season average, and the actual sample size used (10
-            # ≤ n ≤ 20). When the player has < 10 valid logs, all four
-            # come back None (None,None,None,n_or_None). Sample size
-            # is persisted on the score doc and consumed by the gate
-            # engine for small-sample penalty / insufficient-sample
-            # rejection.
+            # HR (2026-04-25, NBA-parity). Sibling method returns the
+            # OVER/UNDER pair plus the sample size used. NBA-parity
+            # `min_games=5` floor mirrors NBA `_compute_cv_and_hit_rate`
+            # at `nba_scoring.py:1050`. No sample-size penalty applied
+            # in the gate engine for either sport.
             hit_rate_over, hit_rate_under, _hr_avg, hr_sample_size = (
                 stats._calculate_hit_rate_sides(
-                    bdl_player_id, stat_type, line, num_games=20, min_games=10,
+                    bdl_player_id, stat_type, line, num_games=20, min_games=5,
                 )
             )
             side_for_hr = (prop.get("recommendation") or "OVER").upper()
@@ -329,42 +326,6 @@ class MLBScoringAdapter(ScoringAdapter):
         if tp_result.get("market_probability") is not None:
             prop["market_probability"] = tp_result["market_probability"]
 
-        # NBA-PARITY TP FALLBACK FOR VISION SCORE (2026-04-25, v3 one_sided).
-        # Override semantics — gives every MLB prop a vig-aware market
-        # anchor so vision_score can be computed without comparing the
-        # model to itself:
-        #
-        #   tp_source == "devig"       → tp / 100
-        #                                 quality_source = "tp_devig"
-        #                                 (no confidence penalty)
-        #
-        #   tp_source == "one_sided"   → market_probability (decimal 0..1
-        #                                 form of `tp`, single-book raw
-        #                                 implied prob — carries vig)
-        #                                 quality_source = "one_sided_market"
-        #                                 confidence × 0.7 penalty so
-        #                                 these rank below devig rows
-        #                                 in vision_score
-        #
-        #   else (tp = None)           → None  (legacy `fair_prob`)
-        #
-        # Never use `p_true_model` — that == `p_model` and would
-        # self-compare, collapsing edge to zero. `tp` / `tp_source` /
-        # `market_probability` / `p_true_model` / `p_true_active` are
-        # all preserved unchanged for audit.
-        tp_for_vs: Optional[float] = None
-        tp_for_vs_source: Optional[str] = None
-        _ts = tp_result.get("tp_source")
-        _mp = tp_result.get("market_probability")
-        if _ts == "devig" and tp is not None:
-            tp_for_vs = round(float(tp) / 100.0, 6)
-            tp_for_vs_source = "devig"
-        elif _ts == "one_sided" and _mp is not None:
-            tp_for_vs = round(float(_mp), 6)
-            tp_for_vs_source = "one_sided_market"
-        prop["tp_for_vs"] = tp_for_vs
-        prop["tp_for_vs_source"] = tp_for_vs_source
-
         # ---- Shared p_true ladder (carbon-copy with NBA) ---------------
         # Ladder order: model → hit_rate → vk2 → fair
         # MLB currently has no vk2 model on disk, so that rung stays None
@@ -421,7 +382,6 @@ class MLBScoringAdapter(ScoringAdapter):
             projection_method=projection_method,
             edge_pct=edge_pct,
             tp=tp,
-            tp_for_vs=tp_for_vs,
             ceiling_rate=ceiling_rate,
             books_available_count=books,
             raw_prop=prop,

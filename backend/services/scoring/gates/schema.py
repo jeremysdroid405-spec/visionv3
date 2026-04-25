@@ -45,7 +45,6 @@ class ReasonCode:
     # Gate-specific failures
     COVERAGE_FAIL = "gate_coverage_fail"
     HIT_RATE_FAIL = "gate_hit_rate_fail"
-    HIT_RATE_INSUFFICIENT_SAMPLE = "gate_hit_rate_insufficient_sample"
     TP_FAIL = "gate_tp_fail"
     TP_UNAVAILABLE = "gate_tp_unavailable"
     CV_FAIL = "gate_cv_fail"

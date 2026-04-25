@@ -67,54 +67,11 @@ class UniversalGateEngine:
             actual = _py(m.hit_rate_l5)
         else:
             actual = _py(m.hit_rate if m.hit_rate is not None else m.hit_rate_l20)
-
-        # Sample-size-aware gate (2026-04-25, HR v3).
-        # Contract:
-        #   sample_size is None        → legacy / NBA path; behave as
-        #                                before (compare hr >= min_val).
-        #   sample_size <  n_min       → INSUFFICIENT_SAMPLE (fail).
-        #                                Default n_min = 10.
-        #   sample_size <  n_full      → small-sample penalty:
-        #                                require hr >= min_val + penalty_pp.
-        #                                Default n_full = 20, penalty = 5pp.
-        #   sample_size >= n_full      → normal hr >= min_val.
-        sample_size = m.hit_rate_sample_size
-        n_min = int(cfg.get("sample_size_min", 10))
-        n_full = int(cfg.get("sample_size_full", 20))
-        penalty = float(cfg.get("small_sample_penalty_pp", 5.0))
-
-        threshold_used = min_val
-        sample_status = "n/a"
-        if sample_size is not None:
-            if sample_size < n_min:
-                # Hard fail: not enough games to compute HR honestly.
-                return GateDetail(
-                    gate_type="hit_rate_gate",
-                    threshold={"min": min_val, "window": window,
-                               "sample_size_min": n_min},
-                    actual={"hit_rate": actual, "sample_size": sample_size},
-                    passed=False,
-                    comparator=">=",
-                    reason_code=ReasonCode.HIT_RATE_INSUFFICIENT_SAMPLE,
-                    note=f"sample_size={sample_size} < min={n_min}",
-                )
-            if sample_size < n_full:
-                # Small-sample penalty.
-                threshold_used = min_val + penalty
-                sample_status = "small_sample_penalty"
-            else:
-                sample_status = "full_sample"
-
-        passed = bool(actual is not None and actual >= threshold_used)
+        passed = bool(actual is not None and actual >= min_val)
         return GateDetail(
             gate_type="hit_rate_gate",
-            threshold={
-                "min": min_val,
-                "min_effective": threshold_used,
-                "window": window,
-                "sample_status": sample_status,
-            },
-            actual={"hit_rate": actual, "sample_size": sample_size},
+            threshold={"min": min_val, "window": window},
+            actual=actual,
             passed=passed,
             comparator=">=",
             reason_code=None if passed else ReasonCode.HIT_RATE_FAIL,
