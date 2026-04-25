@@ -925,27 +925,68 @@ class UniversalOddsSyncService:
         stat_type_map = config["stat_type_map"]
         
         # =================================================================
-        # LAYERED ARCHITECTURE — No merging, no fuzzy matching.
+        # UNIVERSAL CANONICAL POOL (SSOT, 2026-04-25)
         #
-        # Canonical prop key:
-        #   sport|event_id|player|market_type|line|side
+        # Architecture (replaces the legacy "PP-only anchor" model):
         #
-        # PP is the anchor. DK and MGM attach as independent layers
-        # ONLY on exact canonical key match. No closest-line. No approximate.
+        # The canonical prop pool is built from ANY of the allowed
+        # books. PrizePicks is no longer an anchor; it is an overlay.
+        # A canonical is created the FIRST time a (sport, event_id,
+        # player, stat_type, line, side) tuple is seen across all
+        # allowed books, in priority order:
+        #
+        #     prizepicks > draftkings > fanduel > betmgm > betonlineag
+        #
+        # When PP quotes the prop, the prior PP-anchored behaviour is
+        # preserved exactly (same canonical_key, same layer fields,
+        # same flat fields). When PP does NOT quote it, the canonical
+        # is anchored on the next-priority book whose data is present,
+        # `pp_layer = None`, `pp_available = False`, `playable_on_pp =
+        # False`, and `source_anchor = "sportsbook_fallback"`.
+        #
+        # Canonical identity (UNCHANGED — downstream `canonical_key`
+        # consumers in scoring / recompute / Ferrari readers continue
+        # to work without modification):
+        #     sport | event_id | player_name | stat_type | line | side
+        #
+        # Ferrari and PP-playable boards may filter on
+        # `playable_on_pp == True`; backend keeps the full pool so
+        # other surfaces (research, alt-line tracking, future
+        # non-PP-playable products) have access to every market the
+        # books actually published.
+        #
+        # See /app/memory/PRD.md "Universal SSOT canonical pool,
+        # 2026-04-25" for the architecture rationale.
         # =================================================================
-        
-        # --- Pass 1: PP anchor layer (creates canonical props) ---
-        canonical = {}  # canonical_key -> prop record
-        
-        for bookmaker in odds_data.get("bookmakers", []):
-            bm_key = bookmaker.get("key", "unknown")
-            if bm_key != "prizepicks":
+
+        # Allowed books (SSOT) — also defines anchor priority order.
+        ALLOWED_BOOKS = (
+            "prizepicks", "draftkings", "fanduel", "betmgm", "betonlineag",
+        )
+        ANCHOR_PRIORITY = list(ALLOWED_BOOKS)
+
+        canonical: Dict[str, Dict[str, Any]] = {}
+
+        # --- Pass 1: union creation across all allowed books in
+        # priority order. The first book to produce a (canon_key)
+        # tuple seeds the canonical and stamps `source_anchor`
+        # / `anchor_book`. Subsequent books in this same pass
+        # (Pass 2 below) attach as layers without re-seeding.
+        bookmakers_by_key = {
+            (bm.get("key") or "unknown"): bm
+            for bm in odds_data.get("bookmakers", [])
+        }
+        event_id = odds_data.get("event_id", "")
+
+        for anchor_priority, bm_key in enumerate(ANCHOR_PRIORITY):
+            bookmaker = bookmakers_by_key.get(bm_key)
+            if not bookmaker:
                 continue
-            
+
             for market in bookmaker.get("markets", []):
                 market_key = market.get("key", "")
                 stat_type = stat_type_map.get(market_key, market_key)
-                
+
                 for outcome in market.get("outcomes", []):
                     player_name = outcome.get("description", "")
                     if not player_name:
@@ -953,14 +994,22 @@ class UniversalOddsSyncService:
                     line = outcome.get("point")
                     if line is None:
                         continue
-                    
+
                     outcome_name = outcome.get("name", "").lower()
                     side = "OVER" if "over" in outcome_name else "UNDER"
                     price = outcome.get("price", -110)
-                    
-                    event_id = odds_data.get("event_id", "")
-                    canon_key = f"{sport}|{event_id}|{player_name}|{stat_type}|{float(line)}|{side}"
-                    
+
+                    canon_key = (
+                        f"{sport}|{event_id}|{player_name}|"
+                        f"{stat_type}|{float(line)}|{side}"
+                    )
+
+                    if canon_key in canonical:
+                        # Already seeded by a higher-priority book —
+                        # this book will attach as a layer in Pass 2.
+                        continue
+
+                    is_pp_anchor = (bm_key == "prizepicks")
                     canonical[canon_key] = {
                         "canonical_key": canon_key,
                         "sport": sport,
@@ -973,44 +1022,39 @@ class UniversalOddsSyncService:
                         "market_key": market_key,
                         "line": float(line),
                         "recommendation": side,
-                        "is_alternate_market": "alternate" in market_key.lower(),
-                        # --- PP layer ---
-                        "pp_layer": {
-                            "book": "prizepicks",
-                            "line": float(line),
-                            "odds": price,
-                            "fetched_at": datetime.now(timezone.utc).isoformat(),
-                        },
-                        # --- DK layer (empty until exact match) ---
+                        "is_alternate_market":
+                            "alternate" in market_key.lower(),
+                        # SSOT anchor metadata (2026-04-25).
+                        "source_anchor":
+                            "prizepicks" if is_pp_anchor
+                            else "sportsbook_fallback",
+                        "anchor_book": bm_key,
+                        # Layer slots — populated in Pass 2 for every
+                        # book that quoted this exact canonical_key,
+                        # including the anchor book itself.
+                        "pp_layer": None,
                         "dk_layer": None,
-                        # --- FD layer (empty until exact match) ---
                         "fd_layer": None,
-                        # --- BetOnline layer (empty until exact match) ---
                         "bol_layer": None,
-                        # --- MGM layer (empty until exact match) ---
                         "mgm_layer": None,
-                        # --- Sharp layer (empty until exact match) ---
                         "sharp_layer": None,
                     }
-        
-        # --- Pass 2: Attach DK/FD/BOL/MGM/Sharp as independent layers (exact match only) ---
-        # 2026-04-22: Capture BOTH over and under book prices per line
-        # so the multi-book de-vig TP engine can pair them at scoring
-        # time. Previously only the PP-anchored side was stored, which
-        # meant ~96% of MLB / ~82% of NBA lines had no UNDER companion
-        # and so couldn't de-vig.
-        for bookmaker in odds_data.get("bookmakers", []):
-            bm_key = bookmaker.get("key", "unknown")
-            if bm_key == "prizepicks":
+
+        # --- Pass 2: attach every allowed book's price to its layer
+        # slot on every canonical it matches (including the anchor
+        # book that seeded the canonical in Pass 1). Also stamps
+        # `*_odds_opp` for the opposite-side row so the multi-book
+        # de-vig TP engine can pair both sides of the same book.
+        for bm_key, bookmaker in bookmakers_by_key.items():
+            if bm_key not in ALLOWED_BOOKS:
                 continue
-            
             bm_config = BOOKMAKER_CONFIG.get(bm_key, {})
             is_sharp = bm_config.get("is_sharp", False)
-            
+
             for market in bookmaker.get("markets", []):
                 market_key = market.get("key", "")
                 stat_type = stat_type_map.get(market_key, market_key)
-                
+
                 for outcome in market.get("outcomes", []):
                     player_name = outcome.get("description", "")
                     if not player_name:
@@ -1018,24 +1062,27 @@ class UniversalOddsSyncService:
                     line = outcome.get("point")
                     if line is None:
                         continue
-                    
+
                     outcome_name = outcome.get("name", "").lower()
                     side = "OVER" if "over" in outcome_name else "UNDER"
                     price = outcome.get("price", -110)
-                    event_id = odds_data.get("event_id", "")
 
-                    # Attach the book's price to the PP-anchored row for
-                    # this side (legacy behavior).
-                    canon_key = f"{sport}|{event_id}|{player_name}|{stat_type}|{float(line)}|{side}"
+                    canon_key = (
+                        f"{sport}|{event_id}|{player_name}|"
+                        f"{stat_type}|{float(line)}|{side}"
+                    )
                     if canon_key in canonical:
                         layer = {
                             "book": bm_key,
                             "line": float(line),
                             "odds": price,
-                            "fetched_at": datetime.now(timezone.utc).isoformat(),
+                            "fetched_at":
+                                datetime.now(timezone.utc).isoformat(),
                         }
                         target = canonical[canon_key]
-                        if bm_key == "draftkings":
+                        if bm_key == "prizepicks":
+                            target["pp_layer"] = layer
+                        elif bm_key == "draftkings":
                             target["dk_layer"] = layer
                         elif bm_key == "fanduel":
                             target["fd_layer"] = layer
@@ -1046,19 +1093,19 @@ class UniversalOddsSyncService:
                         if is_sharp and target["sharp_layer"] is None:
                             target["sharp_layer"] = layer
 
-                    # Also stamp this book's price on the OPPOSITE-side
-                    # canonical row (if it exists) as `_opp_odds` so the
-                    # TP engine can pair both sides of the same book
-                    # without needing a separate UNDER row in live_props.
+                    # Opposite-side stamp (preserves prior behaviour).
                     opp_side = "UNDER" if side == "OVER" else "OVER"
-                    opp_key = f"{sport}|{event_id}|{player_name}|{stat_type}|{float(line)}|{opp_side}"
+                    opp_key = (
+                        f"{sport}|{event_id}|{player_name}|"
+                        f"{stat_type}|{float(line)}|{opp_side}"
+                    )
                     if opp_key in canonical:
                         opp_target = canonical[opp_key]
                         opp_field = {
-                            "draftkings": "dk_odds_opp",
-                            "fanduel":    "fd_odds_opp",
+                            "draftkings":  "dk_odds_opp",
+                            "fanduel":     "fd_odds_opp",
                             "betonlineag": "bol_odds_opp",
-                            "betmgm":     "mgm_odds_opp",
+                            "betmgm":      "mgm_odds_opp",
                         }.get(bm_key)
                         if opp_field:
                             opp_target[opp_field] = price
@@ -1066,21 +1113,42 @@ class UniversalOddsSyncService:
         # --- Pass 3: Flatten canonical records into prop documents ---
         props = []
         for canon_key, rec in canonical.items():
-            pp = rec["pp_layer"]
+            pp = rec.get("pp_layer")
             dk = rec.get("dk_layer")
             fd = rec.get("fd_layer")
             bol = rec.get("bol_layer")
             mgm = rec.get("mgm_layer")
             sharp = rec.get("sharp_layer")
-            
-            # Derive flat fields from layers
-            pp_odds = pp["odds"]
+
+            # SSOT anchor metadata (2026-04-25): when PP didn't quote
+            # this exact canonical_key, the prop is anchored on the
+            # next-priority sportsbook. UI surfaces filtering for
+            # PrizePicks-playable products should gate on
+            # `playable_on_pp`; backend keeps every prop in the pool.
+            pp_available = pp is not None
+            playable_on_pp = pp_available
+            source_anchor = rec.get(
+                "source_anchor",
+                "prizepicks" if pp_available else "sportsbook_fallback",
+            )
+            anchor_book = rec.get(
+                "anchor_book",
+                "prizepicks" if pp_available else (
+                    "draftkings" if dk else
+                    "fanduel" if fd else
+                    "betmgm" if mgm else
+                    "betonlineag" if bol else None
+                ),
+            )
+
+            # Derive flat fields from layers (None when layer absent).
+            pp_odds = pp["odds"] if pp else None
             dk_odds = dk["odds"] if dk else None
             fd_odds = fd["odds"] if fd else None
             bol_odds = bol["odds"] if bol else None
             mgm_odds = mgm["odds"] if mgm else None
             sharp_odds = sharp["odds"] if sharp else None
-            
+
             # Demon/goblin from DK, then FD, then BOL, then MGM, then nothing
             is_demon = False
             is_goblin = False
@@ -1091,11 +1159,15 @@ class UniversalOddsSyncService:
             if primary_ref_odds is not None:
                 is_demon = primary_ref_odds >= 100
                 is_goblin = primary_ref_odds < 0
-            
-            # Build all_odds/all_lines from exact-match layers only
-            all_odds = {"prizepicks": pp_odds}
-            all_lines = {"prizepicks": pp["line"]}
-            books_available = ["prizepicks"]
+
+            # Build all_odds/all_lines from exact-match layers only.
+            all_odds: Dict[str, Any] = {}
+            all_lines: Dict[str, Any] = {}
+            books_available: List[str] = []
+            if pp:
+                all_odds["prizepicks"] = pp_odds
+                all_lines["prizepicks"] = pp["line"]
+                books_available.append("prizepicks")
             if dk:
                 all_odds["draftkings"] = dk_odds
                 all_lines["draftkings"] = dk["line"]
@@ -1117,22 +1189,36 @@ class UniversalOddsSyncService:
                 all_lines[sharp["book"]] = sharp["line"]
                 if sharp["book"] not in books_available:
                     books_available.append(sharp["book"])
-            
+
+            # Headline `odds` field — PP price when PP-playable, else
+            # the anchor book's price. Preserves prior behaviour for
+            # PP-anchored props (`odds == pp_odds`).
+            headline_odds = pp_odds if pp_available else (
+                dk_odds if dk_odds is not None else
+                fd_odds if fd_odds is not None else
+                mgm_odds if mgm_odds is not None else
+                bol_odds
+            )
+
             prop = {
                 "canonical_key": canon_key,
                 "player_name": rec["player_name"],
                 "stat_type": rec["stat_type"],
                 "line": rec["line"],
                 "recommendation": rec["recommendation"],
-                "odds": pp_odds,
+                "odds": headline_odds,
                 "market_key": rec["market_key"],
-                "bookmaker": "prizepicks",
+                # `bookmaker` reflects the SSOT anchor book — equal to
+                # `prizepicks` for PP-playable props (back-compat),
+                # otherwise the highest-priority sportsbook that
+                # quoted this canonical_key.
+                "bookmaker": anchor_book or "prizepicks",
                 "event_id": rec["event_id"],
                 "home_team": rec["home_team"],
                 "away_team": rec["away_team"],
                 "commence_time": rec["commence_time"],
                 # Flat layer fields
-                "pp_line": pp["line"],
+                "pp_line": pp["line"] if pp else None,
                 "pp_odds": pp_odds,
                 "dk_line": dk["line"] if dk else None,
                 "dk_odds": dk_odds,
@@ -1168,6 +1254,11 @@ class UniversalOddsSyncService:
                 "is_goblin": is_goblin,
                 "is_demon": is_demon,
                 "is_alternate_market": rec.get("is_alternate_market", False),
+                # SSOT anchor metadata (2026-04-25)
+                "pp_available": pp_available,
+                "playable_on_pp": playable_on_pp,
+                "source_anchor": source_anchor,
+                "anchor_book": anchor_book,
                 # Metadata
                 "sport": sport,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
@@ -1177,13 +1268,13 @@ class UniversalOddsSyncService:
                 # gets the batch completion timestamp (same cadence is fine
                 # since detection runs between full syncs).
                 "updated_at": datetime.now(timezone.utc),
-                "source": "prizepicks",
-                "dfs_line": pp["line"],
-                "dfs_book": "prizepicks",
+                "source": source_anchor,
+                "dfs_line": pp["line"] if pp else None,
+                "dfs_book": "prizepicks" if pp else None,
                 "team": None,
             }
             props.append(prop)
-        
+
         return props
     
     async def sync_sport_props(

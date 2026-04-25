@@ -1,5 +1,46 @@
 # Changelog
 
+## 2026-04-25 — UNIVERSAL SSOT: Canonical Prop Pool Decoupled from PrizePicks
+
+**Architectural change**: the canonical prop pool in `services/universal_odds_sync.py:_normalize_market_data` is now built from ANY of the allowed books, not anchored on PrizePicks. PrizePicks is now an overlay, not the source of truth.
+
+### New canonical-creation rule (universal — applies to NBA, MLB, future NFL)
+- Allowed books (SSOT): `prizepicks`, `draftkings`, `fanduel`, `betmgm`, `betonlineag`.
+- Anchor priority: `prizepicks > draftkings > fanduel > betmgm > betonlineag`.
+- Canonical identity (UNCHANGED — preserves all downstream consumers): `sport | event_id | player_name | stat_type | line | side`.
+- A canonical is created on the FIRST sighting across all allowed books; later books attach as layers.
+- Every prop now carries:
+  - `pp_layer` / `dk_layer` / `fd_layer` / `mgm_layer` / `bol_layer` (None when absent).
+  - `pp_available: bool` — `True` iff PrizePicks quoted this canonical_key.
+  - `playable_on_pp: bool` — alias for `pp_available` for filter clarity.
+  - `source_anchor: "prizepicks" | "sportsbook_fallback"`.
+  - `anchor_book` — the book that seeded the canonical.
+- Ferrari and PP-playable boards SHOULD filter on `playable_on_pp == True`. The backend pool keeps every market regardless.
+
+### Validation results (one full sync per sport, 2026-04-25 04:50 UTC)
+
+| Metric                        | NBA pre-SSOT* | NBA post-SSOT | MLB pre-SSOT | MLB post-SSOT |
+|---|---|---|---|---|
+| live_props_count              |      ~4 838  |    **14 493** |    4 942     |   **9 760**   |
+| pp_available=True (regression check) |   ~4 838  |     4 932 ✅  |    4 942     |    5 361 ✅   |
+| sportsbook_fallback (NEW)     |          0   |     9 561     |        0     |    4 399      |
+| events_succeeded / discovered |        8 / 8 |     8 / 8     |    15 / 17   |    16 / 17    |
+| distinct stat_types           |          28  |        41     |       11     |       20      |
+| scored_props_count            |       3 241  |    13 001     |    3 962     |    8 862      |
+
+*Pre-SSOT counts are from the prior day's sync_history record (NBA was in a smaller slate window).
+
+### Specific user concern: Cubs @ Dodgers early game DK props
+The Miami @ SF event (`5ea60d3f`) — previously dropped because PrizePicks did not list it — now produces 584 live_props anchored on DraftKings, exactly as required by the spec. (The Cubs @ Dodgers early-game `55fa28ec` was outside the current sync's event window because its commence_time was already past.)
+
+### What did NOT change
+Scoring formulas, gates, thresholds, ECDF, UniversalGateEngine, metrics_builder, tier_evaluator, frontend, recompute, prop_scores_store, master_sync, sync_history, market_catalog. Only `services/universal_odds_sync.py:_normalize_market_data` and its Pass-3 flatten step were touched.
+
+### Files changed
+- `services/universal_odds_sync.py` — rewrote Pass-1 to walk all allowed books in priority order; Pass-3 (flatten) now derives `pp_available` / `playable_on_pp` / `source_anchor` / `anchor_book` and gracefully handles `pp_layer == None`. Lint clean.
+
+
+
 ## 2026-04-25 — Vision Intel Coverage Hotfix (per-tier caps + chunked Gemini batches)
 
 **User report:** Only War Zone showed Gemini Vision Intel in the UI. Safe Haven and Front Lines fell back to template text after slate refreshes.
