@@ -279,7 +279,7 @@ THRESHOLDS: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {
 # letting tier assignment depend strictly on odds-bucket routing. The
 # MLB SH goblin override in `tier_evaluator._apply_mlb_sh_goblin_override`
 # self-disables when `resolve_thresholds(...)` returns an empty dict.
-MLB_GATES_DISABLED_FOR_AUDIT: bool = True
+MLB_GATES_DISABLED_FOR_AUDIT: bool = False
 
 # Frozen pre-audit config (kept verbatim so the rebuild has a reference
 # to diff against — DO NOT EDIT until the audit lands.)
