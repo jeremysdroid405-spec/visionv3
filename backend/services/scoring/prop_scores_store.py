@@ -166,6 +166,17 @@ _SCORE_OUTPUT_FIELDS = (
     "probability_calibration_applied", "raw_p_over",
     "projection_intercept_applied", "projection_intercept_delta",
     "pre_intercept_projection",
+    # Universal SSOT canonical-pool flags (2026-04-25). Stamped at
+    # ingest by `services/universal_odds_sync.py::_normalize_market_data`
+    # on every prop. PrizePicks is now an overlay on top of a
+    # multi-book canonical pool; these fields tell the read-side
+    # whether a given canonical is PP-quoted or sportsbook-anchored.
+    #   pp_available        — True iff PrizePicks quoted this canonical
+    #   playable_on_pp      — alias of pp_available for filter clarity
+    #   source_anchor       — "prizepicks" | "sportsbook_fallback"
+    #   anchor_book         — book that seeded the canonical (the first
+    #                         book seen in priority order during ingest)
+    "pp_available", "playable_on_pp", "source_anchor", "anchor_book",
 )
 
 _IDENTITY_FIELDS = (

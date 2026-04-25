@@ -1144,6 +1144,16 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     prop["pp_playable"] = score.get("pp_playable")
     prop["pp_playability_reason"] = score.get("pp_playability_reason")
 
+    # Universal SSOT canonical-pool passthrough (2026-04-25). Stamped at
+    # ingest, mirrored onto the score doc by recompute. The Ferrari
+    # endpoint reads `playable_on_pp` to filter the user-facing board
+    # to PrizePicks-quoted props by default; expose the audit fields
+    # on the response payload too.
+    prop["playable_on_pp"] = score.get("playable_on_pp")
+    prop["pp_available"] = score.get("pp_available")
+    prop["source_anchor"] = score.get("source_anchor")
+    prop["anchor_book"] = score.get("anchor_book")
+
     # Goblin/demon flags — derived from pp_multiplier_label for consistency
     lbl = (score.get("pp_multiplier_label") or "").lower()
     prop["is_goblin"] = lbl == "goblin"
@@ -2045,11 +2055,22 @@ SPORT_TIER_HELPERS: Dict[str, SportTierHelpers] = {
 async def _serve_ferrari_tier(
     sport: str, tier_name: str, tier_label_prefix: str,
     limit: int, sort: Optional[str],
+    include_market_pool: bool = False,
 ) -> Dict[str, Any]:
     """Canonical Ferrari tier resolver. Replaces the per-sport IF-chain
     that used to live in every tier endpoint. Adding a new sport is a
     single-line SPORT_TIER_HELPERS entry — no route edits required.
-    Eliminates D4."""
+    Eliminates D4.
+
+    `include_market_pool`:
+        False (default) — strip picks whose `playable_on_pp == False`
+                          before any post-processing. The Ferrari boards
+                          show only PrizePicks-playable props by default
+                          (Universal SSOT, 2026-04-25).
+        True            — bypass the PP filter and return the full
+                          multi-book canonical pool (used by debug /
+                          back-office views).
+    """
     helpers = SPORT_TIER_HELPERS.get(sport)
     if helpers is None:
         raise HTTPException(
@@ -2058,7 +2079,39 @@ async def _serve_ferrari_tier(
         )
 
     collection_name = helpers.source_tag_template.format(tier=tier_name)
-    picks = await helpers.fetch_picks(tier_name, limit, sort=sort)
+    # Over-fetch when filtering is active so the PP-playable cap matches
+    # the user-requested `limit`. Universal SSOT canonical pool is up to
+    # ~3× larger than the PP-playable subset (2026-04-25 baseline:
+    # NBA fallback share ≈ 66%, MLB fallback share ≈ 45%). 4x is a safe
+    # over-fetch ceiling for typical slates.
+    fetch_limit = limit * 4 if not include_market_pool else limit
+    picks = await helpers.fetch_picks(tier_name, fetch_limit, sort=sort)
+
+    # ----------------------------------------------------------------
+    # Universal SSOT PP-playable filter (2026-04-25). The canonical
+    # prop pool now contains props anchored on ANY allowed book; this
+    # filter restricts the user-facing Ferrari boards to props that
+    # PrizePicks quoted (`playable_on_pp == True`). Pass
+    # `?include_market_pool=true` to bypass and see the full pool.
+    # Legacy score docs that pre-date the SSOT cutover have no
+    # `playable_on_pp` field — treat them as PP-playable so historical
+    # tags don't disappear from the board.
+    # ----------------------------------------------------------------
+    pp_playable_filter_dropped = 0
+    if not include_market_pool:
+        kept: List[Dict[str, Any]] = []
+        for p in picks:
+            playable = p.get("playable_on_pp")
+            if playable is None:
+                playable = p.get("pp_available")
+            # Default-allow when both fields are absent (legacy docs).
+            if playable is False:
+                pp_playable_filter_dropped += 1
+                continue
+            kept.append(p)
+        picks = kept[:limit]
+    else:
+        picks = picks[:limit]
 
     # 0-Book Exclusion Rule (2026-04-22): strip any legacy pp_only
     # picks before any JIT enrichment runs. Fresh rescores don't
@@ -2140,6 +2193,12 @@ async def _serve_ferrari_tier(
             "with_mlr": has_any_mlr,
             "with_gemini": has_any_gemini,
         },
+        # Universal SSOT PP-playable filter audit (2026-04-25).
+        "ssot_filter": {
+            "playable_on_pp_only": not include_market_pool,
+            "include_market_pool": include_market_pool,
+            "dropped_non_pp_playable": pp_playable_filter_dropped,
+        },
         "enrichment_coverage": coverage,
     }
 
@@ -2151,6 +2210,7 @@ async def get_ferrari_safe_haven(
     sport: str = Query("nba", description="Sport to query (nba or mlb)"),
     legacy: bool = Query(False, description="Use legacy Safe Haven logic instead of stored data"),
     sort: Optional[str] = Query(None, description="Sort override. Pass 'gap' to sort by projection-gap ranking (ranking_score_v2 DESC) instead of the default vision_score DESC. NBA only."),
+    include_market_pool: bool = Query(False, description="When False (default), only PrizePicks-playable props are returned (`playable_on_pp == True`). When True, the full multi-book canonical pool (incl. sportsbook-only fallbacks) is returned. Universal SSOT, 2026-04-25."),
 ):
     """
     FERRARI SAFE HAVEN - Returns stored picks with Vision Intel data.
@@ -2194,6 +2254,7 @@ async def get_ferrari_safe_haven(
         sport=sport, tier_name="safe_haven",
         tier_label_prefix="Safe Haven",
         limit=limit, sort=sort,
+        include_market_pool=include_market_pool,
     )
 
 
@@ -2203,6 +2264,7 @@ async def get_ferrari_front_lines(
     limit: int = Query(10, ge=1, le=50),
     sport: str = Query("nba", description="Sport to query (nba or mlb)"),
     sort: Optional[str] = Query(None, description="Sort override. Pass 'gap' to sort by projection-gap ranking (ranking_score_v2 DESC) instead of the default vision_score DESC. NBA only."),
+    include_market_pool: bool = Query(False, description="When False (default), only PrizePicks-playable props are returned (`playable_on_pp == True`). When True, the full multi-book canonical pool (incl. sportsbook-only fallbacks) is returned. Universal SSOT, 2026-04-25."),
 ):
     """
     FERRARI FRONT LINES - Returns stored picks with Vision Intel data.
@@ -2235,6 +2297,7 @@ async def get_ferrari_front_lines(
         sport=sport, tier_name="front_lines",
         tier_label_prefix="Front Lines",
         limit=limit, sort=sort,
+        include_market_pool=include_market_pool,
     )
 
 
@@ -2244,6 +2307,7 @@ async def get_ferrari_war_zone(
     limit: int = Query(10, ge=1, le=50),
     sport: str = Query("nba", description="Sport to query (nba or mlb)"),
     sort: Optional[str] = Query(None, description="Sort override. Pass 'gap' to sort by projection-gap ranking (ranking_score_v2 DESC) instead of the default vision_score DESC. NBA only."),
+    include_market_pool: bool = Query(False, description="When False (default), only PrizePicks-playable props are returned (`playable_on_pp == True`). When True, the full multi-book canonical pool (incl. sportsbook-only fallbacks) is returned. Universal SSOT, 2026-04-25."),
 ):
     """
     FERRARI WAR ZONE - Returns stored high-risk/high-reward picks with Vision Intel.
@@ -2276,6 +2340,7 @@ async def get_ferrari_war_zone(
         sport=sport, tier_name="war_zone",
         tier_label_prefix="War Zone",
         limit=limit, sort=sort,
+        include_market_pool=include_market_pool,
     )
 
 
@@ -2619,6 +2684,7 @@ async def get_all_ferrari_tiers(
     response: Response,
     limit: int = Query(10, ge=1, le=50),
     sport: str = Query("nba", description="Sport (nba or mlb)"),
+    include_market_pool: bool = Query(False, description="When False (default), only PrizePicks-playable props are returned (`playable_on_pp == True`). When True, the full multi-book canonical pool (incl. sportsbook-only fallbacks) is returned. Universal SSOT, 2026-04-25."),
 ):
     """Return all three Ferrari tiers. Delegates to the canonical
     single-tier handlers which read from `{sport}_prop_scores`."""
@@ -2626,14 +2692,17 @@ async def get_all_ferrari_tiers(
     safe_haven = await _serve_ferrari_tier(
         sport=sport, tier_name="safe_haven",
         tier_label_prefix="Safe Haven", limit=limit, sort=None,
+        include_market_pool=include_market_pool,
     )
     front_lines = await _serve_ferrari_tier(
         sport=sport, tier_name="front_lines",
         tier_label_prefix="Front Lines", limit=limit, sort=None,
+        include_market_pool=include_market_pool,
     )
     war_zone = await _serve_ferrari_tier(
         sport=sport, tier_name="war_zone",
         tier_label_prefix="War Zone", limit=limit, sort=None,
+        include_market_pool=include_market_pool,
     )
     return {
         "sport": sport,

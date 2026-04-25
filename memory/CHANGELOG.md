@@ -1,5 +1,66 @@
 # Changelog
 
+## 2026-04-25 — SSOT Stabilization: Extended sync_history metrics + Ferrari PP-playable filter
+
+**Goal**: Stabilize the new Universal SSOT canonical pool by (1) capturing the new pool composition in `sync_history` and (2) restricting Ferrari boards to PrizePicks-playable props by default while keeping the full multi-book pool internally.
+
+### Files changed (4 files, surgical)
+
+1. **`services/scoring/prop_scores_store.py`** (+5 LOC) — added `pp_available`, `playable_on_pp`, `source_anchor`, `anchor_book` to `_SCORE_OUTPUT_FIELDS` so the SSOT flags propagate from raw_prop → score doc.
+
+2. **`services/scoring/recompute.py`** (+10 LOC) — mirrored the four SSOT fields from `raw_prop` onto every score doc, parallel to the existing `tp_source` / `probability_method` mirrors. Pure passthrough, no math.
+
+3. **`services/master_sync.py::_persist_sync_history`** (+50 LOC) — extended observability with 4 new fields per run:
+   - `pp_available_count` — count of `live_props` where `playable_on_pp == True`
+   - `sportsbook_fallback_count` — count where `source_anchor == "sportsbook_fallback"`
+   - `distinct_market_keys` — distinct raw market keys this run pulled (from `dg_raw_odds_markets`)
+   - `anchor_book_breakdown` — per-book canonical-pool sourcing distribution
+   Log line extended with `pp_available={n} sportsbook_fallback={n} market_keys={n}`.
+
+4. **`routes/ferrari_tiers.py`** (+90 LOC):
+   - `_serve_ferrari_tier(...)` accepts `include_market_pool: bool = False`. Default mode drops picks where `playable_on_pp == False`. Score docs missing the field (legacy) are default-allowed so historical rt-tags don't disappear. Over-fetches `limit*4` to respect the user-requested cap after filtering. Response payload gains an `ssot_filter` block reporting `{playable_on_pp_only, include_market_pool, dropped_non_pp_playable}`.
+   - All 4 endpoints (`/v3/ferrari/safe-haven`, `/v3/ferrari/front-lines`, `/v3/ferrari/war-zone`, `/v3/ferrari/all`) accept `?include_market_pool=true` to bypass the filter.
+   - `_merge_score_with_board(...)` (NBA path) now passthroughs `playable_on_pp`, `pp_available`, `source_anchor`, `anchor_book` from score doc → response payload. MLB path (`_get_mlb_tier_picks_from_scores`) gets these for free via `dict(sc)` passthrough.
+
+### Did NOT touch (per directive)
+Scoring formulas, gates, thresholds, ECDF, UniversalGateEngine, metrics_builder, tier_evaluator, frontend, recompute math, `_normalize_market_data`, `master_sync` step ordering.
+
+### Verification (live, 2026-04-25 05:48 UTC, one full sync per sport)
+
+| Metric | NBA | MLB |
+|---|---|---|
+| status / published | success / True | success / True |
+| duration_seconds | 535.2 | 123.0 |
+| events succeeded / discovered | 8 / 8 | 14 / 15 |
+| discovered_market_count | 105 | 56 |
+| **distinct_market_keys** (raw) | **105** | **61** |
+| raw_market_count (rows) | 33,212 | 30,736 |
+| live_props_count | 14,956 | 9,172 |
+| scored_props_count | 13,451 | 8,120 |
+| distinct_stat_types | 42 | 20 |
+| **pp_available_count** | **4,966** (33.2%) | **5,494** (59.9%) |
+| **sportsbook_fallback_count** | **9,990** (66.8%) | **3,678** (40.1%) |
+| **anchor_book_breakdown** | pp=4966, fd=4573, dk=3351, bol=1310, mgm=756 | pp=5494, dk=1679, fd=1496, bol=425, mgm=78 |
+
+PP coverage on PP regression check: NBA 4,966 (close to prior 4,932 from yesterday's smaller slate) ✅ · MLB 5,494 (up from 5,361) ✅. Sportsbook fallback retention is preserved end-to-end into the canonical pool.
+
+### Ferrari PP-playable filter — live behaviour (limit=10)
+
+| Sport / Tier | Default (PP-playable only) | `include_market_pool=true` |
+|---|---|---|
+| NBA / safe-haven | 8 picks (5 dropped) | 10 picks (8 PP + 2 fallback) |
+| NBA / front-lines | 10 picks (12 dropped) | 10 picks (6 PP + 4 fallback) |
+| NBA / war-zone | 10 picks (1 dropped) | 10 picks (10 PP + 0 fallback) |
+| MLB / safe-haven | 10 picks (0 dropped) | 10 picks |
+| MLB / front-lines | 5 picks (0 dropped) | 5 picks |
+| MLB / war-zone | 4 picks (1 dropped) | 5 picks (4 PP + 1 fallback) |
+
+`ssot_filter.dropped_non_pp_playable` is non-zero on every NBA tier — confirming the filter is doing real work after the SSOT pool growth (NBA score collection now contains 9,990 fallback rows that would have dominated the board without this gate).
+
+Score-doc backfill confirms 100% coverage: NBA `final-nba-rt` = 13,451 docs, 0 missing the `playable_on_pp` field; MLB `final-mlb-rt` = 8,120 docs, 0 missing.
+
+
+
 ## 2026-04-25 — UNIVERSAL SSOT: Canonical Prop Pool Decoupled from PrizePicks
 
 **Architectural change**: the canonical prop pool in `services/universal_odds_sync.py:_normalize_market_data` is now built from ANY of the allowed books, not anchored on PrizePicks. PrizePicks is now an overlay, not the source of truth.

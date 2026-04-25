@@ -327,6 +327,10 @@ async def _persist_sync_history(
     distinct_stat_types = 0
     distinct_events = 0
     raw_market_count = 0
+    pp_available_count = 0
+    sportsbook_fallback_count = 0
+    distinct_market_keys = 0
+    anchor_book_breakdown: Dict[str, int] = {}
     try:
         live_coll_name = COLL("live_props", sport)
         live_props_count = await db[live_coll_name].count_documents({})
@@ -336,6 +340,30 @@ async def _persist_sync_history(
         distinct_events = len(
             await db[live_coll_name].distinct("event_id")
         )
+        # ---- Universal SSOT coverage metrics (2026-04-25) ----
+        # `playable_on_pp == True` -> PrizePicks-playable canonicals.
+        pp_available_count = await db[live_coll_name].count_documents(
+            {"playable_on_pp": True}
+        )
+        # `source_anchor == "sportsbook_fallback"` -> canonicals seeded
+        # by a sportsbook because PrizePicks did not list them.
+        sportsbook_fallback_count = await db[live_coll_name].count_documents(
+            {"source_anchor": "sportsbook_fallback"}
+        )
+        # Per-anchor-book breakdown of canonical-pool sourcing.
+        try:
+            anchor_pipeline = [
+                {"$match": {"anchor_book": {"$ne": None}}},
+                {"$group": {"_id": "$anchor_book", "n": {"$sum": 1}}},
+            ]
+            async for row in db[live_coll_name].aggregate(anchor_pipeline):
+                anchor_book_breakdown[str(row.get("_id") or "unknown")] = int(
+                    row.get("n") or 0
+                )
+        except Exception as exc:
+            logger.debug(
+                f"[SYNC_HISTORY:{sport}] anchor_book aggregate failed: {exc}"
+            )
     except Exception as exc:
         logger.debug(
             f"[SYNC_HISTORY:{sport}] live_props count fetch failed: {exc}"
@@ -346,6 +374,13 @@ async def _persist_sync_history(
         # this run's raw-row volume.
         raw_market_count = await db["dg_raw_odds_markets"].count_documents(
             {"sport": sport}
+        )
+        # Distinct raw market keys this sport saw (h2h, spreads,
+        # player_points, player_points_alternate, team_totals, etc.)
+        distinct_market_keys = len(
+            await db["dg_raw_odds_markets"].distinct(
+                "market_key", {"sport": sport}
+            )
         )
     except Exception as exc:
         logger.debug(
@@ -392,6 +427,17 @@ async def _persist_sync_history(
         "scored_props_count": scored_props_count,
         "distinct_stat_types": distinct_stat_types,
         "distinct_events": distinct_events,
+        # ---- Universal SSOT coverage (2026-04-25) ----
+        # `pp_available_count` = canonicals PrizePicks quoted (the
+        # PP-playable subset). `sportsbook_fallback_count` = canonicals
+        # seeded by another book because PrizePicks didn't list them.
+        # `distinct_market_keys` = raw market keys discovered across
+        # `dg_raw_odds_markets` (h2h, spreads, player_*, team_totals…).
+        # `anchor_book_breakdown` = canonical-pool sourcing per book.
+        "pp_available_count": pp_available_count,
+        "sportsbook_fallback_count": sportsbook_fallback_count,
+        "distinct_market_keys": distinct_market_keys,
+        "anchor_book_breakdown": anchor_book_breakdown,
 
         # ---- book / data health ----
         "bookmaker_counts": dict(bookmaker_counts) if bookmaker_counts else {},
@@ -430,7 +476,10 @@ async def _persist_sync_history(
         f"status={status} published={published} "
         f"live={live_props_count} scored={scored_props_count} "
         f"events={distinct_events}/{events_discovered} "
-        f"stats={distinct_stat_types}"
+        f"stats={distinct_stat_types} "
+        f"pp_available={pp_available_count} "
+        f"sportsbook_fallback={sportsbook_fallback_count} "
+        f"market_keys={distinct_market_keys}"
     )
 
 

@@ -586,6 +586,17 @@ async def recompute_sport(
         if "market_probability" in raw:
             doc["market_probability"] = raw["market_probability"]
 
+        # Universal SSOT canonical-pool flags (2026-04-25). Stamped on
+        # every raw prop by universal_odds_sync. Mirror onto the score
+        # doc so read-side endpoints can filter by `playable_on_pp`
+        # without re-joining live_props.
+        for _ssot_k in (
+            "pp_available", "playable_on_pp",
+            "source_anchor", "anchor_book",
+        ):
+            if _ssot_k in raw:
+                doc[_ssot_k] = raw[_ssot_k]
+
         score_docs.append(doc)
 
     # 3. Percentile-normalize vision_score across the sport's slate.
