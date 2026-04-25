@@ -243,6 +243,17 @@ class MLBScoringAdapter(ScoringAdapter):
                 # model_projection and ranking_score_v2 for MLB.
                 model_projection = result.get("predicted")
                 model_sigma = result.get("std_dev")
+                # 2026-05 P0 — `raw_prediction` is the un-modified
+                # `model.predict()[0]` value the HF model produced
+                # before the live-only park_factor / opp_k_rate
+                # multipliers were applied. The ECDF artifacts on
+                # disk were trained on this exact value (see
+                # `scripts/train_mlb_ecdf_artifacts.regenerate_pairs`),
+                # so `raw_prediction` is what we MUST send to the
+                # ECDF lookup to keep training-distribution parity.
+                # `model_projection` (= post-modifier `predicted`)
+                # remains the displayed projection on the score doc.
+                raw_prediction = result.get("raw_prediction")
                 # Fix C (2026-04-25): stamp projection_method as soon
                 # as a valid HF prediction is in hand. Falls back to
                 # None when prediction is rejected upstream.
@@ -288,10 +299,20 @@ class MLBScoringAdapter(ScoringAdapter):
                     try:
                         from services.probability import get_universal_ecdf
                         canonical_stat = hf_model._normalize_stat(stat_type)
+                        # 2026-05 P0 — pass `raw_prediction` (NOT the
+                        # park / opp-K-modified `model_projection`) to
+                        # the ECDF lookup. Training pool was built on
+                        # raw_pred so any other value puts the
+                        # inference projection in the wrong bucket.
+                        ecdf_projection = (
+                            float(raw_prediction)
+                            if raw_prediction is not None
+                            else float(model_projection)
+                        )
                         ecdf_pred = get_universal_ecdf().predict_over_probability(
                             sport="mlb",
                             stat_family=canonical_stat,
-                            projection=float(model_projection),
+                            projection=ecdf_projection,
                             line=float(line),
                         )
                     except Exception as _exc:

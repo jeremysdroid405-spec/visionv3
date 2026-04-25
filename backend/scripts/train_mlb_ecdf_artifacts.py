@@ -50,6 +50,7 @@ from services.probability.ecdf import UniversalECDFProbability
 STAT_FAMILIES = [
     "hits",
     "total_bases",
+    "hits+runs+rbis",       # canonical "Hits+Runs+RBIs" — combo stat
     "strikeouts",          # batter strikeouts (canonical "Batter Strikeouts")
     "pitcher_strikeouts",  # canonical for "Pitcher Strikeouts" / "Pitcher Outs"
     "home_runs",
@@ -59,7 +60,24 @@ STAT_FAMILIES = [
     "walks",                # batter walks
     "hits_allowed",
     "singles",
+    # 2026-05 P0 — coverage gap fix: previously these used raw Gaussian
+    # because the artifact was missing. Adding them so every PP-playable
+    # MLB stat has an ECDF translator.
+    "earned_runs",
+    "pitcher_walks",
+    "stolen_bases",
 ]
+
+# Pitcher stat families — training-pool starter filter requires
+# `innings_pitched > 0` for these (no relief / mid-inning entry rows).
+PITCHER_STATS = {
+    "pitcher_strikeouts", "hits_allowed", "earned_runs", "pitcher_walks",
+}
+# All other STAT_FAMILIES are batter-side; require `at_bats >= 2` so
+# pinch-hit / defensive-sub / 0-PA non-starter rows do NOT contaminate
+# the residual pool. This was the root cause of the slate-wide negative
+# edge on batter 0.5-line OVERs (see /app/memory/CHANGELOG audit notes).
+BATTER_AT_BAT_FLOOR = 2
 
 # Minimum training pairs required before we attempt to fit an ECDF
 # artifact with 10 buckets × 20-per-bucket floor = 200 absolute
@@ -113,6 +131,32 @@ def regenerate_pairs(
             if target_value is None:
                 skipped_no_target += 1
                 continue
+            # 2026-05 P0 — starter / opportunity filter. Without this, the
+            # ECDF residual pool was dominated by 0-PA pinch-hit rows
+            # and 1-PA defensive-sub rows whose actual = 0. At inference
+            # we score CONFIRMED STARTERS, so the residual lookup
+            # underestimated p_over by ~25-30 points on batter 0.5
+            # lines. Mirror NBA's implicit minutes filter by requiring
+            # at-bats / innings-pitched evidence the player actually
+            # had a starter-level opportunity in the target game.
+            if norm_stat in PITCHER_STATS:
+                ip = target_game.get("innings_pitched")
+                try:
+                    ip_f = float(ip) if ip is not None else 0.0
+                except (TypeError, ValueError):
+                    ip_f = 0.0
+                if ip_f <= 0:
+                    skipped_no_target += 1
+                    continue
+            else:
+                ab = target_game.get("at_bats")
+                try:
+                    ab_f = float(ab) if ab is not None else 0.0
+                except (TypeError, ValueError):
+                    ab_f = 0.0
+                if ab_f < BATTER_AT_BAT_FLOOR:
+                    skipped_no_target += 1
+                    continue
             opponent = target_game.get("opponent_abbr")
             feats = hf._build_friction_features(
                 player_master, history, norm_stat,

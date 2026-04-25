@@ -1,5 +1,109 @@
 # Changelog
 
+## 2026-05 — MLB ECDF Probability Calibration P0 Fix
+
+**User directive**: *"Fix MLB ECDF calibration before any gate tuning. Implement P0 only."*
+
+### Root causes (confirmed in audit, 2026-05)
+
+1. **Training/inference projection mismatch**: `train_mlb_ecdf_artifacts.regenerate_pairs` fit ECDF on `model.predict()[0]` (= `raw_pred`), but the live adapter passed the post-modifier `final_pred = raw_pred × park × opp_K` to the same lookup. Buckets were misaligned at every inference.
+2. **Training-pool selection bias**: every `mlb_historical_logs` row was used in residual generation including 0-PA pinch hits and defensive subs. Empirical P(HRR > 0.5) in the training pool was 57 % while live-board confirmed-starter L20 hit rates run 85–90 %. ECDF therefore returned p_over ~25–30 pts below reality on every batter 0.5-line OVER.
+3. Missing artifacts for `earned_runs` and `pitcher_walks` (forced raw-Gaussian fallback for 76 props).
+
+### Files changed (2 files, scoped to MLB only)
+
+1. **`scripts/train_mlb_ecdf_artifacts.py`**
+   - Added `hits+runs+rbis`, `earned_runs`, `pitcher_walks` to `STAT_FAMILIES` (15 families total).
+   - Added `PITCHER_STATS = {pitcher_strikeouts, hits_allowed, earned_runs, pitcher_walks}` and `BATTER_AT_BAT_FLOOR = 2`.
+   - In `regenerate_pairs`, target_game now must satisfy `at_bats >= 2` for batter stats or `innings_pitched > 0` for pitcher stats.
+
+2. **`services/scoring/adapters/mlb_scoring.py`** — Option B (NBA-parity choice):
+   - Captured `raw_prediction = result.get("raw_prediction")` alongside `model_projection`.
+   - ECDF lookup now passes `raw_prediction` (when available) instead of the modified `model_projection`. `model_projection` remains the displayed value on the score doc; only the probability lookup is realigned. Mirrors NBA which has no post-prediction modifier.
+
+### Artifact quality (post-retrain, 2026-05)
+
+| Family | pairs | min bucket n | max bucket n |
+|---|---:|---:|---:|
+| hits | 58 132 | 5 813 | 16 287 |
+| total_bases | 58 132 | 5 813 | 16 287 |
+| **hits+runs+rbis** | 58 132 | **5 813** (was 2) | 16 287 |
+| strikeouts | 58 132 | 5 812 | 16 287 |
+| home_runs | 58 132 | 2 396 | 16 287 |
+| rbis | 58 132 | 5 808 | 16 287 |
+| runs | 58 132 | 5 810 | 16 287 |
+| walks | 58 132 | 5 812 | 16 287 |
+| singles | 58 132 | 5 813 | 16 287 |
+| stolen_bases | 58 132 | 720 | 16 287 |
+| pitcher_strikeouts | 15 698 | 1 567 | – |
+| hits_allowed | 15 698 | 1 569 | – |
+| **earned_runs** (new) | 15 698 | 1 540 | – |
+| **pitcher_walks** (new) | 15 698 | 1 569 | – |
+| doubles | 0 | – | – | (HF model file missing — falls back to old artifact) |
+
+Every retrained bucket now has n > 720; HRR's smallest-bucket residual count jumped from **2 → 5 813** (3 000× improvement).
+
+### Target rows — before vs after
+
+| Player / Stat / L / Side | metric | Before | After | Δ |
+|---|---|---|---|---|
+| Michael Busch BS 0.5 OVER | ECDF p_over | 0.867 | 0.844 | -0.023 (calibration; HR 90 → bucket avg 84) |
+| | edge_pct | 18.3 | 16.0 | -2.3 |
+| | tier | unqualified (tp_gate) | unqualified (tp_gate) | – |
+| **Elly De La Cruz HRR 0.5 OVER** | ECDF p_over | 0.621 | **0.794** | **+0.173** |
+| | edge_pct | -15.1 | **+2.2** | **+17.3** |
+| | tier | unqualified | unqualified (cv_gate; cv 0.84 > 0.80) | – |
+| Yandy Diaz HRR 0.5 OVER | ECDF p_over | 0.654 | 0.697 | +0.043 |
+| | edge_pct | -13.8 | -9.5 | +4.3 |
+| Ildemaro Vargas Hits 0.5 OVER | ECDF p_over | 0.616 | 0.654 | +0.038 |
+| | edge_pct | -17.1 | -13.3 | +3.8 |
+| Ryan Weathers PStrk 3.5 OVER | ECDF p_over | 0.972 | 0.973 | +0.001 |
+| | edge_pct | 13.7 | 13.8 | +0.1 |
+| | tier | safe_haven | safe_haven | unchanged |
+
+### Slate-level p_model vs market vs HR alignment (PP-playable, OVER, L=0.5)
+
+| stat | n | avg p_act | avg TP | avg HR | avg edge | %edge>0 | gap (p_act − HR) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Hits | 205 | 64.4 | 61.6 | 58.0 | +2.7 | 65 % | +6.4 |
+| Hits+Runs+RBIs | 198 | 67.8 | 70.9 | 64.5 | -3.2 | 27 % | +3.3 |
+| Total Bases | 197 | 62.5 | 62.6 | 58.9 | -0.1 | 54 % | +3.6 |
+| Batter Strikeouts | 198 | 62.6 | 61.4 | 55.8 | +1.2 | 51 % | +6.8 |
+| Runs | 218 | 41.7 | 40.7 | 36.2 | +1.0 | 46 % | +5.5 |
+| RBIs | 218 | 33.5 | 31.2 | 28.8 | +2.2 | 49 % | +4.7 |
+| Home Runs | 181 | 16.2 | 17.3 | 12.7 | -1.0 | 26 % | +3.5 |
+| Singles | 205 | 56.4 | 44.4 | 41.9 | +12.0 | 90 % | +14.5 |
+| Stolen Bases | 107 | 11.2 | 14.2 | 12.1 | -3.0 | 13 % | -0.9 |
+| Doubles | 217 | 14.6 | 19.2 | 14.7 | -4.6 | 9 % | -0.1 |
+
+**Before**: gap (p_act − HR) ranged −20 to −30 pts on every batter stat. **After**: gap collapsed to +3 to +14 pts (model now slightly above L20 HR — sensible for a slate of confirmed starters projected for above-average performance). Average edge on batter 0.5 OVERs no longer massively negative for sharp favorites.
+
+### Pitcher regression check
+
+`Pitcher Strikeouts`: n=125, avg_edge=-4.0, SH=**1** (Ryan Weathers, identical pass to before). Pitcher pool was ~unchanged by the starter filter (innings_pitched filter ≈ original behaviour); avg edge nudged down because calibration is more honest, but no top-tier pick was lost.
+
+### NBA unchanged
+
+NBA artifacts (Apr 24 mtime) untouched. NBA tier counts: SH=10, FL=100, WZ=17, UQ=3615 — within natural live-pool churn of pre-fix snapshot. Code path also untouched (`mlb_scoring.py` only).
+
+### Tier impact (MLB final)
+
+| tier | before | after |
+|---|---:|---:|
+| safe_haven | 1 | **1** |
+| front_lines | 6 | 5 |
+| war_zone | 21 | 13 |
+| unqualified | 5 340 | 4 942 |
+| total | 5 368 | 4 961 |
+
+(7 % live-pool shrinkage from natural game-clock locks between recomputes, unrelated to fix.)
+
+### Guardrails honoured
+
+Zero changes to: gates, thresholds, routing, TP engine, HR, CV, PP playability, frontend, NBA. No Gemini / Vision Intel calls.
+
+
+
 ## 2026-05 — PP Side-Aware Playability Filter at Scoring Boundary
 
 **User directive**: *"The board is supposed to be PP-playable only. They should never enter scoring, tiers, rejects, or Safe Haven. Make PP playability side-aware and identical across NBA, MLB, and future sports."*
