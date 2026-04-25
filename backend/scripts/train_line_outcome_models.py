@@ -51,6 +51,9 @@ LINE_GRID: Dict[str, List[float]] = {
     # alt support; saved as `hits_runs_rbis.pkl` (LOM loader
     # rewrites `+` → `_` for filename safety).
     "hits+runs+rbis": [0.5, 1.5, 2.5, 3.5, 4.5, 5.5],
+    # 2026-05 Phase 2D — RBIs. PP standard 0.5; alt grid extends to
+    # 3.5 (rare-event longshot OVER).
+    "rbis": [0.5, 1.5, 2.5, 3.5],
 }
 
 
