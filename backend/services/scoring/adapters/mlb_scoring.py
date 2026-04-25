@@ -329,6 +329,29 @@ class MLBScoringAdapter(ScoringAdapter):
         if tp_result.get("market_probability") is not None:
             prop["market_probability"] = tp_result["market_probability"]
 
+        # NBA-PARITY TP FALLBACK FOR VISION SCORE (2026-04-25, revised).
+        # MLB markets are dominated by one-sided alt lines whose
+        # raw-implied probability carries vig and pessimistically
+        # biases `fair_prob` (the legacy vision_score anchor),
+        # collapsing edge to 0 even when the model agrees with the
+        # market consensus.
+        #
+        # Override semantics:
+        #   tp_source == "devig"  → tp / 100  (clean de-vigged consensus,
+        #                                       strict improvement over
+        #                                       single-book fair_prob)
+        #   else                   → None      (leave to legacy
+        #                                       `fair_prob` selector;
+        #                                       p_true_model is NOT
+        #                                       used because it == p_model
+        #                                       and would self-compare).
+        # `tp` itself is preserved unchanged for audit. This guarantees
+        # one_sided behavior is at-worst identical to pre-fix.
+        tp_for_vs: Optional[float] = None
+        if tp_result.get("tp_source") == "devig" and tp is not None:
+            tp_for_vs = round(float(tp) / 100.0, 6)
+        prop["tp_for_vs"] = tp_for_vs
+
         # ---- Shared p_true ladder (carbon-copy with NBA) ---------------
         # Ladder order: model → hit_rate → vk2 → fair
         # MLB currently has no vk2 model on disk, so that rung stays None
@@ -385,6 +408,7 @@ class MLBScoringAdapter(ScoringAdapter):
             projection_method=projection_method,
             edge_pct=edge_pct,
             tp=tp,
+            tp_for_vs=tp_for_vs,
             ceiling_rate=ceiling_rate,
             books_available_count=books,
             raw_prop=prop,

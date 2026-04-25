@@ -48,6 +48,9 @@ _SCORE_OUTPUT_FIELDS = (
     # was computed; None otherwise. Gate engine consumes this for
     # small-sample-aware hit_rate_gate evaluation.
     "hit_rate_sample_size",
+    # TP-for-vision-score audit (2026-04-25). Decimal 0..1 anchor
+    # used in vision_score edge calculation.
+    "tp_for_vs",
     # Projection-gap ranking signal (2026-02-20 shadow G1).
     # Persisted for `?sort=gap` opt-in on tier endpoints.
     "ranking_score_v2",

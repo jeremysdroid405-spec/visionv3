@@ -435,6 +435,12 @@ async def recompute_sport(
             # None (insufficient sample / missing identity / etc).
             # Gate engine reads this for small-sample penalty.
             "hit_rate_sample_size": ctx.hit_rate_sample_size,
+            # TP-for-vision-score audit field (2026-04-25). Decimal
+            # 0..1 anchor used for edge calculation in compute_vision_score.
+            # Persist the actual value used so downstream observability
+            # can confirm whether vision_score was anchored on de-vigged
+            # TP, model probability, or legacy fair_prob.
+            "tp_for_vs": ctx.tp_for_vs,
             # Ceiling rate (PR-2, 2026-04-25). Persisted so the
             # post-vision re-eval has the exact value the first pass
             # used as input to `ceiling_gate` (MLB war_zone). Without
