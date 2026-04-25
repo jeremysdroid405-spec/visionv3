@@ -72,6 +72,13 @@ _SCORE_OUTPUT_FIELDS = (
     # gate engine for binary MLB props. Persisted on every MLB doc;
     # NBA leaves these None.
     "avg_hit_margin", "avg_miss_margin",
+    # Line-Outcome Model (LOM) audit trail (2026-05). When `lom_v1`
+    # is the active probability_method, `lom_p_over` carries the
+    # raw P(over) returned by the calibrated classifier so we can
+    # diff it against `ecdf_p_over` and `raw_gaussian_p_over` in
+    # observability endpoints. Sport-agnostic field — left None on
+    # NBA / NFL until those LOM artifacts ship.
+    "lom_p_over", "lom_version",
     # War Zone CV scoring modifier (2026-04-22). CV floor removed from
     # War Zone eligibility; CV now only contributes a small +/- to the
     # ranking score. Stamped by

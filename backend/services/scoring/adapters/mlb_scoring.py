@@ -344,6 +344,52 @@ class MLBScoringAdapter(ScoringAdapter):
                     else:
                         prop["probability_method"] = "gaussian"
 
+                # --- Universal Line-Outcome Model (LOM) override ----------
+                # 2026-05 — preferred translator when a per-stat-family
+                # artifact exists at
+                # `models/probability/lom/mlb/{family}.pkl`. v1 features
+                # are intentionally market-independent (no
+                # `market_implied_prob`, no `odds_bucket`) so the
+                # LOM-derived edge stays comparable to TP. Gracefully
+                # falls through to whatever ECDF / Gaussian decision the
+                # block above already made when the artifact is missing.
+                if model_projection is not None:
+                    try:
+                        from services.probability.line_outcome import (
+                            get_universal_lom,
+                        )
+                        canonical_stat = hf_model._normalize_stat(stat_type)
+                        lom_projection = (
+                            float(raw_prediction)
+                            if raw_prediction is not None
+                            else float(model_projection)
+                        )
+                        lom_p_over = get_universal_lom().predict_proba_over(
+                            sport="mlb",
+                            stat_family=canonical_stat,
+                            projection=lom_projection,
+                            line=float(line),
+                            sigma=(
+                                float(model_sigma)
+                                if model_sigma is not None else None
+                            ),
+                            hit_rate_at_line=hit_rate_over,
+                            hit_rate_sample_size=hr_sample_size,
+                            cv=cv,
+                            avg_hit_margin=avg_hit_margin,
+                            avg_miss_margin=avg_miss_margin,
+                        )
+                    except Exception as _exc:
+                        lom_p_over = None
+                    if lom_p_over is not None:
+                        if "UNDER" in side:
+                            p_true_model = round(1.0 - lom_p_over, 4)
+                        else:
+                            p_true_model = round(lom_p_over, 4)
+                        prop["lom_p_over"] = round(lom_p_over, 4)
+                        prop["lom_version"] = "v1-no-market"
+                        prop["probability_method"] = "lom_v1"
+
         # Books available
         books = 0
         if pp_layer: books += 1
