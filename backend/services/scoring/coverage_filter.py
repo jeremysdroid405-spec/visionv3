@@ -48,7 +48,7 @@ Returned stats dict shape
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -179,3 +179,140 @@ def filter_priceable(
         "single_book": stat_single,
         "pp_only": total_excluded,
     }
+
+
+# ============================================================================
+# PP Playability Filter (2026-05) — side-aware PrizePicks contract
+# ============================================================================
+#
+# Universal rule, identical across NBA / MLB / NFL:
+#
+#     A prop is eligible for scoring, tiering, and the cached board ONLY
+#     if PrizePicks itself listed THAT EXACT player + stat + line + side.
+#
+# This is enforced as a hard filter at every adapter's `load_live_props`
+# entry point (the single chokepoint every scoring run funnels through).
+#
+# Source of truth:
+#     prop["playable_on_pp"] is True  ↔  prop["pp_layer"] is not None
+#
+# `pp_layer` is set by `universal_odds_sync._normalize_market_data` only
+# when PrizePicks quoted the canonical_key
+# (sport|event|player|stat|line|side). Sportsbook fallbacks
+# (`source_anchor == "sportsbook_fallback"`) carry `playable_on_pp=False`
+# and are dropped here.
+#
+# Why filter at the scoring boundary (vs inside normalization):
+#   - The full canonical pool is still useful for research / alt-line
+#     tracking / future non-PP-playable products. We keep the pool intact
+#     in `{sport}_live_props` and gate it once at the scoring entrypoint.
+#   - The TP-engine companion map is intentionally built over the FULL
+#     pool BEFORE this filter so OVER-side de-vig TP can still pair its
+#     same-book UNDER companion when the UNDER is sportsbook-only.
+# ============================================================================
+
+
+def filter_pp_playable(
+    props: List[Dict],
+    *,
+    sport: Optional[str] = None,
+    run_id: Optional[str] = None,
+    log_level: int = logging.INFO,
+) -> Tuple[List[Dict], Dict[str, int]]:
+    """Drop every prop where `playable_on_pp != True`.
+
+    Universal — applied identically for NBA, MLB, and any future sport.
+    Pairs with `filter_priceable` (0-book exclusion) at every adapter's
+    `load_live_props` step.
+
+    Returns the kept subset and a stats dict for sync-history logging.
+    """
+    total_seen = 0
+    dropped_no_pp = 0
+    dropped_by_side: Dict[str, int] = {}
+    dropped_by_stat_side_line: Dict[str, int] = {}
+
+    kept: List[Dict] = []
+    for prop in props:
+        total_seen += 1
+        if prop.get("playable_on_pp") is True:
+            kept.append(prop)
+            continue
+        dropped_no_pp += 1
+        side = (prop.get("recommendation") or "?").upper()
+        dropped_by_side[side] = dropped_by_side.get(side, 0) + 1
+        key = (
+            f"{prop.get('stat_type','?')}|{side}|{prop.get('line','?')}"
+        )
+        dropped_by_stat_side_line[key] = (
+            dropped_by_stat_side_line.get(key, 0) + 1
+        )
+
+    tag_parts = ["PP_PLAYABLE_FILTER"]
+    if run_id:
+        tag_parts.append(str(run_id))
+    if sport:
+        tag_parts.append(sport.upper())
+    tag = "[" + "] [".join(tag_parts) + "]"
+
+    logger.log(
+        log_level,
+        f"{tag} total={total_seen} dropped_no_pp_side={dropped_no_pp} "
+        f"remaining={len(kept)} "
+        f"dropped_by_side={dropped_by_side}"
+    )
+
+    return kept, {
+        "total_props_seen": total_seen,
+        "dropped_no_pp_side": dropped_no_pp,
+        "remaining": len(kept),
+        "dropped_by_side": dropped_by_side,
+        "dropped_by_stat_side_line": dropped_by_stat_side_line,
+    }
+
+
+def audit_pp_side_legality(
+    props: List[Dict], *, sport: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Post-sync assertion: every `playable_on_pp=True` prop MUST have a
+    non-null `pp_layer` (PrizePicks quoted that exact side). Returns a
+    structured violation report — empty `violations` list = contract
+    holds.
+
+    Tests these specific PP-illegal patterns the user flagged:
+        MLB stolen_bases UNDER 0.5
+        MLB doubles UNDER 0.5
+        MLB home_runs UNDER 0.5
+        NBA extreme alternate UNDERs
+    """
+    violations: List[Dict] = []
+    flag_counts = {
+        "playable_on_pp_with_no_pp_layer": 0,
+        "pp_available_with_no_pp_layer": 0,
+    }
+    for p in props:
+        if p.get("playable_on_pp") is True and p.get("pp_layer") is None:
+            flag_counts["playable_on_pp_with_no_pp_layer"] += 1
+            if len(violations) < 50:
+                violations.append({
+                    "player": p.get("player_name"),
+                    "stat": p.get("stat_type"),
+                    "line": p.get("line"),
+                    "side": p.get("recommendation"),
+                    "source_anchor": p.get("source_anchor"),
+                    "anchor_book": p.get("anchor_book"),
+                })
+        if p.get("pp_available") is True and p.get("pp_layer") is None:
+            flag_counts["pp_available_with_no_pp_layer"] += 1
+
+    return {
+        "sport": sport,
+        "total_checked": len(props),
+        "flag_counts": flag_counts,
+        "violations_sample": violations,
+        "contract_holds": (
+            flag_counts["playable_on_pp_with_no_pp_layer"] == 0
+            and flag_counts["pp_available_with_no_pp_layer"] == 0
+        ),
+    }
+

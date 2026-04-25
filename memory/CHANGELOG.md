@@ -1,5 +1,56 @@
 # Changelog
 
+## 2026-05 — PP Side-Aware Playability Filter at Scoring Boundary
+
+**User directive**: *"The board is supposed to be PP-playable only. They should never enter scoring, tiers, rejects, or Safe Haven. Make PP playability side-aware and identical across NBA, MLB, and future sports."*
+
+### Read-only trace findings
+
+- `universal_odds_sync._normalize_market_data` (Pass 1 / Pass 2) is **already side-aware** — `canon_key = sport|event|player|stat|line|side` and `pp_layer` only attaches when PrizePicks itself quoted that exact tuple.
+- `pp_available = (pp_layer is not None)` and `playable_on_pp = pp_available` are stamped per-side correctly.
+- Verified: 119 MLB Stolen Bases UNDER 0.5 rows existed pre-fix, **0** had `playable_on_pp=True` (PP only listed OVER). Same for Doubles UNDER 0.5 (238 rows, 0 PP-playable) and Home Runs UNDER 0.5 (no rows).
+- **Real bug**: the **scoring adapter** (`load_live_props`) only enforced the 0-Book Exclusion Rule (`book_count ≥ 1`). Sportsbook-fallback rows (DK/MGM-anchored, `playable_on_pp=False`) flowed into scoring → tiering → rejects.
+
+### Files changed (3 files)
+
+1. **`services/scoring/coverage_filter.py`** (+~110 LOC)
+   - Added `filter_pp_playable(props, sport)` — sport-agnostic hard filter dropping every `playable_on_pp != True` row.
+   - Added `audit_pp_side_legality(props, sport)` — diagnostic returning `playable_on_pp_with_no_pp_layer` and `pp_available_with_no_pp_layer` violation counts plus a sample (`contract_holds=True` when both = 0).
+
+2. **`services/scoring/adapters/mlb_scoring.py`** (+~10 LOC) — `load_live_props` now: (1) `filter_priceable` → (2) build `_companion_map` over the FULL pre-filter pool (preserves OVER-side de-vig pairing) → (3) `filter_pp_playable` → return.
+
+3. **`services/scoring/adapters/nba_scoring.py`** (+~10 LOC) — identical pattern as MLB.
+
+### Validation report (post-fix recompute, 2026-04-25)
+
+| Sport | Live total | playable_on_pp=True | Invalid (pp_layer null) | OVER PP-pl | UNDER PP-pl | UNDER 0.5 PP-pl |
+|---|---:|---:|---:|---:|---:|---:|
+| NBA | 15 937 | 5 557 | **0** | 4 758 | 799 | 41 |
+| MLB | 12 682 | 6 418 | **0** | 5 984 | 434 | 132 |
+
+| Sport | Scored (`final-{sport}-rt`) | safe_haven | front_lines | war_zone | unqualified | pp_playable!=True bleed |
+|---|---:|---:|---:|---:|---:|---:|
+| NBA | 3 781 | 11 | 117 | 16 | 3 637 | **0** |
+| MLB | 5 368 | 1 | 6 | 21 | 5 340 | **0** |
+
+**Per-stat-side spot checks (post-fix)**:
+- MLB Stolen Bases UNDER 0.5 `playable_on_pp=True`: **0**
+- MLB Doubles UNDER 0.5 `playable_on_pp=True`: **0**
+- MLB Home Runs UNDER 0.5 `playable_on_pp=True`: **0**
+- MLB Triples UNDER 0.5 `playable_on_pp=True`: **0**
+- Safe Haven passes with line<1.0 (NBA): **0**
+- Safe Haven passes with line<1.0 (MLB): **0**
+
+### Top 20 MLB SH rejects post-fix (now genuine PP-playable props)
+- Mostly `Batter Strikeouts OVER 0.5` and `Hits+Runs+RBIs OVER 0.5` failing real `cv_gate` / `edge_gate` (negative edge despite high HR — the edge gate doing exactly what it should).
+- **No more** Stolen Bases / Doubles / Home Runs UNDER 0.5 rejects.
+
+### Guardrails preserved
+- No changes to gates, thresholds, routing, TP, HR, CV, vision_score, or frontend.
+- TP-engine companion map still built over the full pre-PP-filter pool so OVER-side de-vig TP keeps its same-book UNDER companion when the UNDER row is dropped.
+
+
+
 ## 2026-05 — REMOVED: MLB Goblin-Line Threshold Override (Complete Strip)
 
 **Goal**: User directive — *"Make MLB gates transparent and identical in behavior to the normal threshold config. No hidden overrides for line < 1.0."*

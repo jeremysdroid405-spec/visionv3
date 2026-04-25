@@ -226,7 +226,9 @@ class NBAScoringAdapter(ScoringAdapter):
         # pp_only and MUST NOT enter scoring, tiering, or the cached
         # board. Applied here so every NBA scoring run — delta, master
         # sync, recompute — goes through the same filter.
-        from services.scoring.coverage_filter import filter_priceable
+        from services.scoring.coverage_filter import (
+            filter_priceable, filter_pp_playable,
+        )
         priceable, coverage_stats = filter_priceable(props, sport="nba")
         self.last_coverage_stats = coverage_stats
 
@@ -235,7 +237,16 @@ class NBAScoringAdapter(ScoringAdapter):
         # OVER companion even when the OVER was pp_only-filtered.
         from services.scoring.tp_engine import build_companion_map
         self._companion_map = build_companion_map(props)
-        return priceable
+
+        # PP Side-Aware Playability Filter (2026-05). Universal across
+        # NBA / MLB / NFL — see coverage_filter.filter_pp_playable for
+        # contract. Drops every sportsbook-fallback row whose exact
+        # side PrizePicks did not list. Identical to the MLB
+        # adapter's chokepoint so cross-sport rejection sets stay
+        # symmetric.
+        pp_playable, pp_stats = filter_pp_playable(priceable, sport="nba")
+        self.last_pp_playable_stats = pp_stats
+        return pp_playable
 
     def _get_vk(self, db):
         """Lazy-load the legacy VegasKillerModel + cache stat-specific residual SDs."""

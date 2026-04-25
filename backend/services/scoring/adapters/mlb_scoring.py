@@ -48,7 +48,9 @@ class MLBScoringAdapter(ScoringAdapter):
         # This is the single MLB chokepoint — every scoring run funnels
         # through `load_live_props`, so filtering here covers delta,
         # master-sync, and recompute paths uniformly.
-        from services.scoring.coverage_filter import filter_priceable
+        from services.scoring.coverage_filter import (
+            filter_priceable, filter_pp_playable,
+        )
         priceable, coverage_stats = filter_priceable(props, sport="mlb")
         # Attach stats for the caller (pipeline logs / sync-result JSON).
         self.last_coverage_stats = coverage_stats
@@ -61,7 +63,18 @@ class MLBScoringAdapter(ScoringAdapter):
         # can reuse it without re-scanning live_props per prop.
         from services.scoring.tp_engine import build_companion_map
         self._companion_map = build_companion_map(props)
-        return priceable
+
+        # PP Side-Aware Playability Filter (2026-05). Universal across
+        # NBA / MLB / NFL — a prop is eligible for scoring ONLY when
+        # PrizePicks itself listed THAT EXACT player + stat + line + side.
+        # Sportsbook-fallback rows (e.g., DK-only UNDER 0.5 stolen_bases
+        # when PP listed only OVER) are dropped here so they never enter
+        # tiering, rejects, or Safe Haven. Companion map above is built
+        # over the full pre-filter pool so OVER-side de-vig pairing is
+        # preserved when its UNDER twin gets dropped.
+        pp_playable, pp_stats = filter_pp_playable(priceable, sport="mlb")
+        self.last_pp_playable_stats = pp_stats
+        return pp_playable
 
     def _get_stats_cache(self, db):
         """Return the MLB stat-utility cache (hit-rate / CV / ceiling rate
