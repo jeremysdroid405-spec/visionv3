@@ -938,7 +938,17 @@ async def _enrich_nba_pace_delta(db) -> dict:
 #   - Frontend
 # =====================================================================
 
-MAX_BOARD_VISION_INTEL_PICKS = 75
+MAX_BOARD_VISION_INTEL_PICKS = 200
+# Per-tier caps sized to comfortably cover real-world slate distributions
+# (`front_lines` regularly has 100+ active score docs; `safe_haven` /
+# `war_zone` rarely exceed 30). With three batched Gemini calls per
+# recompute the cost is bounded; runaway protection is via the global
+# `MAX_BOARD_VISION_INTEL_PICKS` ceiling.
+PICKS_PER_TIER_CAP = {
+    "war_zone": 50,
+    "front_lines": 120,
+    "safe_haven": 50,
+}
 
 
 async def _enrich_nba_board_vision_intel(db) -> dict:
@@ -961,6 +971,7 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
         "cache_hits": 0,
         "cache_miss_to_call": 0,
         "capped_at": MAX_BOARD_VISION_INTEL_PICKS,
+        "per_tier_caps": PICKS_PER_TIER_CAP,
         "after_cap_to_call": 0,
         "tiers_called": {},
         "gemini_returned": 0,
@@ -1017,12 +1028,25 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
         to_call.append(p)
     metrics["cache_miss_to_call"] = len(to_call)
 
-    # Cap. Prioritise War Zone → Front Lines → Safe Haven so the most
-    # actionable picks always get fresh narratives when the cap bites.
-    if len(to_call) > MAX_BOARD_VISION_INTEL_PICKS:
-        priority = {"war_zone": 0, "front_lines": 1, "safe_haven": 2}
-        to_call.sort(key=lambda x: priority.get(x.get("tier"), 9))
-        to_call = to_call[:MAX_BOARD_VISION_INTEL_PICKS]
+    # Cap. Apply a per-tier cap first (so a populous tier like
+    # `front_lines` cannot starve the smaller `safe_haven`/`war_zone`
+    # board), then enforce the global cap. Within each tier, sort by
+    # descending `vision_score` so the most actionable picks always win
+    # the cap fight.
+    if to_call:
+        by_tier_cap: dict = defaultdict(list)
+        for p in to_call:
+            by_tier_cap[p.get("tier")].append(p)
+        capped: list = []
+        for tier_name in ("war_zone", "front_lines", "safe_haven"):
+            tier_picks = by_tier_cap.get(tier_name, [])
+            tier_picks.sort(
+                key=lambda d: float(d.get("vision_score") or 0), reverse=True
+            )
+            capped.extend(tier_picks[:PICKS_PER_TIER_CAP.get(tier_name, 50)])
+        if len(capped) > MAX_BOARD_VISION_INTEL_PICKS:
+            capped = capped[:MAX_BOARD_VISION_INTEL_PICKS]
+        to_call = capped
     metrics["after_cap_to_call"] = len(to_call)
 
     if not to_call:
@@ -1047,16 +1071,28 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
     for tier_name, tier_picks in by_tier.items():
         # Build the prop dicts shape expected by analyze_tier_batch —
         # mirrors what `_enrich_under_picks_with_gemini` passes today.
-        try:
-            results = await vis.analyze_tier_batch(
-                tier_picks, tier_name, strict=True
-            )
-        except Exception as exc:
-            logger.warning(
-                f"[MASTER_SYNC:nba] vision_intel batch failed for {tier_name}: {exc}"
-            )
-            skip[f"batch_failed_{tier_name}"] = str(exc)
-            continue
+        # Chunk: Gemini's batched response truncates above ~20 props per
+        # call, so split into deterministic chunks before invoking.
+        CHUNK = 20
+        results: list = []
+        chunk_failed = False
+        for i in range(0, len(tier_picks), CHUNK):
+            chunk = tier_picks[i : i + CHUNK]
+            try:
+                chunk_results = await vis.analyze_tier_batch(
+                    chunk, tier_name, strict=True
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"[MASTER_SYNC:nba] vision_intel chunk failed "
+                    f"for {tier_name} ({i}-{i+len(chunk)}): {exc}"
+                )
+                results.extend([None] * len(chunk))
+                chunk_failed = True
+                continue
+            results.extend(chunk_results or [None] * len(chunk))
+        if chunk_failed:
+            skip[f"chunk_failed_{tier_name}"] = True
 
         tier_returned = 0
         tier_empty = 0

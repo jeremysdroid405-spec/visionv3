@@ -1,6 +1,40 @@
 # Changelog
 
-## 2026-04-25 — Vision Intel / Gemini Wired Back in (Active Board Only, Capped)
+## 2026-04-25 — Vision Intel Coverage Hotfix (per-tier caps + chunked Gemini batches)
+
+**User report:** Only War Zone showed Gemini Vision Intel in the UI. Safe Haven and Front Lines fell back to template text after slate refreshes.
+
+**Root cause (NOT a frontend mapping bug — backend selection issue):**
+1. Step 6 selected by score-doc `tier` field with global cap `MAX_BOARD_VISION_INTEL_PICKS=75`.
+2. Score-doc tier counts: `front_lines=119, war_zone=13, safe_haven=8` (139 active, vs ~24 user-visible after gates).
+3. Priority order `war_zone → front_lines → safe_haven` consumed the cap with WZ (15) + FL (60) = 75. Safe Haven received 0 Gemini coverage.
+4. Front Lines also had partial coverage because the 60 picks selected by `vision_score` did not always include every API-visible pick (selection vs gating mismatch).
+5. Additional issue: `analyze_tier_batch` truncated responses for >~20-prop batches → `gemini_empty=45/55`.
+
+**Fix (still backend-only, 1 file changed):**
+- **`backend/services/master_sync.py`:**
+  1. Replaced single global cap with per-tier caps (`PICKS_PER_TIER_CAP = {war_zone: 50, front_lines: 120, safe_haven: 50}`) plus runaway ceiling `MAX_BOARD_VISION_INTEL_PICKS=200`. Picks within each tier are still ranked by descending `vision_score` so high-quality picks win the cap fight, but no tier can be starved.
+  2. Wrapped `analyze_tier_batch` in chunked invocation: process tier picks in groups of `CHUNK=20`. Gemini reliably returns full batches at this size; previously 55-prop batches truncated to ~10 valid responses.
+
+**Did NOT touch (per directive):** scoring · gates · ECDF · UniversalGateEngine · thresholds · recompute · odds sync · frontend · Ferrari tier logic.
+
+**Verification:**
+
+| Tier | API picks | Before (Gemini/Total) | After (Gemini/Total) |
+|---|---|---|---|
+| Safe Haven | 7 | 0/7 | **7/7** |
+| Front Lines | 10 | 1/10 | **10/10** |
+| War Zone | 6 | 6/6 | **6/6** |
+| **Total** | 23 | 7/23 (30%) | **23/23 (100%)** |
+
+`_enrich_nba_board_vision_intel` metrics on cold run: `cache_hits=94, cache_miss_to_call=45, after_cap_to_call=45, gemini_returned=45, gemini_empty=0, score_writes=45, cb_writes=45, fallback_in_db_after=5` (the 5 are score docs whose recommendation flipped between Step 3 and Step 6 — non-board props).
+
+**UI validation (Playwright, 9 picks across SH+FL+WZ):**
+- 7/7 valid clicks render Target-Lock Rationale section
+- 7/7 render "Powered by Vision Intel" badge
+- 0 fallback fingerprints (`is hammering` / `sits above the` / `to ride` / `consistent enough to back` all = 0 across all 7 detail pages)
+
+
 
 **Goal:** All Vision Intel summaries shown to users were deterministic fallback templates from `_generate_vision_fallback` (e.g. *"Jalen Duren is hammering PTS at an 85% L10 over clip — projection of 20.2 sits above the 11.5 line for a +8.7 edge to ride."*). Gemini producer (`VisionIntelService.analyze_tier_batch`) was functional but completely unwired since the 2026-04-22 consolidation deleted UnifiedPipeline / optimized_sync_engine. `scheduled_hourly_vision_intel_sync` was defined in `server.py` but never registered with APScheduler. Coverage of real Gemini text on the slate: 0 / 3,829 score docs.
 
