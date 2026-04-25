@@ -153,19 +153,22 @@ class MLBScoringAdapter(ScoringAdapter):
             hit_rate_over = None
             hit_rate_under = None
             hit_rate_status = "missing_bdl_id"
+            hr_sample_size = None
             ceiling_rate = None
         else:
             cv = stats._calculate_cv(bdl_player_id, stat_type)
             cv_status = "computed" if cv is not None else "missing_source_distribution"
-            # Side-aware HR (2026-04-25, Fix A). Use the new
-            # `_calculate_hit_rate_sides` so both `hit_rate_over` and
-            # `hit_rate_under` are persisted on the score doc — the
-            # gate engine and post-vision re-eval consume the side
-            # field directly. Picked-side `hit_rate` mirrors the
-            # legacy field used by the p_true ladder.
-            hit_rate_over, hit_rate_under, _hr_avg = (
+            # Side-aware HR (2026-04-25, HR v3 sample-size aware).
+            # `_calculate_hit_rate_sides` returns the OVER/UNDER pair,
+            # the season average, and the actual sample size used (10
+            # ≤ n ≤ 20). When the player has < 10 valid logs, all four
+            # come back None (None,None,None,n_or_None). Sample size
+            # is persisted on the score doc and consumed by the gate
+            # engine for small-sample penalty / insufficient-sample
+            # rejection.
+            hit_rate_over, hit_rate_under, _hr_avg, hr_sample_size = (
                 stats._calculate_hit_rate_sides(
-                    bdl_player_id, stat_type, line, 20,
+                    bdl_player_id, stat_type, line, num_games=20, min_games=10,
                 )
             )
             side_for_hr = (prop.get("recommendation") or "OVER").upper()
@@ -377,6 +380,7 @@ class MLBScoringAdapter(ScoringAdapter):
             hit_rate=hit_rate,
             hit_rate_over=hit_rate_over,
             hit_rate_under=hit_rate_under,
+            hit_rate_sample_size=hr_sample_size,
             hit_rate_status=hit_rate_status,
             projection_method=projection_method,
             edge_pct=edge_pct,

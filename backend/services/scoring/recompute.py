@@ -430,6 +430,11 @@ async def recompute_sport(
             "vk2_error": ctx.vk2_error,
             "hit_rate_over": ctx.hit_rate_over,
             "hit_rate_under": ctx.hit_rate_under,
+            # HR sample-size telemetry (2026-04-25, HR v3). Sample
+            # size in [10, 20] when HR is computed; None when HR is
+            # None (insufficient sample / missing identity / etc).
+            # Gate engine reads this for small-sample penalty.
+            "hit_rate_sample_size": ctx.hit_rate_sample_size,
             # Ceiling rate (PR-2, 2026-04-25). Persisted so the
             # post-vision re-eval has the exact value the first pass
             # used as input to `ceiling_gate` (MLB war_zone). Without

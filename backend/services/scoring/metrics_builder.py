@@ -97,6 +97,10 @@ def build_metrics_from_context(
         hit_rate_l20=prop.get("hit_rate_over") or prop.get("hit_rate_l20"),
         hit_rate_l10=prop.get("hit_rate_l10"),
         hit_rate_l5=prop.get("hit_rate_l5"),
+        # Sample size (2026-04-25, HR v3) — read from prop/doc; gate
+        # engine consumes for small-sample / insufficient-sample
+        # behaviour. NBA leaves this None (always 20 by construction).
+        hit_rate_sample_size=prop.get("hit_rate_sample_size"),
         ceiling_rate=ceiling_rate,
         cv=cv,
         edge_pct=edge_pct,

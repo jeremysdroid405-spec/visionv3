@@ -45,6 +45,7 @@ class ReasonCode:
     # Gate-specific failures
     COVERAGE_FAIL = "gate_coverage_fail"
     HIT_RATE_FAIL = "gate_hit_rate_fail"
+    HIT_RATE_INSUFFICIENT_SAMPLE = "gate_hit_rate_insufficient_sample"
     TP_FAIL = "gate_tp_fail"
     TP_UNAVAILABLE = "gate_tp_unavailable"
     CV_FAIL = "gate_cv_fail"
@@ -107,6 +108,14 @@ class NormalizedMetrics:
     hit_rate_l20: Optional[float] = None
     hit_rate_l10: Optional[float] = None
     hit_rate_l5: Optional[float] = None
+    # HR sample size telemetry (2026-04-25, HR v3). Number of valid
+    # game logs the picked-side hit_rate was computed over. Gate
+    # engine reads this on every hit_rate_gate evaluation:
+    #   n < 10            → INSUFFICIENT_SAMPLE (fail)
+    #   10 <= n < 20      → small-sample penalty (require hr >= hr_min + 5)
+    #   n >= 20 (or None) → standard hr >= hr_min
+    # NBA leaves this None (always 20 by construction); MLB sets it.
+    hit_rate_sample_size: Optional[int] = None
     ceiling_rate: Optional[float] = None       # war-zone upside rate (0-100)
 
     # Volatility / edge

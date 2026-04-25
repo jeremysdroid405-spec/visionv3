@@ -76,6 +76,13 @@ class ScoringContext:
     # Side-aware hit-rate diagnostics (the one passed to gates is stored in hit_rate)
     hit_rate_over: Optional[float] = None
     hit_rate_under: Optional[float] = None
+    # Sample size behind hit_rate{,_over,_under} (2026-04-25, HR v3).
+    # Number of valid game logs used to compute HR. `None` when HR
+    # itself is None or when the source path doesn't surface it (NBA
+    # is currently always 20 by construction → leaves it None).
+    # Gate engine reads this to apply small-sample penalty when
+    # 10 ≤ n < 20 and to fail INSUFFICIENT_SAMPLE when n < 10.
+    hit_rate_sample_size: Optional[int] = None
     # Global Identity Rule (2026-04-23): canonical player identity
     # stamped at ingest. `bdl_player_id` is the join key for every
     # downstream stat / projection computation; `player_name` is

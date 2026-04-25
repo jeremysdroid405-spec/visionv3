@@ -350,31 +350,33 @@ class MLBTierSorter:
         stat_type: str,
         line: float,
         num_games: int = 20,
-    ) -> "Tuple[Optional[float], Optional[float], Optional[float]]":
-        """Side-aware variant of `_calculate_hit_rate` (2026-04-25, Fix A).
+        min_games: int = 10,
+    ) -> "Tuple[Optional[float], Optional[float], Optional[float], Optional[int]]":
+        """Side-aware HR with sample-size telemetry (2026-04-25, HR v3).
 
-        STRICT-20 CONTRACT (2026-04-25, HR integrity fix):
-            HR is defined ONLY over EXACTLY `num_games` valid logs
-            (default 20). If the player does not have at least
-            `num_games` valid logs for this stat, BOTH hit_rate_over
-            and hit_rate_under are returned as None — no averaging,
-            smoothing, or shorter-window fallback. This guarantees
-            every emitted HR is a multiple of 5 (5% per game over
-            a 20-game window) and prevents pitcher / recent-callup
-            denominators from poisoning the gate engine's HR readings.
+        SAMPLE-SIZE CONTRACT:
+            Walks newest→oldest game logs, collecting up to `num_games`
+            valid (non-None) values for this stat. Returns:
+              - HR over / HR under: raw fractions × 100, rounded to 1
+                decimal — NOT forced to multiples of 5. The denominator
+                is `sample_size` (the actual count), not `num_games`.
+              - sample_size: how many valid logs were used (>= min_games,
+                <= num_games).
+            If fewer than `min_games` valid logs exist, returns
+            `(None, None, None, sample_size_or_None)` so the gate engine
+            can mark it INSUFFICIENT_SAMPLE.
+
+        Defaults `num_games=20` (preferred window) / `min_games=10`
+        (early-season floor). The gate engine applies a small-sample
+        penalty when `sample_size < 20` so HR floors are honest about
+        variance.
 
         Returns:
-            Tuple of (hit_rate_over, hit_rate_under, average) — all
-            three are None together when the strict-20 contract
-            cannot be satisfied.
-
-        Semantics for the OVER/UNDER pair: `val >= line` counts as
-        OVER, `val < line` counts as UNDER. Sum equals 100% — every
-        game lands on exactly one side.
+            Tuple of (hit_rate_over, hit_rate_under, average, sample_size).
         """
         game_logs = self._get_logs_by_id(bdl_player_id)
         if not game_logs:
-            return None, None, None
+            return None, None, None, None
 
         stat_map = {
             "hits": "hits",
@@ -408,10 +410,10 @@ class MLBTierSorter:
             reverse=True,
         )
 
-        # Walk newest→oldest, keep only logs that yield a non-None
-        # value for this stat, stop as soon as we have `num_games`.
-        # If we exhaust the log list before reaching `num_games`,
-        # the strict-20 contract fails and we return None.
+        # Walk newest→oldest, keep valid (non-None) values, stop at
+        # `num_games`. We do NOT [:num_games]-truncate the input list
+        # so logs that drop out as None (e.g. pitchers who didn't bat,
+        # rest days) are skipped without silently shrinking the window.
         values = []
         for game in sorted_logs:
             if isinstance(field, list):
@@ -436,20 +438,24 @@ class MLBTierSorter:
             if len(values) >= num_games:
                 break
 
-        # Strict-20 enforcement — no shorter-window fallback.
-        if len(values) != num_games:
-            return None, None, None
+        sample_size = len(values)
+        if sample_size < min_games:
+            # Below the early-season floor — gate engine will mark
+            # INSUFFICIENT_SAMPLE. We still return the actual sample
+            # size for telemetry / observability.
+            return None, None, None, (sample_size if sample_size else None)
 
-        n = num_games
+        n = sample_size
         over_hits = sum(1 for v in values if v >= line)
         under_hits = sum(1 for v in values if v < line)
-        # 100/n step is 5pp at n=20 → every value is a multiple of 5.
-        # Round to 0 decimals so the persisted field is a whole-number
-        # percent (50, 55, 60, ...).
-        hit_rate_over = round((over_hits / n) * 100.0, 0)
-        hit_rate_under = round((under_hits / n) * 100.0, 0)
+        # Honest fraction × 100, 1 decimal. NOT forced to mult-5 — the
+        # denominator IS the sample size, so a 12-game window will
+        # legitimately produce 8.3 increments. Sample size is the
+        # variance signal carried alongside.
+        hit_rate_over = round((over_hits / n) * 100.0, 1)
+        hit_rate_under = round((under_hits / n) * 100.0, 1)
         avg = round(sum(values) / n, 2)
-        return hit_rate_over, hit_rate_under, avg
+        return hit_rate_over, hit_rate_under, avg, sample_size
 
     def _calculate_ceiling_hit_rate(
         self, 

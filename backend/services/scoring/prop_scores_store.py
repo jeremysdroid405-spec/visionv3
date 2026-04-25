@@ -44,6 +44,10 @@ _SCORE_OUTPUT_FIELDS = (
     "p_true_vk2", "vk2_projection", "vk2_sigma", "vk2_error",
     # Side-aware hit-rate diagnostics (the side passed to gates is in hit_rate)
     "hit_rate_over", "hit_rate_under",
+    # HR sample-size (2026-04-25, HR v3). 10..20 inclusive when HR
+    # was computed; None otherwise. Gate engine consumes this for
+    # small-sample-aware hit_rate_gate evaluation.
+    "hit_rate_sample_size",
     # Projection-gap ranking signal (2026-02-20 shadow G1).
     # Persisted for `?sort=gap` opt-in on tier endpoints.
     "ranking_score_v2",
