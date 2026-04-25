@@ -103,6 +103,18 @@ class MLBScoringAdapter(ScoringAdapter):
         self, db, prop: Dict[str, Any], config: Dict[str, Any]
     ) -> Optional[ScoringContext]:
         """Normalize an mlb_live_props doc into a ScoringContext."""
+        # Parity with NBA (2026-05): pull `p_true_method` override from
+        # `config.override_config.vision_score.p_true_method`. MLB has
+        # no vk2 model on disk today so the value is informational, but
+        # the signature must mirror NBA so the shared
+        # `resolve_p_true_ladder` receives `preferred_method` from
+        # both sports.
+        active_method_early = (
+            ((config or {}).get("override_config") or {})
+            .get("vision_score", {})
+            .get("p_true_method")
+        ) or "model"
+
         # Stats cache (hit-rate / CV / ceiling lookups). Name kept
         # intentionally generic post Universal Gate Engine cleanup —
         # no gate logic lives here.
@@ -352,18 +364,19 @@ class MLBScoringAdapter(ScoringAdapter):
             p_true_hit_rate=p_true_hit_rate,
             p_true_vk2=p_true_vk2,
             tp=tp,  # enables the "fair" rung when a reference market exists
+            preferred_method=active_method_early,
         )
 
         # Multi-book de-vig TP contract (2026-04-22): no 50% fallback.
-        # edge_pct is None when tp or model-prob are both missing so
+        # edge_pct is None when tp or p_model are unavailable so
         # downstream gates receive an explicit "unknown" signal rather
-        # than a fabricated 0.0.
-        if tp is None or (p_model is None and hit_rate is None):
+        # than a fabricated 0.0. Carbon-copy of NBA (2026-05 parity
+        # cleanup): MLB previously had a `hit_rate - tp` fallback path
+        # NBA never had — removed for strict parity.
+        if tp is None or p_model is None:
             edge_pct = None
-        elif p_model is not None:
-            edge_pct = round((p_model * 100.0) - tp, 1)
         else:
-            edge_pct = round((hit_rate or 0) - tp, 1)
+            edge_pct = round((p_model * 100.0) - tp, 1)
 
         # MLB has no verified PP multiplier data yet
         return ScoringContext(
