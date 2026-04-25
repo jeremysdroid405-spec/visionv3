@@ -54,6 +54,10 @@ LINE_GRID: Dict[str, List[float]] = {
     # 2026-05 Phase 2D — RBIs. PP standard 0.5; alt grid extends to
     # 3.5 (rare-event longshot OVER).
     "rbis": [0.5, 1.5, 2.5, 3.5],
+    # 2026-05 Phase 2E — Runs. PP standard 0.5; alt grid extends to
+    # 3.5 to cover alt-line longshots. Same family-independent
+    # feature contract as RBIs/HRs.
+    "runs": [0.5, 1.5, 2.5, 3.5],
 }
 
 
