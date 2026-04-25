@@ -86,9 +86,14 @@ def resolve_stat_family(sport: str, raw_stat: Optional[str]) -> str:
     if not raw_stat:
         return "_default"
     alias_map = STAT_FAMILY_ALIASES.get((sport or "").lower(), {})
-    if raw_stat in alias_map:
-        return alias_map[raw_stat]
-    return raw_stat.strip().lower().replace(" ", "_")
+    # Case-insensitive alias lookup (2026-05). Raw stat names from the
+    # universal odds sync are mixed-case (e.g., "Hits+Runs+RBIs"); the
+    # alias map keys are lowercase. Without this normalize step the
+    # lookup misses and the prop falls through to `_default`.
+    raw_lower = raw_stat.strip().lower()
+    if raw_lower in alias_map:
+        return alias_map[raw_lower]
+    return raw_lower.replace(" ", "_")
 
 
 # --------------------------------------------------------------------------
@@ -182,11 +187,12 @@ _NBA_WAR_ZONE_BASE = {
 _MLB_SAFE_HAVEN: Dict[str, Dict[str, Any]] = {
     "hits":              {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 15.0, "tp_min": 70.0},
     "total_bases":       {"cv_max": 0.75, "hr_min": 70.0, "edge_min": 20.0, "tp_min": 70.0},
-    "hits_runs_rbis":    {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 18.0, "tp_min": 70.0},
+    "hits_runs_rbis":    {"cv_max": 0.80, "hr_min": 85.0, "edge_min":  8.0, "tp_min": 70.0},
     "rbis":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 18.0, "tp_min": 70.0},
     "runs":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 18.0, "tp_min": 70.0},
-    "pitching_outs":     {"cv_max": 0.30, "hr_min": 85.0, "edge_min": 8.0,  "tp_min": 80.0},
+    "pitching_outs":     {"cv_max": 0.30, "hr_min": 85.0, "edge_min":  8.0, "tp_min": 80.0},
     "pitcher_strikeouts":{"cv_max": 0.45, "hr_min": 70.0, "edge_min": 12.0, "tp_min": 75.0},
+    "batter_strikeouts": {"cv_max": 0.75, "hr_min": 85.0, "edge_min":  8.0, "tp_min": 75.0},
     "earned_runs":       {"cv_max": 0.40, "hr_min": 70.0, "edge_min": 10.0, "tp_min": 75.0},
     "_default":          {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 15.0, "tp_min": 70.0},
 }
