@@ -71,7 +71,17 @@ LINE_GRID: Dict[str, List[float]] = {
     # HF pipeline; trainer uses the same _get_stat_value path so
     # projection/actual share the definition.
     "singles": [0.5, 1.5, 2.5],
+    # 2026-05 Phase 2I — Doubles. PP standard 0.5; alt 1.5. The
+    # `doubles` field is absent from mlb_historical_logs; trainer
+    # auto-routes via USE_HUB_LOGS to mlb_master_hub_2026.bdl_game_logs
+    # — same pattern the ECDF missing-stats trainer used.
+    "doubles": [0.5, 1.5],
 }
+
+# Stat families whose target value field is absent from
+# `mlb_historical_logs`; walk `mlb_master_hub_2026.bdl_game_logs`
+# instead. Mirrors `scripts/train_mlb_ecdf_missing_stats.USE_HUB_LOGS`.
+USE_HUB_LOGS = {"doubles"}
 
 
 def _safe_filename(stat: str) -> str:
@@ -149,26 +159,39 @@ def build_training_set(stat: str, hf: MLBHighFrictionModel,
     feature_cols = hf.feature_cols[norm_stat]
 
     rows: List[Dict[str, Any]] = []
-    cursor = hf.historical_logs.find({}, {"_id": 0})
+    use_hub = stat in USE_HUB_LOGS
+    if use_hub:
+        cursor = hf.master_hub.find(
+            {"bdl_game_logs": {"$exists": True, "$ne": []}}, {"_id": 0},
+        )
+    else:
+        cursor = hf.historical_logs.find({}, {"_id": 0})
     skipped = 0
     players_seen = 0
     for player_doc in cursor:
         if max_players is not None and players_seen >= max_players:
             break
         players_seen += 1
-        game_logs = player_doc.get("game_logs") or []
+        if use_hub:
+            game_logs = player_doc.get("bdl_game_logs") or []
+        else:
+            game_logs = player_doc.get("game_logs") or []
         if len(game_logs) < 20:
             continue
-        player_name = player_doc.get("player_name")
+        player_name = player_doc.get("player_name") or player_doc.get("display_name")
         game_logs = sorted(
             game_logs, key=lambda x: x.get("date") or "1900-01-01",
             reverse=True,
         )
-        player_master = hf.master_hub.find_one(
-            {"$or": [{"display_name": player_name},
-                     {"player_name": player_name}]},
-            {"_id": 0},
-        ) or {}
+        if use_hub:
+            # When walking the hub directly, the row IS the player_master.
+            player_master = player_doc
+        else:
+            player_master = hf.master_hub.find_one(
+                {"$or": [{"display_name": player_name},
+                         {"player_name": player_name}]},
+                {"_id": 0},
+            ) or {}
         for i in range(len(game_logs) - 20):
             tg = game_logs[i]
             history = game_logs[i + 1:i + 31]
