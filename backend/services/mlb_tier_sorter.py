@@ -352,27 +352,35 @@ class MLBTierSorter:
         num_games: int = 20,
         min_games: int = 10,
     ) -> "Tuple[Optional[float], Optional[float], Optional[float], Optional[int]]":
-        """Side-aware HR with sample-size telemetry (2026-04-25, HR v3).
+        """STRICT-WINDOW hit-rate with 20→10 fallback (2026-05 rewrite).
 
-        SAMPLE-SIZE CONTRACT:
-            Walks newest→oldest game logs, collecting up to `num_games`
-            valid (non-None) values for this stat. Returns:
-              - HR over / HR under: raw fractions × 100, rounded to 1
-                decimal — NOT forced to multiples of 5. The denominator
-                is `sample_size` (the actual count), not `num_games`.
-              - sample_size: how many valid logs were used (>= min_games,
-                <= num_games).
-            If fewer than `min_games` valid logs exist, returns
-            `(None, None, None, sample_size_or_None)` so the gate engine
-            can mark it INSUFFICIENT_SAMPLE.
+        WINDOW SELECTION — non-negotiable:
+            - len(logs) >= 20 → use newest 20
+            - len(logs) >= 10 → use newest 10
+            - otherwise        → return (None, None, None, None)
 
-        Defaults `num_games=20` (preferred window) / `min_games=10`
-        (early-season floor). The gate engine applies a small-sample
-        penalty when `sample_size < 20` so HR floors are honest about
-        variance.
+        DENOMINATOR is FIXED to the selected window (20 or 10). Never
+        `len(values)`. Every game in the window counts:
+            - missing / None stat value → miss for OVER (hit for UNDER
+              by complement)
+            - never extend / walk deeper to find more "valid" games
+            - never filter games out for at_bats, innings, etc.
+
+        HIT RULE: `stat_value > line` (strict greater-than).
+            HR_over  = (hits / window) * 100
+            HR_under = 100 - HR_over
+
+        OUTPUT increments:
+            - 20-game window → multiples of 5
+            - 10-game window → multiples of 10
+
+        The `num_games` / `min_games` kwargs are kept for signature
+        stability (callers from older paths pass them) but are
+        intentionally ignored — the window contract is defined here.
 
         Returns:
-            Tuple of (hit_rate_over, hit_rate_under, average, sample_size).
+            (hit_rate_over, hit_rate_under, average, sample_size)
+            where `sample_size` is the chosen window (20 or 10).
         """
         game_logs = self._get_logs_by_id(bdl_player_id)
         if not game_logs:
@@ -410,17 +418,29 @@ class MLBTierSorter:
             reverse=True,
         )
 
-        # Walk newest→oldest, keep valid (non-None) values, stop at
-        # `num_games`. We do NOT [:num_games]-truncate the input list
-        # so logs that drop out as None (e.g. pitchers who didn't bat,
-        # rest days) are skipped without silently shrinking the window.
-        values = []
-        for game in sorted_logs:
+        # Strict window selection — no walking, no fallback to a
+        # smaller-than-10 window. Either 20 or 10 or None.
+        if len(sorted_logs) >= 20:
+            window = 20
+        elif len(sorted_logs) >= 10:
+            window = 10
+        else:
+            return None, None, None, None
+
+        selected = sorted_logs[:window]
+
+        over_hits = 0
+        sum_val = 0.0
+        valid_count = 0  # only used for `avg` — never the HR denominator
+        for game in selected:
             if isinstance(field, list):
+                # Combo stats (HRR): None components count as 0 so the
+                # combo value is well-defined as long as one component
+                # is present.
                 val = sum(game.get(f) or 0 for f in field)
             elif field == "innings_pitched":
                 ip = game.get(field)
-                val = (ip * 3) if ip else None
+                val = (ip * 3) if ip is not None else None
             elif field == "singles":
                 h = game.get("hits")
                 if h is not None:
@@ -432,30 +452,22 @@ class MLBTierSorter:
                     val = None
             else:
                 val = game.get(field)
-            if val is None:
-                continue
-            values.append(val)
-            if len(values) >= num_games:
-                break
+            # Strict `>` per spec. None values → miss for OVER (hit for
+            # UNDER by complement).
+            if val is not None:
+                if val > line:
+                    over_hits += 1
+                sum_val += val
+                valid_count += 1
 
-        sample_size = len(values)
-        if sample_size < min_games:
-            # Below the early-season floor — gate engine will mark
-            # INSUFFICIENT_SAMPLE. We still return the actual sample
-            # size for telemetry / observability.
-            return None, None, None, (sample_size if sample_size else None)
-
-        n = sample_size
-        over_hits = sum(1 for v in values if v >= line)
-        under_hits = sum(1 for v in values if v < line)
-        # Honest fraction × 100, 1 decimal. NOT forced to mult-5 — the
-        # denominator IS the sample size, so a 12-game window will
-        # legitimately produce 8.3 increments. Sample size is the
-        # variance signal carried alongside.
-        hit_rate_over = round((over_hits / n) * 100.0, 1)
-        hit_rate_under = round((under_hits / n) * 100.0, 1)
-        avg = round(sum(values) / n, 2)
-        return hit_rate_over, hit_rate_under, avg, sample_size
+        # Fixed denominator. Result is integer-valued (multiples of 5
+        # for window=20, multiples of 10 for window=10). We surface
+        # them as floats only because the storage / API schema is
+        # `Optional[float]` everywhere downstream.
+        hit_rate_over = float(round((over_hits / window) * 100))
+        hit_rate_under = 100.0 - hit_rate_over
+        avg = round(sum_val / valid_count, 2) if valid_count else None
+        return hit_rate_over, hit_rate_under, avg, window
 
     def _calculate_ceiling_hit_rate(
         self, 
