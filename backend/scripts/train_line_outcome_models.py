@@ -44,6 +44,9 @@ LINE_GRID: Dict[str, List[float]] = {
     # the empirical range fall through with sparse training data
     # but are caught by the holdout reliability report.
     "strikeouts": [0.5, 1.5, 2.5],
+    # 2026-05 Phase 2B — total bases. PP standard 1.5; alt grid
+    # 0.5 (rare-event UNDER) through 4.5 (longshot OVER).
+    "total_bases": [0.5, 1.5, 2.5, 3.5, 4.5],
 }
 PITCHER_STATS = {
     "pitcher_strikeouts", "hits_allowed", "earned_runs", "pitcher_walks",
