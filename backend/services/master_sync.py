@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +267,171 @@ async def run_master_sync(db, sport: str) -> Dict[str, Any]:
         f"[MASTER_SYNC:{sport}] COMPLETE in "
         f"{metrics['total_duration_seconds']:.1f}s success={metrics['success']}"
     )
+
+    # ----------------------------------------------------------------
+    # OBSERVABILITY ONLY (2026-04-25): persist a flat sync_history doc
+    # for every master_sync invocation. Pure logging — no change to
+    # return value, no change to publish path, no behaviour change. The
+    # write is best-effort: a failure here MUST NOT affect the caller.
+    # See /app/memory/PRD.md "Sync Lifecycle Audit, 2026-04-25" §9
+    # Fix-3 for the architectural rationale (precondition for
+    # health-gate + staging in subsequent PRs).
+    # ----------------------------------------------------------------
+    try:
+        await _persist_sync_history(db, sport, metrics, started, completed)
+    except Exception as exc:
+        logger.warning(f"[MASTER_SYNC:{sport}] sync_history persist failed: {exc}")
+
     return metrics
+
+
+async def _persist_sync_history(
+    db,
+    sport: str,
+    metrics: Dict[str, Any],
+    started: datetime,
+    completed: datetime,
+) -> None:
+    """Compose a flat sync_history document and insert it. Pure
+    observability — best-effort, isolated from sync return path.
+
+    Fields mirror the spec at /app/memory/PRD.md §sync_history.
+    Counts that aren't in the in-memory metrics dict are computed via
+    cheap collection counts on the just-written collections.
+    """
+    from services.config.collection_names import COLL
+
+    steps = metrics.get("steps") or {}
+    odds_step = steps.get("1_odds_sync") or {}
+    scoring_rt_step = steps.get(f"3_scoring_final-{sport}-rt") or {}
+    scoring_base_step = steps.get(f"3_scoring_final-{sport}") or {}
+
+    # ----- counts derived from the in-memory metrics --------------
+    events_discovered = int(odds_step.get("events_count") or 0)
+    discovered_markets_list = odds_step.get("markets_discovered") or []
+    discovered_market_count = (
+        len(discovered_markets_list)
+        if isinstance(discovered_markets_list, (list, tuple, set))
+        else 0
+    )
+    bookmaker_counts = odds_step.get("bookmaker_counts") or {}
+    odds_sync_total_props = int(odds_step.get("total_props") or 0)
+    scored_props_count = int(
+        scoring_rt_step.get("written")
+        or scoring_base_step.get("written")
+        or 0
+    )
+
+    # ----- counts derived from live collections (post-publish) ----
+    live_props_count = 0
+    distinct_stat_types = 0
+    distinct_events = 0
+    raw_market_count = 0
+    try:
+        live_coll_name = COLL("live_props", sport)
+        live_props_count = await db[live_coll_name].count_documents({})
+        distinct_stat_types = len(
+            await db[live_coll_name].distinct("stat_type")
+        )
+        distinct_events = len(
+            await db[live_coll_name].distinct("event_id")
+        )
+    except Exception as exc:
+        logger.debug(
+            f"[SYNC_HISTORY:{sport}] live_props count fetch failed: {exc}"
+        )
+    try:
+        # `dg_raw_odds_markets` is replaced per (sport, event_id) each
+        # sync, so a snapshot count immediately after master_sync gives
+        # this run's raw-row volume.
+        raw_market_count = await db["dg_raw_odds_markets"].count_documents(
+            {"sport": sport}
+        )
+    except Exception as exc:
+        logger.debug(
+            f"[SYNC_HISTORY:{sport}] raw_market count fetch failed: {exc}"
+        )
+
+    # ----- status / published derivation --------------------------
+    errors: List[str] = list(metrics.get("errors") or [])
+    warnings: List[str] = []
+    for step_name, step_data in steps.items():
+        if isinstance(step_data, dict) and step_data.get("error"):
+            warnings.append(f"{step_name}: {step_data['error']}")
+
+    odds_sync_errored = bool(odds_step.get("error"))
+    scoring_errored = any(
+        s.lower().startswith("scoring:") for s in errors
+    ) or bool(scoring_rt_step.get("error"))
+
+    if odds_sync_errored or scoring_errored or scored_props_count == 0:
+        status = "failed"
+    elif errors or warnings:
+        status = "partial"
+    else:
+        status = "success"
+
+    published = scored_props_count > 0 and not scoring_errored
+
+    sync_record = {
+        "sport": sport,
+        "started_at": started,
+        "finished_at": completed,
+        "duration_seconds": float(metrics.get("total_duration_seconds") or 0.0),
+
+        "status": status,
+        "published": published,
+
+        # ---- sync metrics ----
+        "events_discovered": events_discovered,
+        "events_attempted": events_discovered,
+        "events_succeeded": distinct_events,
+        "discovered_market_count": discovered_market_count,
+        "raw_market_count": raw_market_count,
+        "live_props_count": live_props_count,
+        "scored_props_count": scored_props_count,
+        "distinct_stat_types": distinct_stat_types,
+        "distinct_events": distinct_events,
+
+        # ---- book / data health ----
+        "bookmaker_counts": dict(bookmaker_counts) if bookmaker_counts else {},
+        "discovered_markets": (
+            list(discovered_markets_list)
+            if isinstance(discovered_markets_list, (list, tuple, set))
+            else []
+        ),
+
+        # ---- error tracking ----
+        "errors": errors,
+        "warnings": warnings,
+
+        # ---- audit ----
+        "pipeline": metrics.get("pipeline", "UNIVERSAL_MASTER_SYNC"),
+        "odds_sync_total_props": odds_sync_total_props,
+        "credits_used": odds_step.get("credits_used") or {},
+        "steps_summary": {
+            name: {
+                k: v
+                for k, v in (step or {}).items()
+                if k in (
+                    "duration_seconds", "processed", "written", "replaced",
+                    "events_count", "total_props", "error",
+                    "tier_distribution",
+                )
+            }
+            for name, step in steps.items()
+            if isinstance(step, dict)
+        },
+    }
+
+    await db["sync_history"].insert_one(sync_record)
+    logger.info(
+        f"[SYNC_HISTORY:{sport}] persisted run "
+        f"status={status} published={published} "
+        f"live={live_props_count} scored={scored_props_count} "
+        f"events={distinct_events}/{events_discovered} "
+        f"stats={distinct_stat_types}"
+    )
 
 
 
