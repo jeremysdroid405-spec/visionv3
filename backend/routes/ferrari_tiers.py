@@ -1115,6 +1115,24 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     if score.get("canonical_key") is not None:
         prop.setdefault("canonical_key", score.get("canonical_key"))
 
+    # Vision Intel passthrough from score doc (added 2026-04-25 alongside
+    # master_sync Step 6 board-only Gemini enrichment). Score doc carries
+    # the freshest Gemini text for board picks; cached_board may lack a
+    # matching line entry due to slate drift, so without this passthrough
+    # the in-request `_generate_vision_fallback` would overwrite real
+    # Gemini narratives. Score-side text wins only when present —
+    # cached_board overlay can still set it via the board_entry path
+    # above.
+    score_vi = score.get("vision_intel")
+    if score_vi and not prop.get("vision_intel"):
+        prop["vision_intel"] = score_vi
+    score_vi_hash = score.get("vision_intel_content_hash")
+    if score_vi_hash and not prop.get("vision_intel_content_hash"):
+        prop["vision_intel_content_hash"] = score_vi_hash
+    score_vi_at = score.get("vision_intel_generated_at")
+    if score_vi_at and not prop.get("vision_intel_generated_at"):
+        prop["vision_intel_generated_at"] = score_vi_at
+
     # PrizePicks layer
     prop["pp_utility"] = score.get("pp_utility")
     prop["pp_utility_category"] = score.get("pp_utility_category")

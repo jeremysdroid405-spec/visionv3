@@ -105,6 +105,12 @@ def _score_to_prop(doc: Dict[str, Any]) -> Dict[str, Any]:
         # (`_enrich_nba_momentum`). Pure UI display field; not part of
         # scoring math.
         "momentum_data": doc.get("momentum_data"),
+        # Vision Intel narrative + cache fingerprint written by
+        # master_sync Step 6 (`_enrich_nba_board_vision_intel`) for
+        # board-tier picks only. Pure UI display fields.
+        "vision_intel": doc.get("vision_intel"),
+        "vision_intel_content_hash": doc.get("vision_intel_content_hash"),
+        "vision_intel_generated_at": doc.get("vision_intel_generated_at"),
     }
 
 

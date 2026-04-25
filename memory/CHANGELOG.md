@@ -1,6 +1,58 @@
 # Changelog
 
-## 2026-04-24 — Tempo / Pace Delta Producer Wired Back into Universal Sync (Option A)
+## 2026-04-25 — Vision Intel / Gemini Wired Back in (Active Board Only, Capped)
+
+**Goal:** All Vision Intel summaries shown to users were deterministic fallback templates from `_generate_vision_fallback` (e.g. *"Jalen Duren is hammering PTS at an 85% L10 over clip — projection of 20.2 sits above the 11.5 line for a +8.7 edge to ride."*). Gemini producer (`VisionIntelService.analyze_tier_batch`) was functional but completely unwired since the 2026-04-22 consolidation deleted UnifiedPipeline / optimized_sync_engine. `scheduled_hourly_vision_intel_sync` was defined in `server.py` but never registered with APScheduler. Coverage of real Gemini text on the slate: 0 / 3,829 score docs.
+
+**Approved scope (Option A, narrow):** Wire Gemini back into `master_sync.py` as Step 6, restricted to active board picks only (Safe Haven + Front Lines + War Zone) with content-hash cache and 75-pick cap. Pure UI decoration.
+
+**Files changed (3, exactly per the directive's "tiny passthrough" allowance):**
+
+1. **`backend/services/master_sync.py`** — added Step 6 hook + helper `_enrich_nba_board_vision_intel` (~200 LOC). Behavior:
+   - Pulls `nba_prop_scores` where `version_tag=final-nba-rt`, `tier ∈ {safe_haven, front_lines, war_zone}`, `active=True`.
+   - Computes `_vision_intel_content_hash(pick)` (existing helper from `routes/ferrari_tiers.py`); skips picks whose stored hash matches and `vision_intel` is non-empty (cache hit).
+   - Caps remaining new/changed picks at `MAX_BOARD_VISION_INTEL_PICKS=75`. Priority order when capped: `war_zone → front_lines → safe_haven`.
+   - Groups by tier, calls `vis.analyze_tier_batch(picks, tier_name, strict=True)` once per tier.
+   - Persists `vision_intel`, `vision_intel_content_hash`, `vision_intel_generated_at` onto matching `nba_prop_scores` docs (keyed by `canonical_key`).
+   - Mirrors `vision_intel` into `nba_cached_board.props[*]` via `arrayFilters` keyed by `(stat_type, line, direction)`.
+   - Returns metrics: `board_picks_total, cache_hits, cache_miss_to_call, after_cap_to_call, tiers_called, gemini_returned, gemini_empty_or_failed, score_docs_written, cached_board_writes, fallback_in_db_after`.
+
+2. **`backend/routes/ferrari_tiers.py`** — single-block (~12 LOC) passthrough in `_merge_score_with_board` so `score.get("vision_intel")` / `vision_intel_content_hash` / `vision_intel_generated_at` flow into the pick payload when `nba_cached_board` lacks a matching line entry (slate drift). Score-side text wins only when present; cached_board overlay can still set it via the existing path.
+
+3. **`backend/routes/player.py`** — three lines added to `_score_to_prop` whitelist: `vision_intel, vision_intel_content_hash, vision_intel_generated_at`. Same rationale as the Step 4 momentum_data passthrough.
+
+**Did NOT touch (per directive):**
+Scoring · gates · UniversalGateEngine · thresholds · ECDF · recompute · odds sync · frontend · `_enrich_under_picks_with_gemini` (orphaned, left untouched).
+
+**Verification (live, 2026-04-25):**
+
+| Metric | Before | After (run 1) | After (run 2) |
+|---|---|---|---|
+| `nba_prop_scores` board picks with `vision_intel` populated | 0 / 163 | 75 / 163 (cap binding) | **148 / 148 active board** |
+| `vision_intel_content_hash` populated | 0 | 75 | 148 |
+| `vision_intel_generated_at` populated | 0 | 75 | 148 |
+| Cache hits on 2nd run | n/a | n/a | **140** (FL+WZ from run 1 short-circuited) |
+| Gemini calls | 0 | **2** (1 per tier × 2 tiers: WZ 15 + FL 60) | **1** (just SH 8) |
+| `gemini_returned / selected` per tier | n/a | WZ 15/15, FL 60/60 | SH 8/8 |
+| Coverage of `/api/v3/ferrari/{safe-haven,front-lines,war-zone}` payloads | gemini=0/24, fallback=24/24 | WZ 7/7 + FL 10/10 + SH 0/7 (SH capped out) | **WZ 7/7 + FL 10/10 + SH 7/7 = 24/24 Gemini** |
+| Score doc `vision_intel_content_hash` populated on Ferrari payload | 0/24 | n/a | **24/24** |
+| Cap held | n/a | 75 | 8 (well under 75) |
+| Ferrari tier counts (gating signal) | safe-haven=7, front-lines=10, war-zone=7 | unchanged | unchanged ← scoring untouched |
+
+**Sample Gemini outputs (real, not template):**
+- Reed Sheppard PTS 16.5 UNDER: *"High volatility metrics with a CV of 0.53 make the under a solid play here. Regression is expected as he struggles to maintain this high level of scoring output."*
+- VJ Edgecombe REB 8.5 UNDER: *"Minutes are capped for his rotation, which will inherently limit his rebounding opportunities. The under is the logical choice here."*
+- LeBron James P+A 33.5 UNDER: *"Aging legs and a tight rotation suggest his production will dip tonight. The under is the sharp move for this veteran stud."*
+- Jalen Duren PTS 11.5 OVER: *"L10 hit rate confirms he is finding his rhythm and should find easy buckets against this interior rotation. Ride the hot hand while he continues to hunt points inside."*
+
+**UI validation (Playwright, Jalen Duren detail):**
+- TARGET-LOCK RATIONALE renders genuine Gemini text (verified no fallback fingerprints: `is hammering` / `sits above the` / `to ride` count = 0 on page)
+- "Powered by Vision Intel" badge present
+- TEMPO panel still rendering Step 5 output ("-1.2 Possessions / Standard Tempo")
+- DEFENSIVE MOMENTUM still rendering Step 4 output (SZN/L10/L5/Composite)
+- Bar charts, hit rates, header stats — all unchanged
+
+
 
 **Goal:** `intel_suite.pace_delta` was stale legacy data (every team showing flat `team_pace=98.0, opp_pace=98.0, tempo_label="Neutral Pace", display="0.0"`) written by deleted `optimized_sync_engine` / `cached_board_builder_service` ≈2026-04-21. Coverage of the stale signature: 122 cached_board docs. Score docs had no `intel_suite.pace_delta` at all. PlayerDetailPage TEMPO panel showed "0.0 / Neutral Pace" for every player.
 

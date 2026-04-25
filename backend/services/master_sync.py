@@ -235,6 +235,29 @@ async def run_master_sync(db, sport: str) -> Dict[str, Any]:
             )
             metrics["errors"].append(f"pace_delta_enrichment: {exc}")
 
+    # -----------------------------------------------------------------
+    # Step 6 — read-side enrichment: Gemini Vision Intel summaries
+    #
+    # Active-board scope only: Safe Haven + Front Lines + War Zone
+    # (~20–50 picks per slate, capped at 75). Replaces the deterministic
+    # `_generate_vision_fallback` template with real Gemini-authored
+    # narratives ON BOARD PICKS ONLY. NOT scoring. Does not affect
+    # projections, gates, ECDF, tiers, recompute math, or thresholds.
+    # -----------------------------------------------------------------
+    if sport == "nba":
+        try:
+            ts = datetime.now(timezone.utc)
+            vi_metrics = await _enrich_nba_board_vision_intel(db)
+            vi_metrics["duration_seconds"] = (
+                datetime.now(timezone.utc) - ts
+            ).total_seconds()
+            metrics["steps"]["6_vision_intel_enrichment_nba"] = vi_metrics
+        except Exception as exc:
+            logger.exception(
+                f"[MASTER_SYNC:{sport}] vision_intel enrichment failed"
+            )
+            metrics["errors"].append(f"vision_intel_enrichment: {exc}")
+
     completed = datetime.now(timezone.utc)
     metrics["completed_at"] = completed.isoformat()
     metrics["total_duration_seconds"] = (completed - started).total_seconds()
@@ -883,3 +906,262 @@ async def _enrich_nba_pace_delta(db) -> dict:
         f"stale_after={metrics.get('stale_neutral_pace_after', 0)}"
     )
     return metrics
+
+
+# =====================================================================
+# NBA Vision Intel Read-Side Enrichment Helper (Active Board Only)
+#
+# Purpose:
+#   Replace deterministic `_generate_vision_fallback` template text with
+#   real Gemini-authored narratives ONLY for picks currently visible on
+#   the user's board (Safe Haven, Front Lines, War Zone). No full-slate
+#   sweep — content-hash cache + 75-pick cap keep API usage minimal.
+#
+# Strict scope:
+#   - Query `nba_prop_scores` at `version_tag=final-nba-rt` AND
+#     `tier ∈ {safe_haven, front_lines, war_zone}` AND `active=True`
+#   - Compute `_vision_intel_content_hash`; skip if stored hash matches
+#     and `vision_intel` is non-empty (cache hit)
+#   - Cap remaining new/changed picks at MAX_BOARD_VISION_INTEL_PICKS
+#   - Group by tier, call `VisionIntelService.analyze_tier_batch(...,
+#     strict=True)` once per tier
+#   - Persist on `nba_prop_scores`: vision_intel, vision_intel_content_hash,
+#     vision_intel_generated_at
+#   - Mirror onto `nba_cached_board.props[*].vision_intel` for
+#     non-board reads that already overlay cached_board
+#
+# Out of scope (per directive):
+#   - Scoring math / projections
+#   - Gates / Universal Gate Engine / thresholds
+#   - ECDF / probability layer
+#   - Recompute / Ferrari tier logic (read-only consumer)
+#   - Frontend
+# =====================================================================
+
+MAX_BOARD_VISION_INTEL_PICKS = 75
+
+
+async def _enrich_nba_board_vision_intel(db) -> dict:
+    """
+    Generate Gemini Vision Intel narratives for active-board NBA picks
+    (Safe Haven + Front Lines + War Zone only). Read-only with respect
+    to scoring.
+    """
+    from datetime import datetime, timezone
+    from collections import defaultdict
+    from pymongo import UpdateMany
+    from routes.ferrari_tiers import (
+        _vision_intel_content_hash,
+        _is_cache_fresh,
+    )
+    from services.vision_intel_service import get_vision_intel_service
+
+    metrics = {
+        "board_picks_total": 0,
+        "cache_hits": 0,
+        "cache_miss_to_call": 0,
+        "capped_at": MAX_BOARD_VISION_INTEL_PICKS,
+        "after_cap_to_call": 0,
+        "tiers_called": {},
+        "gemini_returned": 0,
+        "gemini_empty_or_failed": 0,
+        "score_docs_written": 0,
+        "cached_board_writes": 0,
+        "skip_reasons": {},
+        "fallback_in_db_after": 0,
+    }
+    skip = metrics["skip_reasons"]
+
+    # Service availability check (no point selecting picks if disabled).
+    vis = get_vision_intel_service()
+    if not getattr(vis, "enabled", False):
+        metrics["skip_reasons"]["service_disabled"] = (
+            "VisionIntelService.enabled=False (missing GOOGLE_API_KEY or SDK)"
+        )
+        return metrics
+
+    # ------------------------------------------------------------------
+    # Step A: Pull every active board pick's full score doc. Tiers are
+    # the canonical strings written by the scoring/tier-assignment pass
+    # ('safe_haven' | 'front_lines' | 'war_zone' — confirmed live).
+    # ------------------------------------------------------------------
+    BOARD_TIERS = ["safe_haven", "front_lines", "war_zone"]
+    board_picks: list = []
+    async for d in db["nba_prop_scores"].find(
+        {
+            "version_tag": "final-nba-rt",
+            "tier": {"$in": BOARD_TIERS},
+            "active": True,
+        }
+    ):
+        board_picks.append(d)
+    metrics["board_picks_total"] = len(board_picks)
+
+    if not board_picks:
+        return metrics
+
+    # ------------------------------------------------------------------
+    # Step B: Content-hash cache filter. A pick is skipped iff its
+    # currently-stored hash matches the freshly-computed hash AND
+    # vision_intel is already populated.
+    # ------------------------------------------------------------------
+    to_call: list = []
+    for p in board_picks:
+        cached_view = {
+            "vision_intel": p.get("vision_intel"),
+            "vision_intel_content_hash": p.get("vision_intel_content_hash"),
+        }
+        if _is_cache_fresh(p, cached_view):
+            metrics["cache_hits"] += 1
+            continue
+        to_call.append(p)
+    metrics["cache_miss_to_call"] = len(to_call)
+
+    # Cap. Prioritise War Zone → Front Lines → Safe Haven so the most
+    # actionable picks always get fresh narratives when the cap bites.
+    if len(to_call) > MAX_BOARD_VISION_INTEL_PICKS:
+        priority = {"war_zone": 0, "front_lines": 1, "safe_haven": 2}
+        to_call.sort(key=lambda x: priority.get(x.get("tier"), 9))
+        to_call = to_call[:MAX_BOARD_VISION_INTEL_PICKS]
+    metrics["after_cap_to_call"] = len(to_call)
+
+    if not to_call:
+        return metrics
+
+    # ------------------------------------------------------------------
+    # Step C: Group by tier. analyze_tier_batch issues ONE Gemini call
+    # per tier (the existing batched prompt path).
+    # ------------------------------------------------------------------
+    by_tier: dict = defaultdict(list)
+    for p in to_call:
+        by_tier[p.get("tier")].append(p)
+
+    # ------------------------------------------------------------------
+    # Step D: Run Gemini per tier. `strict=True` → no fallback substitution.
+    # Slots Gemini fails to fill come back as None and stay uncovered.
+    # ------------------------------------------------------------------
+    now = datetime.now(timezone.utc)
+    score_bulk: list = []
+    cb_pairs: list = []  # (player_name, stat_type, line, direction, vi_text)
+
+    for tier_name, tier_picks in by_tier.items():
+        # Build the prop dicts shape expected by analyze_tier_batch —
+        # mirrors what `_enrich_under_picks_with_gemini` passes today.
+        try:
+            results = await vis.analyze_tier_batch(
+                tier_picks, tier_name, strict=True
+            )
+        except Exception as exc:
+            logger.warning(
+                f"[MASTER_SYNC:nba] vision_intel batch failed for {tier_name}: {exc}"
+            )
+            skip[f"batch_failed_{tier_name}"] = str(exc)
+            continue
+
+        tier_returned = 0
+        tier_empty = 0
+        for src, out in zip(tier_picks, results):
+            vi = ((out or {}).get("vision_intel") or "").strip() if out else ""
+            if not vi:
+                tier_empty += 1
+                continue
+            tier_returned += 1
+            ck = src.get("canonical_key")
+            if not ck:
+                continue
+            content_hash = _vision_intel_content_hash(src)
+            score_bulk.append(
+                UpdateMany(
+                    {
+                        "canonical_key": ck,
+                        "version_tag": "final-nba-rt",
+                    },
+                    {
+                        "$set": {
+                            "vision_intel": vi,
+                            "vision_intel_content_hash": content_hash,
+                            "vision_intel_generated_at": now,
+                        }
+                    },
+                )
+            )
+            cb_pairs.append((
+                src.get("player_name"),
+                src.get("stat_type"),
+                src.get("line"),
+                (src.get("direction") or src.get("recommendation") or "Over"),
+                vi,
+            ))
+
+        metrics["tiers_called"][tier_name] = {
+            "selected": len(tier_picks),
+            "gemini_returned": tier_returned,
+            "gemini_empty": tier_empty,
+        }
+        metrics["gemini_returned"] += tier_returned
+        metrics["gemini_empty_or_failed"] += tier_empty
+
+    if score_bulk:
+        await db["nba_prop_scores"].bulk_write(score_bulk, ordered=False)
+        metrics["score_docs_written"] = len(score_bulk)
+
+    # ------------------------------------------------------------------
+    # Step E: Mirror onto `nba_cached_board.props[*].vision_intel` so
+    # the existing `routes/player.py` cached_board overlay (already
+    # whitelists `vision_intel` in `_BOARD_ENRICHMENT_FIELDS`) and
+    # `routes/ferrari_tiers.py` (which reads `vision_intel` from
+    # cached_board) deliver Gemini-authored text to the UI without
+    # touching scoring.
+    # ------------------------------------------------------------------
+    cb_bulk: list = []
+    for player_name, stat_type, line, direction, vi in cb_pairs:
+        if not (player_name and stat_type):
+            continue
+        # Match by player_name (cached_board is keyed per player) and
+        # the (stat_type, line, direction) prop element — this exactly
+        # mirrors what cached_board uses upstream.
+        cb_bulk.append(
+            UpdateMany(
+                {"player_name": player_name},
+                {"$set": {"props.$[el].vision_intel": vi}},
+                array_filters=[{
+                    "el.stat_type": stat_type,
+                    "el.line": line,
+                    "el.direction": direction,
+                }],
+            )
+        )
+
+    if cb_bulk:
+        CHUNK = 500
+        for i in range(0, len(cb_bulk), CHUNK):
+            await db["nba_cached_board"].bulk_write(
+                cb_bulk[i : i + CHUNK], ordered=False
+            )
+        metrics["cached_board_writes"] = len(cb_bulk)
+
+    # Coverage sanity: count props that still carry the fallback
+    # template fingerprint AFTER the run (informational only).
+    metrics["fallback_in_db_after"] = await db["nba_prop_scores"].count_documents(
+        {
+            "version_tag": "final-nba-rt",
+            "tier": {"$in": BOARD_TIERS},
+            "$or": [
+                {"vision_intel": None},
+                {"vision_intel": ""},
+                {"vision_intel": {"$exists": False}},
+            ],
+        }
+    )
+
+    logger.info(
+        f"[MASTER_SYNC:nba] vision_intel_enrichment: board_total="
+        f"{metrics['board_picks_total']} cache_hits={metrics['cache_hits']} "
+        f"to_call={metrics['after_cap_to_call']} "
+        f"gemini_returned={metrics['gemini_returned']} "
+        f"empty={metrics['gemini_empty_or_failed']} "
+        f"score_writes={metrics['score_docs_written']} "
+        f"cb_writes={metrics['cached_board_writes']}"
+    )
+    return metrics
+
