@@ -224,7 +224,23 @@ def _reevaluate_tiers_post_vision(score_docs: List[Dict[str, Any]]) -> None:
         sport = (doc.get("sport") or "").lower()
         stat_family = resolve_stat_family(sport, doc.get("stat_type"))
         side = (doc.get("recommendation") or "OVER").upper()
-        hr = doc.get("hit_rate_over") if side == "OVER" else doc.get("hit_rate_under")
+        # Sport-agnostic plumbing fix (2026-04-25): adapters that don't
+        # split hit_rate into _over / _under (currently MLB) still
+        # persist `p_true_hit_rate` (= side-aware hit_rate / 100). Fall
+        # back to that so the post-vision re-eval sees the same input
+        # the first pass did, instead of failing closed on a missing
+        # field. NBA continues to take the primary path (no behaviour
+        # change for sports that populate hit_rate_over / hit_rate_under).
+        hr_side = doc.get("hit_rate_over") if side == "OVER" else doc.get("hit_rate_under")
+        if hr_side is None:
+            p_true_hr = doc.get("p_true_hit_rate")
+            hr_side = (p_true_hr * 100.0) if p_true_hr is not None else None
+        hr = hr_side
+        hr_l20_fallback = (
+            doc.get("hit_rate_over")
+            if doc.get("hit_rate_over") is not None
+            else hr
+        )
 
         metrics = NormalizedMetrics(
             sport=sport,
@@ -239,7 +255,7 @@ def _reevaluate_tiers_post_vision(score_docs: List[Dict[str, Any]]) -> None:
             is_alt="alternate" in (doc.get("stat_type") or "").lower(),
             vision_score=doc.get("vision_score"),
             hit_rate=hr,
-            hit_rate_l20=doc.get("hit_rate_over"),
+            hit_rate_l20=hr_l20_fallback,
             cv=doc.get("cv"),
             edge_pct=doc.get("edge_pct"),
         )
