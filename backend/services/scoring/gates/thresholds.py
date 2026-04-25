@@ -185,16 +185,16 @@ _NBA_WAR_ZONE_BASE = {
 
 # MLB safe-haven per-stat gates preserved from services/mlb_tier_sorter.py
 _MLB_SAFE_HAVEN: Dict[str, Dict[str, Any]] = {
-    "hits":              {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 0.0, "tp_min": 70.0, "min_margin": 0.75},
-    "total_bases":       {"cv_max": 0.75, "hr_min": 70.0, "edge_min": 0.0, "tp_min": 70.0, "min_margin": 1.00},
-    "hits_runs_rbis":    {"cv_max": 0.80, "hr_min": 85.0, "edge_min": 0.0, "tp_min": 70.0, "min_margin": 1.00},
-    "rbis":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 0.0, "tp_min": 70.0, "min_margin": 0.75},
-    "runs":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 0.0, "tp_min": 70.0, "min_margin": 0.75},
-    "pitching_outs":     {"cv_max": 0.30, "hr_min": 85.0, "edge_min": 0.0, "tp_min": 80.0, "min_margin": 0.75},
-    "pitcher_strikeouts":{"cv_max": 0.45, "hr_min": 70.0, "edge_min": 0.0, "tp_min": 75.0, "min_margin": 0.75},
-    "batter_strikeouts": {"cv_max": 0.75, "hr_min": 85.0, "edge_min": 0.0, "tp_min": 75.0, "min_margin": 0.75},
-    "earned_runs":       {"cv_max": 0.40, "hr_min": 70.0, "edge_min": 0.0, "tp_min": 75.0, "min_margin": 0.75},
-    "_default":          {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 0.0, "tp_min": 70.0, "min_margin": 0.75},
+    "hits":              {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
+    "total_bases":       {"cv_max": 0.75, "hr_min": 70.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 1.00},
+    "hits_runs_rbis":    {"cv_max": 0.80, "hr_min": 85.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 1.00},
+    "rbis":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
+    "runs":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
+    "pitching_outs":     {"cv_max": 0.30, "hr_min": 85.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
+    "pitcher_strikeouts":{"cv_max": 0.45, "hr_min": 70.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
+    "batter_strikeouts": {"cv_max": 0.75, "hr_min": 85.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
+    "earned_runs":       {"cv_max": 0.40, "hr_min": 70.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
+    "_default":          {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
 }
 _MLB_FRONT_LINES: Dict[str, Dict[str, Any]] = {
     "hits":              {"cv_max": 0.85, "hr_min": 65.0, "edge_min": 10.0, "tp_min": 58.0},
