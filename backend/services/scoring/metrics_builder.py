@@ -30,28 +30,6 @@ def _resolve_cv_cap_override(sport: str, target_tier: str,
     return None
 
 
-def _resolve_mlb_goblin_override(sport: str, target_tier: str,
-                                 line: Optional[float]) -> Dict[str, Any]:
-    """Replicates `compute_tier`'s MLB-SH goblin-line override.
-
-    Identical predicate (sport=="mlb" ∧ tier=="safe_haven" ∧ line<1.0)
-    and identical patched-thresholds dict so first pass and re-eval
-    produce the same gate verdict for any goblin-line MLB SH prop.
-    """
-    if sport == "mlb" and target_tier == "safe_haven":
-        try:
-            if float(line or 0) < 1.0:
-                return {
-                    "cv_max": 1.10,
-                    "hr_min": 75.0,
-                    "tp_min": 60.0,
-                    "edge_min": -9999.0,
-                }
-        except (TypeError, ValueError):
-            pass
-    return {}
-
-
 def build_metrics_from_context(
     *,
     prop: Dict[str, Any],
@@ -69,7 +47,6 @@ def build_metrics_from_context(
     ceiling_rate: Optional[float],
     p_model_pct: Optional[float],
     cv_cap_override: Optional[float],
-    mlb_goblin_override: Optional[Dict[str, Any]],
 ) -> NormalizedMetrics:
     """First-pass builder. Field-for-field equivalent to the inline
     block previously in `compute_tier` (lines 362-385 pre-PR-1).
@@ -78,8 +55,6 @@ def build_metrics_from_context(
     """
     stat_family = resolve_stat_family(sport, stat_raw)
     extras: Dict[str, Any] = {"cv_cap_override": cv_cap_override}
-    if mlb_goblin_override:
-        extras["mlb_goblin_override"] = mlb_goblin_override
 
     return NormalizedMetrics(
         sport=sport,
@@ -123,10 +98,10 @@ def build_metrics_from_score_doc(
     first pass did (replaces the inline Fix A fallback in
     `_reevaluate_tiers_post_vision`).
 
-    The `mlb_goblin_override` and `cv_cap_override` are derived here
-    from the same predicates the first pass uses (replaces the inline
-    Fix B re-iteration logic). Any future override added to
-    `compute_tier` need only be mirrored once, here.
+    The `cv_cap_override` is derived here from the same predicate the
+    first pass uses (replaces the inline Fix B re-iteration logic).
+    Any future override added to `compute_tier` need only be mirrored
+    once, here.
 
     Delegates to `build_metrics_from_context` so the two paths share
     every field-derivation expression except the side-aware HR
@@ -166,9 +141,6 @@ def build_metrics_from_score_doc(
         ceiling_rate=doc.get("ceiling_rate"),
         p_model_pct=p_model_pct,
         cv_cap_override=_resolve_cv_cap_override(sport, target_tier, stat_raw),
-        mlb_goblin_override=_resolve_mlb_goblin_override(
-            sport, target_tier, doc.get("line"),
-        ),
     )
 
 

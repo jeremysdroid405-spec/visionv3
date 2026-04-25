@@ -211,11 +211,6 @@ _MLB_WAR_ZONE: Dict[str, Dict[str, Any]] = {
     "_default":          {"ceiling_min": 35.0, "edge_min": 30.0},
 }
 
-_MLB_GOBLIN_LINE_OVERRIDE = {
-    "cv_max": 1.10, "hr_min": 70.0, "edge_min": -9999.0, "tp_min": 60.0,
-}
-
-
 def _mlb_thresholds(per_stat: Dict[str, Dict[str, Any]], *, war_zone: bool = False) -> Dict[str, Dict[str, Any]]:
     out: Dict[str, Dict[str, Any]] = {}
     for family, vals in per_stat.items():
@@ -270,15 +265,11 @@ THRESHOLDS: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {
 # To re-enable the production MLB gates, set `MLB_GATES_DISABLED_FOR_AUDIT
 # = False` and re-run `recompute_sport`. The full pre-audit MLB config is
 # preserved unchanged in `_MLB_SAFE_HAVEN`, `_MLB_FRONT_LINES`,
-# `_MLB_WAR_ZONE`, and `_MLB_GOBLIN_LINE_OVERRIDE` above. The override
-# below replaces ONLY the live `THRESHOLDS["mlb"]` block at module load
-# time. NBA / NFL paths are not touched.
+# `_MLB_WAR_ZONE` above. NBA / NFL paths are not touched.
 #
 # In audit mode every MLB-routed prop passes its gates by default
 # (empty config → engine evaluates 0 gates → `failed_gates=[]` → PASS),
-# letting tier assignment depend strictly on odds-bucket routing. The
-# MLB SH goblin override in `tier_evaluator._apply_mlb_sh_goblin_override`
-# self-disables when `resolve_thresholds(...)` returns an empty dict.
+# letting tier assignment depend strictly on odds-bucket routing.
 MLB_GATES_DISABLED_FOR_AUDIT: bool = False
 
 # Frozen pre-audit config (kept verbatim so the rebuild has a reference

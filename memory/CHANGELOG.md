@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-05 — REMOVED: MLB Goblin-Line Threshold Override (Complete Strip)
+
+**Goal**: User directive — *"Make MLB gates transparent and identical in behavior to the normal threshold config. No hidden overrides for line < 1.0."*
+
+### Files changed (4 files)
+1. **`services/scoring/gates/thresholds.py`** — removed `_MLB_GOBLIN_LINE_OVERRIDE` constant and its docstring references in the audit-mode comment block.
+2. **`services/scoring/metrics_builder.py`** — removed `_resolve_mlb_goblin_override()` function, the `mlb_goblin_override` parameter from `build_metrics_from_context()`, the `extras["mlb_goblin_override"]` injection, and the call site in `build_metrics_from_score_doc()`.
+3. **`services/scoring/tier_evaluator.py`** — removed `_is_mlb_sh_goblin()` and `_apply_mlb_sh_goblin_override()` helpers and the post-engine override branch. `evaluate_tier_with_overrides()` now calls the engine and returns the result unchanged.
+4. **`services/scoring/scoring_stack.py`** — removed `_resolve_mlb_goblin_override` import, the `mlb_goblin_override` resolution block, and the `mlb_goblin_override=` kwarg passed into `build_metrics_from_context()`.
+
+### Preserved (intentionally untouched)
+- `is_goblin` data flag in Odds API adapter and downstream pick selectors (data attribute, not a threshold patch).
+- `goblin_line` field references in `picks_getter_service.py`, `parlay_service.py`, `payout_engine.py`, `intel_briefing_engine.py`, `badge_resolver.py`, `stateless_tier_service.py` — these are tier-label data attributes (not gate logic).
+- Odds routing, TP, HR, CV, vision_score, SSOT sync, frontend — not touched.
+
+### Verification (MLB recompute, version_tag=`final-mlb-rt`, 11 583 props rescored)
+
+| Tier | BEFORE | AFTER | Delta |
+|------|-------:|------:|------:|
+| safe_haven | 152 | 20 | -132 |
+| front_lines | 22 | 21 | -1 |
+| war_zone | 14 | 26 | +12 |
+| unqualified | 11663 | 11516 | (re-routing) |
+
+| Routed bucket | BEFORE | AFTER |
+|---|---:|---:|
+| safe_haven | 1371 | 1275 |
+| front_lines | 3593 | 3503 |
+| war_zone | 5922 | 5857 |
+| None | 965 | 948 |
+
+- **SH passes with line < 1.0**: 151 → 19 (the 132 props that previously passed via the override now correctly route to `unqualified` with explicit visible-threshold reasons: `gate_edge_fail`, `gate_cv_fail`, `gate_tp_fail`).
+- All 20 surviving SH passes show `tier_reason="gates_passed"` from the unmodified `_MLB_SAFE_HAVEN` table.
+- All SH rejects now show specific failed-gate reason codes (no silent override branch).
+
+### Audit confirmation
+`grep -rE "_MLB_GOBLIN_LINE_OVERRIDE|_resolve_mlb_goblin_override|mlb_goblin_override|_apply_mlb_sh_goblin_override|_is_mlb_sh_goblin"` across `/app/backend` returns **0 matches**. All MLB tier outcomes are now traceable to the visible `_MLB_SAFE_HAVEN` / `_MLB_FRONT_LINES` / `_MLB_WAR_ZONE` tables only.
+
+
+
 ## 2026-04-25 — Admin Sync-Health Panel (`/api/v3/admin/sync-health`)
 
 **Goal**: Surface the new `sync_history` SSOT metrics for last-N runs per sport in a single auth-gated read endpoint.

@@ -345,16 +345,13 @@ def compute_tier(
         book_count = len(books) if books else None
 
     # Override resolution — delegated to the metrics_builder helpers
-    # so the goblin/cv-cap predicates live in exactly one place
+    # so the cv-cap predicate lives in exactly one place
     # (PR-2, 2026-04-25). Both paths (first pass + post-vision re-eval)
-    # call the same private resolvers.
-    from services.scoring.metrics_builder import (
-        _resolve_cv_cap_override, _resolve_mlb_goblin_override,
-    )
+    # call the same private resolvers. The MLB goblin-line override
+    # was removed 2026-05; MLB gates now use the visible threshold
+    # table only with no hidden line-based patching.
+    from services.scoring.metrics_builder import _resolve_cv_cap_override
     cv_cap_override = _resolve_cv_cap_override(sport, target_tier, stat_raw)
-    mlb_goblin_override = _resolve_mlb_goblin_override(
-        sport, target_tier, prop.get("line"),
-    )
 
     # PR-1 (2026-04-25): NormalizedMetrics builder + tier evaluator
     # extracted to dedicated modules so the post-vision re-eval can
@@ -375,7 +372,6 @@ def compute_tier(
         ceiling_rate=ceiling_rate,
         p_model_pct=p_model_pct,
         cv_cap_override=cv_cap_override,
-        mlb_goblin_override=mlb_goblin_override,
     )
 
     eval_result = evaluate_tier_with_overrides(metrics)
