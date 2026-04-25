@@ -62,6 +62,10 @@ LINE_GRID: Dict[str, List[float]] = {
     # 4.5–6.5; alt board extends 2.5 → 7.5. Trainer auto-applies
     # `innings_pitched > 0` floor (PITCHER_STATS membership).
     "pitcher_strikeouts": [2.5, 3.5, 4.5, 5.5, 6.5, 7.5],
+    # 2026-05 Phase 2G — Hits. PP standard 0.5; alt grid extends to
+    # 3.5 to cover alt-line longshots. Same family-independent
+    # feature contract as RBIs/Runs.
+    "hits": [0.5, 1.5, 2.5, 3.5],
 }
 
 
