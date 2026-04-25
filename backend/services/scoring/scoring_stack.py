@@ -34,6 +34,9 @@ LOCKED SPEC (user 2026-04-17):
        is wired in; do not emit them from odds heuristics.)
 """
 from typing import Dict, Any, Optional, Tuple
+import logging
+
+logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # Shared p_true ladder (canonical scoring-framework primitive)
@@ -309,6 +312,7 @@ def compute_tier(
             "tier_reason": ReasonCode.NO_REFERENCE_MARKET,
             "tier_reference_book": "none",
             "tier_reference_odds": None,
+            "routed_tier": None,
             "tier_gate_results": {},
         }
 
@@ -318,9 +322,16 @@ def compute_tier(
     # `services.scoring.gates.thresholds`. `__pass_all__` tiers are now
     # genuinely filter-free end-to-end.
 
-    # Route to a target tier via the sport-aware odds buckets in config.
+    # ----- FIRST-CLASS TIER ROUTING (2026-04-25) ------------------
+    # Route by reference odds BEFORE any gate evaluation. The routed
+    # tier defines which gate block this prop is allowed to evaluate
+    # against — there is no cross-tier evaluation, no promotion path.
+    # `tier_evaluator` only ever sees a prop tagged with one routed
+    # bucket. Final assignment is constrained to {routed_tier,
+    # "unqualified"} by the hard guard further down.
     sport = (sport or "nba").lower()
-    target_tier = resolve_target_tier(sport, ref_odds) or "front_lines"
+    routed_tier = resolve_target_tier(sport, ref_odds) or "front_lines"
+    target_tier = routed_tier
     stat_raw = prop.get("stat_type")
 
     # Book count — the universal 0-Book Exclusion filter has already
@@ -396,11 +407,37 @@ def compute_tier(
     }
 
     if eval_result.passed:
+        # Hard-guard (2026-04-25): final tier MUST equal routed_tier
+        # for a passing prop. The current pipeline can't violate this
+        # because gate thresholds are resolved per-target_tier — but
+        # the assertion exists to catch any future regression
+        # (e.g. someone wiring cross-tier gate evaluation) at the
+        # exact moment the constraint would be broken.
+        if target_tier != routed_tier:
+            logger.error(
+                "[ROUTING_GUARD] passed-prop tier mismatch: "
+                f"target={target_tier} != routed={routed_tier} "
+                f"sport={sport} ref_odds={ref_odds} — forcing unqualified"
+            )
+            out = {
+                "tier": "unqualified",
+                "tier_reason": "routing_guard_violation",
+                "tier_reference_book": ref_book,
+                "tier_reference_odds": ref_odds,
+                "routed_tier": routed_tier,
+                "tier_gate_results": legacy_gate_results,
+                "gate_eval": eval_result.to_dict(),
+            }
+            if war_zone_cv_mod is not None:
+                out["war_zone_cv_modifier"] = war_zone_cv_mod
+            return out
+
         out = {
-            "tier": target_tier,
+            "tier": routed_tier,
             "tier_reason": ReasonCode.GATES_PASSED,
             "tier_reference_book": ref_book,
             "tier_reference_odds": ref_odds,
+            "routed_tier": routed_tier,
             "tier_gate_results": legacy_gate_results,
             "gate_eval": eval_result.to_dict(),
         }
@@ -410,9 +447,10 @@ def compute_tier(
 
     out = {
         "tier": "unqualified",
-        "tier_reason": f"{target_tier}_failed: {eval_result.reason_code}",
+        "tier_reason": f"{routed_tier}_failed: {eval_result.reason_code}",
         "tier_reference_book": ref_book,
         "tier_reference_odds": ref_odds,
+        "routed_tier": routed_tier,
         "tier_gate_results": legacy_gate_results,
         "gate_eval": eval_result.to_dict(),
     }

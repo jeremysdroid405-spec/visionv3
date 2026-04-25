@@ -24,6 +24,13 @@ _SCORE_OUTPUT_FIELDS = (
     "stability", "confidence", "edge_vs_fair",
     # tier dimension
     "tier", "tier_reason", "tier_reference_book", "tier_reference_odds",
+    # Routed tier (2026-04-25) — odds-bucket assignment from the
+    # FIRST-CLASS routing step. Stamped before any gate evaluates.
+    # Universal across NBA / MLB / NFL: ref_odds <= -240 → safe_haven,
+    # +150 ≤ ref_odds → war_zone, else front_lines, None → unqualified.
+    # Final `tier` is constrained to {routed_tier, "unqualified"} by
+    # the hard-guard in `scoring_stack.compute_tier`.
+    "routed_tier",
     "tier_gate_results",
     # pp_utility dimension
     "pp_utility", "pp_utility_category", "pp_utility_components",

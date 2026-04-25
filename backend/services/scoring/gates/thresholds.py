@@ -318,32 +318,58 @@ def resolve_thresholds(
     return by_tier.get("_default", {})
 
 
-# Odds-bucket routing — engine uses this to derive the TARGET tier for a
-# pick from its reference odds. Same config treatment as gates.
+# Universal odds-bucket routing (2026-04-25, post-MLB-routing audit).
+#
+# Tier routing is the FIRST-CLASS pipeline step that decides which gate
+# block a prop will be evaluated against. It is sport-agnostic by design
+# — markets across NBA / MLB / NFL all price favorites/longshots on the
+# same American-odds scale, so a single threshold pair governs all
+# sports.
+#
+# Bucket definition:
+#     ref_odds <= -240          → safe_haven  (heavy favorite)
+#     -239 <= ref_odds <= +149   → front_lines (mid range)
+#     ref_odds >= +150          → war_zone    (longshot)
+#     ref_odds is None          → unqualified (no reference market)
+#
+# Hard contract: a prop's FINAL tier is constrained to be one of
+# {routed_tier, "unqualified"}. Promotions across buckets are forbidden.
+# The constraint is enforced at `scoring_stack.compute_tier` and
+# audit-checkable via the persisted `routed_tier` score-doc field.
+UNIVERSAL_SAFE_HAVEN_MAX: int = -240
+UNIVERSAL_WAR_ZONE_MIN: int = 150
+
+# Per-sport ODDS_BUCKETS retained as a thin alias on the universal
+# constants — read sites continue to work, but every sport now uses
+# the same threshold pair. Pre-2026-04-25 NBA was -250 / +150;
+# the universal cutover normalises it to -240 / +150.
 ODDS_BUCKETS: Dict[str, Dict[str, Any]] = {
     "nba": {
-        "safe_haven_max":  -250,
-        "war_zone_min":     150,
-        # anything strictly between the two is front_lines
+        "safe_haven_max":  UNIVERSAL_SAFE_HAVEN_MAX,
+        "war_zone_min":    UNIVERSAL_WAR_ZONE_MIN,
     },
     "mlb": {
-        "safe_haven_max":  -240,
-        "war_zone_min":     150,
+        "safe_haven_max":  UNIVERSAL_SAFE_HAVEN_MAX,
+        "war_zone_min":    UNIVERSAL_WAR_ZONE_MIN,
     },
     "nfl": {
-        "safe_haven_max":  -250,
-        "war_zone_min":     150,
+        "safe_haven_max":  UNIVERSAL_SAFE_HAVEN_MAX,
+        "war_zone_min":    UNIVERSAL_WAR_ZONE_MIN,
     },
 }
 
 
 def resolve_target_tier(sport: str, reference_odds: Optional[int]) -> Optional[str]:
-    """Map (sport, reference_odds) → target tier name, or None if no odds."""
+    """Map reference_odds → routed tier, or None if no odds.
+
+    `sport` is accepted for backwards-compat but ignored — routing is
+    universal across all sports per the 2026-04-25 cutover. Cross-sport
+    consistency is the entire point of the routing layer.
+    """
     if reference_odds is None:
         return None
-    cfg = ODDS_BUCKETS.get((sport or "").lower(), ODDS_BUCKETS["nba"])
-    if reference_odds <= cfg["safe_haven_max"]:
+    if reference_odds <= UNIVERSAL_SAFE_HAVEN_MAX:
         return "safe_haven"
-    if reference_odds >= cfg["war_zone_min"]:
+    if reference_odds >= UNIVERSAL_WAR_ZONE_MIN:
         return "war_zone"
     return "front_lines"
