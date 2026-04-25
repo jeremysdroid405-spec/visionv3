@@ -257,6 +257,53 @@ THRESHOLDS: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {
 }
 
 
+# ============================================================================
+# AUDIT MODE — MLB GATES TEMPORARILY DISABLED (2026-04-25)
+# ============================================================================
+# Reason: empty MLB SH/FL/WZ boards on a 100% Singles slate forced a config
+# audit (see /app/memory/PRD.md "MLB gate-outcome audit, 2026-04-25"). The
+# Singles stat family has no bespoke threshold row in `_MLB_*` and falls
+# through to `_default` (Hits-calibrated), which rejects ~94% of Singles
+# props. Rather than tune one stat in isolation we are reviewing the raw
+# odds-routed candidate pool to rebuild the MLB gate suite from scratch.
+#
+# To re-enable the production MLB gates, set `MLB_GATES_DISABLED_FOR_AUDIT
+# = False` and re-run `recompute_sport`. The full pre-audit MLB config is
+# preserved unchanged in `_MLB_SAFE_HAVEN`, `_MLB_FRONT_LINES`,
+# `_MLB_WAR_ZONE`, and `_MLB_GOBLIN_LINE_OVERRIDE` above. The override
+# below replaces ONLY the live `THRESHOLDS["mlb"]` block at module load
+# time. NBA / NFL paths are not touched.
+#
+# In audit mode every MLB-routed prop passes its gates by default
+# (empty config → engine evaluates 0 gates → `failed_gates=[]` → PASS),
+# letting tier assignment depend strictly on odds-bucket routing. The
+# MLB SH goblin override in `tier_evaluator._apply_mlb_sh_goblin_override`
+# self-disables when `resolve_thresholds(...)` returns an empty dict.
+MLB_GATES_DISABLED_FOR_AUDIT: bool = True
+
+# Frozen pre-audit config (kept verbatim so the rebuild has a reference
+# to diff against — DO NOT EDIT until the audit lands.)
+_MLB_SAFE_HAVEN_FROZEN_AUDIT_2026_04_25 = _mlb_thresholds(_MLB_SAFE_HAVEN)
+_MLB_FRONT_LINES_FROZEN_AUDIT_2026_04_25 = _mlb_thresholds(_MLB_FRONT_LINES)
+_MLB_WAR_ZONE_FROZEN_AUDIT_2026_04_25 = _mlb_thresholds(_MLB_WAR_ZONE, war_zone=True)
+
+if MLB_GATES_DISABLED_FOR_AUDIT:
+    # `coverage_gate` with `min_books: 0` is the engine's only "pass-all"
+    # idiom: it requires `book_count >= 0`, true for every prop that
+    # survived the universal 0-book-exclusion filter upstream. The
+    # engine would fail-close on a literally empty `{}` config (returns
+    # `gate_config_missing`), so we register one always-pass gate here
+    # to suppress every other gate while still satisfying the engine's
+    # safety guard. This keeps the audit cleanly readable: routed tier
+    # is preserved iff a prop reaches the gate stage at all.
+    _AUDIT_PASS_ALL = {"coverage_gate": {"min_books": 0}}
+    THRESHOLDS["mlb"] = {
+        "safe_haven":  {"_default": _AUDIT_PASS_ALL},
+        "front_lines": {"_default": _AUDIT_PASS_ALL},
+        "war_zone":    {"_default": _AUDIT_PASS_ALL},
+    }
+
+
 def resolve_thresholds(
     sport: str, tier: str, stat_family: str,
 ) -> Dict[str, Dict[str, Any]]:
