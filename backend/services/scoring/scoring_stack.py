@@ -187,24 +187,32 @@ def compute_vision_score(
     hit_rate: Optional[float],
     books_available_count: int = 0,
     tp_for_vs: Optional[float] = None,
+    tp_for_vs_source: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Platform-agnostic pick quality.
 
-    Anchor selection (2026-04-25, MLB one_sided fix):
+    Anchor selection (2026-04-25, MLB one_sided fix v3):
       `tp_for_vs` (decimal 0..1), when supplied, REPLACES the
       single-book / consensus `fair_prob` as the comparison anchor for
-      the edge calculation. The MLB adapter passes the de-vigged TP
-      when `tp_source=="devig"` and the model probability otherwise,
-      eliminating the vig-induced edge collapse on alt-line one-sided
-      markets. NBA continues to pass `tp_for_vs=None` (default), which
-      preserves legacy `fair_prob`-based behavior bit-for-bit.
+      the edge calculation. The MLB adapter passes:
+        tp_for_vs_source == "devig"            → vig-free consensus
+        tp_for_vs_source == "one_sided_market" → single-book raw
+                                                   (carries vig);
+                                                   confidence ×0.7
+                                                   penalty applied so
+                                                   these rank below
+                                                   devig rows.
+      NBA continues to pass `tp_for_vs=None` (default), preserving
+      legacy `fair_prob`-based behavior bit-for-bit.
 
     Returns:
       {
         "vision_score_raw": float or None,
         "vision_score": float or None,
-        "quality_source": str,
+        "quality_source": str,    # 'tp_devig' | 'one_sided_market' |
+                                  # 'consensus' | 'dk' | 'mgm' | 'sharp'
+                                  # | 'insufficient_market'
         "fair_prob": float or None,
         "stability": float or None,
         "confidence": float or None,
@@ -215,20 +223,29 @@ def compute_vision_score(
         None, dk_layer, mgm_layer, sharp_layer
     )
 
-    # `tp_for_vs` override path. Use the supplied vig-free anchor when
-    # provided, falling back to the raw `fair_prob` selector when
-    # `tp_for_vs` is None or out of [0, 1] bounds.
+    # `tp_for_vs` override path — MLB adapter passes a decimal 0..1
+    # anchor with an explicit source label.
+    one_sided_penalty = 1.0
     if (
         tp_for_vs is not None
         and isinstance(tp_for_vs, (int, float))
         and 0.0 <= float(tp_for_vs) <= 1.0
     ):
         fair_prob = float(tp_for_vs)
-        quality_source = (
-            f"{quality_source_raw}+tp_for_vs"
-            if quality_source_raw not in (None, "insufficient_market")
-            else "tp_for_vs"
-        )
+        if tp_for_vs_source == "devig":
+            quality_source = "tp_devig"
+        elif tp_for_vs_source == "one_sided_market":
+            quality_source = "one_sided_market"
+            # Confidence penalty: vig-laden anchor → less trustworthy
+            # edge → vision_score discounted by 0.7 multiplier so
+            # one_sided rows rank below devig rows when ordered by VS.
+            one_sided_penalty = 0.7
+        else:
+            quality_source = (
+                f"{quality_source_raw}+tp_for_vs"
+                if quality_source_raw not in (None, "insufficient_market")
+                else "tp_for_vs"
+            )
     else:
         fair_prob = fair_prob_raw
         quality_source = quality_source_raw
@@ -258,6 +275,11 @@ def compute_vision_score(
         1.0 if books_available_count >= 2 else 0.5,
     ]
     confidence = round(sum(conf_signals) / len(conf_signals), 4)
+    # One-sided market penalty (2026-04-25). When the anchor is a
+    # single-book vig-laden raw implied prob (`one_sided_market`),
+    # discount confidence so VS ranks below devig rows. devig rows
+    # leave `one_sided_penalty == 1.0` → no change.
+    confidence = round(confidence * one_sided_penalty, 4)
 
     edge = p_model - fair_prob  # signed; positive = model sees more value than market
 
@@ -757,6 +779,7 @@ def compute_scoring_stack(
         # NBA leaves `tp_for_vs` unset on the prop → None → legacy
         # fair_prob path. MLB adapter stamps it post-compute_tp.
         tp_for_vs=prop.get("tp_for_vs"),
+        tp_for_vs_source=prop.get("tp_for_vs_source"),
     )
     t = compute_tier(
         prop=prop,

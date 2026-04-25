@@ -329,28 +329,41 @@ class MLBScoringAdapter(ScoringAdapter):
         if tp_result.get("market_probability") is not None:
             prop["market_probability"] = tp_result["market_probability"]
 
-        # NBA-PARITY TP FALLBACK FOR VISION SCORE (2026-04-25, revised).
-        # MLB markets are dominated by one-sided alt lines whose
-        # raw-implied probability carries vig and pessimistically
-        # biases `fair_prob` (the legacy vision_score anchor),
-        # collapsing edge to 0 even when the model agrees with the
-        # market consensus.
+        # NBA-PARITY TP FALLBACK FOR VISION SCORE (2026-04-25, v3 one_sided).
+        # Override semantics — gives every MLB prop a vig-aware market
+        # anchor so vision_score can be computed without comparing the
+        # model to itself:
         #
-        # Override semantics:
-        #   tp_source == "devig"  → tp / 100  (clean de-vigged consensus,
-        #                                       strict improvement over
-        #                                       single-book fair_prob)
-        #   else                   → None      (leave to legacy
-        #                                       `fair_prob` selector;
-        #                                       p_true_model is NOT
-        #                                       used because it == p_model
-        #                                       and would self-compare).
-        # `tp` itself is preserved unchanged for audit. This guarantees
-        # one_sided behavior is at-worst identical to pre-fix.
+        #   tp_source == "devig"       → tp / 100
+        #                                 quality_source = "tp_devig"
+        #                                 (no confidence penalty)
+        #
+        #   tp_source == "one_sided"   → market_probability (decimal 0..1
+        #                                 form of `tp`, single-book raw
+        #                                 implied prob — carries vig)
+        #                                 quality_source = "one_sided_market"
+        #                                 confidence × 0.7 penalty so
+        #                                 these rank below devig rows
+        #                                 in vision_score
+        #
+        #   else (tp = None)           → None  (legacy `fair_prob`)
+        #
+        # Never use `p_true_model` — that == `p_model` and would
+        # self-compare, collapsing edge to zero. `tp` / `tp_source` /
+        # `market_probability` / `p_true_model` / `p_true_active` are
+        # all preserved unchanged for audit.
         tp_for_vs: Optional[float] = None
-        if tp_result.get("tp_source") == "devig" and tp is not None:
+        tp_for_vs_source: Optional[str] = None
+        _ts = tp_result.get("tp_source")
+        _mp = tp_result.get("market_probability")
+        if _ts == "devig" and tp is not None:
             tp_for_vs = round(float(tp) / 100.0, 6)
+            tp_for_vs_source = "devig"
+        elif _ts == "one_sided" and _mp is not None:
+            tp_for_vs = round(float(_mp), 6)
+            tp_for_vs_source = "one_sided_market"
         prop["tp_for_vs"] = tp_for_vs
+        prop["tp_for_vs_source"] = tp_for_vs_source
 
         # ---- Shared p_true ladder (carbon-copy with NBA) ---------------
         # Ladder order: model → hit_rate → vk2 → fair
