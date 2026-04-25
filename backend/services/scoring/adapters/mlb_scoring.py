@@ -150,15 +150,33 @@ class MLBScoringAdapter(ScoringAdapter):
             cv = None
             cv_status = "missing_bdl_id"
             hit_rate = None
+            hit_rate_over = None
+            hit_rate_under = None
             hit_rate_status = "missing_bdl_id"
             ceiling_rate = None
         else:
             cv = stats._calculate_cv(bdl_player_id, stat_type)
             cv_status = "computed" if cv is not None else "missing_source_distribution"
-            hit_rate, _ = stats._calculate_hit_rate(
-                bdl_player_id, stat_type, line, 20,
+            # Side-aware HR (2026-04-25, Fix A). Use the new
+            # `_calculate_hit_rate_sides` so both `hit_rate_over` and
+            # `hit_rate_under` are persisted on the score doc — the
+            # gate engine and post-vision re-eval consume the side
+            # field directly. Picked-side `hit_rate` mirrors the
+            # legacy field used by the p_true ladder.
+            hit_rate_over, hit_rate_under, _hr_avg = (
+                stats._calculate_hit_rate_sides(
+                    bdl_player_id, stat_type, line, 20,
+                )
             )
-            hit_rate_status = "computed" if hit_rate is not None else "missing_source_distribution"
+            side_for_hr = (prop.get("recommendation") or "OVER").upper()
+            if "UNDER" in side_for_hr:
+                hit_rate = hit_rate_under
+            else:
+                hit_rate = hit_rate_over
+            hit_rate_status = (
+                "computed" if hit_rate is not None
+                else "missing_source_distribution"
+            )
             ceiling_rate = stats._calculate_ceiling_hit_rate(
                 bdl_player_id, stat_type, line,
             )
@@ -168,6 +186,11 @@ class MLBScoringAdapter(ScoringAdapter):
         p_true_model = None
         model_projection = None
         model_sigma = None
+        # Fix C (2026-04-25): label the source of `model_projection`.
+        # MLB has no combo-synth path today, so the only valid value
+        # is "model" (or None when the HF model is unavailable / the
+        # bdl_player_id is missing).
+        projection_method: Optional[str] = None
         if hf_model and bdl_player_id is not None:
             opponent = prop.get('away_team') if not prop.get('is_away_team') else prop.get('home_team')
             park_team = prop.get('home_team') if prop.get('is_away_team') else prop.get('team')
@@ -195,6 +218,11 @@ class MLBScoringAdapter(ScoringAdapter):
                 # model_projection and ranking_score_v2 for MLB.
                 model_projection = result.get("predicted")
                 model_sigma = result.get("std_dev")
+                # Fix C (2026-04-25): stamp projection_method as soon
+                # as a valid HF prediction is in hand. Falls back to
+                # None when prediction is rejected upstream.
+                if model_projection is not None:
+                    projection_method = "model"
 
                 # --- Empirical-Bayes post-shrinkage (2026-04-24, flagged) ---
                 # On whitelisted zero-heavy stat families only
@@ -287,6 +315,16 @@ class MLBScoringAdapter(ScoringAdapter):
         prop["tp_books_list"] = tp_books_list
         prop["tp_method"] = tp_method
         prop["tp_unavailable"] = tp_unavailable
+        # Fix B (2026-04-25): mirror the source label fields onto
+        # `prop` so the recompute conditional mirror block
+        # (recompute.py:582-587) propagates them onto the score doc.
+        # `tp_source ∈ {"devig", "one_sided", None}`;
+        # `tp_unavailable_reason` is the typed reason when tp is None.
+        # `market_probability` is the 0..1 rescaled tp for UI use.
+        prop["tp_source"] = tp_result.get("tp_source")
+        prop["tp_unavailable_reason"] = tp_result.get("tp_unavailable_reason")
+        if tp_result.get("market_probability") is not None:
+            prop["market_probability"] = tp_result["market_probability"]
 
         # ---- Shared p_true ladder (carbon-copy with NBA) ---------------
         # Ladder order: model → hit_rate → vk2 → fair
@@ -337,7 +375,10 @@ class MLBScoringAdapter(ScoringAdapter):
             cv=cv,
             cv_status=cv_status,
             hit_rate=hit_rate,
+            hit_rate_over=hit_rate_over,
+            hit_rate_under=hit_rate_under,
             hit_rate_status=hit_rate_status,
+            projection_method=projection_method,
             edge_pct=edge_pct,
             tp=tp,
             ceiling_rate=ceiling_rate,

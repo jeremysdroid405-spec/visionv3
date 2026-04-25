@@ -343,7 +343,94 @@ class MLBTierSorter:
         avg = round(sum(values) / len(values), 2)
         
         return hit_rate, avg
-    
+
+    def _calculate_hit_rate_sides(
+        self,
+        bdl_player_id: Optional[int],
+        stat_type: str,
+        line: float,
+        num_games: int = 20,
+    ) -> "Tuple[Optional[float], Optional[float], Optional[float]]":
+        """Side-aware variant of `_calculate_hit_rate` (2026-04-25, Fix A).
+
+        Returns:
+            Tuple of (hit_rate_over, hit_rate_under, average).
+
+        Semantics match the existing OVER computation (`val >= line`) and
+        pair it with the strict UNDER mirror (`val < line`). Sum equals
+        100 — every game lands on exactly one side. Behaviour-preserving
+        for the OVER side; legacy `_calculate_hit_rate` is retained for
+        backwards compatibility with existing callers / tests.
+        """
+        game_logs = self._get_logs_by_id(bdl_player_id)
+        if not game_logs:
+            return None, None, None
+
+        stat_map = {
+            "hits": "hits",
+            "total_bases": "total_bases",
+            "rbis": "rbis",
+            "runs": "runs",
+            "home_runs": "home_runs",
+            "stolen_bases": "stolen_bases",
+            "singles": "singles",
+            "doubles": "doubles",
+            "triples": "triples",
+            "batter_walks": "walks",
+            "walks": "walks",
+            "batter_strikeouts": "strikeouts",
+            "strikeouts": "strikeouts",
+            "hits+runs+rbis": ["hits", "runs", "rbis"],
+            "pitcher_strikeouts": "pitcher_strikeouts",
+            "pitcher_outs": "innings_pitched",
+            "pitching_outs": "innings_pitched",
+            "earned_runs": "earned_runs",
+            "hits_allowed": "hits_allowed",
+            "walks_allowed": "pitcher_walks",
+        }
+
+        stat_key = self._normalize_stat_type(stat_type)
+        field = stat_map.get(stat_key, stat_key)
+
+        sorted_logs = sorted(
+            game_logs,
+            key=lambda x: x.get("date", "") or "",
+            reverse=True,
+        )[:num_games]
+
+        values = []
+        for game in sorted_logs:
+            if isinstance(field, list):
+                val = sum(game.get(f) or 0 for f in field)
+            elif field == "innings_pitched":
+                ip = game.get(field)
+                val = (ip * 3) if ip else None
+            elif field == "singles":
+                h = game.get("hits")
+                if h is not None:
+                    d = game.get("doubles") or 0
+                    t = game.get("triples") or 0
+                    hr = game.get("home_runs") or 0
+                    val = max(0, h - d - t - hr)
+                else:
+                    val = None
+            else:
+                val = game.get(field)
+            if val is None:
+                continue
+            values.append(val)
+
+        if not values:
+            return None, None, None
+
+        n = len(values)
+        over_hits = sum(1 for v in values if v >= line)
+        under_hits = sum(1 for v in values if v < line)
+        hit_rate_over = round((over_hits / n) * 100.0, 1)
+        hit_rate_under = round((under_hits / n) * 100.0, 1)
+        avg = round(sum(values) / n, 2)
+        return hit_rate_over, hit_rate_under, avg
+
     def _calculate_ceiling_hit_rate(
         self, 
         bdl_player_id: Optional[int],
