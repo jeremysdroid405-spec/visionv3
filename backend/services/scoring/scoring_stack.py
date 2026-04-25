@@ -293,12 +293,10 @@ def compute_tier(
         `tier_gate_results`, `gate_eval`, optional
         `war_zone_cv_modifier`) is preserved.
     """
-    from services.scoring.gates import (
-        NormalizedMetrics, ReasonCode, get_engine,
-    )
-    from services.scoring.gates.thresholds import (
-        resolve_stat_family, resolve_target_tier,
-    )
+    from services.scoring.gates import ReasonCode
+    from services.scoring.gates.thresholds import resolve_target_tier
+    from services.scoring.metrics_builder import build_metrics_from_context
+    from services.scoring.tier_evaluator import evaluate_tier_with_overrides
 
     ref_odds, ref_book = _pick_reference_odds(dk_layer, mgm_layer)
 
@@ -324,7 +322,6 @@ def compute_tier(
     sport = (sport or "nba").lower()
     target_tier = resolve_target_tier(sport, ref_odds) or "front_lines"
     stat_raw = prop.get("stat_type")
-    stat_family = resolve_stat_family(sport, stat_raw)
 
     # Book count — the universal 0-Book Exclusion filter has already
     # trimmed pp_only rows before scoring; for any survivor this is
@@ -348,7 +345,9 @@ def compute_tier(
             cv_cap_override = None
 
     # MLB goblin-line override — binary outcomes (line < 1) use a
-    # relaxed Safe Haven threshold matrix.
+    # relaxed Safe Haven threshold matrix. Stamped into `extras`; the
+    # actual threshold patch is applied inside
+    # `evaluate_tier_with_overrides`.
     mlb_goblin_override: Dict[str, Any] = {}
     if sport == "mlb" and target_tier == "safe_haven":
         try:
@@ -359,67 +358,29 @@ def compute_tier(
         except (TypeError, ValueError):
             pass
 
-    metrics = NormalizedMetrics(
+    # PR-1 (2026-04-25): NormalizedMetrics builder + tier evaluator
+    # extracted to dedicated modules so the post-vision re-eval can
+    # call the same code paths in PR-2. Behaviour-preserving.
+    metrics = build_metrics_from_context(
+        prop=prop,
         sport=sport,
-        tier=target_tier,
-        stat_family=stat_family,
+        target_tier=target_tier,
+        stat_raw=stat_raw,
         side=side,
-        reference_book=ref_book,
-        reference_odds=ref_odds,
+        ref_book=ref_book,
+        ref_odds=ref_odds,
         book_count=book_count,
-        tp=tp,
-        tp_source=prop.get("tp_source"),
-        is_alt="alternate" in (stat_raw or "").lower(),
-        vision_score=prop.get("vision_score"),
-        hit_rate=hit_rate,
-        hit_rate_l20=prop.get("hit_rate_over") or prop.get("hit_rate_l20"),
-        hit_rate_l10=prop.get("hit_rate_l10"),
-        hit_rate_l5=prop.get("hit_rate_l5"),
-        ceiling_rate=ceiling_rate,
         cv=cv,
+        hit_rate=hit_rate,
         edge_pct=edge_pct,
+        tp=tp,
+        ceiling_rate=ceiling_rate,
         p_model_pct=p_model_pct,
-        extras={"cv_cap_override": cv_cap_override, **(
-            {"mlb_goblin_override": mlb_goblin_override} if mlb_goblin_override else {}
-        )},
+        cv_cap_override=cv_cap_override,
+        mlb_goblin_override=mlb_goblin_override,
     )
 
-    # Apply the MLB goblin-line override by mutating the resolved
-    # thresholds inline. (Kept here so the engine itself stays sport-
-    # blind — the override is a pre-engine config patch.)
-    eval_result = get_engine().evaluate(metrics)
-    if mlb_goblin_override and eval_result.gate_summary == "FAIL":
-        # Re-evaluate with the goblin override applied.
-        from services.scoring.gates.engine import UniversalGateEngine
-        from services.scoring.gates.schema import GateDetail
-        from services.scoring.gates.thresholds import resolve_thresholds
-        thresholds = dict(resolve_thresholds(sport, target_tier, stat_family))
-        if thresholds:
-            thresholds["cv_gate"]       = {"max": mlb_goblin_override["cv_max"]}
-            thresholds["hit_rate_gate"] = {"min": mlb_goblin_override["hr_min"], "window": "default"}
-            thresholds["tp_gate"]       = {"min": mlb_goblin_override["tp_min"]}
-            thresholds["edge_gate"]     = {"min": mlb_goblin_override["edge_min"]}
-            details: Dict[str, GateDetail] = {}
-            passed_gates: list = []
-            failed_gates: list = []
-            engine = UniversalGateEngine()
-            for gate_type, gate_cfg in thresholds.items():
-                fn = engine._GATE_DISPATCH.get(gate_type)
-                if fn is None:
-                    continue
-                detail = fn.__func__(gate_cfg, metrics) if hasattr(fn, "__func__") else fn(gate_cfg, metrics)
-                details[gate_type] = detail
-                (passed_gates if detail.passed else failed_gates).append(gate_type)
-            overall_passed = len(failed_gates) == 0
-            eval_result.gate_details = details
-            eval_result.passed_gates = passed_gates
-            eval_result.failed_gates = failed_gates
-            eval_result.passed = overall_passed
-            eval_result.gate_summary = "PASS" if overall_passed else "FAIL"
-            eval_result.reason_code = (
-                ReasonCode.GATES_PASSED if overall_passed
-                else details[failed_gates[0]].reason_code or ReasonCode.for_gate(failed_gates[0])
-            )
+    eval_result = evaluate_tier_with_overrides(metrics)
 
     # War-Zone CV ranking modifier — INFORMATIONAL ONLY.
     # The CV floor on War Zone eligibility was removed 2026-04-23 (design
