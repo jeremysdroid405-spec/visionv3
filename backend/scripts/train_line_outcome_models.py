@@ -47,7 +47,18 @@ LINE_GRID: Dict[str, List[float]] = {
     # 2026-05 Phase 2B — total bases. PP standard 1.5; alt grid
     # 0.5 (rare-event UNDER) through 4.5 (longshot OVER).
     "total_bases": [0.5, 1.5, 2.5, 3.5, 4.5],
+    # 2026-05 Phase 2C — hits+runs+rbis. Combo stat with broad PP
+    # alt support; saved as `hits_runs_rbis.pkl` (LOM loader
+    # rewrites `+` → `_` for filename safety).
+    "hits+runs+rbis": [0.5, 1.5, 2.5, 3.5, 4.5, 5.5],
 }
+
+
+def _safe_filename(stat: str) -> str:
+    """`hits+runs+rbis` → `hits_runs_rbis`. Mirrors the loader's
+    `_safe_family_path` so the artifact path is round-trippable.
+    """
+    return stat.lower().replace("+", "_").replace(" ", "_")
 PITCHER_STATS = {
     "pitcher_strikeouts", "hits_allowed", "earned_runs", "pitcher_walks",
 }
@@ -291,7 +302,7 @@ def main():
         else:
             print(f'[{b["lo"]:.1f},{b["hi"]:.1f}]   0       -         -         -')
 
-    out = f"{ARTIFACT_DIR}/{args.stat}.pkl"
+    out = f"{ARTIFACT_DIR}/{_safe_filename(args.stat)}.pkl"
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "wb") as f:
         pickle.dump(art, f)
