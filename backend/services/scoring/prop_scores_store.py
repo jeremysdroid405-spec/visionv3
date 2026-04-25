@@ -68,6 +68,10 @@ _SCORE_OUTPUT_FIELDS = (
     # will never appear here; surfaced on every score doc so the UI /
     # read-side guards can sanity-check the invariant.
     "book_count", "coverage_class", "books_anchored",
+    # 0.5-line stability metrics (2026-05). Replaces raw-CV in the
+    # gate engine for binary MLB props. Persisted on every MLB doc;
+    # NBA leaves these None.
+    "avg_hit_margin", "avg_miss_margin",
     # War Zone CV scoring modifier (2026-04-22). CV floor removed from
     # War Zone eligibility; CV now only contributes a small +/- to the
     # ranking score. Stamped by

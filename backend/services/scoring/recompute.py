@@ -385,6 +385,8 @@ async def recompute_sport(
             ceiling_rate=ctx.ceiling_rate,
             books_available_count=ctx.books_available_count,
             sport=sport,
+            avg_hit_margin=ctx.avg_hit_margin,
+            avg_miss_margin=ctx.avg_miss_margin,
         )
         # -------- Universal pool fields (multi-sport lifecycle) --------
         # Every {sport}_prop_scores document carries the same universal
@@ -548,6 +550,10 @@ async def recompute_sport(
         # NBAScoringAdapter._compute_cv_and_hit_rate.
         doc["cv"] = ctx.cv
         doc["cv_status"] = ctx.cv_status
+        # 0.5-line margin metrics (2026-05). Engine swaps cv_gate →
+        # margin_gate when sport==mlb && line==0.5.
+        doc["avg_hit_margin"] = ctx.avg_hit_margin
+        doc["avg_miss_margin"] = ctx.avg_miss_margin
         # Universal HR status (2026-04-23) — mirror of cv_status.
         doc["hit_rate_status"] = ctx.hit_rate_status
         # Combo projection synthesis (2026-04-23): label where

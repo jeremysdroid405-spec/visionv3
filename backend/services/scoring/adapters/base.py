@@ -25,6 +25,12 @@ class ScoringContext:
     p_model: Optional[float] = None          # final model probability (0-1)
     cv: Optional[float] = None
     cv_status: Optional[str] = None  # computed | unavailable_stat_family | missing_source_distribution | not_supported_yet
+    # 0.5-line margin metrics (2026-05). Replace cv_gate for binary
+    # MLB props in the gate engine. Computed for every MLB prop;
+    # left None on NBA. The engine consults them only when
+    # `metrics.line == 0.5` AND `metrics.sport == "mlb"`.
+    avg_hit_margin: Optional[float] = None
+    avg_miss_margin: Optional[float] = None
     # Universal HR status (2026-04-23). Mirror of cv_status for the
     # hit-rate pipeline so a null hit_rate is distinguishable from a
     # legitimate 0% and callers can act on the distinction.

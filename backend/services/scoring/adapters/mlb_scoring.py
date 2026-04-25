@@ -180,9 +180,17 @@ class MLBScoringAdapter(ScoringAdapter):
             hit_rate_status = "missing_bdl_id"
             hr_sample_size = None
             ceiling_rate = None
+            avg_hit_margin = None
+            avg_miss_margin = None
         else:
             cv = stats._calculate_cv(bdl_player_id, stat_type)
             cv_status = "computed" if cv is not None else "missing_source_distribution"
+            # 2026-05 — 0.5-line margin metrics. Computed for every
+            # MLB prop; the engine only consumes them when line=0.5.
+            # See `gates/engine.py::evaluate` MLB+0.5 swap block.
+            avg_hit_margin, avg_miss_margin = (
+                stats._calculate_line_margins(bdl_player_id, stat_type, line)
+            )
             # HR (2026-04-25, NBA-parity). Sibling method returns the
             # OVER/UNDER pair plus the sample size used. NBA-parity
             # `min_games=5` floor mirrors NBA `_compute_cv_and_hit_rate`
@@ -421,6 +429,8 @@ class MLBScoringAdapter(ScoringAdapter):
             model_sigma=model_sigma,
             cv=cv,
             cv_status=cv_status,
+            avg_hit_margin=avg_hit_margin,
+            avg_miss_margin=avg_miss_margin,
             hit_rate=hit_rate,
             hit_rate_over=hit_rate_over,
             hit_rate_under=hit_rate_under,

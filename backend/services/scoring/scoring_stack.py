@@ -282,6 +282,8 @@ def compute_tier(
     mgm_layer: Optional[Dict],
     sport: str,
     p_model: Optional[float] = None,
+    avg_hit_margin: Optional[float] = None,
+    avg_miss_margin: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Assign risk bucket via the UNIVERSAL GATE ENGINE.
 
@@ -372,6 +374,8 @@ def compute_tier(
         ceiling_rate=ceiling_rate,
         p_model_pct=p_model_pct,
         cv_cap_override=cv_cap_override,
+        avg_hit_margin=avg_hit_margin,
+        avg_miss_margin=avg_miss_margin,
     )
 
     eval_result = evaluate_tier_with_overrides(metrics)
@@ -707,6 +711,8 @@ def compute_scoring_stack(
     ceiling_rate: Optional[float],
     books_available_count: int,
     sport: str,
+    avg_hit_margin: Optional[float] = None,
+    avg_miss_margin: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Compose all three scoring dimensions for a canonical prop.
@@ -729,6 +735,8 @@ def compute_scoring_stack(
         dk_layer=dk_layer, mgm_layer=mgm_layer,
         sport=sport,
         p_model=p_model,
+        avg_hit_margin=avg_hit_margin,
+        avg_miss_margin=avg_miss_margin,
     )
     pp = compute_pp_utility(
         p_model=p_model, prop=prop,

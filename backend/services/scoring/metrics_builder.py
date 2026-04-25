@@ -47,6 +47,8 @@ def build_metrics_from_context(
     ceiling_rate: Optional[float],
     p_model_pct: Optional[float],
     cv_cap_override: Optional[float],
+    avg_hit_margin: Optional[float] = None,
+    avg_miss_margin: Optional[float] = None,
 ) -> NormalizedMetrics:
     """First-pass builder. Field-for-field equivalent to the inline
     block previously in `compute_tier` (lines 362-385 pre-PR-1).
@@ -81,6 +83,9 @@ def build_metrics_from_context(
         edge_pct=edge_pct,
         p_model_pct=p_model_pct,
         extras=extras,
+        line=prop.get("line"),
+        avg_hit_margin=avg_hit_margin,
+        avg_miss_margin=avg_miss_margin,
     )
 
 
@@ -141,6 +146,8 @@ def build_metrics_from_score_doc(
         ceiling_rate=doc.get("ceiling_rate"),
         p_model_pct=p_model_pct,
         cv_cap_override=_resolve_cv_cap_override(sport, target_tier, stat_raw),
+        avg_hit_margin=doc.get("avg_hit_margin"),
+        avg_miss_margin=doc.get("avg_miss_margin"),
     )
 
 

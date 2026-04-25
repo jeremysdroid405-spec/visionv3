@@ -19,6 +19,7 @@ CANONICAL_GATE_TYPES = (
     "hit_rate_gate",         # hit_rate_l20 (or configured window) >= min pp
     "tp_gate",               # multi-book de-vig TP >= min pp
     "cv_gate",               # cv <= max (or stat-family-keyed `caps` map)
+    "margin_gate",           # avg_hit_margin >= min (binary 0.5-line replacement for cv_gate, MLB)
     "edge_gate",             # edge_pct >= min
     "ceiling_gate",          # ceiling_rate >= min pp
     "context_gate",          # no blowout / injury / lineup veto
@@ -48,6 +49,7 @@ class ReasonCode:
     TP_FAIL = "gate_tp_fail"
     TP_UNAVAILABLE = "gate_tp_unavailable"
     CV_FAIL = "gate_cv_fail"
+    MARGIN_FAIL = "gate_margin_fail"
     EDGE_FAIL = "gate_edge_fail"
     CEILING_FAIL = "gate_ceiling_fail"
     CONTEXT_FAIL = "gate_context_fail"
@@ -60,6 +62,7 @@ class ReasonCode:
         "hit_rate_gate": HIT_RATE_FAIL,
         "tp_gate": TP_FAIL,
         "cv_gate": CV_FAIL,
+        "margin_gate": MARGIN_FAIL,
         "edge_gate": EDGE_FAIL,
         "ceiling_gate": CEILING_FAIL,
         "context_gate": CONTEXT_FAIL,
@@ -120,6 +123,14 @@ class NormalizedMetrics:
     # Volatility / edge
     cv: Optional[float] = None                 # L20 coefficient of variation (unitless)
     edge_pct: Optional[float] = None           # model edge vs market (pp)
+
+    # Line + 0.5-line margin metrics (2026-05, MLB only). For binary
+    # 0.5 props the engine swaps `cv_gate` → `margin_gate`. NBA leaves
+    # all three fields None — its threshold tables don't reference
+    # margins so behaviour is unchanged.
+    line: Optional[float] = None
+    avg_hit_margin: Optional[float] = None     # mean(value - line) over hit games
+    avg_miss_margin: Optional[float] = None    # mean(line - value) over miss games
 
     # Vision score — slate-percentile model-confidence signal (0-100).
     # Populated AFTER per-prop scoring in the slate-level pass (see

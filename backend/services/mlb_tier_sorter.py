@@ -255,6 +255,87 @@ class MLBTierSorter:
         cv = std_dev / mean
         
         return round(cv, 3)
+
+    def _calculate_line_margins(
+        self,
+        bdl_player_id: Optional[int],
+        stat_type: str,
+        line: float,
+    ) -> "Tuple[Optional[float], Optional[float]]":
+        """0.5-line margin metrics (2026-05).
+
+        For binary 0.5 props raw-CV is misleading: a player who hits
+        the line in 8/10 games and goes 0/2 has a legitimately high
+        CV simply because non-zero values are large compared to a
+        0.5 line. Margin captures stability instead.
+
+        Returns ``(avg_hit_margin, avg_miss_margin)``:
+          - avg_hit_margin  = mean(value - line) over hit games (None if no hits)
+          - avg_miss_margin = mean(line - value) over miss games (None if no misses)
+
+        Window mirrors `_calculate_hit_rate_sides` exactly: 20 if
+        ≥20 logs, 10 if ≥10, else None. Hit rule = `value > line`.
+        Missing values count as miss with margin = `line - 0`.
+        """
+        game_logs = self._get_logs_by_id(bdl_player_id)
+        if not game_logs:
+            return None, None
+
+        stat_map = {
+            "hits": "hits", "total_bases": "total_bases", "rbis": "rbis",
+            "runs": "runs", "home_runs": "home_runs",
+            "stolen_bases": "stolen_bases", "singles": "singles",
+            "doubles": "doubles", "triples": "triples",
+            "batter_walks": "walks", "walks": "walks",
+            "batter_strikeouts": "strikeouts", "strikeouts": "strikeouts",
+            "hits+runs+rbis": ["hits", "runs", "rbis"],
+            "pitcher_strikeouts": "pitcher_strikeouts",
+            "pitcher_outs": "innings_pitched",
+            "pitching_outs": "innings_pitched",
+            "earned_runs": "earned_runs", "hits_allowed": "hits_allowed",
+            "walks_allowed": "pitcher_walks",
+        }
+        stat_key = self._normalize_stat_type(stat_type)
+        field = stat_map.get(stat_key, stat_key)
+
+        sorted_logs = sorted(
+            game_logs, key=lambda x: x.get("date", "") or "", reverse=True
+        )
+        if len(sorted_logs) >= 20:
+            window = 20
+        elif len(sorted_logs) >= 10:
+            window = 10
+        else:
+            return None, None
+
+        hit_margins: List[float] = []
+        miss_margins: List[float] = []
+        for game in sorted_logs[:window]:
+            if isinstance(field, list):
+                v = sum(game.get(f) or 0 for f in field)
+            elif field == "innings_pitched":
+                ip = game.get(field)
+                v = (ip * 3) if ip is not None else None
+            elif field == "singles":
+                h = game.get("hits")
+                if h is not None:
+                    d = game.get("doubles") or 0
+                    t = game.get("triples") or 0
+                    hr = game.get("home_runs") or 0
+                    v = max(0, h - d - t - hr)
+                else:
+                    v = None
+            else:
+                v = game.get(field)
+            if v is not None and v > line:
+                hit_margins.append(float(v) - line)
+            else:
+                miss_v = float(v) if v is not None else 0.0
+                miss_margins.append(line - miss_v)
+
+        avg_hit = round(sum(hit_margins) / len(hit_margins), 3) if hit_margins else None
+        avg_miss = round(sum(miss_margins) / len(miss_margins), 3) if miss_margins else None
+        return avg_hit, avg_miss
     
     def _calculate_hit_rate(
         self, 

@@ -167,6 +167,37 @@ class UniversalGateEngine:
         )
 
     @staticmethod
+    def _eval_margin(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
+        """Margin-based stability gate (2026-05) — replaces `cv_gate` for
+        binary 0.5-line MLB props. CV is meaningless on a binary outcome
+        because exceeding the line by a large amount inflates variance
+        without making the prop riskier. We score stability by the
+        average margin over hit games instead.
+
+        Threshold key:
+            ``min`` — minimum required `avg_hit_margin` (default 0.75).
+        """
+        threshold = float(cfg.get("min", 0.75))
+        actual = _py(m.avg_hit_margin)
+        if actual is None:
+            # No hit games or HR pipeline didn't populate margins.
+            # Treat as fail-closed to mirror cv_gate semantics
+            # (`cv_gate` fails when cv is required-but-missing).
+            return GateDetail(
+                gate_type="margin_gate", threshold=threshold, actual=None,
+                passed=False, comparator=">=",
+                reason_code=ReasonCode.MARGIN_FAIL,
+                note="margin_missing",
+            )
+        passed = bool(actual >= threshold)
+        return GateDetail(
+            gate_type="margin_gate", threshold=threshold, actual=actual,
+            passed=passed, comparator=">=",
+            reason_code=None if passed else ReasonCode.MARGIN_FAIL,
+            note="binary_0.5_line",
+        )
+
+    @staticmethod
     def _eval_edge(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
         threshold = float(cfg.get("min", 0.0))
         actual = _py(m.edge_pct)
@@ -372,6 +403,7 @@ class UniversalGateEngine:
         "hit_rate_gate":         _eval_hit_rate,
         "tp_gate":               _eval_tp,
         "cv_gate":               _eval_cv,
+        "margin_gate":           _eval_margin,
         "edge_gate":             _eval_edge,
         "ceiling_gate":          _eval_ceiling,
         "context_gate":          _eval_context,
@@ -428,6 +460,28 @@ class UniversalGateEngine:
         details: Dict[str, GateDetail] = {}
         passed_gates: list = []
         failed_gates: list = []
+
+        # 2026-05 — Binary-line stability swap (MLB only).
+        # For 0.5-line MLB props the raw-value CV is misleading: a
+        # batter who hits the line in 8/10 games and goes 0/2 will
+        # have legitimately high CV simply because non-zero values
+        # are large compared to the line. Swap `cv_gate` for the
+        # margin-based equivalent here so stat-family threshold
+        # tables stay declarative (no per-line conditionals in
+        # thresholds.py). NBA / NFL untouched.
+        if (
+            metrics.sport == "mlb"
+            and metrics.line is not None
+            and float(metrics.line) == 0.5
+            and "cv_gate" in cfg
+        ):
+            cv_cfg = cfg["cv_gate"]
+            min_margin = (
+                cv_cfg.get("min_margin")
+                if isinstance(cv_cfg, dict) else None
+            )
+            cfg = {k: v for k, v in cfg.items() if k != "cv_gate"}
+            cfg["margin_gate"] = {"min": min_margin if min_margin is not None else 0.75}
 
         for gate_type, gate_cfg in cfg.items():
             fn = self._GATE_DISPATCH.get(gate_type)

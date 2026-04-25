@@ -185,16 +185,16 @@ _NBA_WAR_ZONE_BASE = {
 
 # MLB safe-haven per-stat gates preserved from services/mlb_tier_sorter.py
 _MLB_SAFE_HAVEN: Dict[str, Dict[str, Any]] = {
-    "hits":              {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 15.0, "tp_min": 70.0},
-    "total_bases":       {"cv_max": 0.75, "hr_min": 70.0, "edge_min": 20.0, "tp_min": 70.0},
-    "hits_runs_rbis":    {"cv_max": 0.80, "hr_min": 85.0, "edge_min":  8.0, "tp_min": 70.0},
-    "rbis":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 18.0, "tp_min": 70.0},
-    "runs":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 18.0, "tp_min": 70.0},
-    "pitching_outs":     {"cv_max": 0.30, "hr_min": 85.0, "edge_min":  8.0, "tp_min": 80.0},
-    "pitcher_strikeouts":{"cv_max": 0.45, "hr_min": 70.0, "edge_min": 12.0, "tp_min": 75.0},
-    "batter_strikeouts": {"cv_max": 0.75, "hr_min": 85.0, "edge_min":  8.0, "tp_min": 75.0},
-    "earned_runs":       {"cv_max": 0.40, "hr_min": 70.0, "edge_min": 10.0, "tp_min": 75.0},
-    "_default":          {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 15.0, "tp_min": 70.0},
+    "hits":              {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 15.0, "tp_min": 70.0, "min_margin": 0.75},
+    "total_bases":       {"cv_max": 0.75, "hr_min": 70.0, "edge_min": 20.0, "tp_min": 70.0, "min_margin": 1.00},
+    "hits_runs_rbis":    {"cv_max": 0.80, "hr_min": 85.0, "edge_min":  8.0, "tp_min": 70.0, "min_margin": 1.00},
+    "rbis":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 18.0, "tp_min": 70.0, "min_margin": 0.75},
+    "runs":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 18.0, "tp_min": 70.0, "min_margin": 0.75},
+    "pitching_outs":     {"cv_max": 0.30, "hr_min": 85.0, "edge_min":  8.0, "tp_min": 80.0, "min_margin": 0.75},
+    "pitcher_strikeouts":{"cv_max": 0.45, "hr_min": 70.0, "edge_min": 12.0, "tp_min": 75.0, "min_margin": 0.75},
+    "batter_strikeouts": {"cv_max": 0.75, "hr_min": 85.0, "edge_min":  8.0, "tp_min": 75.0, "min_margin": 0.75},
+    "earned_runs":       {"cv_max": 0.40, "hr_min": 70.0, "edge_min": 10.0, "tp_min": 75.0, "min_margin": 0.75},
+    "_default":          {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 15.0, "tp_min": 70.0, "min_margin": 0.75},
 }
 _MLB_FRONT_LINES: Dict[str, Dict[str, Any]] = {
     "hits":              {"cv_max": 0.85, "hr_min": 65.0, "edge_min": 10.0, "tp_min": 58.0},
@@ -229,7 +229,13 @@ def _mlb_thresholds(per_stat: Dict[str, Dict[str, Any]], *, war_zone: bool = Fal
         else:
             out[family] = {
                 "coverage_gate": {"min_books": 1},
-                "cv_gate":       {"max": vals["cv_max"]},
+                # cv_gate carries `min_margin` so the engine's MLB+0.5
+                # swap can read the per-stat-family margin floor
+                # without consulting another table.
+                "cv_gate":       {
+                    "max": vals["cv_max"],
+                    "min_margin": vals.get("min_margin", 0.75),
+                },
                 "hit_rate_gate": {"min": vals["hr_min"], "window": "default"},
                 "edge_gate":     {"min": vals["edge_min"]},
                 "tp_gate":       {"min": vals["tp_min"]},
