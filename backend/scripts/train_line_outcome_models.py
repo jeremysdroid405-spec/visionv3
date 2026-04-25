@@ -66,6 +66,11 @@ LINE_GRID: Dict[str, List[float]] = {
     # 3.5 to cover alt-line longshots. Same family-independent
     # feature contract as RBIs/Runs.
     "hits": [0.5, 1.5, 2.5, 3.5],
+    # 2026-05 Phase 2H — Singles. PP standard 0.5; alt grid 1.5/2.5.
+    # Singles is computed as hits−doubles−triples−home_runs in the
+    # HF pipeline; trainer uses the same _get_stat_value path so
+    # projection/actual share the definition.
+    "singles": [0.5, 1.5, 2.5],
 }
 
 
