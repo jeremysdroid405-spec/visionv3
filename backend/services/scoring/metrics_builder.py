@@ -5,9 +5,8 @@ post-vision re-evaluation (`recompute._reevaluate_tiers_post_vision`)
 must produce IDENTICAL NormalizedMetrics for the same prop. Today
 those two paths each hand-roll their own builder and drift over time
 (see /app/memory/PRD.md "Architectural Audit — compute_tier vs
-post-vision re-eval", 2026-04-25). This module owns the first-pass
-builder so adding a new gate input is a one-place change. The
-re-eval builder lands here in PR-2.
+post-vision re-eval", 2026-04-25). This module owns both builders so
+adding a new gate input is a one-place change.
 
 Sport-agnostic. No threshold logic. No gate logic. No engine calls.
 """
@@ -17,6 +16,40 @@ from typing import Any, Dict, Optional
 
 from services.scoring.gates import NormalizedMetrics
 from services.scoring.gates.thresholds import resolve_stat_family
+
+
+def _resolve_cv_cap_override(sport: str, target_tier: str,
+                             stat_raw: Optional[str]) -> Optional[float]:
+    """Replicates `compute_tier`'s NBA-SH cv-cap override resolution."""
+    if sport == "nba" and target_tier == "safe_haven":
+        try:
+            from services.scoring.cv_caps import resolve_cv_cap
+            return resolve_cv_cap(stat_raw)
+        except Exception:
+            return None
+    return None
+
+
+def _resolve_mlb_goblin_override(sport: str, target_tier: str,
+                                 line: Optional[float]) -> Dict[str, Any]:
+    """Replicates `compute_tier`'s MLB-SH goblin-line override.
+
+    Identical predicate (sport=="mlb" ∧ tier=="safe_haven" ∧ line<1.0)
+    and identical patched-thresholds dict so first pass and re-eval
+    produce the same gate verdict for any goblin-line MLB SH prop.
+    """
+    if sport == "mlb" and target_tier == "safe_haven":
+        try:
+            if float(line or 0) < 1.0:
+                return {
+                    "cv_max": 1.10,
+                    "hr_min": 75.0,
+                    "tp_min": 60.0,
+                    "edge_min": -9999.0,
+                }
+        except (TypeError, ValueError):
+            pass
+    return {}
 
 
 def build_metrics_from_context(
@@ -72,4 +105,67 @@ def build_metrics_from_context(
     )
 
 
-__all__ = ["build_metrics_from_context"]
+def build_metrics_from_score_doc(
+    doc: Dict[str, Any],
+    *,
+    override_tier: Optional[str] = None,
+) -> NormalizedMetrics:
+    """Re-eval builder (PR-2). Reconstructs `NormalizedMetrics` from a
+    persisted score doc with FULL field parity to the first-pass
+    builder. Sport-aware HR resolution: NBA persists `hit_rate_over`
+    and `hit_rate_under` per side; MLB persists only the side-aware
+    `p_true_hit_rate`. We use whichever exists and fall back to
+    `p_true_hit_rate × 100` so MLB's re-eval sees the same value the
+    first pass did (replaces the inline Fix A fallback in
+    `_reevaluate_tiers_post_vision`).
+
+    The `mlb_goblin_override` and `cv_cap_override` are derived here
+    from the same predicates the first pass uses (replaces the inline
+    Fix B re-iteration logic). Any future override added to
+    `compute_tier` need only be mirrored once, here.
+
+    Delegates to `build_metrics_from_context` so the two paths share
+    every field-derivation expression except the side-aware HR
+    resolution (which is intrinsically doc-specific).
+    """
+    sport = (doc.get("sport") or "").lower()
+    target_tier = override_tier or doc.get("tier")
+    stat_raw = doc.get("stat_type")
+    side = (doc.get("recommendation") or "OVER").upper()
+
+    # Side-aware hit rate with sport-agnostic fallback for adapters
+    # that don't persist hit_rate_over / hit_rate_under (currently MLB).
+    hr = doc.get("hit_rate_over") if side == "OVER" else doc.get("hit_rate_under")
+    if hr is None:
+        p_true_hr = doc.get("p_true_hit_rate")
+        hr = (p_true_hr * 100.0) if p_true_hr is not None else None
+
+    # `p_model_pct` derivation — first pass uses
+    # round(p_model * 100, 1); the persisted equivalent is
+    # `p_true_active` (= p_model resolved by the ladder).
+    p_true_active = doc.get("p_true_active")
+    p_model_pct = round(p_true_active * 100.0, 1) if p_true_active is not None else None
+
+    return build_metrics_from_context(
+        prop=doc,
+        sport=sport,
+        target_tier=target_tier,
+        stat_raw=stat_raw,
+        side=side,
+        ref_book=doc.get("tier_reference_book"),
+        ref_odds=doc.get("tier_reference_odds"),
+        book_count=doc.get("book_count"),
+        cv=doc.get("cv"),
+        hit_rate=hr,
+        edge_pct=doc.get("edge_pct"),
+        tp=doc.get("tp"),
+        ceiling_rate=doc.get("ceiling_rate"),
+        p_model_pct=p_model_pct,
+        cv_cap_override=_resolve_cv_cap_override(sport, target_tier, stat_raw),
+        mlb_goblin_override=_resolve_mlb_goblin_override(
+            sport, target_tier, doc.get("line"),
+        ),
+    )
+
+
+__all__ = ["build_metrics_from_context", "build_metrics_from_score_doc"]

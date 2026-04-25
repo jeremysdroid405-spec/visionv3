@@ -102,6 +102,11 @@ _SCORE_OUTPUT_FIELDS = (
     # Universal HR status (2026-04-23). Like cv_status, distinguishes
     # a legitimate 0% hit rate from a null "insufficient data" case.
     "hit_rate_status",
+    # Ceiling rate (PR-2, 2026-04-25). Persisted so the post-vision
+    # re-evaluation can read the same `ceiling_rate` value the first
+    # pass used. Required input for `ceiling_gate` (MLB war_zone) when
+    # the re-eval rebuilds a NormalizedMetrics from the score doc.
+    "ceiling_rate",
     # Combo projection synthesis (2026-04-23). `projection_method`
     # labels where `model_projection` / `model_sigma` came from:
     # "model" = direct VK/VK2; "combo_synth" = synthesized from two

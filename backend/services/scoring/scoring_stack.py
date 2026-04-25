@@ -333,30 +333,17 @@ def compute_tier(
         books = [b for b in (prop.get("books_anchored") or []) if b and b != "prizepicks"]
         book_count = len(books) if books else None
 
-    # CV cap override — NBA Safe Haven applies a stat-specific cap via
-    # `services.scoring.cv_caps.resolve_cv_cap`. For every other
-    # (sport, tier) we leave the config default in place.
-    cv_cap_override = None
-    if sport == "nba" and target_tier == "safe_haven":
-        try:
-            from services.scoring.cv_caps import resolve_cv_cap
-            cv_cap_override = resolve_cv_cap(stat_raw)
-        except Exception:
-            cv_cap_override = None
-
-    # MLB goblin-line override — binary outcomes (line < 1) use a
-    # relaxed Safe Haven threshold matrix. Stamped into `extras`; the
-    # actual threshold patch is applied inside
-    # `evaluate_tier_with_overrides`.
-    mlb_goblin_override: Dict[str, Any] = {}
-    if sport == "mlb" and target_tier == "safe_haven":
-        try:
-            if float(prop.get("line") or 0) < 1.0:
-                mlb_goblin_override = {
-                    "cv_max": 1.10, "hr_min": 75.0, "tp_min": 60.0, "edge_min": -9999.0,
-                }
-        except (TypeError, ValueError):
-            pass
+    # Override resolution — delegated to the metrics_builder helpers
+    # so the goblin/cv-cap predicates live in exactly one place
+    # (PR-2, 2026-04-25). Both paths (first pass + post-vision re-eval)
+    # call the same private resolvers.
+    from services.scoring.metrics_builder import (
+        _resolve_cv_cap_override, _resolve_mlb_goblin_override,
+    )
+    cv_cap_override = _resolve_cv_cap_override(sport, target_tier, stat_raw)
+    mlb_goblin_override = _resolve_mlb_goblin_override(
+        sport, target_tier, prop.get("line"),
+    )
 
     # PR-1 (2026-04-25): NormalizedMetrics builder + tier evaluator
     # extracted to dedicated modules so the post-vision re-eval can
