@@ -39,6 +39,11 @@ from services.mlb_high_friction_model import MLBHighFrictionModel  # noqa: E402
 ARTIFACT_DIR = "/app/backend/models/probability/lom/mlb"
 LINE_GRID: Dict[str, List[float]] = {
     "home_runs": [0.5, 1.5],
+    # 2026-05 Phase 2A — batter strikeouts. PP standard line is 0.5;
+    # alt grid extends to 2.5 to cover the alt board. Lines beyond
+    # the empirical range fall through with sparse training data
+    # but are caught by the holdout reliability report.
+    "strikeouts": [0.5, 1.5, 2.5],
 }
 PITCHER_STATS = {
     "pitcher_strikeouts", "hits_allowed", "earned_runs", "pitcher_walks",
