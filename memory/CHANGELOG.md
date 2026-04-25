@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-04-25 — Admin Sync-Health Panel (`/api/v3/admin/sync-health`)
+
+**Goal**: Surface the new `sync_history` SSOT metrics for last-N runs per sport in a single auth-gated read endpoint.
+
+### File changed (1 file)
+- **`routes/admin.py`** (+105 LOC) — added `GET /v3/admin/sync-health` next to the existing `full-sync-stats` cluster.
+
+### Contract
+- Auth: `X-Admin-Token` header must match env `ADMIN_DEBUG_TOKEN`. Env unset → 503; bad/missing → 401.
+- Query params: `sport=nba|mlb` (omit for both), `n=1..50` (default 10).
+- Response per sport:
+  - `aggregates`: `runs_returned`, `last_run_at`, `last_run_status`, `latest_pp_share`, `latest_fallback_share`, `avg_pp_share`, `avg_fallback_share`.
+  - `runs[]`: `started_at`, `finished_at`, `status`, `published`, `duration_seconds`, `events_succeeded/discovered`, `distinct_market_keys`, `discovered_market_count`, `raw_market_count`, `live_props_count`, `scored_props_count`, `distinct_stat_types`, `distinct_events`, `pp_available_count`, `sportsbook_fallback_count`, `anchor_book_breakdown`, `bookmaker_counts`, `errors`, `warnings`, `pp_share`, `fallback_share`.
+
+### Live verification (2026-04-25 06:24 UTC)
+- `?sport=nba&n=10` → latest run: pp_share=34.5% / fallback=65.5%, anchor_book pp=5176, fd=4409, dk=3377, bol=1307, mgm=753, distinct_market_keys=105.
+- `?sport=mlb&n=5` → latest run: pp_share=59.5% / fallback=40.6%, distinct_market_keys=62, events 15/15.
+- 401 on missing or bad token. 400 on `sport=nfl`.
+
+
+
 ## 2026-04-25 — SSOT Stabilization: Extended sync_history metrics + Ferrari PP-playable filter
 
 **Goal**: Stabilize the new Universal SSOT canonical pool by (1) capturing the new pool composition in `sync_history` and (2) restricting Ferrari boards to PrizePicks-playable props by default while keeping the full multi-book pool internally.

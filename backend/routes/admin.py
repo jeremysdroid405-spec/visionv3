@@ -420,6 +420,125 @@ async def full_sync_stats(
     return _format(publish_counts.get(s) or {})
 
 
+@router.get("/v3/admin/sync-health")
+async def sync_health(
+    sport: str | None = None,
+    n: int = 10,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Read-only Universal SSOT sync-health panel — last N runs of
+    `master_sync` per sport, surfacing the canonical-pool composition
+    metrics persisted by `master_sync._persist_sync_history`.
+
+    Query params:
+        sport : "nba" | "mlb"     — filter to one sport (omit for all)
+        n     : int (1..50)       — number of recent runs per sport (default 10)
+
+    Auth: `X-Admin-Token` must match env `ADMIN_DEBUG_TOKEN`. Env unset
+    returns 503 (disabled by default).
+
+    Per-run fields (matches `sync_history`):
+        started_at, finished_at, status, published, duration_seconds,
+        events_succeeded, events_discovered, distinct_market_keys,
+        live_props_count, scored_props_count, distinct_stat_types,
+        pp_available_count, sportsbook_fallback_count,
+        anchor_book_breakdown.
+
+    Aggregates per sport (over the returned slice):
+        latest_pp_share              — pp_available / live (most recent run)
+        latest_fallback_share        — sportsbook_fallback / live (most recent run)
+        avg_pp_share                 — mean over the slice
+        avg_fallback_share           — mean over the slice
+        runs_returned                — count of runs in the slice
+        last_run_at                  — finished_at of the most recent run
+        last_run_status              — status of the most recent run
+    """
+    _require_admin_debug_token(x_admin_token)
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    n = max(1, min(int(n or 10), 50))
+
+    sports: List[str]
+    if sport is None:
+        sports = ["nba", "mlb"]
+    else:
+        s = (sport or "").strip().lower()
+        if s not in ("nba", "mlb"):
+            raise HTTPException(
+                status_code=400, detail="sport must be 'nba' or 'mlb'"
+            )
+        sports = [s]
+
+    _RUN_FIELDS = (
+        "started_at", "finished_at", "status", "published",
+        "duration_seconds",
+        "events_succeeded", "events_discovered",
+        "discovered_market_count", "raw_market_count",
+        "distinct_market_keys",
+        "live_props_count", "scored_props_count",
+        "distinct_stat_types", "distinct_events",
+        "pp_available_count", "sportsbook_fallback_count",
+        "anchor_book_breakdown", "bookmaker_counts",
+        "errors", "warnings",
+    )
+
+    def _shape_run(doc: Dict[str, Any]) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        for k in _RUN_FIELDS:
+            v = doc.get(k)
+            # Serialize datetimes ISO; preserve everything else.
+            if hasattr(v, "isoformat"):
+                out[k] = v.isoformat()
+            else:
+                out[k] = v
+        live = doc.get("live_props_count") or 0
+        pp = doc.get("pp_available_count") or 0
+        fb = doc.get("sportsbook_fallback_count") or 0
+        out["pp_share"] = round(pp / live, 4) if live else None
+        out["fallback_share"] = round(fb / live, 4) if live else None
+        return out
+
+    payload: Dict[str, Any] = {}
+    for sp in sports:
+        cursor = (
+            _db["sync_history"]
+            .find({"sport": sp})
+            .sort("started_at", -1)
+            .limit(n)
+        )
+        runs_raw: List[Dict[str, Any]] = []
+        async for doc in cursor:
+            runs_raw.append(doc)
+
+        runs_shaped = [_shape_run(d) for d in runs_raw]
+
+        pp_shares = [r["pp_share"] for r in runs_shaped if r["pp_share"] is not None]
+        fb_shares = [r["fallback_share"] for r in runs_shaped if r["fallback_share"] is not None]
+
+        latest = runs_shaped[0] if runs_shaped else None
+        aggregates = {
+            "runs_returned": len(runs_shaped),
+            "last_run_at": (latest or {}).get("finished_at"),
+            "last_run_status": (latest or {}).get("status"),
+            "latest_pp_share": (latest or {}).get("pp_share"),
+            "latest_fallback_share": (latest or {}).get("fallback_share"),
+            "avg_pp_share": (
+                round(sum(pp_shares) / len(pp_shares), 4) if pp_shares else None
+            ),
+            "avg_fallback_share": (
+                round(sum(fb_shares) / len(fb_shares), 4) if fb_shares else None
+            ),
+        }
+
+        payload[sp] = {
+            "aggregates": aggregates,
+            "runs": runs_shaped,
+        }
+
+    return payload
+
+
 @router.get("/collection-migration-status")
 async def collection_migration_status(
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
