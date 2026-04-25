@@ -76,6 +76,10 @@ LINE_GRID: Dict[str, List[float]] = {
     # auto-routes via USE_HUB_LOGS to mlb_master_hub_2026.bdl_game_logs
     # — same pattern the ECDF missing-stats trainer used.
     "doubles": [0.5, 1.5],
+    # 2026-05 Phase 2J — Walks (batter). PP standard 0.5; alt grid
+    # 1.5/2.5. `walks` field present in mlb_historical_logs; uses
+    # the same batter-AB filter as other batter families.
+    "walks": [0.5, 1.5, 2.5],
 }
 
 # Stat families whose target value field is absent from
