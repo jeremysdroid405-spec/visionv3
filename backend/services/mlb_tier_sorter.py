@@ -353,14 +353,24 @@ class MLBTierSorter:
     ) -> "Tuple[Optional[float], Optional[float], Optional[float]]":
         """Side-aware variant of `_calculate_hit_rate` (2026-04-25, Fix A).
 
-        Returns:
-            Tuple of (hit_rate_over, hit_rate_under, average).
+        STRICT-20 CONTRACT (2026-04-25, HR integrity fix):
+            HR is defined ONLY over EXACTLY `num_games` valid logs
+            (default 20). If the player does not have at least
+            `num_games` valid logs for this stat, BOTH hit_rate_over
+            and hit_rate_under are returned as None — no averaging,
+            smoothing, or shorter-window fallback. This guarantees
+            every emitted HR is a multiple of 5 (5% per game over
+            a 20-game window) and prevents pitcher / recent-callup
+            denominators from poisoning the gate engine's HR readings.
 
-        Semantics match the existing OVER computation (`val >= line`) and
-        pair it with the strict UNDER mirror (`val < line`). Sum equals
-        100 — every game lands on exactly one side. Behaviour-preserving
-        for the OVER side; legacy `_calculate_hit_rate` is retained for
-        backwards compatibility with existing callers / tests.
+        Returns:
+            Tuple of (hit_rate_over, hit_rate_under, average) — all
+            three are None together when the strict-20 contract
+            cannot be satisfied.
+
+        Semantics for the OVER/UNDER pair: `val >= line` counts as
+        OVER, `val < line` counts as UNDER. Sum equals 100% — every
+        game lands on exactly one side.
         """
         game_logs = self._get_logs_by_id(bdl_player_id)
         if not game_logs:
@@ -396,8 +406,12 @@ class MLBTierSorter:
             game_logs,
             key=lambda x: x.get("date", "") or "",
             reverse=True,
-        )[:num_games]
+        )
 
+        # Walk newest→oldest, keep only logs that yield a non-None
+        # value for this stat, stop as soon as we have `num_games`.
+        # If we exhaust the log list before reaching `num_games`,
+        # the strict-20 contract fails and we return None.
         values = []
         for game in sorted_logs:
             if isinstance(field, list):
@@ -419,15 +433,21 @@ class MLBTierSorter:
             if val is None:
                 continue
             values.append(val)
+            if len(values) >= num_games:
+                break
 
-        if not values:
+        # Strict-20 enforcement — no shorter-window fallback.
+        if len(values) != num_games:
             return None, None, None
 
-        n = len(values)
+        n = num_games
         over_hits = sum(1 for v in values if v >= line)
         under_hits = sum(1 for v in values if v < line)
-        hit_rate_over = round((over_hits / n) * 100.0, 1)
-        hit_rate_under = round((under_hits / n) * 100.0, 1)
+        # 100/n step is 5pp at n=20 → every value is a multiple of 5.
+        # Round to 0 decimals so the persisted field is a whole-number
+        # percent (50, 55, 60, ...).
+        hit_rate_over = round((over_hits / n) * 100.0, 0)
+        hit_rate_under = round((under_hits / n) * 100.0, 0)
         avg = round(sum(values) / n, 2)
         return hit_rate_over, hit_rate_under, avg
 
