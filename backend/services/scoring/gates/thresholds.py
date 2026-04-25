@@ -181,13 +181,13 @@ _NBA_WAR_ZONE_BASE = {
 # MLB safe-haven per-stat gates preserved from services/mlb_tier_sorter.py
 _MLB_SAFE_HAVEN: Dict[str, Dict[str, Any]] = {
     "hits":              {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 15.0, "tp_min": 70.0},
-    "total_bases":       {"cv_max": 0.75, "hr_min": 75.0, "edge_min": 20.0, "tp_min": 70.0},
+    "total_bases":       {"cv_max": 0.75, "hr_min": 70.0, "edge_min": 20.0, "tp_min": 70.0},
     "hits_runs_rbis":    {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 18.0, "tp_min": 70.0},
     "rbis":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 18.0, "tp_min": 70.0},
     "runs":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 18.0, "tp_min": 70.0},
     "pitching_outs":     {"cv_max": 0.30, "hr_min": 85.0, "edge_min": 8.0,  "tp_min": 80.0},
-    "pitcher_strikeouts":{"cv_max": 0.45, "hr_min": 75.0, "edge_min": 12.0, "tp_min": 75.0},
-    "earned_runs":       {"cv_max": 0.40, "hr_min": 75.0, "edge_min": 10.0, "tp_min": 75.0},
+    "pitcher_strikeouts":{"cv_max": 0.45, "hr_min": 70.0, "edge_min": 12.0, "tp_min": 75.0},
+    "earned_runs":       {"cv_max": 0.40, "hr_min": 70.0, "edge_min": 10.0, "tp_min": 75.0},
     "_default":          {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 15.0, "tp_min": 70.0},
 }
 _MLB_FRONT_LINES: Dict[str, Dict[str, Any]] = {
@@ -212,7 +212,7 @@ _MLB_WAR_ZONE: Dict[str, Dict[str, Any]] = {
 }
 
 _MLB_GOBLIN_LINE_OVERRIDE = {
-    "cv_max": 1.10, "hr_min": 75.0, "edge_min": -9999.0, "tp_min": 60.0,
+    "cv_max": 1.10, "hr_min": 70.0, "edge_min": -9999.0, "tp_min": 60.0,
 }
 
 
