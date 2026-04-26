@@ -1347,6 +1347,41 @@ class NBAScoringAdapter(ScoringAdapter):
                     model_projection = model_projection_synth
                     model_sigma = model_sigma_synth
                     projection_method = "combo_synth"
+                # 2026-04-26 PRA SYNTH-PREFERRED (Phase 5):
+                # backtest on 436 settled props showed Brier 0.2157→0.2125
+                # (-0.0032 improvement, 62.8% per-row win rate) with
+                # high-confidence calibration gap closing from -0.049 to
+                # -0.002 at p≥0.80. When BOTH direct and synth are
+                # available, prefer synth — it removes the -0.41 median
+                # bias of the direct VK PRA regressor and uses the
+                # covariance-aware sigma from `_predict_combo_projection`.
+                # Direct VK PRA remains the strict fallback when any
+                # component projection is missing. Affects only the
+                # "pra" family; `_COMBO_COMPONENTS` synth path for
+                # pts_reb / pts_ast / reb_ast is unchanged.
+                elif (
+                    resolved_family == "pra"
+                    and direct_proj is not None
+                    and model_projection_synth is not None
+                    and model_sigma_synth is not None
+                    and float(model_sigma_synth) > 0
+                ):
+                    p_over_c = cres_audit.get("p_over")
+                    if p_over_c is not None:
+                        p_true_model = round(
+                            (1.0 - p_over_c) if side == "UNDER" else p_over_c, 4
+                        )
+                    model_projection = float(model_projection_synth)
+                    model_sigma = float(model_sigma_synth)
+                    if use_vk2_path:
+                        vk2_projection = model_projection
+                        vk2_sigma = model_sigma
+                        if p_over_c is not None:
+                            p_true_vk2 = round(
+                                (1.0 - p_over_c) if side == "UNDER" else p_over_c,
+                                4,
+                            )
+                    projection_method = "combo_synth"
         elif resolved_family in self._COMBO_COMPONENTS and bdl_player_id is not None:
             # Primary combo synthesis (2026-04-23): pts_reb / pts_ast /
             # reb_ast — no direct trained model exists, synth is the
