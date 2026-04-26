@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-05 — Full Feature Activation Project (NBA + MLB)
+
+**User directive**: *"Hydrate live props with game context. Pipe target_game/team_total/sharp_implied into VK. Fix MLB opponent/park resolution. Add missing-value flags. No retraining, no gate/threshold/TP/routing/frontend changes."*
+
+### Result
+- **NBA dead features per head: 6 → 0** (PTS, REB, AST, PRA all clean).
+- **MLB dead features per head: 27 → 23** (the remaining 23 require external splits/platoon data that doesn't exist in the local store; now flagged via `feature_health.imputed_features` instead of silently defaulting).
+- Every score doc now carries a `feature_health` block — 84% of NBA model-path docs report `imputed_count == 0`.
+
+### Files changed
+- **NEW** `services/feature_hydration.py` — sport-aware game-context hydration on every live-props insert. Pipes team / opponent_team / is_home_team / team_total / game_total / live_injuries / rest_days / is_b2b / park_team / venue / team_implied_runs from `mlb_master_hub_2026`, `nba_master_hub_2026`, `dg_raw_odds_markets` (totals + team_totals), and `live_injuries`.
+- `services/universal_odds_sync.py` — calls hydration between `_stamp_identity_on_props` and `insert_many`.
+- `services/scoring/adapters/nba_scoring.py` — `_predict_model_prob_over` and `_predict_combo_projection` now forward `team_total`, `target_game={date,home_game}`, `sharp_implied` (with DK over-odds fallback) into VK.
+- `services/vegas_killer_model.py` — `predict()` accepts and pipes `target_game` + `sharp_implied`. `extract_features` reads them. Added `_is_imputed` flags for `team_total`, `sharp_implied`, `is_home`, `is_b2b`, `rest_days`. `predict()` now emits `feature_health` summary.
+- `services/scoring/adapters/mlb_scoring.py` — opponent / park_team resolution prefers the hydrated 3-letter abbr instead of the empty raw `team`/`is_away_team`.
+- `services/mlb_high_friction_model.py` — `_is_imputed` flags for `dk_odds`, `park_factor`, `vs_lhp`, `vs_rhp`, `platoon_split`, `home_away_split`. Emits `feature_health` summary on `predict()`.
+- `services/scoring/adapters/base.py` — `ScoringContext.feature_health: Optional[Dict[str, Any]]`.
+- `services/scoring/prop_scores_store.py` — `feature_health` added to `_SCORE_OUTPUT_FIELDS`.
+- `services/scoring/recompute.py` — persists `feature_health` on every score doc.
+
+### Guardrails respected
+- ✅ No gate / threshold / TP / routing / tier changes
+- ✅ No frontend changes
+- ✅ No retraining; only inference-time feature hydration
+- ✅ NBA LOM remains disabled
+- ✅ Live behaviour unchanged when imputation flags fire — model still receives its training defaults; flags are observability only
+
+### Audit artifacts (read-only)
+- `/tmp/feature_activation_audit.py` — Step 1+2 raw-extractor audit
+- `/tmp/feature_activation_audit_v2.py` — Step 2b production-path audit
+- `/tmp/feature_activation_report_v2.md` — Step 2b before-state report
+- `/tmp/feature_activation_FINAL.md` — final before/after report
+- `/tmp/hydration_dryrun.py` — dry-run validation script
+- `/tmp/backfill_hydration.py` — one-time backfill of existing live_props
+
+
+
 ## 2026-05 — MLB ECDF Probability Calibration P0 Fix
 
 **User directive**: *"Fix MLB ECDF calibration before any gate tuning. Implement P0 only."*

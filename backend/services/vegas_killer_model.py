@@ -897,6 +897,7 @@ class VegasFeatureEngineer:
         line: float = None,
         team_total: float = None,
         bdl_player_id: int = None,  # NEW: For V2 Advanced Stats
+        sharp_implied: float = None,  # 2026-05 feature-activation: pipe sharp prob
     ) -> Dict[str, float]:
         """
         Extract all Vegas-style features from game logs.
@@ -1046,6 +1047,13 @@ class VegasFeatureEngineer:
         features['is_home'] = 1 if (target_game and target_game.get('home_game')) else 0
         features['rest_days'] = 1  # Default
         features['is_b2b'] = 0
+        # 2026-05 missing-value policy: flag when target_game is missing
+        # so downstream observability can see is_home / rest_days / is_b2b
+        # were silent defaults rather than real values.
+        _gc_imputed = 0 if target_game else 1
+        features['is_home_is_imputed'] = _gc_imputed
+        features['rest_days_is_imputed'] = _gc_imputed
+        features['is_b2b_is_imputed'] = _gc_imputed
         
         # Calculate rest days from dates
         if len(prior_games) >= 1 and target_game:
@@ -1089,15 +1097,25 @@ class VegasFeatureEngineer:
         
         if team_total is not None:
             features['team_total'] = team_total
+            features['team_total_is_imputed'] = 0
             # Player's expected share of team total
             # Estimate based on their scoring average vs team scoring
             features['team_total_share'] = features['l5_avg'] / max(team_total, 1) * 100
         else:
             features['team_total'] = 115  # League average team total
+            features['team_total_is_imputed'] = 1
             features['team_total_share'] = features['l5_avg'] / 115 * 100
         
         # Sharp implied would come from odds data
-        features['sharp_implied'] = 50  # Default to neutral
+        # 2026-05 feature-activation: when caller supplies a real
+        # devigged sharp probability, use it; otherwise mark imputed
+        # so the missing-value policy in Step 5 can flag it.
+        if sharp_implied is not None:
+            features['sharp_implied'] = float(sharp_implied)
+            features['sharp_implied_is_imputed'] = 0
+        else:
+            features['sharp_implied'] = 50  # Default to neutral
+            features['sharp_implied_is_imputed'] = 1
         
         # =====================================================================
         # V2 ADVANCED STATS FEATURES (The Real Process Stats!)
@@ -1681,6 +1699,12 @@ class VegasKillerModel:
         opponent_team: str = None,
         team_total: float = None,
         bdl_player_id: Optional[int] = None,
+        # 2026-05 feature-activation: live game context piped into
+        # `extract_features` so trained features (`is_home`, `is_b2b`,
+        # `rest_days`, `sharp_implied`, `team_total`) get real values
+        # instead of silent defaults at inference time.
+        target_game: Optional[Dict[str, Any]] = None,
+        sharp_implied: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Predict player's stat output using Vegas Killer model.
@@ -1736,11 +1760,12 @@ class VegasKillerModel:
         features = self.feature_engineer.extract_features(
             prior_games=logs[:20],
             stat_type=stat_type,
-            target_game=None,
+            target_game=target_game,
             opponent_team=opponent_team,
             line=line,
             team_total=team_total,
             bdl_player_id=bdl_player_id,  # NEW: Pass BDL ID for V2 stats
+            sharp_implied=sharp_implied,
         )
         
         if not features:
@@ -1755,12 +1780,26 @@ class VegasKillerModel:
         # Predict
         raw_prediction = model.predict(X_scaled)[0]
         prediction = float(raw_prediction)  # Convert numpy to Python float
-        
+
+        # 2026-05 missing-value policy — emit feature_health summary
+        # so downstream consumers know which features were silent
+        # defaults rather than real values.
+        imputed_features = sorted(
+            k.replace("_is_imputed", "")
+            for k, v in features.items()
+            if k.endswith("_is_imputed") and v == 1
+        )
+        feature_health = {
+            "imputed_count": len(imputed_features),
+            "imputed_features": imputed_features,
+        }
+
         result = {
             "player_name": player_name,
             "stat_type": stat_type,
             "predicted": round(prediction, 2),
             "model_mae": self.metrics.get(stat_type, {}).get('test', {}).get('mae'),
+            "feature_health": feature_health,
         }
         
         # Add key features

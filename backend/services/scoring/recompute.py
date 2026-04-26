@@ -449,6 +449,11 @@ async def recompute_sport(
             # diagnostics can partition by identity_status.
             "bdl_player_id": ctx.bdl_player_id,
             "identity_status": ctx.identity_status,
+            # 2026-05 missing-value policy — persist the feature_health
+            # block so observability / downstream gating can see which
+            # features the underlying ML model received as silent
+            # defaults vs real values. Live behaviour unchanged.
+            "feature_health": ctx.feature_health,
             # ranking_score_v2 (2026-02-20 shadow G1):
             #   For OVER:  gap = model_projection - line
             #   For UNDER: gap = line - model_projection

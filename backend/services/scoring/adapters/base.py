@@ -108,6 +108,14 @@ class ScoringContext:
     minutes_composition_baseline_projection: Optional[float] = None
     minutes_composition_predicted_minutes: Optional[float] = None
     minutes_composition_per_min_rate: Optional[float] = None
+    # 2026-05 missing-value policy — feature-health summary surfaced
+    # by the underlying ML model (`vk.predict()` / `hf.predict()`).
+    # `imputed_features` lists feature names that the model received
+    # as silent defaults rather than real values. Persisted on every
+    # score doc so observability / gates can see the data-deficit
+    # surface. Live behaviour is unchanged — model still receives its
+    # training default; this just makes the deficit explicit.
+    feature_health: Optional[Dict[str, Any]] = None
 
 
 class ScoringAdapter(ABC):

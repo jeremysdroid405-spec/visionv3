@@ -199,6 +199,11 @@ _SCORE_OUTPUT_FIELDS = (
     #   anchor_book         — book that seeded the canonical (the first
     #                         book seen in priority order during ingest)
     "pp_available", "playable_on_pp", "source_anchor", "anchor_book",
+    # 2026-05 missing-value policy — list of features that the
+    # underlying ML model received as silent defaults rather than
+    # real values. Persisted on every score doc for observability /
+    # downstream gating to see the data-deficit surface explicitly.
+    "feature_health",
 )
 
 _IDENTITY_FIELDS = (

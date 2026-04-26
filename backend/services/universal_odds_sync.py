@@ -1509,6 +1509,28 @@ class UniversalOddsSyncService:
                 results["identity_resolved"] = identity_resolved
                 results["identity_missing"] = identity_missing
 
+                # Game-context hydration (2026-05): write `team`,
+                # `opponent_team`, `is_home_team`, `team_total`,
+                # `game_total`, `live_injuries_*`, plus sport-specific
+                # context (NBA rest_days/is_b2b; MLB park_team/venue/
+                # team_implied_runs + lineup placeholders) onto every
+                # prop BEFORE insert. Downstream scoring adapters and
+                # ML feature builders read these fields directly.
+                if sport in ("nba", "mlb"):
+                    try:
+                        from services.feature_hydration import (
+                            hydrate_game_context_on_props,
+                        )
+                        hydration_report = await hydrate_game_context_on_props(
+                            self.db, sport, clean_props,
+                        )
+                        results["context_hydration"] = hydration_report
+                    except Exception as _ctx_err:
+                        logger.warning(
+                            f"[CTX_HYDRATE:{sport}] hydration skipped: "
+                            f"{_ctx_err}"
+                        )
+
                 await collection.insert_many(clean_props)
                 
                 inserted = len(clean_props)

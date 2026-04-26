@@ -225,8 +225,20 @@ class MLBScoringAdapter(ScoringAdapter):
         # bdl_player_id is missing).
         projection_method: Optional[str] = None
         if hf_model and bdl_player_id is not None:
-            opponent = prop.get('away_team') if not prop.get('is_away_team') else prop.get('home_team')
-            park_team = prop.get('home_team') if prop.get('is_away_team') else prop.get('team')
+            # 2026-05 feature-activation: prefer the hydrated 3-letter
+            # abbr (`opponent_team`/`park_team`) written by
+            # `feature_hydration.py`. Fall back to the legacy
+            # `is_away_team`-based derivation when hydration didn't run.
+            opponent = (
+                prop.get("opponent_team")
+                or (prop.get('away_team') if not prop.get('is_away_team')
+                    else prop.get('home_team'))
+            )
+            park_team = (
+                prop.get("park_team")
+                or (prop.get('home_team') if prop.get('is_away_team')
+                    else prop.get('team'))
+            )
             dk_odds_int = None
             if dk_layer and dk_layer.get("odds") is not None:
                 try:
@@ -238,6 +250,9 @@ class MLBScoringAdapter(ScoringAdapter):
                 opponent_team=opponent, park_team=park_team, dk_odds=dk_odds_int,
                 bdl_player_id=bdl_player_id,
             )
+            # 2026-05 missing-value policy — capture HF feature_health
+            # so the score doc preserves which features were imputed.
+            hf_feature_health = (result or {}).get("feature_health")
             if result and not result.get("error") and result.get("prob_over") is not None:
                 prob_over_pct = result["prob_over"]
                 # Side-aware flip: MLB stores over-prob; flip for UNDER picks
@@ -495,6 +510,7 @@ class MLBScoringAdapter(ScoringAdapter):
             # decision on every MLB score doc, same shape as NBA.
             bdl_player_id=bdl_player_id,
             identity_status=identity_status,
+            feature_health=hf_feature_health,
         )
 
     # ---------------------------------------------------------

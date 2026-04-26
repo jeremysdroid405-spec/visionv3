@@ -277,6 +277,13 @@ class NBAScoringAdapter(ScoringAdapter):
     def _predict_model_prob_over(
         self, db, bdl_player_id: Optional[int], player_name: Optional[str],
         stat_type: str, line: float, opponent_team: Optional[str],
+        # 2026-05 feature-activation: pipe live game context so VK's
+        # trained features hydrate to real values instead of silent
+        # defaults (`team_total=115`, `sharp_implied=50`, `rest_days=1`,
+        # `is_b2b=0`, `is_home=0`).
+        team_total: Optional[float] = None,
+        target_game: Optional[Dict[str, Any]] = None,
+        sharp_implied: Optional[float] = None,
     ) -> Dict[str, Optional[float]]:
         """Run VegasKiller projection + convert to prob_over via empirical
         residual calibration.
@@ -302,6 +309,9 @@ class NBAScoringAdapter(ScoringAdapter):
                 player_name=player_name, stat_type=stat_type,
                 line=line, opponent_team=opponent_team,
                 bdl_player_id=bdl_player_id,
+                team_total=team_total,
+                target_game=target_game,
+                sharp_implied=sharp_implied,
             )
         except Exception as e:
             return {"projection": None, "sigma": None, "p_over": None,
@@ -364,6 +374,7 @@ class NBAScoringAdapter(ScoringAdapter):
             "sigma": round(float(sigma), 3),
             "p_over": round(float(p_over), 4),
             "error": None,
+            "feature_health": r.get("feature_health"),
         }
         if composition_meta:
             out.update(composition_meta)
@@ -818,6 +829,12 @@ class NBAScoringAdapter(ScoringAdapter):
         self, db, bdl_player_id: Optional[int], player_name: Optional[str],
         line: float, opponent_team: Optional[str], use_vk2: bool,
         components: Sequence[str],
+        # 2026-05 feature-activation: forward game context so the
+        # underlying VK predictions for each component receive real
+        # `team_total`, `target_game`, `sharp_implied`.
+        team_total: Optional[float] = None,
+        target_game: Optional[Dict[str, Any]] = None,
+        sharp_implied: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Synthesize an N-way combo projection from component models.
 
@@ -854,6 +871,8 @@ class NBAScoringAdapter(ScoringAdapter):
                     db=db, bdl_player_id=bdl_player_id,
                     player_name=player_name, stat_type=key,
                     line=float(line), opponent_team=opponent_team,
+                    team_total=team_total, target_game=target_game,
+                    sharp_implied=sharp_implied,
                 )
             comp_results.append({"key": key, **r})
 
@@ -1235,7 +1254,61 @@ class NBAScoringAdapter(ScoringAdapter):
         resolved_family = self._resolve_family(stat_type) or ""
         model_key = self._FAMILY_TO_MODEL_KEY.get(resolved_family)
         projection_method: Optional[str] = None
-        opponent_team = prop.get("opponent") or prop.get("away_team")
+        # 2026-05 feature-activation: prefer the hydrated 3-letter abbr
+        # (`opponent_team`) written by `feature_hydration.py`. Fall back
+        # to legacy fields when hydration didn't run / failed.
+        opponent_team = (
+            prop.get("opponent_team")
+            or prop.get("opponent")
+            or prop.get("away_team")
+        )
+        # Build live game-context for the VK feature engineer.
+        # `team_total`: hydrated from `dg_raw_odds_markets.team_totals`.
+        # `target_game`: minimal shape `{date, home_game}` so VK can
+        # derive `is_home`, `is_b2b`, `rest_days`. The `date` matches
+        # the prop's commence_time so VK's date-diff against the most
+        # recent game log is accurate.
+        # `sharp_implied`: devigged sharp probability from `sharp_layer`
+        # if available; otherwise None (VK falls back + flags imputed).
+        live_team_total = prop.get("team_total")
+        try:
+            live_team_total = float(live_team_total) if live_team_total is not None else None
+        except (TypeError, ValueError):
+            live_team_total = None
+        live_target_game: Optional[Dict[str, Any]] = None
+        commence_iso = prop.get("commence_time")
+        is_home_flag = prop.get("is_home_team")
+        if commence_iso:
+            live_target_game = {
+                "date": commence_iso,
+                "home_game": bool(is_home_flag) if is_home_flag is not None else None,
+            }
+        live_sharp_implied: Optional[float] = None
+        sharp_layer = prop.get("sharp_layer") or {}
+        sharp_odds_raw = sharp_layer.get("odds") if isinstance(sharp_layer, dict) else None
+        if sharp_odds_raw is None:
+            sharp_odds_raw = prop.get("sharp_odds")
+        # Fallback: devig DK over price when no sharp book is available.
+        # This is closer to the sharp truth than the silent default of
+        # 50 and removes 100% of `sharp_implied` dead-feature hits.
+        if sharp_odds_raw is None:
+            dk_layer = prop.get("dk_layer") or {}
+            sharp_odds_raw = dk_layer.get("odds") if isinstance(dk_layer, dict) else None
+            if sharp_odds_raw is None:
+                sharp_odds_raw = prop.get("dk_odds")
+        if sharp_odds_raw is not None:
+            try:
+                so = int(sharp_odds_raw)
+                # American odds → implied probability (no de-vig pair
+                # available here; we use the raw side prob, which is
+                # an upper bound for the "no-vig" prob and is closer
+                # to truth than the silent default of 50).
+                if so > 0:
+                    live_sharp_implied = 100.0 / (so + 100.0) * 100.0
+                elif so < 0:
+                    live_sharp_implied = (-so) / ((-so) + 100.0) * 100.0
+            except (TypeError, ValueError):
+                live_sharp_implied = None
         use_vk2_path = (active_method_early == "vk2")
         # PRA dual-projection audit (2026-04-23): populate these when
         # both direct and synth come back with a projection so we can
@@ -1255,6 +1328,9 @@ class NBAScoringAdapter(ScoringAdapter):
         minutes_composition_baseline: Optional[float] = None
         minutes_composition_predicted_minutes: Optional[float] = None
         minutes_composition_per_min_rate: Optional[float] = None
+        # 2026-05 missing-value policy — populated from `mres.feature_health`
+        # when the VK predict path runs. Persisted on the ScoringContext.
+        vk_feature_health: Optional[Dict[str, Any]] = None
         # Model predictions only when identity resolved. Propagate the
         # ID through every downstream scoring call.
         if model_key in self._MODEL_STATS and bdl_player_id is not None:
@@ -1263,6 +1339,9 @@ class NBAScoringAdapter(ScoringAdapter):
                     db=db, bdl_player_id=bdl_player_id,
                     player_name=player_name, stat_type=model_key,
                     line=float(line), opponent_team=opponent_team,
+                    team_total=live_team_total,
+                    target_game=live_target_game,
+                    sharp_implied=live_sharp_implied,
                 )
                 p_over = mres.get("p_over")
                 if p_over is not None:
@@ -1271,6 +1350,10 @@ class NBAScoringAdapter(ScoringAdapter):
                     )
                 model_projection = mres.get("projection")
                 model_sigma = mres.get("sigma")
+                # 2026-05 missing-value policy — preserve VK's
+                # feature_health summary so the score doc captures
+                # which features were silent defaults.
+                vk_feature_health = mres.get("feature_health")
                 # 2026-04-26 NBA LOM (Phase 4) — DISABLED 2026-04-26.
                 # The LOM artifacts at /app/backend/models/probability/lom/nba/
                 # are kept on disk for research, but the v1 model regressed
@@ -1327,6 +1410,9 @@ class NBAScoringAdapter(ScoringAdapter):
                     player_name=player_name, line=float(line),
                     opponent_team=opponent_team, use_vk2=use_vk2_path,
                     components=synth_components,
+                    team_total=live_team_total,
+                    target_game=live_target_game,
+                    sharp_implied=live_sharp_implied,
                 )
                 if cres_audit.get("projection") is not None:
                     model_projection_synth = cres_audit.get("projection")
@@ -1391,6 +1477,9 @@ class NBAScoringAdapter(ScoringAdapter):
                 player_name=player_name, line=float(line),
                 opponent_team=opponent_team, use_vk2=use_vk2_path,
                 components=self._COMBO_COMPONENTS[resolved_family],
+                team_total=live_team_total,
+                target_game=live_target_game,
+                sharp_implied=live_sharp_implied,
             )
             if cres.get("projection") is not None:
                 p_over_c = cres.get("p_over")
@@ -1570,4 +1659,6 @@ class NBAScoringAdapter(ScoringAdapter):
             minutes_composition_baseline_projection=minutes_composition_baseline,
             minutes_composition_predicted_minutes=minutes_composition_predicted_minutes,
             minutes_composition_per_min_rate=minutes_composition_per_min_rate,
+            # 2026-05 missing-value policy.
+            feature_health=vk_feature_health,
         )

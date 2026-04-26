@@ -335,6 +335,14 @@ class MLBHighFrictionModel:
         # Get handedness splits from player data
         vs_left = player.get('vs_left', {})
         vs_right = player.get('vs_right', {})
+        # 2026-05 missing-value policy: flag platoon features as imputed
+        # when the source split blocks aren't on the master_hub doc.
+        # (Currently always missing — no external splits feed; will be
+        # toggled to 0 once a splits sync lands.)
+        _platoon_imputed = 0 if (vs_left or vs_right) else 1
+        features['vs_lhp_is_imputed'] = _platoon_imputed
+        features['vs_rhp_is_imputed'] = _platoon_imputed
+        features['platoon_split_is_imputed'] = _platoon_imputed
         
         # vs LHP stats
         features['vs_lhp_ab'] = vs_left.get('at_bats', 0) or 0
@@ -372,6 +380,7 @@ class MLBHighFrictionModel:
             features['park_k_factor'] = pf.get('k', 1.0)
             features['park_tb_factor'] = pf.get('tb', 1.0)
             features['park_factor'] = self._get_park_factor(park_team, stat)
+            features['park_factor_is_imputed'] = 0
         else:
             features['park_hits_factor'] = 1.0
             features['park_runs_factor'] = 1.0
@@ -379,10 +388,15 @@ class MLBHighFrictionModel:
             features['park_k_factor'] = 1.0
             features['park_tb_factor'] = 1.0
             features['park_factor'] = 1.0
+            features['park_factor_is_imputed'] = 1
         
         # Home/Away splits
         home_splits = player.get('home_splits', {})
         away_splits = player.get('away_splits', {})
+        # Missing-value flag: home/away splits aren't on the master_hub
+        # doc; will be toggled to 0 once a splits sync lands.
+        _ha_imputed = 0 if (home_splits or away_splits) else 1
+        features['home_away_split_is_imputed'] = _ha_imputed
         
         home_ab = home_splits.get('at_bats', 0) or 0
         home_hits = home_splits.get('hits', 0) or 0
@@ -416,10 +430,12 @@ class MLBHighFrictionModel:
             features['dk_implied_prob'] = raw_prob * 100
             features['dk_vig_removed_prob'] = (raw_prob / 1.05) * 100  # ~5% vig approximation
             features['dk_odds_raw'] = dk_odds
+            features['dk_odds_is_imputed'] = 0
         else:
             features['dk_implied_prob'] = 50.0
             features['dk_vig_removed_prob'] = 50.0
             features['dk_odds_raw'] = -110  # Default
+            features['dk_odds_is_imputed'] = 1
         
         # Line features
         if line is not None:
@@ -772,6 +788,20 @@ class MLBHighFrictionModel:
                 }
             }
             
+            # 2026-05 missing-value policy — emit a feature_health
+            # block summarising which features were silent defaults vs
+            # real values. Surface up via the predict() return so the
+            # scoring adapter can stamp it on the score doc.
+            imputed_features = sorted(
+                k.replace("_is_imputed", "")
+                for k, v in features.items()
+                if k.endswith("_is_imputed") and v == 1
+            )
+            feature_health = {
+                "imputed_count": len(imputed_features),
+                "imputed_features": imputed_features,
+            }
+
             result = {
                 'player_name': player_name,
                 'stat_type': stat_type,
@@ -784,7 +814,8 @@ class MLBHighFrictionModel:
                 'friction_audit': friction_audit,
                 'full_features': friction_audit,
                 'mlr_features_used': True,
-                'model_version': 'MLB_HF_v1.0'
+                'model_version': 'MLB_HF_v1.0',
+                'feature_health': feature_health,
             }
             
             logger.info(
