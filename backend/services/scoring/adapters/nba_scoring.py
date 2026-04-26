@@ -1271,31 +1271,13 @@ class NBAScoringAdapter(ScoringAdapter):
                     )
                 model_projection = mres.get("projection")
                 model_sigma = mres.get("sigma")
-                # 2026-04-26 NBA LOM (Phase 4): replace Gaussian with
-                # calibrated P(actual > line). LOM uses identical
-                # projection + sigma so all other gates / TP / tier
-                # logic remains unchanged. Falls back to Gaussian if
-                # the LOM artifact is absent for this stat.
-                if model_projection is not None and model_sigma is not None:
-                    try:
-                        from services.probability.line_outcome import (
-                            get_universal_lom,
-                        )
-                        p_lom = get_universal_lom().predict_proba_over(
-                            sport="nba", stat_family=model_key,
-                            projection=float(model_projection),
-                            line=float(line),
-                            sigma=float(model_sigma),
-                        )
-                        if p_lom is not None:
-                            p_true_model = round(
-                                (1.0 - p_lom) if side == "UNDER" else p_lom, 4
-                            )
-                            prop["probability_method"] = "lom_v1"
-                    except Exception as _e:
-                        logger.debug(
-                            f"[NBA_LOM] {model_key} fallback to gaussian: {_e}"
-                        )
+                # 2026-04-26 NBA LOM (Phase 4) — DISABLED 2026-04-26.
+                # The LOM artifacts at /app/backend/models/probability/lom/nba/
+                # are kept on disk for research, but the v1 model regressed
+                # REB Brier and produced ambiguous PRA improvements (see
+                # diagnostic in CHANGELOG). Live NBA scoring uses the
+                # Gaussian path until a v1.2 ships uniform per-stat gains.
+                # MLB LOM remains active.
                 if mres.get("minutes_composition_applied"):
                     minutes_composition_applied = True
                     minutes_composition_baseline = mres.get("baseline_projection")
@@ -1318,29 +1300,8 @@ class NBAScoringAdapter(ScoringAdapter):
                 vk2_projection = v2res.get("projection")
                 vk2_sigma = v2res.get("sigma")
                 vk2_error = v2res.get("error")
-                # 2026-04-26 NBA LOM (Phase 4): same override on the
-                # VK2 path. Uses VK2's projection + sigma; falls back
-                # to the Gaussian p_true_vk2 if LOM artifact missing.
-                if vk2_projection is not None and vk2_sigma is not None:
-                    try:
-                        from services.probability.line_outcome import (
-                            get_universal_lom,
-                        )
-                        p_lom = get_universal_lom().predict_proba_over(
-                            sport="nba", stat_family=model_key,
-                            projection=float(vk2_projection),
-                            line=float(line),
-                            sigma=float(vk2_sigma),
-                        )
-                        if p_lom is not None:
-                            p_true_vk2 = round(
-                                (1.0 - p_lom) if side == "UNDER" else p_lom, 4
-                            )
-                            prop["probability_method"] = "lom_v1"
-                    except Exception as _e:
-                        logger.debug(
-                            f"[NBA_LOM] vk2 {model_key} fallback to gaussian: {_e}"
-                        )
+                # NBA LOM disabled on the VK2 path as well — see comment
+                # in the legacy-VK branch above.
                 if v2res.get("minutes_composition_applied"):
                     minutes_composition_applied = True
                     minutes_composition_baseline = v2res.get(
