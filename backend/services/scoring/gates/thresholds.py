@@ -28,9 +28,15 @@ TIERS_ORDERED = ("safe_haven", "front_lines", "war_zone")
 # --------------------------------------------------------------------------
 STAT_FAMILY_ALIASES: Dict[str, Dict[str, str]] = {
     "nba": {
-        # Short canonical names (scoring adapter emits these directly)
-        "PTS": "pts", "REB": "reb", "AST": "ast", "PRA": "pra",
-        "STL": "stl", "BLK": "blk", "3PM": "threes", "TO": "turnovers",
+        # Short canonical names (scoring adapter emits these directly).
+        # 2026-04-28: keys are lowercase because `resolve_stat_family`
+        # lowercases the raw input before lookup. Pre-2026-04-28 these
+        # were uppercase, which silently failed for "3PM" and "TO" (the
+        # only stats whose canonical family name differs from their
+        # lowercased token — the others trivially round-trip via the
+        # `replace(" ", "_")` fallback).
+        "pts": "pts", "reb": "reb", "ast": "ast", "pra": "pra",
+        "stl": "stl", "blk": "blk", "3pm": "threes", "to": "turnovers",
         # Raw odds-market names (both standard + alternate variants map
         # to the SAME canonical family — a PTS alt-line has the same
         # underlying stat distribution as the standard PTS market).

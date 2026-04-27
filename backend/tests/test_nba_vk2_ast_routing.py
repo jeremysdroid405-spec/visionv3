@@ -6,14 +6,15 @@ def test_ast_is_in_vk2_primary_stats():
     assert "AST" in NBAScoringAdapter._VK2_PRIMARY_STATS
 
 
-def test_pts_pra_reb_3pm_not_in_vk2_primary_stats():
-    """Only AST is promoted in this change. Other VK2-trained stats keep
-    legacy VK1 because they have other compensating layers (rate × min
-    on PTS/PRA, OK calibration on REB/3PM)."""
+def test_pts_pra_not_in_vk2_primary_stats():
+    """PTS and PRA stay on legacy paths:
+    - PTS: shadow-first via mu_pts_vk2 audit column (2026-04-28).
+    - PRA: synth-preferred per 2026-04-26 audit (synth ≫ direct VK2).
+    REB and 3PM were promoted on 2026-04-28 alongside the shadow PTS."""
     assert "PTS" not in NBAScoringAdapter._VK2_PRIMARY_STATS
     assert "PRA" not in NBAScoringAdapter._VK2_PRIMARY_STATS
-    assert "REB" not in NBAScoringAdapter._VK2_PRIMARY_STATS
-    assert "3PM" not in NBAScoringAdapter._VK2_PRIMARY_STATS
+    assert "REB" in NBAScoringAdapter._VK2_PRIMARY_STATS
+    assert "3PM" in NBAScoringAdapter._VK2_PRIMARY_STATS
 
 
 def test_ast_artifact_exists():

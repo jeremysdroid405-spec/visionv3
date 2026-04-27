@@ -62,16 +62,14 @@ class NBAScoringAdapter(ScoringAdapter):
     # Which stat_types have a Vegas Killer model on disk
     _MODEL_STATS = {"PTS", "REB", "AST", "3PM", "PRA"}
     # 2026-04-28 — Stats where VK2 is the PRIMARY model path even when no
-    # `override_config.vision_score.p_true_method` is supplied. VK2 ships
-    # a 5-season weighted regressor + per-stat empirical sigma + ECDF
-    # bucket calibration, all loaded at init. AST is the first stat
-    # promoted (audit `/tmp/nba_vk2_ast_audit_REPORT.md`): legacy VK1
-    # over-projects systematically (Jokic 11.7 vs VK2 8.3 vs L20 mean
-    # 10.95), and VK2 returns sane values end-to-end with 0 missing
-    # features. Override still wins: explicit p_true_method="model"
-    # forces legacy. Empty / missing override → VK2 for stats in this
-    # set, VK1 for everything else.
-    _VK2_PRIMARY_STATS = {"AST"}
+    # `override_config.vision_score.p_true_method` is supplied.
+    # Promotion log:
+    #   - 2026-04-28: AST  (after Jokic AST trace + dual-model audit)
+    #   - 2026-04-28: REB, 3PM (per full-model-audit /tmp/nba_full_model_audit_REPORT.md)
+    # PTS is intentionally NOT promoted yet — it touches recency blend,
+    # rate × minutes, PRA synth, and shadow E. PTS runs as a SHADOW
+    # column (`mu_pts_vk2`) for 7 days before any cutover decision.
+    _VK2_PRIMARY_STATS = {"AST", "REB", "3PM"}
     # Canonical family (lowercase, from resolve_stat_family) → model key
     # (the UPPERCASE stat_type the VK / VK2 predictors internally expect).
     # Every raw market name — standard or alternate — routes to a family
@@ -1239,6 +1237,89 @@ class NBAScoringAdapter(ScoringAdapter):
         prop["mu_recency_E_l10"]     = result["L10"]
         # μ_current stays the production projection — DO NOT touch it.
         return mu_current
+
+
+    # =========================================================================
+    # 2026-04-28 — Shadow VK2 PTS projection (audit-only).
+    # =========================================================================
+    # AUDIT-ONLY layer that runs the VK2 PTS predictor in parallel with
+    # the production VK1-PTS μ. NEVER replaces μ_current. Stamps
+    # `mu_pts_vk2` and `delta_mu_pts_vk2_vs_vk1` so the 7-day
+    # forward-test eval can decide whether to promote PTS to
+    # VK2-primary.
+    #
+    # Why shadow first (instead of straight cutover): PTS μ is the
+    # input for recency blend, minutes-regression guard, rate × minutes
+    # layer, PRA synth, and the existing shadow Recipe E. A direct
+    # source switch would simultaneously change all five downstream
+    # consumers; shadowing isolates the model-source change from the
+    # downstream-pipeline impact.
+    #
+    # Eligibility: `stat_type == "PTS"` AND VK2 PTS model loaded AND
+    # >= 5 pre-game logs available. Skipped silently otherwise.
+    # =========================================================================
+    def _maybe_apply_shadow_pts_vk2(
+        self,
+        stat_type: str,
+        bdl_player_id: Optional[int],
+        prop: Dict[str, Any],
+        mu_current: Optional[float],
+    ) -> Optional[float]:
+        """Run the VK2 PTS predictor in shadow mode. Returns μ_current
+        unchanged. Only stamps audit fields when VK2 produces a clean
+        projection."""
+        prop.setdefault("mu_pts_vk2_applied", False)
+        if (stat_type or "").upper() != "PTS":
+            return mu_current
+        if mu_current is None or bdl_player_id is None:
+            return mu_current
+        try:
+            pid = int(bdl_player_id)
+        except (TypeError, ValueError):
+            return mu_current
+        m = (self._vk2_models or {}).get("PTS")
+        if m is None:
+            return mu_current
+
+        # Reuse the existing VK2 history slice + feature builder so
+        # this layer doesn't duplicate filtering logic.
+        try:
+            history = self._get_vk2_history_logs(pid, window=20)
+        except Exception:
+            return mu_current
+        if not history or len(history) < 5:
+            return mu_current
+
+        # Lazy-import to keep top-level imports tight.
+        from services.scoring.nba_vk2_features import build_features as _bf
+        try:
+            feats = _bf(
+                history_logs=history,
+                target_game=history[0],
+                adv_map=self._vk2_adv_map or None,
+            )
+        except Exception:
+            return mu_current
+        if feats is None:
+            return mu_current
+
+        try:
+            import numpy as np
+            row = np.asarray(
+                [[feats.get(c, 0.0) for c in m["features"]]],
+                dtype=np.float32,
+            )
+            row_s = m["scaler"].transform(row)
+            mu_vk2 = float(m["model"].predict(row_s)[0])
+        except Exception:
+            return mu_current
+
+        prop["mu_pts_vk2"]            = round(mu_vk2, 4)
+        prop["mu_pts_vk2_applied"]    = False  # shadow only
+        prop["delta_mu_pts_vk2_vs_vk1"] = round(mu_vk2 - float(mu_current), 4)
+        # μ_current stays the production projection — DO NOT touch it.
+        return mu_current
+
 
 
 
@@ -2430,6 +2511,11 @@ class NBAScoringAdapter(ScoringAdapter):
                     stat_type=model_key, bdl_player_id=bdl_player_id,
                     prop=prop, mu_current=model_projection,
                 )
+                # 2026-04-28 — Shadow VK2 PTS (audit-only). PTS only.
+                model_projection = self._maybe_apply_shadow_pts_vk2(
+                    stat_type=model_key, bdl_player_id=bdl_player_id,
+                    prop=prop, mu_current=model_projection,
+                )
                 # Universal probability engine override
                 # for the legacy VK path. Engine receives empirical
                 # (μ, σ) and re-derives p_over via Normal CDF (or
@@ -2494,6 +2580,14 @@ class NBAScoringAdapter(ScoringAdapter):
                 )
                 # 2026-04-28 — Shadow Recipe E on VK2 path (audit-only).
                 vk2_projection = self._maybe_apply_shadow_recency_E(
+                    stat_type=model_key, bdl_player_id=bdl_player_id,
+                    prop=prop, mu_current=vk2_projection,
+                )
+                # 2026-04-28 — Shadow VK2 PTS (audit-only). PTS only.
+                # (Currently a no-op on VK2 path because PTS isn't in
+                # `_VK2_PRIMARY_STATS` so this branch isn't taken for
+                # PTS — kept for parity if PTS is later promoted.)
+                vk2_projection = self._maybe_apply_shadow_pts_vk2(
                     stat_type=model_key, bdl_player_id=bdl_player_id,
                     prop=prop, mu_current=vk2_projection,
                 )
@@ -2609,6 +2703,13 @@ class NBAScoringAdapter(ScoringAdapter):
                     )
                     # 2026-04-28 — Shadow Recipe E on PRA synth path.
                     model_projection_synth = self._maybe_apply_shadow_recency_E(
+                        stat_type=model_key, bdl_player_id=bdl_player_id,
+                        prop=prop, mu_current=model_projection_synth,
+                    )
+                    # 2026-04-28 — Shadow VK2 PTS (audit-only). No-op
+                    # on the PRA synth branch because synth is for PRA
+                    # and combos, not PTS — kept for symmetry.
+                    model_projection_synth = self._maybe_apply_shadow_pts_vk2(
                         stat_type=model_key, bdl_player_id=bdl_player_id,
                         prop=prop, mu_current=model_projection_synth,
                     )

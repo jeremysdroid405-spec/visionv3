@@ -159,6 +159,9 @@ class ForwardTestingService:
                     ),
                     "mu_recency_E": prop.get("mu_recency_E"),
                     "delta_mu_E_vs_A": prop.get("delta_mu_E_vs_A"),
+                    # 2026-04-28 — Shadow VK2 PTS (PTS-only; None for other stats).
+                    "mu_pts_vk2": prop.get("mu_pts_vk2"),
+                    "delta_mu_pts_vk2_vs_vk1": prop.get("delta_mu_pts_vk2_vs_vk1"),
                     
                     # Game info
                     "game_time": prop.get("game_time") or prop.get("commence_time"),

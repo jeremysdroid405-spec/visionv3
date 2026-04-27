@@ -1,6 +1,40 @@
 # PRD — NBA/MLB Ferrari / PropVision AI
 
 
+## 2026-04-28 — NBA: REB + 3PM promoted to VK2-primary; PTS shadowed
+**Driver:** Full VK1-vs-VK2 audit (`/tmp/nba_full_model_audit_REPORT.md`, n=272 100% coverage). VK2 wins/ties on every metric for every stat. PTS +7.4 pp hit rate, REB tied hit/lower bias, AST already migrated, PRA stays synth-preferred.
+
+### Changes
+1. `_VK2_PRIMARY_STATS` extended: `{"AST"}` → `{"AST", "REB", "3PM"}`.
+2. **Stat-family alias-map case-sensitivity bug FIXED** in `gates/thresholds.py`: keys for `"PTS"`, `"3PM"`, `"TO"` etc. were uppercase, but `resolve_stat_family` lowercases input before lookup. Result: `"3PM"` was resolving to `"3pm"` (fallback) instead of `"threes"`, breaking model-key resolution and silently dropping 3PM out of every model path. Other stats (PTS/REB/AST/PRA/STL/BLK) accidentally round-tripped because lowercase canonical equals their value. Only **3PM and TO** were affected.
+3. **Shadow VK2 PTS layer** added (`_maybe_apply_shadow_pts_vk2`). Stamps `mu_pts_vk2`, `mu_pts_vk2_applied=False`, `delta_mu_pts_vk2_vs_vk1`. Wired into all 3 score-loop call sites after Recipe-E shadow. Audit-only — production μ never modified.
+4. New audit fields whitelisted in `prop_scores_store._SCORE_OUTPUT_FIELDS` and `recompute._project_score_doc`. Top-level snapshot in `forward_test_snapshots`.
+
+### Live recompute (`final-nba-rt`, 4344 props in 43 s)
+| Stat | %VK2 | %VK1 | %synth | %none | Status |
+|------|-----:|-----:|-------:|------:|--------|
+| PTS  | 0.0%  | 99.1% | 0.0% | 0.9% | ✓ legacy + **mu_pts_vk2 shadow 695/701 (99.1%)** |
+| REB  | **99.5%** | 0.0% | 0.0% | 0.5% | ✓ promoted |
+| AST  | 98.8% | 0.0% | 0.0% | 1.2% | ✓ already promoted |
+| PRA  | 0.0% | 0.0% | 98.7% | 1.3% | ✓ synth-preferred (intentional) |
+| 3PM  | **99.1%** | 0.0% | 0.0% | 0.9% | ✓ promoted (alias-map bug fixed) |
+| STL/BLK | 0.0% | 0.0% | 0.0% | 100% | ✓ Poisson via universal engine |
+
+### Shadow PTS Δ-distribution (n=695)
+- Mean Δ: +0.052 · median +0.060 · stdev 1.902 · range [−4.12, +7.89]
+- 0 props had `mu_pts_vk2_applied=True` ✓ invariant intact.
+
+### Tests
+- 6 new unit tests in `tests/test_nba_shadow_pts_vk2.py`.
+- AST routing test updated to reflect REB + 3PM promotion.
+- Total: 46/46 passing in this suite + universal engine + rate model + shadow E + AST routing.
+
+### Forward-test eval
+- `/tmp/nba_shadow_E_eval.py` already evaluates Recipe E.
+- New PTS-VK2 shadow eval will need a complementary script after 7 days; the snapshot already carries `mu_pts_vk2` + `delta_mu_pts_vk2_vs_vk1` so it just needs the report wrapper.
+
+
+
 ## 2026-04-28 — NBA AST: VK2 promoted to primary (audit + fix)
 **Audit finding:** VK2 AST projection is **not failing** — it's never being called. The hourly recompute calls `recompute_sport(...)` with no `override_config`, so `active_method_early` defaults to `"model"` and ALL NBA stats (PTS/REB/AST/3PM/PRA) silently route to legacy VK1's `_predict_model_prob_over`. VK2 artifacts (loaded, calibrated, ECDF-bucketed) sat dormant. PTS/PRA had the rate × minutes layer compensating; AST/REB/3PM had nothing.
 

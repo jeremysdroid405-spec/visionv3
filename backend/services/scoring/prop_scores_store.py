@@ -260,6 +260,12 @@ _SCORE_OUTPUT_FIELDS = (
     "mu_recency_E_l3",
     "mu_recency_E_l10med",
     "mu_recency_E_l10",
+    # NBA — Shadow VK2 PTS projection (2026-04-28). AUDIT-ONLY: never
+    # replaces μ_current. Captured for 7-day forward-test before any
+    # PTS-VK2 promotion decision.
+    "mu_pts_vk2",
+    "mu_pts_vk2_applied",
+    "delta_mu_pts_vk2_vs_vk1",
     # Universal SSOT canonical-pool flags (2026-04-25). Stamped at
     # ingest by `services/universal_odds_sync.py::_normalize_market_data`
     # on every prop. PrizePicks is now an overlay on top of a

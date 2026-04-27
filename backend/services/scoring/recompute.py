@@ -576,6 +576,8 @@ async def recompute_sport(
             # NBA — Shadow Recipe E (2026-04-28, audit-only)
             "mu_recency_E", "mu_recency_E_applied", "delta_mu_E_vs_A",
             "mu_recency_E_l3", "mu_recency_E_l10med", "mu_recency_E_l10",
+            # NBA — Shadow VK2 PTS (2026-04-28, audit-only)
+            "mu_pts_vk2", "mu_pts_vk2_applied", "delta_mu_pts_vk2_vs_vk1",
         ):
             if _prob_k in raw:
                 doc[_prob_k] = raw[_prob_k]
