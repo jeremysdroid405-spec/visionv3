@@ -539,6 +539,9 @@ async def recompute_sport(
             "isotonic_p_over", "probability_calibration_applied",
             "raw_p_over", "projection_intercept_applied",
             "projection_intercept_delta", "pre_intercept_projection",
+            # 2026-04-27 — distribution-based probability layer audit
+            "distribution_p_over", "distribution_sigma",
+            "distribution_sigma_source", "distribution_clamped",
         ):
             if _prob_k in raw:
                 doc[_prob_k] = raw[_prob_k]

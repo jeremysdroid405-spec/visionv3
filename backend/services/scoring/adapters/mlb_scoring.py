@@ -266,14 +266,60 @@ class MLBScoringAdapter(ScoringAdapter):
                 # Side-aware flip: MLB stores over-prob; flip for UNDER picks
                 # so p_true_model always reflects the side we're picking.
                 side = (prop.get("recommendation") or "OVER").upper()
-                if "UNDER" in side:
-                    p_true_model = round((100.0 - prob_over_pct) / 100.0, 4)
-                else:
-                    p_true_model = round(prob_over_pct / 100.0, 4)
                 # Preserve projection + sigma so recompute can populate
                 # model_projection and ranking_score_v2 for MLB.
                 model_projection = result.get("predicted")
                 model_sigma = result.get("std_dev")
+
+                # ============================================================
+                # 2026-04-27 — DISTRIBUTION-BASED PROBABILITY LAYER (new base).
+                # ------------------------------------------------------------
+                # Replaces the HF model's internal heuristic Gaussian (which
+                # applied a `prob_over = 50 - |z|*10` override when the bare
+                # CDF disagreed with the projection vs line). This new layer
+                # uses μ from the MLR projection engine (HF) and σ derived
+                # from the player's CV (with per-family floors). The bare
+                # normal-CDF result is used unchanged — no policy override.
+                #
+                # Inputs are NOT changed: HF projection is the same μ,
+                # `cv` is the same per-player value already feeding gates.
+                # Only the μ/σ → probability conversion changes.
+                # ============================================================
+                from services.probability.distribution_layer import (
+                    compute_distribution_probability,
+                )
+                from services.scoring.stat_family import canonical_stat_family
+                _canon_for_dist = canonical_stat_family(stat_type, sport="mlb").lower()
+                dist_result = compute_distribution_probability(
+                    mu=model_projection,
+                    line=line,
+                    cv=cv,
+                    stat_family=_canon_for_dist,
+                )
+                if dist_result is not None:
+                    if "UNDER" in side:
+                        p_true_model = round(dist_result.p_under, 4)
+                    else:
+                        p_true_model = round(dist_result.p_over, 4)
+                    # Persist audit fields so observability can diff the new
+                    # distribution-based base against the HF heuristic.
+                    prop["distribution_p_over"] = round(dist_result.p_over, 4)
+                    prop["distribution_sigma"] = dist_result.sigma
+                    prop["distribution_sigma_source"] = dist_result.sigma_source
+                    prop["distribution_clamped"] = dist_result.clamped
+                    # Keep the legacy Gaussian for diff-vs-base observability.
+                    prop["raw_gaussian_p_over"] = round(
+                        float(prob_over_pct) / 100.0, 4,
+                    )
+                    prop["probability_method"] = "normal_cdf_cv"
+                else:
+                    # Fall back to HF's internal Gaussian when μ or line
+                    # are missing (rare path).
+                    if "UNDER" in side:
+                        p_true_model = round((100.0 - prob_over_pct) / 100.0, 4)
+                    else:
+                        p_true_model = round(prob_over_pct / 100.0, 4)
+                    prop["probability_method"] = "gaussian"
                 # 2026-05 P0 — `raw_prediction` is the un-modified
                 # `model.predict()[0]` value the HF model produced
                 # before the live-only park_factor / opp_k_rate
@@ -364,8 +410,12 @@ class MLBScoringAdapter(ScoringAdapter):
                         prop["ecdf_bucket_n"] = int(ecdf_pred.bucket_n)
                         prop["ecdf_version"] = ecdf_pred.version
                         prop["probability_method"] = "ecdf"
-                    else:
-                        prop["probability_method"] = "gaussian"
+                    # 2026-04-27 — when ECDF artifact is missing, leave
+                    # `probability_method` as whatever the upstream
+                    # distribution layer stamped ("normal_cdf_cv" or
+                    # "gaussian" fallback). The legacy `else: gaussian`
+                    # branch was deleted because it incorrectly
+                    # overwrote the new normal-CDF-from-CV layer.
 
                 # --- Universal Line-Outcome Model (LOM) override ----------
                 # 2026-05 — preferred translator when a per-stat-family

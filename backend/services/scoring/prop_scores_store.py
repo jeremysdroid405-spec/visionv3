@@ -188,6 +188,13 @@ _SCORE_OUTPUT_FIELDS = (
     "probability_calibration_applied", "raw_p_over",
     "projection_intercept_applied", "projection_intercept_delta",
     "pre_intercept_projection",
+    # Distribution-based probability layer (2026-04-27) — replaces the
+    # legacy `50-|z|*10` heuristic in MLB HF.predict() with a clean
+    # normal-CDF on (μ from MLR, σ from CV-with-family-floor). Audit
+    # fields persisted so the calibration observability stack can
+    # diff distribution_p_over against ecdf_p_over and raw_gaussian.
+    "distribution_p_over", "distribution_sigma",
+    "distribution_sigma_source", "distribution_clamped",
     # Universal SSOT canonical-pool flags (2026-04-25). Stamped at
     # ingest by `services/universal_odds_sync.py::_normalize_market_data`
     # on every prop. PrizePicks is now an overlay on top of a
