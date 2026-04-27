@@ -82,6 +82,43 @@ _CV_FLOOR_BY_FAMILY = {
 # Fallback when stat family isn't in the table — conservative middle.
 _CV_FLOOR_DEFAULT = 0.50
 
+# Per-family μ-floor used for σ scaling. Below this μ the player's
+# CV-based dispersion would collapse to near-zero (because σ = CV × |μ|),
+# producing |z| → ∞ and degenerate probabilities (0.01 / 0.99) on
+# low-μ event props (e.g. a Hit 0.5 OVER for a player with 0.05 L20
+# avg). The μ-floor establishes a minimum effective μ used **only**
+# inside σ scaling — the projection itself (numerator of the z-score)
+# is unchanged.
+#
+# Calibrated to the natural variance scale of each event family:
+#   • Hits / Singles / Runs / RBIs / HRR — line is 0.5, σ should
+#     allow ≈ ±1 stat-unit dispersion. floor=0.5 → σ_min ≈ 0.5×CV.
+#   • Total Bases — line typically 1.5; floor=1.0.
+#   • Doubles / Home Runs / Stolen Bases — rarer events but lines
+#     are 0.5, so floor must be at least 0.3-0.5 to keep σ reasonable.
+#   • Pitcher Strikeouts / Pitcher Outs / Earned Runs / Hits Allowed
+#     — high-magnitude families with lines at 4-16; floors scale up.
+_MU_FLOOR_BY_FAMILY = {
+    "hits":              0.5,
+    "singles":           0.5,
+    "runs":              0.5,
+    "rbis":              0.5,
+    "hits+runs+rbis":    0.5,
+    "total_bases":       1.0,
+    "doubles":           0.5,
+    "home_runs":         0.3,
+    "stolen_bases":      0.3,
+    "batter_strikeouts": 0.5,
+    "batter_walks":      0.5,
+    "triples":           0.3,
+    "pitcher_strikeouts":2.0,
+    "earned_runs":       1.5,
+    "hits_allowed":      2.5,
+    "pitcher_outs":     12.0,
+    "walks_allowed":     1.0,
+}
+_MU_FLOOR_DEFAULT = 0.5
+
 # Hard minimum σ (in stat units) to prevent divide-by-zero on tiny
 # projections like Stolen Bases 0.05.
 _SIGMA_MIN_ABSOLUTE = 0.20
@@ -103,6 +140,12 @@ class DistributionProbabilityResult:
     distribution: str = "normal_cdf"
     clamped: bool = False
     note: Optional[str] = None
+    # 2026-04-27 — μ-floor diagnostic. `effective_mu` is the value
+    # actually used inside σ scaling (= max(|μ|, μ_floor)). When the
+    # floor was binding, `mu_floor_applied` is True and `sigma_source`
+    # reflects "mu_floor_adjusted".
+    effective_mu: Optional[float] = None
+    mu_floor_applied: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -117,21 +160,29 @@ def _resolve_sigma(
     mu: float,
     cv: Optional[float],
     stat_family: str,
-) -> tuple[float, str]:
+) -> tuple[float, str, float, bool]:
     """Pick σ in priority order:
-        1. CV-derived from the player's L10 (cv * |mu|), if cv is
-           a finite float and ≥ family floor.
-        2. Family-floor CV * |mu|.
-        3. Generic _CV_FLOOR_DEFAULT * |mu|.
+        1. CV-derived (cv * effective_mu) when cv is finite and ≥ family floor.
+        2. Family-floor CV * effective_mu.
+        3. Generic _CV_FLOOR_DEFAULT * effective_mu.
 
-    Always enforces an absolute lower bound (`_SIGMA_MIN_ABSOLUTE`)
-    so σ never collapses to 0 on tiny projections.
+    `effective_mu = max(|μ|, μ_floor[stat_family])`. The μ-floor is
+    NEVER applied to the projection itself — only to the magnitude
+    used inside σ scaling, so the z-score numerator (line - μ) is
+    unchanged. This stops σ from collapsing on low-μ event props.
+
+    Returns
+    -------
+    (sigma, sigma_source, effective_mu, mu_floor_applied)
     """
     family = (stat_family or "").lower().strip()
     floor_cv = _CV_FLOOR_BY_FAMILY.get(family, _CV_FLOOR_DEFAULT)
-    base = abs(mu) if mu is not None else 0.0
+    mu_floor = _MU_FLOOR_BY_FAMILY.get(family, _MU_FLOOR_DEFAULT)
 
-    sigma_source: str
+    raw_mu = abs(mu) if mu is not None else 0.0
+    effective_mu = max(raw_mu, mu_floor)
+    mu_floor_applied = effective_mu > raw_mu
+
     if cv is not None and not math.isnan(cv) and cv > 0:
         if cv >= floor_cv:
             cv_used = cv
@@ -143,8 +194,13 @@ def _resolve_sigma(
         cv_used = floor_cv
         sigma_source = "stat_family_default"
 
-    sigma = max(cv_used * base, _SIGMA_MIN_ABSOLUTE)
-    return sigma, sigma_source
+    if mu_floor_applied:
+        # Annotate so observability can count μ-floor usage
+        # independently of which CV rung produced cv_used.
+        sigma_source = sigma_source + "+mu_floor_adjusted"
+
+    sigma = max(cv_used * effective_mu, _SIGMA_MIN_ABSOLUTE)
+    return sigma, sigma_source, effective_mu, mu_floor_applied
 
 
 def compute_distribution_probability(
@@ -173,10 +229,13 @@ def compute_distribution_probability(
     except (TypeError, ValueError):
         return None
 
-    sigma, sigma_source = _resolve_sigma(mu_f, cv, stat_family)
+    sigma, sigma_source, effective_mu, mu_floor_applied = _resolve_sigma(
+        mu_f, cv, stat_family,
+    )
 
     # Standard normal-CDF: probability that a Normal(μ, σ²) random
-    # variable exceeds `line`.
+    # variable exceeds `line`. NOTE the z-score uses the *raw* μ_f
+    # in the numerator — the μ-floor is only applied to σ scaling.
     z = (line_f - mu_f) / sigma
     p_under = _normal_cdf(z)
     p_over = 1.0 - p_under
@@ -199,6 +258,8 @@ def compute_distribution_probability(
         distribution="normal_cdf",
         clamped=clamped,
         note=None,
+        effective_mu=round(effective_mu, 4),
+        mu_floor_applied=mu_floor_applied,
     )
 
 

@@ -307,6 +307,9 @@ class MLBScoringAdapter(ScoringAdapter):
                     prop["distribution_sigma"] = dist_result.sigma
                     prop["distribution_sigma_source"] = dist_result.sigma_source
                     prop["distribution_clamped"] = dist_result.clamped
+                    # μ-floor diagnostics (2026-04-27)
+                    prop["distribution_effective_mu"] = dist_result.effective_mu
+                    prop["distribution_mu_floor_applied"] = dist_result.mu_floor_applied
                     # Keep the legacy Gaussian for diff-vs-base observability.
                     prop["raw_gaussian_p_over"] = round(
                         float(prob_over_pct) / 100.0, 4,

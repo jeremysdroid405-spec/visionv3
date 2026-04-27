@@ -542,6 +542,7 @@ async def recompute_sport(
             # 2026-04-27 — distribution-based probability layer audit
             "distribution_p_over", "distribution_sigma",
             "distribution_sigma_source", "distribution_clamped",
+            "distribution_effective_mu", "distribution_mu_floor_applied",
         ):
             if _prob_k in raw:
                 doc[_prob_k] = raw[_prob_k]

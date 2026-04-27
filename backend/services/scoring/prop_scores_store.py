@@ -195,6 +195,7 @@ _SCORE_OUTPUT_FIELDS = (
     # diff distribution_p_over against ecdf_p_over and raw_gaussian.
     "distribution_p_over", "distribution_sigma",
     "distribution_sigma_source", "distribution_clamped",
+    "distribution_effective_mu", "distribution_mu_floor_applied",
     # Universal SSOT canonical-pool flags (2026-04-25). Stamped at
     # ingest by `services/universal_odds_sync.py::_normalize_market_data`
     # on every prop. PrizePicks is now an overlay on top of a
