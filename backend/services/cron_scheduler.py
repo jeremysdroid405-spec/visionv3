@@ -406,6 +406,30 @@ async def run_pra_audit_settle():
             exc_info=True,
         )
 
+async def run_nba_pick_history_resolve():
+    """Pick-history result updater — companion to the gate-engine
+    insert hook. Grades every row in `nba_pick_history` whose `hit`
+    field is null using fresh game logs.
+
+    Idempotent (only ungraded rows are touched). Never raises into
+    the scheduler — a failure here must not stall other jobs.
+    """
+    try:
+        from motor.motor_asyncio import AsyncIOMotorClient
+        from scripts.update_nba_pick_results import update_results
+        cli = AsyncIOMotorClient(os.environ["MONGO_URL"])
+        db = cli[os.environ["DB_NAME"]]
+        result = await update_results(db, dry_run=False)
+        logger.info(
+            f"[PICK_HISTORY_CRON] updated={result['updated']} "
+            f"no_log={result['no_log']} no_actual={result['no_actual']} "
+            f"errors={result['errors']} scanned={result['scanned']}"
+        )
+    except Exception as exc:
+        logger.error(
+            f"[PICK_HISTORY_CRON] resolver failed: {exc!r}",
+            exc_info=True,
+        )
 
 
 def start_scheduler():
@@ -417,7 +441,6 @@ def start_scheduler():
     This scheduler manages PIPE 1 (Stats Vault) of the SSOT architecture.
     """
     global _scheduler
-    
     if _scheduler is not None:
         logger.warning("[CRON] Scheduler already running")
         return _scheduler
@@ -456,12 +479,26 @@ def start_scheduler():
         name='Forward-Testing: Daily Outcome Resolver (5:00 AM ET)',
         replace_existing=True,
     )
+
+    # 2026-05 — NBA pick-history result updater. Companion to the
+    # gate-engine insert hook in `services/scoring/recompute.py`.
+    # Runs at 0935 UTC (5 min after `forward_test_daily_resolve`)
+    # so the master-hub `bdl_game_logs` are guaranteed fresh.
+    # Idempotent: only rows with `hit is None` are touched.
+    _scheduler.add_job(
+        run_nba_pick_history_resolve,
+        CronTrigger(hour=9, minute=35, timezone='UTC'),
+        id='nba_pick_history_daily_resolve',
+        name='Pick History: NBA result updater (5:05 AM ET)',
+        replace_existing=True,
+    )
     
     _scheduler.start()
     logger.info("[CRON] SSOT Scheduler started:")
     logger.info("[CRON]   - Master Hub sync at 0400 EST daily")
     logger.info("[CRON]   - Forward-Test capture at 1830 ET daily")
     logger.info("[CRON]   - Forward-Test resolve at 0500 ET daily")
+    logger.info("[CRON]   - Pick History resolve at 0505 ET daily")
     
     return _scheduler
 

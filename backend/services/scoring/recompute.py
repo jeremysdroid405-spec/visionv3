@@ -681,6 +681,20 @@ async def recompute_sport(
     # logic here.
     _reevaluate_tiers_post_vision(score_docs)
 
+    # 3a-bis. NBA forward-testing — log every selected pick to the
+    # persistent `nba_pick_history` collection. Read-only to model
+    # behavior; never raises into the scoring path. NBA-only by spec.
+    if not dry_run and (sport or "").lower() == "nba":
+        try:
+            from services.forward_test.pick_history import (
+                ensure_indexes as _pick_history_ensure,
+                log_selected_picks as _pick_history_log,
+            )
+            await _pick_history_ensure(db)
+            await _pick_history_log(db, score_docs, sport=sport)
+        except Exception as exc:  # pragma: no cover - logging must never fail recompute
+            logger.warning(f"[PICK_HISTORY] hook failed: {exc!r}")
+
     # 3b. Multi-book de-vig TP engine summary (2026-04-22).
     # Per user spec: log `[TP Engine] props_with_tp / props_missing_tp /
     # avg_books_used` once per recompute run.
