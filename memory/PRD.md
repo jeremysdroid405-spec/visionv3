@@ -1,6 +1,44 @@
 # PRD — NBA/MLB Ferrari / PropVision AI
 
 
+## 2026-04-28 — NBA Per-Minute Rate Backfill (data only)
+Added canonical season + recency per-minute rate fields to `nba_master_hub_2026[<player>].season_per_minute`. **No projection / scoring logic changed.**
+
+**Computation:**
+- Season totals from latest-season `bdl_game_logs` (sum of mins, pts, reb, ast, fg3m, pra)
+- Per-minute rates: `rate = sum(stat) / sum(minutes)` (NOT mean of per-game rates — sum-divided is the correct rate when minutes vary)
+- Recency totals + per-minute for L3 / L5 / L10 windows
+- Blended per-minute: `0.50 × season + 0.30 × L10 + 0.20 × L3` (with proportional re-normalisation if any input is missing)
+
+**Schema added under `season_per_minute`:**
+```
+season_year, games_played, games_with_minutes,
+season:           { totals: {...}, per_min: {...}, per_game: {...} },
+l10 / l5 / l3:    { totals: {...}, per_min: {...} },
+blended_per_min:  {pts, reb, ast, threes, pra},
+blended_weights:  {season: 0.50, l10: 0.30, l3: 0.20},
+backfilled_at
+```
+
+**Coverage (run 2026-04-28):**
+- 551 / 560 (98.4%) players with bdl_game_logs got full per-minute rates.
+- 9 players skipped (logs exist but every game has minutes ≤ 0 — DNP-only / season-out).
+
+**Sanity check (selected stars):**
+- Jokic: GP 69 · 35.1 MPG · season pts/min 0.785, l10 0.700, l3 0.652 → blended 0.733
+- Wembanyama: GP 68 · 29.0 MPG · season reb/min 0.387 → blended 0.377
+- Sabonis (19 GP injury-shortened): season reb/min 0.382 → blended 0.386 (reasonable continuity).
+- Curry (low-rebound guard): season reb/min 0.113 → blended 0.108 (correctly low).
+
+**Files:**
+- `/app/backend/scripts/nba_per_minute_backfill.py` — idempotent backfill script. Re-runnable any time; overwrites only the `season_per_minute` subdoc.
+
+**Wired into projection logic? NO.** The data is persisted but no scoring code reads it yet. Next-step option: expose via `_get_season_per_minute_rates(bdl_player_id)` helper in `nba_scoring.py`. The existing rate × minutes layer recomputes from logs at scoring time — it could be migrated to read this subdoc directly (~1 ms saving per prop), but that's a perf optimisation, not a behaviour change.
+
+**Suggested ops:** wire this script into the existing nightly hub-rebuild job so the rates stay fresh as games grade. Currently a one-shot.
+
+
+
 ## 2026-04-28 — NBA: REB + 3PM promoted to VK2-primary; PTS shadowed
 **Driver:** Full VK1-vs-VK2 audit (`/tmp/nba_full_model_audit_REPORT.md`, n=272 100% coverage). VK2 wins/ties on every metric for every stat. PTS +7.4 pp hit rate, REB tied hit/lower bias, AST already migrated, PRA stays synth-preferred.
 
