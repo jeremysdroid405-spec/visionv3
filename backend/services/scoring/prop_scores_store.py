@@ -204,13 +204,24 @@ _SCORE_OUTPUT_FIELDS = (
     "distribution_mu_floor_capped", "distribution_cv_floor_applied",
     "distribution_lambda", "distribution_threshold",
     "distribution_dispersion_r", "distribution_p_param",
-    # 2026-04-27 — μ-override audit (HF input fixes)
-    "mu_raw_model_projection",         # μ before any override
-    "mu_pitcher_workload_anchored",    # 60/40 workload×model blend applied (K) or analytical (Outs)
-    "mu_active_baseline_applied",      # batter 0.5-line baseline floor fired
-    "mu_active_baseline_value",        # baseline value used when applied
-    "expected_ip_used",                # workload anchor IP for pitcher props
-    "projection_model_version",        # "MLB_HF_v1.0" | "MLB_HF_v1.0_pitcher_outs_analytical"
+    # 2026-04-27 — μ-override audit (HF input fixes for MLB; NBA recency blend)
+    "mu_raw_model_projection",         # μ before any override (MLB or NBA)
+    "mu_pitcher_workload_anchored",    # MLB — 60/40 workload×model blend (K) or analytical (Outs)
+    "mu_active_baseline_applied",      # MLB — batter 0.5-line baseline floor fired
+    "mu_active_baseline_value",        # MLB — baseline value used when applied
+    "expected_ip_used",                # MLB — workload anchor IP for pitcher props
+    "projection_model_version",        # MLB — "MLB_HF_v1.0" | "MLB_HF_v1.0_pitcher_outs_analytical"
+    # NBA — recency-weighted μ blend (PTS / PRA only)
+    "mu_recency_blended",
+    "mu_recency_blend_l3",
+    "mu_recency_blend_l10_median",
+    "mu_recency_blend_l20",
+    "mu_recency_blend_l5",
+    "mu_recency_blend_weights",
+    "mu_minutes_regression_applied",
+    "mu_minutes_regression_factor",
+    "mu_minutes_l3",
+    "mu_minutes_l10",
     # Universal SSOT canonical-pool flags (2026-04-25). Stamped at
     # ingest by `services/universal_odds_sync.py::_normalize_market_data`
     # on every prop. PrizePicks is now an overlay on top of a

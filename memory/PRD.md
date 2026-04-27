@@ -1,6 +1,42 @@
 # PRD — NBA/MLB Ferrari / PropVision AI
 
 
+## 2026-04-27 — NBA recency-weighted μ blend (PTS / PRA only)
+Surgical override applied AFTER VK/VK2/synth produces μ, BEFORE the universal probability engine consumes it. REB/AST/3PM/STL/BLK/probability engine/σ/CV/gates **not modified**.
+
+**Formula:**
+```
+μ_new = 0.35×L3 + 0.30×L10_median + 0.20×L20(or season_avg) + 0.15×μ_model
+if L3_min < 0.85 × L10_min and L10_min ≥ 20:
+    μ_new = 0.60 × L5 + 0.40 × μ_new  (soft minutes guard)
+```
+- Median (not mean) of L10 to suppress outliers
+- Active only on `PTS` and `PRA`
+- L20 falls back to `season_avg` for early-season players
+
+**Historical replay (272 settled OVER picks, capture 2026-04-13 → 2026-04-22):**
+- Hit rate: 59.9% → **64.4%** (+4.5 pp)
+- **Misses avoided: 19** · Hits lost: **0** · Net: +19
+- avg projection error on misses: +8.56 → +7.11 (-1.45)
+- **Shaedon Sharpe: 17/17 misses correctly filtered to "skip"** (μ dropped 35-39% on every pick — caught the entire L20-overweighting failure mode)
+- Quentin Grimes / Harrison Barnes / Coby White: not filtered (their misses are DNP/injury anomalies, not recency failures — needs inactives feed)
+
+**Per-family:**
+- PRA 127 picks: 52.8% → 56.3% (+3.5 pp; 8 misses avoided, 0 hits lost)
+- PTS 95 picks:  56.8% → 64.3% (+7.5 pp; 11 misses avoided, 0 hits lost)
+- REB / AST: untouched
+
+**Live production validation (`final-nba-rt`, 4,209 props in 45.4s):**
+- 1,219 props blended (PTS=691, PRA=528) — exact target stats
+- 51 minutes-regression activations
+- Tier distribution: front_lines 126 → 116 (10 bad OVERs filtered), safe_haven 10 → 12 (2 picks promoted)
+
+**Audit fields persisted on every NBA score doc:**
+`mu_raw_model_projection`, `mu_recency_blended`, `mu_recency_blend_l3`, `mu_recency_blend_l10_median`, `mu_recency_blend_l20`, `mu_recency_blend_l5`, `mu_recency_blend_weights`, `mu_minutes_regression_applied`, `mu_minutes_regression_factor`, `mu_minutes_l3`, `mu_minutes_l10`.
+
+**Files:** `services/scoring/adapters/nba_scoring.py` (3 helper methods, 3 score-loop sites). Whitelist updates in `prop_scores_store.py` and `recompute.py`. Tests: 41/41 still passing. Full report: `/tmp/nba_recency_blend_REPORT.md`. Reproducer: `/tmp/nba_recency_blend_replay.py`.
+
+
 ## 2026-04-27 — NBA migrated to universal probability engine
 NBA scoring now flows through `services/probability/distribution` for the σ→p_over conversion. Projections (μ) and empirical residual σ continue to come from VK/VK2/combo synth — only the probability conversion layer was replaced.
 

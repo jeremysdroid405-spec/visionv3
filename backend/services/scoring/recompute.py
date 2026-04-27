@@ -548,10 +548,15 @@ async def recompute_sport(
             "distribution_mu_floor_capped", "distribution_cv_floor_applied",
             "distribution_lambda", "distribution_threshold",
             "distribution_dispersion_r", "distribution_p_param",
-            # 2026-04-27 — HF μ-override audit fields
+            # 2026-04-27 — HF μ-override audit fields (MLB) + NBA recency blend
             "mu_raw_model_projection", "mu_pitcher_workload_anchored",
             "mu_active_baseline_applied", "mu_active_baseline_value",
             "expected_ip_used", "projection_model_version",
+            "mu_recency_blended", "mu_recency_blend_l3",
+            "mu_recency_blend_l10_median", "mu_recency_blend_l20",
+            "mu_recency_blend_l5", "mu_recency_blend_weights",
+            "mu_minutes_regression_applied", "mu_minutes_regression_factor",
+            "mu_minutes_l3", "mu_minutes_l10",
         ):
             if _prob_k in raw:
                 doc[_prob_k] = raw[_prob_k]

@@ -275,6 +275,233 @@ class NBAScoringAdapter(ScoringAdapter):
         return vk
 
     # =========================================================================
+    # 2026-04-27 — Recency-weighted μ blend for NBA PTS / PRA only.
+    # =========================================================================
+    # Forward-test audit (272 settled OVER picks) showed:
+    #   • 100% of misses had μ > actual (one-tailed bias)
+    #   • PRA + PTS account for 93% of misses
+    #   • avg PE on misses: +8.56 pts
+    #   • Shaedon Sharpe / Quentin Grimes / Harrison Barnes appeared 22x
+    #     combined with μ ≈ L20 ceiling vs L5 ≈ 50% lower
+    # Root cause: VK / VK2 weight L20-style features too heavily; recent
+    # regression is ignored.
+    #
+    # Surgical override (PTS / PRA only — REB and AST are well-calibrated
+    # and untouched):
+    #     μ_new = 0.35 × L3
+    #           + 0.30 × L10 median
+    #           + 0.20 × L20 (or season_avg fallback)
+    #           + 0.15 × μ_model
+    #
+    # MEDIAN, not mean, of L10 to suppress outliers.
+    #
+    # Minutes regression guard: when L3 minutes < 0.85 × L10 minutes,
+    # blend further toward L5 (60% L5, 40% blended).  This is a soft
+    # blend, not a hard override — preserves model authority on
+    # confirmed full-minutes nights.
+    # =========================================================================
+    _RECENCY_BLEND_WEIGHTS = {
+        "L3":     0.35,
+        "L10MED": 0.30,
+        "L20":    0.20,
+        "MODEL":  0.15,
+    }
+    _RECENCY_TARGET_STATS = {"PTS", "PRA"}
+    _MINUTES_REGRESSION_THRESHOLD = 0.85
+    _MINUTES_REGRESSION_L5_WEIGHT = 0.60
+
+    @classmethod
+    def _stat_value_from_log(cls, log: Dict[str, Any], stat_type: str) -> Optional[float]:
+        """Compute per-game value of a stat from one game log."""
+        if stat_type == "PTS":
+            v = log.get("pts")
+            return float(v) if v is not None else None
+        if stat_type == "PRA":
+            try:
+                p = log.get("pts"); r = log.get("reb"); a = log.get("ast")
+                if p is None or r is None or a is None:
+                    return None
+                return float(p) + float(r) + float(a)
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    @classmethod
+    def _compute_recency_baselines(
+        cls,
+        logs: List[Dict[str, Any]],
+        stat_type: str,
+        before_date: Optional[str] = None,
+    ) -> Dict[str, Optional[float]]:
+        """Compute L3 / L5 / L10 mean / L10 median / L20 from game logs,
+        plus minutes baselines. Logs are filtered to strictly BEFORE
+        `before_date` (ISO yyyy-mm-dd) when supplied so historical-replay
+        callers don't leak the very game we're projecting."""
+        if not logs:
+            return {}
+        if before_date:
+            logs = [l for l in logs if (l.get("date") or "") < before_date]
+        # Most recent first.
+        logs = sorted(logs, key=lambda l: l.get("date") or "", reverse=True)
+        vals = [cls._stat_value_from_log(l, stat_type) for l in logs]
+        mins = [
+            (float(l["min"]) if l.get("min") not in (None, "") else None)
+            for l in logs
+        ]
+
+        def _avg(arr, n):
+            s = [x for x in arr[:n] if x is not None]
+            return (sum(s) / len(s)) if s else None
+
+        def _median(arr, n):
+            s = sorted([x for x in arr[:n] if x is not None])
+            if not s:
+                return None
+            m = len(s)
+            return s[m // 2] if m % 2 else (s[m // 2 - 1] + s[m // 2]) / 2.0
+
+        return {
+            "l3":         _avg(vals, 3),
+            "l5":         _avg(vals, 5),
+            "l10":        _avg(vals, 10),
+            "l10_median": _median(vals, 10),
+            "l20":        _avg(vals, 20),
+            "min_l3":     _avg(mins, 3),
+            "min_l5":     _avg(mins, 5),
+            "min_l10":    _avg(mins, 10),
+            "n_logs":     sum(1 for v in vals if v is not None),
+        }
+
+    @classmethod
+    def _apply_recency_blend(
+        cls,
+        stat_type: str,
+        mu_model: Optional[float],
+        baselines: Dict[str, Optional[float]],
+        season_avg: Optional[float] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Returns the blended μ + an audit dict, or `None` when the
+        baselines aren't sufficient (need at least L3 + L10 median).
+
+        Output keys:
+          mu_blended, mu_raw_model, components_used, weights_applied,
+          minutes_regression_applied, minutes_regression_factor, l5_used.
+        """
+        if stat_type not in cls._RECENCY_TARGET_STATS:
+            return None
+        if mu_model is None:
+            return None
+
+        l3 = baselines.get("l3")
+        l10m = baselines.get("l10_median")
+        l20 = baselines.get("l20")
+        # L20 may be missing for early-season players; fall back to season_avg.
+        l20_used = l20 if l20 is not None else season_avg
+        # Need at least L3 and L10 median to apply the blend.
+        if l3 is None or l10m is None:
+            return None
+
+        w = dict(cls._RECENCY_BLEND_WEIGHTS)
+        # If L20 is unavailable, redistribute its weight onto L10 median
+        # (the closest stable proxy) rather than the raw model.
+        if l20_used is None:
+            w["L10MED"] += w["L20"]
+            w["L20"] = 0.0
+
+        components = {
+            "L3":     l3,
+            "L10MED": l10m,
+            "L20":    l20_used if l20_used is not None else 0.0,
+            "MODEL":  float(mu_model),
+        }
+        wsum = sum(w[k] for k in components if components[k] is not None or k == "MODEL")
+        # Normalize weights so they sum to 1.0 even when L20 was dropped.
+        mu_blended = sum(components[k] * w[k] for k in components) / wsum
+
+        # Minutes regression guard: shrink toward L5 when L3 minutes
+        # are well below L10 minutes.
+        min_l3 = baselines.get("min_l3")
+        min_l10 = baselines.get("min_l10")
+        l5 = baselines.get("l5")
+        minutes_regressed = False
+        minutes_factor = None
+        if (
+            min_l3 is not None and min_l10 is not None and l5 is not None
+            and min_l10 >= 20  # only guard against meaningful minutes baselines
+            and min_l3 < cls._MINUTES_REGRESSION_THRESHOLD * min_l10
+        ):
+            minutes_factor = min_l3 / min_l10 if min_l10 > 0 else None
+            wL5 = cls._MINUTES_REGRESSION_L5_WEIGHT
+            mu_blended = wL5 * l5 + (1.0 - wL5) * mu_blended
+            minutes_regressed = True
+
+        return {
+            "mu_blended": round(mu_blended, 4),
+            "mu_raw_model": round(float(mu_model), 4),
+            "recency_l3":     l3,
+            "recency_l10_median": l10m,
+            "recency_l20":    l20_used,
+            "recency_l5":     l5,
+            "weights_applied": w,
+            "minutes_regression_applied": minutes_regressed,
+            "minutes_regression_factor":  minutes_factor,
+            "minutes_l3":  min_l3,
+            "minutes_l10": min_l10,
+        }
+
+    def _maybe_blend_recency(
+        self,
+        stat_type: str,
+        bdl_player_id: Optional[int],
+        prop: Dict[str, Any],
+        mu_model: Optional[float],
+    ) -> Optional[float]:
+        """Apply the recency blend in-line during the score loop.
+        Returns the new μ (or `mu_model` unchanged when the blend
+        does not fire) and stamps audit fields onto `prop`."""
+        if stat_type not in self._RECENCY_TARGET_STATS or mu_model is None:
+            return mu_model
+        if bdl_player_id is None:
+            return mu_model
+        try:
+            pid = int(bdl_player_id)
+        except (TypeError, ValueError):
+            return mu_model
+        # Cached per-player log slice.
+        logs = (self._logs_by_id or {}).get(pid)
+        if not logs:
+            return mu_model
+        # Use prop's commence_time as the "do not peek" cutoff so
+        # historical replays don't include the resolved game.
+        before_date = (prop.get("commence_time") or "")[:10] or None
+        baselines = self._compute_recency_baselines(
+            logs, stat_type, before_date=before_date,
+        )
+        season_avg = prop.get("season_avg") or prop.get("season_average")
+        result = self._apply_recency_blend(
+            stat_type=stat_type, mu_model=mu_model,
+            baselines=baselines, season_avg=season_avg,
+        )
+        if result is None:
+            return mu_model
+        # Stamp audit fields on the raw prop so recompute mirrors them.
+        prop["mu_raw_model_projection"] = result["mu_raw_model"]
+        prop["mu_recency_blended"] = True
+        prop["mu_recency_blend_l3"]         = result["recency_l3"]
+        prop["mu_recency_blend_l10_median"] = result["recency_l10_median"]
+        prop["mu_recency_blend_l20"]        = result["recency_l20"]
+        prop["mu_recency_blend_l5"]         = result["recency_l5"]
+        prop["mu_recency_blend_weights"]    = result["weights_applied"]
+        prop["mu_minutes_regression_applied"] = result["minutes_regression_applied"]
+        prop["mu_minutes_regression_factor"]  = result["minutes_regression_factor"]
+        prop["mu_minutes_l3"]   = result["minutes_l3"]
+        prop["mu_minutes_l10"]  = result["minutes_l10"]
+        return result["mu_blended"]
+
+
+
+    # =========================================================================
     # 2026-04-27 — Universal probability engine bridge.
     # =========================================================================
     # NBA projections (μ) and empirical residual σ continue to come from
@@ -1407,7 +1634,15 @@ class NBAScoringAdapter(ScoringAdapter):
                 p_over = mres.get("p_over")
                 model_projection = mres.get("projection")
                 model_sigma = mres.get("sigma")
-                # 2026-04-27 — Universal probability engine override
+                # 2026-04-27 — Recency blend (PTS/PRA only). Replaces μ
+                # in-place with weighted L3/L10med/L20/model blend before
+                # the engine sees it. REB/AST and other families pass
+                # through unchanged.
+                model_projection = self._maybe_blend_recency(
+                    stat_type=model_key, bdl_player_id=bdl_player_id,
+                    prop=prop, mu_model=model_projection,
+                )
+                # Universal probability engine override
                 # for the legacy VK path. Engine receives empirical
                 # (μ, σ) and re-derives p_over via Normal CDF (or
                 # Poisson for STL/BLK 0.5). Audit fields land on `prop`
@@ -1454,6 +1689,11 @@ class NBAScoringAdapter(ScoringAdapter):
                 vk2_projection = v2res.get("projection")
                 vk2_sigma = v2res.get("sigma")
                 vk2_error = v2res.get("error")
+                # 2026-04-27 — Recency blend (PTS/PRA only) on VK2 path.
+                vk2_projection = self._maybe_blend_recency(
+                    stat_type=model_key, bdl_player_id=bdl_player_id,
+                    prop=prop, mu_model=vk2_projection,
+                )
                 # 2026-04-27 — universal-engine override on the VK2 path.
                 _eng_v2 = self._engine_p_over(
                     stat_type=model_key, line=float(line),
@@ -1549,6 +1789,11 @@ class NBAScoringAdapter(ScoringAdapter):
                     and float(model_sigma_synth) > 0
                 ):
                     p_over_c = cres_audit.get("p_over")
+                    # 2026-04-27 — Recency blend (PRA-eligible synth path).
+                    model_projection_synth = self._maybe_blend_recency(
+                        stat_type=model_key, bdl_player_id=bdl_player_id,
+                        prop=prop, mu_model=model_projection_synth,
+                    )
                     # 2026-04-27 — engine override on PRA synth-preferred
                     _eng_pra = self._engine_p_over(
                         stat_type=model_key, line=float(line),
