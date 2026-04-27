@@ -1,6 +1,26 @@
 # PRD — NBA/MLB Ferrari / PropVision AI
 
 
+## 2026-04-27 — NBA migrated to universal probability engine
+NBA scoring now flows through `services/probability/distribution` for the σ→p_over conversion. Projections (μ) and empirical residual σ continue to come from VK/VK2/combo synth — only the probability conversion layer was replaced.
+
+**Migration result (lossless by design):**
+- 4,208 NBA props recomputed in 44.7s
+- 3,463 / 3,463 model-projection rows now carry `distribution_kind` (100%)
+- `avg |p_true_model − market_p|` BEFORE 0.1006 → AFTER 0.1005 (essentially identical)
+- Tier distribution unchanged: 4045 unqualified / 126 front_lines / 10 safe_haven / 27 war_zone
+- Side-flip OVER+UNDER: 393 pairs, max |sum-1| = **0.000000** (mathematically exact)
+
+**Changes:**
+- `services/probability/distribution/normal.py`: added explicit-sigma fast path (`sigma_source="explicit_empirical"`). Used by NBA; MLB unaffected (MLB never passes σ).
+- `services/probability/distribution/calibration/nba.py`: replaced stub with real per-family configs. PTS/REB/AST/3PM/TO/PRA/P+R/P+A/R+A/BLK+STL → Normal CDF + empirical σ. STL/BLK at 0.5 → Poisson; at 1.5+ → Normal+σ. Combo synth tokens (`pts_reb`/`pts_ast`/`reb_ast`) → Normal+σ.
+- `services/scoring/adapters/nba_scoring.py`: added `_engine_p_over` bridge helper, wired into 4 predict sites (legacy VK / VK2 / synth fallback / PRA synth-preferred / primary combo).
+
+**Tests:** 41/41 still passing. NBA board contract intact. Full report: `/tmp/nba_universal_engine_migration_REPORT.md`.
+
+**Note:** STL/BLK Poisson route not exercised in today's slate (no STL/BLK 0.5-line props posted). Will activate transparently when those props next appear.
+
+
 ## 2026-04-27 — HF μ-input fixes (Pitcher Outs / K / batter 0.5-line)
 Surgical fixes to μ generation in `services/mlb_high_friction_model.py`. **Probability engine, distribution selection, CV/σ logic, and gates not modified** — the universal probability engine was correct; remaining error came from bad μ inputs.
 

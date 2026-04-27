@@ -274,6 +274,67 @@ class NBAScoringAdapter(ScoringAdapter):
         logger.info(f"[NBA_SCORING] VegasKiller loaded. stat-sigmas={self._vk_sigmas}")
         return vk
 
+    # =========================================================================
+    # 2026-04-27 — Universal probability engine bridge.
+    # =========================================================================
+    # NBA projections (μ) and empirical residual σ continue to come from
+    # the VK / VK2 / combo paths. The probability conversion is replaced
+    # by the sport-agnostic engine so audit fields (`distribution_kind`,
+    # `distribution_p_over`, etc.) are populated identically to MLB.
+    #
+    # Stat-type tokens in NBA scoring use compact form (PTS/REB/AST/...)
+    # which the registry's canonicaliser handles; STL/BLK route to
+    # Poisson at 0.5-line via the selector in calibration/nba.py.
+    # =========================================================================
+    def _engine_p_over(
+        self,
+        stat_type: str,
+        line: float,
+        projection: Optional[float],
+        sigma: Optional[float],
+    ) -> Optional[Dict[str, Any]]:
+        """Compute p_over via the universal probability engine.
+
+        Returns a small dict with `p_over` plus the audit fields the
+        score loop needs to persist; or `None` if inputs are missing.
+        """
+        if projection is None or sigma is None or sigma <= 0:
+            return None
+        try:
+            from services.probability.distribution import compute_probability
+            res = compute_probability(
+                sport="nba",
+                stat_family=stat_type,
+                mu=float(projection),
+                line=float(line),
+                sigma=float(sigma),
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug(f"[NBA_SCORING] engine p_over failed: {e}")
+            return None
+        if res is None:
+            return None
+        return {
+            "p_over": res.p_over,
+            "distribution_p_over": round(res.p_over, 4),
+            "distribution_p_under": round(res.p_under, 4),
+            "distribution_kind": res.distribution,
+            "distribution_selector_reason": res.selector_reason,
+            "distribution_sigma": res.sigma,
+            "distribution_sigma_source": res.sigma_source,
+            "distribution_clamped": res.clamped,
+            "distribution_effective_mu": res.effective_mu,
+            "distribution_mu_floor_applied": res.mu_floor_applied,
+            "distribution_mu_floor_capped": res.mu_floor_capped,
+            "distribution_cv_floor_applied": res.cv_floor_applied,
+            "distribution_lambda": res.lambda_,
+            "distribution_threshold": res.threshold,
+            "distribution_dispersion_r": res.dispersion_r,
+            "distribution_p_param": res.p_param,
+        }
+
+
+
     def _predict_model_prob_over(
         self, db, bdl_player_id: Optional[int], player_name: Optional[str],
         stat_type: str, line: float, opponent_team: Optional[str],
@@ -1344,12 +1405,26 @@ class NBAScoringAdapter(ScoringAdapter):
                     sharp_implied=live_sharp_implied,
                 )
                 p_over = mres.get("p_over")
+                model_projection = mres.get("projection")
+                model_sigma = mres.get("sigma")
+                # 2026-04-27 — Universal probability engine override
+                # for the legacy VK path. Engine receives empirical
+                # (μ, σ) and re-derives p_over via Normal CDF (or
+                # Poisson for STL/BLK 0.5). Audit fields land on `prop`
+                # so recompute mirrors them onto the score doc.
+                _eng = self._engine_p_over(
+                    stat_type=model_key, line=float(line),
+                    projection=model_projection, sigma=model_sigma,
+                )
+                if _eng is not None:
+                    p_over = _eng["p_over"]
+                    for k, v in _eng.items():
+                        if k != "p_over":
+                            prop[k] = v
                 if p_over is not None:
                     p_true_model = round(
                         (1.0 - p_over) if side == "UNDER" else p_over, 4
                     )
-                model_projection = mres.get("projection")
-                model_sigma = mres.get("sigma")
                 # 2026-05 missing-value policy — preserve VK's
                 # feature_health summary so the score doc captures
                 # which features were silent defaults.
@@ -1376,13 +1451,23 @@ class NBAScoringAdapter(ScoringAdapter):
                     line=float(line),
                 )
                 p_over_v2 = v2res.get("p_over")
+                vk2_projection = v2res.get("projection")
+                vk2_sigma = v2res.get("sigma")
+                vk2_error = v2res.get("error")
+                # 2026-04-27 — universal-engine override on the VK2 path.
+                _eng_v2 = self._engine_p_over(
+                    stat_type=model_key, line=float(line),
+                    projection=vk2_projection, sigma=vk2_sigma,
+                )
+                if _eng_v2 is not None:
+                    p_over_v2 = _eng_v2["p_over"]
+                    for k, v in _eng_v2.items():
+                        if k != "p_over":
+                            prop[k] = v
                 if p_over_v2 is not None:
                     p_true_vk2 = round(
                         (1.0 - p_over_v2) if side == "UNDER" else p_over_v2, 4
                     )
-                vk2_projection = v2res.get("projection")
-                vk2_sigma = v2res.get("sigma")
-                vk2_error = v2res.get("error")
                 # NBA LOM disabled on the VK2 path as well — see comment
                 # in the legacy-VK branch above.
                 if v2res.get("minutes_composition_applied"):
@@ -1426,6 +1511,17 @@ class NBAScoringAdapter(ScoringAdapter):
                 )
                 if direct_proj is None and model_projection_synth is not None:
                     p_over_c = cres_audit.get("p_over")
+                    # 2026-04-27 — engine override on synth fallback
+                    _eng_c = self._engine_p_over(
+                        stat_type=model_key, line=float(line),
+                        projection=model_projection_synth,
+                        sigma=model_sigma_synth,
+                    )
+                    if _eng_c is not None:
+                        p_over_c = _eng_c["p_over"]
+                        for k, v in _eng_c.items():
+                            if k != "p_over":
+                                prop[k] = v
                     if p_over_c is not None:
                         p_true_model = round(
                             (1.0 - p_over_c) if side == "UNDER" else p_over_c, 4
@@ -1453,6 +1549,17 @@ class NBAScoringAdapter(ScoringAdapter):
                     and float(model_sigma_synth) > 0
                 ):
                     p_over_c = cres_audit.get("p_over")
+                    # 2026-04-27 — engine override on PRA synth-preferred
+                    _eng_pra = self._engine_p_over(
+                        stat_type=model_key, line=float(line),
+                        projection=model_projection_synth,
+                        sigma=model_sigma_synth,
+                    )
+                    if _eng_pra is not None:
+                        p_over_c = _eng_pra["p_over"]
+                        for k, v in _eng_pra.items():
+                            if k != "p_over":
+                                prop[k] = v
                     if p_over_c is not None:
                         p_true_model = round(
                             (1.0 - p_over_c) if side == "UNDER" else p_over_c, 4
@@ -1483,12 +1590,26 @@ class NBAScoringAdapter(ScoringAdapter):
             )
             if cres.get("projection") is not None:
                 p_over_c = cres.get("p_over")
+                model_projection = cres.get("projection")
+                model_sigma = cres.get("sigma")
+                # 2026-04-27 — engine override on primary combo synth.
+                # `model_key` may be None for combo families that don't
+                # have a registered VK model (e.g. pts_reb). Pass the
+                # canonical family token so the registry resolves it.
+                _eng_combo = self._engine_p_over(
+                    stat_type=model_key or resolved_family,
+                    line=float(line),
+                    projection=model_projection, sigma=model_sigma,
+                )
+                if _eng_combo is not None:
+                    p_over_c = _eng_combo["p_over"]
+                    for k, v in _eng_combo.items():
+                        if k != "p_over":
+                            prop[k] = v
                 if p_over_c is not None:
                     p_true_model = round(
                         (1.0 - p_over_c) if side == "UNDER" else p_over_c, 4
                     )
-                model_projection = cres.get("projection")
-                model_sigma = cres.get("sigma")
                 projection_method = "combo_synth"
 
         # tp from reference-market implied prob (dk preferred, else fanduel).

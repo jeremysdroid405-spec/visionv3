@@ -74,7 +74,34 @@ class NormalCDFDistribution(Distribution):
 
         cfg = self.config
 
-        # ---- σ resolution ------------------------------------------------
+        # ---- Explicit-sigma fast path -----------------------------------
+        # NBA / future sports already supply an empirical residual σ from
+        # the projection model; honour it and skip the CV-derived path.
+        if sigma is not None and sigma > 0:
+            sigma_v = max(float(sigma), cfg.sigma_min_absolute)
+            z = (line_f - mu_f) / sigma_v
+            p_under = _normal_cdf(z)
+            p_over = 1.0 - p_under
+            p_over, clamped = clamp_p(p_over)
+            p_under = 1.0 - p_over
+            return ProbabilityResult(
+                p_over=round(p_over, 6),
+                p_under=round(p_under, 6),
+                distribution="normal_cdf",
+                sport=sport, stat_family=stat_family, line=line_f,
+                selector_reason="normal_cdf explicit_sigma",
+                mu=round(mu_f, 4),
+                sigma=round(sigma_v, 4),
+                cv=round(cv, 4) if cv is not None else None,
+                sigma_source="explicit_empirical",
+                effective_mu=round(mu_f, 4),
+                mu_floor_applied=False,
+                mu_floor_capped=False,
+                cv_floor_applied=False,
+                clamped=clamped,
+            )
+
+        # ---- σ resolution (CV-derived path) -----------------------------
         cv_floor_applied = False
         if cv is not None and not math.isnan(cv) and cv > 0:
             if cv >= cfg.cv_floor:
