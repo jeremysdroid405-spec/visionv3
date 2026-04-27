@@ -1321,6 +1321,88 @@ class NBAScoringAdapter(ScoringAdapter):
         return mu_current
 
 
+    # =========================================================================
+    # 2026-04-29 — Shadow REB / AST rate × minutes (audit-only).
+    # =========================================================================
+    # The rate × minutes layer (`_maybe_apply_rate_model`) only fires for
+    # PTS and PRA in production. The 2026-04-29 weight-sweep audit on 272
+    # settled NBA outcomes showed that pure rate × minutes (100/0) ties
+    # production hit rate on REB (75.9%) and AST (95.2%) while cutting
+    # absolute error by 16% (REB: 2.65 → 2.22) and 20% (AST: 2.06 → 1.64).
+    # Sample sizes are too small (n=29 / n=21) to flip a single pick, so
+    # this layer is added as SHADOW ONLY — NEVER replaces μ_current.
+    # Stamps:
+    #     mu_rate_reb_shadow   — pure rate × minutes for REB
+    #     mu_rate_ast_shadow   — pure rate × minutes for AST
+    #     mu_rate_<s>_shadow_applied  — always False (shadow only)
+    #     delta_mu_rate_<s>_shadow_vs_current  — μ_shadow − μ_current
+    #     rate_<s>_per_min_shadow      — blended rate that produced μ_shadow
+    #     expected_minutes_shadow      — exp_min × restriction_factor
+    # Eligibility: stat ∈ {REB, AST}, ≥ _RATE_MIN_LOGS pre-game logs,
+    # restriction_factor available from availability guard (defaults to 1.0).
+    # =========================================================================
+    _RATE_SHADOW_REB_AST_STATS = {"REB", "AST"}
+
+    def _maybe_apply_shadow_rate_reb_ast(
+        self,
+        stat_type: str,
+        bdl_player_id: Optional[int],
+        prop: Dict[str, Any],
+        mu_current: Optional[float],
+    ) -> Optional[float]:
+        """Compute pure rate × minutes shadow μ for REB / AST. Returns
+        `mu_current` unchanged in all cases — shadow only."""
+        stat_up = (stat_type or "").upper()
+        if stat_up not in self._RATE_SHADOW_REB_AST_STATS:
+            return mu_current
+        # Default audit stamp so absence is observable.
+        prop.setdefault(f"mu_rate_{stat_up.lower()}_shadow_applied", False)
+        if mu_current is None or bdl_player_id is None:
+            return mu_current
+        try:
+            pid = int(bdl_player_id)
+        except (TypeError, ValueError):
+            return mu_current
+        logs = (self._logs_by_id or {}).get(pid)
+        if not logs:
+            return mu_current
+
+        before_date = (prop.get("commence_time") or "")[:10] or None
+        comps = self._compute_rate_components(logs, before_date=before_date)
+        if comps is None:
+            return mu_current
+
+        rf = prop.get("minutes_restriction_factor")
+        try:
+            rf = float(rf) if rf is not None else 1.0
+        except (TypeError, ValueError):
+            rf = 1.0
+        rf = max(0.50, min(1.00, rf))
+
+        exp_min_raw   = comps["expected_minutes_raw"]
+        exp_min_final = exp_min_raw * rf
+
+        rate = (comps["rate_reb_per_min"]
+                if stat_up == "REB" else comps["rate_ast_per_min"])
+        if rate is None:
+            return mu_current
+
+        mu_shadow = float(rate) * float(exp_min_final)
+        key = stat_up.lower()
+        prop[f"mu_rate_{key}_shadow"]                = round(mu_shadow, 4)
+        prop[f"mu_rate_{key}_shadow_applied"]        = False  # shadow only
+        prop[f"delta_mu_rate_{key}_shadow_vs_current"] = round(
+            mu_shadow - float(mu_current), 4
+        )
+        prop[f"rate_{key}_per_min_shadow"]           = round(float(rate), 6)
+        prop["expected_minutes_shadow"]              = round(exp_min_final, 4)
+        # μ_current stays the production projection — DO NOT touch it.
+        return mu_current
+
+
+
+
+
 
 
     # =========================================================================
@@ -2516,6 +2598,13 @@ class NBAScoringAdapter(ScoringAdapter):
                     stat_type=model_key, bdl_player_id=bdl_player_id,
                     prop=prop, mu_current=model_projection,
                 )
+                # 2026-04-29 — Shadow REB/AST rate × minutes (audit-only).
+                # Stamps `mu_rate_reb_shadow` / `mu_rate_ast_shadow` for
+                # forward-test validation. Returns μ unchanged.
+                model_projection = self._maybe_apply_shadow_rate_reb_ast(
+                    stat_type=model_key, bdl_player_id=bdl_player_id,
+                    prop=prop, mu_current=model_projection,
+                )
                 # Universal probability engine override
                 # for the legacy VK path. Engine receives empirical
                 # (μ, σ) and re-derives p_over via Normal CDF (or
@@ -2588,6 +2677,14 @@ class NBAScoringAdapter(ScoringAdapter):
                 # `_VK2_PRIMARY_STATS` so this branch isn't taken for
                 # PTS — kept for parity if PTS is later promoted.)
                 vk2_projection = self._maybe_apply_shadow_pts_vk2(
+                    stat_type=model_key, bdl_player_id=bdl_player_id,
+                    prop=prop, mu_current=vk2_projection,
+                )
+                # 2026-04-29 — Shadow REB/AST rate × minutes (audit-only)
+                # on the VK2 path. REB/AST already route through VK2 in
+                # production so this is the primary trip-point for the
+                # shadow stamps.
+                vk2_projection = self._maybe_apply_shadow_rate_reb_ast(
                     stat_type=model_key, bdl_player_id=bdl_player_id,
                     prop=prop, mu_current=vk2_projection,
                 )
@@ -2710,6 +2807,14 @@ class NBAScoringAdapter(ScoringAdapter):
                     # on the PRA synth branch because synth is for PRA
                     # and combos, not PTS — kept for symmetry.
                     model_projection_synth = self._maybe_apply_shadow_pts_vk2(
+                        stat_type=model_key, bdl_player_id=bdl_player_id,
+                        prop=prop, mu_current=model_projection_synth,
+                    )
+                    # 2026-04-29 — Shadow REB/AST rate × minutes on PRA
+                    # synth path. Synth fires for PRA / combo families
+                    # only, so this is a no-op for REB/AST — kept for
+                    # symmetry across all three projection paths.
+                    model_projection_synth = self._maybe_apply_shadow_rate_reb_ast(
                         stat_type=model_key, bdl_player_id=bdl_player_id,
                         prop=prop, mu_current=model_projection_synth,
                     )

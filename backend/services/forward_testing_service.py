@@ -162,6 +162,18 @@ class ForwardTestingService:
                     # 2026-04-28 — Shadow VK2 PTS (PTS-only; None for other stats).
                     "mu_pts_vk2": prop.get("mu_pts_vk2"),
                     "delta_mu_pts_vk2_vs_vk1": prop.get("delta_mu_pts_vk2_vs_vk1"),
+                    # 2026-04-29 — Shadow REB/AST rate × minutes
+                    # (REB stat → mu_rate_reb_shadow, AST stat →
+                    # mu_rate_ast_shadow; None for other stats). Pure
+                    # rate × minutes (no blend with μ_current).
+                    "mu_rate_reb_shadow": prop.get("mu_rate_reb_shadow"),
+                    "delta_mu_rate_reb_shadow_vs_current": prop.get(
+                        "delta_mu_rate_reb_shadow_vs_current"
+                    ),
+                    "mu_rate_ast_shadow": prop.get("mu_rate_ast_shadow"),
+                    "delta_mu_rate_ast_shadow_vs_current": prop.get(
+                        "delta_mu_rate_ast_shadow_vs_current"
+                    ),
                     
                     # Game info
                     "game_time": prop.get("game_time") or prop.get("commence_time"),

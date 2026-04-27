@@ -266,6 +266,20 @@ _SCORE_OUTPUT_FIELDS = (
     "mu_pts_vk2",
     "mu_pts_vk2_applied",
     "delta_mu_pts_vk2_vs_vk1",
+    # NBA — Shadow REB/AST rate × minutes (2026-04-29). AUDIT-ONLY:
+    # never replaces μ_current. Stamped from
+    # `_maybe_apply_shadow_rate_reb_ast`. Sample sizes (n=29 REB,
+    # n=21 AST) are too small to flip a single pick today; tracking
+    # for forward-test until a meaningful sample accumulates.
+    "mu_rate_reb_shadow",
+    "mu_rate_reb_shadow_applied",
+    "delta_mu_rate_reb_shadow_vs_current",
+    "rate_reb_per_min_shadow",
+    "mu_rate_ast_shadow",
+    "mu_rate_ast_shadow_applied",
+    "delta_mu_rate_ast_shadow_vs_current",
+    "rate_ast_per_min_shadow",
+    "expected_minutes_shadow",
     # Universal SSOT canonical-pool flags (2026-04-25). Stamped at
     # ingest by `services/universal_odds_sync.py::_normalize_market_data`
     # on every prop. PrizePicks is now an overlay on top of a
