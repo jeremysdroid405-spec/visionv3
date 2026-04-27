@@ -532,6 +532,21 @@ class NBAScoringAdapter(ScoringAdapter):
         "P+R", "P+A", "R+A",
         "pts_reb", "pts_ast", "reb_ast",
     }
+    # Sub-status factors for RETURNING (split 2026-04-27 refactor):
+    #   • RESTRICTED — minutes still <80% of L10  → moderate penalty
+    #   • SOFT       — minutes between 80% and 90%  → light penalty
+    #   • FULL_GO    — minutes ≥ 90% of L10        → minimal/no penalty
+    _AVAIL_RETURN_RESTRICTED_FACTORS = {1: 0.75, 2: 0.80, 3: 0.85}
+    _AVAIL_RETURN_SOFT_FACTORS       = {1: 0.90, 2: 0.95, 3: 0.95}
+    _AVAIL_RETURN_FULL_GO_FACTORS    = {1: 0.97, 2: 0.99, 3: 1.00}
+    _AVAIL_MIN_RECOVERY_RESTRICTED = 0.80   # < this  → RETURNING_RESTRICTED
+    _AVAIL_MIN_RECOVERY_FULL_GO    = 0.90   # ≥ this → RETURNING_FULL_GO
+    _AVAIL_MIN_L10_FOR_RETURN_CLASSIFY = 18.0  # skip return logic on tiny samples
+    # Hard universal clamp (per spec)
+    _AVAIL_FACTOR_CLAMP_LO = 0.50
+    _AVAIL_FACTOR_CLAMP_HI = 1.00
+    # Legacy reference — left for back-compat of any external caller
+    # peeking at the dict; the active path uses the split factors above.
     _AVAIL_RETURN_FACTORS = {1: 0.80, 2: 0.85, 3: 0.95}
     _AVAIL_DNP_FACTOR_LAST_GAME = 0.50    # 0 min last game
     _AVAIL_DNP_FACTOR_LOW_PATTERN = 0.65  # 2+ <5min in last 5
@@ -614,9 +629,20 @@ class NBAScoringAdapter(ScoringAdapter):
         last_was_dnp = (last_min is not None and last_min == 0)
 
         normal_minutes = min_l10
-        if last_was_dnp:
+        # ---- Edge case: blowout sit. If last_min is 0 but the prior
+        # two games show normal minutes (≥ 85% of L10), skip the
+        # DNP_RISK branch and let the rest of the classifier run.
+        # This prevents penalising stars who got pulled in a blowout.
+        prev_two = [m for m in mins_all[1:3] if m is not None]
+        prev_two_normal = (
+            min_l10 is not None and min_l10 > 0
+            and len(prev_two) == 2
+            and all(m >= 0.85 * min_l10 for m in prev_two)
+        )
+
+        if last_was_dnp and not prev_two_normal:
             f = cls._AVAIL_DNP_FACTOR_LAST_GAME
-            return {
+            return cls._clamp_avail_result({
                 "status": "DNP_RISK", "restriction_factor": f,
                 "dnp_risk_flag": True, "injury_return_flag": False,
                 "minutes_restriction_flag": False, "return_game_number": None,
@@ -625,10 +651,10 @@ class NBAScoringAdapter(ScoringAdapter):
                 "minutes_l3": min_l3, "minutes_l10": min_l10,
                 "games_missed_recently": 0,
                 "reason": "last_game_0_minutes",
-            }
+            })
         if low_n >= 2:
             f = cls._AVAIL_DNP_FACTOR_LOW_PATTERN
-            return {
+            return cls._clamp_avail_result({
                 "status": "DNP_RISK", "restriction_factor": f,
                 "dnp_risk_flag": True, "injury_return_flag": False,
                 "minutes_restriction_flag": False, "return_game_number": None,
@@ -637,31 +663,48 @@ class NBAScoringAdapter(ScoringAdapter):
                 "minutes_l3": min_l3, "minutes_l10": min_l10,
                 "games_missed_recently": 0,
                 "reason": f"{low_n}_low_min_games_in_last_5",
-            }
-        if return_game_number is not None and return_game_number <= 3:
-            # 2026-04-27 — Refinement: a calendar gap alone is NOT
-            # enough to warrant a μ shrink — many gaps are just
-            # legitimate rest days (back-to-back avoidance, all-star
-            # break, playoff scheduling). Require ALSO that minutes
-            # have not fully recovered (`L3 minutes < 1.0 × L10 minutes`).
-            # If the player returned at full minutes, treat as FULL_GO.
-            min_recovered = (
-                min_l3 is not None and min_l10 is not None
-                and min_l10 > 0 and (min_l3 / min_l10) >= 1.0
-            )
-            if not min_recovered:
-                f = cls._AVAIL_RETURN_FACTORS[return_game_number]
-                return {
-                    "status": "RETURNING_FROM_ABSENCE", "restriction_factor": f,
-                    "dnp_risk_flag": False, "injury_return_flag": True,
-                    "minutes_restriction_flag": False,
-                    "return_game_number": return_game_number,
-                    "normal_minutes": normal_minutes,
-                    "expected_minutes": (normal_minutes * f) if normal_minutes else None,
-                    "minutes_l3": min_l3, "minutes_l10": min_l10,
-                    "games_missed_recently": games_missed_recently,
-                    "reason": f"return_game_{return_game_number}_after_{games_missed_recently}_missed",
-                }
+            })
+        # ----- Returning-from-absence (split into RESTRICTED / SOFT /
+        # FULL_GO based on minutes recovery ratio L3/L10).
+        if (
+            return_game_number is not None and return_game_number <= 3
+            and min_l10 is not None and min_l10 >= cls._AVAIL_MIN_L10_FOR_RETURN_CLASSIFY
+        ):
+            recovery = (min_l3 / min_l10) if (min_l3 is not None and min_l10 > 0) else None
+            rgn = return_game_number
+            rgn_key = min(rgn, 3)
+            sub_status = None
+            f = 1.0
+            if recovery is not None and recovery >= cls._AVAIL_MIN_RECOVERY_FULL_GO:
+                # Minutes back to ≥90% of L10 — return is real but
+                # workload restored. Apply only the cosmetic factor.
+                sub_status = "RETURNING_FULL_GO"
+                f = cls._AVAIL_RETURN_FULL_GO_FACTORS.get(rgn_key, 1.0)
+            elif recovery is not None and recovery < cls._AVAIL_MIN_RECOVERY_RESTRICTED:
+                sub_status = "RETURNING_RESTRICTED"
+                f = cls._AVAIL_RETURN_RESTRICTED_FACTORS.get(rgn_key, 0.85)
+            else:
+                # Recovery in the 80%-90% band, OR L3 minutes missing.
+                sub_status = "RETURNING_SOFT"
+                f = cls._AVAIL_RETURN_SOFT_FACTORS.get(rgn_key, 0.95)
+
+            return cls._clamp_avail_result({
+                "status": "RETURNING_FROM_ABSENCE",
+                "availability_sub_status": sub_status,
+                "restriction_factor": f,
+                "dnp_risk_flag": False, "injury_return_flag": True,
+                "minutes_restriction_flag": False,
+                "return_game_number": return_game_number,
+                "normal_minutes": normal_minutes,
+                "expected_minutes": (normal_minutes * f) if normal_minutes else None,
+                "minutes_l3": min_l3, "minutes_l10": min_l10,
+                "minutes_recovery_ratio": (round(recovery, 4) if recovery is not None else None),
+                "games_missed_recently": games_missed_recently,
+                "reason": (
+                    f"{sub_status}_g{rgn}_after_{games_missed_recently}_missed"
+                    + (f"_recovery={recovery:.2f}" if recovery is not None else "_recovery=none")
+                ),
+            })
         if (
             min_l3 is not None and min_l10 is not None
             and min_l10 >= 20 and min_l3 < 0.85 * min_l10
@@ -669,7 +712,7 @@ class NBAScoringAdapter(ScoringAdapter):
             ratio = (min_l3 / min_l10) if min_l10 > 0 else 1.0
             f = max(cls._AVAIL_MIN_RESTRICT_FLOOR,
                     min(cls._AVAIL_MIN_RESTRICT_CEIL, ratio))
-            return {
+            return cls._clamp_avail_result({
                 "status": "MINUTES_RESTRICTION", "restriction_factor": f,
                 "dnp_risk_flag": False, "injury_return_flag": False,
                 "minutes_restriction_flag": True, "return_game_number": None,
@@ -678,15 +721,30 @@ class NBAScoringAdapter(ScoringAdapter):
                 "minutes_l3": min_l3, "minutes_l10": min_l10,
                 "games_missed_recently": 0,
                 "reason": f"L3_min_{min_l3:.1f}_below_85pct_L10_{min_l10:.1f}",
-            }
-        return {
+            })
+        return cls._clamp_avail_result({
             "status": "FULL_GO", "restriction_factor": 1.0,
             "dnp_risk_flag": False, "injury_return_flag": False,
             "minutes_restriction_flag": False, "return_game_number": None,
             "normal_minutes": normal_minutes, "expected_minutes": normal_minutes,
             "minutes_l3": min_l3, "minutes_l10": min_l10,
             "games_missed_recently": 0, "reason": "no_availability_signal",
-        }
+        })
+
+    @classmethod
+    def _clamp_avail_result(cls, info: Dict[str, Any]) -> Dict[str, Any]:
+        """Universal clamp on `restriction_factor` to [0.50, 1.00]
+        per spec, applied at every return point of the classifier."""
+        f = info.get("restriction_factor")
+        if f is not None:
+            f = max(cls._AVAIL_FACTOR_CLAMP_LO,
+                    min(cls._AVAIL_FACTOR_CLAMP_HI, float(f)))
+            info["restriction_factor"] = f
+            # Re-derive expected_minutes after clamp.
+            nm = info.get("normal_minutes")
+            if nm is not None:
+                info["expected_minutes"] = nm * f
+        return info
 
     def _maybe_apply_availability_guard(
         self,
