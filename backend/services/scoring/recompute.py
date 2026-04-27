@@ -557,6 +557,14 @@ async def recompute_sport(
             "mu_recency_blend_l5", "mu_recency_blend_weights",
             "mu_minutes_regression_applied", "mu_minutes_regression_factor",
             "mu_minutes_l3", "mu_minutes_l10",
+            # NBA — unified availability guard (2026-04-27)
+            "availability_guard_applied", "availability_status",
+            "availability_guard_reason", "dnp_risk_flag",
+            "injury_return_flag", "minutes_restriction_flag",
+            "games_missed_recently", "return_game_number",
+            "normal_minutes", "expected_minutes",
+            "minutes_restriction_factor",
+            "mu_before_availability_guard", "mu_after_availability_guard",
         ):
             if _prob_k in raw:
                 doc[_prob_k] = raw[_prob_k]

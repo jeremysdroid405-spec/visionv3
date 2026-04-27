@@ -1,6 +1,41 @@
 # PRD — NBA/MLB Ferrari / PropVision AI
 
 
+## 2026-04-27 — NBA unified availability guard (DNP / injury-return / minutes-restriction)
+Runs at projection layer AFTER recency blend, BEFORE universal probability engine. **Probability engine, σ/CV, recency-blend weights, gates: NOT modified.**
+
+**Layer order (now production):** VK/VK2/synth → recency blend → availability guard → universal probability engine.
+
+**Status classifier (priority order, derived from `bdl_game_logs`):**
+- `DNP_RISK` (factor 0.50) — last game = 0 minutes
+- `DNP_RISK` (factor 0.65) — 2+ games <5 min in last 5
+- `RETURNING_FROM_ABSENCE` (factor 0.70/0.80/0.90 by return_game_number) — gap ≥ 5 days in last 5 logs **AND** L3 minutes < L10 minutes (the AND was added during validation; without it the classifier mis-fires on legitimate rest days)
+- `MINUTES_RESTRICTION` (factor clamp(L3/L10, [0.55, 0.90])) — L3 min < 0.85 × L10 min, L10 ≥ 20
+- `FULL_GO` (factor 1.0)
+
+`OUT` and `QUESTIONABLE/GTD` need an injury feed not present today; classifier returns FULL_GO. External feed adapter can override via `availability_status_override` on the raw prop.
+
+Applies to: PTS, PRA, REB, AST, P+R, P+A, R+A, plus combo synth tokens.
+
+**Historical replay (272 settled NBA OVER picks):**
+| Layer | Calls OVER | Hit rate |
+|---|---:|---:|
+| 1. μ_model (BEFORE) | 272 | 59.9% |
+| 2. + recency blend | 253 | 64.4% |
+| 3. + availability  | 229 | **67.7%** |
+
+**Combined impact (vs original): 35 misses avoided, 8 hits lost, net +27 picks. Hit rate +7.8 pp.**
+
+Per-status: MINUTES_RESTRICTION fires perfectly (4/4 caught, 0 hits lost). RETURNING_FROM_ABSENCE catches the structural injury-return mode (Jerami Grant 5/5, Jalen Duren 2/2, Daniss Jenkins 2/2, Dylan Harper 2/2 — all 100%).
+
+**Live production validation (`final-nba-rt`, 4,203 props in 43.0s):**
+3,460 props guarded — 3,213 FULL_GO · 118 RETURNING_FROM_ABSENCE · 101 MINUTES_RESTRICTION · 28 DNP_RISK. Tier distribution: front_lines 116→101 (−15 bad OVERs filtered), safe_haven 12→11.
+
+**Audit fields persisted (13):** `availability_guard_applied`, `availability_status`, `availability_guard_reason`, `dnp_risk_flag`, `injury_return_flag`, `minutes_restriction_flag`, `games_missed_recently`, `return_game_number`, `normal_minutes`, `expected_minutes`, `minutes_restriction_factor`, `mu_before_availability_guard`, `mu_after_availability_guard`.
+
+**Files:** `services/scoring/adapters/nba_scoring.py` (+2 helpers, 4 score-loop sites), `prop_scores_store.py` & `recompute.py` (whitelists). Tests: 41/41 still passing. Full report: `/tmp/nba_avail_guard_REPORT.md`. Reproducer: `/tmp/nba_avail_guard_replay.py`.
+
+
 ## 2026-04-27 — NBA recency-weighted μ blend (PTS / PRA only)
 Surgical override applied AFTER VK/VK2/synth produces μ, BEFORE the universal probability engine consumes it. REB/AST/3PM/STL/BLK/probability engine/σ/CV/gates **not modified**.
 

@@ -500,6 +500,259 @@ class NBAScoringAdapter(ScoringAdapter):
         return result["mu_blended"]
 
 
+    # =========================================================================
+    # 2026-04-27 — Unified availability guard.
+    # =========================================================================
+    # Runs at the projection layer AFTER the recency blend, BEFORE the
+    # universal probability engine.  Adjusts μ for *availability /
+    # role / minutes restriction* — independent of the model's recency
+    # weighting.
+    #
+    # μ_final = μ_recency × restriction_factor
+    #
+    # Status classification (priority order):
+    #   1. DNP_RISK              factor 0.50–0.65
+    #      • last game had 0 minutes
+    #      • 2+ games with <5 min in last 5 (unstable role / coach DNPs)
+    #   2. RETURNING_FROM_ABSENCE factor 0.70–0.90 by return_game_number
+    #      • a gap of ≥ 5 days exists in the last 5 logs
+    #      • return_game_number = games since the gap
+    #   3. MINUTES_RESTRICTION    factor clamp(L3/L10, 0.55–0.90)
+    #      • L3 minutes < 0.85 × L10 minutes (with L10 ≥ 20)
+    #   4. FULL_GO                factor 1.0
+    #
+    # OUT/INACTIVE and QUESTIONABLE/GTD require a real-time injury feed
+    # we don't have today; classification leaves them as FULL_GO until
+    # the feed is wired in.  The score-doc carries `availability_status`
+    # so an upstream feed adapter can override (`availability_status_override`
+    # on the raw prop) without touching this code.
+    # =========================================================================
+    _AVAIL_GUARD_TARGET_STATS = {
+        "PTS", "PRA", "REB", "AST",
+        "P+R", "P+A", "R+A",
+        "pts_reb", "pts_ast", "reb_ast",
+    }
+    _AVAIL_RETURN_FACTORS = {1: 0.70, 2: 0.80, 3: 0.90}
+    _AVAIL_DNP_FACTOR_LAST_GAME = 0.50    # 0 min last game
+    _AVAIL_DNP_FACTOR_LOW_PATTERN = 0.65  # 2+ <5min in last 5
+    _AVAIL_MIN_RESTRICT_FLOOR = 0.55
+    _AVAIL_MIN_RESTRICT_CEIL = 0.90
+    _AVAIL_RETURN_GAP_DAYS = 5
+    _AVAIL_GAP_LOOKBACK = 5
+    _AVAIL_DNP_LOWMIN_THRESHOLD = 5.0
+    _AVAIL_DNP_LOWMIN_LAST_N = 5
+
+    @classmethod
+    def _classify_availability(
+        cls,
+        logs: List[Dict[str, Any]],
+        before_date: Optional[str],
+    ) -> Dict[str, Any]:
+        """Classify a player's availability state from `bdl_game_logs`."""
+        if not logs:
+            return {
+                "status": "UNKNOWN", "restriction_factor": 1.0,
+                "dnp_risk_flag": False, "injury_return_flag": False,
+                "minutes_restriction_flag": False, "return_game_number": None,
+                "normal_minutes": None, "expected_minutes": None,
+                "minutes_l3": None, "minutes_l10": None,
+                "games_missed_recently": None, "reason": "no_logs",
+            }
+        if before_date:
+            logs = [l for l in logs if (l.get("date") or "") < before_date]
+        logs = sorted(logs, key=lambda l: (l.get("date") or ""), reverse=True)
+        if not logs:
+            return {
+                "status": "UNKNOWN", "restriction_factor": 1.0,
+                "dnp_risk_flag": False, "injury_return_flag": False,
+                "minutes_restriction_flag": False, "return_game_number": None,
+                "normal_minutes": None, "expected_minutes": None,
+                "minutes_l3": None, "minutes_l10": None,
+                "games_missed_recently": None, "reason": "no_pre_game_logs",
+            }
+
+        def _minutes(l):
+            v = l.get("min")
+            if v in (None, ""):
+                return None
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+        mins_all = [_minutes(l) for l in logs]
+        last_min = mins_all[0] if mins_all else None
+
+        def _avg(arr, n):
+            s = [x for x in arr[:n] if x is not None]
+            return sum(s) / len(s) if s else None
+
+        min_l3 = _avg(mins_all, 3)
+        min_l10 = _avg(mins_all, 10)
+
+        # Detect a recent absence gap.
+        from datetime import datetime
+        return_game_number: Optional[int] = None
+        games_missed_recently: Optional[int] = None
+        try:
+            n_check = min(cls._AVAIL_GAP_LOOKBACK, len(logs) - 1)
+            for i in range(n_check):
+                d1 = datetime.fromisoformat((logs[i].get("date") or "")[:10])
+                d2 = datetime.fromisoformat((logs[i + 1].get("date") or "")[:10])
+                gap_days = (d1 - d2).days
+                if gap_days >= cls._AVAIL_RETURN_GAP_DAYS:
+                    return_game_number = i + 1
+                    games_missed_recently = max(1, gap_days // 2 - 1)
+                    break
+        except (TypeError, ValueError):
+            pass
+
+        # DNP-risk patterns.
+        recent_n = logs[: cls._AVAIL_DNP_LOWMIN_LAST_N]
+        recent_mins = [_minutes(l) for l in recent_n]
+        low_n = sum(1 for m in recent_mins
+                    if m is not None and m < cls._AVAIL_DNP_LOWMIN_THRESHOLD)
+        last_was_dnp = (last_min is not None and last_min == 0)
+
+        normal_minutes = min_l10
+        if last_was_dnp:
+            f = cls._AVAIL_DNP_FACTOR_LAST_GAME
+            return {
+                "status": "DNP_RISK", "restriction_factor": f,
+                "dnp_risk_flag": True, "injury_return_flag": False,
+                "minutes_restriction_flag": False, "return_game_number": None,
+                "normal_minutes": normal_minutes,
+                "expected_minutes": (normal_minutes * f) if normal_minutes else None,
+                "minutes_l3": min_l3, "minutes_l10": min_l10,
+                "games_missed_recently": 0,
+                "reason": "last_game_0_minutes",
+            }
+        if low_n >= 2:
+            f = cls._AVAIL_DNP_FACTOR_LOW_PATTERN
+            return {
+                "status": "DNP_RISK", "restriction_factor": f,
+                "dnp_risk_flag": True, "injury_return_flag": False,
+                "minutes_restriction_flag": False, "return_game_number": None,
+                "normal_minutes": normal_minutes,
+                "expected_minutes": (normal_minutes * f) if normal_minutes else None,
+                "minutes_l3": min_l3, "minutes_l10": min_l10,
+                "games_missed_recently": 0,
+                "reason": f"{low_n}_low_min_games_in_last_5",
+            }
+        if return_game_number is not None and return_game_number <= 3:
+            # 2026-04-27 — Refinement: a calendar gap alone is NOT
+            # enough to warrant a μ shrink — many gaps are just
+            # legitimate rest days (back-to-back avoidance, all-star
+            # break, playoff scheduling). Require ALSO that minutes
+            # have not fully recovered (`L3 minutes < 1.0 × L10 minutes`).
+            # If the player returned at full minutes, treat as FULL_GO.
+            min_recovered = (
+                min_l3 is not None and min_l10 is not None
+                and min_l10 > 0 and (min_l3 / min_l10) >= 1.0
+            )
+            if not min_recovered:
+                f = cls._AVAIL_RETURN_FACTORS[return_game_number]
+                return {
+                    "status": "RETURNING_FROM_ABSENCE", "restriction_factor": f,
+                    "dnp_risk_flag": False, "injury_return_flag": True,
+                    "minutes_restriction_flag": False,
+                    "return_game_number": return_game_number,
+                    "normal_minutes": normal_minutes,
+                    "expected_minutes": (normal_minutes * f) if normal_minutes else None,
+                    "minutes_l3": min_l3, "minutes_l10": min_l10,
+                    "games_missed_recently": games_missed_recently,
+                    "reason": f"return_game_{return_game_number}_after_{games_missed_recently}_missed",
+                }
+        if (
+            min_l3 is not None and min_l10 is not None
+            and min_l10 >= 20 and min_l3 < 0.85 * min_l10
+        ):
+            ratio = (min_l3 / min_l10) if min_l10 > 0 else 1.0
+            f = max(cls._AVAIL_MIN_RESTRICT_FLOOR,
+                    min(cls._AVAIL_MIN_RESTRICT_CEIL, ratio))
+            return {
+                "status": "MINUTES_RESTRICTION", "restriction_factor": f,
+                "dnp_risk_flag": False, "injury_return_flag": False,
+                "minutes_restriction_flag": True, "return_game_number": None,
+                "normal_minutes": normal_minutes,
+                "expected_minutes": (normal_minutes * f) if normal_minutes else None,
+                "minutes_l3": min_l3, "minutes_l10": min_l10,
+                "games_missed_recently": 0,
+                "reason": f"L3_min_{min_l3:.1f}_below_85pct_L10_{min_l10:.1f}",
+            }
+        return {
+            "status": "FULL_GO", "restriction_factor": 1.0,
+            "dnp_risk_flag": False, "injury_return_flag": False,
+            "minutes_restriction_flag": False, "return_game_number": None,
+            "normal_minutes": normal_minutes, "expected_minutes": normal_minutes,
+            "minutes_l3": min_l3, "minutes_l10": min_l10,
+            "games_missed_recently": 0, "reason": "no_availability_signal",
+        }
+
+    def _maybe_apply_availability_guard(
+        self,
+        stat_type: str,
+        bdl_player_id: Optional[int],
+        prop: Dict[str, Any],
+        mu_in: Optional[float],
+    ) -> Optional[float]:
+        """Score-loop hook for the availability guard.
+
+        Returns the adjusted μ.  Only acts on `_AVAIL_GUARD_TARGET_STATS`
+        (volume stats).  Stamps audit fields onto `prop`.  An external
+        injury feed can set `prop["availability_status_override"]` to a
+        dict to override the heuristic — useful when the feed has hard
+        OUT / GTD data the heuristic cannot derive from logs alone.
+        """
+        if mu_in is None or stat_type not in self._AVAIL_GUARD_TARGET_STATS:
+            return mu_in
+        if bdl_player_id is None:
+            return mu_in
+        try:
+            pid = int(bdl_player_id)
+        except (TypeError, ValueError):
+            return mu_in
+        logs = (self._logs_by_id or {}).get(pid)
+        if not logs:
+            return mu_in
+        before_date = (prop.get("commence_time") or "")[:10] or None
+        info = self._classify_availability(logs, before_date)
+
+        override = prop.get("availability_status_override")
+        if override and isinstance(override, dict):
+            info = {**info, **override}
+
+        # OUT / INACTIVE — flag the prop unqualified by returning None μ.
+        if info.get("status") == "OUT":
+            prop["availability_guard_applied"] = True
+            prop["availability_status"] = "OUT"
+            prop["availability_guard_reason"] = info.get("reason") or "out_or_inactive"
+            prop["mu_before_availability_guard"] = round(float(mu_in), 4)
+            prop["mu_after_availability_guard"] = None
+            return None
+
+        factor = float(info.get("restriction_factor") or 1.0)
+        prop["availability_guard_applied"] = True
+        prop["availability_status"] = info.get("status")
+        prop["availability_guard_reason"] = info.get("reason")
+        prop["dnp_risk_flag"] = info.get("dnp_risk_flag", False)
+        prop["injury_return_flag"] = info.get("injury_return_flag", False)
+        prop["minutes_restriction_flag"] = info.get("minutes_restriction_flag", False)
+        prop["games_missed_recently"] = info.get("games_missed_recently")
+        prop["return_game_number"] = info.get("return_game_number")
+        prop["normal_minutes"] = info.get("normal_minutes")
+        prop["expected_minutes"] = info.get("expected_minutes")
+        prop["minutes_restriction_factor"] = factor
+        prop["mu_before_availability_guard"] = round(float(mu_in), 4)
+
+        if factor >= 0.999:
+            prop["mu_after_availability_guard"] = round(float(mu_in), 4)
+            return mu_in
+        mu_out = float(mu_in) * factor
+        prop["mu_after_availability_guard"] = round(mu_out, 4)
+        return mu_out
+
+
+
 
     # =========================================================================
     # 2026-04-27 — Universal probability engine bridge.
@@ -1642,6 +1895,16 @@ class NBAScoringAdapter(ScoringAdapter):
                     stat_type=model_key, bdl_player_id=bdl_player_id,
                     prop=prop, mu_model=model_projection,
                 )
+                # 2026-04-27 — Unified availability guard (DNP / injury
+                # return / minutes restriction). Runs AFTER recency blend,
+                # BEFORE engine. Adjusts μ multiplicatively by a
+                # restriction_factor in [0.5, 1.0] derived from game-log
+                # patterns. Returns None for OUT-classified props so the
+                # gate skips them.
+                model_projection = self._maybe_apply_availability_guard(
+                    stat_type=model_key, bdl_player_id=bdl_player_id,
+                    prop=prop, mu_in=model_projection,
+                )
                 # Universal probability engine override
                 # for the legacy VK path. Engine receives empirical
                 # (μ, σ) and re-derives p_over via Normal CDF (or
@@ -1693,6 +1956,11 @@ class NBAScoringAdapter(ScoringAdapter):
                 vk2_projection = self._maybe_blend_recency(
                     stat_type=model_key, bdl_player_id=bdl_player_id,
                     prop=prop, mu_model=vk2_projection,
+                )
+                # 2026-04-27 — Availability guard on VK2 path.
+                vk2_projection = self._maybe_apply_availability_guard(
+                    stat_type=model_key, bdl_player_id=bdl_player_id,
+                    prop=prop, mu_in=vk2_projection,
                 )
                 # 2026-04-27 — universal-engine override on the VK2 path.
                 _eng_v2 = self._engine_p_over(
@@ -1794,6 +2062,11 @@ class NBAScoringAdapter(ScoringAdapter):
                         stat_type=model_key, bdl_player_id=bdl_player_id,
                         prop=prop, mu_model=model_projection_synth,
                     )
+                    # 2026-04-27 — Availability guard on PRA synth path.
+                    model_projection_synth = self._maybe_apply_availability_guard(
+                        stat_type=model_key, bdl_player_id=bdl_player_id,
+                        prop=prop, mu_in=model_projection_synth,
+                    )
                     # 2026-04-27 — engine override on PRA synth-preferred
                     _eng_pra = self._engine_p_over(
                         stat_type=model_key, line=float(line),
@@ -1837,6 +2110,15 @@ class NBAScoringAdapter(ScoringAdapter):
                 p_over_c = cres.get("p_over")
                 model_projection = cres.get("projection")
                 model_sigma = cres.get("sigma")
+                # 2026-04-27 — Availability guard on primary combo synth
+                # path (covers pts_reb / pts_ast / reb_ast). Recency blend
+                # does NOT run here (those families aren't in
+                # _RECENCY_TARGET_STATS), but availability does.
+                model_projection = self._maybe_apply_availability_guard(
+                    stat_type=model_key or resolved_family,
+                    bdl_player_id=bdl_player_id,
+                    prop=prop, mu_in=model_projection,
+                )
                 # 2026-04-27 — engine override on primary combo synth.
                 # `model_key` may be None for combo families that don't
                 # have a registered VK model (e.g. pts_reb). Pass the

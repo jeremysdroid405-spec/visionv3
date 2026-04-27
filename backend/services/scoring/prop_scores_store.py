@@ -222,6 +222,20 @@ _SCORE_OUTPUT_FIELDS = (
     "mu_minutes_regression_factor",
     "mu_minutes_l3",
     "mu_minutes_l10",
+    # NBA — unified availability guard (2026-04-27)
+    "availability_guard_applied",
+    "availability_status",
+    "availability_guard_reason",
+    "dnp_risk_flag",
+    "injury_return_flag",
+    "minutes_restriction_flag",
+    "games_missed_recently",
+    "return_game_number",
+    "normal_minutes",
+    "expected_minutes",
+    "minutes_restriction_factor",
+    "mu_before_availability_guard",
+    "mu_after_availability_guard",
     # Universal SSOT canonical-pool flags (2026-04-25). Stamped at
     # ingest by `services/universal_odds_sync.py::_normalize_market_data`
     # on every prop. PrizePicks is now an overlay on top of a
