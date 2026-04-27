@@ -548,6 +548,10 @@ async def recompute_sport(
             "distribution_mu_floor_capped", "distribution_cv_floor_applied",
             "distribution_lambda", "distribution_threshold",
             "distribution_dispersion_r", "distribution_p_param",
+            # 2026-04-27 — HF μ-override audit fields
+            "mu_raw_model_projection", "mu_pitcher_workload_anchored",
+            "mu_active_baseline_applied", "mu_active_baseline_value",
+            "expected_ip_used", "projection_model_version",
         ):
             if _prob_k in raw:
                 doc[_prob_k] = raw[_prob_k]

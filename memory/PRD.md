@@ -1,6 +1,33 @@
 # PRD — NBA/MLB Ferrari / PropVision AI
 
 
+## 2026-04-27 — HF μ-input fixes (Pitcher Outs / K / batter 0.5-line)
+Surgical fixes to μ generation in `services/mlb_high_friction_model.py`. **Probability engine, distribution selection, CV/σ logic, and gates not modified** — the universal probability engine was correct; remaining error came from bad μ inputs.
+
+**Bugs fixed:**
+1. `'pitcher_outs' → 'pitcher_strikeouts'` alias (line 188): every Pitcher Outs prop was being predicted as K, μ=4-8 instead of 12-18.
+2. No starter detection: reliever cameo logs (IP=0-1) mixed into pitcher K stat slice, dragged μ down for genuine starters.
+3. No lineup-aware floor: confirmed leadoff hitters (Masyn Winn μ=0.02, Oneil Cruz μ=0.06) projected near-zero on Hits 0.5 while market priced at 0.58-0.65.
+
+**Changes:**
+- Pitcher Outs: removed alias, added `_predict_pitcher_outs` analytical path. `expected_IP = weighted_avg(last 4 starts IP, [.4,.3,.2,.1])`, `μ_outs = expected_IP × 3`. "Start" = `pitch_count ≥ 60` OR `IP ≥ 4.0`. MLB-style IP notation (`5.2` → 5⅔ inn) decoded correctly.
+- Pitcher Strikeouts: 60/40 workload-vs-model blend. `μ_K = 0.6 × (expected_IP × K_per_inning_recent) + 0.4 × model`. Only fires for confirmed starters.
+- Batter 0.5-line stats: active-lineup baseline floor. Active = ≥2 games in last 5 days OR `is_in_lineup_today=True`. Baselines: hits/singles 0.45, runs 0.35, rbis 0.40, HRR 0.75. Rare events (HR/SB/doubles) untouched.
+
+**Calibration result (avg `|distribution_p_over − market_p_over|`):**
+- pitcher_outs (n=19): 0.474 → **0.095** (−0.379, **80% reduction**)
+- pitcher_strikeouts (n=79): 0.159 → 0.125 (−0.035)
+- 0.5-line batter (n=741): 0.101 → **0.087** (−0.015)
+- devig-only overall (n=1,352): 0.124 → 0.116 (−0.009)
+- all-books overall (n=3,162): 0.126 → 0.121 (−0.005)
+
+**Slate impact:** prop count 2,569 → 3,343 (alias bug was silently dropping pitcher Outs). Front Lines tier 703 → 1,100 (+57%). Override application: 98 pitcher props workload-anchored, 375 batter props baseline-floored.
+
+**New audit fields persisted:** `mu_raw_model_projection`, `mu_pitcher_workload_anchored`, `mu_active_baseline_applied`, `mu_active_baseline_value`, `expected_ip_used`, `projection_model_version`.
+
+**Tests:** 41/41 still passing. Full report: `/tmp/hf_mu_fix_REPORT.md`. Reproducer: `/tmp/hf_mu_fix_report.py`.
+
+
 ## 2026-04-27 — Universal Probability Engine (sport-agnostic, registry-driven)
 Replaced the MLB-only `distribution_layer.py` with a real probability engine in `services/probability/distribution/` that routes `(sport, stat_family, line, μ, cv)` to the right distribution (Normal CDF, Bernoulli, Poisson, Negative Binomial). Per-sport calibration tables live in `distribution/calibration/{mlb,nba,nfl}.py`; NBA + NFL are stubbed and ready to migrate without touching engine code.
 

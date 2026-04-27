@@ -74,6 +74,9 @@ class MLBHighFrictionModel:
         'earned_runs',
         'hits_allowed',
         'pitcher_walks',
+        # Analytical-only — no trained XGBoost model.
+        # μ derived from expected_IP × 3 (workload anchor).
+        'pitcher_outs',
     ]
     
     STAT_FIELD_MAP = {
@@ -185,8 +188,14 @@ class MLBHighFrictionModel:
             'batter_strikeouts': 'strikeouts',
             'batter_walks': 'walks',
             'walks_allowed': 'pitcher_walks',
-            'pitcher_outs': 'pitcher_strikeouts',
-            'pitching_outs': 'pitcher_strikeouts',
+            # 2026-04-27 fix: pitcher_outs is its OWN stat. The previous
+            # alias to pitcher_strikeouts caused outs μ to come back as
+            # the K projection (5-8 instead of 12-18). Outs μ is now
+            # derived analytically from expected_IP × 3.
+            'pitcher_outs':  'pitcher_outs',
+            'pitching_outs': 'pitcher_outs',
+            'outs':          'pitcher_outs',
+            'outs_recorded': 'pitcher_outs',
         }
         return aliases.get(stat_lower, stat_lower)
     
@@ -231,6 +240,137 @@ class MLBHighFrictionModel:
     def _get_team_k_rate(self, team: str) -> float:
         """Get team's K tendency."""
         return self.TEAM_K_RATES.get(team, 1.0)
+
+    # =========================================================================
+    # 2026-04-27 — Workload anchors for pitcher props
+    # =========================================================================
+    # Pitcher Outs / Strikeouts μ is anchored on recent STARTS only. A
+    # "start" is identified by pitch_count ≥ 60 OR innings_pitched ≥ 4.0
+    # (suppresses the reliever cameo IP=0-1 logs that were collapsing
+    # the projection).
+    _START_MIN_PITCH_COUNT = 60
+    _START_MIN_INNINGS = 4.0
+    # Decaying weights over the last 4 starts (most recent first).
+    _START_DECAY_WEIGHTS = [0.40, 0.30, 0.20, 0.10]
+
+    @staticmethod
+    def _decode_innings(ip: Any) -> Optional[float]:
+        """
+        Convert MLB-style innings notation to fractional innings.
+        '5.0' → 5.000   (15 outs)
+        '5.1' → 5.333   (16 outs)
+        '5.2' → 5.667   (17 outs)
+        Floats like 5.667 are passed through unchanged.
+        """
+        if ip is None:
+            return None
+        try:
+            v = float(ip)
+        except (TypeError, ValueError):
+            return None
+        whole = int(v)
+        frac = round(v - whole, 2)
+        # MLB-baseball notation only allows .0, .1, .2 in stat lines;
+        # anything else is treated as already a true fraction.
+        if frac in (0.0, 0.1, 0.2):
+            return whole + (frac * 10.0 / 3.0)
+        return v
+
+    @classmethod
+    def _is_start(cls, log: Dict[str, Any]) -> bool:
+        pc = log.get('pitch_count')
+        ip = cls._decode_innings(log.get('innings_pitched'))
+        try:
+            pc_f = float(pc) if pc is not None else 0.0
+        except (TypeError, ValueError):
+            pc_f = 0.0
+        ip_f = ip if ip is not None else 0.0
+        return pc_f >= cls._START_MIN_PITCH_COUNT or ip_f >= cls._START_MIN_INNINGS
+
+    @classmethod
+    def _expected_ip_from_starts(cls, game_logs: List[Dict[str, Any]]) -> Optional[Tuple[float, int, List[float]]]:
+        """
+        Returns (expected_IP_decoded, n_starts_used, raw_start_innings_list)
+        from the most recent STARTS only. Returns None when fewer than
+        2 starts are available (insufficient signal).
+        """
+        starts = [cls._decode_innings(g.get('innings_pitched'))
+                  for g in game_logs if cls._is_start(g)]
+        starts = [s for s in starts if s is not None and s > 0]
+        if len(starts) < 2:
+            return None
+        # Most recent first, take up to 4
+        recent = starts[:len(cls._START_DECAY_WEIGHTS)]
+        weights = cls._START_DECAY_WEIGHTS[:len(recent)]
+        wsum = sum(weights)
+        weighted = sum(ip * w for ip, w in zip(recent, weights)) / wsum
+        return weighted, len(starts), starts
+
+    @classmethod
+    def _recent_k_per_inning(cls, game_logs: List[Dict[str, Any]]) -> Optional[float]:
+        """K rate per inning over recent STARTS (last 4 starts blend)."""
+        starts = [g for g in game_logs if cls._is_start(g)][:4]
+        total_ip = 0.0
+        total_k = 0
+        for g in starts:
+            ip = cls._decode_innings(g.get('innings_pitched')) or 0.0
+            try:
+                k = float(g.get('pitcher_strikeouts') or 0)
+            except (TypeError, ValueError):
+                k = 0
+            total_ip += ip
+            total_k += k
+        if total_ip <= 0:
+            return None
+        return total_k / total_ip
+
+    # =========================================================================
+    # 2026-04-27 — Active-lineup baseline floor for batter 0.5-line props
+    # =========================================================================
+    # Per-stat-family baseline μ for an active hitter (in today's
+    # starting lineup with ~4 PAs). Applied as a FLOOR — if the model
+    # μ is already above the baseline, the baseline does nothing.
+    _ACTIVE_BASELINE = {
+        'hits':           0.45,
+        'singles':        0.45,
+        'runs':           0.35,
+        'rbis':           0.40,
+        'hits+runs+rbis': 0.75,
+        # Rare events keep the model's projection — baselines don't apply.
+    }
+    # Lineup detection heuristic: ≥2 games in the last 5 days OR a
+    # confirmed lineup flag (`is_in_lineup_today`) on the master_hub
+    # row (set by an upstream lineup feed once available).
+    _ACTIVE_RECENT_DAYS = 5
+    _ACTIVE_MIN_GAMES = 2
+
+    @classmethod
+    def _is_active_today(cls, player: Dict[str, Any], game_logs: List[Dict[str, Any]]) -> bool:
+        # Confirmed lineup wins outright.
+        if player.get('is_in_lineup_today') is True:
+            return True
+        # Count games in the recent window. Logs are stored most
+        # recent first so we can scan the head.
+        try:
+            from datetime import datetime, timedelta, timezone
+            now = datetime.now(timezone.utc)
+            cutoff = now - timedelta(days=cls._ACTIVE_RECENT_DAYS)
+        except Exception:
+            return False
+        n = 0
+        for g in game_logs[:10]:
+            d = g.get('date')
+            if not d:
+                continue
+            try:
+                d_parsed = datetime.fromisoformat(str(d).replace('Z', '+00:00'))
+            except (TypeError, ValueError):
+                continue
+            if d_parsed >= cutoff:
+                n += 1
+                if n >= cls._ACTIVE_MIN_GAMES:
+                    return True
+        return False
     
     def _build_friction_features(
         self,
@@ -631,6 +771,101 @@ class MLBHighFrictionModel:
         
         logger.info(f"[MLB_HF_MODEL] Loaded {loaded}/{len(self.MLB_STAT_TYPES)} models")
         return loaded
+
+    # -------------------------------------------------------------------
+    # 2026-04-27 — Pitcher Outs analytical projection.
+    # No XGBoost model on disk for pitcher_outs (the previous alias to
+    # pitcher_strikeouts was the bug). μ is derived directly from
+    # workload:  μ_outs = expected_IP × 3, with σ from std(starts) × 3.
+    # -------------------------------------------------------------------
+    def _predict_pitcher_outs(
+        self,
+        player_name: Optional[str],
+        stat_type: str,
+        line: Optional[float],
+        opponent_team: Optional[str],
+        park_team: Optional[str],
+        dk_odds: Optional[int],
+        bdl_player_id: Optional[int],
+    ) -> Dict[str, Any]:
+        # Resolve the player by ID (preferred) or name fallback.
+        player = None
+        if bdl_player_id is not None:
+            try:
+                pid_int = int(bdl_player_id)
+                player = self.master_hub.find_one(
+                    {"$or": [{"bdl_player_id": pid_int}, {"bdl_id": pid_int}]},
+                    {"_id": 0},
+                )
+            except (TypeError, ValueError):
+                player = None
+        if player is None and player_name:
+            player = self.master_hub.find_one(
+                {"$or": [
+                    {"display_name": player_name},
+                    {"player_name": player_name},
+                    {"mlb_full_name": player_name},
+                ]}, {"_id": 0},
+            )
+        if not player:
+            return {"error": f"Player not found: {player_name}"}
+
+        game_logs = player.get("bdl_game_logs", [])
+        if not game_logs:
+            return {"error": "No game logs"}
+
+        ip_block = self._expected_ip_from_starts(game_logs)
+        if ip_block is None:
+            return {"error": "Insufficient starts (need ≥2)"}
+        expected_ip, n_starts, start_innings = ip_block
+
+        mu_outs = expected_ip * 3.0
+        # σ from variation across starts in OUTS units.
+        starts_outs = [ip * 3.0 for ip in start_innings]
+        sigma_outs = float(np.std(starts_outs, ddof=1)) if len(starts_outs) > 1 else mu_outs * 0.18
+
+        # Probability for the gates' legacy `prob_over` consumer
+        # (the universal probability engine downstream re-derives this
+        # from μ/σ/CV anyway, so this is purely informational).
+        prob_over = None
+        z_score = None
+        if line is not None and sigma_outs > 0:
+            z_score = (float(line) - mu_outs) / sigma_outs
+            prob_over = (1.0 - stats.norm.cdf(z_score)) * 100.0
+
+        logger.info(
+            f"[MLB_HF_PRED] {player_name} Pitcher Outs: "
+            f"expected_IP={expected_ip:.2f} starts={n_starts} "
+            f"μ={mu_outs:.2f} σ={sigma_outs:.2f}"
+        )
+        return {
+            "player_name": player_name,
+            "stat_type": stat_type,
+            "predicted": round(mu_outs, 2),
+            "raw_prediction": round(mu_outs, 4),
+            "std_dev": round(sigma_outs, 4),
+            "line": line,
+            "prob_over": round(prob_over, 1) if prob_over is not None else None,
+            "z_score": round(z_score, 4) if z_score is not None else None,
+            "friction_audit": {
+                "trends": {
+                    "expected_ip": round(expected_ip, 2),
+                    "starts_used": n_starts,
+                },
+            },
+            "full_features": {},
+            "mlr_features_used": False,
+            "model_version": "MLB_HF_v1.0_pitcher_outs_analytical",
+            "feature_health": {"imputed_count": 0, "imputed_features": []},
+            # μ-override audit fields (parity with model path)
+            "mu_raw_model_projection": round(mu_outs, 4),
+            "mu_pitcher_workload_anchored": True,
+            "mu_active_baseline_applied": False,
+            "mu_active_baseline_value": None,
+            "expected_ip_used": round(expected_ip, 2),
+        }
+
+
     
     def predict(
         self,
@@ -653,7 +888,18 @@ class MLBHighFrictionModel:
         and is never used when an ID is supplied.
         """
         norm_stat = self._normalize_stat(stat_type)
-        
+
+        # 2026-04-27 — Pitcher Outs analytical projection.
+        # No XGBoost model; μ derives from expected_IP × 3 (workload
+        # anchor). σ is std(starts) × 3 so the universal probability
+        # engine receives a coherent CV signal. Bypasses model.predict().
+        if norm_stat == 'pitcher_outs':
+            return self._predict_pitcher_outs(
+                player_name=player_name, stat_type=stat_type,
+                line=line, opponent_team=opponent_team, park_team=park_team,
+                dk_odds=dk_odds, bdl_player_id=bdl_player_id,
+            )
+
         if norm_stat not in self.models:
             return {"error": f"No model for {stat_type}"}
         
@@ -730,6 +976,43 @@ class MLBHighFrictionModel:
                 final_pred = raw_pred * park_factor * opp_k_rate
             else:
                 final_pred = raw_pred * park_factor
+
+            # =================================================================
+            # 2026-04-27 — μ overrides (workload anchor + active baseline)
+            # -----------------------------------------------------------------
+            # Probability engine, distribution selection, and CV/σ logic are
+            # NOT modified. Only the μ feeding them is corrected:
+            #   • Pitcher K: blend the model μ with a workload-anchored μ
+            #     (expected_IP × K_per_inning) at 40% model / 60% workload.
+            #   • Batter 0.5-line stats (Hits / Singles / Runs / RBIs / HRR):
+            #     enforce an active-lineup baseline FLOOR so cold L5
+            #     stretches don't collapse μ to 0.02 for confirmed starters.
+            # =================================================================
+            mu_raw_model_projection = final_pred
+            mu_pitcher_workload_anchored = False
+            mu_active_baseline_applied = False
+            mu_active_baseline_value = None
+            expected_ip_used = None
+
+            if norm_stat == 'pitcher_strikeouts':
+                ip_block = self._expected_ip_from_starts(game_logs)
+                kpi = self._recent_k_per_inning(game_logs)
+                if ip_block is not None and kpi is not None:
+                    expected_ip, _n_starts, _raw_starts = ip_block
+                    workload_mu = expected_ip * kpi
+                    # 60/40 workload-vs-model blend (per 2026-04-27 plan).
+                    final_pred = 0.6 * workload_mu + 0.4 * final_pred
+                    expected_ip_used = round(expected_ip, 2)
+                    mu_pitcher_workload_anchored = True
+
+            # Batter active-lineup baseline floor (0.5-line families only).
+            if norm_stat in self._ACTIVE_BASELINE:
+                if self._is_active_today(player, game_logs):
+                    baseline = self._ACTIVE_BASELINE[norm_stat]
+                    if final_pred < baseline:
+                        final_pred = baseline
+                        mu_active_baseline_applied = True
+                        mu_active_baseline_value = baseline
             
             # TRUE L10 SIGMA
             std_dev = features.get('std_dev_l10', 0)
@@ -816,6 +1099,12 @@ class MLBHighFrictionModel:
                 'mlr_features_used': True,
                 'model_version': 'MLB_HF_v1.0',
                 'feature_health': feature_health,
+                # 2026-04-27 — μ-override audit fields
+                'mu_raw_model_projection': round(mu_raw_model_projection, 4),
+                'mu_pitcher_workload_anchored': mu_pitcher_workload_anchored,
+                'mu_active_baseline_applied': mu_active_baseline_applied,
+                'mu_active_baseline_value': mu_active_baseline_value,
+                'expected_ip_used': expected_ip_used,
             }
             
             logger.info(

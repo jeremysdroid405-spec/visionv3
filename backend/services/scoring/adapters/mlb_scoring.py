@@ -270,6 +270,20 @@ class MLBScoringAdapter(ScoringAdapter):
                 # model_projection and ranking_score_v2 for MLB.
                 model_projection = result.get("predicted")
                 model_sigma = result.get("std_dev")
+                # 2026-04-27 — μ-override audit fields (workload anchor /
+                # active-lineup baseline / pitcher_outs analytical path).
+                # Stamped on the raw prop so recompute's mirror block
+                # propagates them onto the score doc.
+                prop["mu_raw_model_projection"] = result.get("mu_raw_model_projection")
+                prop["mu_pitcher_workload_anchored"] = result.get(
+                    "mu_pitcher_workload_anchored", False,
+                )
+                prop["mu_active_baseline_applied"] = result.get(
+                    "mu_active_baseline_applied", False,
+                )
+                prop["mu_active_baseline_value"] = result.get("mu_active_baseline_value")
+                prop["expected_ip_used"] = result.get("expected_ip_used")
+                prop["projection_model_version"] = result.get("model_version")
 
                 # ============================================================
                 # 2026-04-27 — DISTRIBUTION-BASED PROBABILITY LAYER (new base).
