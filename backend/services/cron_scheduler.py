@@ -174,6 +174,29 @@ async def run_forward_test_capture():
         logger.info("[CRON] ========================================")
         logger.info(f"[CRON] FORWARD-TEST COMPLETE: {total_props} total props captured")
         logger.info("[CRON] ========================================")
+
+        # Shadow capture — parallel, read-only feature store for the
+        # forward-test shadow pipeline. Strictly additive; if it fails
+        # we never break the production capture path.
+        try:
+            from services.shadow.shadow_capture_service import capture_all_shadow
+            shadow_res = await capture_all_shadow(
+                db, capture_reason="scheduled_1830_et"
+            )
+            for sp, info in shadow_res.get("sports", {}).items():
+                logger.info(
+                    f"[SHADOW_CAPTURE_CRON] sport={sp} "
+                    f"date={info.get('capture_date')} "
+                    f"fts={info.get('fts_rows')} "
+                    f"written={info.get('shadow_written')} "
+                    f"ctx_hits={info.get('ctx_hits')} "
+                    f"coverage={info.get('ctx_coverage')}"
+                )
+        except Exception as shadow_exc:
+            logger.error(
+                f"[SHADOW_CAPTURE_CRON] failed (non-fatal): {shadow_exc!r}",
+                exc_info=True,
+            )
         
     except Exception as e:
         logger.error(f"[CRON] Forward-test capture failed: {e}")
@@ -258,6 +281,23 @@ async def run_forward_test_resolve():
         logger.info("[CRON] ========================================")
         logger.info("[CRON] FORWARD-TEST RESOLVE COMPLETE")
         logger.info("[CRON] ========================================")
+
+        # Shadow resolve — copies outcome/actual_value from FTS rows
+        # onto their sibling shadow_vk_snapshots rows. Idempotent.
+        try:
+            from services.shadow.shadow_capture_service import resolve_shadow_outcomes
+            shadow_res = await resolve_shadow_outcomes(db)
+            logger.info(
+                f"[SHADOW_RESOLVE_CRON] dates_checked="
+                f"{shadow_res.get('dates_checked')} "
+                f"resolved={shadow_res.get('resolved')} "
+                f"by_sport={shadow_res.get('by_sport')}"
+            )
+        except Exception as shadow_exc:
+            logger.error(
+                f"[SHADOW_RESOLVE_CRON] failed (non-fatal): {shadow_exc!r}",
+                exc_info=True,
+            )
     except Exception as e:
         logger.error(f"[CRON] Forward-test resolve failed: {e}")
         import traceback

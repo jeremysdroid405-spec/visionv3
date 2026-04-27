@@ -1,5 +1,66 @@
 # Changelog
 
+## 2026-04-27 — Shadow VK Forward-Test Pipeline (Parts 1 + 2)
+
+**User directive**: *"Proceed with option 3: (a) + (b). Part 1 — partial, time-stable feature audit (directional only). Part 2 — set up the real forward-test shadow pipeline."*
+
+### Part 1 — Partial-feature directional audit (read-only)
+**NEW** `/tmp/train_shadow_vk_partial.py` produces a 5-fold CV comparison of:
+- **baseline** = `[vk_predicted, vk_prob, line]`
+- **shadow_partial** = baseline + season-stable context features (`opp_def_rating_season`, `pace_differential`, `potential_assists_rate`, `home_away_flag`, one-hot `defensive_matchup_tier`, imputed-flags)
+
+Trained on 272 resolved NBA snapshots (2026-04-13 → 2026-04-22).
+
+**Outputs** (clearly labelled "Directional only — not valid for promotion"):
+- `/tmp/shadow_vk_partial_REPORT.md`
+- `/tmp/shadow_vk_partial_metrics.json`
+
+**Headline result**: shadow_partial **slightly worse** overall (Brier +0.011, log-loss +0.058, MAE +0.084). Likely overfit on N=272 with 11 features. Pockets of improvement: AST stat-type (Brier −0.040), elite-defence tier (Brier −0.048). REB and "weak" tier degrade significantly (small-N noise). Recommendation: defer judgement until Part 2 produces co-located data with the time-varying features that were excluded here.
+
+### Part 2 — Forward-test shadow capture pipeline (parallel, read-only)
+**NEW** `services/shadow/shadow_capture_service.py`
+- `capture_shadow_snapshots(db, sport, capture_date)` — joins today's `forward_test_snapshots` with `nba_player_context_features`, writes to a new collection `shadow_vk_snapshots`. **±2-day freshness gate** drops stale context (prevents today's features from being attached to historical snapshots).
+- `resolve_shadow_outcomes(db)` — copies `outcome` / `actual_value` from resolved FTS rows onto sibling shadow rows. Idempotent.
+- `stats_summary(db)` — pipeline health metrics.
+
+**Schema** of `shadow_vk_snapshots`:
+```
+sport, capture_date, captured_at, capture_reason,
+player_name, player_id, team, opponent, game_id, commence_time,
+stat_type, line, side ('over'/'under'),
+vk_predicted, vk_prob, vk_edge,            # production (read-only)
+shadow_predicted, shadow_prob,             # null until model trained
+context_features { 10 fields + feature_coverage + source provenance },
+outcome, actual_value, resolved_at,
+fts_key_hash
+```
+
+**Indexes**: `(sport, capture_date)`, `(sport, player_name, stat_type, capture_date)` UNIQUE, `(outcome, capture_date)`.
+
+**Cron wiring** (`services/cron_scheduler.py`):
+- `run_forward_test_capture` (1830 ET): now appends `capture_all_shadow(...)` after standard FTS capture. Wrapped in try/except so it can never break production capture.
+- `run_forward_test_resolve` (0500 ET): now appends `resolve_shadow_outcomes(...)` after the standard resolver.
+
+**Bootstrap run** (`/tmp/bootstrap_shadow_pipeline.py`):
+- 493 historical rows mirrored from existing FTS (256 NBA, 237 MLB)
+- 490 resolved by sibling-row outcome copy
+- Historical rows correctly persist with **null context_features** (freshness gate working — stale context not attached)
+- Forward-path smoke test confirmed: when capture_date is within ±2 days of `nba_player_context_features.computed_at`, all 6 spec features attach (verified with synthetic Jaylen Brown / AST row, ctx_coverage=1.0)
+
+### What this does NOT do
+- Does **not** train or deploy a shadow model — `shadow_predicted` stays null until 7–14 days of co-located resolved data accrue and an offline trainer is run.
+- Does **not** modify production VK, scoring adapters, gates, tiers, or any live endpoint.
+- Does **not** alter `forward_test_snapshots` schema or resolver behaviour.
+
+### Files touched
+- `services/shadow/__init__.py` (new)
+- `services/shadow/shadow_capture_service.py` (new)
+- `services/cron_scheduler.py` (additive: shadow hook in capture + resolve jobs)
+- `/tmp/train_shadow_vk_partial.py` (new, audit script)
+- `/tmp/bootstrap_shadow_pipeline.py` (new, one-shot)
+
+
+
 ## 2026-05 — NBA Context Feature Engine (`services/features/nba_feature_engine.py`)
 
 **User directive**: *"Add a new feature engineering layer for NBA props to support the upcoming VK retrain. Do NOT modify scoring/gating/probability logic. Optional, non-breaking."*

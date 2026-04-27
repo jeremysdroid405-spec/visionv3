@@ -1,5 +1,18 @@
 # PRD — NBA/MLB Ferrari / PropVision AI
 
+
+## 2026-04-27 — Shadow VK Forward-Test Pipeline (parallel, read-only)
+A new collection `shadow_vk_snapshots` co-locates production VK predictions with the 10 NBA context features and a frozen capture timestamp, ready for an honest A/B once 7–14 days of resolved data accrue.
+
+- **Capture**: `services/shadow/shadow_capture_service.py::capture_shadow_snapshots` runs after every `forward_test_snapshots` capture (1830 ET cron). Joins by `(player_name, stat_type)` against `nba_player_context_features`; ±2-day freshness gate prevents stale context from being attached to historical rows.
+- **Resolve**: `resolve_shadow_outcomes` mirrors `outcome` / `actual_value` from sibling FTS rows after the 0500 ET resolver. Idempotent.
+- **Schema**: keeps `vk_predicted/vk_prob/vk_edge` (production), holds `shadow_predicted/shadow_prob` null until offline training. All 10 context features stored verbatim with provenance.
+- **Disclaimer**: Production scoring, gates, tiers, recompute path, and live endpoints are untouched. The pipeline is strictly additive and can be torn down by deleting `shadow_vk_snapshots` + reverting two cron hooks.
+
+### Directional partial-feature audit (delivered 2026-04-27)
+`/tmp/train_shadow_vk_partial.py` produced `/tmp/shadow_vk_partial_REPORT.md` and `/tmp/shadow_vk_partial_metrics.json` (CV across 272 resolved NBA snapshots). Findings: shadow_partial slightly worse overall (Brier +0.011, log-loss +0.058, MAE +0.084), with isolated wins on AST and elite-defence tier. Labelled "Directional only — not valid for promotion" because key time-varying features (`key_player_out_flag`, `usage_vacuum_factor`, `blowout_risk`, current injuries/spreads) had to be excluded.
+
+
 ## Product Goal
 Restructure React/FastAPI betting app into a 100% local-first MongoDB
 architecture with multi-sport support, automated feature engineering, and
