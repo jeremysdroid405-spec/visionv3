@@ -1,6 +1,39 @@
 # PRD — NBA/MLB Ferrari / PropVision AI
 
 
+## 2026-04-28 — NBA Rate × Minutes projection layer (PTS / PRA)
+New μ-override that runs AFTER recency blend + availability guard, BEFORE the universal probability engine. Replaces total-projection bias with `rate_per_minute × expected_minutes`, blended 60/40 with the existing model μ. **Probability engine, σ/CV, recency-blend weights, availability-guard logic, gates: NOT modified.**
+
+**Formula:**
+```
+r_x = 0.7 × L5_avg(x_per_min) + 0.3 × L10_median(x_per_min)
+exp_min_final = (0.4·L3_min + 0.3·L5_min + 0.3·L10_min) × restriction_factor
+μ_pts_final = 0.6 × r_pts × exp_min_final + 0.4 × μ_pts_model
+μ_pra_final = 0.6 × (r_pts + r_reb + r_ast) × exp_min_final + 0.4 × μ_pra_model
+```
+
+**Eligibility (BOTH must hold):** `stat_type ∈ {PTS, PRA}` AND (`L3_min < L10_min` OR `availability_status ∉ {FULL_GO, UNKNOWN, None}`). Healthy + stable-minutes players keep μ_model untouched.
+
+**Replay (51 settled NBA PTS/PRA picks with usable logs):**
+- PRA error (mean |μ−actual|): 6.535 → **6.375 (Δ = −0.160)** ✓
+- PTS error: 4.767 → 4.868 (flat, +0.10 on n=22)
+- Hit-flip matrix: 0 misses avoided / **0 hits lost** / 0 false-positives added → no winners suppressed.
+- Layer fired on 47/51 (92.2%) of eligible picks. Triggers: availability_guard 19 · both 15 · L3_below_L10 13.
+- Direction proof points: Jarrett Allen PTS 18.50→14.89 (actual 12.0); Harrison Barnes PRA 13.10→10.29 (actual 3.0); KD PTS 22.80→25.37 (actual 23.0); Jokic PRA 51.60→50.21 (actual 45.0).
+
+**Live recompute (`final-nba-rt`, 4251 props in 43 s):**
+- Rate model fired on 498 / 1233 (40.4%) of PTS/PRA props. Triggers: L3_below_L10 245 · availability_guard 168 · both 85.
+- Top 20 μ deltas are all **DOWNWARD** corrections (Mikal Bridges PRA 12.96→10.48, Toumani Camara 16.63→14.45, Jerami Grant 18.03→16.05) — exactly the chronic role-player over-projection bias the layer was designed to fix.
+- Tier distribution: front_lines 99 · war_zone 22 · safe_haven 10 · unqualified 4120 (prior 102/24/9 — small shift as minutes-volatile props move into safer tiers).
+
+**Tests:** 8 new unit tests in `tests/test_nba_rate_model.py` (all passing). Universal-engine 18-test suite unaffected.
+
+**Audit fields** (stamped + whitelisted in `prop_scores_store._SCORE_OUTPUT_FIELDS` and `recompute._project_score_doc`): `rate_model_applied`, `rate_pts_per_min`, `rate_reb_per_min`, `rate_ast_per_min`, `expected_minutes_raw`, `expected_minutes`, `mu_rate_projection`, `mu_model_projection`, `mu_final_projection`, `rate_model_blend_weights`, `rate_model_trigger`.
+
+Report: `/tmp/nba_rate_model_REPORT.md`. Replay: `/tmp/nba_rate_model_replay.py`. Live recompute: `/tmp/nba_rate_model_live_recompute.py`.
+
+
+
 ## 2026-04-27 — NBA Availability Guard v3 (RETURNING split: RESTRICTED / SOFT / FULL_GO)
 Refactored monolithic `RETURNING_FROM_ABSENCE` bucket into three sub-statuses driven by `minutes_recovery_ratio = L3_min / L10_min`. Probability engine, σ/CV, recency blend, gates: untouched. Universal clamp `restriction_factor ∈ [0.50, 1.00]` enforced at every classifier return point.
 

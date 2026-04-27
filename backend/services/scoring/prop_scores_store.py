@@ -238,6 +238,20 @@ _SCORE_OUTPUT_FIELDS = (
     "minutes_restriction_factor",
     "mu_before_availability_guard",
     "mu_after_availability_guard",
+    # NBA — rate × minutes projection layer (2026-04-28). PTS/PRA only.
+    # Stamps include rate inputs, expected minutes (raw + post-restriction),
+    # and the rate / model μ contributions plus the final blended μ.
+    "rate_model_applied",
+    "rate_pts_per_min",
+    "rate_reb_per_min",
+    "rate_ast_per_min",
+    "expected_minutes",
+    "expected_minutes_raw",
+    "mu_rate_projection",
+    "mu_model_projection",
+    "mu_final_projection",
+    "rate_model_blend_weights",
+    "rate_model_trigger",
     # Universal SSOT canonical-pool flags (2026-04-25). Stamped at
     # ingest by `services/universal_odds_sync.py::_normalize_market_data`
     # on every prop. PrizePicks is now an overlay on top of a

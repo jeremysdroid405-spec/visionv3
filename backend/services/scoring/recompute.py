@@ -566,6 +566,13 @@ async def recompute_sport(
             "normal_minutes", "expected_minutes",
             "minutes_restriction_factor",
             "mu_before_availability_guard", "mu_after_availability_guard",
+            # NBA — rate × minutes projection layer (2026-04-28)
+            "rate_model_applied",
+            "rate_pts_per_min", "rate_reb_per_min", "rate_ast_per_min",
+            "expected_minutes", "expected_minutes_raw",
+            "mu_rate_projection", "mu_model_projection",
+            "mu_final_projection",
+            "rate_model_blend_weights", "rate_model_trigger",
         ):
             if _prob_k in raw:
                 doc[_prob_k] = raw[_prob_k]

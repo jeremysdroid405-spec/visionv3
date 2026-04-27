@@ -812,6 +812,248 @@ class NBAScoringAdapter(ScoringAdapter):
         return mu_out
 
 
+    # =========================================================================
+    # 2026-04-28 — Rate × Minutes projection layer (PTS / PRA).
+    # =========================================================================
+    # Runs AFTER the recency blend AND the availability guard, BEFORE
+    # the universal probability engine. Replaces μ in-place with a 60/40
+    # blend of:
+    #     μ_rate  = (per-minute rate) × (expected minutes after restriction)
+    #     μ_model = current μ (already recency-blended + availability-guarded)
+    #
+    # Eligibility (BOTH must hold):
+    #   1. stat_type ∈ {PTS, PRA}.
+    #   2. minutes are dynamic — either L3_min < L10_min (load decreasing) OR
+    #      the availability guard fired non-trivially (status != FULL_GO).
+    #      A plain FULL_GO PTS/PRA prop with stable minutes keeps μ_model
+    #      unchanged so we don't disturb the existing model on healthy nights.
+    #
+    # Rate computation (volume-stat per minute):
+    #   r_x = 0.7 × L5_avg(x_per_min) + 0.3 × L10_median(x_per_min)
+    #   (L5 = recency, L10_median = stability anchor; median, not mean,
+    #    to suppress outliers.)
+    #
+    # Expected minutes:
+    #   exp_min_raw   = 0.4 × L3_min + 0.3 × L5_min + 0.3 × L10_min
+    #   exp_min_final = exp_min_raw × restriction_factor   (from guard)
+    #
+    # Blend:
+    #   μ_pts_final = 0.6 × (r_pts × exp_min_final) + 0.4 × μ_pts_model
+    #   μ_pra_final = 0.6 × ((r_pts + r_reb + r_ast) × exp_min_final)
+    #               + 0.4 × μ_pra_model
+    #
+    # Constraints / rules:
+    #   - DOES NOT modify probability engine, σ/CV, recency-blend weights,
+    #     availability-guard logic, or gate thresholds.
+    #   - DOES NOT apply a global multiplier; the rate-model is the
+    #     blended majority but the existing model intelligence is kept.
+    # =========================================================================
+    _RATE_TARGET_STATS = {"PTS", "PRA"}
+    _RATE_BLEND_RATE   = 0.60   # weight on rate × minutes
+    _RATE_BLEND_MODEL  = 0.40   # weight on existing μ
+    _RATE_EXP_MIN_W = {"L3": 0.40, "L5": 0.30, "L10": 0.30}
+    _RATE_RECENCY_W = {"L5": 0.70, "L10_MEDIAN": 0.30}
+    _RATE_MIN_LOGS = 3   # need at least 3 game logs to compute rates
+
+    @classmethod
+    def _compute_rate_components(
+        cls,
+        logs: List[Dict[str, Any]],
+        before_date: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Compute per-minute rates (pts, reb, ast) plus minute baselines
+        from `bdl_game_logs`. Returns None when fewer than `_RATE_MIN_LOGS`
+        games carry a usable minute count (filters out DNPs)."""
+        if not logs:
+            return None
+        if before_date:
+            logs = [l for l in logs if (l.get("date") or "") < before_date]
+        if not logs:
+            return None
+        logs = sorted(logs, key=lambda l: (l.get("date") or ""), reverse=True)
+
+        def _f(v):
+            try:
+                return float(v) if v not in (None, "") else None
+            except (TypeError, ValueError):
+                return None
+
+        # Per-game per-minute rates — only for games with min > 0 so DNPs
+        # don't divide by zero or skew the rate.
+        per_min_rows: List[Dict[str, Optional[float]]] = []
+        mins_all: List[Optional[float]] = []
+        for l in logs:
+            m = _f(l.get("min"))
+            mins_all.append(m)
+            if m is None or m <= 0:
+                per_min_rows.append({"pts": None, "reb": None, "ast": None})
+                continue
+            per_min_rows.append({
+                "pts": (_f(l.get("pts")) / m) if l.get("pts") is not None else None,
+                "reb": (_f(l.get("reb")) / m) if l.get("reb") is not None else None,
+                "ast": (_f(l.get("ast")) / m) if l.get("ast") is not None else None,
+            })
+
+        def _avg(arr, n):
+            s = [x for x in arr[:n] if x is not None]
+            return (sum(s) / len(s)) if s else None
+
+        def _median(arr, n):
+            s = sorted([x for x in arr[:n] if x is not None])
+            if not s:
+                return None
+            m = len(s)
+            return s[m // 2] if m % 2 else (s[m // 2 - 1] + s[m // 2]) / 2.0
+
+        # L5 mean of per-min rates (recency).
+        l5_pts = _avg([r["pts"] for r in per_min_rows], 5)
+        l5_reb = _avg([r["reb"] for r in per_min_rows], 5)
+        l5_ast = _avg([r["ast"] for r in per_min_rows], 5)
+        # L10 median (stability anchor).
+        l10m_pts = _median([r["pts"] for r in per_min_rows], 10)
+        l10m_reb = _median([r["reb"] for r in per_min_rows], 10)
+        l10m_ast = _median([r["ast"] for r in per_min_rows], 10)
+
+        def _blend(l5, l10m):
+            wL5  = cls._RATE_RECENCY_W["L5"]
+            wL10 = cls._RATE_RECENCY_W["L10_MEDIAN"]
+            if l5 is None and l10m is None:
+                return None
+            if l5 is None:
+                return l10m
+            if l10m is None:
+                return l5
+            return wL5 * l5 + wL10 * l10m
+
+        r_pts = _blend(l5_pts, l10m_pts)
+        r_reb = _blend(l5_reb, l10m_reb)
+        r_ast = _blend(l5_ast, l10m_ast)
+
+        # Need at least L3+L10 minutes to build expected_minutes.
+        min_l3  = _avg(mins_all, 3)
+        min_l5  = _avg(mins_all, 5)
+        min_l10 = _avg(mins_all, 10)
+        n_with_min = sum(1 for m in mins_all if m is not None and m > 0)
+        if n_with_min < cls._RATE_MIN_LOGS:
+            return None
+        if min_l3 is None or min_l10 is None:
+            return None
+
+        w = cls._RATE_EXP_MIN_W
+        # If L5 is missing, redistribute its weight onto L10.
+        if min_l5 is None:
+            exp_min_raw = w["L3"] * min_l3 + (w["L5"] + w["L10"]) * min_l10
+        else:
+            exp_min_raw = w["L3"] * min_l3 + w["L5"] * min_l5 + w["L10"] * min_l10
+
+        return {
+            "rate_pts_per_min": r_pts,
+            "rate_reb_per_min": r_reb,
+            "rate_ast_per_min": r_ast,
+            "expected_minutes_raw": round(exp_min_raw, 4),
+            "minutes_l3":  min_l3,
+            "minutes_l5":  min_l5,
+            "minutes_l10": min_l10,
+            "n_games_with_min": n_with_min,
+        }
+
+    def _maybe_apply_rate_model(
+        self,
+        stat_type: str,
+        bdl_player_id: Optional[int],
+        prop: Dict[str, Any],
+        mu_model: Optional[float],
+    ) -> Optional[float]:
+        """Apply the rate × minutes projection blend.
+
+        Returns the blended μ when the layer fires, otherwise returns
+        `mu_model` unchanged. Always stamps `rate_model_applied` on the
+        prop (True or False) so downstream observability can partition.
+        """
+        # Default audit stamp — overridden if the layer activates.
+        prop.setdefault("rate_model_applied", False)
+
+        if stat_type not in self._RATE_TARGET_STATS or mu_model is None:
+            return mu_model
+        if bdl_player_id is None:
+            return mu_model
+        try:
+            pid = int(bdl_player_id)
+        except (TypeError, ValueError):
+            return mu_model
+        logs = (self._logs_by_id or {}).get(pid)
+        if not logs:
+            return mu_model
+
+        before_date = (prop.get("commence_time") or "")[:10] or None
+        comps = self._compute_rate_components(logs, before_date=before_date)
+        if comps is None:
+            return mu_model
+
+        # Eligibility gate — minutes must be dynamic OR availability guard
+        # fired non-trivially. Plain FULL_GO + stable minutes → keep μ_model.
+        avail_status = prop.get("availability_status")
+        non_trivial_avail = (
+            avail_status not in (None, "UNKNOWN", "FULL_GO")
+        )
+        min_l3, min_l10 = comps["minutes_l3"], comps["minutes_l10"]
+        l3_below_l10 = (
+            min_l3 is not None and min_l10 is not None
+            and min_l3 < min_l10
+        )
+        if not (l3_below_l10 or non_trivial_avail):
+            return mu_model
+
+        # Restriction factor was stamped by the availability guard.
+        # When the guard didn't fire (e.g. classifier returned UNKNOWN
+        # or stat wasn't in its target set), default to 1.0.
+        rf = prop.get("minutes_restriction_factor")
+        try:
+            rf = float(rf) if rf is not None else 1.0
+        except (TypeError, ValueError):
+            rf = 1.0
+        rf = max(0.50, min(1.00, rf))  # mirror the guard's universal clamp
+
+        exp_min_raw   = comps["expected_minutes_raw"]
+        exp_min_final = exp_min_raw * rf
+
+        r_pts = comps["rate_pts_per_min"]
+        r_reb = comps["rate_reb_per_min"]
+        r_ast = comps["rate_ast_per_min"]
+
+        if stat_type == "PTS":
+            if r_pts is None:
+                return mu_model
+            mu_rate = r_pts * exp_min_final
+        else:  # PRA
+            if r_pts is None or r_reb is None or r_ast is None:
+                return mu_model
+            mu_rate = (r_pts + r_reb + r_ast) * exp_min_final
+
+        wR = self._RATE_BLEND_RATE
+        wM = self._RATE_BLEND_MODEL
+        mu_final = wR * mu_rate + wM * float(mu_model)
+
+        # Stamp audit fields.
+        prop["rate_model_applied"]   = True
+        prop["rate_pts_per_min"]     = (round(r_pts, 6) if r_pts is not None else None)
+        prop["rate_reb_per_min"]     = (round(r_reb, 6) if r_reb is not None else None)
+        prop["rate_ast_per_min"]     = (round(r_ast, 6) if r_ast is not None else None)
+        prop["expected_minutes_raw"] = round(exp_min_raw, 4)
+        prop["expected_minutes"]     = round(exp_min_final, 4)
+        prop["mu_rate_projection"]   = round(mu_rate, 4)
+        prop["mu_model_projection"]  = round(float(mu_model), 4)
+        prop["mu_final_projection"]  = round(mu_final, 4)
+        prop["rate_model_blend_weights"] = {"rate": wR, "model": wM}
+        prop["rate_model_trigger"] = (
+            "L3_below_L10" if l3_below_l10 and not non_trivial_avail
+            else ("availability_guard" if non_trivial_avail and not l3_below_l10
+                  else "both")
+        )
+        return mu_final
+
+
+
 
 
     # =========================================================================
@@ -1965,6 +2207,15 @@ class NBAScoringAdapter(ScoringAdapter):
                     stat_type=model_key, bdl_player_id=bdl_player_id,
                     prop=prop, mu_in=model_projection,
                 )
+                # 2026-04-28 — Rate × minutes projection layer (PTS/PRA).
+                # Runs AFTER availability guard, BEFORE engine. Conditionally
+                # blends μ with rate_per_min × expected_minutes when the
+                # player has dynamic minutes or a non-trivial availability
+                # flag; otherwise leaves μ_model untouched.
+                model_projection = self._maybe_apply_rate_model(
+                    stat_type=model_key, bdl_player_id=bdl_player_id,
+                    prop=prop, mu_model=model_projection,
+                )
                 # Universal probability engine override
                 # for the legacy VK path. Engine receives empirical
                 # (μ, σ) and re-derives p_over via Normal CDF (or
@@ -2021,6 +2272,11 @@ class NBAScoringAdapter(ScoringAdapter):
                 vk2_projection = self._maybe_apply_availability_guard(
                     stat_type=model_key, bdl_player_id=bdl_player_id,
                     prop=prop, mu_in=vk2_projection,
+                )
+                # 2026-04-28 — Rate × minutes layer (PTS/PRA only) on VK2 path.
+                vk2_projection = self._maybe_apply_rate_model(
+                    stat_type=model_key, bdl_player_id=bdl_player_id,
+                    prop=prop, mu_model=vk2_projection,
                 )
                 # 2026-04-27 — universal-engine override on the VK2 path.
                 _eng_v2 = self._engine_p_over(
@@ -2126,6 +2382,11 @@ class NBAScoringAdapter(ScoringAdapter):
                     model_projection_synth = self._maybe_apply_availability_guard(
                         stat_type=model_key, bdl_player_id=bdl_player_id,
                         prop=prop, mu_in=model_projection_synth,
+                    )
+                    # 2026-04-28 — Rate × minutes layer on PRA synth path.
+                    model_projection_synth = self._maybe_apply_rate_model(
+                        stat_type=model_key, bdl_player_id=bdl_player_id,
+                        prop=prop, mu_model=model_projection_synth,
                     )
                     # 2026-04-27 — engine override on PRA synth-preferred
                     _eng_pra = self._engine_p_over(
