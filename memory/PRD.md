@@ -3630,3 +3630,32 @@ Pure analysis — no projection / gate / model changes. Tested cutoffs
 - Ferrari endpoints HTTP 200 across NBA + MLB.
 - No code changes to scoring / gates / projections.
 
+
+---
+## 2026-04-29 — NBA Production Promotions
+
+### 100/0 Rate-Blend Cutover (PTS / PRA)
+- Promoted `NBA_RATE_BLEND_MODE=100_0` (was 60/40) — pure rate × minutes
+- File: `services/scoring/adapters/nba_scoring.py` (feature flag)
+- Eligibility gate unchanged: PTS/PRA, L3<L10 OR avail≠FULL_GO
+- Verified on 272 settled picks: ALL hit 59.9% → 73.2%; War Zone 22.2% → 58.6%; SH 88.5% / FL 75.8% unchanged; 39 misses avoided / 3 hits lost
+- Revert: `NBA_RATE_BLEND_MODE=60_40` + supervisor restart
+
+### RFA Minutes Penalty (PTS / PRA)
+- Promoted `NBA_RFA_MINUTES_PENALTY=0.85` (was disabled / 1.0)
+- Same file. Multiplies `expected_minutes` by 0.85 ONLY for `availability_status == RETURNING_FROM_ABSENCE`
+- Composes AFTER restriction_factor; FULL_GO / DNP_RISK / MINUTES_RESTRICTION / MINUTES_VOLATILITY untouched
+- REB/AST never affected (rate layer is PTS/PRA only)
+- Verified on 272 settled picks: ALL 59.9% → 77.2%; PTS 56.8% → 81.1%; PRA 52.8% → 71.7%; War Zone 22.2% → 71.7%; only 4 hits broken (~10:1 win ratio)
+- Live recompute: 211 RFA picks penalised, 326 non-RFA rate-fired picks unchanged, 0 REB/AST affected
+- Audit stamps: `rfa_minutes_penalty_applied`, `rfa_minutes_penalty_factor`, `expected_minutes_before_rfa_penalty`, `expected_minutes_after_rfa_penalty`
+- Tests: 14 new (`test_nba_rfa_minutes_penalty.py`); 66/66 in NBA rate-model + shadow + flag suite
+
+### Shadow Layers (audit-only, untouched)
+- `mu_recency_E` (heavy recency, 7-day forward-test running)
+- `mu_pts_vk2` (VK2 PTS shadow)
+- `mu_rate_reb_shadow`, `mu_rate_ast_shadow` (rate × minutes for REB/AST)
+
+### Daily Monitor
+- `scripts/nba_tier_hit_rate_monitor.py` — persists daily snapshot to `nba_tier_monitor`
+- Alerts on >5pt hit-rate drop vs baseline (SH 88.5 / FL 75.8 / WZ 58.6)

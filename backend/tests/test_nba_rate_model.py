@@ -102,7 +102,13 @@ def test_rate_model_fires_on_l3_below_l10():
     assert out == pytest.approx(prop["mu_rate_projection"], rel=1e-4)
 
 
-def test_rate_model_pra_sums_components():
+def test_rate_model_pra_sums_components(monkeypatch):
+    # Disable RFA penalty for this baseline-math test — the test
+    # validates the PRA sum-of-rates formula, not the RFA penalty.
+    monkeypatch.setenv("NBA_RFA_MINUTES_PENALTY", "1.0")
+    import importlib, sys
+    sys.modules.pop("services.scoring.adapters.nba_scoring", None)
+    mod = importlib.import_module("services.scoring.adapters.nba_scoring")
     logs = _logs([
         ("2026-04-25", 30, 24, 6, 6),
         ("2026-04-23", 30, 24, 6, 6),
@@ -110,15 +116,16 @@ def test_rate_model_pra_sums_components():
         ("2026-04-19", 30, 24, 6, 6),
         ("2026-04-17", 30, 24, 6, 6),
     ])
-    # Force eligibility via guard fired non-trivially.
-    a = _make_adapter_with_logs(789, logs)
+    a = mod.NBAScoringAdapter()
+    a._logs_by_id  = {789: logs}
+    a._logs_loaded = True
     prop = {"availability_status": "RETURNING_FROM_ABSENCE",
             "minutes_restriction_factor": 0.9}
     mu_model = 36.0
     out = a._maybe_apply_rate_model("PRA", 789, prop, mu_model)
     assert prop["rate_model_applied"] is True
     # rate_total = 0.8 + 0.2 + 0.2 = 1.2 per min
-    # exp_min = 30 × 0.9 = 27
+    # exp_min = 30 × 0.9 = 27 (no RFA penalty in this test)
     # μ_rate ≈ 1.2 × 27 = 32.4
     # final (100/0 prod default) = μ_rate = 32.4
     assert prop["expected_minutes"] == pytest.approx(27.0)

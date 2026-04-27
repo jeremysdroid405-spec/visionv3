@@ -886,6 +886,28 @@ class NBAScoringAdapter(ScoringAdapter):
     _RATE_EXP_MIN_W = {"L3": 0.40, "L5": 0.30, "L10": 0.30}
     _RATE_RECENCY_W = {"L5": 0.70, "L10_MEDIAN": 0.30}
     _RATE_MIN_LOGS = 3   # need at least 3 game logs to compute rates
+    # ---------------------------------------------------------------------
+    # 2026-04-29 — RFA-only minutes penalty.
+    # Validated by `/tmp/nba_rfa_minutes_penalty_sim.py` (272 picks, tighter
+    # sweep around 0.85): RFA-only hit rate 63.1% → 85.1% (+22 pts), PTS
+    # 56.8% → 81.1%, PRA 52.8% → 71.7%, only 4 hits broken on 168 RFA picks
+    # (10:1 win ratio). Applies AFTER the availability guard's
+    # restriction_factor, ONLY when status == "RETURNING_FROM_ABSENCE".
+    # FULL_GO, MINUTES_RESTRICTION, MINUTES_VOLATILITY, DNP_RISK paths
+    # are unaffected.
+    #
+    # Controlled via env `NBA_RFA_MINUTES_PENALTY` (float in (0, 1.0]):
+    #   1.0  → disabled (default — no penalty applied)
+    #   0.85 → recommended production setting (post-2026-04-29 promotion)
+    # Out-of-range values are clamped to (0.50, 1.00) for safety.
+    # ---------------------------------------------------------------------
+    try:
+        _RFA_MINUTES_PENALTY = float(
+            os.environ.get("NBA_RFA_MINUTES_PENALTY") or "1.0"
+        )
+    except (TypeError, ValueError):
+        _RFA_MINUTES_PENALTY = 1.0
+    _RFA_MINUTES_PENALTY = max(0.50, min(1.00, _RFA_MINUTES_PENALTY))
 
     @classmethod
     def _compute_rate_components(
@@ -1046,8 +1068,20 @@ class NBAScoringAdapter(ScoringAdapter):
             rf = 1.0
         rf = max(0.50, min(1.00, rf))  # mirror the guard's universal clamp
 
-        exp_min_raw   = comps["expected_minutes_raw"]
-        exp_min_final = exp_min_raw * rf
+        exp_min_raw     = comps["expected_minutes_raw"]
+        exp_min_pre_rfa = exp_min_raw * rf
+
+        # 2026-04-29 — RFA-only minutes penalty. Multiplied AFTER the
+        # availability-guard restriction_factor. ONLY RFA → other states
+        # (FULL_GO, MINUTES_RESTRICTION, MINUTES_VOLATILITY, DNP_RISK)
+        # pass through unchanged.
+        rfa_applied = False
+        rfa_factor  = 1.0
+        if (avail_status == "RETURNING_FROM_ABSENCE"
+            and self._RFA_MINUTES_PENALTY < 1.0):
+            rfa_factor  = float(self._RFA_MINUTES_PENALTY)
+            rfa_applied = True
+        exp_min_final = exp_min_pre_rfa * rfa_factor
 
         r_pts = comps["rate_pts_per_min"]
         r_reb = comps["rate_reb_per_min"]
@@ -1073,6 +1107,11 @@ class NBAScoringAdapter(ScoringAdapter):
         prop["rate_ast_per_min"]     = (round(r_ast, 6) if r_ast is not None else None)
         prop["expected_minutes_raw"] = round(exp_min_raw, 4)
         prop["expected_minutes"]     = round(exp_min_final, 4)
+        # 2026-04-29 — RFA penalty audit stamps.
+        prop["expected_minutes_before_rfa_penalty"] = round(exp_min_pre_rfa, 4)
+        prop["expected_minutes_after_rfa_penalty"]  = round(exp_min_final, 4)
+        prop["rfa_minutes_penalty_applied"]         = rfa_applied
+        prop["rfa_minutes_penalty_factor"]          = rfa_factor
         prop["mu_rate_projection"]   = round(mu_rate, 4)
         prop["mu_model_projection"]  = round(float(mu_model), 4)
         prop["mu_final_projection"]  = round(mu_final, 4)

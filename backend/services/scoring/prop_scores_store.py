@@ -253,6 +253,12 @@ _SCORE_OUTPUT_FIELDS = (
     "rate_model_blend_weights",
     "rate_model_blend_mode",
     "rate_model_trigger",
+    # NBA — RFA-only minutes penalty (2026-04-29). Active when
+    # NBA_RFA_MINUTES_PENALTY env var < 1.0; default 1.0 = disabled.
+    "rfa_minutes_penalty_applied",
+    "rfa_minutes_penalty_factor",
+    "expected_minutes_before_rfa_penalty",
+    "expected_minutes_after_rfa_penalty",
     # NBA — Shadow Recipe E projection (2026-04-28). AUDIT-ONLY: never
     # replaces μ_current. Tracked for 7-day forward-test validation.
     "mu_recency_E",

@@ -574,6 +574,9 @@ async def recompute_sport(
             "mu_final_projection",
             "rate_model_blend_weights", "rate_model_blend_mode",
             "rate_model_trigger",
+            "rfa_minutes_penalty_applied", "rfa_minutes_penalty_factor",
+            "expected_minutes_before_rfa_penalty",
+            "expected_minutes_after_rfa_penalty",
             # NBA — Shadow Recipe E (2026-04-28, audit-only)
             "mu_recency_E", "mu_recency_E_applied", "delta_mu_E_vs_A",
             "mu_recency_E_l3", "mu_recency_E_l10med", "mu_recency_E_l10",
