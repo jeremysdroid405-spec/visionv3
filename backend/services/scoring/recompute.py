@@ -454,6 +454,9 @@ async def recompute_sport(
             # features the underlying ML model received as silent
             # defaults vs real values. Live behaviour unchanged.
             "feature_health": ctx.feature_health,
+            # 2026-05 NBA team injury context. Carried for
+            # observability; not fed into the trained VK model.
+            "injury_context": ctx.injury_context,
             # ranking_score_v2 (2026-02-20 shadow G1):
             #   For OVER:  gap = model_projection - line
             #   For UNDER: gap = line - model_projection

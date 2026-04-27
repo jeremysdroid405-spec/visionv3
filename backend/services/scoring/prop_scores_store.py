@@ -204,6 +204,12 @@ _SCORE_OUTPUT_FIELDS = (
     # real values. Persisted on every score doc for observability /
     # downstream gating to see the data-deficit surface explicitly.
     "feature_health",
+    # 2026-05 injury context — NBA team-level injury aggregates. The
+    # underlying ML model is NOT trained on these features; they are
+    # carried on the score doc for observability and for downstream
+    # consumers (vacuum service, gating, future retrains). Live model
+    # behaviour is unchanged.
+    "injury_context",
 )
 
 _IDENTITY_FIELDS = (

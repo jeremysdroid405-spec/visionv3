@@ -166,25 +166,72 @@ async def _build_vegas_totals_map(
 # Live injuries summary per team.
 # =============================================================================
 async def _build_injury_summary(db, sport: str) -> Dict[str, Dict[str, Any]]:
-    """{team_abbr: {"out_count","dtd_count","out_players":[..]}}."""
+    """{team_abbr: {"out_count","dtd_count","out_players":[..],
+                    "dtd_players":[..]}}.
+
+    Source priority (2026-05):
+      • NBA: `injuries_normalized` (canonical, written by InjurySensor —
+        merges BDL + ESPN + NBA Official, refreshed every cycle).
+        `live_injuries` is deprecated for NBA per `live_injury_micro_sync.py`.
+      • MLB: `injuries_normalized` first, then `live_injuries` as fallback
+        (some legacy MLB code paths still write there with TTL).
+
+    Status normalization:
+      • OUT, OUT_FOR_SEASON, OUT_INDEFINITELY, IL → out
+      • DAY-TO-DAY, DOUBTFUL, QUESTIONABLE, PROBABLE → dtd
+      • Anything else → ignored
+    """
     out: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
-        "out_count": 0, "dtd_count": 0, "out_players": []
+        "out_count": 0, "dtd_count": 0,
+        "out_players": [], "dtd_players": [],
     })
+    OUT_STATUSES = {
+        "OUT", "OUT_FOR_SEASON", "OUT_INDEFINITELY", "IL",
+        "10-DAY-IL", "15-DAY-IL", "60-DAY-IL", "DNP",
+    }
+    DTD_STATUSES = {
+        "DAY-TO-DAY", "DAYTODAY", "DTD", "DOUBTFUL",
+        "QUESTIONABLE", "PROBABLE", "GTD",
+    }
+    seen_keys = set()  # de-dupe across sources by (team, player_name)
+
+    async def _ingest_cursor(cursor):
+        async for inj in cursor:
+            team = (inj.get("team") or "").upper().strip()
+            if not team:
+                continue
+            pname = (inj.get("player_name") or "").strip()
+            key = (team, pname.lower())
+            if key in seen_keys:
+                continue
+            status_raw = (inj.get("status") or "").upper().strip()
+            if status_raw in OUT_STATUSES or inj.get("is_out") is True:
+                out[team]["out_count"] += 1
+                if pname:
+                    out[team]["out_players"].append(pname)
+                seen_keys.add(key)
+            elif status_raw in DTD_STATUSES:
+                out[team]["dtd_count"] += 1
+                if pname:
+                    out[team]["dtd_players"].append(pname)
+                seen_keys.add(key)
+
+    # Canonical source: injuries_normalized (no TTL field — fresh while
+    # InjurySensor is alive).
+    await _ingest_cursor(
+        db["injuries_normalized"].find({"sport": sport})
+    )
+    # Fallback / legacy: live_injuries (TTL-bound). Skip expired rows.
     now = datetime.now(timezone.utc)
-    cursor = db["live_injuries"].find({"sport": sport})
-    async for inj in cursor:
-        # respect TTL semantics — skip if explicitly expired
-        exp = inj.get("expires_at")
-        if exp and isinstance(exp, datetime) and exp < now.replace(tzinfo=exp.tzinfo):
-            continue
-        team = (inj.get("team") or "").upper().strip()
-        if not team:
-            continue
-        if inj.get("is_out"):
-            out[team]["out_count"] += 1
-            out[team]["out_players"].append(inj.get("player_name") or "")
-        else:
-            out[team]["dtd_count"] += 1
+    await _ingest_cursor(
+        db["live_injuries"].find({
+            "sport": sport,
+            "$or": [
+                {"expires_at": None},
+                {"expires_at": {"$gte": now}},
+            ],
+        })
+    )
     return out
 
 
@@ -241,6 +288,177 @@ async def _build_last_game_date_map(db, sport: str) -> Dict[int, str]:
 
 
 # =============================================================================
+# Per-player minutes / usage estimate from `bdl_game_logs[0..9]` (NBA).
+# Used to size the injury-vacuum (team_minutes_removed, key_player_out_flag).
+# =============================================================================
+def _parse_minutes(min_str: Any) -> Optional[float]:
+    """`bdl_game_logs[*].min` is typically 'MM:SS' or numeric. Return float
+    minutes or None when unparseable."""
+    if min_str is None:
+        return None
+    if isinstance(min_str, (int, float)):
+        return float(min_str)
+    s = str(min_str).strip()
+    if not s:
+        return None
+    if ":" in s:
+        try:
+            mm, ss = s.split(":", 1)
+            return float(mm) + float(ss) / 60.0
+        except (ValueError, TypeError):
+            return None
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return None
+
+
+async def _build_player_minutes_usage_map(
+    db, sport: str
+) -> Dict[str, Dict[str, float]]:
+    """{player_name_lower: {"avg_minutes_l10","usage_proxy_l10","team_abbr"}}.
+
+    Usage proxy: (FGA + 0.44*FTA + TO) per minute averaged over L10. Team
+    rank within its roster is computed at consumption time (caller picks
+    top-N to flag `key_player_out_flag`)."""
+    if sport != "nba":
+        return {}
+    out: Dict[str, Dict[str, float]] = {}
+    cursor = db["nba_master_hub_2026"].find(
+        {}, {"player_name": 1, "team_abbr": 1, "team": 1,
+             "bdl_game_logs": 1}
+    )
+    async for row in cursor:
+        name = (row.get("player_name") or "").strip()
+        if not name:
+            continue
+        team = (row.get("team_abbr") or row.get("team") or "").upper().strip()
+        logs = row.get("bdl_game_logs") or []
+        if not logs:
+            continue
+        l10 = logs[:10]
+        mins = [_parse_minutes(g.get("min")) for g in l10]
+        mins = [m for m in mins if m is not None and m > 0]
+        if not mins:
+            continue
+        avg_min = sum(mins) / len(mins)
+        # Usage proxy per game: (FGA + 0.44*FTA + TO) / max(1, mins_g)
+        usage_per_game = []
+        for g in l10:
+            m = _parse_minutes(g.get("min"))
+            if m is None or m <= 0:
+                continue
+            fga = float(g.get("fga") or 0)
+            fta = float(g.get("fta") or 0)
+            tov = float(g.get("turnover") or 0)
+            usage_per_game.append((fga + 0.44 * fta + tov) / m * 36.0)
+        usage_l10 = (
+            sum(usage_per_game) / len(usage_per_game)
+            if usage_per_game else 0.0
+        )
+        out[name.lower()] = {
+            "avg_minutes_l10": round(avg_min, 2),
+            "usage_proxy_l10": round(usage_l10, 2),
+            "team_abbr": team,
+        }
+    return out
+
+
+def _compute_team_injury_features(
+    team_abbr: Optional[str],
+    injuries_by_team: Dict[str, Dict[str, Any]],
+    minutes_usage_map: Dict[str, Dict[str, float]],
+) -> Dict[str, Any]:
+    """Compute team-level injury aggregates for the given team.
+
+    Returns a dict with:
+      injury_count           — out + dtd
+      out_count              — players with status == OUT
+      dtd_count              — players with status DTD/Q/P/D
+      out_players            — list of player names (out)
+      missing_minutes        — sum of L10 avg minutes across out players
+      missing_usage_pct      — sum of L10 usage proxies across out players
+      usage_vacuum_factor    — 1 + (missing_usage_pct / team_total_usage)
+      team_minutes_removed   — alias of missing_minutes (spec naming)
+      team_usage_removed_pct — alias of missing_usage_pct
+      key_player_out_flag    — 1 if any of the team's top-2 minutes
+                               leaders is out, else 0
+      injury_data_is_imputed — 1 when no team_abbr or no source data
+    """
+    base = {
+        "injury_count": 0, "out_count": 0, "dtd_count": 0,
+        "out_players": [],
+        "missing_minutes": 0.0, "missing_usage_pct": 0.0,
+        "usage_vacuum_factor": 1.0,
+        "team_minutes_removed": 0.0,
+        "team_usage_removed_pct": 0.0,
+        "key_player_out_flag": 0,
+        "injury_data_is_imputed": 1 if not team_abbr else 0,
+    }
+    if not team_abbr:
+        return base
+    team_inj = injuries_by_team.get(team_abbr)
+    if team_inj is None:
+        # Not present in the canonical map. The caller passes a sport-
+        # wide flag (`injury_source_empty`) when the entire collection
+        # was empty (= true imputation). Otherwise: a team simply has
+        # zero reported injuries, which is a valid real value.
+        base["injury_data_is_imputed"] = 0
+        return base
+    base["injury_data_is_imputed"] = 0
+    out_players = list(team_inj.get("out_players") or [])
+    base["out_count"] = int(team_inj.get("out_count") or 0)
+    base["dtd_count"] = int(team_inj.get("dtd_count") or 0)
+    base["injury_count"] = base["out_count"] + base["dtd_count"]
+    base["out_players"] = out_players
+
+    # Minutes / usage aggregates from `nba_master_hub_2026` L10.
+    if not minutes_usage_map:
+        return base
+    out_player_keys = {p.lower() for p in out_players}
+    missing_min = 0.0
+    missing_usage = 0.0
+    for k in out_player_keys:
+        m = minutes_usage_map.get(k)
+        if not m:
+            continue
+        missing_min += float(m.get("avg_minutes_l10") or 0.0)
+        missing_usage += float(m.get("usage_proxy_l10") or 0.0)
+    base["missing_minutes"] = round(missing_min, 2)
+    base["missing_usage_pct"] = round(missing_usage, 2)
+    base["team_minutes_removed"] = round(missing_min, 2)
+    base["team_usage_removed_pct"] = round(missing_usage, 2)
+
+    # Team-level minutes / usage totals (top-13 roster) for vacuum factor.
+    roster = [v for v in minutes_usage_map.values()
+              if (v.get("team_abbr") or "").upper() == team_abbr]
+    roster_sorted = sorted(
+        roster, key=lambda r: -float(r.get("avg_minutes_l10") or 0.0)
+    )
+    total_team_usage = sum(
+        float(r.get("usage_proxy_l10") or 0.0) for r in roster_sorted[:13]
+    )
+    if total_team_usage > 0:
+        # 1.0 → no vacuum; >1.0 → some usage redistributed
+        base["usage_vacuum_factor"] = round(
+            1.0 + missing_usage / total_team_usage, 3
+        )
+    # Key player flag: any of top-2 minute leaders is out.
+    top2_names = [r for r in roster_sorted[:2]]
+    if top2_names:
+        # Reverse-lookup: which name(s) sit in the top2 slots?
+        for name_lower, payload in minutes_usage_map.items():
+            if (payload.get("team_abbr") or "").upper() != team_abbr:
+                continue
+            if payload not in top2_names:
+                continue
+            if name_lower in out_player_keys:
+                base["key_player_out_flag"] = 1
+                break
+    return base
+
+
+# =============================================================================
 # MAIN ENTRY
 # =============================================================================
 async def hydrate_game_context_on_props(
@@ -268,6 +486,16 @@ async def hydrate_game_context_on_props(
     game_totals, team_totals = await _build_vegas_totals_map(db, sport, event_ids)
     injuries_by_team = await _build_injury_summary(db, sport)
     last_game_date = await _build_last_game_date_map(db, sport)
+    # 2026-05 — per-player minutes / usage (NBA only) used to size
+    # `team_minutes_removed`, `team_usage_removed_pct`,
+    # `usage_vacuum_factor`, `key_player_out_flag`.
+    minutes_usage_map = await _build_player_minutes_usage_map(db, sport)
+    # Sport-wide flag: when no canonical injury source returned ANY
+    # rows, every prop's injury_context is imputed.
+    injury_source_empty = (sum(
+        v.get("out_count", 0) + v.get("dtd_count", 0)
+        for v in injuries_by_team.values()
+    ) == 0)
 
     counters = {
         "team_resolved": 0,
@@ -342,7 +570,7 @@ async def hydrate_game_context_on_props(
             p["team_total"] = None
             imputed_fields.append("team_total")
 
-        # ---- Live injuries summary ----
+        # ---- Live injuries summary (legacy — basic counts) ----
         if team_abbr or (is_home_team is not None and home_abbr and away_abbr):
             counters["injuries_filled"] += 1
             ti = injuries_by_team.get(team_abbr or "", {})
@@ -366,6 +594,31 @@ async def hydrate_game_context_on_props(
             p["live_injuries_opp"] = None
             p["live_injury_count"] = None
             imputed_fields.append("live_injuries")
+
+        # ---- Team-level injury context (2026-05) ----
+        # Available on NBA props (minutes_usage_map populated only for NBA).
+        # `injury_data_is_imputed` flips to 1 when source data was empty
+        # OR the player's team couldn't be resolved.
+        team_inj_ctx = _compute_team_injury_features(
+            team_abbr, injuries_by_team, minutes_usage_map,
+        )
+        opp_inj_ctx = _compute_team_injury_features(
+            p.get("opponent_team"), injuries_by_team, minutes_usage_map,
+        )
+        if injury_source_empty:
+            team_inj_ctx["injury_data_is_imputed"] = 1
+            opp_inj_ctx["injury_data_is_imputed"] = 1
+        p["team_injury_context"] = team_inj_ctx
+        p["opp_injury_context"] = opp_inj_ctx
+        # Spec field aliases for downstream consumers.
+        p["team_injury_count"] = team_inj_ctx["injury_count"]
+        p["team_out_count"] = team_inj_ctx["out_count"]
+        p["missing_usage_estimate"] = team_inj_ctx["team_usage_removed_pct"]
+        p["missing_minutes_estimate"] = team_inj_ctx["team_minutes_removed"]
+        p["usage_vacuum_factor"] = team_inj_ctx["usage_vacuum_factor"]
+        p["key_player_out_flag"] = team_inj_ctx["key_player_out_flag"]
+        if team_inj_ctx["injury_data_is_imputed"] == 1:
+            imputed_fields.append("injury_data")
 
         # ---- Sport-specific ----
         if sport == "nba":

@@ -1,5 +1,46 @@
 # Changelog
 
+## 2026-05 — NBA Live Injuries Pipeline Repair + Integration
+
+**User directive**: *"Restore real-time injury data so VegasKillerModel can account for missing players and usage redistribution. Hydration + feature input only — no gates / thresholds / routing / LOM changes; no retraining."*
+
+### Root cause
+`live_injuries` collection was 100% TTL-expired (60-second TTL, micro-sync skipped NBA writes per 2026-04-18 deprecation in `live_injury_micro_sync.py`). Hydration was reading from the wrong (deprecated) collection. The canonical NBA source is `injuries_normalized` (written by `services/injury_sensor.py`, merges BDL + ESPN + NBA Official, refreshed continuously — 124 NBA + 167 MLB rows, latest sync within seconds at all times).
+
+### Changes (read-only on injury sources, write on hydration)
+- `services/feature_hydration.py`
+  - `_build_injury_summary` now reads `injuries_normalized` (canonical) with `live_injuries` as legacy fallback. Status normalization handles `OUT` / `OUT_FOR_SEASON` / `OUT_INDEFINITELY` / `IL` / `DOUBTFUL` / `QUESTIONABLE` / `PROBABLE` / `DTD`.
+  - Added `_build_player_minutes_usage_map(db, sport)` — builds `{player_name_lower → {avg_minutes_l10, usage_proxy_l10, team_abbr}}` from `nba_master_hub_2026.bdl_game_logs[:10]` for sizing the team injury vacuum.
+  - Added `_compute_team_injury_features` — per-team aggregates: `injury_count`, `out_count`, `dtd_count`, `out_players`, `missing_minutes`, `missing_usage_pct`, `usage_vacuum_factor`, `team_minutes_removed`, `team_usage_removed_pct`, `key_player_out_flag` (top-2 minutes leader out), `injury_data_is_imputed`.
+  - Hydration now writes `team_injury_context`, `opp_injury_context`, plus spec aliases: `team_injury_count`, `team_out_count`, `missing_usage_estimate`, `missing_minutes_estimate`, `usage_vacuum_factor`, `key_player_out_flag`.
+- `services/scoring/adapters/base.py` — `ScoringContext.injury_context` field added.
+- `services/scoring/adapters/nba_scoring.py` — populates `ctx.injury_context` from prop hydration.
+- `services/scoring/recompute.py` — persists `injury_context` on every NBA score doc.
+- `services/scoring/prop_scores_store.py` — `injury_context` added to `_SCORE_OUTPUT_FIELDS`.
+- `services/scoring/adapters/mlb_scoring.py` — fixed `UnboundLocalError` on `hf_feature_health` when HF model is absent.
+
+### Verification (2026-04-27 production recompute)
+- `injuries_normalized` NBA: **124 fresh rows**, latest sync `2026-04-27T00:17:21Z` (continuous via InjurySensor)
+- `nba_prop_scores` (3,060 docs):
+  - 100 % carry `injury_context`
+  - **99.3 % have real data** (`injury_data_is_imputed == 0`)
+  - **67 % have `team_out_count > 0`** — most props are on teams with a player out
+  - **23 % have `key_player_out_flag == 1`** — top-2 minutes leader is OUT
+- Differential confirmed:
+  - AFFECTED — Ayo Dosunmu PTS (Chicago, 2 OUT incl. key player): `vacuum=1.308`, `missing_min=24.3`, `key_out=1`
+  - HEALTHY — Payton Pritchard PTS (Boston, 0 OUT): `vacuum=1.0`, `missing_min=0.0`, `key_out=0`
+
+### Guardrails respected
+- VK `predict()` signature unchanged — model still receives only its 105 trained features (model is NOT trained on injuries; injuries are carried for observability + downstream consumption).
+- No gate / threshold / routing / TP / LOM / frontend changes.
+- No retraining.
+- Silent defaults forbidden — `injury_data_is_imputed` flag set whenever team_abbr can't be resolved.
+
+### Known minor refinement
+~50 % of OUT players in `injuries_normalized` don't have a name match in `nba_master_hub_2026.player_name` (e.g., suffix differences "Jr."), so their minutes contribution to `missing_minutes_estimate` is dropped while `out_count` is still correct. Switching the join to `bdl_player_id` would close this gap; deferred since the current count-and-flag features already provide the strongest binary signal.
+
+
+
 ## 2026-05 — Full Feature Activation Project (NBA + MLB)
 
 **User directive**: *"Hydrate live props with game context. Pipe target_game/team_total/sharp_implied into VK. Fix MLB opponent/park resolution. Add missing-value flags. No retraining, no gate/threshold/TP/routing/frontend changes."*

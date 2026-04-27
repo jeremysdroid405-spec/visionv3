@@ -1661,4 +1661,23 @@ class NBAScoringAdapter(ScoringAdapter):
             minutes_composition_per_min_rate=minutes_composition_per_min_rate,
             # 2026-05 missing-value policy.
             feature_health=vk_feature_health,
+            # 2026-05 injury context — team + opp aggregates (counts,
+            # missing minutes/usage, key-player-out, vacuum factor).
+            # Populated by `feature_hydration.py` upstream. NOT fed
+            # into VK's trained 105-feature input — carried here for
+            # observability and downstream consumption.
+            injury_context=({
+                "team": prop.get("team_injury_context"),
+                "opp": prop.get("opp_injury_context"),
+                "team_injury_count": prop.get("team_injury_count"),
+                "team_out_count": prop.get("team_out_count"),
+                "missing_usage_estimate": prop.get("missing_usage_estimate"),
+                "missing_minutes_estimate": prop.get("missing_minutes_estimate"),
+                "usage_vacuum_factor": prop.get("usage_vacuum_factor"),
+                "key_player_out_flag": prop.get("key_player_out_flag"),
+                "injury_data_is_imputed": (
+                    (prop.get("team_injury_context") or {})
+                    .get("injury_data_is_imputed", 1)
+                ),
+            } if prop.get("team_injury_context") is not None else None),
         )

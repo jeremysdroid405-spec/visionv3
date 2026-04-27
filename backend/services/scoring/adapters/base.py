@@ -116,6 +116,10 @@ class ScoringContext:
     # surface. Live behaviour is unchanged — model still receives its
     # training default; this just makes the deficit explicit.
     feature_health: Optional[Dict[str, Any]] = None
+    # 2026-05 injury context — NBA-only team-level aggregates. NOT a
+    # model input (VK is not trained on injuries). Carried for
+    # observability and downstream consumption.
+    injury_context: Optional[Dict[str, Any]] = None
 
 
 class ScoringAdapter(ABC):

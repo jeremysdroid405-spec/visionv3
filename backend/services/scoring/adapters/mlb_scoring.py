@@ -224,6 +224,7 @@ class MLBScoringAdapter(ScoringAdapter):
         # is "model" (or None when the HF model is unavailable / the
         # bdl_player_id is missing).
         projection_method: Optional[str] = None
+        hf_feature_health = None
         if hf_model and bdl_player_id is not None:
             # 2026-05 feature-activation: prefer the hydrated 3-letter
             # abbr (`opponent_team`/`park_team`) written by
