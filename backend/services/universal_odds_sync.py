@@ -1532,6 +1532,22 @@ class UniversalOddsSyncService:
                         )
 
                 await collection.insert_many(clean_props)
+
+                # 2026-05 NBA feature-engine (Tier-1/2/3 context features
+                # for upcoming VK retrain). Runs as an OPTIONAL,
+                # non-breaking step after props are persisted. Failures
+                # here never block the sync.
+                if sport == "nba":
+                    try:
+                        from services.features.nba_feature_engine import (
+                            enrich_slate,
+                        )
+                        feat_report = await enrich_slate(self.db, sport)
+                        results["nba_context_features"] = feat_report
+                    except Exception as _fe_err:
+                        logger.warning(
+                            f"[NBA_FEATURES] enrich_slate skipped: {_fe_err}"
+                        )
                 
                 inserted = len(clean_props)
                 results["inserted"] = inserted

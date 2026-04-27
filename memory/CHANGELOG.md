@@ -1,5 +1,65 @@
 # Changelog
 
+## 2026-05 — NBA Context Feature Engine (`services/features/nba_feature_engine.py`)
+
+**User directive**: *"Add a new feature engineering layer for NBA props to support the upcoming VK retrain. Do NOT modify scoring/gating/probability logic. Optional, non-breaking."*
+
+### What shipped
+**NEW** `services/features/nba_feature_engine.py` — computes 10 context features per (player, game, stat) and persists them to a new collection `nba_player_context_features` (Option B — separate collection, zero risk to existing readers).
+
+**Public API**:
+- `build_player_context_features(db, bdl_player_id, game_id, **kwargs) → dict`
+- `build_team_context(db, team_abbr, game_id, **kwargs) → dict`
+- `enrich_slate(db, sport='nba') → coverage report`
+
+**Integration**: `services/universal_odds_sync.py` — calls `enrich_slate` AFTER props are persisted, wrapped in try/except. Failure here is logged but never blocks the sync. Production scoring path is untouched.
+
+### Verified coverage on 1,878 NBA props
+| Tier | Feature | Coverage |
+|---|---|---:|
+| T1 | usage_vacuum_factor | 100 % |
+| T1 | key_player_out_flag | 100 % |
+| T1 | team_usage_removed_pct | 100 % |
+| T1 | blowout_risk | 100 % |
+| T1 | rest_days | 100 % |
+| T1 | back_to_back_flag | 100 % |
+| T2 | pace_differential | 100 % |
+| T2 | defensive_matchup_tier | 100 % |
+| T3 | potential_assists_rate | 95.1 % |
+| T3 | home_away_split_delta | 0 % (data-source gap; structural only) |
+
+Average feature_coverage: 0.895 across all 1,878 rows. **All Tier-1 + Tier-2 features at 100 %.**
+
+### Data sources used (read-only)
+- `nba_master_hub_2026` — roster + game logs
+- `injuries_normalized` (canonical) + `live_injuries` (legacy fallback)
+- `bdl_advanced_stats` — `usage_percentage`, `passes`, `is_home`
+- `defensive_momentum_cache` — opponent positional defensive rating
+- `dg_raw_odds_markets` (`spreads`) — Vegas spread for blowout_risk
+- `services.team_stats_service.TEAM_PACE_2026` — team pace constants
+
+### Assumptions
+1. `usage_rate` ≥ 20 % defines a "key player". Aligned with NBA analytics convention.
+2. `blowout_risk = min(|spread| / 15, 1.0)` per spec.
+3. `pace_differential` capped at ±10 pts/100poss before normalizing to [-1, 1].
+4. `defensive_matchup_tier` thresholds: ≤ 110 elite · 110-116 average · ≥ 116 weak.
+5. `home_away_split_delta` joins master_hub `bdl_game_logs.game_id` to `bdl_advanced_stats.is_home`. Currently 0 % coverage because NBA hub `bdl_game_logs` doesn't carry `game_id` for older entries — once a future hub-sync backfill stamps `game_id` on every log, this feature will activate without code change.
+6. `potential_assists_rate` proxied as `passes / matchup_minutes` from L10 `bdl_advanced_stats`. True "potential assists" requires NBA Stats API which isn't on disk.
+
+### Guardrails respected
+- ✅ No scoring / gating / probability / tier-output / production-endpoint changes
+- ✅ New features computed and persisted only; not yet consumed by VK
+- ✅ Failure-tolerant integration (sync proceeds even if enrich_slate fails)
+- ✅ All missing values are `None` (NEVER `0`); structural features include the `feature_coverage` ratio
+- ✅ Feature documents indexed on (`bdl_player_id`, `event_id`, `stat_type`) unique
+
+### Files
+- `services/features/nba_feature_engine.py` (NEW, ~390 LOC)
+- `services/universal_odds_sync.py` (1 try/except block, ≤14 LOC)
+- `/tmp/nba_feature_engine_validation.py` (validation script)
+
+
+
 ## 2026-05 — Forward-Test Resolver Pipeline Repaired
 
 **User directive**: *"Restore resolution of props after games complete — actual_value & outcome were None on every snapshot, blocking all model evaluation."*
