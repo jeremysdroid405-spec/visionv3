@@ -3659,3 +3659,12 @@ Pure analysis — no projection / gate / model changes. Tested cutoffs
 ### Daily Monitor
 - `scripts/nba_tier_hit_rate_monitor.py` — persists daily snapshot to `nba_tier_monitor`
 - Alerts on >5pt hit-rate drop vs baseline (SH 88.5 / FL 75.8 / WZ 58.6)
+
+### RFA Penalty — Stack-Wide Application (2026-04-29 follow-up)
+- Extracted shared classmethod helper `NBAScoringAdapter._apply_rfa_minutes_penalty(prop, exp_min_pre, avail_status)` — single source of truth for the penalty across all minutes-driven projections.
+- Applied to both rate × minutes paths:
+  • Production rate × minutes layer (`_maybe_apply_rate_model`) — PTS / PRA
+  • Shadow REB / AST rate × minutes layer (`_maybe_apply_shadow_rate_reb_ast`)
+- Recipe E and PTS-VK2 shadows skip the helper because they don't consume `expected_minutes` (pure recency-blend / VK2-output).
+- After recompute: 362 picks penalised (PTS 105, PRA 106, REB 84, AST 67); non-RFA picks unchanged; math verified on sample picks (Goodwin REB 22.09 → 18.77, Robinson AST 27.40 → 23.29).
+- 73/73 tests pass (7 new shadow REB/AST RFA tests added).

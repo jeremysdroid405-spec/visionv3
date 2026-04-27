@@ -910,6 +910,40 @@ class NBAScoringAdapter(ScoringAdapter):
     _RFA_MINUTES_PENALTY = max(0.50, min(1.00, _RFA_MINUTES_PENALTY))
 
     @classmethod
+    def _apply_rfa_minutes_penalty(
+        cls, prop: Dict[str, Any], exp_min_pre: float,
+        avail_status: Optional[str],
+    ) -> float:
+        """Apply the RFA-only minutes penalty to `exp_min_pre` and stamp
+        audit fields onto `prop`. Used by the production rate × minutes
+        layer AND every other path that consumes `expected_minutes`
+        (REB/AST shadow, future minutes-driven projections).
+
+        Returns the post-penalty expected_minutes value. Stamps:
+          • rfa_minutes_penalty_applied  (bool)
+          • rfa_minutes_penalty_factor   (float in [0.50, 1.00])
+          • expected_minutes_before_rfa_penalty  (raw × restriction_factor)
+          • expected_minutes_after_rfa_penalty   (post-penalty value)
+
+        Penalty fires ONLY when `avail_status == "RETURNING_FROM_ABSENCE"`
+        AND the configured factor is < 1.0. All other statuses
+        (FULL_GO, MINUTES_RESTRICTION, MINUTES_VOLATILITY, DNP_RISK,
+        UNKNOWN, None) pass through unchanged.
+        """
+        applied = False
+        factor  = 1.0
+        if (avail_status == "RETURNING_FROM_ABSENCE"
+            and cls._RFA_MINUTES_PENALTY < 1.0):
+            factor  = float(cls._RFA_MINUTES_PENALTY)
+            applied = True
+        exp_min_post = exp_min_pre * factor
+        prop["rfa_minutes_penalty_applied"]         = applied
+        prop["rfa_minutes_penalty_factor"]          = factor
+        prop["expected_minutes_before_rfa_penalty"] = round(exp_min_pre, 4)
+        prop["expected_minutes_after_rfa_penalty"]  = round(exp_min_post, 4)
+        return exp_min_post
+
+    @classmethod
     def _compute_rate_components(
         cls,
         logs: List[Dict[str, Any]],
@@ -1071,17 +1105,10 @@ class NBAScoringAdapter(ScoringAdapter):
         exp_min_raw     = comps["expected_minutes_raw"]
         exp_min_pre_rfa = exp_min_raw * rf
 
-        # 2026-04-29 — RFA-only minutes penalty. Multiplied AFTER the
-        # availability-guard restriction_factor. ONLY RFA → other states
-        # (FULL_GO, MINUTES_RESTRICTION, MINUTES_VOLATILITY, DNP_RISK)
-        # pass through unchanged.
-        rfa_applied = False
-        rfa_factor  = 1.0
-        if (avail_status == "RETURNING_FROM_ABSENCE"
-            and self._RFA_MINUTES_PENALTY < 1.0):
-            rfa_factor  = float(self._RFA_MINUTES_PENALTY)
-            rfa_applied = True
-        exp_min_final = exp_min_pre_rfa * rfa_factor
+        # Shared RFA penalty helper — also stamps audit fields.
+        exp_min_final = self._apply_rfa_minutes_penalty(
+            prop, exp_min_pre_rfa, avail_status,
+        )
 
         r_pts = comps["rate_pts_per_min"]
         r_reb = comps["rate_reb_per_min"]
@@ -1107,11 +1134,6 @@ class NBAScoringAdapter(ScoringAdapter):
         prop["rate_ast_per_min"]     = (round(r_ast, 6) if r_ast is not None else None)
         prop["expected_minutes_raw"] = round(exp_min_raw, 4)
         prop["expected_minutes"]     = round(exp_min_final, 4)
-        # 2026-04-29 — RFA penalty audit stamps.
-        prop["expected_minutes_before_rfa_penalty"] = round(exp_min_pre_rfa, 4)
-        prop["expected_minutes_after_rfa_penalty"]  = round(exp_min_final, 4)
-        prop["rfa_minutes_penalty_applied"]         = rfa_applied
-        prop["rfa_minutes_penalty_factor"]          = rfa_factor
         prop["mu_rate_projection"]   = round(mu_rate, 4)
         prop["mu_model_projection"]  = round(float(mu_model), 4)
         prop["mu_final_projection"]  = round(mu_final, 4)
@@ -1442,8 +1464,15 @@ class NBAScoringAdapter(ScoringAdapter):
             rf = 1.0
         rf = max(0.50, min(1.00, rf))
 
-        exp_min_raw   = comps["expected_minutes_raw"]
-        exp_min_final = exp_min_raw * rf
+        # Compute pre-penalty expected_minutes, then apply the shared
+        # RFA penalty so the REB/AST shadow stays consistent with the
+        # production rate × minutes layer.
+        exp_min_raw     = comps["expected_minutes_raw"]
+        exp_min_pre_rfa = exp_min_raw * rf
+        avail_status_shadow = prop.get("availability_status")
+        exp_min_final = self._apply_rfa_minutes_penalty(
+            prop, exp_min_pre_rfa, avail_status_shadow,
+        )
 
         rate = (comps["rate_reb_per_min"]
                 if stat_up == "REB" else comps["rate_ast_per_min"])

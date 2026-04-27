@@ -164,3 +164,60 @@ def test_invalid_string_is_default_disabled(monkeypatch):
     monkeypatch.setenv("NBA_RFA_MINUTES_PENALTY", "not_a_number")
     mod = _reload_module()
     assert mod.NBAScoringAdapter._RFA_MINUTES_PENALTY == 1.0
+
+
+# ---- NEW: REB/AST shadow path also receives the penalty ----------------
+
+def test_85_factor_applies_to_reb_shadow(monkeypatch):
+    """The REB shadow path must penalise expected_minutes when the
+    player is RFA, identically to the production rate × minutes layer."""
+    monkeypatch.setenv("NBA_RFA_MINUTES_PENALTY", "0.85")
+    mod = _reload_module()
+    a = _build_adapter(mod)
+    prop = {"commence_time": "2027-01-01T00:00:00Z",
+            "minutes_restriction_factor": None,
+            "availability_status": "RETURNING_FROM_ABSENCE"}
+    out = a._maybe_apply_shadow_rate_reb_ast("REB", 99, prop, 8.0)
+    # μ_current is preserved (shadow doesn't replace it).
+    assert out == 8.0
+    # Penalty was stamped via the shared helper.
+    assert prop["rfa_minutes_penalty_applied"] is True
+    assert prop["rfa_minutes_penalty_factor"] == pytest.approx(0.85)
+    em_before = prop["expected_minutes_before_rfa_penalty"]
+    em_after  = prop["expected_minutes_after_rfa_penalty"]
+    assert em_after == pytest.approx(em_before * 0.85, rel=1e-4)
+    # `expected_minutes_shadow` reflects the penalised value.
+    assert prop["expected_minutes_shadow"] == pytest.approx(em_after, rel=1e-4)
+
+
+def test_85_factor_applies_to_ast_shadow(monkeypatch):
+    monkeypatch.setenv("NBA_RFA_MINUTES_PENALTY", "0.85")
+    mod = _reload_module()
+    a = _build_adapter(mod)
+    prop = {"commence_time": "2027-01-01T00:00:00Z",
+            "minutes_restriction_factor": None,
+            "availability_status": "RETURNING_FROM_ABSENCE"}
+    a._maybe_apply_shadow_rate_reb_ast("AST", 99, prop, 5.0)
+    assert prop["rfa_minutes_penalty_applied"] is True
+    em_before = prop["expected_minutes_before_rfa_penalty"]
+    em_after  = prop["expected_minutes_after_rfa_penalty"]
+    assert em_after == pytest.approx(em_before * 0.85, rel=1e-4)
+
+
+@pytest.mark.parametrize("avail_status", [
+    "FULL_GO", "MINUTES_RESTRICTION", "MINUTES_VOLATILITY",
+    "DNP_RISK", None,
+])
+def test_reb_shadow_does_not_penalise_non_rfa(monkeypatch, avail_status):
+    monkeypatch.setenv("NBA_RFA_MINUTES_PENALTY", "0.85")
+    mod = _reload_module()
+    a = _build_adapter(mod)
+    prop = {"commence_time": "2027-01-01T00:00:00Z",
+            "minutes_restriction_factor": None,
+            "availability_status": avail_status}
+    a._maybe_apply_shadow_rate_reb_ast("REB", 99, prop, 8.0)
+    assert prop["rfa_minutes_penalty_applied"] is False
+    assert prop["rfa_minutes_penalty_factor"] == 1.0
+    em_before = prop["expected_minutes_before_rfa_penalty"]
+    em_after  = prop["expected_minutes_after_rfa_penalty"]
+    assert em_before == em_after  # no penalty applied
