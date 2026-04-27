@@ -791,6 +791,8 @@ class NBAScoringAdapter(ScoringAdapter):
         factor = float(info.get("restriction_factor") or 1.0)
         prop["availability_guard_applied"] = True
         prop["availability_status"] = info.get("status")
+        prop["availability_sub_status"] = info.get("availability_sub_status")
+        prop["minutes_recovery_ratio"] = info.get("minutes_recovery_ratio")
         prop["availability_guard_reason"] = info.get("reason")
         prop["dnp_risk_flag"] = info.get("dnp_risk_flag", False)
         prop["injury_return_flag"] = info.get("injury_return_flag", False)

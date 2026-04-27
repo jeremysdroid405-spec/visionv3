@@ -225,6 +225,8 @@ _SCORE_OUTPUT_FIELDS = (
     # NBA — unified availability guard (2026-04-27)
     "availability_guard_applied",
     "availability_status",
+    "availability_sub_status",
+    "minutes_recovery_ratio",
     "availability_guard_reason",
     "dnp_risk_flag",
     "injury_return_flag",

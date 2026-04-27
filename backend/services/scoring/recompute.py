@@ -559,6 +559,7 @@ async def recompute_sport(
             "mu_minutes_l3", "mu_minutes_l10",
             # NBA — unified availability guard (2026-04-27)
             "availability_guard_applied", "availability_status",
+            "availability_sub_status", "minutes_recovery_ratio",
             "availability_guard_reason", "dnp_risk_flag",
             "injury_return_flag", "minutes_restriction_flag",
             "games_missed_recently", "return_game_number",

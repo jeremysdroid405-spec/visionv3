@@ -1,6 +1,39 @@
 # PRD — NBA/MLB Ferrari / PropVision AI
 
 
+## 2026-04-27 — NBA Availability Guard v3 (RETURNING split: RESTRICTED / SOFT / FULL_GO)
+Refactored monolithic `RETURNING_FROM_ABSENCE` bucket into three sub-statuses driven by `minutes_recovery_ratio = L3_min / L10_min`. Probability engine, σ/CV, recency blend, gates: untouched. Universal clamp `restriction_factor ∈ [0.50, 1.00]` enforced at every classifier return point.
+
+| Sub-status              | Recovery band   | Factor (g1 / g2 / g3) |
+|-------------------------|-----------------|------------------------|
+| `RETURNING_RESTRICTED`  | < 0.80          | 0.75 / 0.80 / 0.85     |
+| `RETURNING_SOFT`        | 0.80 – 0.90     | 0.90 / 0.95 / 0.95     |
+| `RETURNING_FULL_GO`     | ≥ 0.90          | 0.97 / 0.99 / 1.00     |
+
+Plus blowout-sit exception (skip DNP_RISK when last_min=0 but prior 2 games ≥ 85% L10), and small-sample skip (require `L10_min ≥ 18` before splitting; else fall back to FULL_GO).
+
+**Replay (last 272 graded NBA picks; 64 had usable bdl logs):**
+- RETURNING_FULL_GO: 16/29 hit (55.2%)
+- RETURNING_SOFT:    1/6 hit (16.7%)
+- RETURNING_RESTRICTED: 0/3 hit (0.0%) — penalty zone correctly identified
+- Misses avoided: 3 · Hits lost: 0 · Net pick-quality delta: +1
+- 0 winners suppressed by the new logic.
+
+**Live recompute (`final-nba-rt`, 4203 props in 41 s):**
+- Availability split: FULL_GO 2746 · RETURNING_FULL_GO 572 · MINUTES_RESTRICTION 101 · DNP_RISK 28 · RETURNING_SOFT 11 · RETURNING_RESTRICTED 2.
+- Of the 585 returners that the OLD pipe would have penalized at flat 0.80, only 13 (2.2%) remain penalized post-split — a **98% reduction in over-penalization**.
+- Top 20 μ-impact picks are now all genuine MINUTES_RESTRICTION (Reaves, Clingan); no more KD/Booker/Jaylen Brown getting μ slashed for healthy returns.
+- Tiers: front_lines 102 · war_zone 24 · safe_haven 9 · unqualified 4068.
+
+**Audit-plumbing fixes (this session):**
+- `nba_scoring._maybe_apply_availability_guard` now stamps `availability_sub_status` and `minutes_recovery_ratio` on the prop.
+- `prop_scores_store._SCORE_OUTPUT_FIELDS` whitelists both new fields.
+- `recompute._project_score_doc` mirror block whitelists both new fields.
+
+Report: `/tmp/nba_avail_guard_v3_REPORT.md`. Replay: `/tmp/nba_avail_guard_v3_replay.py`. Live recompute: `/tmp/nba_live_recompute_v3.py`.
+
+
+
 ## 2026-04-27 — NBA availability-guard precision tune (RETURNING factors 0.80/0.85/0.95)
 Loosened RETURNING_FROM_ABSENCE factors from 0.70/0.80/0.90 → **0.80/0.85/0.95** to minimize false negatives. MINUTES_RESTRICTION (perfect signal) and DNP_RISK left untouched. All other layers unchanged.
 
