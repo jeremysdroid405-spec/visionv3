@@ -284,6 +284,28 @@ THRESHOLDS: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {
 # letting tier assignment depend strictly on odds-bucket routing.
 MLB_GATES_DISABLED_FOR_AUDIT: bool = False
 
+# ============================================================================
+# AUDIT MODE — MLB FRONT LINES gates pulled (2026-04-27)
+# ============================================================================
+# Reason: rebuilding the MLB Front Lines gate suite from scratch. With the
+# legacy thresholds in place, only 1 of 445 routed-FL props qualifies — a
+# 99.8% kill rate dominated by `edge_gate` floors that cannot be cleared on
+# tightly devigged chalk markets (HRR/Hits/RBIs at -200..-240 ref odds).
+# Rather than tune family-by-family in isolation we are disabling all FL
+# gates so the unfiltered routed-FL pool is observable end-to-end and a
+# new gate suite can be designed against the actual edge / HR / CV
+# distribution. SH and WZ MLB gates are NOT affected.
+#
+# To re-enable the production MLB Front Lines gates, set
+# `MLB_FRONT_LINES_GATES_DISABLED = False` and re-run `recompute_sport`.
+# The full pre-audit MLB FL config is preserved unchanged in
+# `_MLB_FRONT_LINES` and `_MLB_FRONT_LINES_FROZEN_AUDIT_2026_04_25`.
+#
+# Behaviour: routed_tier == "front_lines" → final tier == "front_lines"
+# for every prop that reached the gate stage (i.e. survived 0-book
+# exclusion + has a reference_odds in -239..+149).
+MLB_FRONT_LINES_GATES_DISABLED: bool = True
+
 # Frozen pre-audit config (kept verbatim so the rebuild has a reference
 # to diff against — DO NOT EDIT until the audit lands.)
 _MLB_SAFE_HAVEN_FROZEN_AUDIT_2026_04_25 = _mlb_thresholds(_MLB_SAFE_HAVEN)
@@ -305,6 +327,13 @@ if MLB_GATES_DISABLED_FOR_AUDIT:
         "front_lines": {"_default": _AUDIT_PASS_ALL},
         "war_zone":    {"_default": _AUDIT_PASS_ALL},
     }
+elif MLB_FRONT_LINES_GATES_DISABLED:
+    # Surgical variant: pull ONLY the Front Lines gate suite. SH + WZ
+    # MLB gates remain on. Same `coverage_gate` min_books=0 idiom so
+    # every routed-FL prop passes (the engine returns `failed_gates=[]`
+    # when its only gate is satisfied).
+    _AUDIT_PASS_ALL = {"coverage_gate": {"min_books": 0}}
+    THRESHOLDS["mlb"]["front_lines"] = {"_default": _AUDIT_PASS_ALL}
 
 
 def resolve_thresholds(
