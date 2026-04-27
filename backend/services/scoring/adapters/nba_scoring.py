@@ -532,7 +532,7 @@ class NBAScoringAdapter(ScoringAdapter):
         "P+R", "P+A", "R+A",
         "pts_reb", "pts_ast", "reb_ast",
     }
-    _AVAIL_RETURN_FACTORS = {1: 0.70, 2: 0.80, 3: 0.90}
+    _AVAIL_RETURN_FACTORS = {1: 0.80, 2: 0.85, 3: 0.95}
     _AVAIL_DNP_FACTOR_LAST_GAME = 0.50    # 0 min last game
     _AVAIL_DNP_FACTOR_LOW_PATTERN = 0.65  # 2+ <5min in last 5
     _AVAIL_MIN_RESTRICT_FLOOR = 0.55

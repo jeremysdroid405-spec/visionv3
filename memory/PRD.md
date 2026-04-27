@@ -1,6 +1,33 @@
 # PRD — NBA/MLB Ferrari / PropVision AI
 
 
+## 2026-04-27 — NBA availability-guard precision tune (RETURNING factors 0.80/0.85/0.95)
+Loosened RETURNING_FROM_ABSENCE factors from 0.70/0.80/0.90 → **0.80/0.85/0.95** to minimize false negatives. MINUTES_RESTRICTION (perfect signal) and DNP_RISK left untouched. All other layers unchanged.
+
+**Validation (272 settled NBA OVER picks):**
+| Scheme | Hit rate | Misses avoided | Hits lost | Net |
+|---|---:|---:|---:|---:|
+| 0.70/0.80/0.90 (prior) | **67.7%** | 35 | **8** | +27 |
+| **0.80/0.85/0.95 (new)** | 66.8% | 29 | **2** | +27 |
+
+Same net pick gain, but **6 fewer false negatives** at the cost of 6 fewer catches. Per the user's brief ("preserve edge while minimizing false negatives") this is the better trade — particularly for trust/repeatability of the system.
+
+**Hits-lost trace (under new factors):**
+- Draymond Green PRA 15.5 → μ_avail=14.7 vs actual=21.0 (return_game_1, 1 missed) — pure variance, no heuristic catches
+- Jalen Johnson PRA 31.5 → μ_avail=28.8 vs actual=33.0 (return_game_2, 3 missed) — same
+
+Tari Eason 4 false negatives ELIMINATED. Coby White / Jaylen Brown / Jalen Johnson 1-each false negatives reduced.
+
+**Per-status (new):**
+- MINUTES_RESTRICTION: 13 picks · 4/4 caught · 0 hits lost (still perfect)
+- RETURNING_FROM_ABSENCE: 76 picks · avg factor 0.825 · 24 caught · **2 hits lost** (down from 8)
+- FULL_GO: 183 picks · no adjustment
+
+**Live production (`final-nba-rt`):** Tier distribution unchanged (front_lines 101, safe_haven 11). Recompute: 4,203 props in 44.7 s. All 41 tests still passing.
+
+The combined (recency + availability) stack now closes 27 / 109 (24.8%) of original NBA OVER misses while sacrificing only 2 of original 163 hits (1.2%). Hit rate **59.9% → 66.8%** (+6.9 pp).
+
+
 ## 2026-04-27 — NBA unified availability guard (DNP / injury-return / minutes-restriction)
 Runs at projection layer AFTER recency blend, BEFORE universal probability engine. **Probability engine, σ/CV, recency-blend weights, gates: NOT modified.**
 
