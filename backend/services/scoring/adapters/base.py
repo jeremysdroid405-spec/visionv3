@@ -19,6 +19,7 @@ class ScoringContext:
     # Layer objects (all optional)
     pp_layer: Optional[Dict[str, Any]] = None
     dk_layer: Optional[Dict[str, Any]] = None
+    fd_layer: Optional[Dict[str, Any]] = None  # 2026-04-27 — MLB market source
     mgm_layer: Optional[Dict[str, Any]] = None
     sharp_layer: Optional[Dict[str, Any]] = None
     # Model + stats inputs

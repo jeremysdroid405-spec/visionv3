@@ -163,6 +163,9 @@ class MLBScoringAdapter(ScoringAdapter):
             "book": "prizepicks", "line": line, "odds": prop.get("odds")
         }
         dk_layer = _hydrate("draftkings", "dk_line", "dk_odds", "dk_layer")
+        # 2026-04-27 — FD is now a market source for MLB vision_score
+        # (`scoring_stack._pick_fair_probability` MLB chain).
+        fd_layer = _hydrate("fanduel", "fd_line", "fd_odds", "fd_layer")
         mgm_layer = _hydrate("betmgm", "mgm_line", "mgm_odds", "mgm_layer")
         sharp_layer = prop.get("sharp_layer") or (
             {"book": prop.get("sharp_book"), "line": prop.get("sharp_line"),
@@ -480,6 +483,7 @@ class MLBScoringAdapter(ScoringAdapter):
             recommendation=prop.get("recommendation"),
             pp_layer=pp_layer,
             dk_layer=dk_layer,
+            fd_layer=fd_layer,
             mgm_layer=mgm_layer,
             sharp_layer=sharp_layer,
             p_model=p_model,

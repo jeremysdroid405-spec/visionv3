@@ -148,27 +148,58 @@ def _pick_fair_probability(
     dk_layer: Optional[Dict],
     mgm_layer: Optional[Dict],
     sharp_layer: Optional[Dict],
+    fd_layer: Optional[Dict] = None,
+    sport: Optional[str] = None,
 ) -> Tuple[Optional[float], str]:
     """
     Sharp-first fair probability source selection.
     Returns (fair_prob [0,1] or None, source_label).
-    PP data is NEVER considered as a fair-price source.
+    PP data is NEVER considered as a fair-price source (placeholder odds).
+
+    Source-chain order (per sport):
+
+      NBA chain (unchanged historical behaviour):
+        sharp → DK+MGM consensus → DK → MGM → insufficient_market
+
+      MLB chain (2026-04-27 expansion — FD has dominant MLB
+      player-prop coverage; previously triggered `insufficient_market`
+      on Runs / Stolen Bases / SP K alts where FD is the only quote):
+        sharp → DK+FD consensus → DK → FD → MGM → insufficient_market
+
+    Default chain (no sport hint) keeps the legacy NBA order to avoid
+    silent behaviour changes for any caller that omits `sport`.
 
     The source_label reflects the actual book used:
-      - If sharp_layer present, uses its ``book`` key (e.g., 'pinnacle', 'betonline')
-      - consensus(dk,mgm) / dk / mgm otherwise
+      sharp_layer.book / consensus / dk / fd / mgm
     """
     sharp_odds = sharp_layer.get("odds") if sharp_layer else None
     dk_odds = dk_layer.get("odds") if dk_layer else None
     mgm_odds = mgm_layer.get("odds") if mgm_layer else None
+    fd_odds = fd_layer.get("odds") if fd_layer else None
 
     sharp_p = _american_to_prob(sharp_odds)
     dk_p = _american_to_prob(dk_odds)
     mgm_p = _american_to_prob(mgm_odds)
+    fd_p = _american_to_prob(fd_odds)
 
     if sharp_p is not None:
         book_name = (sharp_layer or {}).get("book") or "sharp"
         return sharp_p, str(book_name).lower()
+
+    sport_lc = (sport or "").lower()
+    if sport_lc == "mlb":
+        # MLB: FD-aware chain.
+        if dk_p is not None and fd_p is not None:
+            return round((dk_p + fd_p) / 2.0, 4), "consensus"
+        if dk_p is not None:
+            return dk_p, "dk"
+        if fd_p is not None:
+            return fd_p, "fd"
+        if mgm_p is not None:
+            return mgm_p, "mgm"
+        return None, "insufficient_market"
+
+    # NBA / default: unchanged.
     if dk_p is not None and mgm_p is not None:
         return round((dk_p + mgm_p) / 2.0, 4), "consensus"
     if dk_p is not None:
@@ -186,6 +217,8 @@ def compute_vision_score(
     cv: Optional[float],
     hit_rate: Optional[float],
     books_available_count: int = 0,
+    fd_layer: Optional[Dict] = None,
+    sport: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Platform-agnostic pick quality.
@@ -194,15 +227,19 @@ def compute_vision_score(
       {
         "vision_score_raw": float or None,   # unnormalized; used for percentile pass
         "vision_score": float or None,       # populated later by percentile pass
-        "quality_source": str,               # pinnacle | consensus | dk | mgm | insufficient_market
+        "quality_source": str,               # pinnacle | consensus | dk | fd | mgm | insufficient_market
         "fair_prob": float or None,
         "stability": float or None,
         "confidence": float or None,
         "edge_vs_fair": float or None,       # p_model - fair_prob  (can be negative)
       }
+
+    `fd_layer` and `sport` are 2026-04-27 additions: when sport='mlb',
+    FanDuel is consulted as a market source (`_pick_fair_probability`'s
+    MLB chain). NBA behaviour is unchanged.
     """
     fair_prob, quality_source = _pick_fair_probability(
-        None, dk_layer, mgm_layer, sharp_layer
+        None, dk_layer, mgm_layer, sharp_layer, fd_layer=fd_layer, sport=sport,
     )
 
     # No market → vision score is undefined (per spec, null).
@@ -723,11 +760,13 @@ def compute_scoring_stack(
     dk_layer = prop.get("dk_layer")
     mgm_layer = prop.get("mgm_layer")
     sharp_layer = prop.get("sharp_layer")
+    fd_layer = prop.get("fd_layer")
 
     vs = compute_vision_score(
         p_model=p_model,
         dk_layer=dk_layer, mgm_layer=mgm_layer, sharp_layer=sharp_layer,
         cv=cv, hit_rate=hit_rate, books_available_count=books_available_count,
+        fd_layer=fd_layer, sport=sport,
     )
     t = compute_tier(
         prop=prop,
