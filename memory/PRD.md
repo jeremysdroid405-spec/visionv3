@@ -1,6 +1,66 @@
 # PRD — NBA/MLB Ferrari / PropVision AI
 
 
+## 2026-04-28 — NBA AST: VK2 promoted to primary (audit + fix)
+**Audit finding:** VK2 AST projection is **not failing** — it's never being called. The hourly recompute calls `recompute_sport(...)` with no `override_config`, so `active_method_early` defaults to `"model"` and ALL NBA stats (PTS/REB/AST/3PM/PRA) silently route to legacy VK1's `_predict_model_prob_over`. VK2 artifacts (loaded, calibrated, ECDF-bucketed) sat dormant. PTS/PRA had the rate × minutes layer compensating; AST/REB/3PM had nothing.
+
+**Trace (Jokic AST 8.5):**
+- `_predict_vk2_prob_over("AST")` direct call → `projection=8.307, sigma=1.711, p_over=0.327` ✓
+- Live score doc → `vk2_projection=None, model_projection=11.7` (VK1 over-projecting; L20 mean 10.95, L5=8.4, L10med=9.5).
+
+**Fix:** Added `_VK2_PRIMARY_STATS = {"AST"}` to `nba_scoring.py`. Per-stat promotion:
+- If `override_config.vision_score.p_true_method` is set → honor it (existing).
+- Else if `model_key in _VK2_PRIMARY_STATS` → use VK2.
+- Else → legacy VK1 (existing default for PTS/PRA/REB/3PM).
+
+Adv-map preload now keys on `wants_vk2 = (active_method_early == "vk2") or (prop.stat_type in _VK2_PRIMARY_STATS)` so the lazy-load fires when AST props arrive.
+
+**Live recompute verification (`final-nba-rt`, 4349 props in 45 s):**
+| Stat | Before | After |
+|------|-------:|------:|
+| AST `vk2_projection` populated | 0 / 413 | **408 / 413 (98.8%)** ✓ |
+| AST `model_projection` (VK1)   | 408     | 0 |
+| PTS / PRA / REB                | unchanged | unchanged |
+
+Jokic AST 8.5: VK1=11.7 → **VK2=8.31**. p_true_vk2 = 0.4551 (close to even, correct given μ ≈ line). Recipe-E shadow agrees: mu_recency_E = 7.72.
+
+The 5 AST props without VK2 are missing `bdl_player_id` or have < 5 history logs (existing eligibility).
+
+**Tests:** 4 new unit tests in `tests/test_nba_vk2_ast_routing.py` (40/40 total passing).
+
+**Audit report:** `/tmp/nba_vk2_ast_audit_REPORT.md`. Verifier: `/tmp/nba_vk2_ast_routing_verify.py`.
+
+REB / 3PM remain on legacy VK1 pending separate audit — they have similar VK2 artifacts but different bias profiles, and the user scoped this ticket to AST.
+
+
+
+## 2026-04-28 — NBA Shadow Recipe E projection (audit-only)
+After the read-only multi-recipe replay over the full 272-pick set showed Recipe E (heavy-recency: L3 .50 / L10med .20 / L10 .10 / model .10) hitting **+6.2 pp OVER hit rate** (61.0% → 67.3%, +17 net flips, 0 hits lost), shipped a SHADOW projection layer that runs alongside production. **Production μ is NOT affected.**
+
+**Where it runs:** appended to all 3 NBA score-loop call sites (legacy VK, VK2, PRA-synth) AFTER the rate × minutes layer. Returns `mu_current` unchanged. Stamps audit fields on the prop.
+
+**Audit fields** (whitelisted in `_SCORE_OUTPUT_FIELDS` + `recompute._project_score_doc`; surfaced top-level in `forward_test_snapshots`):
+- `mu_recency_E` — shadow blended μ
+- `mu_recency_E_applied` — always `False` (production untouched)
+- `delta_mu_E_vs_A` — `mu_recency_E − mu_current`
+- `mu_recency_E_l3 / _l10med / _l10` — input baselines
+
+**Eligibility:** any volume stat with ≥3 logs carrying the value: PTS, PRA, REB, AST, P+R, P+A, R+A (covers alternate-line variants too via canonical resolution).
+
+**Live recompute (`final-nba-rt`, 4331 props in 47 s):**
+- mu_recency_E populated on **2249/2271 (99.0%)** of eligible volume-stat props.
+- mu_recency_E_applied=True count: **0** ✓ (invariant intact — production μ never modified).
+- Δ distribution: mean −0.045, median −0.066, stdev 1.10. Range [−4.05, +4.16].
+- Bucket breakdown: 65% of props have |Δ| < 1.0; only 1.6% have |Δ| > 3.
+
+**Captured into forward_test_snapshots** at top level: `mu_current`, `mu_recency_E`, `delta_mu_E_vs_A` so the 7-day eval doesn't have to dig into `full_prop_data`.
+
+**Tests:** 10 new unit tests in `tests/test_nba_shadow_recency_e.py`. Universal-engine + rate-model tests still passing (36/36 total).
+
+**Eval script:** `/tmp/nba_shadow_E_eval.py` — run this daily as outcomes settle; reports OVER hit rate (A vs E), flip matrix (misses avoided / hits lost), per-family + per-day rollups. Goal: validate whether the +6.2 pp edge survives with production safeguards (recency blend + availability guard + rate × minutes) co-active. Re-evaluate after 7 days of capture data.
+
+
+
 ## 2026-04-28 — NBA Rate × Minutes projection layer (PTS / PRA)
 New μ-override that runs AFTER recency blend + availability guard, BEFORE the universal probability engine. Replaces total-projection bias with `rate_per_minute × expected_minutes`, blended 60/40 with the existing model μ. **Probability engine, σ/CV, recency-blend weights, availability-guard logic, gates: NOT modified.**
 

@@ -61,6 +61,17 @@ class NBAScoringAdapter(ScoringAdapter):
 
     # Which stat_types have a Vegas Killer model on disk
     _MODEL_STATS = {"PTS", "REB", "AST", "3PM", "PRA"}
+    # 2026-04-28 — Stats where VK2 is the PRIMARY model path even when no
+    # `override_config.vision_score.p_true_method` is supplied. VK2 ships
+    # a 5-season weighted regressor + per-stat empirical sigma + ECDF
+    # bucket calibration, all loaded at init. AST is the first stat
+    # promoted (audit `/tmp/nba_vk2_ast_audit_REPORT.md`): legacy VK1
+    # over-projects systematically (Jokic 11.7 vs VK2 8.3 vs L20 mean
+    # 10.95), and VK2 returns sane values end-to-end with 0 missing
+    # features. Override still wins: explicit p_true_method="model"
+    # forces legacy. Empty / missing override → VK2 for stats in this
+    # set, VK1 for everything else.
+    _VK2_PRIMARY_STATS = {"AST"}
     # Canonical family (lowercase, from resolve_stat_family) → model key
     # (the UPPERCASE stat_type the VK / VK2 predictors internally expect).
     # Every raw market name — standard or alternate — routes to a family
@@ -1057,6 +1068,181 @@ class NBAScoringAdapter(ScoringAdapter):
 
 
     # =========================================================================
+    # 2026-04-28 — Shadow Recipe E (heavy-recency) projection.
+    # =========================================================================
+    # AUDIT-ONLY layer that runs at the very end of the projection
+    # pipeline (AFTER recency blend, availability guard, and rate × minutes).
+    # NEVER replaces μ_current — only stamps shadow fields so we can
+    # forward-test Recipe E against the live blend over the next 7 days.
+    #
+    # Recipe E (validated 2026-04-28 on 272 settled NBA picks):
+    #     μ_E = 0.50·L3_avg + 0.20·L10_median + 0.10·L10_avg + 0.10·μ_model
+    # Weights renormalised to sum to 1.0 at evaluation time so they are
+    # applied identically to how the offline replay measured them.
+    #
+    # Stamp fields (all audit-only):
+    #   • mu_recency_E              — Recipe-E blended μ
+    #   • mu_recency_E_applied      — always False (production untouched)
+    #   • delta_mu_E_vs_A           — mu_recency_E − mu_current
+    #   • mu_recency_E_l3, _l10med, _l10  — input baselines
+    # =========================================================================
+    _SHADOW_E_TARGET_STATS = {
+        "PTS", "PRA", "REB", "AST",
+        "P+R", "P+A", "R+A",
+        "pts_reb", "pts_ast", "reb_ast",
+    }
+    _SHADOW_E_WEIGHTS = {"L3": 0.50, "L10MED": 0.20, "L10": 0.10, "MODEL": 0.10}
+    _SHADOW_E_MIN_SAMPLES = 3
+
+    @classmethod
+    def _shadow_E_stat_value(
+        cls, log: Dict[str, Any], stat_type: str
+    ) -> Optional[float]:
+        """Per-game value extractor covering volume stats. Independent
+        of `_stat_value_from_log` so the production recency blend's
+        scope (PTS/PRA only) stays intact."""
+        s = (stat_type or "").upper()
+        try:
+            if s == "PTS":
+                v = log.get("pts")
+                return float(v) if v is not None else None
+            if s == "REB":
+                v = log.get("reb")
+                return float(v) if v is not None else None
+            if s == "AST":
+                v = log.get("ast")
+                return float(v) if v is not None else None
+            if s == "PRA":
+                p, r, a = log.get("pts"), log.get("reb"), log.get("ast")
+                if p is None or r is None or a is None:
+                    return None
+                return float(p) + float(r) + float(a)
+            if s in {"P+R", "PTS_REB"}:
+                p, r = log.get("pts"), log.get("reb")
+                if p is None or r is None:
+                    return None
+                return float(p) + float(r)
+            if s in {"P+A", "PTS_AST"}:
+                p, a = log.get("pts"), log.get("ast")
+                if p is None or a is None:
+                    return None
+                return float(p) + float(a)
+            if s in {"R+A", "REB_AST"}:
+                r, a = log.get("reb"), log.get("ast")
+                if r is None or a is None:
+                    return None
+                return float(r) + float(a)
+        except (TypeError, ValueError):
+            return None
+        return None
+
+    @classmethod
+    def _compute_shadow_recency_E(
+        cls,
+        logs: List[Dict[str, Any]],
+        stat_type: str,
+        mu_model: Optional[float],
+        before_date: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """Compute Recipe-E shadow μ from raw logs. Returns None when
+        the baselines are too thin or μ_model is missing."""
+        if mu_model is None or not logs:
+            return None
+        stat_up = (stat_type or "").upper()
+        if stat_up not in cls._SHADOW_E_TARGET_STATS:
+            return None
+        if before_date:
+            logs = [l for l in logs if (l.get("date") or "") < before_date]
+        if not logs:
+            return None
+        logs = sorted(logs, key=lambda log: (log.get("date") or ""), reverse=True)
+        vals = [cls._shadow_E_stat_value(log, stat_up) for log in logs]
+        if sum(1 for v in vals if v is not None) < cls._SHADOW_E_MIN_SAMPLES:
+            return None
+
+        def _avg(arr, n):
+            s = [x for x in arr[:n] if x is not None]
+            return (sum(s) / len(s)) if s else None
+
+        def _median(arr, n):
+            s = sorted([x for x in arr[:n] if x is not None])
+            if not s:
+                return None
+            m = len(s)
+            return s[m // 2] if m % 2 else (s[m // 2 - 1] + s[m // 2]) / 2.0
+
+        l3       = _avg(vals, 3)
+        l10_avg  = _avg(vals, 10)
+        l10_med  = _median(vals, 10)
+        if l3 is None or l10_med is None:
+            return None
+        if l10_avg is None:
+            l10_avg = l10_med   # graceful fallback for thin samples
+
+        comps = {
+            "L3":     l3,
+            "L10MED": l10_med,
+            "L10":    l10_avg,
+            "MODEL":  float(mu_model),
+        }
+        # Renormalise weights to sum=1 so we match the offline replay.
+        wsum = sum(cls._SHADOW_E_WEIGHTS[k] for k in comps)
+        mu_E = sum(comps[k] * (cls._SHADOW_E_WEIGHTS[k] / wsum) for k in comps)
+        return {
+            "mu_E": round(mu_E, 4),
+            "L3":     l3,
+            "L10MED": l10_med,
+            "L10":    l10_avg,
+            "MODEL":  round(float(mu_model), 4),
+        }
+
+    def _maybe_apply_shadow_recency_E(
+        self,
+        stat_type: str,
+        bdl_player_id: Optional[int],
+        prop: Dict[str, Any],
+        mu_current: Optional[float],
+    ) -> Optional[float]:
+        """Score-loop hook for the Recipe-E shadow projection.
+
+        ALWAYS returns `mu_current` unchanged. Stamps audit fields when
+        the layer can compute a shadow μ; otherwise leaves the prop's
+        shadow fields at their default (`mu_recency_E_applied = False`).
+        """
+        prop.setdefault("mu_recency_E_applied", False)
+        if mu_current is None or bdl_player_id is None:
+            return mu_current
+        if (stat_type or "").upper() not in self._SHADOW_E_TARGET_STATS:
+            return mu_current
+        try:
+            pid = int(bdl_player_id)
+        except (TypeError, ValueError):
+            return mu_current
+        logs = (self._logs_by_id or {}).get(pid)
+        if not logs:
+            return mu_current
+
+        before_date = (prop.get("commence_time") or "")[:10] or None
+        result = self._compute_shadow_recency_E(
+            logs=logs, stat_type=stat_type,
+            mu_model=mu_current, before_date=before_date,
+        )
+        if result is None:
+            return mu_current
+
+        mu_E = result["mu_E"]
+        prop["mu_recency_E"]         = mu_E
+        prop["mu_recency_E_applied"] = False  # shadow only
+        prop["delta_mu_E_vs_A"]      = round(mu_E - float(mu_current), 4)
+        prop["mu_recency_E_l3"]      = result["L3"]
+        prop["mu_recency_E_l10med"]  = result["L10MED"]
+        prop["mu_recency_E_l10"]     = result["L10"]
+        # μ_current stays the production projection — DO NOT touch it.
+        return mu_current
+
+
+
+    # =========================================================================
     # 2026-04-27 — Universal probability engine bridge.
     # =========================================================================
     # NBA projections (μ) and empirical residual σ continue to come from
@@ -1970,13 +2156,23 @@ class NBAScoringAdapter(ScoringAdapter):
         # Ensure game logs loaded once
         await self._preload_game_logs(db)
 
-        # Lazy-preload VK2 adv_map when model path requested
+        # Lazy-preload VK2 adv_map when model path requested OR when
+        # the prop's stat is in `_VK2_PRIMARY_STATS` (default-VK2 stats).
         active_method_early = (
             ((config or {}).get("override_config") or {})
             .get("vision_score", {})
             .get("p_true_method")
         ) or "model"
-        if active_method_early == "vk2" and not self._vk2_adv_loaded:
+        # Per-stat VK2 promotion: if no explicit override picked legacy,
+        # default to VK2 for stats in `_VK2_PRIMARY_STATS`. The check
+        # uses the raw prop stat_type because `model_key` is computed
+        # later in this function.
+        prop_stat_for_routing = (prop.get("stat_type") or "").upper()
+        wants_vk2 = (
+            active_method_early == "vk2"
+            or prop_stat_for_routing in self._VK2_PRIMARY_STATS
+        )
+        if wants_vk2 and not self._vk2_adv_loaded:
             await self._preload_vk2_adv_map(db)
 
         player_name = prop.get("player_name")
@@ -2152,7 +2348,18 @@ class NBAScoringAdapter(ScoringAdapter):
                     live_sharp_implied = (-so) / ((-so) + 100.0) * 100.0
             except (TypeError, ValueError):
                 live_sharp_implied = None
-        use_vk2_path = (active_method_early == "vk2")
+        # 2026-04-28 — VK2 is now the primary path for stats in
+        # `_VK2_PRIMARY_STATS` even when no override was passed.
+        # Explicit `p_true_method == "model"` is still honored as a
+        # legacy escape hatch.
+        explicit_legacy = (
+            ((config or {}).get("override_config") or {})
+            .get("vision_score", {})
+            .get("p_true_method")
+        ) == "model"
+        use_vk2_path = (active_method_early == "vk2") or (
+            model_key in self._VK2_PRIMARY_STATS and not explicit_legacy
+        )
         # PRA dual-projection audit (2026-04-23): populate these when
         # both direct and synth come back with a projection so we can
         # evaluate them against actuals later. Live pipeline behaviour
@@ -2216,6 +2423,13 @@ class NBAScoringAdapter(ScoringAdapter):
                     stat_type=model_key, bdl_player_id=bdl_player_id,
                     prop=prop, mu_model=model_projection,
                 )
+                # 2026-04-28 — Shadow Recipe E (audit-only). Stamps
+                # `mu_recency_E` / `delta_mu_E_vs_A` for forward-test
+                # validation. Returns μ unchanged.
+                model_projection = self._maybe_apply_shadow_recency_E(
+                    stat_type=model_key, bdl_player_id=bdl_player_id,
+                    prop=prop, mu_current=model_projection,
+                )
                 # Universal probability engine override
                 # for the legacy VK path. Engine receives empirical
                 # (μ, σ) and re-derives p_over via Normal CDF (or
@@ -2277,6 +2491,11 @@ class NBAScoringAdapter(ScoringAdapter):
                 vk2_projection = self._maybe_apply_rate_model(
                     stat_type=model_key, bdl_player_id=bdl_player_id,
                     prop=prop, mu_model=vk2_projection,
+                )
+                # 2026-04-28 — Shadow Recipe E on VK2 path (audit-only).
+                vk2_projection = self._maybe_apply_shadow_recency_E(
+                    stat_type=model_key, bdl_player_id=bdl_player_id,
+                    prop=prop, mu_current=vk2_projection,
                 )
                 # 2026-04-27 — universal-engine override on the VK2 path.
                 _eng_v2 = self._engine_p_over(
@@ -2387,6 +2606,11 @@ class NBAScoringAdapter(ScoringAdapter):
                     model_projection_synth = self._maybe_apply_rate_model(
                         stat_type=model_key, bdl_player_id=bdl_player_id,
                         prop=prop, mu_model=model_projection_synth,
+                    )
+                    # 2026-04-28 — Shadow Recipe E on PRA synth path.
+                    model_projection_synth = self._maybe_apply_shadow_recency_E(
+                        stat_type=model_key, bdl_player_id=bdl_player_id,
+                        prop=prop, mu_current=model_projection_synth,
                     )
                     # 2026-04-27 — engine override on PRA synth-preferred
                     _eng_pra = self._engine_p_over(

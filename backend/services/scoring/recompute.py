@@ -573,6 +573,9 @@ async def recompute_sport(
             "mu_rate_projection", "mu_model_projection",
             "mu_final_projection",
             "rate_model_blend_weights", "rate_model_trigger",
+            # NBA — Shadow Recipe E (2026-04-28, audit-only)
+            "mu_recency_E", "mu_recency_E_applied", "delta_mu_E_vs_A",
+            "mu_recency_E_l3", "mu_recency_E_l10med", "mu_recency_E_l10",
         ):
             if _prob_k in raw:
                 doc[_prob_k] = raw[_prob_k]

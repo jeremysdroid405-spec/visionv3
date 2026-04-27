@@ -146,6 +146,19 @@ class ForwardTestingService:
                     "intel_score": prop.get("intel_score"),
                     "intel_verdict": prop.get("intel_verdict") or prop.get("verdict"),
                     "vision_intel": prop.get("vision_intel") or prop.get("ai_summary"),
+
+                    # 2026-04-28 — Shadow Recipe E forward-test snapshot.
+                    # Captured at top level so the 7-day evaluation can
+                    # join `actual_value` against μ_recency_E without
+                    # parsing `full_prop_data`.
+                    "mu_current": (
+                        prop.get("mu_final_projection")
+                        or prop.get("mu_after_availability_guard")
+                        or prop.get("vk_predicted")
+                        or prop.get("model_projection")
+                    ),
+                    "mu_recency_E": prop.get("mu_recency_E"),
+                    "delta_mu_E_vs_A": prop.get("delta_mu_E_vs_A"),
                     
                     # Game info
                     "game_time": prop.get("game_time") or prop.get("commence_time"),
