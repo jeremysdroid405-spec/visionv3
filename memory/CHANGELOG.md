@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026-05 — Forward-Test Resolver Pipeline Repaired
+
+**User directive**: *"Restore resolution of props after games complete — actual_value & outcome were None on every snapshot, blocking all model evaluation."*
+
+### Root cause
+Three independent bugs:
+1. **No scheduled job for resolution.** `forward_testing_service.resolve_outcomes` existed and was reachable via API, but `cron_scheduler.py` only scheduled `run_forward_test_capture` — nothing ever called the resolver.
+2. **NBA name field bug.** `nba_master_hub_2026.player_name` is `None` on every doc; the canonical name lives in `display_name`. The resolver was reading `player_name`, so every NBA lookup matched a `None`-keyed dict and returned no stats.
+3. **Date-window mismatch.** `capture_date` is set when the prop is captured, but `game_time` can be 1–5 days later (NBA snapshots are pulled days ahead during playoffs). The resolver only searched `capture_date`, missing the actual game date entirely.
+
+### Result
+| Sport | Resolved BEFORE | Resolved AFTER |
+|---|---:|---:|
+| NBA | 11 / 279 (3.9 %) | **272 / 279 (97.5 %)** |
+| MLB | 180 / 238 (75.6 %) | **238 / 238 (100 %)** |
+
+### Files changed
+- `services/forward_testing_service.py`
+  - `_fetch_game_results` switched to `nba_master_hub_2026` / `mlb_master_hub_2026` (full-season coverage); cached_board is now a fallback. NBA reads `display_name` as canonical name. MLB game-log rows carry `player_name` per row.
+  - `resolve_outcomes` now (1) prefers the date implied by the snapshot's `game_time`, (2) on-demand fetches game results for any date encountered, (3) falls back to a ±1 window on `capture_date` when `game_time` is absent.
+  - `_get_stat_value` now normalizes DK display names ("Batter Strikeouts", "Hits+Runs+RBIs", "Pitcher Strikeouts" etc.) → uppercase + underscores. Added mappings for `SINGLES` (calculated), `DOUBLES`, `TRIPLES`, `BATTER_WALKS`, `PITCHER_WALKS`, `WALKS_ALLOWED`, `HITS_ALLOWED`, `EARNED_RUNS`, `STOLEN_BASES`.
+- `services/cron_scheduler.py`
+  - Added `run_forward_test_resolve` — walks the last 14 unresolved capture dates per sport, runs `resolve_outcomes`, logs per-date `[FT_RESOLVE_CRON]` line.
+  - Scheduled at **09:30 UTC daily (05:00 ET)** — 30 min after the master-hub sync that refreshes `bdl_game_logs`.
+
+### Verification
+- Backfill resolved last 9 days of snapshots; only 7 NBA snapshots remain unresolved (genuinely DNP / G-League players not in any source).
+- `forward_test_outcomes` collection now has 510 rows (272 NBA + 238 MLB).
+- Per-tier hit rates now measurable:
+  - NBA: safe_haven **88.5 %** · front_lines **75.8 %** · war_zone 22.2 %
+  - MLB: safe_haven **84.5 %** · front_lines **73.6 %** · war_zone 48.4 %
+- Cron registered: `forward_test_daily_resolve` next run `2026-04-27T09:30:00Z`.
+
+### Guardrails respected
+- ✅ No model changes. ✅ No scoring changes. ✅ No gate / threshold / TP / LOM / frontend changes.
+
+
+
 ## 2026-05 — NBA Injury Join Switched to `bdl_player_id`
 
 **User directive**: *"Switch injury → master_hub join from player_name to bdl_player_id."*

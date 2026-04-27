@@ -182,6 +182,88 @@ async def run_forward_test_capture():
 
 
 
+async def run_forward_test_resolve():
+    """
+    Forward-Testing daily resolution job — runs after the master-hub
+    sync (which refreshes last-night's game logs) and before the next
+    day's capture.
+
+    Walks `forward_test_snapshots` for any `outcome IS None` row whose
+    `capture_date` is older than today and resolves it via the
+    `forward_testing_service.resolve_outcomes` path. Idempotent —
+    already-resolved rows are skipped by the inner query.
+
+    Backfill window: last 14 capture dates that still have any
+    unresolved snapshot (per sport).
+
+    Log line format (per prompt):
+      [FT_RESOLVE_CRON] sport=nba date=YYYY-MM-DD resolved=N hits=H misses=M pushes=P unable=U
+    """
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from services.forward_testing_service import (
+        get_forward_testing_service,
+    )
+
+    logger.info("[CRON] ========================================")
+    logger.info("[CRON] FORWARD-TEST RESOLVE: Starting nightly resolver")
+    logger.info("[CRON] ========================================")
+
+    mongo_url = os.environ.get("MONGO_URL")
+    db_name = os.environ.get("DB_NAME", "pick_vision")
+    if not mongo_url:
+        logger.error("[CRON] MONGO_URL not configured")
+        return
+
+    try:
+        client = AsyncIOMotorClient(
+            mongo_url, serverSelectionTimeoutMS=30000,
+            connectTimeoutMS=30000, socketTimeoutMS=60000, maxPoolSize=10,
+        )
+        db = client[db_name]
+        service = get_forward_testing_service(db)
+
+        for sport in ("nba", "mlb"):
+            # Collect distinct unresolved capture_dates for this sport
+            # (limit to most recent 14 so we don't blow up if a long
+            # tail accumulates).
+            pipe = [
+                {"$match": {"sport": sport, "outcome": None}},
+                {"$group": {"_id": "$capture_date",
+                             "n": {"$sum": 1}}},
+                {"$sort": {"_id": -1}},
+                {"$limit": 14},
+            ]
+            unresolved_dates = [
+                d["_id"] async for d in
+                db["forward_test_snapshots"].aggregate(pipe)
+                if d["_id"]
+            ]
+            for date in unresolved_dates:
+                try:
+                    res = await service.resolve_outcomes(sport, date)
+                except Exception as e:
+                    logger.error(
+                        f"[FT_RESOLVE_CRON] sport={sport} date={date} "
+                        f"failed: {e}"
+                    )
+                    continue
+                logger.info(
+                    f"[FT_RESOLVE_CRON] sport={sport} date={date} "
+                    f"resolved={res.get('total_resolved', 0)} "
+                    f"hits={res.get('hits', 0)} "
+                    f"misses={res.get('misses', 0)} "
+                    f"pushes={res.get('pushes', 0)} "
+                    f"unable={res.get('unable_to_resolve', 0)}"
+                )
+        logger.info("[CRON] ========================================")
+        logger.info("[CRON] FORWARD-TEST RESOLVE COMPLETE")
+        logger.info("[CRON] ========================================")
+    except Exception as e:
+        logger.error(f"[CRON] Forward-test resolve failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+
 async def run_pra_audit_settle():
     """
     PRA dual-projection audit settle job.
@@ -322,11 +404,24 @@ def start_scheduler():
         name='Forward-Testing: Daily Prop Capture (6:30 PM ET)',
         replace_existing=True
     )
+
+    # 2026-05 — Forward-test resolver. Runs at 0500 EST (0930 UTC),
+    # 30 min after the master-hub sync that refreshes last-night's
+    # `bdl_game_logs`. Resolves outcomes for any unresolved snapshot
+    # in the last 14 days (idempotent).
+    _scheduler.add_job(
+        run_forward_test_resolve,
+        CronTrigger(hour=9, minute=30, timezone='UTC'),
+        id='forward_test_daily_resolve',
+        name='Forward-Testing: Daily Outcome Resolver (5:00 AM ET)',
+        replace_existing=True,
+    )
     
     _scheduler.start()
     logger.info("[CRON] SSOT Scheduler started:")
     logger.info("[CRON]   - Master Hub sync at 0400 EST daily")
     logger.info("[CRON]   - Forward-Test capture at 1830 ET daily")
+    logger.info("[CRON]   - Forward-Test resolve at 0500 ET daily")
     
     return _scheduler
 

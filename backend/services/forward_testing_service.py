@@ -204,23 +204,29 @@ class ForwardTestingService:
     ) -> Dict[str, Any]:
         """
         Resolve outcomes for captured props.
-        
+
         Args:
             sport: 'nba' or 'mlb'
             date: Date to resolve (YYYY-MM-DD), defaults to yesterday
             game_results: Optional list of game results with player stats
-            
+
         Returns:
             Resolution results with hit/miss counts
+
+        2026-05 fix: capture timestamps and game timestamps don't always
+        align (NBA captures at 1830 ET roll over the UTC date for late
+        west-coast games). The resolver now searches a 3-day window
+        around the capture_date for each player and matches the closest
+        actual game.
         """
         sport = sport.lower()
-        
+
         if date is None:
             yesterday = datetime.now(timezone.utc) - timedelta(days=1)
             date = yesterday.strftime("%Y-%m-%d")
-        
+
         logger.info(f"[FORWARD_TEST] Resolving {sport.upper()} outcomes for {date}")
-        
+
         results = {
             "sport": sport,
             "date": date,
@@ -232,53 +238,89 @@ class ForwardTestingService:
             "unable_to_resolve": 0,
             "by_tier": {}
         }
-        
+
         # Find unresolved snapshots for this date
         unresolved = await self.snapshots.find({
             "sport": sport,
             "capture_date": date,
             "outcome": None
         }).to_list(length=None)
-        
+
         logger.info(f"[FORWARD_TEST] Found {len(unresolved)} unresolved props")
-        
+
         if not game_results:
-            # Fetch game results from game logs collection
-            game_results = await self._fetch_game_results(sport, date)
-        
-        # Build lookup dict by player name (normalized)
-        player_stats = {}
-        for result in game_results:
-            player_name = (result.get("player_name") or "").strip().lower()
-            if player_name:
-                player_stats[player_name] = result
-        
+            # Build a dict of {date_str: [game_results]} covering ± 1 day
+            # so we can match snapshots whose game crossed midnight UTC
+            # vs the capture_date.
+            results_by_date: Dict[str, List[Dict]] = {}
+            target_dt = datetime.strptime(date, "%Y-%m-%d")
+            for offset in (-1, 0, 1):
+                d = (target_dt + timedelta(days=offset)).strftime("%Y-%m-%d")
+                results_by_date[d] = await self._fetch_game_results(sport, d)
+        else:
+            results_by_date = {date: game_results}
+
+        # Build per-date lookup dict by player name (normalized).
+        stats_by_date: Dict[str, Dict[str, Dict]] = {
+            d: {(r.get("player_name") or "").strip().lower(): r for r in lst}
+            for d, lst in results_by_date.items()
+        }
+
         for snapshot in unresolved:
             player_name = snapshot.get("player_name", "")
             stat_type = snapshot.get("stat_type", "")
             line = snapshot.get("line", 0)
             tier = snapshot.get("tier", "unknown")
-            
+
             normalized_name = player_name.strip().lower()
-            
+
             # Initialize tier stats
             if tier not in results["by_tier"]:
                 results["by_tier"][tier] = {"hits": 0, "misses": 0, "pushes": 0}
-            
-            # Look up actual stats
-            actual_stats = player_stats.get(normalized_name)
-            
+
+            # Look up actual stats — prefer the date implied by
+            # `game_time` (true game UTC), else fall back to the
+            # capture_date and adjacent ±1 days.
+            preferred_date = None
+            gt_iso = snapshot.get("game_time")
+            if gt_iso:
+                try:
+                    preferred_date = (
+                        datetime.fromisoformat(
+                            str(gt_iso).replace("Z", "+00:00")
+                        ).date().isoformat()
+                    )
+                except (ValueError, TypeError):
+                    preferred_date = None
+            # If the preferred date is outside the pre-loaded window,
+            # fetch it on demand (cached for subsequent snapshots).
+            if preferred_date and preferred_date not in stats_by_date:
+                fetched = await self._fetch_game_results(sport, preferred_date)
+                stats_by_date[preferred_date] = {
+                    (r.get("player_name") or "").strip().lower(): r
+                    for r in fetched
+                }
+            actual_stats = None
+            search_order = [preferred_date, date]
+            search_order += [d for d in stats_by_date.keys()
+                             if d not in search_order]
+            for d in search_order:
+                if d and d in stats_by_date:
+                    actual_stats = stats_by_date[d].get(normalized_name)
+                    if actual_stats:
+                        break
+
             if not actual_stats:
                 results["unable_to_resolve"] += 1
                 continue
-            
+
             # Get actual value for this stat type
             actual_value = self._get_stat_value(actual_stats, stat_type, sport)
-            
+
             if actual_value is None:
                 results["unable_to_resolve"] += 1
                 continue
-            
+
             # Determine outcome
             if actual_value > line:
                 outcome = "hit"
@@ -292,9 +334,9 @@ class ForwardTestingService:
                 outcome = "miss"
                 results["misses"] += 1
                 results["by_tier"][tier]["misses"] += 1
-            
+
             results["total_resolved"] += 1
-            
+
             # Update snapshot with outcome
             await self.snapshots.update_one(
                 {"_id": snapshot["_id"]},
@@ -348,37 +390,86 @@ class ForwardTestingService:
         return results
     
     async def _fetch_game_results(self, sport: str, date: str) -> List[Dict]:
-        """Fetch game results from BDL game logs."""
+        """Fetch game results from BDL game logs (2026-05 — switched to
+        master_hub which has full season coverage; cached_board only
+        carries the current slate's 122 players).
+
+        Note: NBA master-hub uses `display_name` as the canonical name
+        field (`player_name` is None). MLB master-hub stores `player_name`
+        on each game-log entry. We pull the right field per sport.
+        """
         results = []
-        
-        if sport == "nba":
-            # Check dg_cached_board for game logs
-            collection = self.db[COLL("board_cache", "nba")]
-        else:
-            collection = self.db[COLL("board_cache", "mlb")]
-        
-        async for player in collection.find(
+        hub_collection = (
+            "nba_master_hub_2026" if sport == "nba" else "mlb_master_hub_2026"
+        )
+        async for player in self.db[hub_collection].find(
             {},
-            {"player_name": 1, "game_logs": 1, "bdl_game_logs": 1, "_id": 0}
+            {"player_name": 1, "display_name": 1, "bdl_game_logs": 1,
+             "bdl_player_id": 1, "bdl_id": 1, "_id": 0}
         ):
-            game_logs = player.get("game_logs") or player.get("bdl_game_logs") or []
-            
-            # Find game on target date
+            game_logs = player.get("bdl_game_logs") or []
+            # Resolve canonical player name by sport.
+            canonical_name = (
+                player.get("player_name") or player.get("display_name")
+            )
             for game in game_logs:
-                game_date = game.get("date", "")[:10]
+                game_date = (game.get("date") or "")[:10]
                 if game_date == date:
+                    # MLB game-log rows carry `player_name`; NBA do not.
+                    name = (
+                        game.get("player_name")
+                        or canonical_name
+                    )
                     results.append({
-                        "player_name": player.get("player_name"),
-                        **game
+                        "player_name": name,
+                        "bdl_player_id": (
+                            player.get("bdl_player_id")
+                            or player.get("bdl_id")
+                        ),
+                        **game,
+                        "player_name_canonical": canonical_name,
                     })
+                    # Don't break — for batters there's only one row
+                    # per date, but allow multi-game days (rare).
                     break
-        
+
+        # Legacy fallback: cached_board (in case master_hub is mid-sync).
+        if not results:
+            from services.config.collection_names import COLL
+            board_coll = (
+                COLL("board_cache", "nba") if sport == "nba"
+                else COLL("board_cache", "mlb")
+            )
+            async for player in self.db[board_coll].find(
+                {}, {"player_name": 1, "game_logs": 1, "bdl_game_logs": 1,
+                     "_id": 0}
+            ):
+                game_logs = player.get("game_logs") or player.get("bdl_game_logs") or []
+                for game in game_logs:
+                    game_date = (game.get("date") or "")[:10]
+                    if game_date == date:
+                        results.append({
+                            "player_name": player.get("player_name"),
+                            **game,
+                        })
+                        break
         return results
     
     def _get_stat_value(self, stats: Dict, stat_type: str, sport: str) -> Optional[float]:
         """Extract stat value from game stats."""
-        stat_type_upper = stat_type.upper()
-        
+        # 2026-05 forward-test resolver fix:
+        #   • Capture writes DK-style display names like
+        #     "Batter Strikeouts" / "Hits+Runs+RBIs". Normalize to
+        #     uppercase + underscores before mapping.
+        stat_type_norm = (
+            (stat_type or "")
+            .upper()
+            .replace(" ", "_")
+            .replace("+", "_PLUS_")
+            .replace("__", "_")
+            .strip("_")
+        )
+
         # NBA stat mappings
         nba_mappings = {
             "PTS": ["pts", "points"],
@@ -390,41 +481,65 @@ class ForwardTestingService:
             "BLK": ["blk", "blocks"],
             "TO": ["turnover", "turnovers"]
         }
-        
-        # MLB stat mappings
+
+        # MLB stat mappings (covers short codes + DK display names normalized)
         mlb_mappings = {
+            # Batter
             "HITS": ["hits", "h"],
             "TB": ["total_bases", "tb"],
+            "TOTAL_BASES": ["total_bases", "tb"],
             "HR": ["home_runs", "hr"],
-            "RBI": ["rbi", "rbis"],
+            "HOME_RUNS": ["home_runs", "hr"],
+            "RBI": ["rbis", "rbi"],
+            "RBIS": ["rbis", "rbi"],
             "RUNS": ["runs", "r"],
-            "K": ["strikeouts", "so", "k"],  # Pitcher
-            "OUTS": ["outs_recorded", "outs"],
+            "SINGLES": None,  # Calculated: hits - doubles - triples - HR
+            "DOUBLES": ["doubles"],
+            "TRIPLES": ["triples"],
+            "BATTER_STRIKEOUTS": ["strikeouts", "so"],
+            "BATTER_WALKS": ["walks", "bb"],
+            "BB": ["walks", "bb"],
+            "WALKS": ["walks", "bb"],
+            "STOLEN_BASES": ["stolen_bases", "sb"],
             "HRR": None,  # Calculated: H + R + RBI
-            "BATTER_STRIKEOUTS": ["batter_strikeouts", "so"],
-            "BB": ["walks", "bb"]
+            "HITS_PLUS_RUNS_PLUS_RBIS": None,  # Calculated alias
+            # Pitcher
+            "K": ["pitcher_strikeouts", "strikeouts_pitcher", "so"],
+            "PITCHER_STRIKEOUTS": ["pitcher_strikeouts"],
+            "PITCHER_WALKS": ["pitcher_walks"],
+            "WALKS_ALLOWED": ["pitcher_walks"],
+            "HITS_ALLOWED": ["hits_allowed"],
+            "EARNED_RUNS": ["earned_runs"],
+            "OUTS": ["outs_recorded", "outs"],
         }
-        
+
         mappings = nba_mappings if sport == "nba" else mlb_mappings
-        
+
         # Handle calculated stats
-        if stat_type_upper == "PRA":
+        if stat_type_norm == "PRA":
             pts = self._get_first_match(stats, ["pts", "points"]) or 0
             reb = self._get_first_match(stats, ["reb", "rebounds", "total_rebounds"]) or 0
             ast = self._get_first_match(stats, ["ast", "assists"]) or 0
             return pts + reb + ast
-        
-        if stat_type_upper == "HRR":
+
+        if stat_type_norm in ("HRR", "HITS_PLUS_RUNS_PLUS_RBIS"):
             hits = self._get_first_match(stats, ["hits", "h"]) or 0
             runs = self._get_first_match(stats, ["runs", "r"]) or 0
-            rbi = self._get_first_match(stats, ["rbi", "rbis"]) or 0
+            rbi = self._get_first_match(stats, ["rbis", "rbi"]) or 0
             return hits + runs + rbi
-        
+
+        if stat_type_norm == "SINGLES":
+            hits = self._get_first_match(stats, ["hits", "h"]) or 0
+            doubles = self._get_first_match(stats, ["doubles"]) or 0
+            triples = self._get_first_match(stats, ["triples"]) or 0
+            hr = self._get_first_match(stats, ["home_runs", "hr"]) or 0
+            return max(0.0, hits - doubles - triples - hr)
+
         # Direct lookup
-        keys = mappings.get(stat_type_upper)
+        keys = mappings.get(stat_type_norm)
         if keys:
             return self._get_first_match(stats, keys)
-        
+
         # Fallback: try stat_type as key
         return stats.get(stat_type.lower()) or stats.get(stat_type)
     
