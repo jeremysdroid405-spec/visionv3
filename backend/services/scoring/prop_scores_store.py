@@ -193,9 +193,17 @@ _SCORE_OUTPUT_FIELDS = (
     # normal-CDF on (μ from MLR, σ from CV-with-family-floor). Audit
     # fields persisted so the calibration observability stack can
     # diff distribution_p_over against ecdf_p_over and raw_gaussian.
-    "distribution_p_over", "distribution_sigma",
-    "distribution_sigma_source", "distribution_clamped",
+    # Distribution-based probability layer (2026-04-27) — universal
+    # probability engine routing (sport, family, line) to Normal CDF /
+    # Bernoulli / Poisson / Negative Binomial. Audit fields persisted
+    # so observability can diff against ecdf_p_over / raw_gaussian.
+    "distribution_p_over", "distribution_p_under",
+    "distribution_kind", "distribution_selector_reason",
+    "distribution_sigma", "distribution_sigma_source", "distribution_clamped",
     "distribution_effective_mu", "distribution_mu_floor_applied",
+    "distribution_mu_floor_capped", "distribution_cv_floor_applied",
+    "distribution_lambda", "distribution_threshold",
+    "distribution_dispersion_r", "distribution_p_param",
     # Universal SSOT canonical-pool flags (2026-04-25). Stamped at
     # ingest by `services/universal_odds_sync.py::_normalize_market_data`
     # on every prop. PrizePicks is now an overlay on top of a

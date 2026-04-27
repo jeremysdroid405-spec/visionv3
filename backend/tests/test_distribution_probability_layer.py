@@ -80,18 +80,20 @@ class TestSigmaResolution:
         assert r.sigma > 0
 
     def test_per_family_floors_differ(self):
-        # Triples (1.40) should produce a wider σ than hits (0.55)
+        # Walks Allowed (0.65) should produce a wider σ than hits (0.55)
+        # for the same μ/line/cv — both stay on Normal CDF.
         r_hits = compute_distribution_probability(mu=1.0, line=0.5, cv=0.1,
                                                    stat_family="hits")
-        r_trip = compute_distribution_probability(mu=1.0, line=0.5, cv=0.1,
-                                                   stat_family="triples")
-        assert r_trip.sigma > r_hits.sigma
+        r_walk = compute_distribution_probability(mu=1.0, line=0.5, cv=0.1,
+                                                   stat_family="walks_allowed")
+        assert r_walk.sigma > r_hits.sigma
 
     def test_absolute_sigma_floor(self):
-        # On tiny μ, the absolute floor (_SIGMA_MIN_ABSOLUTE = 0.20)
-        # should kick in to prevent collapse.
+        # On tiny μ, the absolute floor (sigma_min_absolute = 0.20)
+        # should kick in to prevent collapse. Use `hits` (Normal CDF),
+        # not stolen_bases (Poisson) which doesn't have σ.
         r = compute_distribution_probability(mu=0.05, line=0.5, cv=0.5,
-                                              stat_family="stolen_bases")
+                                              stat_family="hits")
         assert r.sigma >= 0.20
 
 
@@ -106,7 +108,7 @@ class TestMuFloor:
                                               stat_family="hits")
         assert r.mu_floor_applied is True
         assert r.effective_mu == 0.5
-        assert "mu_floor_adjusted" in r.sigma_source
+        assert "mu_floor" in r.sigma_source
         # σ = 1.0 × 0.5 = 0.5  (vs old: σ = 1.0 × 0.05 = 0.05 → would
         # have hit the absolute floor of 0.20)
         assert abs(r.sigma - 0.5) < 1e-6
@@ -117,7 +119,7 @@ class TestMuFloor:
                                               stat_family="total_bases")
         assert r.mu_floor_applied is False
         assert r.effective_mu == 1.5
-        assert "mu_floor_adjusted" not in r.sigma_source
+        assert "mu_floor" not in r.sigma_source
 
     def test_z_score_uses_raw_mu_not_effective_mu(self):
         # Critical: μ-floor must NOT alter the projection in the
@@ -150,12 +152,19 @@ class TestMuFloor:
         assert r.effective_mu == 12.0
         assert abs(r.sigma - 0.40 * 12.0) < 1e-6
 
-    def test_unknown_family_uses_default_mu_floor(self):
+    def test_unknown_family_uses_default_distribution(self):
+        # Unknown families fall through to a sport-agnostic Normal CDF
+        # default (cv_floor=0.5, mu_floor=0.0). The contract changed
+        # with the universal engine — unknown families no longer
+        # inherit the MLB-specific μ_floor=0.5; they get a no-floor
+        # default so unknown stats fail safe (no fabricated σ scaling).
         r = compute_distribution_probability(mu=0.1, line=0.5, cv=0.6,
                                               stat_family="some_new_stat")
-        # default μ_floor = 0.5
-        assert r.effective_mu == 0.5
-        assert r.mu_floor_applied is True
+        assert r is not None
+        assert r.distribution == "normal_cdf"
+        assert r.mu_floor_applied is False
+        # σ comes from sigma_min_absolute (0.20) since cv*μ would be tiny.
+        assert r.sigma >= 0.20
 
     def test_per_family_mu_floors_differ(self):
         # Hits (0.5) vs Pitcher Strikeouts (2.0)

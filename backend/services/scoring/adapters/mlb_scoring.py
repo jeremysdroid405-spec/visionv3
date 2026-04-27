@@ -285,36 +285,51 @@ class MLBScoringAdapter(ScoringAdapter):
                 # `cv` is the same per-player value already feeding gates.
                 # Only the μ/σ → probability conversion changes.
                 # ============================================================
-                from services.probability.distribution_layer import (
-                    compute_distribution_probability,
+                # 2026-04-27 — universal probability engine.
+                # Routes (sport, stat_family, line) to the right
+                # distribution (Normal / Bernoulli / Poisson / NB) via
+                # `services.probability.distribution`. The engine
+                # carries μ_floor / line cap / CV floor / over-dispersion
+                # logic per family — see calibration/mlb.py.
+                from services.probability.distribution import (
+                    compute_probability,
                 )
-                from services.scoring.stat_family import canonical_stat_family
-                _canon_for_dist = canonical_stat_family(stat_type, sport="mlb").lower()
-                dist_result = compute_distribution_probability(
+                dist_result = compute_probability(
+                    sport="mlb",
+                    stat_family=stat_type,
                     mu=model_projection,
                     line=line,
                     cv=cv,
-                    stat_family=_canon_for_dist,
                 )
                 if dist_result is not None:
                     if "UNDER" in side:
                         p_true_model = round(dist_result.p_under, 4)
                     else:
                         p_true_model = round(dist_result.p_over, 4)
-                    # Persist audit fields so observability can diff the new
-                    # distribution-based base against the HF heuristic.
+                    # ---- universal audit fields -----------------------
                     prop["distribution_p_over"] = round(dist_result.p_over, 4)
+                    prop["distribution_p_under"] = round(dist_result.p_under, 4)
+                    prop["distribution_kind"] = dist_result.distribution
+                    prop["distribution_selector_reason"] = dist_result.selector_reason
+                    prop["distribution_clamped"] = dist_result.clamped
+                    # Continuous-distribution fields (Normal / NB)
                     prop["distribution_sigma"] = dist_result.sigma
                     prop["distribution_sigma_source"] = dist_result.sigma_source
-                    prop["distribution_clamped"] = dist_result.clamped
-                    # μ-floor diagnostics (2026-04-27)
                     prop["distribution_effective_mu"] = dist_result.effective_mu
                     prop["distribution_mu_floor_applied"] = dist_result.mu_floor_applied
-                    # Keep the legacy Gaussian for diff-vs-base observability.
+                    prop["distribution_mu_floor_capped"] = dist_result.mu_floor_capped
+                    prop["distribution_cv_floor_applied"] = dist_result.cv_floor_applied
+                    # Count-distribution fields (Poisson / NB)
+                    prop["distribution_lambda"] = dist_result.lambda_
+                    prop["distribution_threshold"] = dist_result.threshold
+                    prop["distribution_dispersion_r"] = dist_result.dispersion_r
+                    # Bernoulli field
+                    prop["distribution_p_param"] = dist_result.p_param
+                    # Legacy Gaussian retained for diff-vs-base observability.
                     prop["raw_gaussian_p_over"] = round(
                         float(prob_over_pct) / 100.0, 4,
                     )
-                    prop["probability_method"] = "normal_cdf_cv"
+                    prop["probability_method"] = dist_result.distribution
                 else:
                     # Fall back to HF's internal Gaussian when μ or line
                     # are missing (rare path).

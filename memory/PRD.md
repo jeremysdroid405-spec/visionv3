@@ -1,6 +1,34 @@
 # PRD — NBA/MLB Ferrari / PropVision AI
 
 
+## 2026-04-27 — Universal Probability Engine (sport-agnostic, registry-driven)
+Replaced the MLB-only `distribution_layer.py` with a real probability engine in `services/probability/distribution/` that routes `(sport, stat_family, line, μ, cv)` to the right distribution (Normal CDF, Bernoulli, Poisson, Negative Binomial). Per-sport calibration tables live in `distribution/calibration/{mlb,nba,nfl}.py`; NBA + NFL are stubbed and ready to migrate without touching engine code.
+
+**MLB calibration:**
+- Continuous high-volume (Hits, Total Bases, HRR, Singles, Pitcher K, Pitcher Outs, Earned Runs, Hits Allowed, Walks Allowed) → Normal CDF + per-family μ-floor + line cap when floor binds.
+- Rare events at 0.5 lines (HR, SB, Doubles, Triples) → Poisson; multi-event lines → Negative Binomial with CV-derived dispersion.
+- RBIs → Poisson at 0.5, NB at 1.5+.
+- Runs → Normal CDF (capped) at 0.5 (HF model under-projects μ on leadoff hitters; Poisson has no floor fallback). NB at 1.5+.
+
+**Calibration result vs market (2,427 active MLB props, devig + all-books cohorts):**
+- 0.5-line all-books: 0.1206 → **0.0861** (−0.0345)
+- 0.5-line devig:    0.1426 → **0.1051** (−0.0375)
+- all-books overall: 0.1185 → **0.1002** (−0.0183)
+- devig-only:        0.1350 → **0.1094** (−0.0256)
+
+Rare-event over-correction FIXED (HR avg |Δ| 0.171 → 0.053, SB 0.178 → 0.121, doubles 0.194 → 0.117). Hits / Singles / Runs gains preserved or improved.
+
+**Universal audit fields now persisted on every score doc:** `distribution_kind`, `distribution_p_over`, `distribution_p_under`, `distribution_selector_reason`, `distribution_clamped`, `distribution_sigma`, `distribution_sigma_source`, `distribution_effective_mu`, `distribution_mu_floor_applied`, `distribution_mu_floor_capped`, `distribution_cv_floor_applied`, `distribution_lambda`, `distribution_threshold`, `distribution_dispersion_r`, `distribution_p_param`. Same shape across NBA / MLB / NFL.
+
+**Tests:** 41/41 passing — 23 legacy + 18 new (`tests/test_universal_probability_engine.py`).
+
+**Backwards compatibility:** `services.probability.distribution_layer.compute_distribution_probability(...)` preserved as a thin facade over the new engine (defaults `sport="mlb"`).
+
+**Live state:** Recompute @ `final-mlb-rt` rebuilt 2,569 props; tier distribution `{unqualified: 1860, front_lines: 703, safe_haven: 4, war_zone: 2}`. `MLB_FRONT_LINES_GATES_DISABLED=True` still in effect — gate retuning is the next step.
+
+Full report: `/tmp/universal_probability_engine_REPORT.md`. Reproducer: `/tmp/universal_engine_calibration_report.py`.
+
+
 ## 2026-04-27 — μ-floor σ-calibration report delivered
 Distribution-layer μ-floor scaling is wired through `services/probability/distribution_layer.py`. Full MLB recompute against `final-mlb-rt` ran in-process (2,570 props / 21.7s); BEFORE was reproduced by patching `_MU_FLOOR_BY_FAMILY` to `{}` and `_MU_FLOOR_DEFAULT=0.0` (true apples-to-apples, NOT `raw_gaussian_p_over`).
 
