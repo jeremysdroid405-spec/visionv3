@@ -251,6 +251,7 @@ _SCORE_OUTPUT_FIELDS = (
     "mu_model_projection",
     "mu_final_projection",
     "rate_model_blend_weights",
+    "rate_model_blend_mode",
     "rate_model_trigger",
     # NBA — Shadow Recipe E projection (2026-04-28). AUDIT-ONLY: never
     # replaces μ_current. Tracked for 7-day forward-test validation.

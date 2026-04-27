@@ -11,6 +11,7 @@ NBA has a real `multiplier` field + `is_demon`/`is_goblin` flags sourced
 from PP, so pp_utility gets actual multiplier-source data.
 """
 import logging
+import os
 from typing import Any, Dict, List, Optional, Sequence
 
 from services.scoring.adapters.base import ScoringAdapter, ScoringContext
@@ -858,8 +859,30 @@ class NBAScoringAdapter(ScoringAdapter):
     #     blended majority but the existing model intelligence is kept.
     # =========================================================================
     _RATE_TARGET_STATS = {"PTS", "PRA"}
-    _RATE_BLEND_RATE   = 0.60   # weight on rate × minutes
-    _RATE_BLEND_MODEL  = 0.40   # weight on existing μ
+    # ---------------------------------------------------------------------
+    # 2026-04-29 — Rate-blend feature flag.
+    # Promotes the 60/40 → 100/0 (pure rate × minutes) weighting validated
+    # by `/tmp/nba_rate_100_0_production_sim.py` (272 settled picks, +13.2
+    # pts hit rate on ALL, +36.4 on War Zone, 0 hit-rate change on Safe
+    # Haven / Front Lines, 39 misses avoided vs 3 hits lost).
+    #
+    # Controlled via env `NBA_RATE_BLEND_MODE`:
+    #     "100_0" (default, 2026-04-29 promotion)
+    #     "60_40" (legacy — instant revert path)
+    # The eligibility gate is UNCHANGED in either mode: rate fires only on
+    # PTS/PRA when L3_min < L10_min OR availability_status is non-trivial.
+    # Safe Haven and Front Lines tier behavior is unaffected (zero flips
+    # in the simulation); War Zone is rescued from 22.2% → 58.6% hit rate.
+    # ---------------------------------------------------------------------
+    _RATE_BLEND_MODE = (os.environ.get("NBA_RATE_BLEND_MODE") or "100_0").strip()
+    _RATE_BLEND_RATE_LEGACY  = 0.60   # legacy weight on rate × minutes
+    _RATE_BLEND_MODEL_LEGACY = 0.40   # legacy weight on existing μ
+    if _RATE_BLEND_MODE == "60_40":
+        _RATE_BLEND_RATE  = _RATE_BLEND_RATE_LEGACY
+        _RATE_BLEND_MODEL = _RATE_BLEND_MODEL_LEGACY
+    else:                              # "100_0" (default) or any unknown value
+        _RATE_BLEND_RATE  = 1.00       # weight on rate × minutes
+        _RATE_BLEND_MODEL = 0.00       # weight on existing μ
     _RATE_EXP_MIN_W = {"L3": 0.40, "L5": 0.30, "L10": 0.30}
     _RATE_RECENCY_W = {"L5": 0.70, "L10_MEDIAN": 0.30}
     _RATE_MIN_LOGS = 3   # need at least 3 game logs to compute rates
@@ -1054,6 +1077,7 @@ class NBAScoringAdapter(ScoringAdapter):
         prop["mu_model_projection"]  = round(float(mu_model), 4)
         prop["mu_final_projection"]  = round(mu_final, 4)
         prop["rate_model_blend_weights"] = {"rate": wR, "model": wM}
+        prop["rate_model_blend_mode"]    = self._RATE_BLEND_MODE  # "100_0" / "60_40"
         prop["rate_model_trigger"] = (
             "L3_below_L10" if l3_below_l10 and not non_trivial_avail
             else ("availability_guard" if non_trivial_avail and not l3_below_l10

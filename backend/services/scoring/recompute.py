@@ -572,12 +572,19 @@ async def recompute_sport(
             "expected_minutes", "expected_minutes_raw",
             "mu_rate_projection", "mu_model_projection",
             "mu_final_projection",
-            "rate_model_blend_weights", "rate_model_trigger",
+            "rate_model_blend_weights", "rate_model_blend_mode",
+            "rate_model_trigger",
             # NBA — Shadow Recipe E (2026-04-28, audit-only)
             "mu_recency_E", "mu_recency_E_applied", "delta_mu_E_vs_A",
             "mu_recency_E_l3", "mu_recency_E_l10med", "mu_recency_E_l10",
             # NBA — Shadow VK2 PTS (2026-04-28, audit-only)
             "mu_pts_vk2", "mu_pts_vk2_applied", "delta_mu_pts_vk2_vs_vk1",
+            # NBA — Shadow REB/AST rate × minutes (2026-04-29, audit-only)
+            "mu_rate_reb_shadow", "mu_rate_reb_shadow_applied",
+            "delta_mu_rate_reb_shadow_vs_current", "rate_reb_per_min_shadow",
+            "mu_rate_ast_shadow", "mu_rate_ast_shadow_applied",
+            "delta_mu_rate_ast_shadow_vs_current", "rate_ast_per_min_shadow",
+            "expected_minutes_shadow",
         ):
             if _prob_k in raw:
                 doc[_prob_k] = raw[_prob_k]

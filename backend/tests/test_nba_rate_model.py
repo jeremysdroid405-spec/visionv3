@@ -3,7 +3,8 @@
 Covers:
   - rate computation from synthetic logs (per-minute math).
   - eligibility gate (FULL_GO + stable minutes ⇒ no-op).
-  - PTS μ blend (60% rate × min + 40% model).
+  - PTS μ blend (100/0 production default; 60/40 path tested in
+    test_nba_rate_blend_flag.py).
   - PRA μ blend (sum of 3 component rates).
   - Restriction factor multiplied into expected_minutes.
   - Audit fields stamped on the prop dict.
@@ -97,9 +98,8 @@ def test_rate_model_fires_on_l3_below_l10():
     assert prop["rate_pts_per_min"] is not None
     # Expected minutes < L10 average because L3 dropped
     assert prop["expected_minutes_raw"] < 32.0
-    # Final = 0.6 × rate_proj + 0.4 × model
-    expected = 0.6 * prop["mu_rate_projection"] + 0.4 * mu_model
-    assert out == pytest.approx(expected, rel=1e-4)
+    # Final (100/0 production default) = μ_rate exactly.
+    assert out == pytest.approx(prop["mu_rate_projection"], rel=1e-4)
 
 
 def test_rate_model_pra_sums_components():
@@ -120,10 +120,10 @@ def test_rate_model_pra_sums_components():
     # rate_total = 0.8 + 0.2 + 0.2 = 1.2 per min
     # exp_min = 30 × 0.9 = 27
     # μ_rate ≈ 1.2 × 27 = 32.4
-    # final = 0.6×32.4 + 0.4×36 = 33.84
+    # final (100/0 prod default) = μ_rate = 32.4
     assert prop["expected_minutes"] == pytest.approx(27.0)
     assert prop["mu_rate_projection"] == pytest.approx(32.4, rel=1e-3)
-    assert out == pytest.approx(33.84, rel=1e-3)
+    assert out == pytest.approx(32.4, rel=1e-3)
 
 
 def test_rate_model_skipped_for_reb_and_ast():
