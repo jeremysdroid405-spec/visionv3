@@ -21,6 +21,7 @@ class ScoringContext:
     dk_layer: Optional[Dict[str, Any]] = None
     fd_layer: Optional[Dict[str, Any]] = None  # 2026-04-27 — MLB market source
     mgm_layer: Optional[Dict[str, Any]] = None
+    bol_layer: Optional[Dict[str, Any]] = None  # 2026-04-27 — MLB tier fallback only
     sharp_layer: Optional[Dict[str, Any]] = None
     # Model + stats inputs
     p_model: Optional[float] = None          # final model probability (0-1)

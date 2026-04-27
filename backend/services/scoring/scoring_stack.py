@@ -294,13 +294,86 @@ def compute_vision_score(
 # Engine cleanup pass).
 
 
+def _prob_to_american(p: Optional[float]) -> Optional[float]:
+    """Inverse of `_american_to_prob`. Returns American odds for a [0,1] prob.
+
+    Used by `_pick_reference_odds` when forming a DK+FD MLB consensus —
+    routing is bucketed on American-odds thresholds, so we must convert
+    the averaged implied-prob back to American to keep the bucket math
+    intact. Bounded clamp (0.001..0.999) prevents division blow-ups on
+    edge-case prices.
+    """
+    if p is None:
+        return None
+    p = max(0.001, min(0.999, float(p)))
+    if p >= 0.5:
+        # Favorites
+        return -round(100 * p / (1 - p), 1)
+    # Underdogs
+    return round(100 * (1 - p) / p, 1)
+
+
 def _pick_reference_odds(
     dk_layer: Optional[Dict],
     mgm_layer: Optional[Dict],
+    fd_layer: Optional[Dict] = None,
+    bol_layer: Optional[Dict] = None,
+    sport: Optional[str] = None,
 ) -> Tuple[Optional[float], str]:
-    """DK primary, MGM fallback. Pinnacle is NOT used for tier (per existing sorter)."""
+    """Reference odds used by the universal odds-bucket router
+    (`route_by_reference_odds` in gates/thresholds.py).
+
+    Source-chain order (per sport):
+
+      NBA / default (unchanged historical behaviour):
+        DK → MGM → none
+
+      MLB (2026-04-27 expansion — DK is missing on FD-only families
+      such as Runs / Stolen Bases / a long tail of pitcher props.
+      Without this fallback, those props always resolve to
+      routed_tier=None and never reach the gate stage.):
+        DK + FD consensus (mean of implied probs, re-converted) →
+        DK → FD → MGM → BOL → none
+
+    PrizePicks is intentionally NEVER consulted as a reference book —
+    PP odds are placeholder fixed-payout structure prices, not a real
+    two-sided market. Sharp/Pinnacle is also excluded to preserve
+    pre-existing behaviour where the sorter never read sharp for tier.
+
+    Returns
+    -------
+    (reference_odds_in_american_format or None, book_label)
+
+    book_label values: "dk" | "fd" | "mgm" | "bol" | "consensus" | "none"
+    """
     dk_odds = dk_layer.get("odds") if dk_layer else None
+    fd_odds = fd_layer.get("odds") if fd_layer else None
     mgm_odds = mgm_layer.get("odds") if mgm_layer else None
+    bol_odds = bol_layer.get("odds") if bol_layer else None
+
+    sport_lc = (sport or "").lower()
+    if sport_lc == "mlb":
+        if dk_odds is not None and fd_odds is not None:
+            dk_p = _american_to_prob(dk_odds)
+            fd_p = _american_to_prob(fd_odds)
+            if dk_p is not None and fd_p is not None:
+                consensus_prob = (dk_p + fd_p) / 2.0
+                consensus_amer = _prob_to_american(consensus_prob)
+                if consensus_amer is not None:
+                    return consensus_amer, "consensus"
+            # If for any reason consensus math fails, fall through to
+            # the canonical DK price.
+        if dk_odds is not None:
+            return dk_odds, "dk"
+        if fd_odds is not None:
+            return fd_odds, "fd"
+        if mgm_odds is not None:
+            return mgm_odds, "mgm"
+        if bol_odds is not None:
+            return bol_odds, "bol"
+        return None, "none"
+
+    # NBA / default — unchanged.
     if dk_odds is not None:
         return dk_odds, "dk"
     if mgm_odds is not None:
@@ -321,6 +394,8 @@ def compute_tier(
     p_model: Optional[float] = None,
     avg_hit_margin: Optional[float] = None,
     avg_miss_margin: Optional[float] = None,
+    fd_layer: Optional[Dict] = None,
+    bol_layer: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """Assign risk bucket via the UNIVERSAL GATE ENGINE.
 
@@ -340,7 +415,10 @@ def compute_tier(
     from services.scoring.metrics_builder import build_metrics_from_context
     from services.scoring.tier_evaluator import evaluate_tier_with_overrides
 
-    ref_odds, ref_book = _pick_reference_odds(dk_layer, mgm_layer)
+    ref_odds, ref_book = _pick_reference_odds(
+        dk_layer, mgm_layer,
+        fd_layer=fd_layer, bol_layer=bol_layer, sport=sport,
+    )
 
     side = (prop.get("recommendation") or "OVER").upper()
     p_model_pct = round((p_model or 0.0) * 100.0, 1) if p_model is not None else None
@@ -761,6 +839,7 @@ def compute_scoring_stack(
     mgm_layer = prop.get("mgm_layer")
     sharp_layer = prop.get("sharp_layer")
     fd_layer = prop.get("fd_layer")
+    bol_layer = prop.get("bol_layer")
 
     vs = compute_vision_score(
         p_model=p_model,
@@ -776,6 +855,7 @@ def compute_scoring_stack(
         p_model=p_model,
         avg_hit_margin=avg_hit_margin,
         avg_miss_margin=avg_miss_margin,
+        fd_layer=fd_layer, bol_layer=bol_layer,
     )
     pp = compute_pp_utility(
         p_model=p_model, prop=prop,

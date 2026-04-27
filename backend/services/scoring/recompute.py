@@ -367,6 +367,7 @@ async def recompute_sport(
             prop={
                 "pp_layer": ctx.pp_layer, "dk_layer": ctx.dk_layer,
                 "fd_layer": ctx.fd_layer,
+                "bol_layer": ctx.bol_layer,
                 "mgm_layer": ctx.mgm_layer, "sharp_layer": ctx.sharp_layer,
                 # multiplier hints for pp_utility
                 "pp_combo_multiplier": ctx.pp_combo_multiplier,

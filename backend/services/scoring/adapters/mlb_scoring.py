@@ -167,6 +167,10 @@ class MLBScoringAdapter(ScoringAdapter):
         # (`scoring_stack._pick_fair_probability` MLB chain).
         fd_layer = _hydrate("fanduel", "fd_line", "fd_odds", "fd_layer")
         mgm_layer = _hydrate("betmgm", "mgm_line", "mgm_odds", "mgm_layer")
+        # 2026-04-27 — BOL is the last fallback in the MLB tier-routing
+        # chain (`scoring_stack._pick_reference_odds`). Not a vision
+        # source — only used to bucket props when DK/FD/MGM are absent.
+        bol_layer = _hydrate("betonlineag", "bol_line", "bol_odds", "bol_layer")
         sharp_layer = prop.get("sharp_layer") or (
             {"book": prop.get("sharp_book"), "line": prop.get("sharp_line"),
              "odds": prop.get("sharp_odds")}
@@ -485,6 +489,7 @@ class MLBScoringAdapter(ScoringAdapter):
             dk_layer=dk_layer,
             fd_layer=fd_layer,
             mgm_layer=mgm_layer,
+            bol_layer=bol_layer,
             sharp_layer=sharp_layer,
             p_model=p_model,
             p_true_hit_rate=p_true_hit_rate,
