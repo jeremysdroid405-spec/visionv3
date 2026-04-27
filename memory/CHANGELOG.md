@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-05 — NBA Injury Join Switched to `bdl_player_id`
+
+**User directive**: *"Switch injury → master_hub join from player_name to bdl_player_id."*
+
+### Result
+Closed the previously documented refinement gap. Pre-fix, name-mismatches (suffixes / unicode / trades) caused ~50% of OUT players to be counted but contribute 0 minutes to `missing_minutes_estimate`. Post-fix:
+- 100 % of `injuries_normalized` OUT rows carry `bdl_id` (source-side coverage)
+- **95.8 % of OUT `bdl_id`s resolve** in `nba_master_hub_2026.bdl_player_id` (113 / 118 NBA OUT)
+- Score-doc coverage ratio (`missing_minutes > 0` / `team_out_count > 0`): **91.9 %** (was ~50 %)
+
+### Files changed
+- `services/feature_hydration.py`
+  - `_build_injury_summary` now emits `out_bdl_ids` and `dtd_bdl_ids` per team. Dedup key is `(team, bdl_id)` when an ID is present, else `(team, name_lower)`.
+  - `_build_player_minutes_usage_map` now keyed by `bdl_player_id (int)` instead of `player_name_lower`.
+  - `_compute_team_injury_features` joins via `bdl_id` first; falls back to a normalized name match (strips `Jr.` / `Sr.` / `II` / `III`) only for the residual ~5 % where bdl_id resolution misses or `live_injuries` legacy rows lack an ID.
+  - Top-2 key-player detection now operates on `bdl_player_id` rather than dict-identity comparison.
+
+### Verification (production recompute, 3,107 NBA docs)
+- `injury_context.team_out_count > 0`: 2,049 / 3,107 (65.9 %)
+- `injury_context.missing_minutes_estimate > 0`: 1,883 / 3,107 (60.6 %)
+- Coverage ratio: 91.9 % — confirms bdl_id join captured the remaining gap.
+- Per-team rich examples:
+  - MEM (Brandon Clarke, Ja Morant, Zach Edey, Kentavious Caldwell-Pope OUT): miss_min=335.0, vacuum=2.177
+  - BKN (Michael Porter Jr., Day'Ron Sharpe, Egor Demin OUT): miss_min=233.8, vacuum=1.826, key_out=1
+  - CHI (Zach Collins, Anfernee Simons OUT): miss_min=232.3, vacuum=1.78, key_out=1
+
+### Guardrails respected
+- No model retraining; injuries are observability metadata only.
+- No gate / threshold / routing / TP / LOM / frontend changes.
+- `injury_data_is_imputed` flag remains accurate (1 only when `team_abbr` cannot be resolved at all).
+
+
+
 ## 2026-05 — NBA Live Injuries Pipeline Repair + Integration
 
 **User directive**: *"Restore real-time injury data so VegasKillerModel can account for missing players and usage redistribution. Hydration + feature input only — no gates / thresholds / routing / LOM changes; no retraining."*

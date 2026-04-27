@@ -167,7 +167,7 @@ async def _build_vegas_totals_map(
 # =============================================================================
 async def _build_injury_summary(db, sport: str) -> Dict[str, Dict[str, Any]]:
     """{team_abbr: {"out_count","dtd_count","out_players":[..],
-                    "dtd_players":[..]}}.
+                    "dtd_players":[..],"out_bdl_ids":[..],"dtd_bdl_ids":[..]}}.
 
     Source priority (2026-05):
       • NBA: `injuries_normalized` (canonical, written by InjurySensor —
@@ -180,10 +180,15 @@ async def _build_injury_summary(db, sport: str) -> Dict[str, Dict[str, Any]]:
       • OUT, OUT_FOR_SEASON, OUT_INDEFINITELY, IL → out
       • DAY-TO-DAY, DOUBTFUL, QUESTIONABLE, PROBABLE → dtd
       • Anything else → ignored
+
+    Identity preference (2026-05): join via `bdl_id` (int) wherever
+    available; fall back to lowercased player_name when the source
+    has no ID.
     """
     out: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
         "out_count": 0, "dtd_count": 0,
         "out_players": [], "dtd_players": [],
+        "out_bdl_ids": [], "dtd_bdl_ids": [],
     })
     OUT_STATUSES = {
         "OUT", "OUT_FOR_SEASON", "OUT_INDEFINITELY", "IL",
@@ -193,7 +198,7 @@ async def _build_injury_summary(db, sport: str) -> Dict[str, Dict[str, Any]]:
         "DAY-TO-DAY", "DAYTODAY", "DTD", "DOUBTFUL",
         "QUESTIONABLE", "PROBABLE", "GTD",
     }
-    seen_keys = set()  # de-dupe across sources by (team, player_name)
+    seen_keys = set()  # de-dupe across sources by (team, bdl_id-or-name)
 
     async def _ingest_cursor(cursor):
         async for inj in cursor:
@@ -201,7 +206,13 @@ async def _build_injury_summary(db, sport: str) -> Dict[str, Dict[str, Any]]:
             if not team:
                 continue
             pname = (inj.get("player_name") or "").strip()
-            key = (team, pname.lower())
+            bid_raw = inj.get("bdl_id") or inj.get("bdl_player_id")
+            try:
+                bid = int(bid_raw) if bid_raw is not None else None
+            except (TypeError, ValueError):
+                bid = None
+            # Prefer bdl_id as the dedup key; fall back to name.
+            key = (team, ("bdl", bid) if bid is not None else ("nm", pname.lower()))
             if key in seen_keys:
                 continue
             status_raw = (inj.get("status") or "").upper().strip()
@@ -209,19 +220,23 @@ async def _build_injury_summary(db, sport: str) -> Dict[str, Dict[str, Any]]:
                 out[team]["out_count"] += 1
                 if pname:
                     out[team]["out_players"].append(pname)
+                if bid is not None:
+                    out[team]["out_bdl_ids"].append(bid)
                 seen_keys.add(key)
             elif status_raw in DTD_STATUSES:
                 out[team]["dtd_count"] += 1
                 if pname:
                     out[team]["dtd_players"].append(pname)
+                if bid is not None:
+                    out[team]["dtd_bdl_ids"].append(bid)
                 seen_keys.add(key)
 
-    # Canonical source: injuries_normalized (no TTL field — fresh while
-    # InjurySensor is alive).
+    # Canonical source: injuries_normalized
     await _ingest_cursor(
         db["injuries_normalized"].find({"sport": sport})
     )
-    # Fallback / legacy: live_injuries (TTL-bound). Skip expired rows.
+    # Fallback / legacy: live_injuries (TTL-bound, no bdl_id). Skip
+    # expired rows.
     now = datetime.now(timezone.utc)
     await _ingest_cursor(
         db["live_injuries"].find({
@@ -315,22 +330,28 @@ def _parse_minutes(min_str: Any) -> Optional[float]:
 
 async def _build_player_minutes_usage_map(
     db, sport: str
-) -> Dict[str, Dict[str, float]]:
-    """{player_name_lower: {"avg_minutes_l10","usage_proxy_l10","team_abbr"}}.
+) -> Dict[int, Dict[str, Any]]:
+    """{bdl_player_id (int): {"avg_minutes_l10","usage_proxy_l10",
+                              "team_abbr","player_name"}}.
 
-    Usage proxy: (FGA + 0.44*FTA + TO) per minute averaged over L10. Team
-    rank within its roster is computed at consumption time (caller picks
-    top-N to flag `key_player_out_flag`)."""
+    Usage proxy: (FGA + 0.44*FTA + TO) per minute averaged over L10,
+    rescaled to per-36. Keyed by `bdl_player_id` (not player_name) so
+    identity joins match the injuries source via the same canonical key.
+    """
     if sport != "nba":
         return {}
-    out: Dict[str, Dict[str, float]] = {}
+    out: Dict[int, Dict[str, Any]] = {}
     cursor = db["nba_master_hub_2026"].find(
-        {}, {"player_name": 1, "team_abbr": 1, "team": 1,
-             "bdl_game_logs": 1}
+        {}, {"bdl_id": 1, "bdl_player_id": 1, "player_name": 1,
+             "team_abbr": 1, "team": 1, "bdl_game_logs": 1}
     )
     async for row in cursor:
-        name = (row.get("player_name") or "").strip()
-        if not name:
+        pid_raw = row.get("bdl_player_id") or row.get("bdl_id")
+        if pid_raw is None:
+            continue
+        try:
+            pid = int(pid_raw)
+        except (TypeError, ValueError):
             continue
         team = (row.get("team_abbr") or row.get("team") or "").upper().strip()
         logs = row.get("bdl_game_logs") or []
@@ -342,7 +363,6 @@ async def _build_player_minutes_usage_map(
         if not mins:
             continue
         avg_min = sum(mins) / len(mins)
-        # Usage proxy per game: (FGA + 0.44*FTA + TO) / max(1, mins_g)
         usage_per_game = []
         for g in l10:
             m = _parse_minutes(g.get("min"))
@@ -356,10 +376,11 @@ async def _build_player_minutes_usage_map(
             sum(usage_per_game) / len(usage_per_game)
             if usage_per_game else 0.0
         )
-        out[name.lower()] = {
+        out[pid] = {
             "avg_minutes_l10": round(avg_min, 2),
             "usage_proxy_l10": round(usage_l10, 2),
             "team_abbr": team,
+            "player_name": row.get("player_name") or "",
         }
     return out
 
@@ -367,9 +388,14 @@ async def _build_player_minutes_usage_map(
 def _compute_team_injury_features(
     team_abbr: Optional[str],
     injuries_by_team: Dict[str, Dict[str, Any]],
-    minutes_usage_map: Dict[str, Dict[str, float]],
+    minutes_usage_map: Dict[int, Dict[str, Any]],
 ) -> Dict[str, Any]:
     """Compute team-level injury aggregates for the given team.
+
+    Identity rule (2026-05): join `injuries_normalized.bdl_id` against
+    `minutes_usage_map` keyed by `bdl_player_id`. Falls back to name
+    match only when the source lacks a bdl_id (legacy `live_injuries`
+    rows).
 
     Returns a dict with:
       injury_count           — out + dtd
@@ -383,7 +409,7 @@ def _compute_team_injury_features(
       team_usage_removed_pct — alias of missing_usage_pct
       key_player_out_flag    — 1 if any of the team's top-2 minutes
                                leaders is out, else 0
-      injury_data_is_imputed — 1 when no team_abbr or no source data
+      injury_data_is_imputed — 1 only when team_abbr is missing
     """
     base = {
         "injury_count": 0, "out_count": 0, "dtd_count": 0,
@@ -415,15 +441,52 @@ def _compute_team_injury_features(
     # Minutes / usage aggregates from `nba_master_hub_2026` L10.
     if not minutes_usage_map:
         return base
-    out_player_keys = {p.lower() for p in out_players}
+
+    # 1) Primary join: bdl_id → minutes/usage payload.
+    out_bdl_ids = set(team_inj.get("out_bdl_ids") or [])
+    matched_pids: set = set()
     missing_min = 0.0
     missing_usage = 0.0
-    for k in out_player_keys:
-        m = minutes_usage_map.get(k)
+    for pid in out_bdl_ids:
+        m = minutes_usage_map.get(pid)
         if not m:
             continue
+        matched_pids.add(pid)
         missing_min += float(m.get("avg_minutes_l10") or 0.0)
         missing_usage += float(m.get("usage_proxy_l10") or 0.0)
+
+    # 2) Fallback name match for any out player whose bdl_id either
+    # wasn't in the source row OR didn't resolve in master_hub. Build
+    # a name index lazily.
+    matched_names = {
+        minutes_usage_map[p]["player_name"].lower()
+        for p in matched_pids
+        if minutes_usage_map.get(p)
+    }
+    # Rough name normalization: strip common suffixes/prefixes.
+    def _norm(n: str) -> str:
+        return (n or "").lower().replace(" jr.", "").replace(" sr.", "")\
+            .replace(" iii", "").replace(" ii", "").strip()
+    name_index: Dict[str, int] = {}
+    for pid_, payload_ in minutes_usage_map.items():
+        nm = _norm(payload_.get("player_name") or "")
+        if nm:
+            name_index.setdefault(nm, pid_)
+    for pname in out_players:
+        nm = _norm(pname)
+        pid = name_index.get(nm)
+        if pid is None or pid in matched_pids:
+            continue
+        if (minutes_usage_map.get(pid, {}).get("player_name", "").lower()
+                in matched_names):
+            continue
+        m = minutes_usage_map.get(pid) or {}
+        if (m.get("team_abbr") or "").upper() != team_abbr:
+            continue
+        matched_pids.add(pid)
+        missing_min += float(m.get("avg_minutes_l10") or 0.0)
+        missing_usage += float(m.get("usage_proxy_l10") or 0.0)
+
     base["missing_minutes"] = round(missing_min, 2)
     base["missing_usage_pct"] = round(missing_usage, 2)
     base["team_minutes_removed"] = round(missing_min, 2)
@@ -439,22 +502,19 @@ def _compute_team_injury_features(
         float(r.get("usage_proxy_l10") or 0.0) for r in roster_sorted[:13]
     )
     if total_team_usage > 0:
-        # 1.0 → no vacuum; >1.0 → some usage redistributed
         base["usage_vacuum_factor"] = round(
             1.0 + missing_usage / total_team_usage, 3
         )
-    # Key player flag: any of top-2 minute leaders is out.
-    top2_names = [r for r in roster_sorted[:2]]
-    if top2_names:
-        # Reverse-lookup: which name(s) sit in the top2 slots?
-        for name_lower, payload in minutes_usage_map.items():
-            if (payload.get("team_abbr") or "").upper() != team_abbr:
-                continue
-            if payload not in top2_names:
-                continue
-            if name_lower in out_player_keys:
-                base["key_player_out_flag"] = 1
+    # Key player flag: any of the team's top-2 minute leaders is out.
+    top2_pids = set()
+    for v in roster_sorted[:2]:
+        # Recover the bdl_id by lookup (rare iteration, ok).
+        for pid_, payload_ in minutes_usage_map.items():
+            if payload_ is v:
+                top2_pids.add(pid_)
                 break
+    if top2_pids & matched_pids:
+        base["key_player_out_flag"] = 1
     return base
 
 
