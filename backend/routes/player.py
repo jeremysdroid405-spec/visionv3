@@ -181,32 +181,10 @@ _BOARD_PLAYER_FIELDS = (
 
 
 # Cross-pipeline stat-name alias (2026-04-24).
-# See routes/ferrari_tiers.py for the canonical definition. Duplicated
-# here (not imported) to avoid a route-module cross-import dependency.
-_STAT_FAMILY_ALIAS = {
-    "PLAYER_POINTS_ALTERNATE":                 "PTS",
-    "PLAYER_REBOUNDS_ALTERNATE":               "REB",
-    "PLAYER_ASSISTS_ALTERNATE":                "AST",
-    "PLAYER_THREES_ALTERNATE":                 "3PM",
-    "PLAYER_POINTS_ASSISTS":                   "P+A",
-    "PLAYER_POINTS_ASSISTS_ALTERNATE":         "P+A",
-    "PLAYER_POINTS_REBOUNDS":                  "P+R",
-    "PLAYER_POINTS_REBOUNDS_ALTERNATE":        "P+R",
-    "PLAYER_REBOUNDS_ASSISTS":                 "R+A",
-    "PLAYER_REBOUNDS_ASSISTS_ALTERNATE":       "R+A",
-    "PLAYER_POINTS_REBOUNDS_ASSISTS":          "PRA",
-    "PLAYER_POINTS_REBOUNDS_ASSISTS_ALTERNATE":"PRA",
-    "PLAYER_BLOCKS":                           "BLK",
-    "PLAYER_STEALS":                           "STL",
-    "PLAYER_BLOCKS_STEALS":                    "BLK+STL",
-    "PLAYER_TURNOVERS":                        "TO",
-}
-
-def _canonical_stat_family(stat: Optional[str]) -> str:
-    if not stat:
-        return ""
-    key = str(stat).strip().upper()
-    return _STAT_FAMILY_ALIAS.get(key, key)
+# Canonical SSOT lives in `services/scoring/stat_family.py`.
+# Imported here so routes/player.py and routes/ferrari_tiers.py share
+# one normalizer and cannot drift apart.
+from services.scoring.stat_family import canonical_stat_family as _canonical_stat_family  # noqa: E402
 
 
 async def _build_nba_cached_board_index(player_name: str) -> Dict[str, Dict[tuple, Dict[str, Any]]]:

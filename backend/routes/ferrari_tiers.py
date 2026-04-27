@@ -930,44 +930,12 @@ def _generate_under_vision_gritty(score: Dict[str, Any], prop: Dict[str, Any]) -
     return ""
 
 
-# Cross-pipeline stat-name alias (2026-04-24). The Odds-API ingestion
-# writes raw market names like `player_points_assists_alternate`, but
-# `cached_board_builder_service` normalises combo markets to compact
-# `P+A` / `P+R` / `R+A` / `BLK+STL` tokens. These are the SAME family —
-# cached_board just never adopted the alternate-market naming. Aliasing
-# both sides to a stable family token lets stat-level enrichment join
-# without requiring a scoring-pipeline rename.
-_STAT_FAMILY_ALIAS = {
-    "PLAYER_POINTS_ALTERNATE":                 "PTS",
-    "PLAYER_REBOUNDS_ALTERNATE":               "REB",
-    "PLAYER_ASSISTS_ALTERNATE":                "AST",
-    "PLAYER_THREES_ALTERNATE":                 "3PM",
-    "PLAYER_POINTS_ASSISTS":                   "P+A",
-    "PLAYER_POINTS_ASSISTS_ALTERNATE":         "P+A",
-    "PLAYER_POINTS_REBOUNDS":                  "P+R",
-    "PLAYER_POINTS_REBOUNDS_ALTERNATE":        "P+R",
-    "PLAYER_REBOUNDS_ASSISTS":                 "R+A",
-    "PLAYER_REBOUNDS_ASSISTS_ALTERNATE":       "R+A",
-    "PLAYER_POINTS_REBOUNDS_ASSISTS":          "PRA",
-    "PLAYER_POINTS_REBOUNDS_ASSISTS_ALTERNATE":"PRA",
-    "PLAYER_BLOCKS":                           "BLK",
-    "PLAYER_STEALS":                           "STL",
-    "PLAYER_BLOCKS_STEALS":                    "BLK+STL",
-    "PLAYER_TURNOVERS":                        "TO",
-    "PLAYER_FANTASY_POINTS":                   "PLAYER_FANTASY_POINTS",
-    # Compact tokens already used by cached_board — pass through.
-    "PTS": "PTS", "REB": "REB", "AST": "AST", "PRA": "PRA",
-    "3PM": "3PM", "STL": "STL", "BLK": "BLK", "TO": "TO",
-    "P+A": "P+A", "P+R": "P+R", "R+A": "R+A", "BLK+STL": "BLK+STL",
-}
-
-def _canonical_stat_family(stat: Optional[str]) -> str:
-    """Return the cross-pipeline stat-family token for a raw stat_type.
-    Unknown stats pass through uppercased so aliasing is additive only."""
-    if not stat:
-        return ""
-    key = str(stat).strip().upper()
-    return _STAT_FAMILY_ALIAS.get(key, key)
+# Cross-pipeline stat-name alias (2026-04-24, refactored 2026-04-27).
+# Canonical SSOT lives in `services/scoring/stat_family.py`. The shared
+# module also handles MLB normalization (Hits+Runs+RBIs / Pitcher vs
+# Batter Strikeouts / Total Bases) and is what cached_board, scoring,
+# and validation tools all read.
+from services.scoring.stat_family import canonical_stat_family as _canonical_stat_family  # noqa: E402
 
 
 async def _build_nba_board_lookup() -> Dict[tuple, Dict[str, Any]]:
@@ -1083,7 +1051,19 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
 
     # --- Authoritative fields from nba_prop_scores ---
     prop["player_name"] = score.get("player_name") or prop.get("player_name")
-    prop["stat_type"] = score.get("stat_type") or prop.get("stat_type")
+    # Stat-type normalization (2026-04-27 routing fix):
+    # The score writer leaks raw market keys (e.g. "player_points_rebounds_alternate")
+    # for combo/alt markets. Display + cache joins want the compact canonical
+    # token ("P+R"). We promote the canonical token to `stat_type` (the
+    # field the UI reads) and keep the raw market key as `stat_type_raw`
+    # for traceability. Already-canonical inputs pass through unchanged
+    # (`canonical_stat_family` is idempotent).
+    raw_stat = score.get("stat_type") or prop.get("stat_type") or ""
+    canon_stat = _canonical_stat_family(raw_stat)
+    prop["stat_type"] = canon_stat or raw_stat
+    prop["stat_type_canonical"] = canon_stat or raw_stat
+    if raw_stat and raw_stat != prop["stat_type"]:
+        prop["stat_type_raw"] = raw_stat
     prop["line"] = score.get("line")
     prop["direction"] = direction_title
     prop["recommendation"] = direction_title

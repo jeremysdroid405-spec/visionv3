@@ -1,5 +1,33 @@
 # Changelog
 
+
+## 2026-04-27 — Cached Board Combo / Alt-Market Routing Fix
+
+**User directive**: *"Ensure cached board props are routed and displayed correctly for combo stats and alt-market lines. Backend only. Do not change scoring/LOM/gates/thresholds/TP/frontend."*
+
+### Root cause (two bugs)
+1. **NBA** — score-doc writers leak raw Odds-API market keys (e.g. `player_points_rebounds_alternate`) into `stat_type`; lookup-side aliasing in `routes/ferrari_tiers.py` worked, but the API still surfaced the raw key to the UI. Result: users saw `player_points_rebounds_alternate` instead of `P+R`.
+2. **MLB** — `mlb_cached_board_builder.enrich_prop` preserved `direction: None` from upstream live-props (only `recommendation` was set). Any consumer joining on `direction`/`side` got nothing. `canonical_key` was built from the raw label, not the canonical stat.
+
+### Fix
+- **NEW** `services/scoring/stat_family.py` — SSOT normaliser for both NBA and MLB. `canonical_stat_family(stat, sport)`, `build_canonical_key(...)`, `is_pitcher_stat`, `is_batter_stat`, `is_combo_stat`. Idempotent, case-insensitive.
+- `routes/ferrari_tiers.py` — duplicated `_STAT_FAMILY_ALIAS` deleted; imports from SSOT. In `_merge_score_with_board`, promote canonical token to `stat_type` and stash original as `stat_type_raw`.
+- `routes/player.py` — same SSOT import; alias map deleted.
+- `services/mlb_cached_board_builder.py::enrich_prop` — sets `direction`/`side`/`recommendation` consistently, rebuilds `canonical_key` from canonical stat, persists `stat_type_canonical`.
+- **NEW** `services/scoring/scripts/validate_board_routing.py` — read-only routing-health audit; outputs to `/tmp/board_routing_report.json`.
+- **NEW** `tests/test_stat_family_routing.py` — 21 regression tests covering alt-line preservation, OVER/UNDER separation, pitcher↔batter, combo↔base, HRR↔Hits, Q1 markets, idempotency.
+
+### After-fix metrics
+- **NBA picks**: 3 visible war-zone picks fixed (Jalen Duren, VJ Edgecombe, Keldon Johnson — `player_points_*_alternate` → `P+A` / `P+R`).
+- **MLB cached_board**: 2 738 / 2 738 props now have `direction` set (was 0). `stat_type_canonical` and rebuilt `canonical_key` populated for every prop.
+- **All 21 regression tests passing**. No combo↔base collisions, no pitcher↔batter collisions.
+
+### Out of scope (explained in `/tmp/board_routing_fix_REPORT.md`)
+- NBA MISS rate (14.9 %): genuine cached_board coverage gaps from upstream sync timing — not a routing bug.
+- NBA `player_stat_only` fallback rate (30.6 %): expected line-drift behaviour — line-agnostic enrichment falls back correctly.
+- NBA cached_board *writer* (lost source, only `.pyc`): we normalise **on read** at the route layer; the cache itself already stores compact tokens.
+
+
 ## 2026-04-27 — Shadow VK Forward-Test Pipeline (Parts 1 + 2)
 
 **User directive**: *"Proceed with option 3: (a) + (b). Part 1 — partial, time-stable feature audit (directional only). Part 2 — set up the real forward-test shadow pipeline."*

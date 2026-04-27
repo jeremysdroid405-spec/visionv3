@@ -375,8 +375,45 @@ class MLBCachedBoardBuilder:
         hit_rate_l5 = calculate_hit_rate(l5_values, line)
         
         # Build enriched prop
+        # 2026-04-27 routing fix:
+        #   • Canonicalize stat_type via the shared SSOT normalizer so
+        #     pitcher vs batter strikeouts, HRR vs Hits, and combo/alt
+        #     spellings never collapse. Original market key preserved on
+        #     `stat_type_raw` for traceability.
+        #   • Set `direction` and `side` from `recommendation` so any
+        #     consumer that joins on direction/side gets a value (the
+        #     live_props writer leaves both as None today).
+        from services.scoring.stat_family import (
+            canonical_stat_family as _canon_stat,
+            build_canonical_key as _canon_key,
+        )
+        raw_stat = prop.get("stat_type") or ""
+        canon_stat = _canon_stat(raw_stat, sport="mlb")
+        rec = (prop.get("recommendation") or prop.get("side")
+               or prop.get("direction") or "OVER")
+        rec_u = str(rec).strip().upper()
+        if rec_u not in ("OVER", "UNDER"):
+            rec_u = "OVER"
+        rec_title = "Under" if rec_u == "UNDER" else "Over"
+
         enriched = {
             **prop,
+            # Stat-type canonicalization
+            "stat_type": canon_stat or raw_stat,
+            "stat_type_canonical": canon_stat or raw_stat,
+            **({"stat_type_raw": raw_stat}
+               if raw_stat and raw_stat != (canon_stat or raw_stat) else {}),
+            # Canonical join key (rebuilt from canonical stat — old key
+            # may have used the raw label).
+            "canonical_key": _canon_key(
+                "mlb", prop.get("event_id"),
+                prop.get("player_name") or player.get("display_name"),
+                canon_stat or raw_stat, line, rec_u,
+            ),
+            # Side fields — fill from recommendation when missing
+            "direction": prop.get("direction") or rec_title,
+            "side":      prop.get("side") or rec_u,
+            "recommendation": prop.get("recommendation") or rec_u,
             # Player info
             "player_id": player.get("bdl_id"),
             "team": player.get("team_abbr"),
