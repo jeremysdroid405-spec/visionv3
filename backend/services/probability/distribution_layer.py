@@ -175,7 +175,13 @@ def _resolve_sigma(
     -------
     (sigma, sigma_source, effective_mu, mu_floor_applied)
     """
-    family = (stat_family or "").lower().strip()
+    # 2026-04-27 fix: canonical MLB stat tokens come through as
+    # space-separated lowercase ("home runs", "stolen bases", "pitcher
+    # outs"), but the floor tables historically used snake_case keys
+    # ("home_runs", ...). Normalize to snake_case so both formats hit.
+    # NBA tokens (no spaces / already canonical compact form) are
+    # unaffected by the replacement.
+    family = (stat_family or "").lower().strip().replace(" ", "_")
     floor_cv = _CV_FLOOR_BY_FAMILY.get(family, _CV_FLOOR_DEFAULT)
     mu_floor = _MU_FLOOR_BY_FAMILY.get(family, _MU_FLOOR_DEFAULT)
 

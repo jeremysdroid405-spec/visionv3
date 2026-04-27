@@ -1,6 +1,28 @@
 # PRD — NBA/MLB Ferrari / PropVision AI
 
 
+## 2026-04-27 — μ-floor σ-calibration report delivered
+Distribution-layer μ-floor scaling is wired through `services/probability/distribution_layer.py`. Full MLB recompute against `final-mlb-rt` ran in-process (2,570 props / 21.7s); BEFORE was reproduced by patching `_MU_FLOOR_BY_FAMILY` to `{}` and `_MU_FLOOR_DEFAULT=0.0` (true apples-to-apples, NOT `raw_gaussian_p_over`).
+
+**Bug fixed during run:** floor tables used `snake_case` keys (`pitcher_outs`, `home_runs`) but `canonical_stat_family("Pitcher Outs", "mlb").lower()` returns `"pitcher outs"`. Every multi-word MLB family was missing its tuned floor. Fixed via `.replace(" ", "_")` normalisation in `_resolve_sigma` — 23/23 regression tests still pass.
+
+**Calibration result (`avg |distribution_p_over − market_p_over|`):**
+- devig-only cohort (n=357): 0.1303 → 0.1350 (+0.005, slightly worse)
+- all-books cohort (n=2,426): 0.1182 → 0.1359 (+0.018, worse)
+- 0.5-line devig cohort (n=211): 0.1318 → 0.1219 (−0.010, **improved**)
+
+Per-family: improved on `runs` (−0.043), `singles` (−0.032), `hits` (−0.011), `pitcher strikeouts` (−0.001), `earned runs` (−0.026), `hits allowed` (−0.011), `pitcher outs` (−0.005). Worsened on rare-event Bernoulli-like families: `home runs` (+0.095), `total bases` (+0.035), `doubles` (+0.038), `rbis` (+0.036), `stolen bases` (+0.022), `hits+runs+rbis` (+0.033).
+
+μ_floor applied on 807/2,426 props (33.3%); sigma-collapse → CDF clamp pathology eliminated (0 clamped vs typical ~70 BEFORE).
+
+**Open issues raised by the report:**
+- Normal CDF over-prices rare-event 0.5-lines (HR/SB/doubles) once σ is widened — likely needs a Beta-Binomial / Poisson translator for those families.
+- Pitcher Outs / Pitcher Strikeouts μ projections are wildly under (4-8 vs market-implied 14-18) — HF model issue, NOT distribution layer.
+- Front Lines gates remain disabled (`MLB_FRONT_LINES_GATES_DISABLED=True`) until the rare-event translator lands.
+
+Full report: `/tmp/mu_floor_calibration_REPORT.md`. Reproducer: `/tmp/mu_floor_calibration_report.py`.
+
+
 ## 2026-04-27 — Shadow VK Forward-Test Pipeline (parallel, read-only)
 A new collection `shadow_vk_snapshots` co-locates production VK predictions with the 10 NBA context features and a frozen capture timestamp, ready for an honest A/B once 7–14 days of resolved data accrue.
 
