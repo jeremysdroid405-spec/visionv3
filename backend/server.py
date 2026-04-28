@@ -1497,7 +1497,13 @@ async def startup_event():
         # Also bootstrap sync_locks indexes (Phase 2). Idempotent.
         from services.sync_lock import ensure_indexes as _sync_lock_ensure
         await _sync_lock_ensure(db)
-        logger.info("[ROUTES] /api/health/sync registered + sync_locks indexes ensured")
+        # Contract-enforcer violation TTL collection (2026-04-29). Idempotent.
+        from services.contract_enforcer import ensure_indexes as _ce_ensure
+        await _ce_ensure(db)
+        logger.info(
+            "[ROUTES] /api/health/sync + /api/health/contracts registered "
+            "+ sync_locks + contract_violations indexes ensured"
+        )
     except Exception as _hs_err:  # noqa: BLE001
         logger.error(f"[ROUTES] health_sync wiring failed: {_hs_err}")
     

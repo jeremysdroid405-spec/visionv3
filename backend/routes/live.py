@@ -661,7 +661,23 @@ async def get_live_scores(sport: str = Query("nba", description="Sport: nba or m
                             games = kept
                             # Sort by start time
                             games.sort(key=lambda x: x.get("start_time", ""))
-                            
+
+                            # ── Runtime Contract Enforcer (2026-04-29) ────
+                            # Final freshness gate. Any past-game / final
+                            # row that slipped past the in-place filter is
+                            # dropped here and counted in
+                            # /api/health/contracts.
+                            try:
+                                from services.contract_enforcer import (
+                                    enforce_ticker_freshness,
+                                )
+                                games = await enforce_ticker_freshness(_db, games, sport="nba")
+                            except Exception as _ce_err:
+                                logger.error(
+                                    f"[CONTRACT_ENFORCER:nba:ticker] failed: {_ce_err}",
+                                    exc_info=True,
+                                )
+
                             return {
                                 "games": games,
                                 "date": today,
@@ -909,6 +925,21 @@ async def get_mlb_live_scores():
 
             # Sort by start time
             games.sort(key=lambda x: x.get("start_time", ""))
+
+            # ── Runtime Contract Enforcer (2026-04-29) ────────────────
+            # Final freshness gate. Past-game / final rows that slipped
+            # past the in-place filter are dropped here and counted in
+            # /api/health/contracts.
+            try:
+                from services.contract_enforcer import (
+                    enforce_ticker_freshness,
+                )
+                games = await enforce_ticker_freshness(_db, games, sport="mlb")
+            except Exception as _ce_err:
+                logger.error(
+                    f"[CONTRACT_ENFORCER:mlb:ticker] failed: {_ce_err}",
+                    exc_info=True,
+                )
 
             logger.info(f"[MLB TICKER] Fetched {len(games)} upcoming/in-play games from BDL")
             

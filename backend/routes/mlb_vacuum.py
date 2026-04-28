@@ -283,6 +283,22 @@ async def get_mlb_live_alerts(
                 dropped, len(alerts), len(capped),
             )
 
+        # ── Runtime Contract Enforcer (2026-04-29, STRICT MODE) ────────
+        # Belt-and-braces validation on the FINAL response shape. Any row
+        # whose lineup_delta / projected_ab_delta degrades to a placeholder
+        # value before serialization is suppressed and counted in
+        # /api/health/contracts. NO model / scoring / gate touched.
+        try:
+            from services.contract_enforcer import (
+                enforce_lineup_opportunity_contract,
+            )
+            capped = await enforce_lineup_opportunity_contract(_db, capped, sport="mlb")
+        except Exception as _ce_err:
+            logger.error(
+                f"[CONTRACT_ENFORCER:mlb:lineup_opportunity] failed: {_ce_err}",
+                exc_info=True,
+            )
+
         return {
             "success": True,
             "alerts": capped,

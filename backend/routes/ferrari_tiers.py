@@ -2231,6 +2231,24 @@ async def _serve_ferrari_tier(
     except Exception as _cc_err:
         logger.warning(f"[CARD_CONTRACT:{sport}] skipped: {_cc_err}")
 
+    # ── Runtime Contract Enforcers (2026-04-29, STRICT MODE) ───────────
+    # Hard validators run on every dashboard tier response. Bad data is
+    # SUPPRESSED, never patched. Counters surface at /api/health/contracts.
+    # NO scoring / model / gate / threshold / pick-selection logic touched.
+    try:
+        from services.contract_enforcer import (
+            enforce_hit_profile_parity,
+            enforce_pick_card_contract,
+        )
+        # Hit-profile parity FIRST — rewrites stale displayed hit_rate to
+        # the empirical L10 value before the card-shape validator runs.
+        await enforce_hit_profile_parity(_db, picks, sport=sport, tier=tier_name)
+        # Pick-card shape gate — drops picks missing required identity /
+        # display fields. One bad pick MUST NOT break the whole tier.
+        picks = await enforce_pick_card_contract(_db, picks, sport=sport, tier=tier_name)
+    except Exception as _ce_err:
+        logger.error(f"[CONTRACT_ENFORCER:{sport}:{tier_name}] failed: {_ce_err}", exc_info=True)
+
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
     has_any_mlr    = sum(1 for p in picks if (p.get("validation") or {}).get("has_mlr", False))
     has_any_gemini = sum(1 for p in picks if (p.get("validation") or {}).get("has_gemini", False))

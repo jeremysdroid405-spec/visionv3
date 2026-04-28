@@ -309,3 +309,52 @@ async def health_sync(
     elif "warning" in statuses:
         out["overall_status"] = "warning"
     return out
+
+
+# ---------------------------------------------------------------------------
+@router.get("/contracts")
+async def health_contracts(response: Response):
+    """Runtime API-contract violation counters (last 24 h).
+
+    Surfaced from the `contract_violations` collection (TTL 24 h).
+    Each counter resets automatically as old documents expire. Read-only —
+    this endpoint NEVER writes, NEVER triggers a sync, NEVER touches model
+    state.
+
+    Payload shape (always present, defaults to 0):
+
+        invalid_pick_card_count_last_24h
+        suppressed_lineup_opportunity_count_last_24h
+        hit_profile_mismatch_count_last_24h
+        past_game_ticket_suppressed_count_last_24h
+        logo_lookup_not_sport_keyed_count_last_24h
+        missing_required_card_fields_by_sport: {nba: int, mlb: int, ...}
+        status: 'healthy' | 'warning'    — warning when ANY counter > 0
+        generated_at: ISO timestamp
+    """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    if _db is None:
+        return {
+            "error": "db_not_initialised",
+            "generated_at": _now().isoformat(),
+        }
+    try:
+        from services.contract_enforcer import aggregate_24h_counters
+        counters = await aggregate_24h_counters(_db)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "error": repr(exc),
+            "generated_at": _now().isoformat(),
+        }
+    spike = (
+        counters["invalid_pick_card_count_last_24h"]
+        + counters["suppressed_lineup_opportunity_count_last_24h"]
+        + counters["hit_profile_mismatch_count_last_24h"]
+        + counters["past_game_ticket_suppressed_count_last_24h"]
+        + counters["logo_lookup_not_sport_keyed_count_last_24h"]
+    )
+    return {
+        "generated_at": _now().isoformat(),
+        "status": "healthy" if spike == 0 else "warning",
+        **counters,
+    }

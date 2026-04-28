@@ -28,6 +28,48 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
 
 ## Recent work (changelog)
 
+### 2026-04-29 — Permanent runtime contract enforcement (STRICT MODE)
+**Why**: "Fixes" to NBA/MLB dashboards kept regressing because contracts
+(card shape, lineup-opp row shape, hit-profile parity, ticker freshness)
+lived only in code review. User requested hard runtime gates with health
+counters and CI tests that fail the build.
+
+**Shipped**:
+- `services/contract_enforcer.py` — 5 validators wired into the live API:
+  1. `enforce_pick_card_contract` → `_serve_ferrari_tier` (NBA + MLB,
+     all 3 tiers). Drops picks missing identity/display fields. Counter:
+     `invalid_pick_card_count_last_24h`.
+  2. `enforce_hit_profile_parity` → same path. Rewrites stale `hit_rate`
+     to empirical L10 (`l10_hit_count / l10_total`) and counts
+     `hit_profile_mismatch_count_last_24h`. Locks down the Vucevic-class
+     bug permanently.
+  3. `enforce_lineup_opportunity_contract` → `/api/v3/mlb/vacuum/live-alerts`.
+     Drops "+0 lineup spots / +0 AB" placeholder rows. Counter:
+     `suppressed_lineup_opportunity_count_last_24h`.
+  4. `enforce_ticker_freshness` → `/api/live/scores` (NBA + MLB).
+     Drops finals + past-start scheduled games. Counter:
+     `past_game_ticket_suppressed_count_last_24h`.
+  5. Logo-keying violation slot reserved for future sport-collision audit.
+- `GET /api/health/contracts` (in `routes/health_sync.py`) — returns the
+  six 24h counters + `missing_required_card_fields_by_sport` aggregate.
+  Status flips to `warning` when any counter > 0.
+- TTL-24h `contract_violations` collection bootstrapped at startup
+  (`server.py` startup hook).
+- `tests/test_contract_enforcer.py` — 18 CI tests **fail the build** on
+  regression. Includes:
+    * Frozen Vucevic P+R 9.5 fixture (model 75% vs empirical 5/10 → must
+      auto-rewrite to 50.0).
+    * Lineup-opportunity zero-row + missing-beneficiary suppression.
+    * Past-game / final ticker suppression.
+    * In-play kept regardless of past commence_time.
+    * 24h counter payload-shape lockdown.
+    * Required-keys lockdown (PICK_CARD_REQUIRED_KEYS frozen).
+    * Model-field non-mutation guarantee.
+
+**No model state touched**: scoring formulas, μ, σ, gates, thresholds,
+tier-routing, and pick-selection logic are completely unchanged.
+Verified by `test_enforcer_does_not_touch_model_fields`.
+
 ### 2026-04-28 — Odds API historical backfill ACTIVATED + 30-day NBA ingest
 - User provisioned `ODDS_API_KEY` in `/app/backend/.env`.
 - **Two latent bugs fixed in the dormant module on first activation:**
