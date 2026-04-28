@@ -1,26 +1,23 @@
 #!/usr/bin/env bash
 # =============================================================================
-# MLB Pre-Game Lineup Ingest  (PA-v2 input refresh)
+# MLB Pre-Game Lineup Ingest   ⚠ DEPRECATED 2026-04-28 ⚠
 # =============================================================================
+# Phase 4 of Sync Hardening migrated this into APScheduler.
+# Production now runs TWO in-process jobs registered in `server.py`:
+#   - mlb_lineups_early   18:00 UTC   lock=lineup:mlb
+#   - mlb_lineups_final   22:00 UTC   lock=lineup:mlb
+# Source: /app/backend/services/scheduled/mlb_jobs.py (mlb_pregame_lineups)
+#
+# This shell script is kept for MANUAL ROLLBACK ONLY.  Do NOT
+# install in host crontab — it would race the in-process scheduler.
+# To run manually:
+#   python -m services.scheduled.mlb_jobs lineups
+#
 # Run-mode contract:
 #   * LINEUP-DATA PLUMBING ONLY.  This script never touches scoring,
 #     gates, thresholds, tier routing, μ/σ, or selection logic.
-#   * Runs ~6 PM ET (22:00 UTC), when MLB Stats API has 95%+ of
-#     confirmed lineup cards posted.
-#   * Strictly read-only against MLB Stats API; writes only to
-#     `mlb_projected_lineups` and the four lineup-related fields on
-#     `mlb_live_props` (batting_order / lineup_confirmed / lineup_source).
 #   * Strict no-leakage rule enforced inside the ingestor and the loader:
 #     `as_of <= commence_time` always.
-#   * After ingest, runs the read-only coverage monitor.  SLA breaches
-#     print "WARNING" but never fail the pipeline.
-#
-# Cron entry:
-#   0 22 * * *  /app/backend/scripts/run_mlb_pregame_lineups.sh \
-#                 >> /var/log/mlb_lineups.log 2>&1
-#
-# Manual one-shot for a specific date:
-#   DATE=2026-04-28 /app/backend/scripts/run_mlb_pregame_lineups.sh
 # =============================================================================
 set -euo pipefail
 

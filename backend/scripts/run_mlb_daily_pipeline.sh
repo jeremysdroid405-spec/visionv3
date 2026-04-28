@@ -1,30 +1,28 @@
 #!/usr/bin/env bash
 # =============================================================================
-# MLB Total Bases v1 — Locked Daily Pipeline
+# MLB Total Bases v1 — Locked Daily Pipeline   ⚠ DEPRECATED 2026-04-28 ⚠
 # =============================================================================
-# Run-mode contract (per spec): NO model / gate / threshold changes during
-# the locked forward-test window. This script is the SINGLE entry point
-# for the daily cron — anything not in here is out-of-band manual work.
+# Phase 4 of Sync Hardening migrated this pipeline into APScheduler.
+# Production scheduling is now `mlb_daily_pipeline` job in
+# `/app/backend/services/scheduled/mlb_jobs.py`, registered by
+# `server.py` at boot, fires daily at 04:00 UTC, lock=`sync:mlb`.
 #
-# Order of operations:
-#   1. Ingest yesterday's Statcast events
-#   2. Rebuild rolling 7/14/30 + season features
-#   3. Rebuild the player identity map (handles new call-ups)
-#   4. Validate joins (fail-fast on coverage drop)
-#   5. Score today's slate + log picks to mlb_pick_history
+# This shell script is kept for MANUAL ROLLBACK ONLY.  Do NOT
+# install in host crontab — it would race the in-process scheduler.
+# To run manually:
+#   python -m services.scheduled.mlb_jobs daily
 #
-# Cron entries (install in ops crontab):
+# Order of operations (mirrored in services/scheduled/mlb_jobs.py):
+#   1. Lineup ingest (today)
+#   2. Statcast ingest (yesterday)
+#   3. Batter features rebuild
+#   4. Pitcher features rebuild
+#   5. Pitcher context backfill (shadow)
+#   6. Identity map rebuild
+#   7. Statcast validation
+#   8. Score today's slate + log picks
 #
-#   # Daily pipeline — Statcast + features + identity + scoring (post-slate).
-#   0 4  * * *  /app/backend/scripts/run_mlb_daily_pipeline.sh \
-#                  >> /var/log/mlb_pipeline.log 2>&1
-#
-#   # Pre-game lineup ingest — runs ~6 PM ET, when MLB Stats API has
-#   # 95%+ of confirmed cards posted.  Lineup-only; never touches scoring.
-#   0 22 * * *  /app/backend/scripts/run_mlb_pregame_lineups.sh \
-#                  >> /var/log/mlb_lineups.log 2>&1
-#
-# Manual one-shot for a specific date:
+# Manual one-shot for a specific date (legacy path, still works):
 #   YESTERDAY=2026-04-26 /app/backend/scripts/run_mlb_daily_pipeline.sh
 # =============================================================================
 set -euo pipefail

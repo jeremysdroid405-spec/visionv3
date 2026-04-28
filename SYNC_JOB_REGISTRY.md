@@ -29,6 +29,10 @@ Status legend:
 | `mlb_daily_refresh` | 04:23 ET | mlb | MLB full daily pipeline | `sync:mlb` | MLB hub + props + scores | 1–3 m | logs | LIVE |
 | `ticker_sync` | 04:26 ET | both | News + games ticker | (none) | `news_ticker_*` | ~30 s | logs | LIVE |
 | `pra_audit_settle` | 04:30 ET | nba | NBA PRA projection audit settle | (none — read prop_scores) | `nba_pra_projection_audit` | ~30 s | logs | LIVE |
+| `mlb_daily_pipeline` | 04:00 UTC | mlb | Phase-4 migrated daily MLB pipeline (lineup + statcast + features + identity + validate + score) | **`sync:mlb`** | `mlb_projected_lineups`, `mlb_statcast_*`, `mlb_player_identity_map`, `mlb_pick_history`, `sync_history` | 5–15 m | logs + `sync_history` row + skip-on-busy | LIVE |
+| `mlb_lineups_early` | 18:00 UTC | mlb | Phase-4 migrated pregame lineup ingest (early window) | **`lineup:mlb`** | `mlb_projected_lineups`, `mlb_live_props` (lineup fields), `sync_history` | <1 m | skip-on-busy | LIVE |
+| `mlb_lineups_final` | 22:00 UTC | mlb | Phase-4 migrated pregame lineup ingest (final window) | **`lineup:mlb`** | `mlb_projected_lineups`, `mlb_live_props` (lineup fields), `sync_history` | <1 m | skip-on-busy | LIVE |
+| `mlb_pick_grade` | 05:00 UTC | mlb | Grade unsettled MLB picks against actuals | **`grade:mlb`** | `mlb_pick_history`, `sync_history` | 30–60 s | skip-on-busy | LIVE |
 | `weekly_roster_sync` | Sun 00:00 UTC | both | Master-hub roster refresh | (none) | `*_master_hub_2026` | 5–10 m | logs | LIVE |
 | `forward_test_capture` | 18:30 ET | both | Forward-test snapshot capture | (none — read-only mostly) | `forward_test_snapshots` | ~30 s | logs | LIVE |
 | `hourly_badge_sync` | 60 m | nba | Player badges | (none) | `nba_player_badges` | ~30 s | logs | LIVE |
@@ -45,17 +49,26 @@ Status legend:
 
 ## Host-cron / shell jobs (NOT in APScheduler)
 
-> ⚠️ `MIGRATE` — these should move into APScheduler in Phase 4. They
-> currently rely on the cross-process `sync_locks` advisory lock to
-> avoid racing the in-process scheduler.
+> ✅ **Phase 4 complete (2026-04-28):** the MLB host-cron jobs have been
+> migrated into APScheduler (see `services/scheduled/mlb_jobs.py`).
+> The shell scripts below are kept as **manual rollback wrappers** only.
+> Do NOT install in host crontab — they would race the in-process
+> scheduler.
 
-| Job ID | Schedule | Sport | Purpose | Lock key | Collections touched | Expected runtime | Failure behavior | Status |
-|---|---|---|---|---|---|---|---|---|
-| `run_mlb_daily_pipeline.sh` | 04:00 UTC | mlb | Statcast ingest + features + identity + scoring (all 8 steps) | (none — sub-jobs use their own) | `mlb_statcast_*`, `mlb_player_identity_map`, `mlb_pick_history` | 5–15 m | shell exit code | MIGRATE |
-| `run_mlb_pregame_lineups.sh` | 22:00 UTC | mlb | Lineup ingest + coverage monitor | `lineup:mlb` (in `_refresh_live_props`) | `mlb_projected_lineups`, `mlb_live_props` (lineup fields only) | <1 m | shell exit code | MIGRATE |
-| `mlb_propvision_total_bases.py --log-picks` | end of `run_mlb_daily_pipeline` | mlb | Score MLB TB + log picks | (none — uses unique compound index for idempotency) | `mlb_pick_history` | 30–60 s | logs | MIGRATE |
-| `update_mlb_pick_results.py` | manual / part of daily | mlb | Grade unsettled MLB picks | `grade:mlb` (recommended; not yet wired) | `mlb_pick_history` | 30 s | logs | MIGRATE |
-| `update_nba_pick_results.py` | manual / part of daily | nba | Grade unsettled NBA picks | `grade:nba` (recommended; not yet wired) | `nba_pick_history` | 30 s | logs | MIGRATE |
+| Job ID | Schedule (former) | Sport | Purpose | Replacement APScheduler job |
+|---|---|---|---|---|
+| `run_mlb_daily_pipeline.sh` | 04:00 UTC | mlb | Statcast ingest + features + identity + scoring | `mlb_daily_pipeline` (lock=`sync:mlb`) |
+| `run_mlb_pregame_lineups.sh` | 22:00 UTC | mlb | Lineup ingest + coverage monitor | `mlb_lineups_early` (18:00 UTC) + `mlb_lineups_final` (22:00 UTC), both lock=`lineup:mlb` |
+| `mlb_propvision_total_bases.py --log-picks` | end of daily.sh | mlb | Score MLB TB + log picks | step 8 inside `mlb_daily_pipeline` |
+| `update_mlb_pick_results.py` | manual | mlb | Grade unsettled MLB picks | `mlb_pick_grade` (05:00 UTC, lock=`grade:mlb`) |
+| `update_nba_pick_results.py` | manual | nba | Grade unsettled NBA picks | (still manual; NBA grader not yet migrated — Phase 4b backlog) |
+
+Manual debug entrypoints (these exist for ops, not for cron):
+```bash
+python -m services.scheduled.mlb_jobs daily
+python -m services.scheduled.mlb_jobs lineups
+python -m services.scheduled.mlb_jobs grade
+```
 
 ## Admin-trigger routes (concurrency-protected as of 2026-04-28)
 

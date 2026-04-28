@@ -1898,6 +1898,72 @@ async def startup_event():
         replace_existing=True
     )
 
+    # ----------------------------------------------------------------------
+    # Phase 4 — Migrate MLB host-cron into APScheduler  (2026-04-28)
+    # ----------------------------------------------------------------------
+    # All three jobs are sync_lock-protected so accidental overlap
+    # (manual trigger + cron tick + admin route) is auto-skipped.  See
+    # /app/backend/services/scheduled/mlb_jobs.py for the lock keys
+    # and step-level orchestration.  Replaces:
+    #   - scripts/run_mlb_daily_pipeline.sh   (host-cron 04:00 UTC)
+    #   - scripts/run_mlb_pregame_lineups.sh  (host-cron 22:00 UTC)
+    # ----------------------------------------------------------------------
+    try:
+        from services.scheduled.mlb_jobs import (
+            mlb_daily_pipeline as _mlb_daily_pipeline,
+            mlb_pregame_lineups_18utc as _mlb_pregame_18,
+            mlb_pregame_lineups_22utc as _mlb_pregame_22,
+            mlb_pick_grade as _mlb_pick_grade,
+        )
+
+        # Daily pipeline at 04:00 UTC.  Holds sync:mlb for ≤30 min.
+        scheduler.add_job(
+            _mlb_daily_pipeline,
+            CronTrigger(hour=4, minute=0, timezone=timezone.utc),
+            id='mlb_daily_pipeline',
+            name='04:00 UTC MLB Daily Pipeline (statcast+features+score)',
+            replace_existing=True,
+            misfire_grace_time=900,
+        )
+
+        # Pre-game lineup ingest x2: 18:00 UTC + 22:00 UTC.  Holds lineup:mlb.
+        scheduler.add_job(
+            _mlb_pregame_18,
+            CronTrigger(hour=18, minute=0, timezone=timezone.utc),
+            id='mlb_lineups_early',
+            name='18:00 UTC MLB Pregame Lineup Ingest (early)',
+            replace_existing=True,
+            misfire_grace_time=600,
+        )
+        scheduler.add_job(
+            _mlb_pregame_22,
+            CronTrigger(hour=22, minute=0, timezone=timezone.utc),
+            id='mlb_lineups_final',
+            name='22:00 UTC MLB Pregame Lineup Ingest (final)',
+            replace_existing=True,
+            misfire_grace_time=600,
+        )
+
+        # MLB pick grader at 05:00 UTC — well after 04:00 UTC pipeline.
+        scheduler.add_job(
+            _mlb_pick_grade,
+            CronTrigger(hour=5, minute=0, timezone=timezone.utc),
+            id='mlb_pick_grade',
+            name='05:00 UTC MLB Pick Result Grader',
+            replace_existing=True,
+            misfire_grace_time=600,
+        )
+        logger.info(
+            "[SCHEDULER] Phase 4 MLB jobs registered: "
+            "mlb_daily_pipeline (04:00), mlb_lineups_early (18:00), "
+            "mlb_lineups_final (22:00), mlb_pick_grade (05:00)"
+        )
+    except Exception as _phase4_err:  # noqa: BLE001
+        logger.error(
+            "[SCHEDULER] Phase 4 MLB job registration FAILED: %s "
+            "(host-cron remains as fallback)", _phase4_err,
+        )
+
     # Wave 1 — Shadow-Write Divergence Monitor (every 60 seconds).
     # Compares primary vs shadow collections for every concept registered
     # in `services.config.collection_names._SHADOW_WRITES`. Writes
