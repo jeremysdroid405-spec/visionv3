@@ -43,39 +43,10 @@ import IntelligenceModal from './IntelligenceModal';
 import { VKBadgeCompact } from './VegasKillerBadge';
 import { MarketGapBadge, MarketGapDetail } from './MarketGapBadge';
 
-// ==================== TEAM LOGOS (FALLBACK) ====================
-const TEAM_LOGOS = {
-  ATL: 'https://cdn.nba.com/logos/nba/1610612737/global/L/logo.svg',
-  BOS: 'https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg',
-  BKN: 'https://cdn.nba.com/logos/nba/1610612751/global/L/logo.svg',
-  CHA: 'https://cdn.nba.com/logos/nba/1610612766/global/L/logo.svg',
-  CHI: 'https://cdn.nba.com/logos/nba/1610612741/global/L/logo.svg',
-  CLE: 'https://cdn.nba.com/logos/nba/1610612739/global/L/logo.svg',
-  DAL: 'https://cdn.nba.com/logos/nba/1610612742/global/L/logo.svg',
-  DEN: 'https://cdn.nba.com/logos/nba/1610612743/global/L/logo.svg',
-  DET: 'https://cdn.nba.com/logos/nba/1610612765/global/L/logo.svg',
-  GSW: 'https://cdn.nba.com/logos/nba/1610612744/global/L/logo.svg',
-  HOU: 'https://cdn.nba.com/logos/nba/1610612745/global/L/logo.svg',
-  IND: 'https://cdn.nba.com/logos/nba/1610612754/global/L/logo.svg',
-  LAC: 'https://cdn.nba.com/logos/nba/1610612746/global/L/logo.svg',
-  LAL: 'https://cdn.nba.com/logos/nba/1610612747/global/L/logo.svg',
-  MEM: 'https://cdn.nba.com/logos/nba/1610612763/global/L/logo.svg',
-  MIA: 'https://cdn.nba.com/logos/nba/1610612748/global/L/logo.svg',
-  MIL: 'https://cdn.nba.com/logos/nba/1610612749/global/L/logo.svg',
-  MIN: 'https://cdn.nba.com/logos/nba/1610612750/global/L/logo.svg',
-  NOP: 'https://cdn.nba.com/logos/nba/1610612740/global/L/logo.svg',
-  NYK: 'https://cdn.nba.com/logos/nba/1610612752/global/L/logo.svg',
-  OKC: 'https://cdn.nba.com/logos/nba/1610612760/global/L/logo.svg',
-  ORL: 'https://cdn.nba.com/logos/nba/1610612753/global/L/logo.svg',
-  PHI: 'https://cdn.nba.com/logos/nba/1610612755/global/L/logo.svg',
-  PHX: 'https://cdn.nba.com/logos/nba/1610612756/global/L/logo.svg',
-  POR: 'https://cdn.nba.com/logos/nba/1610612757/global/L/logo.svg',
-  SAC: 'https://cdn.nba.com/logos/nba/1610612758/global/L/logo.svg',
-  SAS: 'https://cdn.nba.com/logos/nba/1610612759/global/L/logo.svg',
-  TOR: 'https://cdn.nba.com/logos/nba/1610612761/global/L/logo.svg',
-  UTA: 'https://cdn.nba.com/logos/nba/1610612762/global/L/logo.svg',
-  WAS: 'https://cdn.nba.com/logos/nba/1610612764/global/L/logo.svg',
-};
+// ==================== TEAM LOGOS ====================
+// Sport-aware lookup: `getTeamLogo(sport, team, [team_logo_url])`.
+// Sourced from `./constants.js` so NBA/MLB/NFL/NHL never cross-populate.
+import { getTeamLogo } from './constants';
 
 // ==================== TIER ICONS - Using shared Icons from ./Icons.jsx ====================
 // DemonIcon and GoblinIcon are imported from './Icons'
@@ -276,48 +247,14 @@ const formatPct = (val) => {
 /**
  * Player Headshot with team logo fallback
  */
-const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md', sport = 'nba', mlbId = null }) => {
+const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md', sport = 'nba', mlbId = null, teamLogoUrl: explicitLogoUrl = null }) => {
   const sizeClasses = {
     sm: 'w-8 h-8',
     md: 'w-12 h-12',
     lg: 'w-14 h-14',
     xl: 'w-20 h-20'
   };
-  
-  // MLB Team logos (fallback)
-  const MLB_TEAM_LOGOS = {
-    NYY: 'https://www.mlbstatic.com/team-logos/147.svg',
-    BOS: 'https://www.mlbstatic.com/team-logos/111.svg',
-    LAD: 'https://www.mlbstatic.com/team-logos/119.svg',
-    SF: 'https://www.mlbstatic.com/team-logos/137.svg',
-    ATL: 'https://www.mlbstatic.com/team-logos/144.svg',
-    NYM: 'https://www.mlbstatic.com/team-logos/121.svg',
-    PHI: 'https://www.mlbstatic.com/team-logos/143.svg',
-    CHC: 'https://www.mlbstatic.com/team-logos/112.svg',
-    HOU: 'https://www.mlbstatic.com/team-logos/117.svg',
-    TEX: 'https://www.mlbstatic.com/team-logos/140.svg',
-    SEA: 'https://www.mlbstatic.com/team-logos/136.svg',
-    SD: 'https://www.mlbstatic.com/team-logos/135.svg',
-    ARI: 'https://www.mlbstatic.com/team-logos/109.svg',
-    STL: 'https://www.mlbstatic.com/team-logos/138.svg',
-    MIL: 'https://www.mlbstatic.com/team-logos/158.svg',
-    BAL: 'https://www.mlbstatic.com/team-logos/110.svg',
-    TOR: 'https://www.mlbstatic.com/team-logos/141.svg',
-    TB: 'https://www.mlbstatic.com/team-logos/139.svg',
-    MIN: 'https://www.mlbstatic.com/team-logos/142.svg',
-    CLE: 'https://www.mlbstatic.com/team-logos/114.svg',
-    DET: 'https://www.mlbstatic.com/team-logos/116.svg',
-    KC: 'https://www.mlbstatic.com/team-logos/118.svg',
-    CWS: 'https://www.mlbstatic.com/team-logos/145.svg',
-    LAA: 'https://www.mlbstatic.com/team-logos/108.svg',
-    OAK: 'https://www.mlbstatic.com/team-logos/133.svg',
-    COL: 'https://www.mlbstatic.com/team-logos/115.svg',
-    CIN: 'https://www.mlbstatic.com/team-logos/113.svg',
-    PIT: 'https://www.mlbstatic.com/team-logos/134.svg',
-    MIA: 'https://www.mlbstatic.com/team-logos/146.svg',
-    WSH: 'https://www.mlbstatic.com/team-logos/120.svg',
-  };
-  
+
   // Build full photo URL - handle relative paths and MLB local files
   const getPhotoUrl = (url) => {
     if (!url) return null;
@@ -343,21 +280,17 @@ const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md', sport = 
   };
   
   const fullPhotoUrl = getPhotoUrl(photoUrl);
-  
-  // Get appropriate team logos based on sport
-  const getTeamLogo = (teamAbbr) => {
-    if (sport === 'mlb') {
-      return MLB_TEAM_LOGOS[teamAbbr];
-    }
-    return TEAM_LOGOS[teamAbbr];
-  };
+
+  // Sport-aware lookup. NEVER cross-populates between leagues.
+  // Resolution: backend `team_logo_url` → sport+team map → null (initials).
+  const resolveLogo = () => getTeamLogo(sport, team, explicitLogoUrl);
   
   // Generic silhouette for MLB players without headshot
   const MLB_SILHOUETTE = '/images/mlb_headshots/default_silhouette.png';
   
   // If no photo URL, show team logo or initials
   if (!fullPhotoUrl) {
-    const teamLogo = getTeamLogo(team);
+    const teamLogo = resolveLogo();
     if (teamLogo) {
       return (
         <div className={`${sizeClasses[size]} rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center p-1.5`}>
@@ -393,7 +326,7 @@ const PlayerHeadshot = memo(({ photoUrl, playerName, team, size = 'md', sport = 
             return;
           }
           
-          const teamLogo = getTeamLogo(team);
+          const teamLogo = resolveLogo();
           if (teamLogo) {
             e.target.src = teamLogo;
             e.target.style.objectFit = 'contain';
@@ -740,7 +673,7 @@ const UniversalPlayerCard = memo(({
         onClick={handleCardClick}
         data-testid={`player-mini-${playerSlug}`}
       >
-        <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="sm" sport={playerSport} mlbId={mlbId} />
+        <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="sm" sport={playerSport} mlbId={mlbId} teamLogoUrl={player.team_logo_url} />
         <div className="flex-1 min-w-0">
           <div className="text-xs font-medium text-white truncate">{displayName}</div>
           <div className="flex items-center gap-1.5 text-[10px]">
@@ -836,7 +769,7 @@ const UniversalPlayerCard = memo(({
         {/* Header — photo + player name + team chip (left-aligned, tight) */}
         <div className="flex items-center gap-2 mb-2 pr-7">
           <div className="relative flex-shrink-0">
-            <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="sm" sport={playerSport} mlbId={mlbId} />
+            <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="sm" sport={playerSport} mlbId={mlbId} teamLogoUrl={player.team_logo_url} />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 leading-tight">
@@ -981,7 +914,7 @@ const UniversalPlayerCard = memo(({
           {/* Photo with Rank */}
           <div className="relative flex-shrink-0">
             <div className={`ring-2 ${theme.ring} rounded-full`}>
-              <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="lg" sport={playerSport} mlbId={mlbId} />
+              <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="lg" sport={playerSport} mlbId={mlbId} teamLogoUrl={player.team_logo_url} />
             </div>
             {rank && (
               <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full ${theme.accent} flex items-center justify-center text-xs font-bold text-white border-2 border-zinc-900`}>

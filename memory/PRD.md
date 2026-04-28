@@ -146,6 +146,113 @@ to NOW → universal engine returns 10 beneficiary alerts with all legacy
 UI fields populated (Austin Riley +5 min, Dominic Smith +3.5 min, etc.).
 NBA payload unchanged (6 alerts as before).
 
+### 2026-04-29 — Universal Sport-Aware Team Logo Contract
+**Symptom**: NBA cards rendered MLB team logos for BOS, ATL, CLE, DET,
+HOU, MIA, MIL, MIN, PHI, TOR (and vice-versa) — every league-collision
+abbreviation was wrong on one side.
+
+**Root cause**: `frontend/src/components/dashboard/constants.js`
+exported `TEAM_LOGOS = { ...NBA_TEAM_LOGOS, ...MLB_TEAM_LOGOS }`. The
+JS spread merged the dicts; on collisions MLB ALWAYS won the key (last
+spread takes precedence). All callers — `Dashboard.jsx::PlayerHeadshot`,
+the live-scoreboard logo `<img>`s, and `PlayerDetailPage.jsx` — keyed
+this dict by `team` only, with no sport context. NFL/NHL/Soccer would
+have collided too (CAR, NY, LA, SF, ARI).
+
+**Fix** (sport-aware logo lookup — pure plumbing, no scoring touched):
+- `constants.js`:
+  - Removed cross-sport `TEAM_LOGOS` spread.
+  - Added `NFL_TEAM_LOGOS`, `NHL_TEAM_LOGOS`, `SOCCER_TEAM_LOGOS`
+    placeholder maps + a `_LOGO_MAPS` registry keyed by sport.
+  - Exported `getTeamLogo(sport, team, team_logo_url=null)` —
+    resolution: backend `team_logo_url` → sport-keyed map → null.
+- `Dashboard.jsx`: `PlayerHeadshot` accepts `sport` + `teamLogoUrl`
+  props; live-scoreboard logos read `getTeamLogo(game.sport ||
+  currentSport, team)`; all 3 `<PlayerHeadshot>` callsites pass sport.
+- `PlayerDetailPage.jsx`: same sport-aware refactor.
+- `UniversalPlayerCard.jsx`: removed inline duplicate NBA/MLB dicts,
+  imports the shared `getTeamLogo`. Card already had `playerSport`
+  derived from `player.sport`.
+- Backend `services/dashboard_card_contract.py`: every pick stamped
+  with `sport: 'nba' | 'mlb'` so the universal contract carries the
+  routing key the frontend needs.
+
+**Validated** (live preview, demo mode):
+- NBA dashboard: 25/25 logos resolve to `cdn.nba.com/...`.
+  BOS → Celtics, ATL → Hawks, TOR → Raptors, DET → Pistons. **0 MLB logos**.
+- MLB dashboard: 25/25 logos resolve to `espncdn.com/.../mlb/...`.
+  BOS → Red Sox, ARI → Diamondbacks, DET → Tigers, LAA → Angels,
+  WSH → Nationals. **0 NBA logos**.
+- Future sports already routed: NFL CAR will show Panthers, NHL CAR
+  will show Hurricanes (when those maps are populated).
+
+
+**Root cause**: `frontend/src/components/dashboard/constants.js`
+exported `TEAM_LOGOS = { ...NBA_TEAM_LOGOS, ...MLB_TEAM_LOGOS }`. The
+JS spread merged the dicts; on collisions MLB ALWAYS won the key (last
+spread takes precedence). All callers — `Dashboard.jsx::PlayerHeadshot`,
+the live-scoreboard logo `<img>`s, and `PlayerDetailPage.jsx` — keyed
+this dict by `team` only, with no sport context. NFL/NHL/Soccer would
+have collided too (CAR, NY, LA, SF, ARI).
+
+**Fix** (sport-aware logo lookup — pure plumbing, no scoring touched):
+- `constants.js`:
+  - Removed cross-sport `TEAM_LOGOS` spread.
+  - Added `NFL_TEAM_LOGOS`, `NHL_TEAM_LOGOS`, `SOCCER_TEAM_LOGOS`
+    placeholder maps + a `_LOGO_MAPS` registry keyed by sport.
+  - Exported `getTeamLogo(sport, team, team_logo_url=null)` —
+    resolution: backend `team_logo_url` → sport-keyed map → null.
+- `Dashboard.jsx`: `PlayerHeadshot` accepts `sport` + `teamLogoUrl`
+  props; live-scoreboard logos read `getTeamLogo(game.sport ||
+  currentSport, team)`; all 3 `<PlayerHeadshot>` callsites pass sport.
+- `PlayerDetailPage.jsx`: same sport-aware refactor.
+- `UniversalPlayerCard.jsx`: removed inline duplicate NBA/MLB dicts,
+  imports the shared `getTeamLogo`. Card already had `playerSport`
+  derived from `player.sport`.
+- Backend `services/dashboard_card_contract.py`: every pick stamped
+  with `sport: 'nba' | 'mlb'` so the universal contract carries the
+  routing key the frontend needs.
+
+**Validated** (live preview, demo mode):
+- NBA dashboard: 25/25 logos resolve to `cdn.nba.com/...`.
+  BOS → Celtics, ATL → Hawks, TOR → Raptors, DET → Pistons. **0 MLB logos**.
+- MLB dashboard: 25/25 logos resolve to `espncdn.com/.../mlb/...`.
+  BOS → Red Sox, ARI → Diamondbacks, DET → Tigers, LAA → Angels,
+  WSH → Nationals. **0 NBA logos**.
+- Future sports already routed: NFL CAR will show Panthers, NHL CAR
+  will show Hurricanes (when those maps are populated).
+
+
+**Symptom**: NBA "Live Injury Advantage" populated; MLB equivalent
+permanently empty even with 165 normalized MLB injuries on disk.
+
+**Root cause** (audit, two layers):
+1. `/api/v3/mlb/vacuum/live-alerts` was wired to the legacy
+   `MLBInjuryVacuumService` which refetched BDL/ESPN on demand and
+   filtered against hardcoded `MLB_STAR_PROFILES` /
+   `MLB_BENEFICIARY_MAPPINGS`. It bypassed the canonical
+   `injuries_normalized` collection entirely.
+2. The universal `compute_injury_advantages` engine's rotation-gate
+   `_is_rotation_relevant` for MLB only read `hub.games_played`, which
+   `mlb_master_hub_2026` populates on **only 12% of records** —
+   fail-closed for the other 88% (incl. Mookie Betts, Juan Soto).
+   For NBA the equivalent `advanced_stats.games_played` is on 98%.
+
+**Fix** (plumbing only, no thresholds/scoring/UI touched):
+- `services/injury_advantage.py::_is_rotation_relevant` — for MLB,
+  also accept `bdl_game_logs_count` / `total_game_logs` as the
+  rotation-recency signal. Same `MIN_GP_FOR_VACUUM = 5`.
+- `routes/mlb_vacuum.py::live-alerts` — body replaced to call
+  `compute_injury_advantages(_db, "mlb")` (same engine NBA uses) and
+  reshape rows to the dashboard's legacy field names
+  (`injured_team`, `time_ago`, `is_late_scratch`, etc.).
+  Provenance flag `engine: universal_injury_advantage` in payload.
+
+**Validation**: bumped Raisel Iglesias (ATL, IL_STANDARD) status_changed_at
+to NOW → universal engine returns 10 beneficiary alerts with all legacy
+UI fields populated (Austin Riley +5 min, Dominic Smith +3.5 min, etc.).
+NBA payload unchanged (6 alerts as before).
+
 ## P0 / P1 / P2 backlog
 
 ### P0

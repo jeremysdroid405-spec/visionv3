@@ -13,7 +13,7 @@ import {
   ArrowLeft, Target, Zap, Crosshair, Plus, Volume2, Snowflake, Scale, Shield
 } from 'lucide-react';
 import { DemonIcon, GoblinIcon } from './Icons';
-import { STAT_CATEGORIES, getCategoryKey, TEAM_LOGOS, BACKEND_URL } from './constants';
+import { STAT_CATEGORIES, getCategoryKey, getTeamLogo, BACKEND_URL } from './constants';
 import { BadgeRow, BADGE_REGISTRY, BadgeGridItem } from '../ui/BadgePill';
 import GameLogBarChart from './GameLogBarChart';
 import { MomentumTrackerFull } from './MomentumTracker';
@@ -105,13 +105,15 @@ const getPropLabel = (statType) => {
 };
 
 // ==================== PLAYER HEADSHOT ====================
-const PlayerHeadshot = memo(({ playerName, team, photoUrl, size = 'md', className = '' }) => {
+const PlayerHeadshot = memo(({ playerName, team, photoUrl, sport, teamLogoUrl: explicitLogoUrl, size = 'md', className = '' }) => {
   const [error, setError] = useState(false);
   const sizeClasses = { sm: 'w-8 h-8', md: 'w-12 h-12', lg: 'w-16 h-16', xl: 'w-24 h-24' };
   const sizeClass = sizeClasses[size] || sizeClasses.md;
   
   const isValidPhotoUrl = photoUrl && !photoUrl.includes('nophoto');
-  const teamLogoUrl = team ? TEAM_LOGOS[team] : null;
+  // Sport-aware logo resolution. Backend `team_logo_url` wins if set,
+  // else lookup against the sport-keyed map. NEVER cross-populates.
+  const teamLogoUrl = getTeamLogo(sport, team, explicitLogoUrl);
   
   if (!isValidPhotoUrl || error) {
     if (teamLogoUrl) {
@@ -810,6 +812,8 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
             <PlayerHeadshot 
               playerName={playerName}
               team={player.team}
+              sport={player.sport}
+              teamLogoUrl={player.team_logo_url}
               photoUrl={player.photo_url}
               size="lg"
               className="shrink-0 sm:w-24 sm:h-24"

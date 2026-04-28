@@ -36,7 +36,7 @@ import IntelligenceModal from '../components/dashboard/IntelligenceModal';
 import SportSwitcher from '../components/dashboard/SportSwitcher';
 import MarketMoves from '../components/dashboard/MarketMoves';
 import { 
-  TEAM_LOGOS, STAT_CATEGORIES, getCategoryKey 
+  STAT_CATEGORIES, getCategoryKey, getTeamLogo 
 } from '../components/dashboard/constants';
 
 // SSOT Global State - TanStack Query hooks ONLY
@@ -63,14 +63,16 @@ import { useMasterStats } from '../hooks/useMasterStats';
 
 // Player Headshot - Uses photo_url from nba_master_hub_2026 (no external API calls on render)
 // Note: NBA CDN may block requests from certain environments - fallback to team logo/initials
-const PlayerHeadshot = memo(({ playerName, team, photoUrl, size = 'md', className = '' }) => {
+const PlayerHeadshot = memo(({ playerName, team, photoUrl, sport, teamLogoUrl: explicitLogoUrl, size = 'md', className = '' }) => {
   const [error, setError] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const sizeClasses = { sm: 'w-8 h-8', md: 'w-12 h-12', lg: 'w-16 h-16', xl: 'w-24 h-24' };
   const sizeClass = sizeClasses[size] || sizeClasses.md;
   
   const isValidPhotoUrl = photoUrl && !photoUrl.includes('nophoto');
-  const teamLogoUrl = team ? TEAM_LOGOS[team] : null;
+  // Sport-aware logo resolution. Backend `team_logo_url` wins if set,
+  // else lookup against the sport-keyed map. NEVER cross-populates.
+  const teamLogoUrl = getTeamLogo(sport, team, explicitLogoUrl);
   
   // Get player initials for fallback
   const initials = playerName ? playerName.split(' ').map(n => n[0]).join('').slice(0, 2) : '?';
@@ -130,7 +132,7 @@ const PlayerRow = memo(({ player, onClick, linesLoaded }) => (
     onClick={onClick}
     data-testid={`player-row-${player.player_name?.replace(/\s/g, '-')}`}
   >
-    <PlayerHeadshot playerName={player.player_name} team={player.team} photoUrl={player.photo_url} size="md" />
+    <PlayerHeadshot playerName={player.player_name} team={player.team} sport={player.sport} teamLogoUrl={player.team_logo_url} photoUrl={player.photo_url} size="md" />
     <div className="flex-1 min-w-0">
       <div className="font-medium text-white truncate">{player.player_name}</div>
       <div className="text-xs text-zinc-500">{player.team}</div>
@@ -259,8 +261,8 @@ const LiveScoresTicker = memo(() => {
             
             return (
               <div key={`score-${idx}`} className={`flex items-center gap-2.5 px-4 py-1.5 border-r border-zinc-700/50 ${isLive ? 'bg-zinc-800/50' : ''}`}>
-                {/* Winner First */}
-                <img src={TEAM_LOGOS[winnerTeam]} alt={winnerTeam} className="w-5 h-5 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
+                {/* Winner First — sport from per-game payload (mixed-sport bar safe) */}
+                <img src={getTeamLogo(game.sport || currentSport, winnerTeam)} alt={winnerTeam} className="w-5 h-5 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
                 <span className="text-sm font-bold text-white">
                   {winnerTeam}
                 </span>
@@ -270,14 +272,14 @@ const LiveScoresTicker = memo(() => {
                 
                 <span className="text-zinc-600 text-xs">-</span>
                 
-                {/* Loser Second */}
+                {/* Loser Second — sport from per-game payload (mixed-sport bar safe) */}
                 <span className="text-base font-black text-red-400">
                   {loserScore}
                 </span>
                 <span className="text-sm font-bold text-white">
                   {loserTeam}
                 </span>
-                <img src={TEAM_LOGOS[loserTeam]} alt={loserTeam} className="w-5 h-5 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
+                <img src={getTeamLogo(game.sport || currentSport, loserTeam)} alt={loserTeam} className="w-5 h-5 flex-shrink-0" onError={(e) => e.target.style.display='none'} />
                 
                 {/* Status Badge - separated with margin */}
                 <Badge className={`text-[10px] font-bold px-2 py-0.5 ml-1 whitespace-nowrap ${
@@ -1029,7 +1031,7 @@ const PopularBetCard = memo(({ bet, onClick }) => {
     >
       <div className="flex items-center gap-2 mb-2">
         <div className="relative">
-          <PlayerHeadshot playerName={bet.player_name} team={bet.team} photoUrl={bet.photo_url} size="sm" />
+          <PlayerHeadshot playerName={bet.player_name} team={bet.team} sport={bet.sport} teamLogoUrl={bet.team_logo_url} photoUrl={bet.photo_url} size="sm" />
           <div className="absolute -top-1 -right-1">
             {isDemon ? <DemonIcon size={12} /> : isGoblin ? <GoblinIcon size={12} /> : null}
           </div>
@@ -1788,7 +1790,7 @@ const Dashboard = () => {
                         className="flex items-center gap-3 p-3 border border-zinc-800/50 rounded-lg"
                         data-testid={`player-row-${player.player_name?.replace(/\s/g, '-')}`}
                       >
-                        <PlayerHeadshot playerName={player.player_name} team={player.team} photoUrl={player.photo_url || player.headshot_url} size="md" />
+                        <PlayerHeadshot playerName={player.player_name} team={player.team} sport={player.sport || currentSport} teamLogoUrl={player.team_logo_url} photoUrl={player.photo_url || player.headshot_url} size="md" />
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-white truncate">{player.player_name}</div>
                           <div className="text-xs text-zinc-500">{player.team_name || player.team} • {player.position}</div>

@@ -206,6 +206,17 @@ async def stamp_dashboard_card_contract(
             existing = p.get(k)
             if existing in (None, "", "—"):
                 p[k] = v
+        # ── Universal Logo Contract (2026-04-29): every card MUST
+        #    carry its own `sport` so the frontend logo lookup keys on
+        #    (sport, team) and never cross-populates between leagues
+        #    (BOS/ATL/CLE/DET/HOU/MIA/MIL/MIN/PHI/TOR collide NBA↔MLB;
+        #    CAR / NY / LA / SF / ARI collide across NFL/NHL/MLB).
+        if sport and not p.get("sport"):
+            p["sport"] = sport
+        # `team_logo_url` reserved for future backend-driven logo
+        # overrides (custom per-tenant assets, dark/light theme variants).
+        # Left absent today — the frontend `getTeamLogo(sport, team)`
+        # is authoritative.
 
     # ── 2026-04-29: backfill `avg` from master_hub game logs ─────────
     # Many picks (esp. MLB and NBA combos like PRA) reach here with no

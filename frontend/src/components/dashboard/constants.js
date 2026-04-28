@@ -44,6 +44,7 @@ export const MLB_TEAM_LOGOS = {
   "BOS": "https://a.espncdn.com/i/teamlogos/mlb/500/bos.png",
   "CHC": "https://a.espncdn.com/i/teamlogos/mlb/500/chc.png",
   "CHW": "https://a.espncdn.com/i/teamlogos/mlb/500/chw.png",
+  "CWS": "https://a.espncdn.com/i/teamlogos/mlb/500/chw.png",  // alias
   "CIN": "https://a.espncdn.com/i/teamlogos/mlb/500/cin.png",
   "CLE": "https://a.espncdn.com/i/teamlogos/mlb/500/cle.png",
   "COL": "https://a.espncdn.com/i/teamlogos/mlb/500/col.png",
@@ -70,8 +71,47 @@ export const MLB_TEAM_LOGOS = {
   "WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
 };
 
-// Combined TEAM_LOGOS for backward compatibility (NBA + MLB)
-export const TEAM_LOGOS = { ...NBA_TEAM_LOGOS, ...MLB_TEAM_LOGOS };
+// NFL / NHL / Soccer placeholders — populated when those sports launch.
+// Sport-keyed dispatch below already routes the lookup safely.
+export const NFL_TEAM_LOGOS = {};
+export const NHL_TEAM_LOGOS = {};
+export const SOCCER_TEAM_LOGOS = {};
+
+// Sport → logo-map registry. Adding a new sport = add a new entry here.
+const _LOGO_MAPS = {
+  nba: NBA_TEAM_LOGOS,
+  mlb: MLB_TEAM_LOGOS,
+  nfl: NFL_TEAM_LOGOS,
+  nhl: NHL_TEAM_LOGOS,
+  soccer: SOCCER_TEAM_LOGOS,
+};
+
+/**
+ * Sport-aware team logo resolver — the ONLY supported lookup path.
+ *
+ * Resolution order (per Universal Logo Contract 2026-04-29):
+ *   1. `team_logo_url` argument: backend-provided, used as-is (already
+ *      sport-matched at the source).
+ *   2. `_LOGO_MAPS[sport][team]`: sport-keyed local map.
+ *   3. `null` → caller renders initials fallback.
+ *
+ * NEVER falls through to a different sport. Critical because team
+ * abbreviations collide across leagues (BOS, ATL, CLE, DET, HOU, MIA,
+ * MIL, MIN, PHI, TOR are all duplicated NBA↔MLB; CAR, NY, LA, SF, ARI
+ * collide across NFL/NHL/MLB).
+ *
+ * @param {string} sport  - 'nba' | 'mlb' | 'nfl' | 'nhl' | 'soccer'
+ * @param {string} team   - team abbreviation
+ * @param {string} [team_logo_url] - optional backend override
+ * @returns {string|null}
+ */
+export const getTeamLogo = (sport, team, team_logo_url = null) => {
+  if (team_logo_url) return team_logo_url;
+  if (!sport || !team) return null;
+  const map = _LOGO_MAPS[String(sport).toLowerCase()];
+  if (!map) return null;
+  return map[team] || null;
+};
 
 // Cache Keys
 export const CACHE_KEYS = {
