@@ -45,7 +45,7 @@ COLLECTION_NAME = "mlb_pick_history"
 SELECTED_TIERS = ("safe_haven", "front_lines", "war_zone")
 
 # Static for v1; bump when the μ/σ formula changes.
-MODEL_VERSION = "mlb_total_bases_v1"
+MODEL_VERSION = "mlb_total_bases_v1_locked"
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +147,15 @@ def _build_pick_doc(p: Dict[str, Any], *, fingerprint: str
 
         "model_version":    MODEL_VERSION,
         "board_fingerprint": fingerprint,
+
+        # Identity-resolution snapshot (lock-down spec requirement)
+        "identity_match_method": p.get("identity_match_method"),
+        "identity_confidence":   p.get("identity_confidence"),
+        "statcast_id":           p.get("statcast_id"),
+
+        # Sample-quality fields (used by forward_test_report BBE slice)
+        "bbe_30":           p.get("bbe_30"),
+        "pa_30":            p.get("pa_30"),
 
         # Outcome (filled by scripts/update_mlb_pick_results.py)
         "result":           None,
