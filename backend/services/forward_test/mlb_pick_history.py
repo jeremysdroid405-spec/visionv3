@@ -157,6 +157,21 @@ def _build_pick_doc(p: Dict[str, Any], *, fingerprint: str
         "bbe_30":           p.get("bbe_30"),
         "pa_30":            p.get("pa_30"),
 
+        # Pitcher-context (SHADOW — never affects μ/σ/edge/gates).
+        # Populated post-hoc by `scripts.mlb_backfill_pitcher_context`
+        # after Statcast for the pick's game_date is ingested. See the
+        # daily pipeline; expect None on freshly-logged picks.
+        "pitcher_id":              p.get("pitcher_id"),
+        "pitcher_name":            p.get("pitcher_name"),
+        "pitcher_p_throws":        p.get("pitcher_p_throws"),
+        "batter_stand":            p.get("batter_stand"),
+        "pitcher_xwOBA_allowed":   p.get("pitcher_xwOBA_allowed"),
+        "pitcher_split_used":      p.get("pitcher_split_used"),
+        "matchup_factor_shadow":   p.get("matchup_factor_shadow"),
+        "pitcher_confidence_flag": p.get("pitcher_confidence_flag"),
+        "pitcher_resolved_via":    p.get("pitcher_resolved_via"),
+        "shadow_feature_version":  p.get("shadow_feature_version"),
+
         # Outcome (filled by scripts/update_mlb_pick_results.py)
         "result":           None,
         "actual":           None,
