@@ -37,6 +37,26 @@ async def run_master_sync(db, sport: str) -> Dict[str, Any]:
     if sport not in SUPPORTED_SPORTS:
         raise ValueError(f"Unsupported sport for master_sync: {sport!r}")
 
+    # Concurrency safety: callers SHOULD route through
+    # `RebuildCoordinator.dispatch_master_sync`, which holds
+    # `UpstreamSyncLock.exclusive(sport)` for the duration of this call.
+    # When invoked directly (legacy admin endpoints, ad-hoc scripts) the
+    # delta engine cannot tell a full sync is in flight and may rescore
+    # against partially-written collections. We log a CRITICAL warning so
+    # this is loud in observability and easy to grep.
+    try:
+        from services.upstream_sync_lock import get_upstream_sync_lock
+        if not get_upstream_sync_lock().is_held(sport):
+            logger.critical(
+                "[MASTER_SYNC:%s] run_master_sync called without "
+                "UpstreamSyncLock — caller bypassed RebuildCoordinator. "
+                "Delta engine cannot detect this sync; race possible.",
+                sport,
+            )
+    except Exception:
+        # Never fail the sync over the warning check.
+        pass
+
     started = datetime.now(timezone.utc)
     metrics: Dict[str, Any] = {
         "pipeline": "UNIVERSAL_MASTER_SYNC",
@@ -73,13 +93,15 @@ async def run_master_sync(db, sport: str) -> Dict[str, Any]:
     # -----------------------------------------------------------------
     # Step 1 — universal odds sync
     # -----------------------------------------------------------------
+    # NOTE: redundant `delete_many({})` removed 2026-04-28 — the inner
+    # `sync_sport_props` now uses stage-then-prune (sync_batch_id) so
+    # the live-props collection is NEVER empty during a sync window.
     t0 = datetime.now(timezone.utc)
     try:
         from services.universal_odds_sync import get_universal_odds_service
         from services.config.collection_names import COLL
 
         old_count = await db[COLL("live_props", sport)].count_documents({})
-        await db[COLL("live_props", sport)].delete_many({})
 
         odds_result = await get_universal_odds_service(db).sync_sport_props(sport)
         metrics["steps"]["1_odds_sync"] = {

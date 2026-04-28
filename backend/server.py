@@ -1487,6 +1487,19 @@ async def startup_event():
     # For now, they coexist with the modular routes
     app.include_router(api_router)
     logger.info("[ROUTES] Legacy api_router routes included (migration in progress)")
+
+    # 2026-04-28 — Universal sync health endpoint (Phase 7 of sync hardening).
+    # Read-only aggregator for ops dashboards. No model state touched.
+    try:
+        from routes import health_sync as _health_sync
+        _health_sync.set_db(db)
+        app.include_router(_health_sync.router)
+        # Also bootstrap sync_locks indexes (Phase 2). Idempotent.
+        from services.sync_lock import ensure_indexes as _sync_lock_ensure
+        await _sync_lock_ensure(db)
+        logger.info("[ROUTES] /api/health/sync registered + sync_locks indexes ensured")
+    except Exception as _hs_err:  # noqa: BLE001
+        logger.error(f"[ROUTES] health_sync wiring failed: {_hs_err}")
     
     # Start the adaptive sync engine (background polling)
     if ODDS_API_KEY:

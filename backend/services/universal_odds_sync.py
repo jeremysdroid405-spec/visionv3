@@ -20,6 +20,7 @@ Each sport saves to its own collection:
 """
 import os
 import time
+import uuid
 import logging
 import asyncio
 from typing import Dict, List, Any, Optional, Set
@@ -1477,9 +1478,29 @@ class UniversalOddsSyncService:
                 # MLB behavior is unchanged.
                 collection = COLL.handle(self.db, "live_props", sport)
                 
-                # Phase 6 Step 5 — pre-wipe snapshot for `new_props`
-                # delta emission. Uses the universal board adapter to
-                # reconstruct canonical_keys in the engine's format.
+                # Phase 3 (2026-04-28) — STAGE-THEN-PRUNE write strategy.
+                # ─────────────────────────────────────────────────────────
+                # Old code did `delete_many({})` BEFORE `insert_many`, which
+                # left the board EMPTY for seconds-to-minutes during every
+                # sync. The board powers downstream readers (ferrari tiers,
+                # odds props routes, MLB engine, cached-board builder) so
+                # an empty window propagated to every consumer.
+                #
+                # New strategy:
+                #   1. Stamp every new prop with a fresh `sync_batch_id`
+                #      and `synced_at` timestamp.
+                #   2. Bulk-insert the new batch FIRST. The collection now
+                #      contains BOTH the previous batch and the new batch.
+                #      Readers see at least one full slate at all times.
+                #   3. Hydrate the new batch in place (existing path).
+                #   4. After insert+hydrate succeed, atomically delete
+                #      everything whose `sync_batch_id` is NOT the new id.
+                #      Brief overlap window (~ms) replaces the previous
+                #      multi-second empty window.
+                #
+                # If insert fails BEFORE the prune step, the old batch is
+                # untouched and the board stays live.  This is the spec's
+                # core invariant: "old board stays visible during failed sync."
                 pre_keys: set = set()
                 try:
                     from services.board.delta_publisher import capture_live_props_keys
@@ -1489,33 +1510,29 @@ class UniversalOddsSyncService:
                         f"[DELTA_PUB] {sport} pre-snapshot skipped: {_e}"
                     )
 
-                # Purge ALL old data and insert fresh — no zombies
                 stale_count = await collection.count_documents({})
-                await collection.delete_many({})
-                
-                # Strip _id before insert
-                clean_props = [{k: v for k, v in p.items() if k != "_id"} for p in all_props]
+                new_batch_id = uuid.uuid4().hex
+                synced_at = datetime.now(timezone.utc)
 
-                # Global Identity Rule (2026-04-23): stamp
-                # `bdl_player_id` + `identity_status` on every prop at
-                # ingest. Identity resolution happens ONCE here (the
-                # system boundary). Downstream scoring pipelines join
-                # strictly on `bdl_player_id` — no name-based joins.
-                # Failures are flagged, not rejected, so they surface
-                # in observability as `identity_status="missing_bdl_id"`.
+                # Strip _id and stamp batch metadata before insert.
+                clean_props = []
+                for p in all_props:
+                    d = {k: v for k, v in p.items() if k != "_id"}
+                    d["sync_batch_id"] = new_batch_id
+                    d["synced_at"] = synced_at
+                    d["active"] = True   # active by default; readers
+                                         # untouched, prune handles overlap
+                    d["stale"] = False
+                    clean_props.append(d)
+
+                # Identity stamping (existing path, unchanged).
                 identity_resolved, identity_missing = (
                     await _stamp_identity_on_props(self.db, sport, clean_props)
                 )
                 results["identity_resolved"] = identity_resolved
                 results["identity_missing"] = identity_missing
 
-                # Game-context hydration (2026-05): write `team`,
-                # `opponent_team`, `is_home_team`, `team_total`,
-                # `game_total`, `live_injuries_*`, plus sport-specific
-                # context (NBA rest_days/is_b2b; MLB park_team/venue/
-                # team_implied_runs + lineup placeholders) onto every
-                # prop BEFORE insert. Downstream scoring adapters and
-                # ML feature builders read these fields directly.
+                # Game-context hydration (existing path, unchanged).
                 if sport in ("nba", "mlb"):
                     try:
                         from services.feature_hydration import (
@@ -1531,7 +1548,35 @@ class UniversalOddsSyncService:
                             f"{_ctx_err}"
                         )
 
-                await collection.insert_many(clean_props)
+                # Step A — bulk-insert the new batch (board now contains
+                # both old + new; readers see a non-empty collection).
+                if not clean_props:
+                    logger.warning(
+                        f"[ODDS_SYNC:{sport}] new batch is empty; "
+                        "skipping prune to keep previous board live"
+                    )
+                    results["sync_batch_id"] = new_batch_id
+                    results["new_batch_count"] = 0
+                    results["pruned_count"] = 0
+                    results["stale_count_before"] = stale_count
+                else:
+                    await collection.insert_many(clean_props)
+
+                    # Step B — prune previous batches AFTER new batch is
+                    # fully written.  A subsequent crash/retry leaves the
+                    # NEW batch active and old rows pruned next cycle.
+                    prune_res = await collection.delete_many(
+                        {"sync_batch_id": {"$ne": new_batch_id}}
+                    )
+                    results["sync_batch_id"] = new_batch_id
+                    results["new_batch_count"] = len(clean_props)
+                    results["pruned_count"] = prune_res.deleted_count
+                    results["stale_count_before"] = stale_count
+                    logger.info(
+                        f"[ODDS_SYNC:{sport}] STAGE-THEN-PRUNE: "
+                        f"new_batch={len(clean_props)} pruned={prune_res.deleted_count} "
+                        f"batch_id={new_batch_id[:8]}"
+                    )
 
                 # 2026-05 NBA feature-engine (Tier-1/2/3 context features
                 # for upcoming VK retrain). Runs as an OPTIONAL,

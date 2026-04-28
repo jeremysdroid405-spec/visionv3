@@ -2573,12 +2573,21 @@ async def rebuild_ferrari_tiers(
     """Manually trigger a rebuild of all Ferrari tiers via the
     universal master-sync path. All legacy use_optimized/use_legacy
     flags were removed in the 2026-04-22 Hard Consolidation.
+
+    Routes through `RebuildCoordinator.dispatch_master_sync` so the
+    `UpstreamSyncLock` and `sync_locks` advisory lock are honored —
+    no admin caller can bypass concurrency protection.
     """
     target_sport = (sport or "nba").lower()
     if target_sport not in ("nba", "mlb"):
         raise HTTPException(status_code=400, detail=f"Invalid sport '{sport}'.")
-    from services.master_sync import run_master_sync
-    return await run_master_sync(_db, target_sport)
+    from services.rebuild_coordinator import get_coordinator
+    coord = get_coordinator()
+    try:
+        coord._db = _db  # ensure the singleton has the live db handle
+    except Exception:
+        pass
+    return await coord.dispatch_master_sync(target_sport)
 
 
 @router.post("/v3/ferrari/sync-refs")
@@ -2803,10 +2812,23 @@ async def sync_odds_universal(
     if bookmakers is not None:
         bookmaker_list = [b.strip().lower() for b in bookmakers.split(",") if b.strip()]
     
-    # Run the sync
+    # Run the sync — guarded by the advisory `sync_locks` collection so
+    # this admin route can never wipe the live-props board concurrently
+    # with the in-process scheduler or another admin caller. If the
+    # sport's lock is busy we return 409 so callers can retry.
+    from services.sync_lock import with_sync_lock
     service = get_universal_odds_service(_db)
-    result = await service.sync_sport_props(sport, bookmakers=bookmaker_list, include_sharp=include_sharp)
-    
+    try:
+        async with with_sync_lock(
+            _db, f"odds:{sport}", ttl_seconds=600,
+            holder="api:/v3/odds/sync",
+        ):
+            result = await service.sync_sport_props(
+                sport, bookmakers=bookmaker_list, include_sharp=include_sharp,
+            )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
     return result
 
 

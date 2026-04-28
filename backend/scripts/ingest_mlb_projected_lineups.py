@@ -474,38 +474,56 @@ async def _refresh_live_props(db, event_ids: List[str]) -> Dict[str, int]:
     """Stamp `batting_order` / `lineup_confirmed` / `lineup_source` on
     EXISTING `mlb_live_props` rows for the given events using the freshly
     upserted `mlb_projected_lineups` rows.  No other fields are touched.
-    Strict no-leakage is enforced via `mlb_lineups_loader.lookup_slot`."""
-    from services.mlb_lineups_loader import (load_slot_map as _load,
-                                             lookup_slot as _lookup)
-    distinct_events = sorted({e for e in event_ids if e})
-    slot_map = await _load(db, distinct_events)
-    coll = db["mlb_live_props"]
-    updated = 0
-    inspected = 0
-    cursor = coll.find(
-        {"event_id": {"$in": distinct_events},
-         "bdl_player_id": {"$ne": None}},
-        {"_id": 1, "event_id": 1, "bdl_player_id": 1, "commence_time": 1},
-    )
-    async for r in cursor:
-        inspected += 1
-        slot, confirmed, src = _lookup(
-            slot_map, r.get("event_id"),
-            r.get("bdl_player_id"), r.get("commence_time"),
+    Strict no-leakage is enforced via `mlb_lineups_loader.lookup_slot`.
+
+    Wrapped in the cross-process advisory lock `lineup:mlb` so the
+    host-cron caller cannot race the in-process master_sync / hourly
+    sync.  If another writer holds `sync:mlb` we skip refresh entirely
+    — the next master_sync cycle will re-stamp from the (already
+    persisted) `mlb_projected_lineups` rows."""
+    from services.sync_lock import with_sync_lock, is_locked
+    if await is_locked(db, "sync:mlb"):
+        return {"updated": 0, "inspected": 0,
+                "events": len(event_ids), "skipped": "sync:mlb_held"}
+    async with with_sync_lock(
+        db, "lineup:mlb", ttl_seconds=180,
+        holder="ingest_mlb_projected_lineups",
+        raise_if_locked=False,
+    ) as handle:
+        if handle is None:
+            return {"updated": 0, "inspected": 0,
+                    "events": len(event_ids), "skipped": "lineup:mlb_held"}
+        from services.mlb_lineups_loader import (load_slot_map as _load,
+                                                 lookup_slot as _lookup)
+        distinct_events = sorted({e for e in event_ids if e})
+        slot_map = await _load(db, distinct_events)
+        coll = db["mlb_live_props"]
+        updated = 0
+        inspected = 0
+        cursor = coll.find(
+            {"event_id": {"$in": distinct_events},
+             "bdl_player_id": {"$ne": None}},
+            {"_id": 1, "event_id": 1, "bdl_player_id": 1, "commence_time": 1},
         )
-        if slot is None:
-            continue
-        await coll.update_one(
-            {"_id": r["_id"]},
-            {"$set": {
-                "batting_order":    slot,
-                "lineup_confirmed": bool(confirmed),
-                "lineup_source":    src,
-            }},
-        )
-        updated += 1
-    return {"updated": updated, "inspected": inspected,
-            "events": len(distinct_events)}
+        async for r in cursor:
+            inspected += 1
+            slot, confirmed, src = _lookup(
+                slot_map, r.get("event_id"),
+                r.get("bdl_player_id"), r.get("commence_time"),
+            )
+            if slot is None:
+                continue
+            await coll.update_one(
+                {"_id": r["_id"]},
+                {"$set": {
+                    "batting_order":    slot,
+                    "lineup_confirmed": bool(confirmed),
+                    "lineup_source":    src,
+                }},
+            )
+            updated += 1
+        return {"updated": updated, "inspected": inspected,
+                "events": len(distinct_events)}
 
 
 # ---------------------------------------------------------------------------
