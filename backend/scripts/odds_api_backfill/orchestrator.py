@@ -23,16 +23,17 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from pymongo import UpdateOne
 
 from .client import CreditBudgetExceeded, OddsAPIClient
-from .schema import (
-    COLLECTION_NAME, TARGET_MARKETS, ensure_indexes,
-    is_alternate, is_combo, market_to_family,
+from .schema import COLLECTION_NAME, ensure_indexes
+from .sport_markets import (
+    DEFAULT_SPORT, is_alternate, is_combo, market_to_family, markets_for,
 )
 
 logger = logging.getLogger(__name__)
 
 # Snapshot wall-clock plan (UTC). Matches the user's spec:
-#   "morning/open" : 14:00 UTC  (~9-10am ET, before line firming)
-#   "1h before"    : 23:00 UTC  (most NBA slates tip at midnight UTC)
+#   "morning/open" : 14:00 UTC  (before NBA / mid-day before MLB first-pitch)
+#   "1h before"    : 23:00 UTC  (most NBA slates tip at midnight UTC;
+#                                MLB first-pitches cluster near 23:00 UTC too)
 #   "10m before"   : 23:50 UTC
 SNAPSHOT_PLAN: List[Tuple[str, int, int]] = [
     ("open",         14,  0),
@@ -40,7 +41,6 @@ SNAPSHOT_PLAN: List[Tuple[str, int, int]] = [
     ("pregame_-10m", 23, 50),
 ]
 
-SPORT_KEY = "basketball_nba"
 DEFAULT_REGIONS = ["us"]
 
 
@@ -53,7 +53,7 @@ def _date_str(dt: datetime) -> str:
 
 
 def _flatten_event_odds(
-    *, event_meta: Dict[str, Any], odds_payload: Dict[str, Any],
+    *, sport_key: str, event_meta: Dict[str, Any], odds_payload: Dict[str, Any],
     snapshot_time: datetime, snapshot_label: str, region: str,
 ) -> List[Dict[str, Any]]:
     """Fan out one event's odds payload into one row per
@@ -69,8 +69,8 @@ def _flatten_event_odds(
     game_date = _date_str(commence_dt) if commence_dt else None
 
     base = {
+        "sport_key":     sport_key,
         "event_id":      event_meta.get("id"),
-        "sport_key":     event_meta.get("sport_key") or SPORT_KEY,
         "commence_time": commence_dt,
         "game_date":     game_date,
         "home_team":     event_meta.get("home_team"),
@@ -105,8 +105,8 @@ def _flatten_event_odds(
                     "bookmaker":    bm_key,
                     "market_key":   mkey,
                     "is_alternate": is_alternate(mkey),
-                    "is_combo":     is_combo(mkey),
-                    "stat_family":  market_to_family(mkey),
+                    "is_combo":     is_combo(sport_key, mkey),
+                    "stat_family":  market_to_family(sport_key, mkey),
                     "player":       player,
                     "line":         float(line),
                     "side":         side,
@@ -122,6 +122,7 @@ async def _bulk_upsert(db, rows: Iterable[Dict[str, Any]]) -> Tuple[int, int]:
     ops = []
     for r in rows:
         flt = {
+            "sport_key":     r["sport_key"],
             "event_id":      r["event_id"],
             "market_key":    r["market_key"],
             "snapshot_time": r["snapshot_time"],
@@ -140,12 +141,16 @@ async def _bulk_upsert(db, rows: Iterable[Dict[str, Any]]) -> Tuple[int, int]:
 
 async def run_slate(
     db, *, client: OddsAPIClient, slate_date: datetime,
+    sport_key: str = DEFAULT_SPORT,
     snapshot_plan: List[Tuple[str, int, int]] = SNAPSHOT_PLAN,
-    markets: List[str] = TARGET_MARKETS,
+    markets: Optional[List[str]] = None,
     regions: List[str] = DEFAULT_REGIONS,
 ) -> Dict[str, Any]:
-    """Backfill ONE slate (UTC date). Returns counters + cost."""
+    """Backfill ONE slate (UTC date) for ONE sport. Returns counters + cost."""
+    if markets is None:
+        markets = markets_for(sport_key)
     summary = {
+        "sport_key": sport_key,
         "slate_date": _date_str(slate_date),
         "snapshots": [],
         "rows_inserted": 0,
@@ -160,21 +165,19 @@ async def run_slate(
         snap_iso = _iso(snap_dt)
         try:
             events = await client.list_historical_events(
-                sport=SPORT_KEY, snapshot_iso=snap_iso,
+                sport=sport_key, snapshot_iso=snap_iso,
             )
         except CreditBudgetExceeded:
             raise
         except Exception as exc:
             logger.error(
-                f"[orchestrator] list_events failed slate={summary['slate_date']} "
-                f"label={label}: {exc!r}")
+                f"[orchestrator] list_events failed sport={sport_key} "
+                f"slate={summary['slate_date']} label={label}: {exc!r}")
             summary["snapshots"].append({"label": label, "events": 0,
                                           "error": str(exc)})
             continue
 
-        # Filter to events whose commence_time is on the target date
-        # (the API returns "events at this snapshot" which can include
-        # tomorrow's slate when run late).
+        # Filter to events whose commence_time is on the target date.
         target_yyyymmdd = _date_str(slate_date)
         events = [e for e in events
                    if (e.get("commence_time") or "")[:10] == target_yyyymmdd]
@@ -186,7 +189,7 @@ async def run_slate(
             if not ev_id: continue
             try:
                 payload = await client.get_historical_event_odds(
-                    sport=SPORT_KEY, event_id=ev_id,
+                    sport=sport_key, event_id=ev_id,
                     markets=markets, regions=regions,
                     snapshot_iso=snap_iso,
                 )
@@ -196,10 +199,12 @@ async def run_slate(
                 raise
             except Exception as exc:
                 logger.error(
-                    f"[orchestrator] event_odds failed event={ev_id}: {exc!r}")
+                    f"[orchestrator] event_odds failed sport={sport_key} "
+                    f"event={ev_id}: {exc!r}")
                 continue
 
             rows = _flatten_event_odds(
+                sport_key=sport_key,
                 event_meta={**ev, "id": ev_id},
                 odds_payload=payload,
                 snapshot_time=snap_dt, snapshot_label=label,
@@ -218,7 +223,7 @@ async def run_slate(
             "modified": snap_modified,
         })
         logger.info(
-            f"[orchestrator] {summary['slate_date']} {label}: events="
+            f"[orchestrator] {sport_key} {summary['slate_date']} {label}: events="
             f"{len(events)} rows={snap_rows} ins={snap_inserted} "
             f"mod={snap_modified}")
 
@@ -227,17 +232,21 @@ async def run_slate(
 
 async def run_backfill(
     db, *, num_days: int = 30, end_date: Optional[datetime] = None,
+    sport_key: str = DEFAULT_SPORT,
     snapshot_plan: List[Tuple[str, int, int]] = SNAPSHOT_PLAN,
-    markets: List[str] = TARGET_MARKETS,
+    markets: Optional[List[str]] = None,
     regions: List[str] = DEFAULT_REGIONS,
     api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Iterate `num_days` slates ending on `end_date` (UTC, default
-    today-1)."""
+    today-1) for a single sport."""
     await ensure_indexes(db)
     if end_date is None:
         end_date = datetime.now(timezone.utc) - timedelta(days=1)
+    if markets is None:
+        markets = markets_for(sport_key)
     summary = {
+        "sport_key": sport_key,
         "num_days": num_days, "snapshot_plan": [s[0] for s in snapshot_plan],
         "markets": markets, "regions": regions,
         "slates": [], "credits_used_local": 0,
@@ -249,6 +258,7 @@ async def run_backfill(
             try:
                 s = await run_slate(
                     db, client=client, slate_date=slate,
+                    sport_key=sport_key,
                     snapshot_plan=snapshot_plan,
                     markets=markets, regions=regions,
                 )

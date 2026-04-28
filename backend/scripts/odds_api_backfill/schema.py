@@ -1,36 +1,36 @@
 """
-Collection bootstrap for `historical_odds_full`.
+Collection bootstrap for `historical_odds_full` (multi-sport).
 
-Schema (one row per (event, market, side, line, bookmaker, snapshot_time)):
-    event_id           str       Odds API event id
-    sport_key          str       'basketball_nba'
-    commence_time      datetime  Game tipoff UTC
+One row per (sport, event, market, side, line, bookmaker, snapshot_time).
+Sport-specific market lists, family maps, and combo sets live in
+`sport_markets.py`. This module owns ONLY the persistent shape +
+indexes.
+
+Schema (additive — `sport_key` was added 2026-04-29 for multi-sport):
+    sport_key          str       'basketball_nba' | 'baseball_mlb' | …
+    event_id           str       Odds API event id (globally unique)
+    commence_time      datetime  Game start UTC
     game_date          str       'YYYY-MM-DD' (UTC)
     home_team          str
     away_team          str
-
     snapshot_time      datetime  When the odds snapshot was captured
     snapshot_label     str       'open' | 'pregame_-1h' | 'pregame_-10m'
-
     bookmaker          str       'draftkings' | 'fanduel' | …
-    region             str       'us' (single region for now)
-    market_key         str       'player_points' | 'player_points_alternate' | …
-    is_alternate       bool      derived from `_alternate` suffix
-    is_combo           bool      derived from market name (PRA / P+R / P+A / R+A / DD)
-    stat_family        str       canonical: 'PTS','REB','AST','THREES','PRA',
-                                            'PTS_REB','PTS_AST','REB_AST',
-                                            'BLK','STL','DOUBLE_DOUBLE'
-
-    player             str       canonical lower-case name
+    region             str       'us'
+    market_key         str       sport-specific market key (raw)
+    is_alternate       bool      derived
+    is_combo           bool      derived
+    stat_family        str       canonical, sport-specific
+    player             str       canonical lower-case
     line               float
     side               str       'OVER' | 'UNDER' | 'YES' | 'NO'
     odds_american      int
-
     source             str       'odds_api_v4_historical'
-    ingested_at        datetime  UTC
+    ingested_at        datetime
+    _first_seen        datetime  setOnInsert audit
 
-Unique compound index: (event_id, market_key, snapshot_time, bookmaker,
-                         player, line, side)
+Unique compound: (sport_key, event_id, market_key, snapshot_time,
+                   bookmaker, player, line, side)
 """
 from __future__ import annotations
 
@@ -39,101 +39,65 @@ from typing import Any, Dict
 
 from pymongo import ASCENDING, DESCENDING
 
+from .sport_markets import (  # re-exports for backwards-compat callers
+    DEFAULT_SPORT, SUPPORTED_SPORTS,
+    is_alternate, is_combo, market_to_family, markets_for,
+)
+
 logger = logging.getLogger(__name__)
 
 COLLECTION_NAME = "historical_odds_full"
 
 
-# Markets to backfill — exact order matches the user's spec.
-TARGET_MARKETS = [
-    "player_points_rebounds_assists",
-    "player_points_rebounds_assists_alternate",
-    "player_points_alternate",
-    "player_rebounds_alternate",
-    "player_assists_alternate",
-    "player_threes_alternate",
-    "player_points_rebounds_alternate",
-    "player_points_assists_alternate",
-    "player_rebounds_assists_alternate",
-    "player_blocks",
-    "player_steals",
-    "player_double_double",
-]
-
-# Map raw market_key → canonical stat_family used elsewhere in the system.
-_MARKET_TO_FAMILY = {
-    "player_points":            "PTS",
-    "player_points_alternate":  "PTS",
-    "player_rebounds":          "REB",
-    "player_rebounds_alternate":"REB",
-    "player_assists":           "AST",
-    "player_assists_alternate": "AST",
-    "player_threes":            "THREES",
-    "player_threes_alternate":  "THREES",
-    "player_blocks":            "BLK",
-    "player_blocks_alternate":  "BLK",
-    "player_steals":            "STL",
-    "player_steals_alternate":  "STL",
-    "player_turnovers":         "TURNOVERS",
-    "player_double_double":     "DOUBLE_DOUBLE",
-    "player_points_rebounds":              "PTS_REB",
-    "player_points_rebounds_alternate":    "PTS_REB",
-    "player_points_assists":               "PTS_AST",
-    "player_points_assists_alternate":     "PTS_AST",
-    "player_rebounds_assists":             "REB_AST",
-    "player_rebounds_assists_alternate":   "REB_AST",
-    "player_points_rebounds_assists":           "PRA",
-    "player_points_rebounds_assists_alternate": "PRA",
-}
-
-_COMBO_FAMILIES = {"PRA", "PTS_REB", "PTS_AST", "REB_AST"}
-
-
-def market_to_family(market_key: str) -> str:
-    """Canonical stat_family code for the given market key. Falls back
-    to the upper-case raw key when no mapping exists (so we never lose
-    the data for a brand-new market the API ships)."""
-    return _MARKET_TO_FAMILY.get(market_key, market_key.upper())
-
-
-def is_alternate(market_key: str) -> bool:
-    return market_key.endswith("_alternate")
-
-
-def is_combo(market_key: str) -> bool:
-    return market_to_family(market_key) in _COMBO_FAMILIES
+# Backwards-compat shim: callers that imported `TARGET_MARKETS` from
+# this module before multi-sport support get the NBA list (the only
+# list that existed before this change).
+TARGET_MARKETS = markets_for(DEFAULT_SPORT)
 
 
 async def ensure_indexes(db) -> Dict[str, Any]:
     """Create the `historical_odds_full` collection indexes. Safe to
-    call repeatedly — each `create_index` is a no-op if the index
-    already exists with the same definition."""
+    call repeatedly. Each index is sport-aware where it makes sense
+    (sport_key as leading field for hot-path queries that scope a
+    single sport)."""
     coll = db[COLLECTION_NAME]
     created = []
 
-    # Unique compound index — protects against duplicate ingestions.
+    # Unique compound — protects against duplicates across all sports.
+    # `sport_key` is leading because every backtest query is scoped to
+    # one sport at a time.
     created.append(await coll.create_index(
-        [("event_id", ASCENDING), ("market_key", ASCENDING),
-         ("snapshot_time", ASCENDING), ("bookmaker", ASCENDING),
-         ("player", ASCENDING), ("line", ASCENDING), ("side", ASCENDING)],
-        name="uniq_event_market_snapshot_book_player_line_side",
+        [("sport_key", ASCENDING), ("event_id", ASCENDING),
+         ("market_key", ASCENDING), ("snapshot_time", ASCENDING),
+         ("bookmaker", ASCENDING), ("player", ASCENDING),
+         ("line", ASCENDING), ("side", ASCENDING)],
+        name="uniq_sport_event_market_snapshot_book_player_line_side",
         unique=True,
     ))
-    # Hot-path query indexes for the backtest replay layer.
+
+    # Sport-scoped hot-path query indexes.
     created.append(await coll.create_index(
-        [("game_date", ASCENDING)], name="game_date"))
+        [("sport_key", ASCENDING), ("game_date", ASCENDING)],
+        name="sport_game_date"))
     created.append(await coll.create_index(
-        [("event_id", ASCENDING)], name="event_id"))
+        [("sport_key", ASCENDING), ("event_id", ASCENDING)],
+        name="sport_event_id"))
     created.append(await coll.create_index(
-        [("player", ASCENDING)], name="player"))
+        [("sport_key", ASCENDING), ("player", ASCENDING)],
+        name="sport_player"))
     created.append(await coll.create_index(
-        [("market_key", ASCENDING)], name="market_key"))
+        [("sport_key", ASCENDING), ("market_key", ASCENDING)],
+        name="sport_market_key"))
+    created.append(await coll.create_index(
+        [("sport_key", ASCENDING), ("stat_family", ASCENDING)],
+        name="sport_stat_family"))
+
+    # Sport-agnostic helpers (rarely scanned, but useful for cleanup
+    # and analytics across sports).
     created.append(await coll.create_index(
         [("line", ASCENDING)], name="line"))
     created.append(await coll.create_index(
         [("snapshot_time", DESCENDING)], name="snapshot_time_desc"))
-    created.append(await coll.create_index(
-        [("stat_family", ASCENDING)], name="stat_family"))
 
     logger.info(f"[odds_api_backfill] indexes ready: {created}")
     return {"collection": COLLECTION_NAME, "indexes": created}
@@ -141,5 +105,7 @@ async def ensure_indexes(db) -> Dict[str, Any]:
 
 __all__ = [
     "COLLECTION_NAME", "TARGET_MARKETS",
-    "ensure_indexes", "is_alternate", "is_combo", "market_to_family",
+    "DEFAULT_SPORT", "SUPPORTED_SPORTS",
+    "ensure_indexes", "is_alternate", "is_combo",
+    "market_to_family", "markets_for",
 ]
