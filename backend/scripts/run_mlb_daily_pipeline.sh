@@ -13,9 +13,16 @@
 #   4. Validate joins (fail-fast on coverage drop)
 #   5. Score today's slate + log picks to mlb_pick_history
 #
-# Cron entry (run nightly at 04:00 UTC, after MLB games settle):
-#   0 4 * * *  /app/backend/scripts/run_mlb_daily_pipeline.sh \
-#               >> /var/log/mlb_pipeline.log 2>&1
+# Cron entries (install in ops crontab):
+#
+#   # Daily pipeline — Statcast + features + identity + scoring (post-slate).
+#   0 4  * * *  /app/backend/scripts/run_mlb_daily_pipeline.sh \
+#                  >> /var/log/mlb_pipeline.log 2>&1
+#
+#   # Pre-game lineup ingest — runs ~6 PM ET, when MLB Stats API has
+#   # 95%+ of confirmed cards posted.  Lineup-only; never touches scoring.
+#   0 22 * * *  /app/backend/scripts/run_mlb_pregame_lineups.sh \
+#                  >> /var/log/mlb_lineups.log 2>&1
 #
 # Manual one-shot for a specific date:
 #   YESTERDAY=2026-04-26 /app/backend/scripts/run_mlb_daily_pipeline.sh
