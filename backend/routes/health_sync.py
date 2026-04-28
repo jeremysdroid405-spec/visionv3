@@ -358,3 +358,30 @@ async def health_contracts(response: Response):
         "status": "healthy" if spike == 0 else "warning",
         **counters,
     }
+
+
+# ---------------------------------------------------------------------------
+@router.get("/board")
+async def health_board(response: Response):
+    """Board observability — counts, fill %, ages, churn per (sport,
+    tier, side). Read-only; reads from `board_state` and
+    `board_state_events` (TTL 7d). Does NOT trigger reconcile, never
+    touches publish logic.
+
+    Front Lines reports OVER and UNDER as separate buckets (split_by_side).
+    Safe Haven and War Zone report a single combined bucket (`side=null`).
+    """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    if _db is None:
+        return {
+            "error": "db_not_initialised",
+            "generated_at": _now().isoformat(),
+        }
+    try:
+        from services.board.publisher import board_health_report
+        return await board_health_report(_db)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "error": repr(exc),
+            "generated_at": _now().isoformat(),
+        }

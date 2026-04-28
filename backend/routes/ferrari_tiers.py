@@ -2231,6 +2231,16 @@ async def _serve_ferrari_tier(
     except Exception as _cc_err:
         logger.warning(f"[CARD_CONTRACT:{sport}] skipped: {_cc_err}")
 
+    # ── Universal Board Longevity (2026-04-29) ─────────────────────────
+    # Adds `on_board_seconds`, `on_board_minutes`, `on_board_label` to
+    # every pick by reading `board_state.first_seen_at`. Sport-agnostic;
+    # no branching by NBA / MLB / future sports. Read-only.
+    try:
+        from services.board.publisher import stamp_longevity_on_picks
+        await stamp_longevity_on_picks(_db, sport, tier_name, picks)
+    except Exception as _lv_err:
+        logger.warning(f"[BOARD_LONGEVITY:{sport}:{tier_name}] skipped: {_lv_err}")
+
     # ── Runtime Contract Enforcers (2026-04-29, STRICT MODE) ───────────
     # Hard validators run on every dashboard tier response. Bad data is
     # SUPPRESSED, never patched. Counters surface at /api/health/contracts.

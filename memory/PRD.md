@@ -28,6 +28,60 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
 
 ## Recent work (changelog)
 
+### 2026-04-29 — Universal Board Observability + Longevity Metrics
+**Why**: With persisted `board_state` in place, surface (a) board health
+(counts / fill % / churn) and (b) per-pick longevity ("on board 6h+")
+to the UI and ops dashboards. Required to be sport-agnostic and to
+NEVER touch publish logic.
+
+**Shipped**:
+- `services/board/publisher.py` (extended):
+    * Persist `last_seen_at` on every reconcile (alongside the
+      preserved `first_seen_at`).
+    * New `board_state_events` collection (TTL 7 days) recording
+      `insertion` / `removal` events with `(sport, tier, side,
+      canonical_key, occurred_at)` for hourly churn counters.
+    * `stamp_longevity_on_picks(db, sport, tier, picks)` — universal
+      stamp adding `on_board_seconds`, `on_board_minutes`,
+      `on_board_label` ("on board 6h+" / "3h+" / "1h+" / null).
+    * `board_health_report(db)` — full per-(sport, tier, side)
+      observability snapshot. Discovers sports from persisted state
+      automatically — adding a new sport surfaces here with zero code
+      change.
+    * `_classify_status` — `healthy` / `underfilled` / `stale` /
+      `high_churn`. High-churn requires actual *replacement* (≥5
+      removals OR ≥3 removals + ≥3 insertions); pure first-fill is
+      `healthy`/`underfilled`.
+- `routes/health_sync.py` — new `GET /api/health/board` endpoint
+  serving the report.
+- `routes/ferrari_tiers.py` — `_serve_ferrari_tier` now calls
+  `stamp_longevity_on_picks` immediately after the dashboard-card
+  contract; longevity fields are present on every Safe Haven, Front
+  Lines, and War Zone pick across NBA / MLB.
+
+**Validation**:
+- `tests/test_board_observability.py` — 11 tests covering all 5 spec
+  proofs (A–E) + classifier + label thresholds + cross-sport (NHL):
+    A. lifetime grows monotonically across 3 reconciles
+    B. new pick starts at < 2 s
+    C. removed pick disappears from board + records removal event
+    D. Front Lines OVER ↔ UNDER full independence (state, first_seen_at,
+       events untouched on the other side)
+    E. health endpoint counts / capacity / fill_pct correct across
+       all 4 buckets
+
+**Live verification**:
+- `/api/health/board` returns 12 buckets (NBA + MLB × 4 tier-side
+  combos) with full metric set, accurate counts, and correct status
+  classification.
+- Sample pick payload contains `on_board_seconds: 792`,
+  `on_board_minutes: 13`, `on_board_label: null` (under 1h).
+
+**No publish logic changed**: insertion rule, ranking, scoring, gates,
+tier-routing, pick-selection — all untouched. Verified by a clean run
+of `tests/test_board_publisher.py` (14/14) + `test_contract_enforcer.py`
+(18/18) post-change.
+
 ### 2026-04-29 — Universal Stable Board Publisher (cross-sport)
 **Why**: Every API read of the tier boards used to fire a fresh top-N
 sort over the volatile `{sport}_prop_scores` collection. The delta

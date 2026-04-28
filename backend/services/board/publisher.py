@@ -44,7 +44,7 @@ only. Verified by tests in `tests/test_board_publisher.py`.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,7 @@ TIER_CONFIG: Dict[str, Dict[str, Any]] = {
 }
 
 COLL = "board_state"
+EVENTS_COLL = "board_state_events"   # 7-day TTL — observability only
 
 
 # ─── Indexes (idempotent, called at startup) ──────────────────────────
@@ -79,6 +80,17 @@ async def ensure_indexes(db) -> None:
         await db[COLL].create_index(
             [("active", 1), ("last_updated_at", 1)],
             name="board_state_gc_idx",
+        )
+        # Events collection — TTL 7 days. Read-only observability path
+        # (not used by publish logic).
+        await db[EVENTS_COLL].create_index(
+            "occurred_at",
+            expireAfterSeconds=7 * 24 * 3600,
+            name="board_state_events_ttl",
+        )
+        await db[EVENTS_COLL].create_index(
+            [("sport", 1), ("tier", 1), ("side", 1), ("occurred_at", -1)],
+            name="board_state_events_read_idx",
         )
     except Exception as e:  # pragma: no cover
         logger.warning("[BOARD_PUB] index ensure failed: %s", e)
@@ -168,9 +180,26 @@ async def _persist(db, sport: str, tier: str, side: Optional[str],
     """Persist the new ordered slate; mark non-survivors inactive.
 
     Idempotent: rerunning with identical input is a no-op.
+
+    Also emits observability events:
+      - `insertion` — new active row appearing for the first time.
+      - `removal`   — previously-active row going inactive.
+    Events live in `board_state_events` (TTL 7 days) and are consumed
+    only by `/api/health/board`. They never influence publish logic.
     """
     now = _now()
     keep_keys = [e["canonical_key"] for e in ordered]
+
+    # Snapshot which keys were active BEFORE this reconcile so we can
+    # emit accurate insertion / removal events without re-reading.
+    pre_active_keys: set = set()
+    if db is not None:
+        cursor = db[COLL].find(
+            {"sport": sport, "tier": tier, "side": side, "active": True},
+            {"_id": 0, "canonical_key": 1},
+        )
+        for r in await cursor.to_list(length=200):
+            pre_active_keys.add(r.get("canonical_key"))
 
     # 1. Mark explicitly-evicted rows inactive.
     if evicted_keys:
@@ -179,6 +208,7 @@ async def _persist(db, sport: str, tier: str, side: Optional[str],
              "canonical_key": {"$in": list(evicted_keys)}},
             {"$set": {"active": False,
                       "last_updated_at": now,
+                      "last_seen_at": now,
                       "invalidation_reason": eviction_reason}},
         )
 
@@ -188,10 +218,13 @@ async def _persist(db, sport: str, tier: str, side: Optional[str],
         {"sport": sport, "tier": tier, "side": side, "active": True,
          "canonical_key": {"$nin": keep_keys}},
         {"$set": {"active": False, "last_updated_at": now,
+                  "last_seen_at": now,
                   "invalidation_reason": "no_longer_qualifying"}},
     )
 
     # 3. Upsert each survivor with its new rank + refreshed snapshot.
+    #    `first_seen_at` is set ONLY on insert ($setOnInsert) so longevity
+    #    is preserved across reconciles. `last_seen_at` updates every time.
     for slot, entry in enumerate(ordered, start=1):
         ck = entry["canonical_key"]
         await db[COLL].update_one(
@@ -201,6 +234,7 @@ async def _persist(db, sport: str, tier: str, side: Optional[str],
                     "rank":             slot,
                     "active":           True,
                     "last_updated_at":  now,
+                    "last_seen_at":     now,
                     "score_snapshot":   _snapshot(entry),
                     "invalidation_reason": None,
                 },
@@ -214,6 +248,38 @@ async def _persist(db, sport: str, tier: str, side: Optional[str],
             },
             upsert=True,
         )
+
+    # 4. Emit observability events. Read-only path; never influences the
+    #    publish logic above.
+    new_active_keys = set(keep_keys)
+    insertions = new_active_keys - pre_active_keys
+    removals   = pre_active_keys - new_active_keys
+    events: List[Dict[str, Any]] = []
+    for ck in insertions:
+        events.append({
+            "kind":          "insertion",
+            "sport":         sport,
+            "tier":          tier,
+            "side":          side,
+            "canonical_key": ck,
+            "occurred_at":   now,
+        })
+    for ck in removals:
+        events.append({
+            "kind":          "removal",
+            "sport":         sport,
+            "tier":          tier,
+            "side":          side,
+            "canonical_key": ck,
+            "reason":        eviction_reason if ck in (evicted_keys or [])
+                             else "no_longer_qualifying",
+            "occurred_at":   now,
+        })
+    if events:
+        try:
+            await db[EVENTS_COLL].insert_many(events, ordered=False)
+        except Exception as e:  # pragma: no cover
+            logger.warning("[BOARD_PUB] event emit failed: %s", e)
 
 
 # ─── Core reconciliation algorithm ────────────────────────────────────
@@ -382,11 +448,190 @@ async def get_published_board(
     return rows
 
 
+# ─── Longevity stamping (universal, sport-agnostic) ──────────────────
+def _longevity_label(seconds: float) -> Optional[str]:
+    if seconds is None:
+        return None
+    if seconds >= 6 * 3600:
+        return "on board 6h+"
+    if seconds >= 3 * 3600:
+        return "on board 3h+"
+    if seconds >= 1 * 3600:
+        return "on board 1h+"
+    return None
+
+
+async def stamp_longevity_on_picks(
+    db, sport: str, tier: str, picks: List[Dict[str, Any]],
+) -> None:
+    """Mutate `picks` in place to add the universal longevity contract:
+
+        on_board_seconds : int   (0 if not yet persisted)
+        on_board_minutes : int   (rounded)
+        on_board_label   : str | None  ("on board 6h+" / "3h+" / "1h+" / null)
+
+    Reads `first_seen_at` from `board_state` for the (sport, tier, *)
+    bucket. Works for split tiers (Front Lines OVER/UNDER) without
+    branching — `side` is included in the lookup key implicitly via
+    `canonical_key` uniqueness.
+
+    No-op if the bucket has no persisted state yet (e.g. first reconcile
+    in-flight); pick gets `on_board_seconds=0`, `on_board_label=None`.
+    """
+    if not picks or db is None:
+        return
+    keys = [p.get("canonical_key") for p in picks if p.get("canonical_key")]
+    if not keys:
+        return
+    by_key: Dict[str, datetime] = {}
+    cursor = db[COLL].find(
+        {"sport": sport, "tier": tier, "active": True,
+         "canonical_key": {"$in": keys}},
+        {"_id": 0, "canonical_key": 1, "first_seen_at": 1},
+    )
+    for r in await cursor.to_list(length=200):
+        fs = r.get("first_seen_at")
+        if isinstance(fs, datetime):
+            if fs.tzinfo is None:
+                fs = fs.replace(tzinfo=timezone.utc)
+            by_key[r["canonical_key"]] = fs
+    now = _now()
+    for p in picks:
+        ck = p.get("canonical_key")
+        fs = by_key.get(ck)
+        if fs is None:
+            p["on_board_seconds"] = 0
+            p["on_board_minutes"] = 0
+            p["on_board_label"]   = None
+            continue
+        secs = max(0, int((now - fs).total_seconds()))
+        p["on_board_seconds"] = secs
+        p["on_board_minutes"] = round(secs / 60)
+        p["on_board_label"]   = _longevity_label(secs)
+
+
+# ─── Health probe (read-only, called by /api/health/board) ───────────
+def _classify_status(count: int, capacity: int,
+                     newest_age: Optional[float],
+                     insertions: int, removals: int) -> str:
+    """Universal status classifier — pure function, no I/O.
+
+    healthy      → board at capacity, fresh activity, low churn
+    underfilled  → count < capacity (initial fill / partial slate)
+    stale        → newest pick older than 2h (no fresh activity)
+    high_churn   → ≥ 5 REMOVALS in the last hour, OR ≥ 3 removals AND
+                   ≥ 3 insertions (active replacement going on).
+                   Pure insertions on a previously-empty board do NOT
+                   count — that's filling, not churn.
+    """
+    rem = removals or 0
+    ins = insertions or 0
+    if rem >= 5 or (rem >= 3 and ins >= 3):
+        return "high_churn"
+    if count < capacity:
+        return "underfilled"
+    if newest_age is not None and newest_age > 2 * 3600:
+        return "stale"
+    return "healthy"
+
+
+async def _bucket_health(db, sport: str, tier: str,
+                         side: Optional[str]) -> Dict[str, Any]:
+    cfg = TIER_CONFIG.get(tier) or {}
+    capacity = int(cfg.get("capacity_per_side", 10))
+    rows = await _load_active(db, sport, tier, side)
+    now = _now()
+    ages: List[float] = []
+    last_update_at: Optional[datetime] = None
+    for r in rows:
+        fs = r.get("first_seen_at")
+        lu = r.get("last_updated_at") or r.get("last_seen_at")
+        if isinstance(fs, datetime):
+            if fs.tzinfo is None:
+                fs = fs.replace(tzinfo=timezone.utc)
+            ages.append(max(0.0, (now - fs).total_seconds()))
+        if isinstance(lu, datetime):
+            if lu.tzinfo is None:
+                lu = lu.replace(tzinfo=timezone.utc)
+            if last_update_at is None or lu > last_update_at:
+                last_update_at = lu
+
+    one_hour_ago = now - timedelta(hours=1)
+    insertions = await db[EVENTS_COLL].count_documents({
+        "sport": sport, "tier": tier, "side": side,
+        "kind": "insertion", "occurred_at": {"$gte": one_hour_ago},
+    }) if db is not None else 0
+    removals = await db[EVENTS_COLL].count_documents({
+        "sport": sport, "tier": tier, "side": side,
+        "kind": "removal", "occurred_at": {"$gte": one_hour_ago},
+    }) if db is not None else 0
+
+    count = len(rows)
+    oldest = max(ages) if ages else None
+    newest = min(ages) if ages else None
+    avg    = (sum(ages) / len(ages)) if ages else None
+    fill_pct = round(count / capacity, 4) if capacity else 0.0
+
+    return {
+        "sport":               sport,
+        "tier":                tier,
+        "side":                side,
+        "count":               count,
+        "capacity":            capacity,
+        "fill_pct":            fill_pct,
+        "oldest_pick_age_sec": int(oldest) if oldest is not None else None,
+        "newest_pick_age_sec": int(newest) if newest is not None else None,
+        "avg_pick_age_sec":    int(avg) if avg is not None else None,
+        "insertions_last_hour": int(insertions),
+        "removals_last_hour":   int(removals),
+        "last_update_at":      last_update_at.isoformat() if last_update_at else None,
+        "status":              _classify_status(count, capacity, newest,
+                                                insertions, removals),
+    }
+
+
+async def board_health_report(db) -> Dict[str, Any]:
+    """Aggregate per (sport, tier, side) status. Universal — discovers
+    sports from the persisted state collection, so adding a new sport
+    automatically appears here without code change."""
+    out: Dict[str, Any] = {
+        "generated_at": _now().isoformat(),
+        "buckets":      [],
+    }
+    if db is None:
+        return out
+    # Discover (sport, tier, side) buckets that have any state row,
+    # active or inactive. Even if a bucket has 0 active rows we still
+    # want to report `count=0, capacity=N, status=underfilled`.
+    sports = sorted(set(await db[COLL].distinct("sport")))
+    for sport in sports:
+        for tier, cfg in TIER_CONFIG.items():
+            if cfg["split_by_side"]:
+                sides: Tuple[Optional[str], ...] = ("OVER", "UNDER")
+            else:
+                sides = (None,)
+            for side in sides:
+                bucket = await _bucket_health(db, sport, tier, side)
+                out["buckets"].append(bucket)
+    # Roll-up convenience.
+    out["overall_status"] = (
+        "high_churn" if any(b["status"] == "high_churn" for b in out["buckets"]) else
+        "stale"      if any(b["status"] == "stale"      for b in out["buckets"]) else
+        "underfilled" if any(b["status"] == "underfilled" for b in out["buckets"]) else
+        "healthy"
+    )
+    return out
+
+
 __all__ = [
     "TIER_CONFIG",
     "rank_tuple",
     "ensure_indexes",
     "reconcile",
     "get_published_board",
+    "stamp_longevity_on_picks",
+    "board_health_report",
     "_reconcile_in_memory",
+    "_classify_status",
+    "_longevity_label",
 ]
