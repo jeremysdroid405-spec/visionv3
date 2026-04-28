@@ -85,6 +85,17 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
 - 272-pick curated forward-test: 77.2% hit rate (Δ +17.3 pts vs pre-cutover).
 - Net +47 flips, 8.8:1 misses-avoided to hits-lost asymmetry.
 
+### 2026-04-29 — Universal Dashboard Pick Card Contract: VISUAL VERIFICATION
+- Confirmed via screenshots that the 8-field contract (`player_name`,
+  `team`, `stat_line`, `big_pick_text`, `projection`, `hit_rate`, `avg`,
+  `short_sentence`) renders identically across NBA and MLB dashboards
+  for Safe Haven, Front Lines, and War Zone tiers.
+- `UniversalPlayerCard.jsx` contains zero sport-specific rendering logic.
+- Known data gap (NOT a contract bug): `avg` is `null` for many MLB picks
+  and a few NBA picks where `season_avg`/`l20_avg`/`l10_avg`/`l5_avg`/
+  `eb_player_career_mean` are all absent on the source dict — card
+  cleanly renders `—` placeholder per spec.
+
 ## P0 / P1 / P2 backlog
 
 ### P0
