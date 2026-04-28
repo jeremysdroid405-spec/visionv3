@@ -142,7 +142,13 @@ const GameLogBarChart = memo(({
   className = '',
   l5Avg = null,
   l10Avg = null,
-  seasonAvg = null
+  seasonAvg = null,
+  // 2026-04-29 — Hit-Profile parity contract.
+  // Backend stamps `hit_profile` (`l10_hit_count` / `l10_total` /
+  // `l10_values`) on every dashboard pick. When available we use it
+  // directly so the green-bar count and the displayed Hit Rate share
+  // the SAME single source of truth.
+  hitProfile = null
 }) => {
   const chartData = useMemo(() => {
     if (!gameLogs || !Array.isArray(gameLogs) || !statType || line === undefined) {
@@ -198,18 +204,42 @@ const GameLogBarChart = memo(({
     const maxValue = Math.max(...allRelevantValues);
     const chartMax = maxValue * 1.25; // 25% padding above highest bar for value labels
     
-    const hits = values.filter(v => v.value >= line).length;
-    const hitRate = Math.round((hits / values.length) * 100);
+    // ── Hit count: prefer backend hit_profile when present.
+    //    Otherwise fall back to local computation (same `>=` rule).
+    const localHits = values.filter(v => v.value >= line).length;
+    let hits = localHits;
+    let total = values.length;
+    if (hitProfile && typeof hitProfile.l10_hit_count === 'number') {
+      hits = hitProfile.l10_hit_count;
+      total = hitProfile.l10_total || values.length;
+      // Hard parity assertion: dev mode throws, prod logs.
+      if (localHits !== hits) {
+        const msg = (
+          `[HIT_PROFILE PARITY] graph_local=${localHits} ` +
+          `backend_l10_hit_count=${hits} ` +
+          `(stat=${statType}, line=${line}). ` +
+          `Graph and Hit Rate would diverge.`
+        );
+        if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {
+          throw new Error(msg);
+        } else {
+          // Surface in production logs without breaking the page.
+          // eslint-disable-next-line no-console
+          console.error(msg);
+        }
+      }
+    }
+    const hitRate = total > 0 ? Math.round((hits / total) * 100) : 0;
     
     return {
       values: values.reverse(), // Oldest first for left-to-right
       chartMax,
       line,
       hits,
-      total: values.length,
+      total,
       hitRate
     };
-  }, [gameLogs, statType, line, showGames, l5Avg, l10Avg, seasonAvg]);
+  }, [gameLogs, statType, line, showGames, l5Avg, l10Avg, seasonAvg, hitProfile]);
   
   if (!chartData) {
     return (

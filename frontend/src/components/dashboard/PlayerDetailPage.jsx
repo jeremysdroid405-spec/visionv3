@@ -200,11 +200,13 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
     return Math.round(rate * 100);
   };
   
-  const h10Rate = prop.h10_rate != null 
-    ? normalizeHitRate(prop.h10_rate)
-    : (prop.l10_hit_rate != null 
-        ? normalizeHitRate(prop.l10_hit_rate) 
-        : (hitRates.l10?.hit_rate != null ? normalizeHitRate(hitRates.l10.hit_rate) : (hitRates.l10_rate ?? 0)));
+  const h10Rate = prop.hit_rate != null
+    ? normalizeHitRate(prop.hit_rate)
+    : (prop.h10_rate != null
+        ? normalizeHitRate(prop.h10_rate)
+        : (prop.l10_hit_rate != null
+            ? normalizeHitRate(prop.l10_hit_rate)
+            : (hitRates.l10?.hit_rate != null ? normalizeHitRate(hitRates.l10.hit_rate) : (hitRates.l10_rate ?? 0))));
   const h5Rate = prop.h5_rate != null 
     ? normalizeHitRate(prop.h5_rate)
     : (prop.l5_hit_rate != null 
@@ -406,6 +408,13 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
               l5Avg={l5Avg}
               l10Avg={l10Avg}
               seasonAvg={seasonAvg}
+              hitProfile={prop && (prop.l10_hit_count != null) ? {
+                l10_hit_count: prop.l10_hit_count,
+                l10_total: prop.l10_total,
+                l10_values: prop.l10_values,
+                hit_profile_line: prop.hit_profile_line,
+                hit_profile_rule: prop.hit_profile_rule,
+              } : null}
               className="flex-1 w-full"
             />
           </div>

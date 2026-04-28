@@ -402,18 +402,20 @@ def _l10_mean(stat_type: str, sport: str, logs: List[Dict[str, Any]]) -> Optiona
 async def _backfill_avg_from_game_logs(
     db, picks: List[Dict[str, Any]], sport: str
 ) -> None:
-    """Stamp `avg` (and `team` when missing) on every pick still missing them.
+    """Stamp the canonical L10 hit-profile + avg + team on every pick.
 
-    Strategy:
-      1. Collect distinct `bdl_player_id` values from picks where avg
-         OR team is null/missing.
-      2. ONE batch query against `{sport}_master_hub_2026` projecting
-         `bdl_game_logs` + identity team fields (the same source the
-         player-detail page reads).
-      3. For each pick, compute L10 mean for its `stat_type` and stamp
-         `avg`. Stamp team abbr when blank.
+    Replaces the previous ad-hoc avg-only backfill. For every pick we
+    pull the player's `bdl_game_logs` from `{sport}_master_hub_2026` —
+    the SAME source the front-end's `GameLogBarChart` reads — and run
+    `services.hit_profile.compute_hit_profile`. The card's `hit_rate`,
+    `l10_hit_count`, `l10_total`, `l10_values`, and `avg` all derive
+    from that ONE function.
 
-    No-op when sport is unknown, db is None, or no picks need a backfill.
+    `pick.hit_rate_over` (model L20 probability) is left untouched on
+    the pick — it stays available for `ranking_score_v2` and any
+    internal scoring readers.
+
+    No-op when sport unknown, db is None, or no picks have a bdl id.
     """
     if not picks or db is None:
         return
@@ -421,18 +423,11 @@ async def _backfill_avg_from_game_logs(
     if s not in ("nba", "mlb"):
         return
 
-    # Picks that need avg (none-or-numeric-zero treated normally) or team.
-    needs = [
-        p for p in picks
-        if _f(p.get("avg")) is None
-        or not (p.get("team") or p.get("team_abbr"))
-    ]
-    if not needs:
-        return
-
-    # Collect player ids.
+    # Collect bdl_player_ids for every pick — we re-stamp hit_profile
+    # on EVERY pick (idempotent), regardless of whether a stale avg /
+    # hit_rate is already present. This guarantees graph↔card parity.
     ids: set = set()
-    for p in needs:
+    for p in picks:
         pid = p.get("bdl_player_id") or p.get("bdl_id")
         if pid is None:
             continue
@@ -467,14 +462,17 @@ async def _backfill_avg_from_game_logs(
 
     if not by_id:
         logger.info(
-            "[CARD_CONTRACT:%s] backfill skipped — no hub docs for %d ids",
+            "[CARD_CONTRACT:%s] hit_profile skipped — no hub docs for %d ids",
             s, len(ids),
         )
         return
 
-    avg_stamped = 0
+    # Lazy import to avoid a circular at module-load.
+    from services.hit_profile import stamp_hit_profile_on_pick
+
+    profiled = 0
     team_stamped = 0
-    for p in needs:
+    for p in picks:
         pid = p.get("bdl_player_id") or p.get("bdl_id")
         try:
             pid = int(pid) if pid is not None else None
@@ -485,22 +483,19 @@ async def _backfill_avg_from_game_logs(
         hub = by_id.get(pid)
         if not hub:
             continue
-        # ---- avg via L10 mean ---------------------------------------
-        if _f(p.get("avg")) is None:
-            stat_type = p.get("stat_type") or ""
-            avg = _l10_mean(stat_type, s, hub.get("bdl_game_logs") or [])
-            if avg is not None:
-                p["avg"] = avg
-                avg_stamped += 1
-        # ---- team abbr ----------------------------------------------
+
+        # ---- canonical hit_profile (overwrites hit_rate + avg) -------
+        stamp_hit_profile_on_pick(p, hub.get("bdl_game_logs") or [], sport=s)
+        profiled += 1
+
+        # ---- team abbr (only when missing) --------------------------
         if not (p.get("team") or p.get("team_abbr")):
             t = hub.get("team_abbr") or hub.get("team")
             if t:
                 p["team"] = t
                 team_stamped += 1
 
-    if avg_stamped or team_stamped:
-        logger.info(
-            "[CARD_CONTRACT:%s] backfilled avg=%d team=%d (of %d needing)",
-            s, avg_stamped, team_stamped, len(needs),
-        )
+    logger.info(
+        "[CARD_CONTRACT:%s] hit_profile stamped on %d/%d picks (team=%d)",
+        s, profiled, len(picks), team_stamped,
+    )
