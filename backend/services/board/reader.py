@@ -98,6 +98,14 @@ async def get_board(
 
     seen: set = set()
     deduped: List[Dict] = []
+    # NOTE: We dedup to the TIER-WIDE cap (not the side-split cap) so
+    # the publisher below has enough candidates to fill both OVER and
+    # UNDER pools for split tiers like Front Lines. For split tiers we
+    # need up to 2× cap candidates (10 OVER + 10 UNDER); for combined
+    # tiers `cap` is sufficient.
+    from services.board.publisher import TIER_CONFIG as _TIER_CFG
+    _split = bool((_TIER_CFG.get(tier) or {}).get("split_by_side"))
+    pool_cap = cap * 2 if _split else cap
     for row in raw:
         player_key = (row.get("player_name") or "").strip().lower()
         if not player_key:
@@ -107,10 +115,52 @@ async def get_board(
             continue
         seen.add(player_key)
         deduped.append(row)
-        if len(deduped) >= cap:
+        if len(deduped) >= pool_cap:
             break
 
-    return deduped
+    # ── Universal Stable Board Publisher (2026-04-29) ────────────────
+    # Reconcile the persistent `board_state` with this fresh candidate
+    # pool, then return picks in PUBLISHED order. The reconcile is:
+    #   * fill mode while the board is below capacity (full re-rank OK)
+    #   * stable mode at capacity (existing picks keep their slots; a
+    #     new candidate may enter only if it outranks the current last
+    #     pick and inserts at TRUE rank)
+    # Pure publish-layer concern — NO scoring / model / gate / threshold
+    # touched. Adding a new sport requires zero edits here.
+    try:
+        from services.board.publisher import (
+            TIER_CONFIG,
+            reconcile,
+            get_published_board,
+        )
+        if tier in TIER_CONFIG:
+            await reconcile(db, sport, tier, deduped)
+            published = await get_published_board(db, sport, tier)
+            # Re-attach the fresh score docs by canonical_key — the
+            # board_state row only carries the score snapshot for ranking.
+            by_key = {row.get("canonical_key"): row for row in deduped}
+            ordered: List[Dict] = []
+            for entry in published:
+                ck = entry.get("canonical_key")
+                doc = by_key.get(ck)
+                if doc is not None:
+                    ordered.append(doc)
+            if ordered:
+                # `cap` honors the requested limit (route may pass any
+                # value 1..50). For Front Lines: caller passes the
+                # combined cap (e.g. 20 to see both sides, 10 to see
+                # only the top of the combined feed).
+                return ordered[:cap]
+    except Exception as e:
+        # Publisher MUST NEVER 5xx the live read — fall back to the
+        # legacy fresh-sort behavior on any error.
+        import logging as _logging
+        _logging.getLogger(__name__).error(
+            "[BOARD_PUBLISHER] reconcile failed sport=%s tier=%s: %s",
+            sport, tier, e, exc_info=True,
+        )
+
+    return deduped[:cap]
 
 
 async def get_board_count(db, sport: str, tier: str) -> int:

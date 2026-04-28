@@ -1500,6 +1500,9 @@ async def startup_event():
         # Contract-enforcer violation TTL collection (2026-04-29). Idempotent.
         from services.contract_enforcer import ensure_indexes as _ce_ensure
         await _ce_ensure(db)
+        # Universal Stable Board Publisher (2026-04-29). Idempotent.
+        from services.board.publisher import ensure_indexes as _bp_ensure
+        await _bp_ensure(db)
         # 2026-04-29 — admin-gated debug snapshots (tuning-only, NOT
         # consumed by the live dashboard). Holds short locks per-call.
         from routes import debug_snapshots as _debug_snapshots

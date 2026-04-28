@@ -28,6 +28,56 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
 
 ## Recent work (changelog)
 
+### 2026-04-29 — Universal Stable Board Publisher (cross-sport)
+**Why**: Every API read of the tier boards used to fire a fresh top-N
+sort over the volatile `{sport}_prop_scores` collection. The delta
+engine rewrites those scores on every odds tick, so a small change to
+`vision_score` could re-rank the entire dashboard. The user reported
+"the same query 5 minutes apart returned two completely different
+top-20 lists" — that's the symptom of a publish layer that has no
+persistent state.
+
+**Shipped**:
+- `services/board/publisher.py` — universal stable publisher used by
+  every sport (NBA, MLB, NFL/NHL future). Two modes:
+    * **Fill mode** (board < capacity): full re-rank allowed.
+    * **Stable mode** (board at capacity): existing picks keep their
+      slots; a new candidate may enter ONLY if it outranks the current
+      last pick; on entry it inserts at TRUE rank (insertion sort,
+      never forced to #1).
+- `board_state` collection persisted with unique index on
+  `(sport, tier, side, canonical_key)`. Fields:
+  `rank, first_seen_at, last_updated_at, score_snapshot, active,
+  invalidation_reason`.
+- Universal capacities (defined once in `TIER_CONFIG`):
+    * Safe Haven: 10 (combined)
+    * Front Lines: 10 OVER + 10 UNDER (split, 20 total)
+    * War Zone: 10 (combined)
+- Deterministic sort tuple (single source of truth):
+    `ranking_score DESC → vision_score DESC → edge_pct DESC → canonical_key ASC`
+- `services/board/reader.py::get_board()` transparently reconciles +
+  reads from `board_state`. Public API unchanged. Falls back to legacy
+  fresh-sort on any reconciliation error.
+- Indexes bootstrapped at startup via `ensure_indexes(db)`.
+
+**Validation**:
+- `tests/test_board_publisher.py` — **14 tests covering all 7 spec
+  cases** (A-G): SH-with-4-picks fill, FL OVER/UNDER independent fill,
+  full-board insertion at TRUE rank, candidate-worse-than-last
+  rejection, 5-min-apart majority-retention, zero-full-replacement,
+  rank-tuple lockdown, TIER_CONFIG lockdown, and end-to-end persistence
+  including a brand-new "nhl" sport reconciling with no code change.
+- **Live API stability proof**: NBA Safe Haven SHA-256 identical
+  across 60 s on the unfrozen production endpoint (no read locks).
+- `board_state` populated correctly across all 4 active
+  sport×tier×side combinations:
+    NBA: SH=10, FL OVER=10/UNDER=6, WZ=9
+    MLB: SH=10, FL OVER=10/UNDER=7, WZ=4
+
+**No model state touched**: scoring, μ, σ, gates, thresholds,
+tier-routing, and pick-selection are unchanged. The publisher is a
+pure publish-layer reordering / persistence concern.
+
 ### 2026-04-29 — Permanent runtime contract enforcement (STRICT MODE)
 **Why**: "Fixes" to NBA/MLB dashboards kept regressing because contracts
 (card shape, lineup-opp row shape, hit-profile parity, ticker freshness)
