@@ -165,6 +165,9 @@ const fetchMLBGoblins = async () => {
   const response = await fetch(`${API}/api/v3/mlb/sharp/goblins`);
   if (!response.ok) throw new Error('MLB Goblins fetch failed');
   const data = await response.json();
+  if (data && Array.isArray(data.picks)) {
+    data.picks = normalizeFerrariPicks(data.picks);
+  }
   preloadImages(data.picks);
   return data;
 };
@@ -177,6 +180,9 @@ const fetchMLBDemons = async () => {
   const response = await fetch(`${API}/api/v3/mlb/sharp/demons`);
   if (!response.ok) throw new Error('MLB Demons fetch failed');
   const data = await response.json();
+  if (data && Array.isArray(data.picks)) {
+    data.picks = normalizeFerrariPicks(data.picks);
+  }
   preloadImages(data.picks);
   return data;
 };
@@ -189,6 +195,9 @@ const fetchMLBHRRPicks = async () => {
   const response = await fetch(`${API}/api/v3/mlb/ferrari/hrr-picks`);
   if (!response.ok) throw new Error('MLB HRR picks fetch failed');
   const data = await response.json();
+  if (data && Array.isArray(data.picks)) {
+    data.picks = normalizeFerrariPicks(data.picks);
+  }
   preloadImages(data.picks);
   return data;
 };
@@ -201,6 +210,9 @@ const fetchMLBSafeHaven = async () => {
   const response = await fetch(`${API}/api/v3/ferrari/safe-haven?sport=mlb`);
   if (!response.ok) throw new Error('MLB Safe Haven fetch failed');
   const data = await response.json();
+  if (data && Array.isArray(data.picks)) {
+    data.picks = normalizeFerrariPicks(data.picks);
+  }
   preloadImages(data.picks);
   return data;
 };
@@ -213,6 +225,9 @@ const fetchMLBFrontLines = async () => {
   const response = await fetch(`${API}/api/v3/ferrari/front-lines?sport=mlb`);
   if (!response.ok) throw new Error('MLB Front Lines fetch failed');
   const data = await response.json();
+  if (data && Array.isArray(data.picks)) {
+    data.picks = normalizeFerrariPicks(data.picks);
+  }
   preloadImages(data.picks);
   return data;
 };
