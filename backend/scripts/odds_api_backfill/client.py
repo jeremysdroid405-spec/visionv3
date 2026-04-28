@@ -136,7 +136,12 @@ class OddsAPIClient:
         snapshot_iso: str,
         odds_format: str = "american",
     ) -> Dict[str, Any]:
-        """One call, all markets — minimizes credit consumption."""
+        """One call, all markets — minimizes credit consumption.
+
+        Historical responses wrap the odds payload in `{"timestamp": ...,
+        "data": {...}}`. We unwrap `data` so callers get the same
+        bookmakers-at-root shape used by the v4 live endpoint.
+        """
         endpoint = f"/v4/historical/sports/{sport}/events/{event_id}/odds"
         params = {
             "regions": ",".join(regions),
@@ -145,7 +150,10 @@ class OddsAPIClient:
             "oddsFormat": odds_format,
             "dateFormat": "iso",
         }
-        return await self._get(endpoint, params)
+        raw = await self._get(endpoint, params)
+        if isinstance(raw, dict) and isinstance(raw.get("data"), dict):
+            return raw["data"]
+        return raw
 
 
 __all__ = ["OddsAPIClient", "CreditBudgetExceeded"]

@@ -28,7 +28,33 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
 
 ## Recent work (changelog)
 
-### 2026-05 — Persistent forward-testing system (this session)
+### 2026-04-28 — Odds API historical backfill ACTIVATED + 30-day NBA ingest
+- User provisioned `ODDS_API_KEY` in `/app/backend/.env`.
+- **Two latent bugs fixed in the dormant module on first activation:**
+  1. `orchestrator._iso()` — The Odds API historical endpoint rejects
+     `+00:00` timezone format with `INVALID_HISTORICAL_TIMESTAMP`.
+     Now appends `Z` shortcut: `.replace("+00:00", "Z")`.
+  2. `client.get_historical_event_odds()` — historical responses wrap
+     odds in `{"timestamp": ..., "data": {...}}`. The flattener was
+     reading bookmakers from the unwrapped envelope, dropping every
+     row. Client now unwraps `data` to match the live-endpoint shape
+     used elsewhere.
+- **Gate 2 single-slate validation PASSED** (2026-03-29, 17,903 rows,
+  all 7 checks green incl. PRA, alt-line, combo, SH/WZ routing).
+- **Full 30-day NBA backfill complete** — 30 slates, 3 snapshots:
+  - 460,465 NBA rows in `historical_odds_full`
+    (427,532 alternate-line, 154,241 combo)
+  - 26 game-dates 2026-03-29 → 2026-04-26
+  - 8 books (FanDuel/DraftKings/BetOnline/Fanatics/Bovada/+3)
+  - 10 stat families: PTS, PRA, REB, THREES, AST, PTS_REB, PTS_AST,
+    REB_AST, BLK, STL
+  - 24,720 credits used (of ~108K estimate — many late-season slates
+    had ≤3 games), 0 errors, 0 rate-limits, 4.31M credits remaining.
+- Unblocks: backtest re-run vs `historical_odds_full` (Safe Haven /
+  War Zone tiers should now route correctly with alt-line + combo
+  coverage).
+
+### 2026-05 — Persistent forward-testing system
 - New collection `nba_pick_history` with unique index on
   `(player, stat, line, game_date, side)`.
 - Logger hook in `services/scoring/recompute.py` fires after
@@ -71,6 +97,10 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
 - 7-day shadow forward-test for War Zone recalibration.
 - Recalibrate MLB Front Lines gates (blocked on user thresholds).
 - PP-only stat-families TP calculation fix (PrizePicks hardcoded -137).
+- **Re-run `/tmp/nba_propvision_curated_v3.py` against the freshly
+  populated `historical_odds_full` (460k rows, 26 dates) to surface
+  Safe Haven / War Zone tier hits the legacy `historical_odds`
+  collection couldn't.**
 - Backfill historical game logs to close 2025-07 → 2026-02 coverage gap
   (would roughly double the historical replay sample).
 

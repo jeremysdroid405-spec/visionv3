@@ -45,7 +45,12 @@ DEFAULT_REGIONS = ["us"]
 
 
 def _iso(dt: datetime) -> str:
-    return dt.replace(microsecond=0).astimezone(timezone.utc).isoformat()
+    # The Odds API historical endpoint REJECTS '+00:00' timezone suffix and
+    # only accepts the 'Z' shortcut (error code INVALID_HISTORICAL_TIMESTAMP).
+    return (dt.replace(microsecond=0)
+              .astimezone(timezone.utc)
+              .isoformat()
+              .replace("+00:00", "Z"))
 
 
 def _date_str(dt: datetime) -> str:
