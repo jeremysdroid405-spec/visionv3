@@ -494,13 +494,33 @@ class UniversalGateEngine:
             (passed_gates if detail.passed else failed_gates).append(gate_type)
 
         overall_passed = len(failed_gates) == 0
+        applied_override: Optional[str] = None
+
+        # ── Safe-Haven Override Pass (universal, opt-in) ─────────────
+        # Runs ONLY when the active config includes a
+        # `__safe_haven_overrides__` block AND the gate eval failed.
+        # The override module may flip `hit_rate_gate` / `cv_gate`
+        # results to passed if the configured rescue rules apply. It
+        # NEVER touches market_structure_gate / tp_gate / edge_gate.
+        # NBA Safe Haven is the only configured caller today; other
+        # tiers/sports get zero behaviour change unless they declare
+        # their own block.
+        if not overall_passed:
+            override_cfg = cfg.get("__safe_haven_overrides__")
+            if override_cfg:
+                from .overrides import apply_safe_haven_overrides
+                (details, passed_gates, failed_gates,
+                 overall_passed, applied_override) = apply_safe_haven_overrides(
+                    metrics, details, passed_gates, failed_gates, override_cfg,
+                )
+
         if overall_passed:
             primary_reason = ReasonCode.GATES_PASSED
         else:
             primary_detail = details[failed_gates[0]]
             primary_reason = primary_detail.reason_code or ReasonCode.for_gate(failed_gates[0])
 
-        return GateEvalResult(
+        result = GateEvalResult(
             sport=metrics.sport, tier=metrics.tier,
             stat_family=metrics.stat_family,
             gate_summary="PASS" if overall_passed else "FAIL",
@@ -512,6 +532,16 @@ class UniversalGateEngine:
             reference_book=metrics.reference_book,
             reference_odds=metrics.reference_odds,
         )
+        # Stamp the override audit trail (None if no rule matched).
+        if applied_override is not None:
+            result.gate_details["__override_applied__"] = GateDetail(
+                gate_type="__override_applied__",
+                threshold={"name": applied_override},
+                actual=None, passed=True, comparator="==",
+                reason_code=None,
+                note=f"safe_haven_override:{applied_override}",
+            )
+        return result
 
 
 # Module-level singleton.

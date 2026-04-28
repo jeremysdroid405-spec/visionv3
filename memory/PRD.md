@@ -28,6 +28,73 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
 
 ## Recent work (changelog)
 
+### 2026-04-29 — FINAL Safe Haven Conditional Override Spec (NBA)
+**Why**: Safe Haven was over-rejecting strong props. Specific picks
+(Avdija PTS 19.5, M.Robinson REB 3.5, Embiid AST 2.5, etc.) had
+elite vision and elite L20 hit rates but missed by tiny margins on
+HR or CV. Spec required a tightly-scoped conditional override layer
+that rescues HR / CV failures only — never market_structure / TP /
+edge.
+
+**Shipped**:
+- `services/scoring/gates/overrides.py` (NEW) — universal,
+  config-driven Safe-Haven override module. Implements 4 spec rules:
+    1. **Elite Vision** (HR override): VS≥90 AND CV≤0.35 → relax
+       hit_rate floor to 75.
+    2. **REB / 3PM CV relax**: family ∈ {reb, threes} AND HR≥85 →
+       cv cap raised to 0.60.
+    3. **AST CV relax**: family=ast AND HR≥85 → cv cap raised to 0.50.
+    4. **PTS dominance CV BYPASS** (CV-only): family=pts AND HR≥90 AND
+       L20_avg/line ≥ 1.75 → CV failure ignored. All other gates must
+       still pass.
+  - Strictly HR / CV only — `_OVERRIDABLE_GATES` is frozenset.
+    market_structure_gate / tp_gate / edge_gate / coverage_gate /
+    vision_score_gate are NEVER touched by the override layer.
+  - At most ONE rule fires per pick (vision path / stat-structure
+    path / dominance path — never stacked). Verified by dedicated
+    test `test_only_one_override_fires_per_pick`.
+  - Audit row `__override_applied__` stamped on every rescued pick.
+- `services/scoring/gates/engine.py` — single 14-line hook after the
+  main gate loop. Triggered ONLY when the active config carries a
+  sentinel `__safe_haven_overrides__` block; other tiers/sports see
+  zero behaviour change.
+- `services/scoring/gates/thresholds.py` — added the
+  `__safe_haven_overrides__` config block to NBA Safe Haven only.
+- `services/scoring/metrics_builder.py` — pipes `mu_recency_blend_l20`
+  through `extras` (uses existing escape hatch — no new fields on
+  NormalizedMetrics, no payload changes).
+
+**Validation**:
+- `tests/test_safe_haven_overrides.py` — **15 tests, all green**:
+    1. Avdija PTS via vision rule ✅
+    2. Robinson REB via REB CV rule ✅
+    3. Castle 3PM via 3PM CV rule ✅
+    4. Embiid AST via AST CV rule ✅
+    5. George PTS via PTS dominance bypass ✅
+    6. Random low-HR / low-vision still fails ✅
+    + 9 invariance tests: market_structure never overridden, vision
+      below 85 still fails when only CV bypass applies, no stacking,
+      Front Lines unaffected, MLB unaffected, audit row stamped, etc.
+- Full regression: **120/120 passing** across all 7 active suites.
+
+**Live impact (post-recompute)**:
+- Safe Haven candidates: 380 (ref_odds ≤ −240)
+- BEFORE override: ~12 picks passing
+- AFTER override: **15 picks passing** (3 rescued by stat_structure rule)
+  - Mitchell Robinson REB 3.5 (HR=100, CV=0.509, VS=97.7) — REB rule
+  - Joel Embiid 3PM 0.5 (HR=95, CV=0.583, VS=87.0) — 3PM rule
+  - Nikola Vucevic REB 2.5 (HR=95, CV=0.487, VS=85.5) — REB rule
+- Net SH tier reason distribution:
+    `gate_hit_rate_fail`: 287, `gate_vision_score_fail`: 51,
+    `gate_cv_fail`: 18 (was 34 — override consumed 16 CV-only fails),
+    `gates_passed`: 15, `gate_market_structure_fail`: 9.
+
+**No model state touched**: scoring formulas, μ, σ, ranking_score_v2,
+tier-routing, pick-selection — all unchanged. Verified by
+`git diff --stat`: only `engine.py`, `thresholds.py`,
+`metrics_builder.py` modified (68 lines total, all in the gate
+evaluation layer).
+
 ### 2026-04-29 — Universal Board Observability + Longevity Metrics
 **Why**: With persisted `board_state` in place, surface (a) board health
 (counts / fill % / churn) and (b) per-pick longevity ("on board 6h+")

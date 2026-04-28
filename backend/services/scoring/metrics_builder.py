@@ -57,6 +57,16 @@ def build_metrics_from_context(
     """
     stat_family = resolve_stat_family(sport, stat_raw)
     extras: Dict[str, Any] = {"cv_cap_override": cv_cap_override}
+    # Pipe the L20 mean through `extras` for the Safe-Haven override
+    # layer (Rule 4 — PTS dominance CV bypass requires `L20_avg`).
+    # Source priority mirrors the production scoring stack: prefer the
+    # blended L20 mean when available, fall back to the smoothed
+    # variants. Read-only — no scoring formula touched.
+    for key in ("mu_recency_blend_l20", "l20_avg",
+                "mu_recency_blend_l5", "mu_recency_E"):
+        if key in prop and isinstance(prop[key], (int, float)):
+            extras["mu_recency_blend_l20"] = float(prop[key])
+            break
 
     return NormalizedMetrics(
         sport=sport,

@@ -132,6 +132,33 @@ _NBA_SAFE_HAVEN_BASE = {
     "market_structure_gate": {
         "reject_when": {"is_alt": True, "tp_source": "one_sided"},
     },
+    # ── FINAL Safe Haven Override Spec (2026-04-29, NBA) ─────────────
+    # Universal override layer activated by this sentinel block. Spec
+    # in services/scoring/gates/overrides.py. Engine NEVER touches
+    # market_structure_gate / tp_gate / edge_gate via overrides.
+    "__safe_haven_overrides__": {
+        # Rule 1 — Elite Vision: VS >= 90 AND CV <= 0.35 →
+        #          relax hit_rate floor to 75
+        "elite_vision": {
+            "enabled":             True,
+            "min_vision_score":    90.0,
+            "max_cv":              0.35,
+            "relax_hit_rate_to":   75.0,
+        },
+        # Rules 2-3 — stat-family CV cap relaxation (HR >= 85 required)
+        "stat_family_cv_relax": {
+            "reb":    0.60,    # spec rule 2
+            "threes": 0.60,    # spec rule 2
+            "ast":    0.50,    # spec rule 3
+        },
+        # Rule 4 — PTS dominance CV BYPASS (cv failure ignored ONLY)
+        "pts_dominance": {
+            "enabled":                       True,
+            "stat_family":                   "pts",
+            "min_hit_rate":                  90.0,
+            "min_l20_avg_to_line_ratio":     1.75,
+        },
+    },
 }
 _NBA_FRONT_LINES_BASE = {
     "coverage_gate": {"min_books": 1},
