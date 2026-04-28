@@ -631,6 +631,34 @@ async def get_live_scores(sport: str = Query("nba", description="Sport: nba or m
                                     "away_record": ""
                                 })
                             
+                            # 2026-04-29 — Live Ticker filter contract:
+                            #   commence_time >= now (UTC) AND status != Final
+                            # Drop yesterday's finals and any other game that
+                            # started in the past unless still in-play.
+                            now_utc = datetime.now(timezone.utc)
+                            kept = []
+                            for g in games:
+                                if g.get("status_code") == 3:  # Final → drop
+                                    continue
+                                ct = g.get("start_time")
+                                try:
+                                    if ct:
+                                        ct_utc = datetime.fromisoformat(
+                                            str(ct).replace("Z", "+00:00")
+                                        )
+                                        if ct_utc.tzinfo is None:
+                                            ct_utc = ct_utc.replace(tzinfo=timezone.utc)
+                                        if g.get("status_code") == 2:
+                                            # In-play → keep regardless of ct
+                                            kept.append(g)
+                                        elif ct_utc >= now_utc:
+                                            kept.append(g)
+                                        # else: scheduled but commence_time in the past → drop
+                                except (ValueError, TypeError):
+                                    # Unparseable timestamp: keep only if currently in-play.
+                                    if g.get("status_code") == 2:
+                                        kept.append(g)
+                            games = kept
                             # Sort by start time
                             games.sort(key=lambda x: x.get("start_time", ""))
                             
@@ -852,10 +880,37 @@ async def get_mlb_live_scores():
                     "venue": game.get("venue", "")
                 })
             
+            # 2026-04-29 — Live Ticker filter contract:
+            #   commence_time >= now (UTC) AND status != Final
+            # Drops yesterday's tail-end games and same-day finished games.
+            now_utc = datetime.now(timezone.utc)
+            kept = []
+            for g in games:
+                if g.get("status_code") == 3:  # Final → drop
+                    continue
+                ct = g.get("start_time")
+                try:
+                    if ct:
+                        ct_utc = datetime.fromisoformat(
+                            str(ct).replace("Z", "+00:00")
+                        )
+                        if ct_utc.tzinfo is None:
+                            ct_utc = ct_utc.replace(tzinfo=timezone.utc)
+                        if g.get("status_code") == 2:
+                            # In-play → keep regardless of ct
+                            kept.append(g)
+                        elif ct_utc >= now_utc:
+                            kept.append(g)
+                        # else: scheduled but ct in the past → drop
+                except (ValueError, TypeError):
+                    if g.get("status_code") == 2:
+                        kept.append(g)
+            games = kept
+
             # Sort by start time
             games.sort(key=lambda x: x.get("start_time", ""))
-            
-            logger.info(f"[MLB TICKER] Fetched {len(games)} games from BDL")
+
+            logger.info(f"[MLB TICKER] Fetched {len(games)} upcoming/in-play games from BDL")
             
             return {
                 "games": games,

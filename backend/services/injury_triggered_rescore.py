@@ -57,7 +57,8 @@ from services.config.collection_names import COLL
 logger = logging.getLogger(__name__)
 
 
-_VERSION_TAG = "final-nba-rt"
+_VERSION_TAG_BY_SPORT = {"nba": "final-nba-rt", "mlb": "final-mlb-rt"}
+_VERSION_TAG = "final-nba-rt"  # legacy alias kept for callers
 _DEDUP_WINDOW_SEC = 10.0
 
 
@@ -101,8 +102,14 @@ class InjuryTriggeredRescore:
         await self._on_event(event)
 
     async def _on_event(self, event: BoardEvent) -> None:
-        """Event bus handler — filter to NBA material changes, enqueue."""
-        if event.sport != "nba":
+        """Event bus handler — filter to material changes, enqueue.
+
+        2026-04-29: extended from NBA-only to NBA+MLB. The downstream
+        recompute path uses `_VERSION_TAG_BY_SPORT[event.sport]` and
+        the matching adapter (`MLBScoringAdapter` for sport='mlb',
+        `NBAScoringAdapter` for sport='nba').
+        """
+        if event.sport not in _VERSION_TAG_BY_SPORT:
             return
         self._stats["events_received"] += 1
         # Only act on high-severity events (tier_delta >= 2 OR new_injury).
@@ -159,24 +166,28 @@ class InjuryTriggeredRescore:
         """Build the set of player names whose props must be rescored.
 
         Phase 3 scope: each flagged player + same-team players on the same
-        slate. `dg_cached_board` is the canonical "players with props
+        slate. `{sport}_cached_board` is the canonical "players with props
         today" source (one doc per player, carries `team`), so we resolve
-        teammates there. `dg_live_props` has no `team` field — historical
-        reason — so it cannot be used for this lookup.
+        teammates there.
+
+        2026-04-29: extended to MLB. The collection name is parameterized
+        by `event.sport` so MLB events pull from `mlb_cached_board` and
+        NBA events pull from `dg_cached_board` (== `nba_cached_board`).
         """
         impacted: Set[str] = set(event.affected_players)
         if not impacted or self._db is None:
             return impacted
 
+        sport = event.sport
         hint_team = event.metadata.get("team")
 
         try:
             # 1) Resolve the team(s) the injured players belong to. Prefer
-            #    the event's team hint; supplement via dg_cached_board.
+            #    the event's team hint; supplement via cached board.
             teams: Set[str] = set()
             if hint_team:
                 teams.add(hint_team)
-            async for doc in self._db[COLL("board_cache", "nba")].find(
+            async for doc in self._db[COLL("board_cache", sport)].find(
                 {"player_name": {"$in": list(impacted)}},
                 {"_id": 0, "team": 1},
             ):
@@ -188,8 +199,8 @@ class InjuryTriggeredRescore:
                 return impacted
 
             # 2) Pull all players on those teams that have an entry in
-            #    dg_cached_board (= have props on today's slate).
-            async for doc in self._db[COLL("board_cache", "nba")].find(
+            #    the cached board (= have props on today's slate).
+            async for doc in self._db[COLL("board_cache", sport)].find(
                 {"team": {"$in": list(teams)}},
                 {"_id": 0, "player_name": 1},
             ):
@@ -198,7 +209,7 @@ class InjuryTriggeredRescore:
                     impacted.add(pn)
         except Exception as e:
             logger.warning(
-                f"[INJURY-RESCORE] player resolver failed (falling back to "
+                f"[INJURY-RESCORE:{sport}] player resolver failed (falling back to "
                 f"solo player set): {e}"
             )
 
@@ -216,12 +227,13 @@ class InjuryTriggeredRescore:
         t0 = datetime.now(timezone.utc).timestamp()
         impacted = await self._resolve_impacted_players(event)
         logger.info(
-            f"[INJURY-RESCORE] trigger players={event.affected_players[:3]}... "
+            f"[INJURY-RESCORE:{event.sport}] trigger players={event.affected_players[:3]}... "
             f"severity={event.severity} | rescoring {len(impacted)} impacted players"
         )
 
-        written = await self._scoped_recompute(sorted(impacted))
+        written = await self._scoped_recompute(event.sport, sorted(impacted))
         patched = await self._patch_cached_board(
+            sport=event.sport,
             impacted_players=sorted(impacted),
             team_hint=event.metadata.get("team"),
             event_players=event.affected_players,
@@ -249,17 +261,25 @@ class InjuryTriggeredRescore:
             f"{self._stats['last_latency_ms']} ms"
         )
 
-    async def _scoped_recompute(self, impacted_players: List[str]) -> int:
-        """Monkey-patch NBAScoringAdapter.load_live_props for the duration
-        of a single recompute so only the impacted players' props are
-        processed. Returns the number of score docs written."""
+    async def _scoped_recompute(self, sport: str, impacted_players: List[str]) -> int:
+        """Monkey-patch the sport's ScoringAdapter.load_live_props for the
+        duration of a single recompute so only the impacted players' props
+        are processed. Returns the number of score docs written.
+
+        2026-04-29: dispatches NBA/MLB by `sport`. Each adapter exposes
+        the same `load_live_props(db, limit)` signature.
+        """
         if not impacted_players:
             return 0
 
         # Import here to avoid circulars at module-load time.
-        from services.scoring.adapters.nba_scoring import NBAScoringAdapter
+        if sport == "mlb":
+            from services.scoring.adapters.mlb_scoring import MLBScoringAdapter as _Adapter
+        else:
+            from services.scoring.adapters.nba_scoring import NBAScoringAdapter as _Adapter
+        version_tag = _VERSION_TAG_BY_SPORT[sport]
 
-        _orig = NBAScoringAdapter.load_live_props
+        _orig = _Adapter.load_live_props
 
         async def _scoped(inner_self, db, limit: Optional[int] = None):
             cursor = db[inner_self.live_props_collection].find(
@@ -270,29 +290,30 @@ class InjuryTriggeredRescore:
                 cursor = cursor.limit(int(limit))
             props = await cursor.to_list(length=None)
             logger.info(
-                f"[INJURY-RESCORE] scoped load_live_props: {len(props)} props for "
+                f"[INJURY-RESCORE:{sport}] scoped load_live_props: {len(props)} props for "
                 f"{len(impacted_players)} players"
             )
             return props
 
-        NBAScoringAdapter.load_live_props = _scoped
+        _Adapter.load_live_props = _scoped
         try:
             result = await _recompute_mod.recompute(
                 db=self._db,
-                sports=["nba"],
-                version_tag=_VERSION_TAG,
+                sports=[sport],
+                version_tag=version_tag,
             )
         finally:
-            NBAScoringAdapter.load_live_props = _orig
+            _Adapter.load_live_props = _orig
 
         # recompute() returns {"written": {sport: N}, ...}
         written_map = (result or {}).get("written") or {}
         if isinstance(written_map, dict):
-            return int(written_map.get("nba", 0) or 0)
+            return int(written_map.get(sport, 0) or 0)
         return 0
 
     async def _patch_cached_board(
         self,
+        sport: str,
         impacted_players: List[str],
         team_hint: Optional[str],
         event_players: List[str],
@@ -321,7 +342,7 @@ class InjuryTriggeredRescore:
             teams.add(team_hint)
 
         player_docs: Dict[str, Dict[str, Any]] = {}
-        async for doc in self._db[COLL("board_cache", "nba")].find(
+        async for doc in self._db[COLL("board_cache", sport)].find(
             {"player_name": {"$in": impacted_players}},
             {"_id": 0, "player_name": 1, "team": 1},
         ):
@@ -331,13 +352,13 @@ class InjuryTriggeredRescore:
                 if doc.get("team"):
                     teams.add(doc["team"])
 
-        # 2) Load current NBA injury rows for those teams, keyed by
-        #    (team, player_name_lower).
+        # 2) Load current sport-specific injury rows for those teams,
+        #    keyed by (team, player_name_lower).
         injuries_by_team: Dict[str, List[Dict[str, Any]]] = {}
         injury_by_key: Dict[tuple, Dict[str, Any]] = {}
         if teams:
             async for rec in self._db[COLL.shared("injuries")].find(
-                {"sport": "nba", "team": {"$in": list(teams)}},
+                {"sport": sport, "team": {"$in": list(teams)}},
                 {
                     "_id": 0,
                     "player_name": 1,
@@ -397,7 +418,7 @@ class InjuryTriggeredRescore:
                         teammates.insert(0, ep)
                         break
 
-            result = await self._db[COLL("board_cache", "nba")].update_one(
+            result = await self._db[COLL("board_cache", sport)].update_one(
                 {"player_name": pn},
                 {
                     "$set": {

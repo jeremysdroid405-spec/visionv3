@@ -65,6 +65,11 @@ You will be provided with math variables. You must weave these into a narrative,
 **is_goblin**: This is a safe play - heavily juiced favorite. Mention "chalky for a reason" or "safe haven".
 **is_demon**: This is a ceiling play - high risk, high reward. Mention "boom or bust", "ceiling play", "when it hits, it pays".
 
+**injuries** (team / opp injury context — treat as scout-floor data):
+- If team has OUT regulars, mention "lineup hole", "promotion to leadoff/cleanup", "extra ABs available", or "bullpen days are short".
+- If opp has OUT pitching arms, mention "soft pen", "bullpen game", or "long-relief day — meat sandwiches".
+- "none" means no material injury context — do NOT manufacture one.
+
 ## Output Format (Strict JSON Array)
 Return a JSON array with one object per prop:
 [
@@ -198,7 +203,37 @@ class MLBVisionIntel:
             
             # Calculate cushion (how far above line is average)
             cushion = round(l5_avg - line, 1) if l5_avg and line else 0
-            
+
+            # 2026-04-29 — surface MLB injury context to Gemini.
+            # `feature_hydration` populates these (now that MLB IL_*
+            # statuses are recognized). Display-only inputs — they
+            # do NOT touch the math gates upstream.
+            ic = prop.get("injury_context") or {}
+            team_ic = (ic.get("team") if isinstance(ic, dict) else None) or {}
+            opp_ic  = (ic.get("opp")  if isinstance(ic, dict) else None) or {}
+            injury_text_parts = []
+            if team_ic.get("out_count") or team_ic.get("dtd_count"):
+                outs = team_ic.get("out_players") or []
+                dtds = team_ic.get("dtd_players") or []
+                if outs:
+                    injury_text_parts.append(
+                        f"team OUT: {', '.join(outs[:3])}"
+                        + (f" (+{len(outs)-3})" if len(outs) > 3 else "")
+                    )
+                if dtds:
+                    injury_text_parts.append(
+                        f"team DTD: {', '.join(dtds[:3])}"
+                        + (f" (+{len(dtds)-3})" if len(dtds) > 3 else "")
+                    )
+            if opp_ic.get("out_count") or opp_ic.get("dtd_count"):
+                outs = opp_ic.get("out_players") or []
+                if outs:
+                    injury_text_parts.append(
+                        f"opp OUT: {', '.join(outs[:3])}"
+                        + (f" (+{len(outs)-3})" if len(outs) > 3 else "")
+                    )
+            injury_summary = " | ".join(injury_text_parts) if injury_text_parts else "none"
+
             prop_data = {
                 "prop_id": f"{player_name}_{stat_type}_{line}",
                 "player": player_name,
@@ -219,7 +254,9 @@ class MLBVisionIntel:
                 "defense": dvp_text,
                 "dk_odds": dk_odds,
                 "blowout_risk": blowout_level,
-                "badges": badge_text
+                "badges": badge_text,
+                # 2026-04-29 — injury intel surfaces in scout summary
+                "injuries": injury_summary,
             }
             props_data.append(prop_data)
         

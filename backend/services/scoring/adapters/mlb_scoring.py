@@ -603,6 +603,29 @@ class MLBScoringAdapter(ScoringAdapter):
             bdl_player_id=bdl_player_id,
             identity_status=identity_status,
             feature_health=hf_feature_health,
+            # 2026-04-29 — MLB injury_context plumbing parity with NBA.
+            # OBSERVABILITY ONLY (display + Vision Intel input). NOT
+            # fed into MLB scoring math, gates, or sigma; comment in
+            # nba_scoring.py:3157 explains the same contract.
+            # `feature_hydration._build_injury_summary` populates the
+            # `team_injury_context` / `opp_injury_context` keys on the
+            # raw prop dict; we forward them onto every score row so
+            # downstream readers (Vision Intel, dashboard cards,
+            # injury-advantage join) can see them.
+            injury_context=({
+                "team": prop.get("team_injury_context"),
+                "opp": prop.get("opp_injury_context"),
+                "team_injury_count": prop.get("team_injury_count"),
+                "team_out_count": prop.get("team_out_count"),
+                "missing_usage_estimate": prop.get("missing_usage_estimate"),
+                "missing_minutes_estimate": prop.get("missing_minutes_estimate"),
+                "usage_vacuum_factor": prop.get("usage_vacuum_factor"),
+                "key_player_out_flag": prop.get("key_player_out_flag"),
+                "injury_data_is_imputed": (
+                    (prop.get("team_injury_context") or {})
+                    .get("injury_data_is_imputed", 1)
+                ),
+            } if prop.get("team_injury_context") is not None else None),
         )
 
     # ---------------------------------------------------------

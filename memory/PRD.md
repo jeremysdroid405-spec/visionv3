@@ -118,6 +118,42 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
 ### 2026-04-29 — MLB Live Injury Advantage: re-routed to universal engine
 **Symptom**: NBA "Live Injury Advantage" populated; MLB equivalent
 permanently empty even with 165 normalized MLB injuries on disk.
+**Fix**: rotation gate parity (`bdl_game_logs_count` fallback) +
+re-routed `/api/v3/mlb/vacuum/live-alerts` to call universal
+`compute_injury_advantages(_db, "mlb")`.
+
+### 2026-04-29 — MLB Injury Context End-to-End Plumbing (extended)
+**Audit found 4 broken layers**:
+1. `feature_hydration._build_injury_summary` — `OUT_STATUSES` only
+   knew NBA codes; MLB's `IL_SHORT/IL_STANDARD/IL_EXTENDED` and
+   `DAY_TO_DAY` fell through → every MLB team reported 0 outs.
+2. `mlb_scoring.score_props` — never copied `team_injury_context` to
+   the score row (NBA already did this).
+3. `mlb_vision_intel._build_batch_prompt` — Gemini prompt had no
+   injury field → AI never mentioned injury impact for MLB.
+4. `injury_triggered_rescore._on_event` — hard-bailed on every
+   non-NBA event; MLB injury_change never triggered a recompute.
+**Fix**: surgical plumbing at all 4 layers (no scoring/gates/μ/σ
+touched). Sport dispatch via `_VERSION_TAG_BY_SPORT` and per-sport
+adapter selection in the rescore worker. Live-injuries hydration
+re-run produced 12,889/14,320 mlb_live_props rows with
+`team_injury_context.out_count > 0`. Recompute produced 5,967/6,290
+final-mlb-rt rows carrying `injury_context`. End-to-end trace:
+HOU's Christian Walker pick now exposes `team_out_count: 10,
+out_players: [Jake Meyers, Tatsuya Imai, Hunter Brown, ...]`.
+NBA `final-nba-rt`: 3,859/3,859 still have injury_context
+(no regression).
+
+### 2026-04-29 — Live Scores Ticker filter contract
+**Symptom**: ticker showed yesterday's final games and games whose
+commence_time was already past.
+**Fix** (both `/api/live/scores` paths — NBA via BDL `/box_scores/live`
+and MLB via BDL `/mlb/v1/games`): drop rows where `status_code == 3`
+(Final) or `commence_time < now (UTC)`, except in-play (`status_code
+== 2`). All timestamps normalized via
+`datetime.fromisoformat(...).replace(tzinfo=timezone.utc)` so
+frontend and backend share one base. NBA: 3 upcoming games kept.
+MLB: 11 upcoming/in-play games kept. Zero finals on either ticker.
 
 **Root cause** (audit, two layers):
 1. `/api/v3/mlb/vacuum/live-alerts` was wired to the legacy

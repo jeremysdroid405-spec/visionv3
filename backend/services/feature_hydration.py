@@ -191,12 +191,22 @@ async def _build_injury_summary(db, sport: str) -> Dict[str, Dict[str, Any]]:
         "out_bdl_ids": [], "dtd_bdl_ids": [],
     })
     OUT_STATUSES = {
+        # NBA + ESPN
         "OUT", "OUT_FOR_SEASON", "OUT_INDEFINITELY", "IL",
         "10-DAY-IL", "15-DAY-IL", "60-DAY-IL", "DNP",
+        # MLB-canonical InjurySensor codes (2026-04-29 parity fix).
+        # The MLB pipeline writes these into `injuries_normalized` —
+        # without them, `_build_injury_summary` returned an empty dict
+        # for every MLB team, so `team_injury_context` never reached
+        # MLB props and Vision Intel had nothing to say about injuries.
+        "IL_SHORT", "IL_STANDARD", "IL_EXTENDED", "OUT_FOR_SEASON",
     }
     DTD_STATUSES = {
+        # NBA + ESPN
         "DAY-TO-DAY", "DAYTODAY", "DTD", "DOUBTFUL",
         "QUESTIONABLE", "PROBABLE", "GTD",
+        # MLB-canonical InjurySensor codes (uses underscore form)
+        "DAY_TO_DAY",
     }
     seen_keys = set()  # de-dupe across sources by (team, bdl_id-or-name)
 
