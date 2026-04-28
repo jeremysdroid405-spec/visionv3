@@ -133,9 +133,19 @@ async def get_mlb_live_alerts(
             _get_recency_window,
             RECENCY_PREGAME_HOURS,
         )
+        from services.mlb_lineup_delta import (
+            build_lineup_delta_index,
+            extract_deltas_for_player,
+        )
 
         advantages = await compute_injury_advantages(_db, "mlb")
         window_hours = await _get_recency_window(_db, "mlb")
+
+        # 2026-04-29 — Lineup-delta lookup (one query per response).
+        # When the projected/canonical lineup collections are empty
+        # this returns {} so EVERY downstream filter row becomes
+        # "no real delta" and is dropped — exactly the contract.
+        lineup_index = await build_lineup_delta_index(_db)
 
         # ── Reshape universal advantage rows → legacy MLB alert shape ─
         now = datetime.now(timezone.utc)
@@ -174,6 +184,22 @@ async def get_mlb_live_alerts(
                     injury_reason = (disp.get("description")
                                      or disp.get("short_comment") or "")[:120]
 
+            # ── Compute REAL MLB lineup deltas for the beneficiary ──
+            #   lineup_delta        = previous_slot - current_slot
+            #                         (positive = moved up the order)
+            #   projected_ab_delta  = current_expected_PA - previous_expected_PA
+            # If the lineup data is missing, both come back as None → row
+            # is dropped below by the strict filter contract.
+            deltas = extract_deltas_for_player(
+                lineup_index,
+                adv.get("beneficiary_name"),
+                adv.get("beneficiary_team"),
+            )
+            lineup_delta = deltas.get("lineup_delta")
+            projected_ab_delta = deltas.get("projected_ab_delta")
+            previous_slot = deltas.get("previous_lineup_slot")
+            current_slot = deltas.get("current_lineup_slot")
+
             alerts.append({
                 "id": f"{adv['injured_player']}-{adv['beneficiary_name']}".replace(" ", "-").lower(),
                 # Injured player block (legacy field names the UI groups by)
@@ -195,20 +221,74 @@ async def get_mlb_live_alerts(
                 "stat_type": adv.get("stat_type"),
                 "line": adv.get("line"),
                 "board_tier": adv.get("board_tier"),
+                # Canonical MLB delta fields (the UI reads these now)
+                "lineup_delta":        lineup_delta,
+                "projected_ab_delta":  projected_ab_delta,
+                "previous_lineup_slot": previous_slot,
+                "current_lineup_slot":  current_slot,
+                # Internal NBA-shape fields kept for cross-sport readers
+                # (universal Vacuum tools / debugging dashboards). They
+                # are NOT consumed by the MLB Live Injury Advantage UI.
                 "minutes_bump": adv.get("minutes_bump"),
-                "usage_bump": adv.get("usage_bump"),
+                "usage_bump":   adv.get("usage_bump"),
                 "has_active_prop": True,
                 "display_text": (
                     f"{adv['beneficiary_name']} ({adv['stat_type']} {adv['line']}) — "
-                    f"{adv['injured_player']} {adv['injured_status']}. "
-                    f"+{adv['minutes_bump']:.0f}% usage projected."
+                    f"{adv['injured_player']} {adv['injured_status']}."
                 ),
             })
 
+        # ── Strict MLB Lineup Opportunity contract (2026-04-29) ───────
+        # Drop every alert where neither delta is a numeric real signal.
+        # Cap to top-5 (sorted projected_ab_delta desc, then lineup_delta).
+        def _is_numeric(x: Any) -> bool:
+            if x is None or isinstance(x, bool):
+                return False
+            try:
+                float(x)
+                return True
+            except (TypeError, ValueError):
+                return False
+
+        def _row_qualifies(row: Dict[str, Any]) -> bool:
+            ld = row.get("lineup_delta")
+            ad = row.get("projected_ab_delta")
+            ld_ok = _is_numeric(ld) and float(ld) >= 1.0
+            ad_ok = _is_numeric(ad) and float(ad) >= 0.5
+            if not (ld_ok or ad_ok):
+                return False
+            # Hard required-fields assertion mirroring the spec.
+            return all([
+                row.get("beneficiary_name"),
+                _is_numeric(row.get("current_lineup_slot")),
+                _is_numeric(row.get("previous_lineup_slot")),
+                row.get("lineup_delta") not in (0, None),
+                _is_numeric(row.get("projected_ab_delta")),
+            ])
+
+        filtered = [a for a in alerts if _row_qualifies(a)]
+        filtered.sort(
+            key=lambda a: (
+                -float(a.get("projected_ab_delta") or 0.0),
+                -float(a.get("lineup_delta") or 0.0),
+            )
+        )
+        capped = filtered[:5]
+
+        dropped = len(alerts) - len(filtered)
+        if dropped:
+            logger.info(
+                "[MLB_INJURY_ADV] dropped %d/%d rows lacking real lineup deltas; "
+                "kept %d (cap=5)",
+                dropped, len(alerts), len(capped),
+            )
+
         return {
             "success": True,
-            "alerts": alerts,
-            "count": len(alerts),
+            "alerts": capped,
+            "count": len(capped),
+            "raw_advantage_count": len(alerts),
+            "filtered_dropped": dropped,
             "last_check": now.isoformat(),
             "recency_window_hours": window_hours,
             "engine": "universal_injury_advantage",  # provenance flag

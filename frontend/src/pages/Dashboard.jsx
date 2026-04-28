@@ -1248,8 +1248,26 @@ const MLBLiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
     );
   }
 
+  // ── Strict MLB Lineup Opportunity row guard (2026-04-29) ──────────
+  // Block any beneficiary lacking a real numeric delta. The backend
+  // already filters the `/api/v3/mlb/vacuum/live-alerts` payload, but
+  // the same contract is enforced here so we never render "+0 lineup
+  // spots" or "+ AB projected" placeholders even if a stale row slips
+  // through (e.g. service-worker cache).
+  const _isFiniteNum = (v) => typeof v === 'number' && Number.isFinite(v);
+  const _qualifies = (b) => {
+    const ld = b?.lineup_delta;
+    const ad = b?.projected_ab_delta;
+    return (
+      ((_isFiniteNum(ld) && ld >= 1) || (_isFiniteNum(ad) && ad >= 0.5)) &&
+      _isFiniteNum(b?.current_lineup_slot) &&
+      _isFiniteNum(b?.previous_lineup_slot)
+    );
+  };
+
   // Group alerts by injured player
   const groupedByInjuredPlayer = alerts.reduce((acc, alert) => {
+    if (!_qualifies(alert)) return acc;     // drop placeholder rows
     const key = alert.injured_player;
     if (!acc[key]) {
       acc[key] = {
@@ -1266,7 +1284,16 @@ const MLBLiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
     return acc;
   }, {});
 
-  const injuredPlayers = Object.values(groupedByInjuredPlayer);
+  const injuredPlayers = Object.values(groupedByInjuredPlayer)
+    // Cap each group to top-5 beneficiaries (already sorted by backend).
+    .map(grp => ({ ...grp, beneficiaries: grp.beneficiaries.slice(0, 5) }))
+    // Drop groups whose beneficiary list went empty after filter.
+    .filter(grp => grp.beneficiaries.length > 0);
+
+  // Hide the entire section when no real opportunity exists.
+  if (injuredPlayers.length === 0) {
+    return null;
+  }
 
   return (
     <div className="mb-4">
@@ -1329,12 +1356,16 @@ const MLBLiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
                     </div>
                     <div>
                       <div className="text-xs font-semibold text-white">{ben.beneficiary_name}</div>
-                      <div className="text-[9px] text-zinc-500">+{ben.lineup_bump || 0} lineup spots</div>
+                      <div className="text-[9px] text-zinc-500">
+                        {Number.isFinite(ben.lineup_delta) && ben.lineup_delta >= 1
+                          ? `+${ben.lineup_delta} lineup spots`
+                          : `slot ${ben.previous_lineup_slot} → ${ben.current_lineup_slot}`}
+                      </div>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className={`text-sm font-bold ${idx === 0 ? 'text-orange-400' : 'text-orange-400/70'}`}>
-                      +{ben.ab_bump} AB
+                      +{Number(ben.projected_ab_delta).toFixed(1)} AB
                     </div>
                     <div className="text-[8px] text-zinc-500">projected</div>
                   </div>
