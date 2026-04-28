@@ -796,18 +796,14 @@ const UniversalPlayerCard = memo(({
       ? -Number(player.vk_edge)
       : (player.vk_edge != null ? Number(player.vk_edge) : null);
 
-    // Inline Vision Intel one-liner — prefers backend vision_intel / vision_summary,
-    // falls back to a tight VK-derived sentence. Never renders a CTA button.
-    const visionLine = player.vision_intel || player.vision_summary || (() => {
-      if (player.vk_predicted == null) return null;
-      const proj = Number(player.vk_predicted).toFixed(1);
-      const rel = sideIsUnder ? 'below' : 'above';
-      const verb = sideIsUnder ? 'stays below' : 'clears';
-      if (dispEdge != null && Math.abs(dispEdge) >= 10) {
-        return `Projection ${proj} sits well ${rel} the ${line} line — model favors the ${sideLabel.toLowerCase()}.`;
-      }
-      return `Model ${verb} ${line} on a ${proj} projection.`;
-    })();
+    // Inline Vision Intel one-liner — UNIVERSAL DASHBOARD CARD CONTRACT
+    // (2026-04-28). Backend stamps `short_sentence` (truncated
+    // vision_intel, no fabricated text). Card no longer generates
+    // a derived fallback — `null` renders nothing, exactly per spec.
+    const visionLine = player.short_sentence
+      ?? player.vision_intel
+      ?? player.vision_summary
+      ?? null;
 
     return (
       <div
@@ -906,35 +902,48 @@ const UniversalPlayerCard = memo(({
           sidecarData={player.sidecar}
         />
 
-        {/* FLAT STAT STRIP — Projection / Hit Rate / Avg (terminal label style) */}
+        {/* FLAT STAT STRIP — Projection / Hit Rate / Avg (terminal label style)
+            UNIVERSAL DASHBOARD CARD CONTRACT (2026-04-28): card prefers
+            backend-stamped `projection` / `hit_rate` / `avg` (8-field
+            contract) and falls back to legacy field names so existing
+            consumers stay unbroken. */}
         <div className="flex items-stretch gap-3 pt-1.5 border-t border-zinc-800/70 text-left">
-          <div className="flex-1 min-w-0">
-            <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Projection</div>
-            <div
-              className={`text-sm md:text-[15px] font-bold font-mono tabular-nums ${
-                player.vk_predicted == null ? 'text-zinc-400'
-                  : dispEdge != null && dispEdge >= 1 ? 'text-emerald-400'
-                  : dispEdge != null && dispEdge <= -1 ? 'text-red-400'
-                  : 'text-zinc-200'
-              }`}
-              title={dispEdge != null ? `Edge vs line: ${dispEdge > 0 ? '+' : ''}${dispEdge.toFixed(2)}` : undefined}
-              data-testid={`player-projection-${playerSlug}`}
-            >
-              {player.vk_predicted != null ? Number(player.vk_predicted).toFixed(1) : '—'}
-            </div>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Hit Rate</div>
-            <div className={`text-sm md:text-[15px] font-bold font-mono tabular-nums ${getHitRateColor(h10_rate || 0)}`}>
-              {h10_rate != null ? `${h10_rate}%` : '—'}
-            </div>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Avg</div>
-            <div className="text-sm md:text-[15px] font-bold font-mono tabular-nums text-white">
-              {season_avg != null ? (season_avg.toFixed?.(1) || season_avg) : '—'}
-            </div>
-          </div>
+          {(() => {
+            const projection = player.projection ?? player.vk_predicted ?? null;
+            const hitRate    = player.hit_rate   ?? h10_rate ?? null;
+            const avg        = player.avg        ?? season_avg ?? null;
+            return (
+              <>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Projection</div>
+                  <div
+                    className={`text-sm md:text-[15px] font-bold font-mono tabular-nums ${
+                      projection == null ? 'text-zinc-400'
+                        : dispEdge != null && dispEdge >= 1 ? 'text-emerald-400'
+                        : dispEdge != null && dispEdge <= -1 ? 'text-red-400'
+                        : 'text-zinc-200'
+                    }`}
+                    title={dispEdge != null ? `Edge vs line: ${dispEdge > 0 ? '+' : ''}${dispEdge.toFixed(2)}` : undefined}
+                    data-testid={`player-projection-${playerSlug}`}
+                  >
+                    {projection != null ? Number(projection).toFixed(1) : '—'}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Hit Rate</div>
+                  <div className={`text-sm md:text-[15px] font-bold font-mono tabular-nums ${getHitRateColor(hitRate || 0)}`}>
+                    {hitRate != null ? `${Math.round(hitRate)}%` : '—'}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Avg</div>
+                  <div className="text-sm md:text-[15px] font-bold font-mono tabular-nums text-white">
+                    {avg != null ? Number(avg).toFixed(1) : '—'}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </div>
 
       </div>

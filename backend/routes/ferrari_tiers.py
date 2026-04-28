@@ -2118,6 +2118,17 @@ async def _serve_ferrari_tier(
     # Adds market_gap_* fields; shared by NBA / MLB / NFL via a single contract.
     picks = annotate_market_gap(picks)
 
+    # ── Universal Dashboard Pick-Card Contract (2026-04-28) ────────────
+    # Stamp 8 sport-agnostic display fields onto every pick so the
+    # `UniversalPlayerCard` (compact mode) renders identically across
+    # NBA and MLB without per-sport branches. Pure display-layer
+    # normalizer; no model / scoring / gate / threshold change.
+    try:
+        from services.dashboard_card_contract import stamp_dashboard_card_contract
+        await stamp_dashboard_card_contract(_db, picks, sport)
+    except Exception as _cc_err:
+        logger.warning(f"[CARD_CONTRACT:{sport}] skipped: {_cc_err}")
+
     fully_validated = sum(1 for p in picks if (p.get("validation") or {}).get("is_fully_validated", False))
     has_any_mlr    = sum(1 for p in picks if (p.get("validation") or {}).get("has_mlr", False))
     has_any_gemini = sum(1 for p in picks if (p.get("validation") or {}).get("has_gemini", False))
