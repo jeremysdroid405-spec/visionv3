@@ -253,7 +253,8 @@ async def _is_rotation_relevant(db, sport: str, player_name: str) -> bool:
 
         hub = await db[COLL("master_hub", sport)].find_one(
             {"$or": [{"display_name": player_name}, {"player_name": player_name}]},
-            {"_id": 0, "games_played": 1, "advanced_stats": 1},
+            {"_id": 0, "games_played": 1, "advanced_stats": 1,
+             "bdl_game_logs_count": 1, "total_game_logs": 1},
         )
         if not hub:
             return False
@@ -266,8 +267,16 @@ async def _is_rotation_relevant(db, sport: str, player_name: str) -> bool:
                 return False
             return gp >= MIN_GP_FOR_VACUUM and mpg >= MIN_MPG_FOR_VACUUM
 
-        # Default (MLB / future sports): GP-only signal from hub top-level.
-        gp = hub.get("games_played")
+        # MLB / future sports: GP-only signal. The MLB master_hub
+        # populates `games_played` (career) only on ~12% of records,
+        # but `bdl_game_logs_count` (recent BDL game logs ingested
+        # this season) on ~28% AND on every active rotation player.
+        # Use whichever is present — same threshold, no gate change.
+        gp = (
+            hub.get("games_played")
+            or hub.get("bdl_game_logs_count")
+            or hub.get("total_game_logs")
+        )
         if gp is None:
             return False
         return gp >= MIN_GP_FOR_VACUUM

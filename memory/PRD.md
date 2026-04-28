@@ -115,6 +115,37 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
   monospace team-abbr chip (e.g. `TOR`, `PHI`, `BAL`) right next to the
   player name. Reads the contract `team` field — sport-agnostic.
 
+### 2026-04-29 — MLB Live Injury Advantage: re-routed to universal engine
+**Symptom**: NBA "Live Injury Advantage" populated; MLB equivalent
+permanently empty even with 165 normalized MLB injuries on disk.
+
+**Root cause** (audit, two layers):
+1. `/api/v3/mlb/vacuum/live-alerts` was wired to the legacy
+   `MLBInjuryVacuumService` which refetched BDL/ESPN on demand and
+   filtered against hardcoded `MLB_STAR_PROFILES` /
+   `MLB_BENEFICIARY_MAPPINGS`. It bypassed the canonical
+   `injuries_normalized` collection entirely.
+2. The universal `compute_injury_advantages` engine's rotation-gate
+   `_is_rotation_relevant` for MLB only read `hub.games_played`, which
+   `mlb_master_hub_2026` populates on **only 12% of records** —
+   fail-closed for the other 88% (incl. Mookie Betts, Juan Soto).
+   For NBA the equivalent `advanced_stats.games_played` is on 98%.
+
+**Fix** (plumbing only, no thresholds/scoring/UI touched):
+- `services/injury_advantage.py::_is_rotation_relevant` — for MLB,
+  also accept `bdl_game_logs_count` / `total_game_logs` as the
+  rotation-recency signal. Same `MIN_GP_FOR_VACUUM = 5`.
+- `routes/mlb_vacuum.py::live-alerts` — body replaced to call
+  `compute_injury_advantages(_db, "mlb")` (same engine NBA uses) and
+  reshape rows to the dashboard's legacy field names
+  (`injured_team`, `time_ago`, `is_late_scratch`, etc.).
+  Provenance flag `engine: universal_injury_advantage` in payload.
+
+**Validation**: bumped Raisel Iglesias (ATL, IL_STANDARD) status_changed_at
+to NOW → universal engine returns 10 beneficiary alerts with all legacy
+UI fields populated (Austin Riley +5 min, Dominic Smith +3.5 min, etc.).
+NBA payload unchanged (6 alerts as before).
+
 ## P0 / P1 / P2 backlog
 
 ### P0
