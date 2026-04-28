@@ -546,6 +546,14 @@ async def hydrate_game_context_on_props(
     game_totals, team_totals = await _build_vegas_totals_map(db, sport, event_ids)
     injuries_by_team = await _build_injury_summary(db, sport)
     last_game_date = await _build_last_game_date_map(db, sport)
+    # MLB only — projected/confirmed lineup card map.  Empty until an
+    # external lineup feed populates `mlb_projected_lineups`.  Strict
+    # no-leakage is enforced inside `lookup_slot` (as_of <= commence_time).
+    if sport == "mlb":
+        from services.mlb_lineups_loader import load_slot_map as _mlb_load_slot_map
+        mlb_slot_map = await _mlb_load_slot_map(db, event_ids)
+    else:
+        mlb_slot_map = {}
     # 2026-05 — per-player minutes / usage (NBA only) used to size
     # `team_minutes_removed`, `team_usage_removed_pct`,
     # `usage_vacuum_factor`, `key_player_out_flag`.
@@ -565,6 +573,7 @@ async def hydrate_game_context_on_props(
         "injuries_filled": 0,
         "rest_days_filled": 0,
         "park_team_filled": 0,
+        "lineup_slot_filled": 0,
     }
     imputed_summary: Dict[str, int] = defaultdict(int)
 
@@ -713,15 +722,32 @@ async def hydrate_game_context_on_props(
             # team_implied_runs == team_total (Vegas team total IS the
             # implied run line). Already filled above as `team_total`.
             p["team_implied_runs"] = p.get("team_total")
-            # MOCKED until external feed: probable_pitcher, lineup
+            # MOCKED until external feed: probable_pitcher
             p["probable_pitcher"] = None
             p["opp_pitcher_id"] = None
             p["opp_pitcher_name"] = None
             p["opp_pitcher_throws"] = None
-            p["batting_order"] = None
-            p["lineup_confirmed"] = False
-            for k in ("probable_pitcher", "opp_pitcher_throws",
-                      "batting_order", "lineup_confirmed"):
+            # ---- batting_order via mlb_projected_lineups (strict no-leakage) ----
+            from services.mlb_lineups_loader import lookup_slot as _mlb_lookup_slot
+            slot, confirmed, lu_source = _mlb_lookup_slot(
+                mlb_slot_map,
+                p.get("event_id"),
+                p.get("bdl_player_id"),
+                p.get("commence_time"),
+            )
+            p["batting_order"] = slot
+            p["lineup_confirmed"] = bool(confirmed)
+            if slot is not None:
+                counters["lineup_slot_filled"] += 1
+                p["lineup_source"] = lu_source
+            else:
+                p["lineup_source"] = None
+                # Still flag as imputed when slot is missing, so Step-5
+                # missing-value policy stays honest.
+                imputed_fields.append("batting_order")
+                if not confirmed:
+                    imputed_fields.append("lineup_confirmed")
+            for k in ("probable_pitcher", "opp_pitcher_throws"):
                 imputed_fields.append(k)
 
         # Stash imputed list on the prop (Step 5 missing-value policy
@@ -745,6 +771,7 @@ async def hydrate_game_context_on_props(
         f"team_total={counters['team_total_filled']}  "
         f"game_total={counters['game_total_filled']}  "
         f"injuries={counters['injuries_filled']}  "
+        f"lineup_slots={counters['lineup_slot_filled']}  "
         f"top_imputed={list(report['imputed_field_summary'].items())[:5]}"
     )
     return report
