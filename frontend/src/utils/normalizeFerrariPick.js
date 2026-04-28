@@ -67,13 +67,14 @@ export function normalizeFerrariPick(pick) {
   const h5 = _hrOrFallback(pick.h5_rate, pick.h10_rate, sideHitRate);
   const h20 = _hrOrFallback(pick.h20_rate, pick.h10_rate, sideHitRate);
 
-  const l10 = _firstNumber(pick.l10_avg, pick.season_avg);
-  const l5 = _firstNumber(pick.l5_avg, pick.l10_avg, pick.season_avg);
-  const l20 = _firstNumber(pick.l20_avg, pick.season_avg, pick.l10_avg);
+  const l10 = _firstNumber(pick.l10_avg, pick.season_avg, pick.eb_player_career_mean);
+  const l5 = _firstNumber(pick.l5_avg, pick.l10_avg, pick.season_avg, pick.eb_player_career_mean);
+  const l20 = _firstNumber(pick.l20_avg, pick.season_avg, pick.l10_avg, pick.eb_player_career_mean);
   const seasonAvg = _firstNumber(
     pick.season_avg,
     pick.l20_avg,
     pick.l10_avg,
+    pick.eb_player_career_mean,  // MLB EB-prior career mean (no NBA equivalent — safe fallback)
   );
 
   // Construct chart_data for the bar chart components (only when we have
