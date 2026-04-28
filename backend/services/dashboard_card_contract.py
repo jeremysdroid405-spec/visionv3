@@ -26,6 +26,16 @@ It NEVER:
 
 It is invoked once per Ferrari-tier API response (after the picks are
 selected and post-processed) and is fully idempotent.
+
+`avg` BACKFILL (2026-04-29)
+---------------------------
+When a pick lacks every legacy avg field (`season_avg`/`l20_avg`/
+`l10_avg`/`l5_avg`/`eb_player_career_mean`), we compute the L10 mean
+on-the-fly from `{sport}_master_hub_2026.bdl_game_logs` — the SAME
+source the player-detail page already uses (see
+`routes/ferrari_tiers.py::get_mlb_player_props` ~line 3349 and
+`routes/player.py::_BOARD_ENRICHMENT_FIELDS`). Pure display-layer
+read; never mutates the master hub.
 """
 from __future__ import annotations
 
@@ -197,6 +207,12 @@ async def stamp_dashboard_card_contract(
             if existing in (None, "", "—"):
                 p[k] = v
 
+    # ── 2026-04-29: backfill `avg` from master_hub game logs ─────────
+    # Many picks (esp. MLB and NBA combos like PRA) reach here with no
+    # avg* field populated. Compute L10 mean directly from the same
+    # source the player-detail page uses. Pure read-side; idempotent.
+    await _backfill_avg_from_game_logs(db, picks, sport)
+
 
 async def _attach_mlb_team(db, picks: List[Dict[str, Any]]) -> None:
     need = [p for p in picks
@@ -245,3 +261,235 @@ async def _attach_mlb_team(db, picks: List[Dict[str, Any]]) -> None:
 
 
 __all__ = ["to_card_contract", "stamp_dashboard_card_contract"]
+
+
+# =====================================================================
+# `avg` BACKFILL  —  computed from master_hub.bdl_game_logs (L10 mean)
+# =====================================================================
+# Mirrors the math used by the Player-Detail page so the dashboard pick
+# card and the player-detail card cannot disagree on a player's recent
+# average. Stat-field maps below are a strict subset of the maps in
+# `routes/ferrari_tiers.py::STAT_FIELD_MAP` (MLB) and
+# `services/scoring/adapters/nba_scoring.py` (NBA).
+
+# Each value is either:
+#   * a string  → game-log field to read directly
+#   * a tuple of strings → sum these fields per game (combo stats)
+#   * a callable(g)→float|None → custom per-game extractor
+_NBA_LOG_FIELD = {
+    "Points": "pts", "PTS": "pts",
+    "Rebounds": "reb", "REB": "reb",
+    "Assists": "ast", "AST": "ast",
+    "3-PT Made": "fg3m", "3PM": "fg3m", "Threes": "fg3m",
+    "Steals": "stl", "STL": "stl",
+    "Blocks": "blk", "BLK": "blk",
+    "Turnovers": "turnover", "TO": "turnover",
+    # Combo stats — both verbose and short forms emitted by the
+    # Ferrari endpoint (e.g. "Pts+Asts" → "P+A" via stat-family
+    # short codes). Both must resolve.
+    "Pts+Rebs+Asts": ("pts", "reb", "ast"),
+    "PRA":           ("pts", "reb", "ast"),
+    "P+R+A":         ("pts", "reb", "ast"),
+    "Pts+Rebs":      ("pts", "reb"),
+    "P+R":           ("pts", "reb"),
+    "PR":            ("pts", "reb"),
+    "Pts+Asts":      ("pts", "ast"),
+    "P+A":           ("pts", "ast"),
+    "PA":            ("pts", "ast"),
+    "Rebs+Asts":     ("reb", "ast"),
+    "R+A":           ("reb", "ast"),
+    "RA":            ("reb", "ast"),
+    "Stl+Blk":       ("stl", "blk"),
+    "S+B":           ("stl", "blk"),
+    "BLST":          ("stl", "blk"),
+}
+
+_MLB_LOG_FIELD = {
+    "Hits": "hits",
+    "Total Bases": "total_bases",
+    "RBIs": "rbis",
+    "Runs": "runs",
+    "Stolen Bases": "stolen_bases",
+    "Home Runs": "home_runs",
+    "Walks": "walks",
+    "Batter Walks": "walks",
+    "Strikeouts": "strikeouts",
+    "Batter Strikeouts": "strikeouts",
+    "Doubles": "doubles",
+    "Triples": "triples",
+    # `Singles` requires arithmetic (hits − 2B − 3B − HR).
+    "Hits+Runs+RBIs": ("hits", "runs", "rbis"),
+    # Pitcher stats
+    "Pitcher Strikeouts": "pitcher_strikeouts",
+    "Earned Runs": "earned_runs",
+    "Earned Runs Allowed": "earned_runs",
+    "Hits Allowed": "hits_allowed",
+    "Walks Allowed": "pitcher_walks",
+    "Pitches Thrown": "pitch_count",
+    "Hits+Walks+Earned Runs": ("hits_allowed", "pitcher_walks", "earned_runs"),
+}
+
+
+def _extract_stat_value(stat_type: str, sport: str, log: Dict[str, Any]) -> Optional[float]:
+    """Return the per-game stat value for one game log, or None."""
+    if not isinstance(log, dict):
+        return None
+    s = (sport or "").lower()
+    if s == "nba":
+        spec = _NBA_LOG_FIELD.get(stat_type)
+    elif s == "mlb":
+        # MLB special cases ──────────────────────────────────────────
+        if stat_type == "Singles":
+            h = log.get("hits")
+            if h is None:
+                return None
+            d = log.get("doubles") or 0
+            t = log.get("triples") or 0
+            hr = log.get("home_runs") or 0
+            return float(max(0, h - d - t - hr))
+        if stat_type in ("Pitcher Outs", "Pitching Outs"):
+            ip = log.get("innings_pitched")
+            return float(ip) * 3.0 if ip is not None else None
+        spec = _MLB_LOG_FIELD.get(stat_type)
+    else:
+        return None
+    if spec is None:
+        return None
+    if isinstance(spec, str):
+        v = log.get(spec)
+        return float(v) if v is not None else None
+    if isinstance(spec, tuple):
+        # Combo stat: sum components; skip game if every component is None
+        parts = [log.get(f) for f in spec]
+        if all(p is None for p in parts):
+            return None
+        return float(sum((p or 0) for p in parts))
+    return None
+
+
+def _l10_mean(stat_type: str, sport: str, logs: List[Dict[str, Any]]) -> Optional[float]:
+    """L10 mean over the most recent 10 games with a valid stat value."""
+    if not logs:
+        return None
+    sorted_logs = sorted(
+        logs,
+        key=lambda g: (g.get("date") or "", g.get("game_id") or 0),
+        reverse=True,
+    )
+    vals: List[float] = []
+    for g in sorted_logs:
+        if len(vals) >= 10:
+            break
+        v = _extract_stat_value(stat_type, sport, g)
+        if v is not None:
+            vals.append(v)
+    if not vals:
+        return None
+    return round(sum(vals) / len(vals), 2)
+
+
+async def _backfill_avg_from_game_logs(
+    db, picks: List[Dict[str, Any]], sport: str
+) -> None:
+    """Stamp `avg` (and `team` when missing) on every pick still missing them.
+
+    Strategy:
+      1. Collect distinct `bdl_player_id` values from picks where avg
+         OR team is null/missing.
+      2. ONE batch query against `{sport}_master_hub_2026` projecting
+         `bdl_game_logs` + identity team fields (the same source the
+         player-detail page reads).
+      3. For each pick, compute L10 mean for its `stat_type` and stamp
+         `avg`. Stamp team abbr when blank.
+
+    No-op when sport is unknown, db is None, or no picks need a backfill.
+    """
+    if not picks or db is None:
+        return
+    s = (sport or "").lower()
+    if s not in ("nba", "mlb"):
+        return
+
+    # Picks that need avg (none-or-numeric-zero treated normally) or team.
+    needs = [
+        p for p in picks
+        if _f(p.get("avg")) is None
+        or not (p.get("team") or p.get("team_abbr"))
+    ]
+    if not needs:
+        return
+
+    # Collect player ids.
+    ids: set = set()
+    for p in needs:
+        pid = p.get("bdl_player_id") or p.get("bdl_id")
+        if pid is None:
+            continue
+        try:
+            ids.add(int(pid))
+        except (TypeError, ValueError):
+            continue
+    if not ids:
+        return
+
+    coll = f"{s}_master_hub_2026"
+    cursor = db[coll].find(
+        {"$or": [
+            {"bdl_player_id": {"$in": list(ids)}},
+            {"bdl_id":        {"$in": list(ids)}},
+        ]},
+        {"_id": 0,
+         "bdl_player_id": 1, "bdl_id": 1,
+         "team": 1, "team_abbr": 1, "team_full": 1,
+         "bdl_game_logs": 1},
+    )
+    by_id: Dict[int, Dict[str, Any]] = {}
+    async for doc in cursor:
+        for key in ("bdl_player_id", "bdl_id"):
+            v = doc.get(key)
+            if v is None:
+                continue
+            try:
+                by_id[int(v)] = doc
+            except (TypeError, ValueError):
+                continue
+
+    if not by_id:
+        logger.info(
+            "[CARD_CONTRACT:%s] backfill skipped — no hub docs for %d ids",
+            s, len(ids),
+        )
+        return
+
+    avg_stamped = 0
+    team_stamped = 0
+    for p in needs:
+        pid = p.get("bdl_player_id") or p.get("bdl_id")
+        try:
+            pid = int(pid) if pid is not None else None
+        except (TypeError, ValueError):
+            pid = None
+        if pid is None:
+            continue
+        hub = by_id.get(pid)
+        if not hub:
+            continue
+        # ---- avg via L10 mean ---------------------------------------
+        if _f(p.get("avg")) is None:
+            stat_type = p.get("stat_type") or ""
+            avg = _l10_mean(stat_type, s, hub.get("bdl_game_logs") or [])
+            if avg is not None:
+                p["avg"] = avg
+                avg_stamped += 1
+        # ---- team abbr ----------------------------------------------
+        if not (p.get("team") or p.get("team_abbr")):
+            t = hub.get("team_abbr") or hub.get("team")
+            if t:
+                p["team"] = t
+                team_stamped += 1
+
+    if avg_stamped or team_stamped:
+        logger.info(
+            "[CARD_CONTRACT:%s] backfilled avg=%d team=%d (of %d needing)",
+            s, avg_stamped, team_stamped, len(needs),
+        )

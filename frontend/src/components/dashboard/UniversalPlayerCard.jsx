@@ -833,13 +833,23 @@ const UniversalPlayerCard = memo(({
           </button>
         )}
 
-        {/* Header — photo + player name (left-aligned, tight) */}
+        {/* Header — photo + player name + team chip (left-aligned, tight) */}
         <div className="flex items-center gap-2 mb-2 pr-7">
           <div className="relative flex-shrink-0">
             <PlayerHeadshot photoUrl={displayPhoto} playerName={displayName} team={team} size="sm" sport={playerSport} mlbId={mlbId} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-white truncate leading-tight">{displayName}</div>
+            <div className="flex items-center gap-1.5 leading-tight">
+              <span className="text-sm font-semibold text-white truncate">{displayName}</span>
+              {team && (
+                <span
+                  className="shrink-0 px-1 py-[1px] rounded-sm text-[9px] font-mono font-semibold tracking-wider text-zinc-300 bg-zinc-800/80 border border-zinc-700/60 uppercase"
+                  data-testid={`player-team-${playerSlug}`}
+                >
+                  {team}
+                </span>
+              )}
+            </div>
             <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.12em] truncate mt-0.5 flex items-center gap-1.5">
               <span className="truncate">{sideLabel} · {line} · {formatStatType(stat_type)}</span>
               <MarketGapBadge pick={player} />

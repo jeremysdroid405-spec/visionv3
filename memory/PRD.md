@@ -91,10 +91,29 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
   `short_sentence`) renders identically across NBA and MLB dashboards
   for Safe Haven, Front Lines, and War Zone tiers.
 - `UniversalPlayerCard.jsx` contains zero sport-specific rendering logic.
-- Known data gap (NOT a contract bug): `avg` is `null` for many MLB picks
-  and a few NBA picks where `season_avg`/`l20_avg`/`l10_avg`/`l5_avg`/
-  `eb_player_career_mean` are all absent on the source dict — card
-  cleanly renders `—` placeholder per spec.
+
+### 2026-04-29 — Card AVG dashes ELIMINATED (universal `bdl_game_logs` backfill)
+- Root cause: contract upstream only stamped `avg` from
+  `season_avg`/`l20_avg`/`l10_avg`/`l5_avg`/`eb_player_career_mean` —
+  none of which exist on MLB `_mlb_score_doc` or NBA combo-stat picks.
+- Fix: added `_backfill_avg_from_game_logs` to
+  `services/dashboard_card_contract.py`. ONE batch query against
+  `{sport}_master_hub_2026.bdl_game_logs` (the same source the player-
+  detail page reads), then computes L10 mean per pick using a
+  stat-type → log-field map covering NBA primaries + combos
+  (`P+A`, `P+R`, `P+R+A`, `R+A`, `S+B`) and MLB batter/pitcher stats.
+- Same pass also backfills `team` from `master_hub.team_abbr` when
+  picks arrive with a null team identity.
+- Verified with `sort=gap` (the param the dashboard uses): 0/43 picks
+  missing avg or team across all 6 sport-tier combos.
+- Permanent: pure read-side normalizer, no model/gate touch, idempotent.
+  Survives sync rebuilds because the contract runs on every API
+  response (it does not write to `mlb_prop_scores` / `nba_prop_scores`).
+
+### 2026-04-29 — Team chip on every Pick Card (compact mode)
+- `UniversalPlayerCard.jsx` compact-mode header now renders a
+  monospace team-abbr chip (e.g. `TOR`, `PHI`, `BAL`) right next to the
+  player name. Reads the contract `team` field — sport-agnostic.
 
 ## P0 / P1 / P2 backlog
 
