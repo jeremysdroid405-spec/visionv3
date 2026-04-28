@@ -1,0 +1,7 @@
+{
+  "_comment": "Manual alias overrides — deterministic normalize_player_name() handles 99% of cases (accents, suffixes, punctuation). Only add entries the normalizer cannot resolve (different colloquial first name, pure nicknames, mid-season legal name change, etc.). Keys + values must already be in the canonical normalized form (lowercase, no punctuation, no suffix). Anything that's just an accent or `Jr.` strip should NOT be listed here.",
+
+  "mike a trout": "mike trout",
+  "michael a trout": "mike trout",
+  "michael trout": "mike trout"
+}

@@ -86,6 +86,7 @@ async def validate(db) -> List[Dict[str, Any]]:
                         f"({n/max(n_feat,1)*100:.1f}%)"))
 
     # ---- Player mapping coverage ----
+    # Original feature-name path (kept for back-compat).
     feat_names = {x for x in await db[FEAT].distinct("player_name") if x}
     feat_names_norm = {_norm(x) for x in feat_names if x}
     hub_names = []
@@ -97,10 +98,33 @@ async def validate(db) -> List[Dict[str, Any]]:
     n_hub = len(hub_names)
     n_join = sum(1 for n in hub_names if n in feat_names_norm)
     checks.append(dict(
-        name="hub→features join coverage > 50%",
+        name="hub→features join (raw lower) > 50%",
         ok=(n_join / max(n_hub, 1) >= 0.5) if n_hub else False,
         detail=f"{n_join:,}/{n_hub:,} batters joined "
                 f"({n_join/max(n_hub,1)*100:.1f}%)"))
+
+    # Identity-map path — the production join.
+    map_rows = await db["mlb_player_identity_map"].count_documents({})
+    if map_rows:
+        from services.mlb.identity import (
+            normalize_player_name, apply_alias)
+        # Set of normalized names that DO have a Statcast id in the map.
+        sc_norm = set(await db["mlb_player_identity_map"].distinct(
+            "normalized_name", {"statcast_id": {"$ne": None}}))
+        hub_canon = []
+        async for d in db[HUB].find(
+            {"is_batter": True},
+            {"_id": 0, "player_name": 1, "display_name": 1}):
+            raw = d.get("display_name") or d.get("player_name")
+            nn = apply_alias(normalize_player_name(raw))
+            if nn: hub_canon.append(nn)
+        n_hub_c = len(hub_canon)
+        n_id_match = sum(1 for n in hub_canon if n in sc_norm)
+        checks.append(dict(
+            name="hub→features join (identity map) ≥ 90%",
+            ok=(n_id_match / max(n_hub_c, 1) >= 0.90) if n_hub_c else False,
+            detail=f"{n_id_match:,}/{n_hub_c:,} batters joined "
+                    f"({n_id_match/max(n_hub_c,1)*100:.1f}%)"))
 
     return checks
 
