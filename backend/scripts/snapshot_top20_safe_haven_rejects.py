@@ -33,8 +33,16 @@ LOCK_KEYS = ["sync:nba", "recompute:nba"]
 
 
 async def fetch_top_20(db) -> List[Dict[str, Any]]:
-    """Top-20 rejects, edge_pct DESC, tiebreaker by canonical_key for
-    stability across re-queries."""
+    """Top-20 rejects, sorted by the canonical deterministic tuple:
+
+        edge_pct        DESC
+        vision_score    DESC
+        canonical_key   ASC
+
+    Sort is performed in Python after fetch so None values are handled
+    consistently (treated as -inf for DESC fields) and ties cannot reorder
+    across re-queries — even if MongoDB's natural order changes.
+    """
     cursor = db.nba_prop_scores.find(
         {
             "version_tag":         VERSION_TAG,
@@ -52,8 +60,19 @@ async def fetch_top_20(db) -> List[Dict[str, Any]]:
             "vision_score": 1, "vision_score_raw": 1,
             "pp_multiplier_label": 1,
         },
-    ).sort([("edge_pct", -1), ("canonical_key", 1)]).limit(TOP_N)
-    rows = await cursor.to_list(length=TOP_N)
+    )
+    raw = await cursor.to_list(length=10000)
+
+    def _num(v: Any) -> float:
+        return float(v) if isinstance(v, (int, float)) else float("-inf")
+
+    raw.sort(key=lambda r: (
+        -_num(r.get("edge_pct")),
+        -_num(r.get("vision_score")),
+        r.get("canonical_key") or "",
+    ))
+    rows = raw[:TOP_N]
+
     out: List[Dict[str, Any]] = []
     for r in rows:
         side = (r.get("recommendation") or "").upper()

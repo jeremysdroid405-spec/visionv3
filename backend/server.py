@@ -1500,9 +1500,15 @@ async def startup_event():
         # Contract-enforcer violation TTL collection (2026-04-29). Idempotent.
         from services.contract_enforcer import ensure_indexes as _ce_ensure
         await _ce_ensure(db)
+        # 2026-04-29 — admin-gated debug snapshots (tuning-only, NOT
+        # consumed by the live dashboard). Holds short locks per-call.
+        from routes import debug_snapshots as _debug_snapshots
+        _debug_snapshots.set_db(db)
+        app.include_router(_debug_snapshots.router, prefix="/api")
         logger.info(
-            "[ROUTES] /api/health/sync + /api/health/contracts registered "
-            "+ sync_locks + contract_violations indexes ensured"
+            "[ROUTES] /api/health/sync + /api/health/contracts + "
+            "/api/debug/snapshots/* registered + sync_locks + "
+            "contract_violations indexes ensured"
         )
     except Exception as _hs_err:  # noqa: BLE001
         logger.error(f"[ROUTES] health_sync wiring failed: {_hs_err}")

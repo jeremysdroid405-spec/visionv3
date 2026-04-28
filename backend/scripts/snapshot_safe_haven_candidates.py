@@ -43,7 +43,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -135,7 +135,17 @@ def _normalize_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _fetch_snapshot(db) -> List[Dict[str, Any]]:
-    """ALL Safe Haven candidates from final-nba-rt, sorted deterministically."""
+    """ALL Safe Haven candidates from final-nba-rt, sorted with the
+    canonical deterministic tuple:
+
+        edge_pct        DESC
+        vision_score    DESC
+        canonical_key   ASC
+
+    Sort is performed in Python after fetch so None values are handled
+    consistently (treated as -inf for DESC fields) and ties cannot
+    reorder across re-queries.
+    """
     cursor = db.nba_prop_scores.find(
         {
             "version_tag":         VERSION_TAG,
@@ -147,18 +157,14 @@ async def _fetch_snapshot(db) -> List[Dict[str, Any]]:
     async for d in cursor:
         docs.append(_normalize_doc(d))
 
-    # Deterministic order: canonical_key (None last), then player + stat + line.
-    def _sort_key(d: Dict[str, Any]) -> Tuple[int, str, str, str, float]:
-        ck = d.get("canonical_key")
-        return (
-            1 if ck is None else 0,
-            ck or "",
-            d.get("player_name") or "",
-            d.get("stat_type") or "",
-            float(d.get("line") or 0),
-        )
+    def _num(v: Any) -> float:
+        return float(v) if isinstance(v, (int, float)) else float("-inf")
 
-    docs.sort(key=_sort_key)
+    docs.sort(key=lambda d: (
+        -_num(d.get("edge_pct")),
+        -_num(d.get("vision_score")),
+        d.get("canonical_key") or "",
+    ))
     return docs
 
 
