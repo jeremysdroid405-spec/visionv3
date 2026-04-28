@@ -138,6 +138,10 @@ def _build_pick_doc(p: Dict[str, Any], *, fingerprint: str
 
         # MLB-specific feature snapshot (per spec)
         "expected_PA":      p.get("expected_PA")  or p.get("pa_proj"),
+        "pa_source":        p.get("pa_source"),
+        "team_implied_total": p.get("team_implied_total"),
+        "is_home_team":     p.get("is_home_team"),
+        "rate_per_pa":      p.get("rate_per_pa"),
         "batting_order":    p.get("batting_order"),
         "woba_proxy":       p.get("woba_proxy")   or p.get("woba_long"),
         "xwOBA":            p.get("xwOBA"),         # None if unavailable

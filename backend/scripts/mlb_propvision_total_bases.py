@@ -48,12 +48,19 @@ STAT_FAMILY = "total_bases"          # canonical family for gate lookup
 # wOBA linear weights (Tom Tango 2010-era; used as xwOBA proxy)
 WOBA_BB = 0.69; WOBA_1B = 0.89; WOBA_2B = 1.27; WOBA_3B = 1.62; WOBA_HR = 2.10
 
-# PA projection by batting order (per user spec)
+# PA projection by batting order (spec v2 — replaces v1's flat table).
+# These per-slot baselines are the BASE before team-context adjustments.
 PA_BY_ORDER: Dict[int, float] = {
-    1: 4.8, 2: 4.6, 3: 4.4, 4: 4.3, 5: 4.1,
-    6: 3.9, 7: 3.7, 8: 3.5, 9: 3.3,
+    1: 4.7, 2: 4.6, 3: 4.5, 4: 4.4, 5: 4.3,
+    6: 4.2, 7: 4.0, 8: 3.8, 9: 3.7,
 }
 PA_DEFAULT = 4.2                     # when batting_order is null
+# Team-context PA adjustments (spec v2)
+PA_HIGH_TEAM_TOTAL_THRESHOLD = 5.5   # team_total >= 5.5 → +0.20 PA
+PA_LOW_TEAM_TOTAL_THRESHOLD  = 3.5   # team_total <= 3.5 → -0.20 PA
+PA_TEAM_TOTAL_DELTA          = 0.20
+PA_HOME_TEAM_DELTA           = -0.10  # home leading → no bottom of 9th
+PA_CLAMP                     = (3.2, 5.2)
 
 BASE_SIGMA = 1.75                    # per user spec
 SIGMA_CLAMP = (1.2, 3.5)
@@ -306,17 +313,74 @@ def _tb_values(logs):
 
 
 # -----------------------------------------------------------------------------
+# PA projection (spec v2)
+# -----------------------------------------------------------------------------
+def project_pa(
+    batting_order: Optional[int],
+    team_implied_total: Optional[float],
+    is_home_team: Optional[bool],
+) -> Tuple[float, str]:
+    """Spec v2 expected-PA model.
+
+    Returns (projected_pa, source_tag) where source_tag is one of:
+       "lineup"   — batting_order is known (per-slot baseline + adjustments)
+       "fallback" — batting_order is None (single 4.2 PA estimate, NO adjustments)
+
+    No leakage: this function takes ONLY pre-game inputs (lineup card,
+    sportsbook implied total, home/away). It never touches game logs.
+    """
+    if batting_order is None:
+        return PA_DEFAULT, "fallback"
+    try:
+        slot = int(batting_order)
+    except (TypeError, ValueError):
+        return PA_DEFAULT, "fallback"
+    base = PA_BY_ORDER.get(slot)
+    if base is None:
+        return PA_DEFAULT, "fallback"
+
+    pa = base
+    # Team-total swing — only applied when we have a confirmed lineup.
+    if team_implied_total is not None:
+        try:
+            tit = float(team_implied_total)
+            if tit >= PA_HIGH_TEAM_TOTAL_THRESHOLD:
+                pa += PA_TEAM_TOTAL_DELTA
+            elif tit <= PA_LOW_TEAM_TOTAL_THRESHOLD:
+                pa -= PA_TEAM_TOTAL_DELTA
+        except (TypeError, ValueError):
+            pass
+
+    # Home-team penalty — winning home teams skip bottom of 9th.
+    if is_home_team:
+        pa += PA_HOME_TEAM_DELTA
+
+    pa = max(PA_CLAMP[0], min(PA_CLAMP[1], pa))
+    return pa, "lineup"
+
+
+# -----------------------------------------------------------------------------
 # μ + σ models (per user spec)
 # -----------------------------------------------------------------------------
 def predict_mu_sigma(
     *, prior_logs: List[Dict[str, Any]],
     batting_order: Optional[int],
     statcast: Optional[Dict[str, Any]] = None,
+    team_implied_total: Optional[float] = None,
+    is_home_team: Optional[bool] = None,
+    matchup_factor_shadow: Optional[float] = None,
+    pitcher_confidence_flag: Optional[str] = None,
 ) -> Tuple[Optional[float], Optional[float], Dict[str, Any]]:
     """Returns (μ, σ, debug). When `statcast` is supplied (the rolling
     feature row from `mlb_statcast_player_features`), the engine uses
     TRUE Statcast inputs. Otherwise it falls back to the v1 wOBA / HR-
-    AB proxies derived from BDL game logs."""
+    AB proxies derived from BDL game logs.
+
+    Spec v2 changes (μ ONLY — σ untouched):
+      * PA via project_pa() with team-context adjustments
+      * matchup_factor_shadow applied IF available AND batter_BBE>=25
+        AND pitcher_confidence_flag == 'high' (otherwise μ is unchanged)
+    """
     if len(prior_logs) < 10: return None, None, {"reason": "lt10_logs"}
 
     long_w  = prior_logs[-HISTORY_WINDOW_LONG:]
@@ -344,36 +408,54 @@ def predict_mu_sigma(
     else:
         rf = 1.0
 
-    pa_proj = (PA_BY_ORDER.get(int(batting_order))
-                if batting_order else PA_DEFAULT)
-    matchup = MATCHUP_DEFAULT
+    # Spec v2 — PA from project_pa() (lineup + team context adjustments).
+    pa_proj, pa_source = project_pa(batting_order, team_implied_total,
+                                       is_home_team)
 
     # μ formula. The wOBA-units → TB calibration (0.75) is preserved
     # so the engine output remains drop-in compatible with v1.
     mu_per_pa_to_tb = 0.75
-    mu = woba_long * pa_proj * matchup * rf * mu_per_pa_to_tb
+    rate_per_pa = woba_long * mu_per_pa_to_tb * rf
+    mu = rate_per_pa * pa_proj
 
-    # ---- σ inputs ----
-    # Prefer Statcast-derived rates; fall back to BDL-derived rates.
+    # Apply matchup_factor_shadow (spec v2) — ONLY when:
+    #   * the shadow factor is supplied (caller resolved it from
+    #     `mlb_statcast_pitcher_features` for a settled or pre-game-
+    #     known matchup),
+    #   * batter rolling_30 BBE >= 25 (sufficient batter-side signal),
+    #   * pitcher_confidence_flag == 'high' (sufficient pitcher-side
+    #     sample).
+    # Otherwise μ is left unchanged so we don't introduce noise.
+    matchup_applied = 1.0
+    bbe_30 = (sc_30 or {}).get("batted_ball_events")
+    can_apply_matchup = (
+        matchup_factor_shadow is not None
+        and bbe_30 is not None and bbe_30 >= 25
+        and pitcher_confidence_flag == "high"
+    )
+    if can_apply_matchup:
+        try:
+            mf = max(0.85, min(1.15, float(matchup_factor_shadow)))
+            mu *= mf
+            matchup_applied = mf
+        except (TypeError, ValueError):
+            pass
+
+    # ---- σ inputs (UNCHANGED) -----------------------------------------
     k_rate    = sc_30.get("k_rate")
     if k_rate is None: k_rate = _k_rate(long_w) or LEAGUE_K_RATE
     barrel    = sc_30.get("barrel_rate")
     if barrel is None: barrel = _barrel_proxy(long_w) or LEAGUE_BARREL_RATE
     contact   = sc_30.get("contact_rate")
     if contact is None: contact = max(0.0, 1.0 - k_rate)
-    hard_hit  = sc_30.get("hard_hit_rate")            # may be None
-    avg_ev    = sc_30.get("avg_exit_velocity")        # may be None
+    hard_hit  = sc_30.get("hard_hit_rate")
+    avg_ev    = sc_30.get("avg_exit_velocity")
 
-    # Volatility multiplier: same skeleton as v1 (K↑/contact↓/barrel↑
-    # → higher σ) but with TRUE Statcast inputs when available. Hard
-    # Hit % adds a small extra bump for power-driven volatility — its
-    # coef is half of barrel's (they're correlated, so don't double-count).
     vol = (1.0
            + 1.5 * (k_rate    - LEAGUE_K_RATE)
            - 1.0 * (contact   - LEAGUE_CONTACT_RATE)
            + 2.0 * (barrel    - LEAGUE_BARREL_RATE))
     if hard_hit is not None:
-        # league avg HardHit% ≈ 0.38 — center on that.
         vol += 1.0 * (hard_hit - 0.38)
     vol = max(VOL_CLAMP[0], min(VOL_CLAMP[1], vol))
 
@@ -382,7 +464,11 @@ def predict_mu_sigma(
 
     return mu, sigma, {
         "woba_long": woba_long, "woba_short": woba_short, "rf": rf,
-        "pa_proj": pa_proj, "matchup": matchup,
+        "pa_proj": pa_proj, "pa_source": pa_source,
+        "rate_per_pa": rate_per_pa,
+        "team_implied_total": team_implied_total,
+        "is_home_team": bool(is_home_team) if is_home_team is not None else None,
+        "matchup_factor_applied": matchup_applied,
         "k_rate": k_rate, "barrel": barrel, "contact": contact,
         "hard_hit_rate": hard_hit, "avg_exit_velocity": avg_ev,
         "vol": vol,
@@ -486,6 +572,9 @@ async def main(*, log_picks: bool = False):
         prop.setdefault("batting_order", _i(p.get("batting_order")))
         prop.setdefault("team", p.get("team"))
         prop.setdefault("opponent", p.get("opponent_team"))
+        # Spec v2: capture team_total + is_home_team for project_pa().
+        prop.setdefault("team_implied_total", _f(p.get("team_total")))
+        prop.setdefault("is_home_team", bool(p.get("is_home_team")))
         prop["is_alt"] = is_alt or prop.get("is_alt", False)
         prop["pp_playable"] = (
             is_pp_playable or prop.get("pp_playable", False))
@@ -531,7 +620,16 @@ async def main(*, log_picks: bool = False):
                                             identity_map=identity_map)
             mu, sigma, dbg = predict_mu_sigma(
                 prior_logs=prior, batting_order=prop.get("batting_order"),
-                statcast=sc_row)
+                statcast=sc_row,
+                team_implied_total=prop.get("team_implied_total"),
+                is_home_team=prop.get("is_home_team"),
+                # matchup_factor_shadow is None at live-engine time
+                # (live_props don't carry probable pitchers). The shadow
+                # backfill stamps it on `mlb_pick_history` post-game; the
+                # path is exposed here so it slots in once the upstream
+                # feed lands.
+                matchup_factor_shadow=None,
+                pitcher_confidence_flag=None)
             if mu is None:
                 feat_cache[cache_key] = {"_skip": dbg.get("reason")}
                 cand_skip[dbg.get("reason") or "mu_fail"] += 1; continue
@@ -632,9 +730,14 @@ async def main(*, log_picks: bool = False):
                 "batting_order":   prop.get("batting_order"),
                 # MLB-specific feature snapshot
                 "expected_PA":     ce["dbg"].get("pa_proj"),
+                "pa_source":       ce["dbg"].get("pa_source"),
+                "team_implied_total": ce["dbg"].get("team_implied_total"),
+                "is_home_team":    ce["dbg"].get("is_home_team"),
+                "rate_per_pa":     ce["dbg"].get("rate_per_pa"),
+                "matchup_factor_applied": ce["dbg"].get("matchup_factor_applied"),
                 "woba_proxy":      ce["dbg"].get("woba_long"),
                 "barrel_rate":     ce["dbg"].get("barrel"),
-                "matchup_factor":  ce["dbg"].get("matchup"),
+                "matchup_factor":  ce["dbg"].get("matchup_factor_applied"),
                 # Statcast features (populated when available; else None)
                 "xwOBA":           ce["dbg"].get("xwOBA"),
                 "hard_hit_rate":   ce["dbg"].get("hard_hit_rate"),
