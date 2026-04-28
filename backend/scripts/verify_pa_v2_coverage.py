@@ -24,7 +24,7 @@ import asyncio
 import os
 import sys
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, "/app/backend")
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -115,7 +115,7 @@ async def _future_leakage_check(db) -> None:
         print("  (no lineup cards present — nothing to check)")
         print()
         return
-    # Build {event_id: commence_time} lookup
+    # Build {event_id: commence_time} lookup from mlb_live_props.
     eids = await db[LU_COLL].distinct("event_id")
     commence_by_event: dict = {}
     cursor = db.mlb_live_props.find(
@@ -124,8 +124,19 @@ async def _future_leakage_check(db) -> None:
     )
     async for d in cursor:
         eid = d.get("event_id")
-        ct = d.get("commence_time")
-        if eid and isinstance(ct, datetime):
+        ct_raw = d.get("commence_time")
+        ct = None
+        if isinstance(ct_raw, datetime):
+            ct = ct_raw if ct_raw.tzinfo else ct_raw.replace(tzinfo=timezone.utc)
+        elif isinstance(ct_raw, str):
+            s = ct_raw.strip()
+            if s.endswith("Z"):
+                s = s[:-1] + "+00:00"
+            try:
+                ct = datetime.fromisoformat(s)
+            except ValueError:
+                ct = None
+        if eid and ct is not None:
             commence_by_event.setdefault(eid, ct)
 
     leaks = 0
@@ -135,8 +146,12 @@ async def _future_leakage_check(db) -> None:
         {}, {"_id": 0, "event_id": 1, "as_of": 1, "team_abbr": 1, "source": 1}
     ):
         eid = d.get("event_id")
-        as_of = d.get("as_of")
-        if not isinstance(as_of, datetime):
+        as_of_raw = d.get("as_of")
+        as_of = None
+        if isinstance(as_of_raw, datetime):
+            as_of = (as_of_raw if as_of_raw.tzinfo
+                     else as_of_raw.replace(tzinfo=timezone.utc))
+        if as_of is None:
             continue
         ct = commence_by_event.get(eid)
         if ct is None:
