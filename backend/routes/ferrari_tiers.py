@@ -1552,12 +1552,91 @@ async def _get_mlb_tier_picks_from_scores(
     if not scores:
         return []
 
+    # ── Universal display-shape: batch hub lookup for headshot/photo/team
+    # parity with NBA (2026-04-29). One query keyed by bdl_player_id
+    # OR bdl_id (MLB hub uses both); mirrors NBA's `dg_cached_board`
+    # player-doc hydration in `_merge_score_with_board`.
+    hub_by_id: Dict[int, Dict[str, Any]] = {}
+    bdl_ids: set = set()
+    for sc in scores:
+        for k in ("bdl_player_id", "bdl_id"):
+            v = sc.get(k)
+            if v is None:
+                continue
+            try:
+                bdl_ids.add(int(v))
+            except (TypeError, ValueError):
+                continue
+    if bdl_ids:
+        async for hub in _db["mlb_master_hub_2026"].find(
+            {"$or": [
+                {"bdl_player_id": {"$in": list(bdl_ids)}},
+                {"bdl_id":        {"$in": list(bdl_ids)}},
+            ]},
+            {"_id": 0, "bdl_player_id": 1, "bdl_id": 1,
+             "team": 1, "team_abbr": 1,
+             "headshot_url": 1, "photo_url": 1,
+             "official_mlb_id": 1, "mlb_id": 1},
+        ):
+            for k in ("bdl_player_id", "bdl_id"):
+                v = hub.get(k)
+                if v is None:
+                    continue
+                try:
+                    hub_by_id[int(v)] = hub
+                except (TypeError, ValueError):
+                    continue
+
     picks: List[Dict[str, Any]] = []
     for sc in scores:
         # Base shape: pass the score doc through. Downstream enrichers
         # (overlay_enrichment_cache, enrich_mlb_prop_with_tempo,
         # enrich_mlb_intel_suite) mutate this dict in place.
         pick: Dict[str, Any] = dict(sc)
+
+        # ── Universal display-shape parity with NBA (2026-04-29) ─────────
+        # Pure projection. Every field below already exists upstream
+        # (`mlb_prop_scores` or `mlb_master_hub_2026`); this block re-emits
+        # them on the response under the same names NBA uses, so the
+        # universal `UniversalPlayerCard` / dashboard contract reads
+        # identical keys for both sports.
+        # Mirrors `_merge_score_with_board` lines 1017-1075 + 1137-1147.
+        # NO scoring / model / gates / thresholds / tier-routing touched.
+        pick["sport"] = "mlb"
+
+        direction_upper = (sc.get("recommendation") or "OVER").strip().upper()
+        direction_title = "Under" if direction_upper == "UNDER" else "Over"
+        pick["direction"] = direction_title
+        pick["recommendation"] = direction_title
+
+        tier_label_map = {
+            "safe_haven": "SAFE_HAVEN",
+            "front_lines": "FRONT_LINE",
+            "war_zone": "WAR_ZONE",
+        }
+        pick["tier_label"] = tier_label_map.get(
+            sc.get("tier"), (sc.get("tier") or "").upper()
+        )
+
+        raw_stat = sc.get("stat_type") or pick.get("stat_type") or ""
+        canon_stat = _canonical_stat_family(raw_stat)
+        pick["stat_type"] = canon_stat or raw_stat
+        pick["stat_type_canonical"] = canon_stat or raw_stat
+        if raw_stat and raw_stat != pick["stat_type"]:
+            pick["stat_type_raw"] = raw_stat
+
+        # Goblin / demon flags — derived from pp_multiplier_label for
+        # consistency with the NBA path. Identical block to lines 1137-1147.
+        lbl = (sc.get("pp_multiplier_label") or "").lower()
+        pick["is_goblin"] = lbl == "goblin"
+        pick["is_demon"] = lbl == "demon"
+        pick["is_standard"] = lbl in ("", "standard")
+        if pick["is_goblin"]:
+            pick["prop_type"] = "GOBLIN"
+        elif pick["is_demon"]:
+            pick["prop_type"] = "DEMON"
+        else:
+            pick["prop_type"] = "STANDARD"
 
         # Mirror model fields -> legacy vk_* contract so existing UI
         # components and intel_suite assembly continue to work unchanged.
@@ -1598,6 +1677,29 @@ async def _get_mlb_tier_picks_from_scores(
         pick["tp_books_list"] = sc.get("tp_books_list")
         pick["tp_method"] = sc.get("tp_method")
         pick["tp_unavailable"] = sc.get("tp_unavailable")
+
+        # Hub-driven fields — fill ONLY when absent so we never overwrite
+        # an authoritative score-doc / live-props value.
+        pid = sc.get("bdl_player_id") or sc.get("bdl_id")
+        try:
+            pid = int(pid) if pid is not None else None
+        except (TypeError, ValueError):
+            pid = None
+        hub = hub_by_id.get(pid) if pid is not None else None
+        if hub:
+            for fld_pick, fld_hub in (
+                ("headshot_url", "headshot_url"),
+                ("photo_url",    "photo_url"),
+            ):
+                if pick.get(fld_pick) in (None, "") and hub.get(fld_hub):
+                    pick[fld_pick] = hub[fld_hub]
+            # `team` may already be set by `dashboard_card_contract`;
+            # fall back to hub team_abbr only if still missing.
+            if pick.get("team") in (None, "") and (hub.get("team_abbr") or hub.get("team")):
+                pick["team"] = hub.get("team_abbr") or hub.get("team")
+            # MLB-hub's official id, if useful for downstream lookups.
+            if pick.get("mlb_id") in (None, "") and (hub.get("official_mlb_id") or hub.get("mlb_id")):
+                pick["mlb_id"] = hub.get("official_mlb_id") or hub.get("mlb_id")
 
         # Stash the score doc so any later post-overlay pass can re-read
         # authoritative fields, parallel to the NBA `_nba_score_doc` stash.
