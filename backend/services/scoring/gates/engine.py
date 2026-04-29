@@ -97,19 +97,31 @@ class UniversalGateEngine:
             )
 
         threshold = float(cfg.get("min", 0.0))
-        actual = _py(m.tp)
+        # 2026-04-29 — surgical addition: when cfg["source"] == "model",
+        # the OVER tp_gate evaluates the model-derived distribution
+        # probability (p_model_pct / p_distribution), bringing it to
+        # parity with the UNDER branch. Default behaviour (market
+        # devig'd `tp`) is preserved for all callers that don't set
+        # `source`. Used by MLB Safe Haven only (per user spec).
+        source = (cfg.get("source") or "market").lower()
+        if source == "model":
+            actual = _py(m.p_model_pct)
+            note = "model_confidence_over"
+        else:
+            actual = _py(m.tp)
+            note = "market_implied_over"
         if actual is None:
             return GateDetail(
                 gate_type="tp_gate", threshold=threshold, actual=None,
                 passed=False, comparator=">=",
-                reason_code=ReasonCode.TP_UNAVAILABLE, note="market_implied_over",
+                reason_code=ReasonCode.TP_UNAVAILABLE, note=note,
             )
         passed = bool(actual >= threshold)
         return GateDetail(
             gate_type="tp_gate", threshold=threshold, actual=actual,
             passed=passed, comparator=">=",
             reason_code=None if passed else ReasonCode.TP_FAIL,
-            note="market_implied_over",
+            note=note,
         )
 
     @staticmethod

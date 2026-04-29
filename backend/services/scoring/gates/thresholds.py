@@ -377,7 +377,13 @@ _MLB_WAR_ZONE: Dict[str, Dict[str, Any]] = {
     "_default":          {"ceiling_min": 35.0, "edge_min": 30.0},
 }
 
-def _mlb_thresholds(per_stat: Dict[str, Dict[str, Any]], *, war_zone: bool = False) -> Dict[str, Dict[str, Any]]:
+def _mlb_thresholds(per_stat: Dict[str, Dict[str, Any]], *, war_zone: bool = False, tp_source: str = "market") -> Dict[str, Dict[str, Any]]:
+    """Build MLB threshold map. `tp_source` controls whether the
+    OVER tp_gate evaluates market-implied tp ("market", default) or
+    model-derived `p_model_pct` ("model"). Safe Haven uses "model"
+    per the 2026-04-29 user spec — the market is already qualifying
+    the prop via the −300 odds floor; tp_gate measures whether OUR
+    model independently agrees."""
     out: Dict[str, Dict[str, Any]] = {}
     for family, vals in per_stat.items():
         if war_zone:
@@ -387,6 +393,9 @@ def _mlb_thresholds(per_stat: Dict[str, Dict[str, Any]], *, war_zone: bool = Fal
                 "edge_gate":     {"min": vals["edge_min"]},
             }
         else:
+            tp_cfg: Dict[str, Any] = {"min": vals["tp_min"]}
+            if tp_source != "market":
+                tp_cfg["source"] = tp_source
             out[family] = {
                 "coverage_gate": {"min_books": 1},
                 # cv_gate carries `min_margin` so the engine's MLB+0.5
@@ -398,7 +407,7 @@ def _mlb_thresholds(per_stat: Dict[str, Dict[str, Any]], *, war_zone: bool = Fal
                 },
                 "hit_rate_gate": {"min": vals["hr_min"], "window": "default"},
                 "edge_gate":     {"min": vals["edge_min"]},
-                "tp_gate":       {"min": vals["tp_min"]},
+                "tp_gate":       tp_cfg,
             }
     return out
 
@@ -413,7 +422,9 @@ THRESHOLDS: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {
                          "_default_under": _NBA_WAR_ZONE_UNDER},
     },
     "mlb": {
-        "safe_haven":  _mlb_thresholds(_MLB_SAFE_HAVEN),
+        # Safe Haven: model-prob-driven tp_gate (per 2026-04-29 user spec).
+        # Front Lines & War Zone keep market-implied tp_gate semantics.
+        "safe_haven":  _mlb_thresholds(_MLB_SAFE_HAVEN, tp_source="model"),
         "front_lines": _mlb_thresholds(_MLB_FRONT_LINES),
         "war_zone":    _mlb_thresholds(_MLB_WAR_ZONE, war_zone=True),
     },
