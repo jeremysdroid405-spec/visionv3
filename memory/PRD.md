@@ -28,6 +28,73 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
 
 ## Recent work (changelog)
 
+### 2026-04-29 — NBA Front Lines OVER conditional override layer
+**Why**: Per user spec — apply targeted FL-OVER rescue rules to NBA
+3PM / AST / PTS picks while leaving REB / PRA / combos / STL / BLK,
+UNDER side, Safe Haven, and War Zone untouched. Direction
+consistency (projection >= line) elevated to a hard gate for FL OVER.
+
+**Shipped** (no scoring/projection/TP/sigma/frontend touched):
+- `services/scoring/gates/schema.py` — new `direction_gate` canonical
+  type + `DIRECTION_FAIL` reason code.
+- `services/scoring/gates/engine.py` — `_eval_direction` evaluator;
+  side-scoped (default `applies_to_sides=["OVER"]`); reads
+  `extras["projection"]`. Plus FL-OVER override pass wired in after
+  the safe-haven override pass; engine guards on
+  `metrics.side == "OVER"` before invoking.
+- `services/scoring/gates/overrides.py` — `apply_front_lines_over_overrides`:
+    * Rule 2 (3PM TP relax): family=threes, HR>75, proj>=line →
+      tp floor 45.
+    * Rule 3 (AST CV relax): family=ast, HR>85, proj>=line →
+      cv cap 0.95.
+    * Rule 4 (PTS dominance): family=pts, HR>=75, L20/line>=1.5,
+      proj>=line → bypass tp/cv failures only.
+    * `_FL_OVER_OVERRIDABLE_GATES = {tp_gate, cv_gate}` only —
+      market_structure / direction / hit_rate / vision_score /
+      coverage / edge failures NEVER rescuable.
+    * At most one rule fires per pick. PTS dom may bypass both
+      TP and CV simultaneously; the others rescue exactly one.
+- `services/scoring/metrics_builder.py` — pipes `projection` into
+  `extras` (priority: vk2_projection → model_projection →
+  mu_after_availability_guard → mu_recency_blend_l20).
+- `services/scoring/recompute.py` — propagates `model_projection` /
+  `vk2_projection` / sigmas from `ScoringContext` into the prop dict
+  given to `compute_scoring_stack`, so the gate engine sees them at
+  first-pass time (the adapter computes them after the live-prop
+  snapshot, so they aren't on `raw_prop`).
+- `services/scoring/gates/thresholds.py` — NBA FL `_default` now
+  includes `direction_gate` (OVER-only) and the
+  `__front_lines_over_overrides__` block. UNDER-side, MLB, NFL
+  configs untouched.
+
+**Validation** (`tests/test_fl_over_overrides.py`, **21/21 green**):
+- 3PM rescue fires + does not fire below relaxed floor + HR>75 strict +
+  direction precondition.
+- AST rescue fires + does not fire above 0.95 + HR>85 strict.
+- PTS dominance bypasses TP, bypasses CV, requires 1.5x ratio,
+  refuses to bypass edge_gate failures.
+- Scope guards: UNDER side, REB / PRA / pts_ast families, Safe
+  Haven tier, War Zone tier — none consult fl_over rules.
+- direction_gate behaviour: fails on proj<line, passes on proj==line,
+  skipped for UNDER, absent in SH config.
+
+**Live recompute** (NBA `final-nba-rt`, 2,949 props):
+- Tier counts: SH=7, FL_OVER=76, FL_UNDER=11, WZ=23,
+  unqualified=2,816.
+- 0 picks in the current live slate satisfy ALL preconditions of any
+  rescue rule (every FL-routed reject either fails an
+  un-overridable gate (hit_rate / direction / edge), has a CV-only
+  failure on a non-AST/non-PTS family, or has TP failure on a
+  non-3PM/non-PTS family). Override module is correctly designed
+  but no qualifying candidates this slate.
+- Direction-gate hard rejects: 3 picks (all confirmed
+  projection < line).
+- UNDER side invariance: FL_UNDER count unchanged at 11 across the
+  whole change; 0 of the artifact's 30 UNDER picks moved.
+- SH/WZ counts unchanged across the override deployment.
+
+**Full regression**: 114/114 across all 7 active suites.
+
 ### 2026-04-29 — Universal Tier Cascade REMOVED (per user spec)
 **Why**: User reverted the cascading-tier behaviour shipped earlier
 the same day. New contract: each pick is locked to its routed odds

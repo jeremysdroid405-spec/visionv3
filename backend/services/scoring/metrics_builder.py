@@ -68,6 +68,17 @@ def build_metrics_from_context(
             extras["mu_recency_blend_l20"] = float(prop[key])
             break
 
+    # Pipe `projection` (preferring VK2, falling back to legacy model
+    # projection or the availability-guarded mu) for FL-OVER override
+    # rules + the direction_gate (NBA Front Lines OVER only).
+    # Read-only — no scoring formula touched.
+    for key in ("vk2_projection", "model_projection",
+                "mu_after_availability_guard", "mu_recency_blend_l20"):
+        v = prop.get(key) if isinstance(prop, dict) else None
+        if isinstance(v, (int, float)):
+            extras["projection"] = float(v)
+            break
+
     return NormalizedMetrics(
         sport=sport,
         tier=target_tier,

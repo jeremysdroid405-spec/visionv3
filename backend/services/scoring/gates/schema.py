@@ -26,6 +26,7 @@ CANONICAL_GATE_TYPES = (
     "vision_score_gate",     # vision_score >= min (optional per-tp_source floors)
     "market_trap_gate",      # reject mid-odds weak signals (pricing trap)
     "market_structure_gate", # reject when all listed structural conditions match
+    "direction_gate",        # side-scoped: e.g. OVER requires projection >= line
 )
 
 
@@ -56,6 +57,7 @@ class ReasonCode:
     VISION_SCORE_FAIL = "gate_vision_score_fail"
     MARKET_TRAP_FAIL = "gate_market_trap_fail"
     MARKET_STRUCTURE_FAIL = "gate_market_structure_fail"
+    DIRECTION_FAIL = "gate_direction_fail"
 
     _PER_GATE_FAIL: Dict[str, str] = {
         "coverage_gate": COVERAGE_FAIL,
@@ -69,6 +71,7 @@ class ReasonCode:
         "vision_score_gate": VISION_SCORE_FAIL,
         "market_trap_gate": MARKET_TRAP_FAIL,
         "market_structure_gate": MARKET_STRUCTURE_FAIL,
+        "direction_gate": DIRECTION_FAIL,
     }
 
     @classmethod

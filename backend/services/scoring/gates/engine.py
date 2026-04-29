@@ -398,6 +398,55 @@ class UniversalGateEngine:
             reason_code=None if passed else ReasonCode.MARKET_STRUCTURE_FAIL,
         )
 
+    @staticmethod
+    def _eval_direction(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
+        """Direction-consistency gate (currently NBA FL OVER only).
+
+        Config:
+            {"applies_to_sides": ["OVER"],
+             "min_projection_minus_line": 0.0}
+
+        For OVER picks: requires `projection >= line` (i.e. the model
+        agrees with the OVER direction). For UNDER picks the gate
+        passes (rule does not apply unless explicitly added to
+        `applies_to_sides`).
+
+        `projection` is read from `metrics.extras['projection']` —
+        adapter pipes it through metrics_builder.
+        """
+        applies = {s.upper() for s in cfg.get("applies_to_sides", ["OVER"])}
+        side_uc = (m.side or "").upper()
+        if side_uc not in applies:
+            return GateDetail(
+                gate_type="direction_gate", threshold=cfg,
+                actual={"side": side_uc}, passed=True, comparator="==",
+                reason_code=None,
+                note="direction_gate_skipped_side_out_of_scope",
+            )
+        line = _py(m.line)
+        proj = None
+        if m.extras and isinstance(m.extras.get("projection"), (int, float)):
+            proj = float(m.extras["projection"])
+        if line is None or proj is None:
+            return GateDetail(
+                gate_type="direction_gate", threshold=cfg,
+                actual={"projection": proj, "line": line},
+                passed=False, comparator=">=",
+                reason_code=ReasonCode.DIRECTION_FAIL,
+                note="direction_gate_missing_inputs",
+            )
+        min_diff = float(cfg.get("min_projection_minus_line", 0.0))
+        diff = proj - line
+        passed = bool(diff >= min_diff)
+        return GateDetail(
+            gate_type="direction_gate", threshold=cfg,
+            actual={"projection": round(proj, 4),
+                    "line": line, "diff": round(diff, 4)},
+            passed=passed, comparator=">=",
+            reason_code=None if passed else ReasonCode.DIRECTION_FAIL,
+            note=f"direction_check_{side_uc}",
+        )
+
     _GATE_DISPATCH = {
         "coverage_gate":         _eval_coverage,
         "hit_rate_gate":         _eval_hit_rate,
@@ -410,6 +459,7 @@ class UniversalGateEngine:
         "vision_score_gate":     _eval_vision_score,
         "market_trap_gate":      _eval_market_trap,
         "market_structure_gate": _eval_market_structure,
+        "direction_gate":        _eval_direction,
     }
 
     # ------------------------------------------------------------------
@@ -514,6 +564,25 @@ class UniversalGateEngine:
                     metrics, details, passed_gates, failed_gates, override_cfg,
                 )
 
+        # ── Front-Lines OVER Override Pass (NBA-only opt-in) ─────────
+        # Runs ONLY when the active config includes a
+        # `__front_lines_over_overrides__` block, the gate eval
+        # failed, and metrics.side == "OVER". Rescues SPECIFIC
+        # tp_gate / cv_gate failures per the 2026-04-29 spec.
+        # NEVER touches market_structure_gate / direction_gate /
+        # hit_rate_gate / vision_score_gate / coverage_gate /
+        # edge_gate.
+        if not overall_passed and (metrics.side or "").upper() == "OVER":
+            fl_over_cfg = cfg.get("__front_lines_over_overrides__")
+            if fl_over_cfg:
+                from .overrides import apply_front_lines_over_overrides
+                (details, passed_gates, failed_gates,
+                 overall_passed, fl_applied) = apply_front_lines_over_overrides(
+                    metrics, details, passed_gates, failed_gates, fl_over_cfg,
+                )
+                if fl_applied is not None:
+                    applied_override = fl_applied
+
         if overall_passed:
             primary_reason = ReasonCode.GATES_PASSED
         else:
@@ -534,12 +603,21 @@ class UniversalGateEngine:
         )
         # Stamp the override audit trail (None if no rule matched).
         if applied_override is not None:
+            # `applied_override` is the rule name. Safe-Haven rules
+            # are returned bare (e.g. "elite_vision"); FL-OVER rules
+            # are namespaced (e.g. "fl_over:threes_tp_relax"). We
+            # surface both shapes verbatim so existing safe-haven
+            # tests keep their bare-name contract.
+            if str(applied_override).startswith("fl_over:"):
+                note_prefix = "front_lines_over_override"
+            else:
+                note_prefix = "safe_haven_override"
             result.gate_details["__override_applied__"] = GateDetail(
                 gate_type="__override_applied__",
                 threshold={"name": applied_override},
                 actual=None, passed=True, comparator="==",
                 reason_code=None,
-                note=f"safe_haven_override:{applied_override}",
+                note=f"{note_prefix}:{applied_override}",
             )
         return result
 

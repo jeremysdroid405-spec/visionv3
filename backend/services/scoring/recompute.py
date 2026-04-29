@@ -378,6 +378,15 @@ async def recompute_sport(
                 # Authoritative direction for side-aware gate paths — placed
                 # AFTER the raw_prop splat so nothing can shadow it.
                 "recommendation": ctx.recommendation,
+                # Projection / sigma — propagated from ScoringContext so the
+                # gate engine's `direction_gate` and Front-Lines OVER
+                # override layer can read them at first-pass time. The
+                # adapter computes these AFTER the live-prop snapshot so
+                # they aren't on `raw_prop` yet.
+                "model_projection": getattr(ctx, "model_projection", None),
+                "vk2_projection":   getattr(ctx, "vk2_projection",   None),
+                "model_sigma":      getattr(ctx, "model_sigma",      None),
+                "vk2_sigma":        getattr(ctx, "vk2_sigma",        None),
             },
             p_model=ctx.p_model,
             cv=ctx.cv,

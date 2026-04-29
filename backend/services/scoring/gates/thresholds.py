@@ -173,6 +173,42 @@ _NBA_FRONT_LINES_BASE = {
     "tp_gate":       {"min": 50.0, "under_floor": 65.0},
     "cv_gate":       {"max": 0.75},
     "edge_gate":     {"min": 5.0},
+    # ── Direction-consistency (NBA FL OVER only, 2026-04-29) ──────
+    # OVER picks must have projection >= line. UNDER picks bypass
+    # the gate (`applies_to_sides` is OVER-only).
+    "direction_gate": {
+        "applies_to_sides":            ["OVER"],
+        "min_projection_minus_line":   0.0,
+    },
+    # ── NBA Front Lines OVER conditional override layer ───────────
+    # Spec: see services/scoring/gates/overrides.py docstring.
+    # Rescues SPECIFIC tp_gate / cv_gate failures only — NEVER
+    # touches market_structure / direction / hit_rate / vision /
+    # coverage / edge gates. UNDER-side picks skip this entire block
+    # (engine guards on `metrics.side == "OVER"` before invoking).
+    "__front_lines_over_overrides__": {
+        # Rule 2 — 3PM TP override: HR > 75 AND projection >= line
+        # → tp floor relaxed to 45.
+        "threes_tp": {
+            "enabled":        True,
+            "min_hit_rate":   75.0,
+            "relax_tp_to":    45.0,
+        },
+        # Rule 3 — AST CV override: HR > 85 AND projection >= line
+        # → cv cap relaxed to 0.95.
+        "ast_cv": {
+            "enabled":        True,
+            "min_hit_rate":   85.0,
+            "relax_cv_to":    0.95,
+        },
+        # Rule 4 — PTS dominance: HR ≥ 75 AND L20/line ≥ 1.5 AND
+        # projection >= line → bypass TP / CV failures.
+        "pts_dominance": {
+            "enabled":                       True,
+            "min_hit_rate":                  75.0,
+            "min_l20_avg_to_line_ratio":     1.5,
+        },
+    },
 }
 _NBA_WAR_ZONE_BASE = {
     # Final War Zone gating spec (2026-04-24, native gate config).
