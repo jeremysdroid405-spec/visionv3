@@ -287,6 +287,7 @@ def _reconcile_in_memory(
     state: List[Dict[str, Any]],
     candidates: List[Dict[str, Any]],
     capacity: int,
+    rank_fn: Optional[Any] = None,
 ) -> Tuple[List[Dict[str, Any]], List[str], str]:
     """Pure-function reconciliation — easy to unit test.
 
@@ -297,12 +298,16 @@ def _reconcile_in_memory(
                       edge_pct) so its rank tuple is comparable.
         candidates  — fresh scored picks for this (sport, tier, side).
         capacity    — max picks for this side.
+        rank_fn     — optional alternative ranking function. Defaults
+                      to the production `rank_tuple` (v1 semantics).
+                      Shadow boards pass `rank_tuple_v2` here.
 
     Returns:
         ordered     — the new ordered slate (length ≤ capacity).
         evicted     — canonical_keys removed (for logging / counters).
         mode        — "fill" or "stable" or "noop".
     """
+    rank = rank_fn or rank_tuple
     cand_by_key: Dict[str, Dict[str, Any]] = {}
     for c in candidates:
         ck = c.get("canonical_key")
@@ -324,7 +329,7 @@ def _reconcile_in_memory(
 
     # 2. FILL MODE — board below capacity. Full re-rank allowed.
     if len(survivors) < capacity:
-        ranked = sorted(candidates, key=rank_tuple)
+        ranked = sorted(candidates, key=rank)
         ordered = ranked[:capacity]
         # Anything that USED to be on the board but isn't in `ordered`
         # is implicitly evicted — caller will mark inactive.
@@ -334,11 +339,11 @@ def _reconcile_in_memory(
     #    preserved. New candidates may insert ONLY if their rank tuple
     #    beats the current last pick.
     survivor_keys = {e["canonical_key"] for e in survivors}
-    last_tuple = rank_tuple(survivors[-1])
+    last_tuple = rank(survivors[-1])
     new_entrants = sorted(
         (c for c in candidates if c.get("canonical_key") not in survivor_keys
-         and rank_tuple(c) < last_tuple),
-        key=rank_tuple,
+         and rank(c) < last_tuple),
+        key=rank,
     )
 
     if not new_entrants:
@@ -352,11 +357,11 @@ def _reconcile_in_memory(
     # relative order is preserved; entrant slots in by rank tuple.
     ordered = list(survivors)
     for cand in new_entrants:
-        cand_t = rank_tuple(cand)
+        cand_t = rank(cand)
         # Find smallest k such that cand_t < ordered[k]'s rank tuple.
         insert_at = None
         for k, existing in enumerate(ordered):
-            if cand_t < rank_tuple(existing):
+            if cand_t < rank(existing):
                 insert_at = k
                 break
         if insert_at is None:

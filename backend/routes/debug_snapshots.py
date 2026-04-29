@@ -226,3 +226,220 @@ async def safe_haven_rejects(
             from services.sync_lock import release
             for h in handles:
                 await release(_db, h)
+
+
+# ===================================================================== #
+# Shadow Board (Vision v2) — read-only comparison vs production         #
+# ===================================================================== #
+def _is_under_side(rec: Optional[str]) -> bool:
+    return "UNDER" in (rec or "").upper()
+
+
+def _bucket_from_state(rows: List[Dict[str, Any]],
+                       cfg) -> Dict[str, List[str]]:
+    """Group canonical_keys by side for a given board state slice."""
+    out: Dict[str, List[str]] = {"OVER": [], "UNDER": [], "combined": []}
+    for r in rows:
+        side = r.get("side")
+        if side in (None, "combined"):
+            out["combined"].append(r.get("canonical_key"))
+        elif "UNDER" in (side or ""):
+            out["UNDER"].append(r.get("canonical_key"))
+        else:
+            out["OVER"].append(r.get("canonical_key"))
+    return out
+
+
+@router.get("/shadow_board/compare")
+async def shadow_board_compare(
+    response: Response,
+    sport: str = Query("nba", description="Sport (only nba supported today)"),
+    x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+):
+    """Compare production `board_state` vs shadow `board_state_shadow`
+    (v2 ranking) per (tier, side). Read-only; never writes.
+
+    Returns per-bucket:
+        prod_keys, shadow_keys, overlap_pct,
+        added_by_v2 (in shadow but not prod),
+        removed_by_v2 (in prod but not shadow),
+        prod_metrics  : {avg p, avg edge, avg align, wrong_side_count}
+        shadow_metrics: same for shadow board.
+    """
+    _require_admin_debug_token(x_admin_token)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    if _db is None:
+        raise HTTPException(status_code=500, detail="db not initialized")
+
+    sport = sport.lower()
+    if sport != "nba":
+        raise HTTPException(status_code=400,
+                            detail="shadow currently NBA-only")
+
+    from services.board.publisher import (
+        TIER_CONFIG, get_published_board,
+    )
+    from services.board.shadow_publisher import get_shadow_board
+
+    # Pull score docs once for metric joining.
+    score_docs: Dict[str, Dict[str, Any]] = {}
+    cursor = _db[f"{sport}_prop_scores"].find(
+        {"version_tag": "final-nba-rt"},
+        {"_id": 0, "canonical_key": 1, "player_name": 1, "stat_type": 1,
+         "line": 1, "recommendation": 1, "tier": 1, "p_true_active": 1,
+         "edge_pct": 1, "tp": 1, "vision_score": 1, "vision_score_v2": 1,
+         "vision_direction_alignment": 1},
+    )
+    async for d in cursor:
+        ck = d.get("canonical_key")
+        if ck:
+            score_docs[ck] = d
+
+    def _agg(keys: List[str]) -> Dict[str, Any]:
+        ds = [score_docs.get(k) for k in keys if score_docs.get(k)]
+        if not ds:
+            return {"n": 0}
+        ps = [d.get("p_true_active") for d in ds if isinstance(d.get("p_true_active"), (int, float))]
+        es = [d.get("edge_pct") for d in ds if isinstance(d.get("edge_pct"), (int, float))]
+        als = [d.get("vision_direction_alignment") for d in ds
+               if isinstance(d.get("vision_direction_alignment"), (int, float))]
+        wrong = sum(1 for d in ds
+                    if isinstance(d.get("vision_direction_alignment"), (int, float))
+                    and d["vision_direction_alignment"] < 0)
+        return {
+            "n":                   len(ds),
+            "avg_p_true_active":   round(sum(ps) / len(ps), 4) if ps else None,
+            "avg_edge_pct":        round(sum(es) / len(es), 4) if es else None,
+            "avg_direction_alignment":
+                                  round(sum(als) / len(als), 4) if als else None,
+            "wrong_side_count":    wrong,
+        }
+
+    out: Dict[str, Any] = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "sport":        sport,
+        "version_tag":  DEFAULT_VERSION_TAG[sport],
+        "rank_tuple_prod":   ["ranking_score DESC", "vision_score DESC",
+                              "edge_pct DESC", "canonical_key ASC"],
+        "rank_tuple_shadow": ["ranking_score DESC", "vision_score_v2 DESC",
+                              "edge_pct DESC", "canonical_key ASC"],
+        "buckets": [],
+    }
+
+    overall_top20_diffs: List[Dict[str, Any]] = []
+
+    for tier, cfg in TIER_CONFIG.items():
+        sides = ("OVER", "UNDER") if cfg["split_by_side"] else (None,)
+        for side in sides:
+            prod = await get_published_board(_db, sport, tier, side=side)
+            shadow = await get_shadow_board(_db, sport, tier, side=side)
+            prod_keys = [r.get("canonical_key") for r in prod]
+            shadow_keys = [r.get("canonical_key") for r in shadow]
+
+            common = set(prod_keys) & set(shadow_keys)
+            denom = max(len(prod_keys), len(shadow_keys), 1)
+            overlap_pct = round(len(common) / denom * 100.0, 1)
+
+            added = [k for k in shadow_keys if k not in set(prod_keys)]
+            removed = [k for k in prod_keys if k not in set(shadow_keys)]
+
+            # Rank-order diff: same membership, different positions.
+            prod_rank_by_key = {ck: i + 1 for i, ck in enumerate(prod_keys)}
+            shadow_rank_by_key = {ck: i + 1 for i, ck in enumerate(shadow_keys)}
+            rank_changes: List[Dict[str, Any]] = []
+            for ck in common:
+                p = prod_rank_by_key.get(ck)
+                s = shadow_rank_by_key.get(ck)
+                if p != s:
+                    d = score_docs.get(ck) or {}
+                    rank_changes.append({
+                        "canonical_key": ck,
+                        "player_name":   d.get("player_name"),
+                        "stat_type":     d.get("stat_type"),
+                        "line":          d.get("line"),
+                        "recommendation": d.get("recommendation"),
+                        "prod_rank":     p,
+                        "shadow_rank":   s,
+                        "delta":         (p - s) if (p and s) else None,
+                        "vision_score":     d.get("vision_score"),
+                        "vision_score_v2":  d.get("vision_score_v2"),
+                        "vision_direction_alignment":
+                                          d.get("vision_direction_alignment"),
+                    })
+            rank_changes.sort(key=lambda r: -abs(r.get("delta") or 0))
+
+            bucket = {
+                "tier":        tier,
+                "side":        side or "combined",
+                "capacity":    cfg["capacity_per_side"],
+                "prod_count":  len(prod_keys),
+                "shadow_count": len(shadow_keys),
+                "overlap_pct": overlap_pct,
+                "rank_changes_count": len(rank_changes),
+                "rank_changes": rank_changes,
+                "added_by_v2": [
+                    {
+                        "canonical_key":          ck,
+                        "player_name":           (score_docs.get(ck) or {}).get("player_name"),
+                        "stat_type":             (score_docs.get(ck) or {}).get("stat_type"),
+                        "line":                  (score_docs.get(ck) or {}).get("line"),
+                        "side":                  (score_docs.get(ck) or {}).get("recommendation"),
+                        "vision_score":          (score_docs.get(ck) or {}).get("vision_score"),
+                        "vision_score_v2":       (score_docs.get(ck) or {}).get("vision_score_v2"),
+                        "vision_direction_alignment":
+                                                (score_docs.get(ck) or {}).get("vision_direction_alignment"),
+                    }
+                    for ck in added[:50]
+                ],
+                "removed_by_v2": [
+                    {
+                        "canonical_key":          ck,
+                        "player_name":           (score_docs.get(ck) or {}).get("player_name"),
+                        "stat_type":             (score_docs.get(ck) or {}).get("stat_type"),
+                        "line":                  (score_docs.get(ck) or {}).get("line"),
+                        "side":                  (score_docs.get(ck) or {}).get("recommendation"),
+                        "vision_score":          (score_docs.get(ck) or {}).get("vision_score"),
+                        "vision_score_v2":       (score_docs.get(ck) or {}).get("vision_score_v2"),
+                        "vision_direction_alignment":
+                                                (score_docs.get(ck) or {}).get("vision_direction_alignment"),
+                    }
+                    for ck in removed[:50]
+                ],
+                "prod_metrics":   _agg(prod_keys),
+                "shadow_metrics": _agg(shadow_keys),
+            }
+            out["buckets"].append(bucket)
+
+            # Top differences for the headline summary.
+            for ck in added:
+                d = score_docs.get(ck) or {}
+                overall_top20_diffs.append({
+                    "kind": "added_by_v2",
+                    "tier": tier, "side": side or "combined",
+                    **{k: d.get(k) for k in
+                       ("player_name", "stat_type", "line", "recommendation",
+                        "vision_score", "vision_score_v2",
+                        "vision_direction_alignment", "edge_pct",
+                        "p_true_active")},
+                })
+            for ck in removed:
+                d = score_docs.get(ck) or {}
+                overall_top20_diffs.append({
+                    "kind": "removed_by_v2",
+                    "tier": tier, "side": side or "combined",
+                    **{k: d.get(k) for k in
+                       ("player_name", "stat_type", "line", "recommendation",
+                        "vision_score", "vision_score_v2",
+                        "vision_direction_alignment", "edge_pct",
+                        "p_true_active")},
+                })
+
+    # Sort top differences by absolute v2 - v1 vision delta when both exist.
+    def _delta(d):
+        v1 = d.get("vision_score") or 0
+        v2 = d.get("vision_score_v2") or 0
+        return -abs(v2 - v1)
+
+    overall_top20_diffs.sort(key=_delta)
+    out["top_20_differences"] = overall_top20_diffs[:20]
+    return out

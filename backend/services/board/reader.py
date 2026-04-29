@@ -146,6 +146,23 @@ async def get_board(
                 if doc is not None:
                     ordered.append(doc)
             if ordered:
+                # ── Shadow Board (Vision v2 ranking) ──────────────────
+                # NBA-only, fire-and-forget, writes to DEDICATED
+                # `board_state_shadow` collection. Does NOT influence
+                # the returned `ordered` list. Wrapped in try/except
+                # so any shadow failure can never 5xx the production
+                # board read.
+                try:
+                    if sport == "nba":
+                        from services.board.shadow_publisher import reconcile_shadow
+                        await reconcile_shadow(db, sport, tier, deduped)
+                except Exception as _sh_err:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "[SHADOW_BOARD] reconcile failed sport=%s tier=%s: %s",
+                        sport, tier, _sh_err,
+                    )
+
                 # `cap` honors the requested limit (route may pass any
                 # value 1..50). For Front Lines: caller passes the
                 # combined cap (e.g. 20 to see both sides, 10 to see

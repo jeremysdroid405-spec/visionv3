@@ -1503,6 +1503,9 @@ async def startup_event():
         # Universal Stable Board Publisher (2026-04-29). Idempotent.
         from services.board.publisher import ensure_indexes as _bp_ensure
         await _bp_ensure(db)
+        # Vision v2 SHADOW Board Publisher (2026-04-29). Idempotent.
+        from services.board.shadow_publisher import ensure_indexes as _shp_ensure
+        await _shp_ensure(db)
         # 2026-04-29 — admin-gated debug snapshots (tuning-only, NOT
         # consumed by the live dashboard). Holds short locks per-call.
         from routes import debug_snapshots as _debug_snapshots
