@@ -211,43 +211,36 @@ _NBA_FRONT_LINES_BASE = {
     },
 }
 _NBA_WAR_ZONE_BASE = {
-    # Final War Zone gating spec (2026-04-24, native gate config).
-    # All logic lives here — the UniversalGateEngine evaluates these
-    # exactly like any other tier. Re-evaluated in `recompute.py`
-    # AFTER slate-level `vision_score` normalization.
+    # War Zone gate config refactor (2026-04-29, per user spec).
+    # Uses ONLY the universal gate types — no WZ-only logic.
+    # REMOVED: market_trap_gate, tp_source vision branching, stat-family
+    # cv caps map.
+    #
+    # OVER rules (UNDER side gates auto-skip via direction_gate config):
+    #   • direction_gate  : projection >= line × 1.05 (OVER only)
+    #   • hit_rate_gate   : HR >= 55  (universal)
+    #   • cv_gate         : CV <= 0.75 (flat)
+    #   • vision_score_gate : v2 >= 60 (uses extras['vision_score_v2'])
+    #
+    # Conditional expansion (HR > 70 → CV cap 1.00) lives in the
+    # `__war_zone_overrides__` block — implemented by the universal
+    # override layer so the gate config stays declarative.
     "coverage_gate": {"min_books": 1},
-    # Stat-aware CV caps (HARD reject). Unknown stat_family fails
-    # closed (no `default` / `max` on purpose).
-    "cv_gate": {
-        "caps": {
-            "pts":        0.45,
-            "pra":        0.45,
-            "reb":        0.55,
-            "ast":        0.55,
-            "threes":     0.75,
-            "pts_ast":    0.45,
-            "pts_reb":    0.45,
-            "reb_ast":    0.55,
-            "stl":        0.75,
-            "blk":        0.75,
-            "turnovers":  0.75,
-        },
+    "direction_gate": {
+        "applies_to_sides":              ["OVER"],
+        "min_projection_to_line_ratio":  1.05,
     },
-    # Vision-score floor, branched on tp_source (single gate, OR
-    # semantics for `one_sided`):
-    #   devig      → vs >= 85
-    #   one_sided  → vs >= 90 OR hr >= 60
-    # Missing tp_source fails closed.
-    "vision_score_gate": {
-        "by_tp_source": {
-            "devig":     {"min_vs": 85.0},
-            "one_sided": {"min_vs": 90.0, "or_min_hr": 60.0},
+    "hit_rate_gate":     {"min": 55.0, "window": "default"},
+    "cv_gate":           {"max": 0.75},
+    "vision_score_gate": {"min": 60.0, "use_v2": True},
+    "__war_zone_overrides__": {
+        # HR-expansion rule: HR > 70 → cv cap relaxed to 1.00.
+        # Only `cv_gate` failures may be rescued by this layer.
+        "hr_expansion": {
+            "enabled":         True,
+            "min_hit_rate":    70.0,
+            "relax_cv_to":     1.00,
         },
-    },
-    # Pricing-trap: reject mid-odds/mid-signal props.
-    "market_trap_gate": {
-        "odds_low": 150, "odds_high": 220,
-        "hr_max": 60.0, "vs_max": 90.0,
     },
 }
 

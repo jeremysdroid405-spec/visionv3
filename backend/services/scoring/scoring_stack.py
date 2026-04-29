@@ -833,6 +833,55 @@ def compute_scoring_stack(
         cv=cv, hit_rate=hit_rate, books_available_count=books_available_count,
         fd_layer=fd_layer, sport=sport,
     )
+
+    # Vision v2 — computed BEFORE compute_tier so the gate engine
+    # can read it via extras (NBA WZ vision_score_gate uses
+    # `use_v2: True`). Computing here is read-only with respect to
+    # tiering; the result is passed into compute_tier through the
+    # prop dict and stamped on the response below.
+    v2: Dict[str, Any] = {}
+    try:
+        from services.scoring.vision_v2 import compute_vision_v2
+        side_v2 = (
+            (prop.get("recommendation") or prop.get("direction") or "")
+            .upper()
+        )
+        line_v2 = prop.get("line")
+        sigma_v2 = (
+            prop.get("distribution_sigma")
+            or prop.get("model_sigma")
+            or prop.get("sigma")
+        )
+        projection_v2 = (
+            prop.get("vk2_projection")
+            or prop.get("model_projection")
+            or prop.get("mu_after_availability_guard")
+            or prop.get("mu_recency_blend_l20")
+        )
+        v2 = compute_vision_v2(
+            side=side_v2, projection=projection_v2,
+            line=line_v2, sigma=sigma_v2,
+            p_true_active=None,  # not needed for v2 score itself
+            tp=tp, edge_pct=edge_pct, cv=cv,
+            hit_rate=hit_rate,
+            hit_rate_sample_size=prop.get("hit_rate_sample_size"),
+            stat_family=prop.get("stat_family"),
+            prop_type=prop.get("pp_multiplier_label") or prop.get("prop_type"),
+            books_count=books_available_count,
+            tp_books_used=prop.get("tp_books_used"),
+            tp_source=prop.get("tp_source"),
+            injury_context={"usage_vacuum_factor":
+                            prop.get("usage_vacuum_factor")},
+            usage_spike=prop.get("usage_spike"),
+            matchup_strength=prop.get("matchup_strength"),
+            pace_factor=prop.get("pace_factor"),
+        )
+    except Exception as _v2_err:  # pragma: no cover
+        logger.warning("[VISION_V2] skipped: %s", _v2_err)
+        v2 = {}
+    if v2.get("vision_score_v2") is not None:
+        prop["vision_score_v2"] = v2["vision_score_v2"]
+
     t = compute_tier(
         prop=prop,
         cv=cv, hit_rate=hit_rate, edge_pct=edge_pct, tp=tp, ceiling_rate=ceiling_rate,
@@ -847,53 +896,5 @@ def compute_scoring_stack(
         p_model=p_model, prop=prop,
         pp_layer=pp_layer, dk_layer=dk_layer, mgm_layer=mgm_layer,
     )
-
-    # Vision v2 — directional, MLR-driven, side-aware. Always computed
-    # so backtests can read it; consumers gate on `VISION_V2_ENABLED`
-    # before using it for ranking / display. Never overwrites any v1
-    # field. NO change to projection / σ / TP / edge / gates.
-    try:
-        from services.scoring.vision_v2 import compute_vision_v2
-        side = (
-            (prop.get("recommendation") or prop.get("direction") or
-             t.get("recommendation") or "").upper()
-        )
-        line = prop.get("line")
-        sigma = (
-            prop.get("distribution_sigma")
-            or prop.get("model_sigma")
-            or prop.get("sigma")
-        )
-        projection = (
-            prop.get("vk2_projection")
-            or prop.get("model_projection")
-            or prop.get("mu_after_availability_guard")
-            or prop.get("mu_recency_blend_l20")
-        )
-        v2 = compute_vision_v2(
-            side=side,
-            projection=projection,
-            line=line,
-            sigma=sigma,
-            p_true_active=t.get("p_true_active"),
-            tp=tp,
-            edge_pct=edge_pct,
-            cv=cv,
-            hit_rate=hit_rate,
-            hit_rate_sample_size=prop.get("hit_rate_sample_size"),
-            stat_family=t.get("stat_family") or prop.get("stat_family"),
-            prop_type=prop.get("pp_multiplier_label") or prop.get("prop_type"),
-            books_count=books_available_count,
-            tp_books_used=prop.get("tp_books_used"),
-            tp_source=prop.get("tp_source"),
-            injury_context={"usage_vacuum_factor":
-                            prop.get("usage_vacuum_factor")},
-            usage_spike=prop.get("usage_spike"),
-            matchup_strength=prop.get("matchup_strength"),
-            pace_factor=prop.get("pace_factor"),
-        )
-    except Exception as _v2_err:  # pragma: no cover
-        logger.warning("[VISION_V2] skipped: %s", _v2_err)
-        v2 = {}
 
     return {**vs, **t, **pp, **v2}

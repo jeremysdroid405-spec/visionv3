@@ -250,16 +250,46 @@ class UniversalGateEngine:
         """Vision-score floor with optional per-tp_source branching.
 
         Config shape:
-          {"min": 85.0}                          # flat floor
+          {"min": 85.0}                          # flat floor (v1)
+          {"min": 60.0, "use_v2": True}          # flat floor read from v2
           {"by_tp_source": {
               "devig":     {"min_vs": 85.0},
               "one_sided": {"min_vs": 90.0, "or_min_hr": 60.0},
-           }}                                    # branch on tp_source
+           }}                                    # branch on tp_source (v1 only)
 
         `or_min_hr` makes the branch pass if EITHER vs >= min_vs OR
         hr >= or_min_hr (single-gate OR semantics per spec).
         Missing tp_source / vision_score fails closed.
+
+        `use_v2`: when True, the gate reads `extras['vision_score_v2']`
+        instead of the v1 percentile field. v2 is computed in
+        `services/scoring/vision_v2.py` and piped through extras
+        by `metrics_builder`. This is opt-in per tier-config block;
+        every other caller continues to read the v1 value.
         """
+        if cfg.get("use_v2"):
+            v2 = None
+            if m.extras and isinstance(m.extras.get("vision_score_v2"),
+                                       (int, float)):
+                v2 = float(m.extras["vision_score_v2"])
+            min_vs = float(cfg.get("min", 0.0))
+            if v2 is None:
+                return GateDetail(
+                    gate_type="vision_score_gate",
+                    threshold={"min": min_vs, "use_v2": True},
+                    actual=None, passed=False, comparator=">=",
+                    reason_code=ReasonCode.VISION_SCORE_FAIL,
+                    note="vision_v2_unavailable",
+                )
+            passed = bool(v2 >= min_vs)
+            return GateDetail(
+                gate_type="vision_score_gate",
+                threshold={"min": min_vs, "use_v2": True},
+                actual=v2, passed=passed, comparator=">=",
+                reason_code=None if passed else ReasonCode.VISION_SCORE_FAIL,
+                note="vision_v2_floor",
+            )
+
         vs = _py(m.vision_score)
         tp_source = (m.tp_source or "").lower() or None
 
@@ -400,19 +430,16 @@ class UniversalGateEngine:
 
     @staticmethod
     def _eval_direction(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
-        """Direction-consistency gate (currently NBA FL OVER only).
+        """Direction-consistency gate (configurable per tier).
 
         Config:
             {"applies_to_sides": ["OVER"],
-             "min_projection_minus_line": 0.0}
+             "min_projection_minus_line": 0.0,        # FL: proj >= line
+             "min_projection_to_line_ratio": 1.0}     # WZ: proj >= line * 1.05
 
-        For OVER picks: requires `projection >= line` (i.e. the model
-        agrees with the OVER direction). For UNDER picks the gate
-        passes (rule does not apply unless explicitly added to
-        `applies_to_sides`).
-
-        `projection` is read from `metrics.extras['projection']` —
-        adapter pipes it through metrics_builder.
+        For sides not listed in `applies_to_sides` the gate auto-passes.
+        Either threshold key may be present (or both — both must hold).
+        Reads `projection` from `metrics.extras['projection']`.
         """
         applies = {s.upper() for s in cfg.get("applies_to_sides", ["OVER"])}
         side_uc = (m.side or "").upper()
@@ -435,13 +462,23 @@ class UniversalGateEngine:
                 reason_code=ReasonCode.DIRECTION_FAIL,
                 note="direction_gate_missing_inputs",
             )
-        min_diff = float(cfg.get("min_projection_minus_line", 0.0))
         diff = proj - line
-        passed = bool(diff >= min_diff)
+        ratio = (proj / line) if line not in (0, 0.0) else None
+
+        passed = True
+        if "min_projection_minus_line" in cfg:
+            min_diff = float(cfg["min_projection_minus_line"])
+            if diff < min_diff:
+                passed = False
+        if "min_projection_to_line_ratio" in cfg:
+            min_ratio = float(cfg["min_projection_to_line_ratio"])
+            if ratio is None or ratio < min_ratio:
+                passed = False
         return GateDetail(
             gate_type="direction_gate", threshold=cfg,
             actual={"projection": round(proj, 4),
-                    "line": line, "diff": round(diff, 4)},
+                    "line": line, "diff": round(diff, 4),
+                    "ratio": round(ratio, 4) if ratio is not None else None},
             passed=passed, comparator=">=",
             reason_code=None if passed else ReasonCode.DIRECTION_FAIL,
             note=f"direction_check_{side_uc}",
@@ -583,6 +620,22 @@ class UniversalGateEngine:
                 if fl_applied is not None:
                     applied_override = fl_applied
 
+        # ── War Zone Override Pass (NBA-only opt-in) ─────────────────
+        # Runs ONLY when the active config includes a
+        # `__war_zone_overrides__` block AND the gate eval failed.
+        # Rescues `cv_gate` failures when HR > 70 and CV <= 1.00.
+        # NEVER touches any other gate.
+        if not overall_passed:
+            wz_cfg = cfg.get("__war_zone_overrides__")
+            if wz_cfg:
+                from .overrides import apply_war_zone_overrides
+                (details, passed_gates, failed_gates,
+                 overall_passed, wz_applied) = apply_war_zone_overrides(
+                    metrics, details, passed_gates, failed_gates, wz_cfg,
+                )
+                if wz_applied is not None:
+                    applied_override = wz_applied
+
         if overall_passed:
             primary_reason = ReasonCode.GATES_PASSED
         else:
@@ -605,11 +658,13 @@ class UniversalGateEngine:
         if applied_override is not None:
             # `applied_override` is the rule name. Safe-Haven rules
             # are returned bare (e.g. "elite_vision"); FL-OVER rules
-            # are namespaced (e.g. "fl_over:threes_tp_relax"). We
-            # surface both shapes verbatim so existing safe-haven
-            # tests keep their bare-name contract.
+            # are namespaced ("fl_over:..."); WZ rules are namespaced
+            # ("war_zone:..."). We surface all shapes verbatim so
+            # existing safe-haven tests keep their bare-name contract.
             if str(applied_override).startswith("fl_over:"):
                 note_prefix = "front_lines_over_override"
+            elif str(applied_override).startswith("war_zone:"):
+                note_prefix = "war_zone_override"
             else:
                 note_prefix = "safe_haven_override"
             result.gate_details["__override_applied__"] = GateDetail(

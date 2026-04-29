@@ -156,7 +156,67 @@ def apply_safe_haven_overrides(
 __all__ = [
     "apply_safe_haven_overrides",
     "apply_front_lines_over_overrides",
+    "apply_war_zone_overrides",
 ]
+
+
+# ============================================================================
+# NBA War Zone Override Layer (HR-expansion CV relax)
+# ============================================================================
+# Spec (user, 2026-04-29):
+#
+#   War Zone uses only the universal gate types. The conditional
+#   "expansion" rule lives here so the gate config stays declarative:
+#
+#     If HR > 70  →  cv cap relaxed to 1.00.
+#
+#   Hard rules:
+#     • Only `cv_gate` failures are rescuable. Any other gate failure
+#       (direction_gate / hit_rate_gate / vision_score_gate /
+#       market_structure_gate / coverage_gate / edge_gate) is a hard
+#       reject.
+#     • Side-agnostic: applies to whichever side a WZ-routed pick
+#       is on. Today's NBA slate has no UNDER picks at +150 or
+#       higher, so it's effectively OVER-only.
+# ============================================================================
+
+_WAR_ZONE_OVERRIDABLE_GATES = frozenset({"cv_gate"})
+
+
+def apply_war_zone_overrides(
+    metrics: NormalizedMetrics,
+    details: Dict[str, GateDetail],
+    passed: List[str],
+    failed: List[str],
+    cfg: Dict[str, Any],
+) -> Tuple[Dict[str, GateDetail], List[str], List[str], bool, Optional[str]]:
+    """NBA War Zone HR-expansion override.
+
+    Returns possibly-rewritten details / passed / failed lists, plus
+    the new overall_passed flag and the rule applied (if any).
+    """
+    if not failed:
+        return details, passed, failed, True, None
+
+    # If anything outside cv_gate failed, hard reject.
+    if not set(failed).issubset(_WAR_ZONE_OVERRIDABLE_GATES):
+        return details, passed, failed, False, None
+
+    hr = _hr(metrics)
+    cv = metrics.cv
+
+    rule = cfg.get("hr_expansion") or {}
+    if rule.get("enabled", True) and "cv_gate" in failed:
+        min_hr = float(rule.get("min_hit_rate", 70.0))
+        relax_to = float(rule.get("relax_cv_to", 1.00))
+        if (hr is not None and hr > min_hr
+                and cv is not None and cv <= relax_to):
+            _mark_passed(details, passed, failed, "cv_gate",
+                         f"war_zone_override:hr_expansion "
+                         f"(hr>{min_hr},cv<={relax_to})")
+            return details, passed, failed, len(failed) == 0, "war_zone:hr_expansion"
+
+    return details, passed, failed, len(failed) == 0, None
 
 
 # ============================================================================

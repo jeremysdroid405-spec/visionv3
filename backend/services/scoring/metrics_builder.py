@@ -79,6 +79,13 @@ def build_metrics_from_context(
             extras["projection"] = float(v)
             break
 
+    # Pipe `vision_score_v2` so the gate engine's vision_score_gate
+    # may be configured with `use_v2: True` (NBA War Zone). v1 is
+    # left untouched on the metrics record. Read-only.
+    v2 = prop.get("vision_score_v2") if isinstance(prop, dict) else None
+    if isinstance(v2, (int, float)):
+        extras["vision_score_v2"] = float(v2)
+
     return NormalizedMetrics(
         sport=sport,
         tier=target_tier,
