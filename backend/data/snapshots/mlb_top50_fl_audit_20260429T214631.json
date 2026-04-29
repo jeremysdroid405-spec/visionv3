@@ -1,0 +1,3237 @@
+{
+  "generated_at": "2026-04-29T21:46:31.008922+00:00",
+  "sport": "mlb",
+  "version_tag": "final-mlb-rt",
+  "filter": {
+    "routed_tier": "front_lines"
+  },
+  "sort": [
+    "edge_pct DESC",
+    "vision_score DESC",
+    "canonical_key ASC"
+  ],
+  "frozen_fl_thresholds": {
+    "hits": {
+      "cv_max": 0.85,
+      "hr_min": 65.0,
+      "edge_min": 10.0,
+      "tp_min": 58.0
+    },
+    "total_bases": {
+      "cv_max": 0.95,
+      "hr_min": 60.0,
+      "edge_min": 15.0,
+      "tp_min": 58.0
+    },
+    "hits_runs_rbis": {
+      "cv_max": 0.75,
+      "hr_min": 65.0,
+      "edge_min": 12.0,
+      "tp_min": 58.0
+    },
+    "rbis": {
+      "cv_max": 0.75,
+      "hr_min": 65.0,
+      "edge_min": 12.0,
+      "tp_min": 58.0
+    },
+    "runs": {
+      "cv_max": 0.75,
+      "hr_min": 65.0,
+      "edge_min": 12.0,
+      "tp_min": 58.0
+    },
+    "pitching_outs": {
+      "cv_max": 0.5,
+      "hr_min": 70.0,
+      "edge_min": 6.0,
+      "tp_min": 70.0
+    },
+    "pitcher_strikeouts": {
+      "cv_max": 0.6,
+      "hr_min": 65.0,
+      "edge_min": 10.0,
+      "tp_min": 65.0
+    },
+    "earned_runs": {
+      "cv_max": 0.55,
+      "hr_min": 65.0,
+      "edge_min": 8.0,
+      "tp_min": 65.0
+    },
+    "_default": {
+      "cv_max": 0.85,
+      "hr_min": 65.0,
+      "edge_min": 10.0,
+      "tp_min": 58.0
+    }
+  },
+  "totals": {
+    "fl_routed_over": 727,
+    "fl_routed_under": 0,
+    "over_would_pass_frozen_fl": 25,
+    "under_would_pass_frozen_fl": 0
+  },
+  "fail_gate_distribution_full_pool": {
+    "over": {
+      "cv": 607,
+      "tp": 316,
+      "hr": 522,
+      "edge": 547
+    },
+    "under": {}
+  },
+  "top_50_over": [
+    {
+      "rank": 1,
+      "player": "Jakob Marsee",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 140,
+      "ref_book": "dk",
+      "edge_pct": 38.0,
+      "tp": 41.7,
+      "fair_prob": 0.4167,
+      "p_model_pct": null,
+      "cv": 1.002,
+      "hit_rate": 65.0,
+      "l20_n": 20,
+      "vision": 97.7,
+      "projection": 2.405,
+      "model_sigma": 1.7127,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.002,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 65.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 38.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 2,
+      "player": "James Wood",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 143.2,
+      "ref_book": "consensus",
+      "edge_pct": 35.9,
+      "tp": 40.0,
+      "fair_prob": 0.4112,
+      "p_model_pct": null,
+      "cv": 0.951,
+      "hit_rate": 55.0,
+      "l20_n": 20,
+      "vision": 96.5,
+      "projection": 3.08,
+      "model_sigma": 2.1499,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.951,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 55.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 35.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 3,
+      "player": "Alex Freeland",
+      "team": null,
+      "opp": null,
+      "stat": "Batter Strikeouts",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 140,
+      "ref_book": "dk",
+      "edge_pct": 35.8,
+      "tp": 41.7,
+      "fair_prob": 0.4167,
+      "p_model_pct": null,
+      "cv": 0.918,
+      "hit_rate": 65.0,
+      "l20_n": 20,
+      "vision": 97.2,
+      "projection": 1.64,
+      "model_sigma": 0.9428,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.918,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 65.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 35.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 4,
+      "player": "Drake Baldwin",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 133.7,
+      "ref_book": "consensus",
+      "edge_pct": 35.5,
+      "tp": 41.9,
+      "fair_prob": 0.4279,
+      "p_model_pct": null,
+      "cv": 0.846,
+      "hit_rate": 50.0,
+      "l20_n": 20,
+      "vision": 97.1,
+      "projection": 3.118,
+      "model_sigma": 1.767,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.846,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 35.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.9,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 5,
+      "player": "Fernando Tatis Jr.",
+      "team": null,
+      "opp": null,
+      "stat": "Batter Strikeouts",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 105,
+      "ref_book": "dk",
+      "edge_pct": 33.3,
+      "tp": 48.8,
+      "fair_prob": 0.4878,
+      "p_model_pct": null,
+      "cv": 0.845,
+      "hit_rate": 70.0,
+      "l20_n": 20,
+      "vision": 97.3,
+      "projection": 2.23,
+      "model_sigma": 0.9487,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.845,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 70.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 33.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 48.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 6,
+      "player": "JJ Bleday",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 131.3,
+      "ref_book": "consensus",
+      "edge_pct": 32.4,
+      "tp": 42.4,
+      "fair_prob": 0.4323,
+      "p_model_pct": null,
+      "cv": 0.966,
+      "hit_rate": 50.0,
+      "l20_n": 10,
+      "vision": 95.2,
+      "projection": 4.22,
+      "model_sigma": 2.0575,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.966,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 32.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 42.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 7,
+      "player": "Matt Olson",
+      "team": null,
+      "opp": null,
+      "stat": "Runs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 130,
+      "ref_book": "fd",
+      "edge_pct": 31.2,
+      "tp": 41.7,
+      "fair_prob": 0.4348,
+      "p_model_pct": null,
+      "cv": 0.725,
+      "hit_rate": 75.0,
+      "l20_n": 20,
+      "vision": 95.5,
+      "projection": 1.04,
+      "model_sigma": 0.6667,
+      "book_count": 2,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.725,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 75.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 31.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 8,
+      "player": "Roman Anthony",
+      "team": null,
+      "opp": null,
+      "stat": "Batter Strikeouts",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 125,
+      "ref_book": "dk",
+      "edge_pct": 31.0,
+      "tp": 44.4,
+      "fair_prob": 0.4444,
+      "p_model_pct": null,
+      "cv": 0.869,
+      "hit_rate": 70.0,
+      "l20_n": 20,
+      "vision": 95.7,
+      "projection": 1.24,
+      "model_sigma": 0.5676,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.869,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 70.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 31.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 44.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 9,
+      "player": "Carlos Cortes",
+      "team": null,
+      "opp": null,
+      "stat": "RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 140.9,
+      "ref_book": "consensus",
+      "edge_pct": 30.0,
+      "tp": 40.2,
+      "fair_prob": 0.4151,
+      "p_model_pct": null,
+      "cv": 1.819,
+      "hit_rate": 30.0,
+      "l20_n": 20,
+      "vision": 79.8,
+      "projection": 0.774,
+      "model_sigma": 1.3375,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.819,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 30.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 30.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.2,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 10,
+      "player": "Drake Baldwin",
+      "team": null,
+      "opp": null,
+      "stat": "Runs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 140,
+      "ref_book": "fd",
+      "edge_pct": 29.9,
+      "tp": 40.8,
+      "fair_prob": 0.4167,
+      "p_model_pct": null,
+      "cv": 0.722,
+      "hit_rate": 75.0,
+      "l20_n": 20,
+      "vision": 94.9,
+      "projection": 0.93,
+      "model_sigma": 0.7379,
+      "book_count": 2,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.722,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 75.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 29.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 11,
+      "player": "Shohei Ohtani",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 142.5,
+      "ref_book": "consensus",
+      "edge_pct": 29.7,
+      "tp": 41.2,
+      "fair_prob": 0.4124,
+      "p_model_pct": null,
+      "cv": 1.029,
+      "hit_rate": 55.0,
+      "l20_n": 20,
+      "vision": 92.9,
+      "projection": 1.15,
+      "model_sigma": 1.1972,
+      "book_count": 2,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.029,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 55.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 29.7,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.2,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 12,
+      "player": "Michael Harris II",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 147.5,
+      "ref_book": "consensus",
+      "edge_pct": 29.3,
+      "tp": 38.8,
+      "fair_prob": 0.4041,
+      "p_model_pct": null,
+      "cv": 1.145,
+      "hit_rate": 45.0,
+      "l20_n": 20,
+      "vision": 89.5,
+      "projection": 2.347,
+      "model_sigma": 2.6331,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.145,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 45.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 29.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 38.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 13,
+      "player": "Matt Olson",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 132.5,
+      "ref_book": "consensus",
+      "edge_pct": 29.1,
+      "tp": 41.7,
+      "fair_prob": 0.4302,
+      "p_model_pct": null,
+      "cv": 0.543,
+      "hit_rate": 80.0,
+      "l20_n": 20,
+      "vision": 95.3,
+      "projection": 2.314,
+      "model_sigma": 1.5811,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.543,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 29.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 14,
+      "player": "Hyeseong Kim",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 105,
+      "ref_book": "dk",
+      "edge_pct": 28.3,
+      "tp": 48.8,
+      "fair_prob": 0.4878,
+      "p_model_pct": null,
+      "cv": 1.107,
+      "hit_rate": 55.0,
+      "l20_n": 20,
+      "vision": 92.9,
+      "projection": 2.451,
+      "model_sigma": 1.767,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.107,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 55.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 28.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 48.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 15,
+      "player": "Hyeseong Kim",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 142.8,
+      "ref_book": "consensus",
+      "edge_pct": 28.1,
+      "tp": 41.2,
+      "fair_prob": 0.4119,
+      "p_model_pct": null,
+      "cv": 1.134,
+      "hit_rate": 50.0,
+      "l20_n": 20,
+      "vision": 90.5,
+      "projection": 1.17,
+      "model_sigma": 0.9487,
+      "book_count": 2,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.134,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 28.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.2,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 16,
+      "player": "JJ Bleday",
+      "team": null,
+      "opp": null,
+      "stat": "Runs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 120,
+      "ref_book": "fd",
+      "edge_pct": 27.9,
+      "tp": 45.5,
+      "fair_prob": 0.4545,
+      "p_model_pct": null,
+      "cv": 1.118,
+      "hit_rate": 40.0,
+      "l20_n": 10,
+      "vision": 91.8,
+      "projection": 1.66,
+      "model_sigma": 0.5164,
+      "book_count": 2,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.118,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 27.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 45.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 17,
+      "player": "Dalton Rushing",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 134.5,
+      "ref_book": "consensus",
+      "edge_pct": 27.7,
+      "tp": 42.6,
+      "fair_prob": 0.4264,
+      "p_model_pct": null,
+      "cv": 1.162,
+      "hit_rate": 60.0,
+      "l20_n": 20,
+      "vision": 90.3,
+      "projection": 1.32,
+      "model_sigma": 0.6992,
+      "book_count": 2,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.162,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 60.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 27.7,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 42.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 18,
+      "player": "Freddie Freeman",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 110,
+      "ref_book": "dk",
+      "edge_pct": 27.2,
+      "tp": 47.6,
+      "fair_prob": 0.4762,
+      "p_model_pct": null,
+      "cv": 0.975,
+      "hit_rate": 75.0,
+      "l20_n": 20,
+      "vision": 92.8,
+      "projection": 1.646,
+      "model_sigma": 1.1005,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.975,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 75.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 27.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 47.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 19,
+      "player": "Ian Happ",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 129.4,
+      "ref_book": "consensus",
+      "edge_pct": 26.5,
+      "tp": 43.6,
+      "fair_prob": 0.4359,
+      "p_model_pct": null,
+      "cv": 0.876,
+      "hit_rate": 65.0,
+      "l20_n": 20,
+      "vision": 92.3,
+      "projection": 0.93,
+      "model_sigma": 0.6749,
+      "book_count": 2,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.876,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 65.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 26.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 43.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 20,
+      "player": "Shohei Ohtani",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 100,
+      "ref_book": "dk",
+      "edge_pct": 26.4,
+      "tp": 50.0,
+      "fair_prob": 0.5,
+      "p_model_pct": null,
+      "cv": 1.099,
+      "hit_rate": 60.0,
+      "l20_n": 20,
+      "vision": 91.6,
+      "projection": 2.293,
+      "model_sigma": 2.4698,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.099,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 60.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 26.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 21,
+      "player": "Bryan Reynolds",
+      "team": null,
+      "opp": null,
+      "stat": "Batter Strikeouts",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": -161,
+      "ref_book": "dk",
+      "edge_pct": 25.9,
+      "tp": 61.7,
+      "fair_prob": 0.6169,
+      "p_model_pct": null,
+      "cv": 0.653,
+      "hit_rate": 80.0,
+      "l20_n": 20,
+      "vision": 96.1,
+      "projection": 2.04,
+      "model_sigma": 0.7888,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.653,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 25.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 61.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": true,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u2705",
+      "failed_gates": "\u2014",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 22,
+      "player": "Freddie Freeman",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 148.0,
+      "ref_book": "consensus",
+      "edge_pct": 25.7,
+      "tp": 40.3,
+      "fair_prob": 0.4032,
+      "p_model_pct": null,
+      "cv": 0.786,
+      "hit_rate": 70.0,
+      "l20_n": 20,
+      "vision": 91.4,
+      "projection": 0.74,
+      "model_sigma": 0.7888,
+      "book_count": 2,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.786,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 70.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 25.7,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.3,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 23,
+      "player": "Alek Thomas",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 123.6,
+      "ref_book": "consensus",
+      "edge_pct": 25.5,
+      "tp": 44.0,
+      "fair_prob": 0.4472,
+      "p_model_pct": null,
+      "cv": 1.014,
+      "hit_rate": 40.0,
+      "l20_n": 20,
+      "vision": 88.9,
+      "projection": 2.578,
+      "model_sigma": 1.8529,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.014,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 25.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 44.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 24,
+      "player": "Nick Loftin",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 144,
+      "ref_book": "dk",
+      "edge_pct": 25.1,
+      "tp": 41.0,
+      "fair_prob": 0.4098,
+      "p_model_pct": null,
+      "cv": 1.124,
+      "hit_rate": 40.0,
+      "l20_n": 20,
+      "vision": 87.0,
+      "projection": 1.999,
+      "model_sigma": 1.0328,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.124,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 25.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 25,
+      "player": "Matt Olson",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": -175,
+      "ref_book": "mgm",
+      "edge_pct": 25.0,
+      "tp": 63.6,
+      "fair_prob": 0.6364,
+      "p_model_pct": null,
+      "cv": 0.543,
+      "hit_rate": 90.0,
+      "l20_n": 20,
+      "vision": 96.6,
+      "projection": 2.314,
+      "model_sigma": 1.5811,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.543,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 90.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 25.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 63.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": true,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u2705",
+      "failed_gates": "\u2014",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 26,
+      "player": "Mickey Moniak",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 143.9,
+      "ref_book": "consensus",
+      "edge_pct": 24.4,
+      "tp": 39.5,
+      "fair_prob": 0.41,
+      "p_model_pct": null,
+      "cv": 1.231,
+      "hit_rate": 40.0,
+      "l20_n": 20,
+      "vision": 82.0,
+      "projection": 2.294,
+      "model_sigma": 2.8983,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.231,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 24.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 39.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 27,
+      "player": "Jordan Walker",
+      "team": null,
+      "opp": null,
+      "stat": "Batter Strikeouts",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 138,
+      "ref_book": "dk",
+      "edge_pct": 24.3,
+      "tp": 42.0,
+      "fair_prob": 0.4202,
+      "p_model_pct": null,
+      "cv": 0.443,
+      "hit_rate": 65.0,
+      "l20_n": 20,
+      "vision": 92.7,
+      "projection": 1.85,
+      "model_sigma": 0.6749,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.443,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 65.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 24.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 42.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 28,
+      "player": "Michael Busch",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 125,
+      "ref_book": "dk",
+      "edge_pct": 24.3,
+      "tp": 44.4,
+      "fair_prob": 0.4444,
+      "p_model_pct": null,
+      "cv": 1.168,
+      "hit_rate": 45.0,
+      "l20_n": 20,
+      "vision": 86.4,
+      "projection": 2.707,
+      "model_sigma": 2.1628,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.168,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 45.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 24.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 44.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 29,
+      "player": "Ivan Herrera",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 133.7,
+      "ref_book": "consensus",
+      "edge_pct": 24.0,
+      "tp": 42.7,
+      "fair_prob": 0.4279,
+      "p_model_pct": null,
+      "cv": 1.049,
+      "hit_rate": 35.0,
+      "l20_n": 20,
+      "vision": 86.8,
+      "projection": 2.027,
+      "model_sigma": 1.4181,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.049,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 35.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 24.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 42.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 30,
+      "player": "Jonah Heim",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 146.5,
+      "ref_book": "consensus",
+      "edge_pct": 23.8,
+      "tp": 39.2,
+      "fair_prob": 0.4057,
+      "p_model_pct": null,
+      "cv": 0.776,
+      "hit_rate": 40.0,
+      "l20_n": 10,
+      "vision": 87.5,
+      "projection": 2.02,
+      "model_sigma": 0.7888,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.776,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 23.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 39.2,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 31,
+      "player": "Michael Harris II",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 101.0,
+      "ref_book": "consensus",
+      "edge_pct": 23.3,
+      "tp": 47.7,
+      "fair_prob": 0.4975,
+      "p_model_pct": null,
+      "cv": 0.989,
+      "hit_rate": 50.0,
+      "l20_n": 20,
+      "vision": 86.0,
+      "projection": 2.756,
+      "model_sigma": 2.4495,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.989,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 23.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 47.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 32,
+      "player": "Connor Wong",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 140,
+      "ref_book": "dk",
+      "edge_pct": 23.2,
+      "tp": 41.7,
+      "fair_prob": 0.4167,
+      "p_model_pct": null,
+      "cv": 1.348,
+      "hit_rate": 45.0,
+      "l20_n": 20,
+      "vision": 81.2,
+      "projection": 0.988,
+      "model_sigma": 1.6193,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.348,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 45.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 23.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 33,
+      "player": "Riley Greene",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 2.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 147.0,
+      "ref_book": "consensus",
+      "edge_pct": 23.0,
+      "tp": 40.9,
+      "fair_prob": 0.4049,
+      "p_model_pct": null,
+      "cv": 1.015,
+      "hit_rate": 40.0,
+      "l20_n": 20,
+      "vision": 85.7,
+      "projection": 3.129,
+      "model_sigma": 1.8379,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.015,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 23.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.9,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 34,
+      "player": "Nathaniel Lowe",
+      "team": null,
+      "opp": null,
+      "stat": "RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 135.9,
+      "ref_book": "consensus",
+      "edge_pct": 23.0,
+      "tp": 41.6,
+      "fair_prob": 0.4239,
+      "p_model_pct": null,
+      "cv": 1.717,
+      "hit_rate": 35.0,
+      "l20_n": 20,
+      "vision": 71.9,
+      "projection": 0.742,
+      "model_sigma": 1.1972,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.717,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 35.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 23.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 35,
+      "player": "Spencer Torkelson",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 144.9,
+      "ref_book": "consensus",
+      "edge_pct": 22.8,
+      "tp": 39.8,
+      "fair_prob": 0.4083,
+      "p_model_pct": null,
+      "cv": 1.335,
+      "hit_rate": 35.0,
+      "l20_n": 20,
+      "vision": 78.8,
+      "projection": 1.966,
+      "model_sigma": 2.9078,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.335,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 35.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 22.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 39.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 36,
+      "player": "Riley Greene",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 118.0,
+      "ref_book": "consensus",
+      "edge_pct": 22.7,
+      "tp": 46.5,
+      "fair_prob": 0.4587,
+      "p_model_pct": null,
+      "cv": 1.012,
+      "hit_rate": 45.0,
+      "l20_n": 20,
+      "vision": 87.7,
+      "projection": 2.286,
+      "model_sigma": 1.8529,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.012,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 45.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 22.7,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 46.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 37,
+      "player": "Jeff McNeil",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 146.0,
+      "ref_book": "consensus",
+      "edge_pct": 22.6,
+      "tp": 40.2,
+      "fair_prob": 0.4065,
+      "p_model_pct": null,
+      "cv": 0.994,
+      "hit_rate": 45.0,
+      "l20_n": 20,
+      "vision": 83.9,
+      "projection": 1.61,
+      "model_sigma": 1.5492,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.994,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 45.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 22.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.2,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 38,
+      "player": "Nolan Arenado",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 115.0,
+      "ref_book": "consensus",
+      "edge_pct": 22.5,
+      "tp": 46.5,
+      "fair_prob": 0.4652,
+      "p_model_pct": null,
+      "cv": 1.188,
+      "hit_rate": 55.0,
+      "l20_n": 20,
+      "vision": 84.2,
+      "projection": 3.006,
+      "model_sigma": 3.0714,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.188,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 55.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 22.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 46.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 39,
+      "player": "Riley Greene",
+      "team": null,
+      "opp": null,
+      "stat": "RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 138.0,
+      "ref_book": "consensus",
+      "edge_pct": 22.5,
+      "tp": 42.8,
+      "fair_prob": 0.4202,
+      "p_model_pct": null,
+      "cv": 1.826,
+      "hit_rate": 30.0,
+      "l20_n": 20,
+      "vision": 70.8,
+      "projection": 0.743,
+      "model_sigma": 0.8498,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.826,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 30.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 22.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 42.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 40,
+      "player": "Xander Bogaerts",
+      "team": null,
+      "opp": null,
+      "stat": "Batter Strikeouts",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 140,
+      "ref_book": "dk",
+      "edge_pct": 21.9,
+      "tp": 41.7,
+      "fair_prob": 0.4167,
+      "p_model_pct": null,
+      "cv": 1.346,
+      "hit_rate": 45.0,
+      "l20_n": 20,
+      "vision": 79.4,
+      "projection": 0.94,
+      "model_sigma": 1.1005,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.346,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 45.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 21.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 41,
+      "player": "Ildemaro Vargas",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": -205.6,
+      "ref_book": "consensus",
+      "edge_pct": 21.6,
+      "tp": 66.5,
+      "fair_prob": 0.6728,
+      "p_model_pct": null,
+      "cv": 0.486,
+      "hit_rate": 100.0,
+      "l20_n": 20,
+      "vision": 94.6,
+      "projection": 1.42,
+      "model_sigma": 0.6992,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.486,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 100.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 21.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 66.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": true,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u2705",
+      "failed_gates": "\u2014",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 42,
+      "player": "Brandon Sproat",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Strikeouts",
+      "stat_family": null,
+      "line": 3.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": -154.0,
+      "ref_book": "consensus",
+      "edge_pct": 21.5,
+      "tp": 58.5,
+      "fair_prob": 0.6063,
+      "p_model_pct": null,
+      "cv": 0.271,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 84.2,
+      "projection": 4.68,
+      "model_sigma": 1.0541,
+      "book_count": 4,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.271,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 21.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 58.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "\u2014",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 43,
+      "player": "Jonah Heim",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": -172.5,
+      "ref_book": "consensus",
+      "edge_pct": 21.4,
+      "tp": 61.6,
+      "fair_prob": 0.633,
+      "p_model_pct": null,
+      "cv": 0.776,
+      "hit_rate": 80.0,
+      "l20_n": 10,
+      "vision": 90.6,
+      "projection": 1.93,
+      "model_sigma": 0.7888,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.776,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 21.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 61.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": true,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u2705",
+      "failed_gates": "\u2014",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 44,
+      "player": "Brady House",
+      "team": null,
+      "opp": null,
+      "stat": "Batter Strikeouts",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 118,
+      "ref_book": "dk",
+      "edge_pct": 21.4,
+      "tp": 45.9,
+      "fair_prob": 0.4587,
+      "p_model_pct": null,
+      "cv": 0.573,
+      "hit_rate": 30.0,
+      "l20_n": 20,
+      "vision": 89.6,
+      "projection": 2.02,
+      "model_sigma": 0.6992,
+      "book_count": 1,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.573,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 30.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 21.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 45.9,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 45,
+      "player": "Spencer Torkelson",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 105.0,
+      "ref_book": "consensus",
+      "edge_pct": 21.3,
+      "tp": 48.0,
+      "fair_prob": 0.4878,
+      "p_model_pct": null,
+      "cv": 1.082,
+      "hit_rate": 50.0,
+      "l20_n": 20,
+      "vision": 83.4,
+      "projection": 2.549,
+      "model_sigma": 2.1318,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.082,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 21.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 48.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 46,
+      "player": "Carlos Cortes",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 2.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 136.4,
+      "ref_book": "consensus",
+      "edge_pct": 21.1,
+      "tp": 40.8,
+      "fair_prob": 0.423,
+      "p_model_pct": null,
+      "cv": 1.08,
+      "hit_rate": 35.0,
+      "l20_n": 20,
+      "vision": 79.6,
+      "projection": 2.89,
+      "model_sigma": 2.7968,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.08,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 35.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 21.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 47,
+      "player": "Michael Busch",
+      "team": null,
+      "opp": null,
+      "stat": "Runs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 135.0,
+      "ref_book": "consensus",
+      "edge_pct": 21.0,
+      "tp": 42.6,
+      "fair_prob": 0.4255,
+      "p_model_pct": null,
+      "cv": 1.496,
+      "hit_rate": 35.0,
+      "l20_n": 20,
+      "vision": 75.1,
+      "projection": 1.04,
+      "model_sigma": 0.527,
+      "book_count": 2,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.496,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 35.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 21.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 42.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 48,
+      "player": "Michael Wacha",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Strikeouts",
+      "stat_family": null,
+      "line": 4.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 117.0,
+      "ref_book": "consensus",
+      "edge_pct": 20.8,
+      "tp": 45.4,
+      "fair_prob": 0.4608,
+      "p_model_pct": null,
+      "cv": 0.326,
+      "hit_rate": 60.0,
+      "l20_n": 10,
+      "vision": 89.9,
+      "projection": 5.21,
+      "model_sigma": 1.5951,
+      "book_count": 4,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.326,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 60.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 20.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 45.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 49,
+      "player": "Matt Chapman",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 149.4,
+      "ref_book": "consensus",
+      "edge_pct": 20.4,
+      "tp": 40.9,
+      "fair_prob": 0.401,
+      "p_model_pct": null,
+      "cv": 0.938,
+      "hit_rate": 40.0,
+      "l20_n": 20,
+      "vision": 89.2,
+      "projection": 1.82,
+      "model_sigma": 1.0541,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.938,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 20.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.9,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    },
+    {
+      "rank": 50,
+      "player": "Nick Kurtz",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": true,
+      "ref_odds": 106.8,
+      "ref_book": "consensus",
+      "edge_pct": 20.2,
+      "tp": 48.1,
+      "fair_prob": 0.4837,
+      "p_model_pct": null,
+      "cv": 1.045,
+      "hit_rate": 45.0,
+      "l20_n": 20,
+      "vision": 82.7,
+      "projection": 2.148,
+      "model_sigma": 2.2509,
+      "book_count": 3,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.045,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 45.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 20.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 48.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "\u274c",
+      "failed_gates": "cv,hr,tp",
+      "context": {
+        "is_starter": null,
+        "lineup_status": null,
+        "expected_pa": null,
+        "expected_outs_pitched": null
+      }
+    }
+  ],
+  "top_50_under": []
+}
