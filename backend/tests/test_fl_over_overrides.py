@@ -236,15 +236,29 @@ def test_direction_gate_passes_when_projection_equals_line_over():
 
 
 def test_direction_gate_skipped_for_under_side():
-    """UNDER picks must never be rejected by direction_gate even if
-    projection >= line (UNDER's own logic handles direction)."""
+    """UNDER picks ARE now routed through their own direction_gate
+    (UNDER tuning, 2026-04-29) — but the OVER-side direction_gate
+    config is what `applies_to_sides=['OVER']` would gate on. We
+    verify that an UNDER pick is not subjected to OVER-side rules:
+    a side=UNDER pick whose proj > line (would fail OVER direction)
+    must NOT fail under FL UNDER rules — it instead fails the
+    UNDER projection-gap check, not the OVER direction check.
+    """
     m = _m(side="UNDER", stat_family="ast", hit_rate=80.0,
            hit_rate_l20=80.0, tp=70.0, cv=0.40, edge_pct=10.0,
-           line=4.5, extras={"projection": 5.0},  # would fail OVER direction
+           line=4.5, extras={"projection": 5.0},  # proj > line — bad for UNDER
            p_model_pct=70.0)
     res = get_engine().evaluate(m)
-    # direction_gate is skipped → won't appear in failed_gates
-    assert "direction_gate" not in res.failed_gates
+    # The pick fails the UNDER direction gate (proj > line, gap < 0.15)
+    # — that's the correct UNDER-side reason. No leakage of OVER-side
+    # check semantics: confirm the recorded actual reflects UNDER mode
+    # ("ratio_(line-proj)/line" present and negative).
+    assert "direction_gate" in res.failed_gates
+    dg = res.gate_details["direction_gate"]
+    actual = dg.actual or {}
+    assert "ratio_(line-proj)/line" in actual
+    assert actual["ratio_(line-proj)/line"] is not None
+    assert actual["ratio_(line-proj)/line"] < 0.15
 
 
 def test_direction_gate_only_on_nba_front_lines():

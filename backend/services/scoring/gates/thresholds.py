@@ -160,6 +160,104 @@ _NBA_SAFE_HAVEN_BASE = {
         },
     },
 }
+
+
+# ────────────────────────────────────────────────────────────────────
+# NBA UNIFIED UNDER RULESET (2026-04-29)
+# ────────────────────────────────────────────────────────────────────
+# Spec (user, 2026-04-29):
+#   Apply ONLY to NBA UNDER side. SH/FL/WZ all share the same UNDER
+#   block (same direction / HR / CV / projection-gap behaviour). OVER
+#   side is untouched (lives in `_default`).
+#
+#   Rules:
+#     1. Direction: projection < line REQUIRED.
+#     2. Base hit rate: HR >= 65.
+#     3. CV: stat-family caps (canonical SH map), with HR-conditional
+#        relaxation:
+#           HR >= 75  →  cap += 0.10
+#           HR >= 80  →  CV is no longer a hard fail
+#     4. Critical filter: (line - projection) / line >= 0.15
+#        (skew vs volatility separator)
+#
+#   Per-tier preserved config (NOT touched by the UNDER block):
+#     • SH UNDER: market_structure_gate, vision_score_gate(min=85)
+#     • FL UNDER: coverage_gate, edge_gate(min=5), vision_score_gate
+#                 (FL has no vision floor today; we leave that alone),
+#                 tp_gate(under_floor=65) — UNDER-side TP floor stays.
+#     • WZ UNDER: coverage_gate, vision_score_gate(min=60)
+#                 No edge_gate in WZ today (none in spec) — leave off.
+# ────────────────────────────────────────────────────────────────────
+
+# Canonical NBA UNDER stat-family CV caps. The user said "use existing
+# CV caps by stat family" — these mirror Safe Haven's caps (the only
+# tier today that ships a stat-family `caps` map) so UNDER inherits a
+# proven baseline before the HR-conditional relax kicks in.
+_NBA_UNDER_CV_CAPS: Dict[str, float] = {
+    "pts":         0.40,
+    "pra":         0.40,
+    "reb":         0.45,
+    "ast":         0.45,
+    "threes":      0.55,
+    "pts_reb":     0.45,
+    "pts_ast":     0.45,
+    "reb_ast":     0.45,
+    "stl":         0.55,
+    "blk":         0.55,
+    "turnovers":   0.55,
+}
+
+# HR-conditional CV relax + disable rules (declared in order; engine
+# evaluates each in sequence and applies the matched action).
+_NBA_UNDER_CV_HR_RELAX = [
+    {"min_hr": 75.0, "absolute_add": 0.10},
+    {"min_hr": 80.0, "disable_gate":  True},
+]
+
+# Direction gate config — UNDER-side only.
+_NBA_UNDER_DIRECTION_GATE = {
+    "applies_to_sides":                 ["UNDER"],
+    "max_projection_minus_line":         0.0,    # proj <= line
+    "min_line_minus_projection_ratio":   0.15,   # gap rule
+}
+
+_NBA_SAFE_HAVEN_UNDER = {
+    # No coverage_gate in SH (parity with `_default`).
+    "direction_gate":  _NBA_UNDER_DIRECTION_GATE,
+    "hit_rate_gate":   {"min": 65.0, "window": "default"},
+    "cv_gate":         {"caps": _NBA_UNDER_CV_CAPS,
+                        "hr_relax": _NBA_UNDER_CV_HR_RELAX},
+    "vision_score_gate": {"min": 85.0},
+    # Preserve SH market-structure rule (alt + one_sided UNDERs are
+    # still rejected — per "do not override market structure gates").
+    "market_structure_gate": {
+        "reject_when": {"is_alt": True, "tp_source": "one_sided"},
+    },
+}
+
+_NBA_FRONT_LINES_UNDER = {
+    "coverage_gate":   {"min_books": 1},
+    "direction_gate":  _NBA_UNDER_DIRECTION_GATE,
+    "hit_rate_gate":   {"min": 65.0, "window": "default"},
+    "cv_gate":         {"caps": _NBA_UNDER_CV_CAPS,
+                        "hr_relax": _NBA_UNDER_CV_HR_RELAX},
+    # Preserve FL UNDER-side TP floor (was 65 in OVER `_default` via
+    # `under_floor`). Spec says "do NOT change TP calculation"; we keep
+    # the existing TP gate exactly as in OVER `_default`.
+    "tp_gate":         {"min": 50.0, "under_floor": 65.0},
+    "edge_gate":       {"min": 5.0},
+    # FL has no vision_score_gate in `_default` — leave UNDER unchanged.
+}
+
+_NBA_WAR_ZONE_UNDER = {
+    "coverage_gate":   {"min_books": 1},
+    "direction_gate":  _NBA_UNDER_DIRECTION_GATE,
+    "hit_rate_gate":   {"min": 65.0, "window": "default"},
+    "cv_gate":         {"caps": _NBA_UNDER_CV_CAPS,
+                        "hr_relax": _NBA_UNDER_CV_HR_RELAX},
+    "vision_score_gate": {"min": 60.0},
+    # No edge_gate in WZ today — preserve.
+}
 _NBA_FRONT_LINES_BASE = {
     "coverage_gate": {"min_books": 1},
     # Scenario B promoted to live config (2026-04-23). See
@@ -307,9 +405,12 @@ def _mlb_thresholds(per_stat: Dict[str, Dict[str, Any]], *, war_zone: bool = Fal
 
 THRESHOLDS: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {
     "nba": {
-        "safe_haven":  {"_default": _NBA_SAFE_HAVEN_BASE},
-        "front_lines": {"_default": _NBA_FRONT_LINES_BASE},
-        "war_zone":    {"_default": _NBA_WAR_ZONE_BASE},
+        "safe_haven":  {"_default": _NBA_SAFE_HAVEN_BASE,
+                         "_default_under": _NBA_SAFE_HAVEN_UNDER},
+        "front_lines": {"_default": _NBA_FRONT_LINES_BASE,
+                         "_default_under": _NBA_FRONT_LINES_UNDER},
+        "war_zone":    {"_default": _NBA_WAR_ZONE_BASE,
+                         "_default_under": _NBA_WAR_ZONE_UNDER},
     },
     "mlb": {
         "safe_haven":  _mlb_thresholds(_MLB_SAFE_HAVEN),
@@ -400,13 +501,41 @@ elif MLB_FRONT_LINES_GATES_DISABLED:
 
 def resolve_thresholds(
     sport: str, tier: str, stat_family: str,
+    side: Optional[str] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """Return the active threshold block for (sport, tier, stat_family).
 
-    Falls back from explicit stat_family → sport-tier ``_default`` → {}.
+    Resolution order:
+      1. explicit ``{stat_family}_under`` / ``{stat_family}_over`` (when
+         a side is provided)
+      2. ``_under_default`` / ``_over_default`` (when a side is provided
+         AND that key exists for the tier)
+      3. explicit ``stat_family``
+      4. ``_default``
+      5. ``{}``
+
+    Side-aware UNDER configs let NBA tiers ship a unified UNDER ruleset
+    while leaving the OVER-side config (the historical `_default`)
+    completely untouched.
     """
     by_sport = THRESHOLDS.get((sport or "").lower(), {})
     by_tier = by_sport.get(tier, {})
+    side_norm = (side or "").upper()
+    side_suffix = None
+    if side_norm == "UNDER":
+        side_suffix = "_under"
+    elif side_norm == "OVER":
+        side_suffix = "_over"
+
+    if side_suffix and stat_family:
+        explicit_keyed = f"{stat_family}{side_suffix}"
+        if explicit_keyed in by_tier:
+            return by_tier[explicit_keyed]
+    if side_suffix:
+        side_default = f"_default{side_suffix}"
+        if side_default in by_tier:
+            return by_tier[side_default]
+
     if stat_family in by_tier:
         return by_tier[stat_family]
     return by_tier.get("_default", {})

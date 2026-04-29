@@ -28,6 +28,94 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
 
 ## Recent work (changelog)
 
+### 2026-04-29 — NBA UNDER tuning (skew vs volatility)
+**Why**: Differentiate good high-CV UNDER picks (skew-driven, e.g. 3PM
+where median is ~1 but variance is high) from bad high-CV UNDERs
+(volatility-driven traps).
+
+**Spec**:
+- NBA only, UNDER side only, applies to SH / FL / WZ (unified ruleset).
+- OVER side untouched.
+- Direction: `projection < line` REQUIRED.
+- HR floor: 65 (universal across tiers).
+- CV: stat-family caps (canonical SH map) with HR-conditional relax:
+  * HR ≥ 75 → cap += 0.10
+  * HR ≥ 80 → CV no longer a hard fail (gate disabled)
+- Critical filter: `(line - projection) / line ≥ 0.15`
+  (skew/volatility separator).
+- Per-tier preserved gates (NOT overridden):
+  * SH UNDER: `market_structure_gate` (alt + one_sided still rejected),
+    `vision_score_gate` (min=85)
+  * FL UNDER: `coverage_gate`, `tp_gate` (under_floor=65 unchanged),
+    `edge_gate` (min=5)
+  * WZ UNDER: `coverage_gate`, `vision_score_gate` (min=60, v1)
+
+**Shipped** (no scoring/projection/TP/vision/frontend touched):
+- `services/scoring/gates/thresholds.py`:
+  * `_NBA_UNDER_CV_CAPS` (canonical stat-family cap map)
+  * `_NBA_UNDER_CV_HR_RELAX` (declarative relax/disable rules)
+  * `_NBA_UNDER_DIRECTION_GATE` (UNDER-side direction config)
+  * `_NBA_SAFE_HAVEN_UNDER`, `_NBA_FRONT_LINES_UNDER`,
+    `_NBA_WAR_ZONE_UNDER` configs
+  * `THRESHOLDS["nba"][tier]["_default_under"]` keys
+  * `resolve_thresholds(..., side=None)` — side-aware resolver:
+    `_under_default` / `_over_default` win when side specified;
+    otherwise falls back to existing `_default`.
+- `services/scoring/gates/engine.py`:
+  * `evaluate()` passes `metrics.side` to resolver — UNDER picks now
+    route to `_default_under` automatically.
+  * `_eval_cv` extended to support `hr_relax: [{min_hr, absolute_add},
+    {min_hr, disable_gate}]`. Existing OVER-side configs unaffected.
+  * `_eval_direction` extended to support `max_projection_minus_line`
+    + `min_line_minus_projection_ratio` (UNDER-flavoured thresholds);
+    OVER-side `min_projection_minus_line` /
+    `min_projection_to_line_ratio` keys unchanged.
+
+**Tests** (`tests/test_nba_under_tuning.py`, **25/25 green**):
+- side-aware resolver behavior (UNDER routes to UNDER block; OVER
+  still hits `_default`; missing side → `_default`).
+- Direction: passes at gap == 0.15 exactly; fails just below; fails
+  when proj > line.
+- HR floor 65 enforced across all 3 tiers.
+- CV stat-family caps (3PM=0.55, PTS=0.40).
+- HR relax: cap+0.10 at HR=75; gate disabled at HR=80.
+- Hard rules: HR<65 / direction-fail / market_structure / FL TP
+  under_floor / FL edge_gate all preserved.
+- OVER picks still resolve to `_default` (regression).
+- Spec validation: McDaniels passes; LeBron-style gap<0.15 fails.
+
+**Full active gate-suite**: 165/165 green (9 modules).
+
+**Live recompute** (NBA `final-nba-rt`):
+
+Counts (BEFORE → AFTER):
+
+| Tier | Side | Before | After | Δ |
+|---|---|---|---|---|
+| Safe Haven | OVER | 5 | **5** | **0** ✅ unchanged |
+| Safe Haven | UNDER | 0 | 0 | 0 |
+| Front Lines | OVER | 58 | **58** | **0** ✅ unchanged |
+| Front Lines | UNDER | 6 | 3 | −3 (volatility-driven dropped) |
+| War Zone | OVER | 5 | **5** | **0** ✅ unchanged |
+| War Zone | UNDER | 0 | 0 | 0 |
+
+OVER-side canonical-key sets are byte-identical before/after.
+
+UNDER reject distribution (228 total UNDER unqualified):
+- direction_gate (gap < 0.15 OR proj > line): **198** (87%)
+- hit_rate_gate (HR < 65): 9
+- cv_gate (after HR-relax): 6
+- no_reference_market: 15
+
+**Spec validation**:
+- ✅ **McDaniels 3PM 1.5 UNDER** → **PASSES** front_lines:
+  gap 0.289, HR 85 → CV disabled, all 6 gates clear.
+- ⚠️ Anunoby BLK 1.5 UNDER → not in current slate (live drift).
+- ✅ **LeBron 3PM 1.5 UNDER** → **FAILS** front_lines:
+  gap 0.179 (passes direction), HR 75 → CV cap relaxed to 0.65,
+  CV 1.047 > 0.65 → cv_gate fail. Correctly rejected (filters
+  volatility-driven UNDER as designed).
+
 ### 2026-04-29 — NBA War Zone Gate Refactor (per user spec)
 **Spec**: WZ uses ONLY universal gate types — no WZ-only logic.
 

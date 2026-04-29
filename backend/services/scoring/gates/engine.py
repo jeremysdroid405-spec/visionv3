@@ -159,11 +159,48 @@ class UniversalGateEngine:
                 passed=True, comparator="<=", reason_code=None,
                 note="cv_missing_skipped",
             )
+
+        # ── HR-conditional CV relaxation (NBA UNDER) ─────────────────
+        # `hr_relax`: list of stepwise rules, evaluated in declared
+        # order, that may either ADD slack to the cap or DISABLE the
+        # gate entirely when HR is high enough. Side-agnostic in the
+        # evaluator — gating to UNDER side is done by living inside
+        # the side-specific `_default_under` config block, so OVER
+        # picks never see this branch.
+        #
+        # Schema:
+        #   "hr_relax": [
+        #       {"min_hr": 75.0, "absolute_add": 0.10},
+        #       {"min_hr": 80.0, "disable_gate": True},
+        #   ]
+        relax_rules = cfg.get("hr_relax")
+        relax_note: Optional[str] = None
+        if relax_rules:
+            hr = _py(m.hit_rate)
+            if hr is not None:
+                for rule in relax_rules:
+                    if hr >= float(rule.get("min_hr", float("inf"))):
+                        if rule.get("disable_gate"):
+                            return GateDetail(
+                                gate_type="cv_gate",
+                                threshold={"cap": cap, "hr_relax": rule},
+                                actual=actual, passed=True, comparator="<=",
+                                reason_code=None,
+                                note=f"cv_disabled_hr>={rule['min_hr']}",
+                            )
+                        add = rule.get("absolute_add")
+                        if add is not None:
+                            cap = cap + float(add)
+                            relax_note = (
+                                f"cv_cap_relaxed_hr>={rule['min_hr']}_+{add}"
+                            )
+
         passed = bool(actual <= cap)
         return GateDetail(
             gate_type="cv_gate", threshold=cap, actual=actual,
             passed=passed, comparator="<=",
-            reason_code=None if passed else ReasonCode.CV_FAIL, note=note,
+            reason_code=None if passed else ReasonCode.CV_FAIL,
+            note=relax_note or note,
         )
 
     @staticmethod
@@ -430,16 +467,20 @@ class UniversalGateEngine:
 
     @staticmethod
     def _eval_direction(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
-        """Direction-consistency gate (configurable per tier).
+        """Direction-consistency gate (configurable per tier and side).
 
-        Config:
+        OVER-side config (existing):
             {"applies_to_sides": ["OVER"],
              "min_projection_minus_line": 0.0,        # FL: proj >= line
              "min_projection_to_line_ratio": 1.0}     # WZ: proj >= line * 1.05
 
-        For sides not listed in `applies_to_sides` the gate auto-passes.
-        Either threshold key may be present (or both — both must hold).
-        Reads `projection` from `metrics.extras['projection']`.
+        UNDER-side config (NBA UNDER tuning, 2026-04-29):
+            {"applies_to_sides": ["UNDER"],
+             "max_projection_minus_line": 0.0,        # proj <= line + X
+             "min_line_minus_projection_ratio": 0.15} # (line - proj) / line >= X
+
+        Both directional thresholds may be set; ALL configured thresholds
+        must hold. Sides not in `applies_to_sides` auto-pass.
         """
         applies = {s.upper() for s in cfg.get("applies_to_sides", ["OVER"])}
         side_uc = (m.side or "").upper()
@@ -462,23 +503,38 @@ class UniversalGateEngine:
                 reason_code=ReasonCode.DIRECTION_FAIL,
                 note="direction_gate_missing_inputs",
             )
-        diff = proj - line
-        ratio = (proj / line) if line not in (0, 0.0) else None
+        diff = proj - line                                  # OVER-flavoured
+        line_minus_proj = (line - proj)                     # UNDER-flavoured
+        ratio_proj_over_line = (proj / line) if line not in (0, 0.0) else None
+        ratio_line_minus_proj = (line_minus_proj / line) if line not in (0, 0.0) else None
 
         passed = True
+        # OVER-side checks (proj >= line + X / proj >= line * X)
         if "min_projection_minus_line" in cfg:
-            min_diff = float(cfg["min_projection_minus_line"])
-            if diff < min_diff:
+            if diff < float(cfg["min_projection_minus_line"]):
                 passed = False
         if "min_projection_to_line_ratio" in cfg:
-            min_ratio = float(cfg["min_projection_to_line_ratio"])
-            if ratio is None or ratio < min_ratio:
+            if (ratio_proj_over_line is None or
+                    ratio_proj_over_line < float(cfg["min_projection_to_line_ratio"])):
                 passed = False
+
+        # UNDER-side checks (proj <= line - X / (line-proj)/line >= X)
+        if "max_projection_minus_line" in cfg:
+            if diff > float(cfg["max_projection_minus_line"]):
+                passed = False
+        if "min_line_minus_projection_ratio" in cfg:
+            if (ratio_line_minus_proj is None or
+                    ratio_line_minus_proj < float(cfg["min_line_minus_projection_ratio"])):
+                passed = False
+
         return GateDetail(
             gate_type="direction_gate", threshold=cfg,
-            actual={"projection": round(proj, 4),
-                    "line": line, "diff": round(diff, 4),
-                    "ratio": round(ratio, 4) if ratio is not None else None},
+            actual={"projection": round(proj, 4), "line": line,
+                    "diff": round(diff, 4),
+                    "ratio_proj/line": round(ratio_proj_over_line, 4)
+                                          if ratio_proj_over_line is not None else None,
+                    "ratio_(line-proj)/line": round(ratio_line_minus_proj, 4)
+                                          if ratio_line_minus_proj is not None else None},
             passed=passed, comparator=">=",
             reason_code=None if passed else ReasonCode.DIRECTION_FAIL,
             note=f"direction_check_{side_uc}",
@@ -503,7 +559,10 @@ class UniversalGateEngine:
     # Public API
     # ------------------------------------------------------------------
     def evaluate(self, metrics: NormalizedMetrics) -> GateEvalResult:
-        cfg = resolve_thresholds(metrics.sport, metrics.tier, metrics.stat_family)
+        cfg = resolve_thresholds(
+            metrics.sport, metrics.tier, metrics.stat_family,
+            side=metrics.side,
+        )
 
         # NOTE: Gates that depend on slate-percentile fields (e.g.
         # `vision_score_gate`, `market_trap_gate`) require a second
