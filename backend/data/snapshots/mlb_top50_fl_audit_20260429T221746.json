@@ -1,0 +1,6254 @@
+{
+  "generated_at": "2026-04-29T22:17:46.310446+00:00",
+  "sport": "mlb",
+  "audit_version": "final-mlb-rt-rt",
+  "live_version": "final-mlb-rt",
+  "filter": {
+    "routed_tier": "front_lines"
+  },
+  "frozen_fl_thresholds": {
+    "hits": {
+      "cv_max": 0.85,
+      "hr_min": 65.0,
+      "edge_min": 10.0,
+      "tp_min": 58.0
+    },
+    "total_bases": {
+      "cv_max": 0.95,
+      "hr_min": 60.0,
+      "edge_min": 15.0,
+      "tp_min": 58.0
+    },
+    "hits_runs_rbis": {
+      "cv_max": 0.75,
+      "hr_min": 65.0,
+      "edge_min": 12.0,
+      "tp_min": 58.0
+    },
+    "rbis": {
+      "cv_max": 0.75,
+      "hr_min": 65.0,
+      "edge_min": 12.0,
+      "tp_min": 58.0
+    },
+    "runs": {
+      "cv_max": 0.75,
+      "hr_min": 65.0,
+      "edge_min": 12.0,
+      "tp_min": 58.0
+    },
+    "pitching_outs": {
+      "cv_max": 0.5,
+      "hr_min": 70.0,
+      "edge_min": 6.0,
+      "tp_min": 70.0
+    },
+    "pitcher_strikeouts": {
+      "cv_max": 0.6,
+      "hr_min": 65.0,
+      "edge_min": 10.0,
+      "tp_min": 65.0
+    },
+    "earned_runs": {
+      "cv_max": 0.55,
+      "hr_min": 65.0,
+      "edge_min": 8.0,
+      "tp_min": 65.0
+    },
+    "_default": {
+      "cv_max": 0.85,
+      "hr_min": 65.0,
+      "edge_min": 10.0,
+      "tp_min": 58.0
+    }
+  },
+  "totals": {
+    "fl_routed_over": 507,
+    "fl_routed_under": 1363,
+    "over_would_pass_frozen_fl": 2,
+    "under_would_pass_frozen_fl": 9,
+    "live_tier_over_count": 10,
+    "live_tier_under_count": 0
+  },
+  "fail_gate_distribution_full_pool": {
+    "over": {
+      "tp": 377,
+      "cv": 279,
+      "hr": 274,
+      "edge": 426
+    },
+    "under": {
+      "tp": 836,
+      "cv": 991,
+      "hr": 622,
+      "edge": 1057
+    }
+  },
+  "live_tier_top_10_over": [
+    {
+      "rank": 1,
+      "in_tier": true,
+      "player": "JJ Bleday",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 131.3,
+      "ref_book": "consensus",
+      "edge_pct": 35.6,
+      "tp": 39.2,
+      "p_model_pct": null,
+      "cv": 0.966,
+      "hit_rate": 50.0,
+      "l20_n": 10,
+      "vision": 96.8,
+      "projection": 4.22,
+      "model_sigma": 2.0575,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.966,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 35.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 39.2,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 2,
+      "in_tier": true,
+      "player": "Matt Olson",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -175,
+      "ref_book": "mgm",
+      "edge_pct": 29.2,
+      "tp": 59.4,
+      "p_model_pct": null,
+      "cv": 0.543,
+      "hit_rate": 90.0,
+      "l20_n": 20,
+      "vision": 97.8,
+      "projection": 2.314,
+      "model_sigma": 1.5811,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.543,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 90.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 29.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 59.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": true,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "PASS",
+      "failed_gates": "\u2014"
+    },
+    {
+      "rank": 3,
+      "in_tier": true,
+      "player": "Bryan Reynolds",
+      "team": null,
+      "opp": null,
+      "stat": "Batter Strikeouts",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -165,
+      "ref_book": "dk",
+      "edge_pct": 24.3,
+      "tp": 63.3,
+      "p_model_pct": null,
+      "cv": 0.653,
+      "hit_rate": 80.0,
+      "l20_n": 20,
+      "vision": 97.3,
+      "projection": 2.04,
+      "model_sigma": 0.7888,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.653,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 24.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 63.3,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": true,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "PASS",
+      "failed_gates": "\u2014"
+    },
+    {
+      "rank": 4,
+      "in_tier": true,
+      "player": "Drake Baldwin",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -122.2,
+      "ref_book": "consensus",
+      "edge_pct": 35.1,
+      "tp": 49.0,
+      "p_model_pct": null,
+      "cv": 0.605,
+      "hit_rate": 80.0,
+      "l20_n": 20,
+      "vision": 98.4,
+      "projection": 3.431,
+      "model_sigma": 2.0683,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.605,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 35.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 49.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 5,
+      "in_tier": true,
+      "player": "Jonah Heim",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -174.4,
+      "ref_book": "consensus",
+      "edge_pct": 25.5,
+      "tp": 57.5,
+      "p_model_pct": null,
+      "cv": 0.776,
+      "hit_rate": 80.0,
+      "l20_n": 10,
+      "vision": 93.6,
+      "projection": 1.93,
+      "model_sigma": 0.7888,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.776,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 25.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 57.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 6,
+      "in_tier": true,
+      "player": "James Wood",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 143.2,
+      "ref_book": "consensus",
+      "edge_pct": 34.4,
+      "tp": 41.5,
+      "p_model_pct": null,
+      "cv": 0.951,
+      "hit_rate": 55.0,
+      "l20_n": 20,
+      "vision": 97.8,
+      "projection": 3.08,
+      "model_sigma": 2.1499,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.951,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 55.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 34.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 7,
+      "in_tier": true,
+      "player": "Ildemaro Vargas",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -208.4,
+      "ref_book": "consensus",
+      "edge_pct": 26.0,
+      "tp": 62.1,
+      "p_model_pct": null,
+      "cv": 0.486,
+      "hit_rate": 100.0,
+      "l20_n": 20,
+      "vision": 95.9,
+      "projection": 1.42,
+      "model_sigma": 0.6992,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.486,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 100.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 26.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 62.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": true,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "PASS",
+      "failed_gates": "\u2014"
+    },
+    {
+      "rank": 8,
+      "in_tier": true,
+      "player": "William Contreras",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -250,
+      "ref_book": "mgm",
+      "edge_pct": 16.9,
+      "tp": 72.2,
+      "p_model_pct": null,
+      "cv": 0.644,
+      "hit_rate": 85.0,
+      "l20_n": 20,
+      "vision": 94.1,
+      "projection": 1.347,
+      "model_sigma": 0.9189,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.644,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 85.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 16.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 72.2,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": true,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "PASS",
+      "failed_gates": "\u2014"
+    },
+    {
+      "rank": 9,
+      "in_tier": true,
+      "player": "Alek Thomas",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 123.6,
+      "ref_book": "consensus",
+      "edge_pct": 29.4,
+      "tp": 40.1,
+      "p_model_pct": null,
+      "cv": 1.014,
+      "hit_rate": 40.0,
+      "l20_n": 20,
+      "vision": 92.4,
+      "projection": 2.578,
+      "model_sigma": 1.8529,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.014,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 29.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 10,
+      "in_tier": true,
+      "player": "Joey Bart",
+      "team": null,
+      "opp": null,
+      "stat": "Batter Strikeouts",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -158,
+      "ref_book": "dk",
+      "edge_pct": 20.2,
+      "tp": 60.4,
+      "p_model_pct": null,
+      "cv": 0.695,
+      "hit_rate": 80.0,
+      "l20_n": 20,
+      "vision": 93.7,
+      "projection": 1.25,
+      "model_sigma": 0.8165,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.695,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 20.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 60.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": true,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "PASS",
+      "failed_gates": "\u2014"
+    }
+  ],
+  "live_tier_top_10_under": [],
+  "top_50_over": [
+    {
+      "rank": 1,
+      "in_tier": false,
+      "player": "Matt Waldron",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Strikeouts",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 115,
+      "ref_book": "dk",
+      "edge_pct": 35.7,
+      "tp": 46.5,
+      "p_model_pct": null,
+      "cv": 0.578,
+      "hit_rate": 80.0,
+      "l20_n": 10,
+      "vision": 97.0,
+      "projection": 3.22,
+      "model_sigma": 1.5776,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.578,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 35.7,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 46.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 2,
+      "in_tier": false,
+      "player": "Colson Montgomery",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 135,
+      "ref_book": "dk",
+      "edge_pct": 32.9,
+      "tp": 42.6,
+      "p_model_pct": null,
+      "cv": 1.134,
+      "hit_rate": 55.0,
+      "l20_n": 20,
+      "vision": 89.5,
+      "projection": 1.92,
+      "model_sigma": 2.2706,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.134,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 55.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 32.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 42.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 3,
+      "in_tier": false,
+      "player": "Shohei Ohtani",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 110,
+      "ref_book": "dk",
+      "edge_pct": 32.5,
+      "tp": 43.9,
+      "p_model_pct": null,
+      "cv": 1.099,
+      "hit_rate": 60.0,
+      "l20_n": 20,
+      "vision": 98.9,
+      "projection": 2.287,
+      "model_sigma": 2.4698,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.099,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 60.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 32.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 43.9,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 4,
+      "in_tier": false,
+      "player": "Colson Montgomery",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 140.4,
+      "ref_book": "consensus",
+      "edge_pct": 31.8,
+      "tp": 39.7,
+      "p_model_pct": null,
+      "cv": 1.098,
+      "hit_rate": 55.0,
+      "l20_n": 20,
+      "vision": 84.9,
+      "projection": 1.33,
+      "model_sigma": 0.9944,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.098,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 55.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 31.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 39.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 5,
+      "in_tier": true,
+      "player": "JJ Bleday",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 132.3,
+      "ref_book": "consensus",
+      "edge_pct": 31.7,
+      "tp": 43.1,
+      "p_model_pct": null,
+      "cv": 0.966,
+      "hit_rate": 50.0,
+      "l20_n": 10,
+      "vision": 93.0,
+      "projection": 4.22,
+      "model_sigma": 2.0575,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.966,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 31.7,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 43.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 6,
+      "in_tier": false,
+      "player": "Kyle Freeland",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Outs",
+      "stat_family": null,
+      "line": 12.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 126,
+      "ref_book": "dk",
+      "edge_pct": 30.8,
+      "tp": 41.7,
+      "p_model_pct": null,
+      "cv": 0.358,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 79.6,
+      "projection": 15.9,
+      "model_sigma": 3.0957,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.358,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 30.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 7,
+      "in_tier": false,
+      "player": "Brooks Lee",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -140,
+      "ref_book": "dk",
+      "edge_pct": 30.4,
+      "tp": 53.8,
+      "p_model_pct": null,
+      "cv": 0.859,
+      "hit_rate": 75.0,
+      "l20_n": 20,
+      "vision": 93.1,
+      "projection": 2.815,
+      "model_sigma": 2.2828,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.859,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 75.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 30.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 53.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 8,
+      "in_tier": false,
+      "player": "JJ Bleday",
+      "team": null,
+      "opp": null,
+      "stat": "Runs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 115.0,
+      "ref_book": "consensus",
+      "edge_pct": 30.3,
+      "tp": 43.1,
+      "p_model_pct": null,
+      "cv": 1.118,
+      "hit_rate": 40.0,
+      "l20_n": 10,
+      "vision": 83.7,
+      "projection": 1.66,
+      "model_sigma": 0.5164,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.118,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 30.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 43.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 9,
+      "in_tier": false,
+      "player": "Yoan Moncada",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 149.6,
+      "ref_book": "consensus",
+      "edge_pct": 30.3,
+      "tp": 35.9,
+      "p_model_pct": null,
+      "cv": 1.368,
+      "hit_rate": 40.0,
+      "l20_n": 20,
+      "vision": 81.6,
+      "projection": 1.17,
+      "model_sigma": 0.6992,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.368,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 30.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 35.9,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 10,
+      "in_tier": false,
+      "player": "George Kirby",
+      "team": null,
+      "opp": null,
+      "stat": "Walks Allowed",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -120,
+      "ref_book": "dk",
+      "edge_pct": 30.2,
+      "tp": 51.0,
+      "p_model_pct": null,
+      "cv": 0.711,
+      "hit_rate": 80.0,
+      "l20_n": 10,
+      "vision": 94.3,
+      "projection": 1.35,
+      "model_sigma": 0.9487,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.711,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 30.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 51.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 11,
+      "in_tier": false,
+      "player": "JJ Bleday",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -112.8,
+      "ref_book": "consensus",
+      "edge_pct": 29.1,
+      "tp": 46.8,
+      "p_model_pct": null,
+      "cv": 0.887,
+      "hit_rate": 50.0,
+      "l20_n": 10,
+      "vision": 82.6,
+      "projection": 4.0,
+      "model_sigma": 1.7288,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.887,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 29.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 46.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 12,
+      "in_tier": false,
+      "player": "Ian Happ",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -110,
+      "ref_book": "dk",
+      "edge_pct": 28.6,
+      "tp": 52.4,
+      "p_model_pct": null,
+      "cv": 0.888,
+      "hit_rate": 70.0,
+      "l20_n": 20,
+      "vision": 89.6,
+      "projection": 2.088,
+      "model_sigma": 1.9692,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.888,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 70.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 28.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 52.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 13,
+      "in_tier": false,
+      "player": "Tyler Glasnow",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Outs",
+      "stat_family": null,
+      "line": 18.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 145,
+      "ref_book": "dk",
+      "edge_pct": 25.8,
+      "tp": 38.5,
+      "p_model_pct": null,
+      "cv": 0.359,
+      "hit_rate": 20.0,
+      "l20_n": 10,
+      "vision": 82.4,
+      "projection": 21.3,
+      "model_sigma": 3.8173,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.359,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 20.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 25.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 38.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "hr,tp"
+    },
+    {
+      "rank": 14,
+      "in_tier": false,
+      "player": "Jazz Chisholm Jr.",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 100,
+      "ref_book": "dk",
+      "edge_pct": 25.6,
+      "tp": 46.2,
+      "p_model_pct": null,
+      "cv": 1.536,
+      "hit_rate": 50.0,
+      "l20_n": 20,
+      "vision": 69.6,
+      "projection": 3.209,
+      "model_sigma": 3.1693,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.536,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 25.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 46.2,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 15,
+      "in_tier": false,
+      "player": "Brooks Lee",
+      "team": null,
+      "opp": null,
+      "stat": "Singles",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 146.9,
+      "ref_book": "consensus",
+      "edge_pct": 24.6,
+      "tp": 39.7,
+      "p_model_pct": null,
+      "cv": 1.38,
+      "hit_rate": 45.0,
+      "l20_n": 20,
+      "vision": 80.5,
+      "projection": 1.01,
+      "model_sigma": 0.9661,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.38,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 45.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 24.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 39.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 16,
+      "in_tier": false,
+      "player": "JJ Bleday",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -175,
+      "ref_book": "mgm",
+      "edge_pct": 24.1,
+      "tp": 58.3,
+      "p_model_pct": null,
+      "cv": 0.966,
+      "hit_rate": 80.0,
+      "l20_n": 10,
+      "vision": 85.1,
+      "projection": 4.93,
+      "model_sigma": 2.0575,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.966,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 24.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 58.3,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv"
+    },
+    {
+      "rank": 17,
+      "in_tier": false,
+      "player": "Will Wilson",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 135.4,
+      "ref_book": "consensus",
+      "edge_pct": 23.1,
+      "tp": 40.4,
+      "p_model_pct": null,
+      "cv": 1.55,
+      "hit_rate": 15.0,
+      "l20_n": 20,
+      "vision": 92.9,
+      "projection": 2.23,
+      "model_sigma": 0.483,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.55,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 15.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 23.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 18,
+      "in_tier": false,
+      "player": "Brooks Lee",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -110,
+      "ref_book": "dk",
+      "edge_pct": 23.1,
+      "tp": 52.4,
+      "p_model_pct": null,
+      "cv": 1.171,
+      "hit_rate": 65.0,
+      "l20_n": 20,
+      "vision": 86.2,
+      "projection": 2.015,
+      "model_sigma": 2.3664,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.171,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 65.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 23.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 52.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 19,
+      "in_tier": false,
+      "player": "Alex Freeland",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 125,
+      "ref_book": "dk",
+      "edge_pct": 23.0,
+      "tp": 44.4,
+      "p_model_pct": null,
+      "cv": 1.525,
+      "hit_rate": 50.0,
+      "l20_n": 20,
+      "vision": 71.4,
+      "projection": 1.191,
+      "model_sigma": 1.2867,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.525,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 23.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 44.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 20,
+      "in_tier": false,
+      "player": "Michael Conforto",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 142.1,
+      "ref_book": "consensus",
+      "edge_pct": 22.8,
+      "tp": 38.6,
+      "p_model_pct": null,
+      "cv": 1.327,
+      "hit_rate": 35.0,
+      "l20_n": 20,
+      "vision": 92.2,
+      "projection": 1.767,
+      "model_sigma": 0.9428,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.327,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 35.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 22.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 38.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 21,
+      "in_tier": false,
+      "player": "Luis Campusano",
+      "team": null,
+      "opp": null,
+      "stat": "Runs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 140,
+      "ref_book": "fd",
+      "edge_pct": 22.8,
+      "tp": 41.7,
+      "p_model_pct": null,
+      "cv": 1.344,
+      "hit_rate": 40.0,
+      "l20_n": 20,
+      "vision": 88.7,
+      "projection": 1.0,
+      "model_sigma": 0.6992,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.344,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 22.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 22,
+      "in_tier": false,
+      "player": "Mickey Moniak",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -110,
+      "ref_book": "fd",
+      "edge_pct": 22.2,
+      "tp": 41.7,
+      "p_model_pct": null,
+      "cv": 1.206,
+      "hit_rate": 40.0,
+      "l20_n": 20,
+      "vision": 71.4,
+      "projection": 2.367,
+      "model_sigma": 2.8848,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.206,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 22.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 23,
+      "in_tier": false,
+      "player": "Willy Adames",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 122.8,
+      "ref_book": "consensus",
+      "edge_pct": 21.0,
+      "tp": 40.6,
+      "p_model_pct": null,
+      "cv": 1.03,
+      "hit_rate": 55.0,
+      "l20_n": 20,
+      "vision": 65.5,
+      "projection": 0.45,
+      "model_sigma": 0.7071,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.03,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 55.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 21.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 24,
+      "in_tier": false,
+      "player": "JJ Bleday",
+      "team": null,
+      "opp": null,
+      "stat": "Batter Walks",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 140,
+      "ref_book": "dk",
+      "edge_pct": 20.9,
+      "tp": 38.6,
+      "p_model_pct": null,
+      "cv": 2.15,
+      "hit_rate": 10.0,
+      "l20_n": 10,
+      "vision": 50.0,
+      "projection": 1.03,
+      "model_sigma": 0.3162,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 2.15,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 10.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 20.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 38.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 25,
+      "in_tier": false,
+      "player": "Luis Campusano",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 100,
+      "ref_book": "fd",
+      "edge_pct": 20.2,
+      "tp": 50.0,
+      "p_model_pct": null,
+      "cv": 0.933,
+      "hit_rate": 50.0,
+      "l20_n": 20,
+      "vision": 93.7,
+      "projection": 2.318,
+      "model_sigma": 2.0111,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.933,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 20.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 26,
+      "in_tier": false,
+      "player": "Martin Perez",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Outs",
+      "stat_family": null,
+      "line": 15.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 124,
+      "ref_book": "dk",
+      "edge_pct": 20.1,
+      "tp": 41.8,
+      "p_model_pct": null,
+      "cv": 0.31,
+      "hit_rate": 20.0,
+      "l20_n": 10,
+      "vision": 91.0,
+      "projection": 17.1,
+      "model_sigma": 2.1705,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.31,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 20.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 20.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "hr,tp"
+    },
+    {
+      "rank": 27,
+      "in_tier": false,
+      "player": "Luke Keaschall",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -175,
+      "ref_book": "dk",
+      "edge_pct": 19.8,
+      "tp": 58.3,
+      "p_model_pct": null,
+      "cv": 0.907,
+      "hit_rate": 65.0,
+      "l20_n": 20,
+      "vision": 75.6,
+      "projection": 1.797,
+      "model_sigma": 1.5055,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.907,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 65.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 19.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 58.3,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv"
+    },
+    {
+      "rank": 28,
+      "in_tier": false,
+      "player": "Willy Adames",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 130,
+      "ref_book": "dk",
+      "edge_pct": 19.7,
+      "tp": 40.6,
+      "p_model_pct": null,
+      "cv": 1.206,
+      "hit_rate": 55.0,
+      "l20_n": 20,
+      "vision": 62.8,
+      "projection": 0.931,
+      "model_sigma": 0.9661,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.206,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 55.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 19.7,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 29,
+      "in_tier": false,
+      "player": "Mickey Moniak",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 125,
+      "ref_book": "fd",
+      "edge_pct": 19.5,
+      "tp": 44.4,
+      "p_model_pct": null,
+      "cv": 1.231,
+      "hit_rate": 40.0,
+      "l20_n": 20,
+      "vision": 85.7,
+      "projection": 2.294,
+      "model_sigma": 2.8983,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.231,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 19.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 44.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 30,
+      "in_tier": false,
+      "player": "Michael Conforto",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -135,
+      "ref_book": "mgm",
+      "edge_pct": 19.4,
+      "tp": 53.5,
+      "p_model_pct": null,
+      "cv": 1.327,
+      "hit_rate": 50.0,
+      "l20_n": 20,
+      "vision": 90.5,
+      "projection": 1.872,
+      "model_sigma": 0.9428,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.327,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 19.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 53.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 31,
+      "in_tier": false,
+      "player": "Eric Lauer",
+      "team": null,
+      "opp": null,
+      "stat": "Hits Allowed",
+      "stat_family": null,
+      "line": 3.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 110,
+      "ref_book": "dk",
+      "edge_pct": 19.1,
+      "tp": 44.8,
+      "p_model_pct": null,
+      "cv": 0.476,
+      "hit_rate": 40.0,
+      "l20_n": 10,
+      "vision": 75.8,
+      "projection": 4.35,
+      "model_sigma": 1.7127,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.476,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 19.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 44.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "hr,tp"
+    },
+    {
+      "rank": 32,
+      "in_tier": false,
+      "player": "Jace Jung",
+      "team": null,
+      "opp": null,
+      "stat": "Singles",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 120,
+      "ref_book": "fd",
+      "edge_pct": 18.6,
+      "tp": 38.0,
+      "p_model_pct": null,
+      "cv": 1.654,
+      "hit_rate": 35.0,
+      "l20_n": 20,
+      "vision": 67.4,
+      "projection": 0.69,
+      "model_sigma": 0.6749,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.654,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 35.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 18.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 38.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 33,
+      "in_tier": false,
+      "player": "Tristan Gray",
+      "team": null,
+      "opp": null,
+      "stat": "Singles",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 149.0,
+      "ref_book": "consensus",
+      "edge_pct": 18.0,
+      "tp": 37.4,
+      "p_model_pct": null,
+      "cv": 0.997,
+      "hit_rate": 55.0,
+      "l20_n": 20,
+      "vision": 100.0,
+      "projection": 0.5,
+      "model_sigma": 0.6749,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.997,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 55.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 18.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 37.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 34,
+      "in_tier": false,
+      "player": "Nick Martinez",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Outs",
+      "stat_family": null,
+      "line": 15.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -121,
+      "ref_book": "dk",
+      "edge_pct": 17.9,
+      "tp": 51.6,
+      "p_model_pct": null,
+      "cv": 0.361,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 93.9,
+      "projection": 19.0,
+      "model_sigma": 4.1473,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.361,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 17.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 51.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 35,
+      "in_tier": false,
+      "player": "Miguel Andujar",
+      "team": null,
+      "opp": null,
+      "stat": "Batter Strikeouts",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -101,
+      "ref_book": "dk",
+      "edge_pct": 17.6,
+      "tp": 50.2,
+      "p_model_pct": null,
+      "cv": 1.047,
+      "hit_rate": 55.0,
+      "l20_n": 20,
+      "vision": 92.3,
+      "projection": 0.97,
+      "model_sigma": 0.6992,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.047,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 55.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 17.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 50.2,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 36,
+      "in_tier": false,
+      "player": "Jace Jung",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -115,
+      "ref_book": "mgm",
+      "edge_pct": 17.2,
+      "tp": 50.0,
+      "p_model_pct": null,
+      "cv": 1.485,
+      "hit_rate": 40.0,
+      "l20_n": 20,
+      "vision": 82.0,
+      "projection": 1.16,
+      "model_sigma": 1.2649,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.485,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 17.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 37,
+      "in_tier": false,
+      "player": "Gavin Williams",
+      "team": null,
+      "opp": null,
+      "stat": "Walks Allowed",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -168,
+      "ref_book": "dk",
+      "edge_pct": 17.2,
+      "tp": 59.0,
+      "p_model_pct": null,
+      "cv": 1.059,
+      "hit_rate": 70.0,
+      "l20_n": 10,
+      "vision": 72.4,
+      "projection": 2.04,
+      "model_sigma": 2.1082,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.059,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 70.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 17.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 59.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv"
+    },
+    {
+      "rank": 38,
+      "in_tier": false,
+      "player": "Luis Campusano",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -155,
+      "ref_book": "mgm",
+      "edge_pct": 16.9,
+      "tp": 56.7,
+      "p_model_pct": null,
+      "cv": 1.296,
+      "hit_rate": 70.0,
+      "l20_n": 20,
+      "vision": 87.1,
+      "projection": 2.03,
+      "model_sigma": 2.9136,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.296,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 70.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 16.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 56.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 39,
+      "in_tier": false,
+      "player": "Will Wilson",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -188.5,
+      "ref_book": "consensus",
+      "edge_pct": 16.0,
+      "tp": 54.5,
+      "p_model_pct": null,
+      "cv": 1.55,
+      "hit_rate": 45.0,
+      "l20_n": 20,
+      "vision": 64.3,
+      "projection": 2.116,
+      "model_sigma": 0.483,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.55,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 45.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 16.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 54.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 40,
+      "in_tier": false,
+      "player": "JJ Bleday",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -188.0,
+      "ref_book": "consensus",
+      "edge_pct": 15.9,
+      "tp": 60.9,
+      "p_model_pct": null,
+      "cv": 0.821,
+      "hit_rate": 80.0,
+      "l20_n": 10,
+      "vision": 70.9,
+      "projection": 1.25,
+      "model_sigma": 0.5676,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.821,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 15.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 60.9,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": true,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "PASS",
+      "failed_gates": "\u2014"
+    },
+    {
+      "rank": 41,
+      "in_tier": false,
+      "player": "Will Wilson",
+      "team": null,
+      "opp": null,
+      "stat": "Singles",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 124.6,
+      "ref_book": "consensus",
+      "edge_pct": 15.6,
+      "tp": 42.8,
+      "p_model_pct": null,
+      "cv": 1.917,
+      "hit_rate": 25.0,
+      "l20_n": 20,
+      "vision": 74.3,
+      "projection": 0.84,
+      "model_sigma": 0.483,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.917,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 25.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 15.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 42.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 42,
+      "in_tier": false,
+      "player": "Luke Keaschall",
+      "team": null,
+      "opp": null,
+      "stat": "Batter Strikeouts",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 135,
+      "ref_book": "dk",
+      "edge_pct": 15.6,
+      "tp": 42.6,
+      "p_model_pct": null,
+      "cv": 0.938,
+      "hit_rate": 60.0,
+      "l20_n": 20,
+      "vision": 67.4,
+      "projection": 0.62,
+      "model_sigma": 0.6325,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.938,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 60.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 15.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 42.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 43,
+      "in_tier": false,
+      "player": "Jake Bauers",
+      "team": null,
+      "opp": null,
+      "stat": "RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 130,
+      "ref_book": "fd",
+      "edge_pct": 15.4,
+      "tp": 43.5,
+      "p_model_pct": null,
+      "cv": 1.52,
+      "hit_rate": 40.0,
+      "l20_n": 20,
+      "vision": 65.0,
+      "projection": 0.736,
+      "model_sigma": 0.6992,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.52,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 15.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 43.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 44,
+      "in_tier": false,
+      "player": "Martin Perez",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Outs",
+      "stat_family": null,
+      "line": 15.0,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -120,
+      "ref_book": "bol",
+      "edge_pct": 15.4,
+      "tp": 50.0,
+      "p_model_pct": null,
+      "cv": 0.31,
+      "hit_rate": 20.0,
+      "l20_n": 10,
+      "vision": null,
+      "projection": 17.1,
+      "model_sigma": 2.1705,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.31,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 20.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 15.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "hr,tp"
+    },
+    {
+      "rank": 45,
+      "in_tier": false,
+      "player": "Travis Bazzana",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -115,
+      "ref_book": "mgm",
+      "edge_pct": 15.3,
+      "tp": 50.4,
+      "p_model_pct": null,
+      "cv": 1.561,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 71.6,
+      "projection": 1.35,
+      "model_sigma": 3.1225,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.561,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 15.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 50.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 46,
+      "in_tier": false,
+      "player": "Tyler Freeman",
+      "team": null,
+      "opp": null,
+      "stat": "Singles",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -108.4,
+      "ref_book": "consensus",
+      "edge_pct": 15.0,
+      "tp": 41.5,
+      "p_model_pct": null,
+      "cv": 1.047,
+      "hit_rate": 60.0,
+      "l20_n": 20,
+      "vision": 85.7,
+      "projection": 0.53,
+      "model_sigma": 0.9661,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.047,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 60.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 15.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 47,
+      "in_tier": false,
+      "player": "Alex Bregman",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -135,
+      "ref_book": "dk",
+      "edge_pct": 14.8,
+      "tp": 57.4,
+      "p_model_pct": null,
+      "cv": 0.869,
+      "hit_rate": 50.0,
+      "l20_n": 20,
+      "vision": 75.0,
+      "projection": 2.591,
+      "model_sigma": 1.5951,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.869,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 14.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 57.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 48,
+      "in_tier": false,
+      "player": "J.C. Escarra",
+      "team": null,
+      "opp": null,
+      "stat": "Batter Strikeouts",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -119,
+      "ref_book": "dk",
+      "edge_pct": 14.5,
+      "tp": 52.0,
+      "p_model_pct": null,
+      "cv": 1.134,
+      "hit_rate": 55.0,
+      "l20_n": 20,
+      "vision": 90.6,
+      "projection": 0.97,
+      "model_sigma": 0.9428,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.134,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 55.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 14.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 52.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 49,
+      "in_tier": false,
+      "player": "Evan Carter",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": -130,
+      "ref_book": "dk",
+      "edge_pct": 14.5,
+      "tp": 52.5,
+      "p_model_pct": null,
+      "cv": 1.186,
+      "hit_rate": 60.0,
+      "l20_n": 20,
+      "vision": 84.7,
+      "projection": 1.299,
+      "model_sigma": 1.4944,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.186,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 60.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 14.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 52.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 50,
+      "in_tier": false,
+      "player": "Mickey Moniak",
+      "team": null,
+      "opp": null,
+      "stat": "Runs",
+      "stat_family": null,
+      "line": 0.5,
+      "side": "OVER",
+      "is_alt": false,
+      "ref_odds": 130,
+      "ref_book": "fd",
+      "edge_pct": 14.2,
+      "tp": 43.5,
+      "p_model_pct": null,
+      "cv": 1.613,
+      "hit_rate": 35.0,
+      "l20_n": 20,
+      "vision": 61.2,
+      "projection": 0.73,
+      "model_sigma": 1.0328,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.613,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 35.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 14.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 43.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    }
+  ],
+  "top_50_under": [
+    {
+      "rank": 1,
+      "in_tier": false,
+      "player": "Kyle Freeland",
+      "team": null,
+      "opp": null,
+      "stat": "Hits Allowed",
+      "stat_family": null,
+      "line": 4.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 125,
+      "ref_book": "dk",
+      "edge_pct": 56.8,
+      "tp": 41.5,
+      "p_model_pct": null,
+      "cv": 0.638,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 97.4,
+      "projection": 0.96,
+      "model_sigma": 1.9149,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.638,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 56.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 2,
+      "in_tier": false,
+      "player": "Willson Contreras",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 4.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 126,
+      "ref_book": "dk",
+      "edge_pct": 56.7,
+      "tp": 42.3,
+      "p_model_pct": null,
+      "cv": 1.17,
+      "hit_rate": 85.0,
+      "l20_n": 20,
+      "vision": 100.0,
+      "projection": 1.28,
+      "model_sigma": 1.8738,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.17,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 85.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 56.7,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 42.3,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 3,
+      "in_tier": false,
+      "player": "Martin Perez",
+      "team": null,
+      "opp": null,
+      "stat": "Walks Allowed",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 129,
+      "ref_book": "dk",
+      "edge_pct": 52.4,
+      "tp": 40.8,
+      "p_model_pct": null,
+      "cv": 0.97,
+      "hit_rate": 60.0,
+      "l20_n": 10,
+      "vision": 100.0,
+      "projection": 0.56,
+      "model_sigma": 1.2293,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.97,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 60.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 52.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,hr,tp"
+    },
+    {
+      "rank": 4,
+      "in_tier": false,
+      "player": "Chad Patrick",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Strikeouts",
+      "stat_family": null,
+      "line": 3.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 130,
+      "ref_book": "mgm",
+      "edge_pct": 51.4,
+      "tp": 40.6,
+      "p_model_pct": null,
+      "cv": 0.562,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 100.0,
+      "projection": 1.83,
+      "model_sigma": 1.5,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.562,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 51.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 5,
+      "in_tier": false,
+      "player": "Jesus Luzardo",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Outs",
+      "stat_family": null,
+      "line": 20.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 126,
+      "ref_book": "dk",
+      "edge_pct": 51.1,
+      "tp": 41.7,
+      "p_model_pct": null,
+      "cv": 0.239,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 100.0,
+      "projection": 15.2,
+      "model_sigma": 2.2361,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.239,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 51.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.7,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 6,
+      "in_tier": false,
+      "player": "Kyle Freeland",
+      "team": null,
+      "opp": null,
+      "stat": "Walks Allowed",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 120,
+      "ref_book": "dk",
+      "edge_pct": 50.6,
+      "tp": 42.8,
+      "p_model_pct": null,
+      "cv": 0.935,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 97.3,
+      "projection": 0.49,
+      "model_sigma": 1.069,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.935,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 50.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 42.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 7,
+      "in_tier": false,
+      "player": "Vladimir Guerrero Jr.",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 2.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -110,
+      "ref_book": "dk",
+      "edge_pct": 49.7,
+      "tp": 49.3,
+      "p_model_pct": null,
+      "cv": 0.724,
+      "hit_rate": 80.0,
+      "l20_n": 20,
+      "vision": 100.0,
+      "projection": 0.93,
+      "model_sigma": 1.2693,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.724,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 49.7,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 49.3,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 8,
+      "in_tier": false,
+      "player": "Spencer Steer",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 4.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 120,
+      "ref_book": "dk",
+      "edge_pct": 49.1,
+      "tp": 44.4,
+      "p_model_pct": null,
+      "cv": 1.037,
+      "hit_rate": 100.0,
+      "l20_n": 20,
+      "vision": 100.0,
+      "projection": 0.97,
+      "model_sigma": 1.3166,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.037,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 100.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 49.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 44.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 9,
+      "in_tier": false,
+      "player": "Tyler Glasnow",
+      "team": null,
+      "opp": null,
+      "stat": "Walks Allowed",
+      "stat_family": null,
+      "line": 3.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -115,
+      "ref_book": "dk",
+      "edge_pct": 48.8,
+      "tp": 50.0,
+      "p_model_pct": null,
+      "cv": 0.527,
+      "hit_rate": 100.0,
+      "l20_n": 10,
+      "vision": 100.0,
+      "projection": 1.42,
+      "model_sigma": 0.6325,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.527,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 100.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 48.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 10,
+      "in_tier": false,
+      "player": "Cam Schlittler",
+      "team": null,
+      "opp": null,
+      "stat": "Walks Allowed",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 117,
+      "ref_book": "dk",
+      "edge_pct": 48.7,
+      "tp": 43.1,
+      "p_model_pct": null,
+      "cv": 1.061,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 99.0,
+      "projection": 0.2,
+      "model_sigma": 0.7071,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.061,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 48.7,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 43.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 11,
+      "in_tier": false,
+      "player": "Nick Martinez",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Strikeouts",
+      "stat_family": null,
+      "line": 5.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -110,
+      "ref_book": "dk",
+      "edge_pct": 48.6,
+      "tp": 45.9,
+      "p_model_pct": null,
+      "cv": 0.782,
+      "hit_rate": 90.0,
+      "l20_n": 10,
+      "vision": 100.0,
+      "projection": 2.7,
+      "model_sigma": 2.1108,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.782,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 90.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 48.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 45.9,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 12,
+      "in_tier": false,
+      "player": "Shohei Ohtani",
+      "team": null,
+      "opp": null,
+      "stat": "Walks Allowed",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 113,
+      "ref_book": "dk",
+      "edge_pct": 47.9,
+      "tp": 43.9,
+      "p_model_pct": null,
+      "cv": null,
+      "hit_rate": 95.0,
+      "l20_n": 20,
+      "vision": 100.0,
+      "projection": 0.3,
+      "model_sigma": 1.1402,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": null,
+            "value": null,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 95.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 47.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 43.9,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 13,
+      "in_tier": false,
+      "player": "Alex Call",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -120,
+      "ref_book": "dk",
+      "edge_pct": 47.2,
+      "tp": 51.0,
+      "p_model_pct": null,
+      "cv": 0.96,
+      "hit_rate": 80.0,
+      "l20_n": 20,
+      "vision": 99.4,
+      "projection": 0.49,
+      "model_sigma": 0.7888,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.96,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 47.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 51.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 14,
+      "in_tier": false,
+      "player": "J.P. Crawford",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 3.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -115,
+      "ref_book": "dk",
+      "edge_pct": 47.0,
+      "tp": 49.1,
+      "p_model_pct": null,
+      "cv": 1.252,
+      "hit_rate": 85.0,
+      "l20_n": 20,
+      "vision": 100.0,
+      "projection": 1.157,
+      "model_sigma": 1.6364,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.252,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 85.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 47.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 49.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 15,
+      "in_tier": false,
+      "player": "Payton Tolle",
+      "team": null,
+      "opp": null,
+      "stat": "Walks Allowed",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -104,
+      "ref_book": "dk",
+      "edge_pct": 45.8,
+      "tp": 47.6,
+      "p_model_pct": null,
+      "cv": 1.369,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 98.0,
+      "projection": 0.48,
+      "model_sigma": 0.5477,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.369,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 45.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 47.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 16,
+      "in_tier": false,
+      "player": "Nick Martinez",
+      "team": null,
+      "opp": null,
+      "stat": "Hits Allowed",
+      "stat_family": null,
+      "line": 4.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 100,
+      "ref_book": "dk",
+      "edge_pct": 45.7,
+      "tp": 45.1,
+      "p_model_pct": null,
+      "cv": 0.692,
+      "hit_rate": 30.0,
+      "l20_n": 10,
+      "vision": 98.5,
+      "projection": 1.31,
+      "model_sigma": 3.8079,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.692,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 30.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 45.7,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 45.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "hr,tp"
+    },
+    {
+      "rank": 17,
+      "in_tier": false,
+      "player": "Sal Frelick",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 4.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -110,
+      "ref_book": "dk",
+      "edge_pct": 45.3,
+      "tp": 49.0,
+      "p_model_pct": null,
+      "cv": 1.111,
+      "hit_rate": 100.0,
+      "l20_n": 20,
+      "vision": 100.0,
+      "projection": 1.807,
+      "model_sigma": 1.1547,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.111,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 100.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 45.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 49.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 18,
+      "in_tier": false,
+      "player": "Chase Burns",
+      "team": null,
+      "opp": null,
+      "stat": "Hits Allowed",
+      "stat_family": null,
+      "line": 3.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -115,
+      "ref_book": "dk",
+      "edge_pct": 43.0,
+      "tp": 51.0,
+      "p_model_pct": null,
+      "cv": 0.683,
+      "hit_rate": 50.0,
+      "l20_n": 10,
+      "vision": 100.0,
+      "projection": 1.11,
+      "model_sigma": 1.8886,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.683,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 50.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 43.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 51.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "hr,tp"
+    },
+    {
+      "rank": 19,
+      "in_tier": false,
+      "player": "Trevor Larnach",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -105,
+      "ref_book": "mgm",
+      "edge_pct": 43.0,
+      "tp": 48.0,
+      "p_model_pct": null,
+      "cv": 0.852,
+      "hit_rate": 90.0,
+      "l20_n": 20,
+      "vision": 98.9,
+      "projection": 0.7,
+      "model_sigma": 0.5676,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.852,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 90.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 43.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 48.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 20,
+      "in_tier": false,
+      "player": "Austin Hays",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -154,
+      "ref_book": "dk",
+      "edge_pct": 42.4,
+      "tp": 56.6,
+      "p_model_pct": null,
+      "cv": 0.654,
+      "hit_rate": 85.0,
+      "l20_n": 20,
+      "vision": 100.0,
+      "projection": 0.53,
+      "model_sigma": 0.483,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.654,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 85.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 42.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 56.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 21,
+      "in_tier": false,
+      "player": "Kody Clemens",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -135,
+      "ref_book": "mgm",
+      "edge_pct": 42.2,
+      "tp": 53.5,
+      "p_model_pct": null,
+      "cv": 1.134,
+      "hit_rate": 90.0,
+      "l20_n": 20,
+      "vision": 97.8,
+      "projection": 0.51,
+      "model_sigma": 0.6749,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.134,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 90.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 42.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 53.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 22,
+      "in_tier": false,
+      "player": "J.P. Crawford",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 4.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -154,
+      "ref_book": "dk",
+      "edge_pct": 41.7,
+      "tp": 56.6,
+      "p_model_pct": null,
+      "cv": 1.392,
+      "hit_rate": 100.0,
+      "l20_n": 20,
+      "vision": 96.6,
+      "projection": 0.925,
+      "model_sigma": 1.3166,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.392,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 100.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 41.7,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 56.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 23,
+      "in_tier": false,
+      "player": "Willson Contreras",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 126,
+      "ref_book": "dk",
+      "edge_pct": 41.2,
+      "tp": 42.3,
+      "p_model_pct": null,
+      "cv": 1.0,
+      "hit_rate": 80.0,
+      "l20_n": 20,
+      "vision": 97.8,
+      "projection": 0.76,
+      "model_sigma": 0.6325,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.0,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 41.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 42.3,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 24,
+      "in_tier": false,
+      "player": "Ezequiel Duran",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -148,
+      "ref_book": "dk",
+      "edge_pct": 41.1,
+      "tp": 55.6,
+      "p_model_pct": null,
+      "cv": 1.145,
+      "hit_rate": 90.0,
+      "l20_n": 20,
+      "vision": 98.3,
+      "projection": 0.45,
+      "model_sigma": 1.0328,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.145,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 90.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 41.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 55.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 25,
+      "in_tier": false,
+      "player": "Nolan Gorman",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 4.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -135,
+      "ref_book": "dk",
+      "edge_pct": 40.8,
+      "tp": 53.5,
+      "p_model_pct": null,
+      "cv": 1.214,
+      "hit_rate": 100.0,
+      "l20_n": 20,
+      "vision": 98.2,
+      "projection": 0.696,
+      "model_sigma": 1.3499,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.214,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 100.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 40.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 53.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 26,
+      "in_tier": false,
+      "player": "Brandon Valenzuela",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -142,
+      "ref_book": "dk",
+      "edge_pct": 40.8,
+      "tp": 54.6,
+      "p_model_pct": null,
+      "cv": 1.214,
+      "hit_rate": 95.0,
+      "l20_n": 20,
+      "vision": 97.5,
+      "projection": 0.48,
+      "model_sigma": 0.7071,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.214,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 95.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 40.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 54.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 27,
+      "in_tier": false,
+      "player": "JR Ritchie",
+      "team": null,
+      "opp": null,
+      "stat": "Hits Allowed",
+      "stat_family": null,
+      "line": 4.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 115,
+      "ref_book": "mgm",
+      "edge_pct": 40.8,
+      "tp": 43.3,
+      "p_model_pct": null,
+      "cv": 1.481,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 87.1,
+      "projection": 0.8,
+      "model_sigma": 2.0736,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.481,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 40.8,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 43.3,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 28,
+      "in_tier": false,
+      "player": "Tyler Glasnow",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Strikeouts",
+      "stat_family": null,
+      "line": 10.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 100,
+      "ref_book": "dk",
+      "edge_pct": 40.6,
+      "tp": 46.5,
+      "p_model_pct": null,
+      "cv": 0.301,
+      "hit_rate": 90.0,
+      "l20_n": 10,
+      "vision": 98.0,
+      "projection": 7.83,
+      "model_sigma": 2.1082,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.301,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 90.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 40.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 46.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 29,
+      "in_tier": false,
+      "player": "Liam Hicks",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 3.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -155,
+      "ref_book": "dk",
+      "edge_pct": 40.5,
+      "tp": 56.1,
+      "p_model_pct": null,
+      "cv": 0.793,
+      "hit_rate": 65.0,
+      "l20_n": 20,
+      "vision": 97.1,
+      "projection": 1.763,
+      "model_sigma": 1.7512,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.793,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 65.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 40.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 56.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 30,
+      "in_tier": false,
+      "player": "Jesus Luzardo",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Outs",
+      "stat_family": null,
+      "line": 19.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -105,
+      "ref_book": "dk",
+      "edge_pct": 40.2,
+      "tp": 48.0,
+      "p_model_pct": null,
+      "cv": 0.239,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 94.9,
+      "projection": 15.2,
+      "model_sigma": 2.2361,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.239,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 40.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 48.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 31,
+      "in_tier": false,
+      "player": "Sal Frelick",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 3.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 110,
+      "ref_book": "dk",
+      "edge_pct": 39.9,
+      "tp": 43.9,
+      "p_model_pct": null,
+      "cv": 0.879,
+      "hit_rate": 90.0,
+      "l20_n": 20,
+      "vision": 99.5,
+      "projection": 1.797,
+      "model_sigma": 1.1595,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.879,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 90.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 39.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 43.9,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 32,
+      "in_tier": false,
+      "player": "J.P. Crawford",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -154,
+      "ref_book": "dk",
+      "edge_pct": 39.6,
+      "tp": 56.6,
+      "p_model_pct": null,
+      "cv": 1.146,
+      "hit_rate": 85.0,
+      "l20_n": 20,
+      "vision": 97.7,
+      "projection": 0.48,
+      "model_sigma": 0.7071,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.146,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 85.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 39.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 56.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 33,
+      "in_tier": false,
+      "player": "Spencer Steer",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 5.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -155,
+      "ref_book": "dk",
+      "edge_pct": 39.5,
+      "tp": 56.1,
+      "p_model_pct": null,
+      "cv": 0.909,
+      "hit_rate": 100.0,
+      "l20_n": 20,
+      "vision": 99.1,
+      "projection": 2.261,
+      "model_sigma": 1.2517,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.909,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 100.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 39.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 56.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 34,
+      "in_tier": false,
+      "player": "Shane Baz",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Strikeouts",
+      "stat_family": null,
+      "line": 7.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -135,
+      "ref_book": "dk",
+      "edge_pct": 39.5,
+      "tp": 55.1,
+      "p_model_pct": null,
+      "cv": 0.411,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 96.5,
+      "projection": 3.61,
+      "model_sigma": 1.6915,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.411,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 39.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 55.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 35,
+      "in_tier": false,
+      "player": "Derek Hill",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -162,
+      "ref_book": "dk",
+      "edge_pct": 39.2,
+      "tp": 57.6,
+      "p_model_pct": null,
+      "cv": 1.134,
+      "hit_rate": 100.0,
+      "l20_n": 20,
+      "vision": 96.6,
+      "projection": 0.45,
+      "model_sigma": 0.5164,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.134,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 100.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 39.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 57.6,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 36,
+      "in_tier": false,
+      "player": "Martin Perez",
+      "team": null,
+      "opp": null,
+      "stat": "Hits Allowed",
+      "stat_family": null,
+      "line": 5.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -170,
+      "ref_book": "dk",
+      "edge_pct": 39.0,
+      "tp": 58.8,
+      "p_model_pct": null,
+      "cv": 0.494,
+      "hit_rate": 100.0,
+      "l20_n": 10,
+      "vision": 100.0,
+      "projection": 1.15,
+      "model_sigma": 1.2293,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.494,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 100.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 39.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 58.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": true,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "PASS",
+      "failed_gates": "\u2014"
+    },
+    {
+      "rank": 37,
+      "in_tier": false,
+      "player": "Sandy Alcantara",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Strikeouts",
+      "stat_family": null,
+      "line": 5.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 100,
+      "ref_book": "dk",
+      "edge_pct": 39.0,
+      "tp": 46.5,
+      "p_model_pct": null,
+      "cv": 0.494,
+      "hit_rate": 70.0,
+      "l20_n": 10,
+      "vision": 100.0,
+      "projection": 3.61,
+      "model_sigma": 1.8379,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.494,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 70.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 39.0,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 46.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 38,
+      "in_tier": false,
+      "player": "Andy Pages",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 130,
+      "ref_book": "dk",
+      "edge_pct": 38.3,
+      "tp": 41.1,
+      "p_model_pct": null,
+      "cv": 0.956,
+      "hit_rate": 85.0,
+      "l20_n": 20,
+      "vision": 96.1,
+      "projection": 0.84,
+      "model_sigma": 0.6749,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.956,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 85.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 38.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 41.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 39,
+      "in_tier": false,
+      "player": "Erick Fedde",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Strikeouts",
+      "stat_family": null,
+      "line": 5.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -182,
+      "ref_book": "dk",
+      "edge_pct": 38.3,
+      "tp": 60.3,
+      "p_model_pct": null,
+      "cv": 0.439,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 95.5,
+      "projection": 2.8,
+      "model_sigma": 1.2693,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.439,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 38.3,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 60.3,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "\u2014"
+    },
+    {
+      "rank": 40,
+      "in_tier": false,
+      "player": "Brandon Williamson",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Strikeouts",
+      "stat_family": null,
+      "line": 3.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 131,
+      "ref_book": "dk",
+      "edge_pct": 38.1,
+      "tp": 40.8,
+      "p_model_pct": null,
+      "cv": 0.272,
+      "hit_rate": 70.0,
+      "l20_n": 10,
+      "vision": 100.0,
+      "projection": 2.82,
+      "model_sigma": 0.8165,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.272,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 70.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 38.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.8,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 41,
+      "in_tier": false,
+      "player": "Shane Baz",
+      "team": null,
+      "opp": null,
+      "stat": "Pitcher Strikeouts",
+      "stat_family": null,
+      "line": 5.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -120,
+      "ref_book": "dk",
+      "edge_pct": 37.2,
+      "tp": 55.1,
+      "p_model_pct": null,
+      "cv": 0.411,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 94.1,
+      "projection": 3.44,
+      "model_sigma": 1.6915,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.411,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 37.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 55.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 42,
+      "in_tier": false,
+      "player": "Clay Holmes",
+      "team": null,
+      "opp": null,
+      "stat": "Walks Allowed",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 134,
+      "ref_book": "dk",
+      "edge_pct": 36.9,
+      "tp": 40.0,
+      "p_model_pct": null,
+      "cv": 0.653,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 97.0,
+      "projection": 1.13,
+      "model_sigma": 1.0607,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.653,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 36.9,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.0,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 43,
+      "in_tier": false,
+      "player": "Kris Bubic",
+      "team": null,
+      "opp": null,
+      "stat": "Walks Allowed",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 132,
+      "ref_book": "dk",
+      "edge_pct": 36.6,
+      "tp": 40.3,
+      "p_model_pct": null,
+      "cv": 0.553,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 98.0,
+      "projection": 1.35,
+      "model_sigma": 1.1667,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.553,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 36.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 40.3,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "tp"
+    },
+    {
+      "rank": 44,
+      "in_tier": false,
+      "player": "Brandon Valenzuela",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 2.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -115,
+      "ref_book": "dk",
+      "edge_pct": 36.6,
+      "tp": 49.1,
+      "p_model_pct": null,
+      "cv": 1.757,
+      "hit_rate": 90.0,
+      "l20_n": 20,
+      "vision": 84.5,
+      "projection": 0.939,
+      "model_sigma": 1.8529,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.757,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 90.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 36.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 49.1,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 45,
+      "in_tier": false,
+      "player": "Nolan Schanuel",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 2.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -162,
+      "ref_book": "dk",
+      "edge_pct": 36.5,
+      "tp": 58.2,
+      "p_model_pct": null,
+      "cv": 0.947,
+      "hit_rate": 95.0,
+      "l20_n": 20,
+      "vision": 100.0,
+      "projection": 1.28,
+      "model_sigma": 0.7379,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 0.947,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 95.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 36.5,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 58.2,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv"
+    },
+    {
+      "rank": 46,
+      "in_tier": false,
+      "player": "Jameson Taillon",
+      "team": null,
+      "opp": null,
+      "stat": "Earned Runs",
+      "stat_family": null,
+      "line": 2.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -101,
+      "ref_book": "dk",
+      "edge_pct": 35.6,
+      "tp": 46.9,
+      "p_model_pct": null,
+      "cv": 0.707,
+      "hit_rate": 20.0,
+      "l20_n": 10,
+      "vision": 100.0,
+      "projection": 1.31,
+      "model_sigma": 2.8284,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": true,
+            "value": 0.707,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": false,
+            "value": 20.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 35.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 46.9,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "hr,tp"
+    },
+    {
+      "rank": 47,
+      "in_tier": false,
+      "player": "Yainer Diaz",
+      "team": null,
+      "opp": null,
+      "stat": "Total Bases",
+      "stat_family": null,
+      "line": 2.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": 126,
+      "ref_book": "dk",
+      "edge_pct": 35.6,
+      "tp": 43.4,
+      "p_model_pct": null,
+      "cv": 1.068,
+      "hit_rate": 80.0,
+      "l20_n": 20,
+      "vision": 94.7,
+      "projection": 1.566,
+      "model_sigma": 1.7127,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.068,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 80.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 35.6,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 43.4,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 48,
+      "in_tier": false,
+      "player": "Jacob deGrom",
+      "team": null,
+      "opp": null,
+      "stat": "Earned Runs",
+      "stat_family": null,
+      "line": 2.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -185,
+      "ref_book": "mgm",
+      "edge_pct": 35.4,
+      "tp": 59.9,
+      "p_model_pct": null,
+      "cv": 1.095,
+      "hit_rate": null,
+      "l20_n": null,
+      "vision": 97.0,
+      "projection": 0.27,
+      "model_sigma": 1.0954,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.095,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": null,
+            "value": null,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 35.4,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 59.9,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv"
+    },
+    {
+      "rank": 49,
+      "in_tier": false,
+      "player": "Nolan Gorman",
+      "team": null,
+      "opp": null,
+      "stat": "Hits+Runs+RBIs",
+      "stat_family": null,
+      "line": 3.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -105,
+      "ref_book": "dk",
+      "edge_pct": 35.2,
+      "tp": 47.5,
+      "p_model_pct": null,
+      "cv": 1.056,
+      "hit_rate": 85.0,
+      "l20_n": 20,
+      "vision": 92.0,
+      "projection": 1.556,
+      "model_sigma": 1.912,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.056,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 85.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 35.2,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": false,
+            "value": 47.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv,tp"
+    },
+    {
+      "rank": 50,
+      "in_tier": false,
+      "player": "Adam Frazier",
+      "team": null,
+      "opp": null,
+      "stat": "Hits",
+      "stat_family": null,
+      "line": 1.5,
+      "side": "UNDER",
+      "is_alt": false,
+      "ref_odds": -168,
+      "ref_book": "dk",
+      "edge_pct": 35.1,
+      "tp": 58.5,
+      "p_model_pct": null,
+      "cv": 1.38,
+      "hit_rate": 85.0,
+      "l20_n": 20,
+      "vision": 93.3,
+      "projection": 0.45,
+      "model_sigma": 0.6992,
+      "frozen_fl_eval": {
+        "gates": {
+          "cv": {
+            "passed": false,
+            "value": 1.38,
+            "thresh": 0.85
+          },
+          "hr": {
+            "passed": true,
+            "value": 85.0,
+            "thresh": 65.0
+          },
+          "edge": {
+            "passed": true,
+            "value": 35.1,
+            "thresh": 10.0
+          },
+          "tp": {
+            "passed": true,
+            "value": 58.5,
+            "thresh": 58.0
+          }
+        },
+        "overall_pass": false,
+        "thresholds": {
+          "cv_max": 0.85,
+          "hr_min": 65.0,
+          "edge_min": 10.0,
+          "tp_min": 58.0
+        }
+      },
+      "would_pass_fl": "FAIL",
+      "failed_gates": "cv"
+    }
+  ]
+}
