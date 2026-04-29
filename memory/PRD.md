@@ -28,6 +28,75 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
 
 ## Recent work (changelog)
 
+### 2026-04-29 — NBA War Zone Gate Refactor (per user spec)
+**Spec**: WZ uses ONLY universal gate types — no WZ-only logic.
+
+**Removed**:
+- `market_trap_gate` (entire pricing-trap rejection rule)
+- `tp_source` branching from `vision_score_gate` (one_sided/devig
+  conditional vision logic)
+- Stat-family `cv_gate.caps` map (pts=0.45, pra=0.45, reb=0.55, …)
+
+**Final WZ gate list** (NBA `_default`):
+- `coverage_gate`: min_books=1
+- `direction_gate`: applies_to_sides=["OVER"], `min_projection_to_line_ratio=1.05`
+- `hit_rate_gate`: min=55.0, window=default
+- `cv_gate`: max=0.75 (flat scalar)
+- `vision_score_gate`: min=60.0 (v1; v2 stays shadow-only per directive)
+- `__war_zone_overrides__`: `hr_expansion {min_hr=70.0, relax_cv_to=1.00}`
+  — rescues cv_gate failures only, never any other gate.
+
+**Engine extensions** (backward-compatible):
+- `_eval_direction` accepts BOTH `min_projection_minus_line` (FL) and
+  `min_projection_to_line_ratio` (WZ); both must hold if both present.
+- `_eval_vision_score` accepts `use_v2: True` (currently unused — v2
+  stays shadow-only). When omitted reads v1 percentile as before.
+- v2 computation moved BEFORE `compute_tier` in
+  `services/scoring/scoring_stack.py::compute_scoring_stack` so that
+  `extras['vision_score_v2']` is available for first-pass gate eval
+  via `metrics_builder`. v2 is still NEVER used by any live gate today.
+
+**SH/FL configs untouched** (regression test
+`test_war_zone_refactor.py` validates):
+- SH: hit_rate=85, vision_score=85 flat, cv stat-family caps map,
+  edge=10, no direction_gate, no override block.
+- FL: hr=70, tp(50/under_floor=65), cv=0.75, edge=5,
+  direction_gate(min_projection_minus_line=0.0),
+  __front_lines_over_overrides__ block intact.
+
+**Tests** (`tests/test_war_zone_refactor.py`, **26/26 green**):
+- WZ config shape (no market_trap, no by_tp_source, no cv caps map,
+  no v2 in live gate, all keys universal).
+- Direction ratio: pass at 1.05× exactly; fail at 1.049×.
+- HR-expansion override: rescues cv up to 1.00 when HR > 70 strict;
+  never rescues direction / hit_rate / vision failures.
+- v1-only vision: 60 floor; ignores v2.
+- SH/FL configs: regression tests verify no key changed.
+- UNDER side: WZ direction_gate auto-skipped.
+- **Full suite: 140/140 green** across all 8 active test modules.
+
+**Live recompute** (NBA `final-nba-rt`):
+- Tier counts: SH=5, FL_OVER=58, FL_UNDER=6, WZ=5, unqualified=2,168.
+- WZ-band rejects breakdown (out of 654): direction_gate=651,
+  hit_rate_gate=2, cv_gate=1. 99.5% of WZ rejects today are
+  direction_gate (model disagrees with longshot OVER direction
+  beyond the 5% margin).
+- Named pick validation:
+    * Jaxson Hayes PTS 7.5 OVER @ +216 → **PASSES war_zone**
+      (ratio 1.18, HR 55, CV 0.726, vis_v1 92.3) ✅
+    * Jalen Duren AST 2.5 OVER @ +183 → **fails direction_gate**
+      (ratio 1.0008 < 1.05) — correctly rejected per the spec's own
+      direction rule (proj 2.502 vs line 2.5, only 0.08% above line).
+    * Mikal Bridges PTS 9.5 OVER & Miles McBride PRA 9.5 OVER —
+      not in current slate (live odds drift since prior report).
+
+**Other WZ passes today** (5 picks total):
+- Jerami Grant pts_reb-alt 14.5 OVER @ +600 — edge 50.3, vis 98.8
+- De'Aaron Fox PTS 9.5 OVER @ +175 — edge 43.8, HR 90, vis 99.3
+- Jarrett Allen pts_ast-alt 14.5 OVER @ +154 — edge 30.9, vis 96.9
+- Jarrett Allen pts_reb-alt 24.5 OVER @ +279 — edge 28.8, vis 96.1
+- Jaxson Hayes PTS 7.5 OVER @ +216 — edge 27.7, vis 92.3
+
 ### 2026-04-29 — NBA Front Lines OVER conditional override layer
 **Why**: Per user spec — apply targeted FL-OVER rescue rules to NBA
 3PM / AST / PTS picks while leaving REB / PRA / combos / STL / BLK,

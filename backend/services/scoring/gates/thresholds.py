@@ -232,7 +232,7 @@ _NBA_WAR_ZONE_BASE = {
     },
     "hit_rate_gate":     {"min": 55.0, "window": "default"},
     "cv_gate":           {"max": 0.75},
-    "vision_score_gate": {"min": 60.0, "use_v2": True},
+    "vision_score_gate": {"min": 60.0},
     "__war_zone_overrides__": {
         # HR-expansion rule: HR > 70 → cv cap relaxed to 1.00.
         # Only `cv_gate` failures may be rescued by this layer.
