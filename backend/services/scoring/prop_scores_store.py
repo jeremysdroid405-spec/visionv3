@@ -22,6 +22,15 @@ _SCORE_OUTPUT_FIELDS = (
     # vision_score dimension
     "vision_score", "vision_score_raw", "quality_source", "fair_prob",
     "stability", "confidence", "edge_vs_fair",
+    # vision_score_v2 dimension (2026-04-29) — directional, MLR-driven.
+    # Always persisted; surfaced to consumers only when
+    # `VISION_V2_ENABLED=true`. Never overwrites the v1 fields above.
+    "vision_score_v2", "vision_v2_direction_margin",
+    "vision_v2_direction_strength", "vision_direction_alignment",
+    "vision_probability_component", "vision_projection_component",
+    "vision_edge_component", "vision_consistency_component",
+    "vision_context_component", "vision_market_confidence_component",
+    "vision_volatility_penalty", "vision_v2_dir_gate", "vision_v2_weights",
     # tier dimension
     "tier", "tier_reason", "tier_reference_book", "tier_reference_odds",
     # Routed tier (2026-04-25) — odds-bucket assignment from the
