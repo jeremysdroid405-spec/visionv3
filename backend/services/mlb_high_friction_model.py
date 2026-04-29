@@ -176,6 +176,85 @@ class MLBHighFrictionModel:
         os.makedirs(self.MODEL_DIR, exist_ok=True)
         logger.info("[MLB_HF_MODEL] Initialized MLB High-Friction Ensemble v1.0")
     
+    # =========================================================================
+    # 2026-04-29 — Statcast LIVE lookups (v2.0 retrain wiring)
+    # -------------------------------------------------------------------------
+    # The retrain script pre-builds (mlbam_id, game_date) → SC dict
+    # lookup maps in memory. Live predict() doesn't have those handy,
+    # so it uses these per-call helpers to fetch the most-recent SC doc
+    # for a player. mlbam_id is resolved via the identity map (bdl_id)
+    # with a normalized-name fallback.
+    # =========================================================================
+    def _resolve_mlbam_id(self, player: Dict[str, Any]) -> Optional[int]:
+        """Return the player's MLBAM (statcast) numeric ID or None."""
+        # Direct fields on the hub doc, if any.
+        for key in ("mlbam_id", "mlb_id", "statcast_id"):
+            v = player.get(key)
+            try:
+                if v is not None: return int(v)
+            except (TypeError, ValueError):
+                continue
+        # Identity-map lookup keyed on bdl_id.
+        bdl_id = player.get("bdl_id") or player.get("bdl_player_id") or player.get("player_id")
+        try: bdl_id = int(bdl_id) if bdl_id is not None else None
+        except (TypeError, ValueError): bdl_id = None
+        if bdl_id is not None:
+            try:
+                m = self.db.mlb_player_identity_map.find_one(
+                    {"bdl_id": bdl_id, "mlb_id": {"$ne": None}},
+                    {"_id": 0, "mlb_id": 1, "statcast_id": 1},
+                )
+                if m:
+                    v = m.get("statcast_id") or m.get("mlb_id")
+                    if v is not None: return int(v)
+            except Exception:
+                pass
+        # Last resort: normalized-name match on identity map.
+        name = (player.get("display_name") or player.get("player_name") or "").lower().strip()
+        if name:
+            try:
+                m = self.db.mlb_player_identity_map.find_one(
+                    {"$or": [{"normalized_name": name}, {"statcast_name": name}],
+                     "mlb_id": {"$ne": None}},
+                    {"_id": 0, "mlb_id": 1, "statcast_id": 1},
+                )
+                if m:
+                    v = m.get("statcast_id") or m.get("mlb_id")
+                    if v is not None: return int(v)
+            except Exception:
+                pass
+        return None
+
+    def _get_batter_sc_latest(self, player: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Fetch the most recent statcast batter feature doc for player."""
+        mid = self._resolve_mlbam_id(player)
+        if mid is None: return None
+        try:
+            import pymongo as _pm
+            doc = self.db.mlb_statcast_player_features.find_one(
+                {"player_id": mid},
+                {"_id": 0, "rolling_7": 1, "rolling_14": 1, "rolling_30": 1, "season_window": 1},
+                sort=[("game_date", _pm.DESCENDING)],
+            )
+            return doc or None
+        except Exception:
+            return None
+
+    def _get_pitcher_sc_latest(self, player: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Fetch the most recent statcast pitcher feature doc."""
+        mid = self._resolve_mlbam_id(player)
+        if mid is None: return None
+        try:
+            import pymongo as _pm
+            doc = self.db.mlb_statcast_pitcher_features.find_one(
+                {"pitcher_id": mid},
+                {"_id": 0, "rolling_14": 1, "rolling_30": 1, "season_window": 1},
+                sort=[("game_date", _pm.DESCENDING)],
+            )
+            return doc or None
+        except Exception:
+            return None
+
     def _normalize_stat(self, stat_type: str) -> str:
         """Normalize stat type."""
         stat_lower = stat_type.lower().replace(' ', '_').replace('+', '+')
@@ -372,6 +451,26 @@ class MLBHighFrictionModel:
                     return True
         return False
     
+    # =========================================================================
+    # 2026-04-29 — Statcast feature defaults (used when SC lookup misses)
+    # Each rolling/season window emits the same shape so the downstream
+    # XGBoost matrix is rectangular. Sentinels are 0.0 with imputed=1.
+    # =========================================================================
+    _SC_BATTER_FIELDS = (
+        "xwOBA", "wOBA",
+        "hard_hit_rate", "barrel_rate",
+        "avg_exit_velocity", "avg_launch_angle",
+        "sweet_spot_rate",
+        "k_rate", "whiff_rate", "contact_rate",
+        "plate_appearances",
+    )
+    _SC_PITCHER_FIELDS = (
+        "xwOBA_allowed", "wOBA_allowed",
+        "hard_hit_allowed_rate", "barrel_allowed_rate",
+        "k_rate", "bb_rate",
+        "plate_appearances",
+    )
+
     def _build_friction_features(
         self,
         player: Dict,
@@ -380,16 +479,22 @@ class MLBHighFrictionModel:
         opponent: str = None,
         park_team: str = None,
         dk_odds: int = None,
-        line: float = None
+        line: float = None,
+        statcast_features: Optional[Dict[str, Any]] = None,
+        pitcher_statcast_features: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, float]]:
         """
-        Build the FULL High-Friction feature vector (70+ features).
+        Build the FULL High-Friction feature vector.
         
         Categories:
         1. PvP (Pitcher-Batter Collision)
         2. Environmental Friction
         3. Market Alignment
         4. Plate Discipline & Trends
+        5. Statcast Quality-of-Contact (2026-04-29 v2.0):
+           - Batter rolling 7/14/30 + season xwOBA/wOBA/HardHit/Barrel/EV/LA
+           - Pitcher rolling 14/30 xwOBA-allowed/HardHit-allowed/Barrel-allowed/K%/BB%
+        6. Workload (expected PA derived from recent L10).
         """
         features = {}
         
@@ -588,6 +693,54 @@ class MLBHighFrictionModel:
             # Line difficulty (how far above average)
             features['line_difficulty'] = (line - features['l10_avg']) / features['std_dev_l10'] if features['std_dev_l10'] > 0 else 0
         
+        # =====================================================================
+        # CATEGORY 5: STATCAST QUALITY-OF-CONTACT (v2.0)
+        # =====================================================================
+        # Emit a fixed feature shape regardless of whether SC data was
+        # available. Imputed flag = 1 when the lookup missed.
+        for window in ("rolling_7", "rolling_14", "rolling_30", "season_window"):
+            wkey = window.replace("rolling_", "r").replace("season_window", "season")
+            block = (statcast_features or {}).get(window) or {}
+            for fld in self._SC_BATTER_FIELDS:
+                v = block.get(fld)
+                features[f"sc_b_{wkey}_{fld}"] = float(v) if v is not None else 0.0
+        features["sc_batter_is_imputed"] = 0 if statcast_features else 1
+
+        # Pitcher SC features (used for pitcher-prop targets and as
+        # opposing-pitcher quality if caller passes them in).
+        for window in ("rolling_14", "rolling_30", "season_window"):
+            wkey = window.replace("rolling_", "r").replace("season_window", "season")
+            block = (pitcher_statcast_features or {}).get(window) or {}
+            for fld in self._SC_PITCHER_FIELDS:
+                v = block.get(fld)
+                features[f"sc_p_{wkey}_{fld}"] = float(v) if v is not None else 0.0
+        features["sc_pitcher_is_imputed"] = 0 if pitcher_statcast_features else 1
+
+        # =====================================================================
+        # CATEGORY 6: WORKLOAD ANCHORS (expected PA / batting workload)
+        # =====================================================================
+        pa_vals = []
+        ab_vals = []
+        for g in game_logs[:10]:
+            pa = g.get("plate_appearances")
+            ab = g.get("at_bats")
+            if pa is not None:
+                try: pa_vals.append(float(pa))
+                except (TypeError, ValueError): pass
+            if ab is not None:
+                try: ab_vals.append(float(ab))
+                except (TypeError, ValueError): pass
+        if pa_vals:
+            features["expected_pa_l10"] = float(np.mean(pa_vals))
+            features["expected_pa_is_imputed"] = 0
+        elif ab_vals:
+            # fallback: AB+0.4 walks ≈ PA
+            features["expected_pa_l10"] = float(np.mean(ab_vals)) + 0.4
+            features["expected_pa_is_imputed"] = 0
+        else:
+            features["expected_pa_l10"] = 4.0
+            features["expected_pa_is_imputed"] = 1
+
         return features
     
     def build_training_dataset(self, stat_type: str) -> pd.DataFrame:
@@ -937,6 +1090,17 @@ class MLBHighFrictionModel:
                 return {"error": f"Insufficient games: {len(game_logs)}"}
             
             # Build HIGH-FRICTION features
+            # 2026-04-29 v2.0: also fetch latest Statcast features.
+            # Pitcher props use pitcher SC; batter props use batter SC.
+            sc_batter = None
+            sc_pitcher = None
+            pitcher_stat_set = {"pitcher_strikeouts", "pitcher_walks",
+                                "hits_allowed", "earned_runs", "pitcher_outs"}
+            if norm_stat in pitcher_stat_set:
+                sc_pitcher = self._get_pitcher_sc_latest(player)
+            else:
+                sc_batter = self._get_batter_sc_latest(player)
+
             features = self._build_friction_features(
                 player,
                 game_logs,
@@ -944,7 +1108,9 @@ class MLBHighFrictionModel:
                 opponent_team,
                 park_team,
                 dk_odds,
-                line
+                line,
+                statcast_features=sc_batter,
+                pitcher_statcast_features=sc_pitcher,
             )
             
             if features is None:
