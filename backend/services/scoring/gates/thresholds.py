@@ -422,10 +422,13 @@ THRESHOLDS: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {
                          "_default_under": _NBA_WAR_ZONE_UNDER},
     },
     "mlb": {
-        # Safe Haven: model-prob-driven tp_gate (per 2026-04-29 user spec).
-        # Front Lines & War Zone keep market-implied tp_gate semantics.
+        # All MLB tiers use MODEL-derived probability for tp_gate.
+        # 2026-04-29 — universal source correction. Routing still uses
+        # market odds (tier_reference_odds). Edge formula unchanged
+        # (edge = p_model − market_implied). NBA gates intentionally
+        # NOT migrated in this pass and continue to read market `tp`.
         "safe_haven":  _mlb_thresholds(_MLB_SAFE_HAVEN, tp_source="model"),
-        "front_lines": _mlb_thresholds(_MLB_FRONT_LINES),
+        "front_lines": _mlb_thresholds(_MLB_FRONT_LINES, tp_source="model"),
         "war_zone":    _mlb_thresholds(_MLB_WAR_ZONE, war_zone=True),
     },
     # Drop NFL adapter in place and start tuning here — engine works
