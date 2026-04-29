@@ -32,7 +32,9 @@ logger = logging.getLogger(__name__)
 client = pymongo.MongoClient(os.environ.get('MONGO_URL', 'mongodb://localhost:27017'))
 db = client[os.environ.get('DB_NAME', 'pick_vision')]
 hub = db.mlb_master_hub_2026
-hist = db.mlb_historical_logs   # multi-year game logs (3+ seasons)
+# NOTE: `mlb_historical_logs` is intentionally NOT referenced here —
+# the rehydrated `mlb_master_hub_2026.bdl_game_logs` is the sole
+# source of truth as of 2026-04-29.
 
 import services.mlb_high_friction_model as hfm
 hfm._mlb_hf_instance = None
@@ -42,22 +44,17 @@ model = hfm.get_mlb_high_friction_model(db)
 logger = logging.getLogger(__name__)  # ensure it's defined before this block
 logger.info("Loading master_hub split blocks (bdl_id → splits dict)...")
 hub_splits: dict = {}
-hub_bdl_logs: dict = {}  # bdl_id → bdl_game_logs (current-season MLB)
 for h in hub.find({'bdl_id': {'$ne': None}},
                     {'_id': 0, 'bdl_id': 1, 'team': 1, 'is_pitcher': 1, 'is_batter': 1,
                      'vs_left': 1, 'vs_right': 1, 'home_splits': 1, 'away_splits': 1,
                      'mlb_id': 1, 'mlbam_id': 1, 'statcast_id': 1, 'player_name': 1,
-                     'display_name': 1, 'bdl_game_logs': 1}):
+                     'display_name': 1}):
     try:
         bid = int(h['bdl_id'])
     except (TypeError, ValueError):
         continue
-    bgl = h.pop('bdl_game_logs', None) or []
     hub_splits[bid] = h
-    if bgl:
-        hub_bdl_logs[bid] = bgl
 logger.info(f"  hub splits: {len(hub_splits):,} entries")
-logger.info(f"  bdl_game_logs cached: {len(hub_bdl_logs):,} players")
 
 STATS = [
     'hits', 'total_bases', 'rbis', 'runs', 'pitcher_strikeouts',
@@ -193,39 +190,28 @@ for stat_name in STATS:
     sc_hit = 0
     sc_miss = 0
 
-    player_cursor = hist.find(
-        {'total_games': {'$gte': 20}},
-        {'_id': 0, 'player_id': 1, 'player_name': 1, 'game_logs': 1}
+    # Source of truth: master_hub.bdl_game_logs (rehydrated)
+    # `mlb_historical_logs` is deprecated and intentionally ignored here.
+    player_cursor = hub.find(
+        {'bdl_id': {'$ne': None}},
+        {'_id': 0, 'bdl_id': 1, 'player_name': 1, 'display_name': 1,
+         'team': 1, 'is_pitcher': 1, 'is_batter': 1,
+         'vs_left': 1, 'vs_right': 1, 'home_splits': 1, 'away_splits': 1,
+         'mlb_id': 1, 'mlbam_id': 1, 'statcast_id': 1,
+         'bdl_game_logs': 1}
     ).batch_size(50)
 
     player_count = 0
-    for hist_doc in player_cursor:
-        bdl_id = hist_doc.get('player_id')
+    for player in player_cursor:
+        bdl_id = player.get('bdl_id')
         if bdl_id is None:
             continue
         try: bdl_id = int(bdl_id)
         except (TypeError, ValueError): continue
-        # Join with hub for splits/team. Synth a minimal player dict
-        # if hub row is missing so the script doesn't choke.
-        player = hub_splits.get(bdl_id) or {
-            'bdl_id': bdl_id, 'player_name': hist_doc.get('player_name'),
-            'team': None, 'is_pitcher': False, 'is_batter': True,
-        }
-        # Make sure key fields are present
-        player.setdefault('player_name', hist_doc.get('player_name'))
-        # NOTE: no role filter — match v1 behavior so training-set
-        # distribution doesn't shift (pitcher batting samples mostly
-        # zero, but XGBoost handles that fine).
 
-        logs = hist_doc.get('game_logs', []) or []
-        # Augment with current-season bdl_game_logs (post-Statcast era)
-        # so the model sees real (non-imputed) SC features at training.
-        bgl = hub_bdl_logs.get(bdl_id)
-        if bgl:
-            hist_ids = {g.get("game_id") for g in logs if g.get("game_id")}
-            for g in bgl:
-                if g.get("game_id") not in hist_ids:
-                    logs.append(g)
+        logs = player.get('bdl_game_logs') or []
+        # Sort by date desc (most recent first); training windows then
+        # use logs[i] as the target with logs[i+1:] as history.
         logs = sorted(logs, key=lambda x: (x.get('date') or '', x.get('game_id') or 0), reverse=True)
         if len(logs) < 12:
             continue
@@ -234,7 +220,7 @@ for stat_name in STATS:
         mlbam_id = _resolve_mlbam(player, pitcher=is_pitcher_stat)
 
         player_X, player_y = [], []
-        max_windows = min(len(logs) - 11, 200)
+        max_windows = min(len(logs) - 11, 500)
         for i in range(max_windows):
             target_game = logs[i]
             target_val = model._get_stat_value(target_game, stat_name)
