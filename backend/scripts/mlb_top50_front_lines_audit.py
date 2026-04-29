@@ -94,10 +94,22 @@ async def main():
     overs = [r for r in raw if (r.get("recommendation") or "").upper() == "OVER"]
     unders = [r for r in raw if (r.get("recommendation") or "").upper() == "UNDER"]
 
-    overs.sort(key=lambda r: (-_num(r.get("edge_pct")), -_num(r.get("vision_score")),
-                               r.get("canonical_key") or ""))
-    unders.sort(key=lambda r: (-_num(r.get("edge_pct")), -_num(r.get("vision_score")),
-                                r.get("canonical_key") or ""))
+    sort_mode = (os.environ.get("FL_AUDIT_SORT") or "edge").lower()
+
+    def _sort_key(r):
+        if sort_mode == "hr":
+            side = (r.get("recommendation") or "").upper()
+            hr = (r.get("hit_rate_under") if side == "UNDER"
+                  else r.get("hit_rate_over"))
+            # secondary: edge_pct DESC; tertiary: canonical_key
+            return (-_num(hr), -_num(r.get("edge_pct")),
+                    r.get("canonical_key") or "")
+        # default: edge_pct DESC
+        return (-_num(r.get("edge_pct")), -_num(r.get("vision_score")),
+                r.get("canonical_key") or "")
+
+    overs.sort(key=_sort_key)
+    unders.sort(key=_sort_key)
 
     over_top = overs[:50]
     under_top = unders[:50]
