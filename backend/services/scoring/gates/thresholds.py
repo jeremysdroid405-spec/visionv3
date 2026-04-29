@@ -503,8 +503,40 @@ elif MLB_FRONT_LINES_GATES_DISABLED:
     # MLB gates remain on. Same `coverage_gate` min_books=0 idiom so
     # every routed-FL prop passes (the engine returns `failed_gates=[]`
     # when its only gate is satisfied).
+    #
+    # 2026-04-29 — TEMPORARY BASIC FL GATES (additive narrow-down).
+    # While the production FL suite (`_MLB_FRONT_LINES`) remains
+    # disabled pending recalibration, three minimal gates are layered
+    # on top of the audit-pass-all anchor so the FL board narrows
+    # from the raw 1,800+ pool to a manageable shortlist:
+    #     1. OVERs : direction_gate → projection >= line
+    #     2. UNDERs: direction_gate → projection <= line
+    #     3. Both  : hit_rate_gate  → HR >= 70
+    # The frozen `_MLB_FRONT_LINES` config is preserved verbatim for
+    # the eventual full re-enable; flip `MLB_FRONT_LINES_GATES_DISABLED
+    # = False` and re-run `recompute_sport` to restore it.
     _AUDIT_PASS_ALL = {"coverage_gate": {"min_books": 0}}
-    THRESHOLDS["mlb"]["front_lines"] = {"_default": _AUDIT_PASS_ALL}
+    _FL_BASIC_OVER = {
+        "coverage_gate": {"min_books": 0},
+        "direction_gate": {
+            "applies_to_sides": ["OVER"],
+            "min_projection_minus_line": 0.0,   # proj >= line
+        },
+        "hit_rate_gate": {"min": 70.0, "window": "default"},
+    }
+    _FL_BASIC_UNDER = {
+        "coverage_gate": {"min_books": 0},
+        "direction_gate": {
+            "applies_to_sides": ["UNDER"],
+            "max_projection_minus_line": 0.0,   # proj <= line
+        },
+        "hit_rate_gate": {"min": 70.0, "window": "default"},
+    }
+    THRESHOLDS["mlb"]["front_lines"] = {
+        "_default":       _AUDIT_PASS_ALL,
+        "_default_over":  _FL_BASIC_OVER,
+        "_default_under": _FL_BASIC_UNDER,
+    }
 
 
 def resolve_thresholds(
