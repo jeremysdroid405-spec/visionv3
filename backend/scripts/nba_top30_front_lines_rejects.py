@@ -6,8 +6,11 @@ from datetime import datetime, timezone
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-# Front Lines odds band: -239 < ref_odds < 150
-FL_LO = -239
+# Front Lines odds band per universal routing (2026-04-29):
+#   Safe Haven ≤ -300, Front Lines -299..+149, War Zone ≥ +150
+# We include picks routed to FL (ref_odds strictly inside the FL band)
+# that did NOT land in front_lines after cascade.
+FL_LO = -300
 FL_HI = 150
 
 
