@@ -548,6 +548,12 @@ async def recompute_sport(
             "isotonic_p_over", "probability_calibration_applied",
             "raw_p_over", "projection_intercept_applied",
             "projection_intercept_delta", "pre_intercept_projection",
+            # MLB Probability Rebuild (2026-04-29) — distribution-canonical
+            # fields and shadow LOM/ECDF audit fields
+            "p_distribution", "lom_disabled",
+            "p_lom_shadow", "lom_p_over", "lom_version",
+            "probability_method_shadow",
+            "p_ecdf_shadow", "probability_method_shadow_ecdf",
             # 2026-04-27 — distribution-based probability layer audit
             "distribution_p_over", "distribution_p_under",
             "distribution_kind", "distribution_selector_reason",

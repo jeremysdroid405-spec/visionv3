@@ -343,7 +343,14 @@ class MLBScoringAdapter(ScoringAdapter):
                     prop["raw_gaussian_p_over"] = round(
                         float(prob_over_pct) / 100.0, 4,
                     )
-                    prop["probability_method"] = dist_result.distribution
+                    # MLB Probability Rebuild (2026-04-29):
+                    #   probability_method = "distribution_mlb_v1" once the
+                    # distribution layer succeeds. The downstream ECDF /
+                    # LOM blocks are now SHADOW-only (see flags below).
+                    prop["probability_method"] = "distribution_mlb_v1"
+                    prop["p_distribution"] = round(
+                        dist_result.p_under if "UNDER" in side
+                        else dist_result.p_over, 4)
                 else:
                     # Fall back to HF's internal Gaussian when μ or line
                     # are missing (rare path).
@@ -352,6 +359,7 @@ class MLBScoringAdapter(ScoringAdapter):
                     else:
                         p_true_model = round(prob_over_pct / 100.0, 4)
                     prop["probability_method"] = "gaussian"
+                    prop["p_distribution"] = p_true_model
                 # 2026-05 P0 — `raw_prediction` is the un-modified
                 # `model.predict()[0]` value the HF model produced
                 # before the live-only park_factor / opp_k_rate
@@ -395,24 +403,17 @@ class MLBScoringAdapter(ScoringAdapter):
                 except Exception as _eb_exc:
                     logger.debug(f"[MLB_SCORING] EB shrinkage skipped: {_eb_exc}")
 
-                # --- Universal ECDF probability override (2026-04-24) ---
-                # When a per-stat ECDF artifact exists at
-                # models/probability/ecdf/mlb/{stat_family}.pkl,
-                # replace the Gaussian `prob_over` returned by the hf
-                # model with the distribution-aware ECDF output. This
-                # mirrors the NBA wiring and preserves the invariant
-                # that projections are UNCHANGED — only p_over flips.
-                # Falls back to the hf-native prob_over when the
-                # artifact is missing / the bucket is too small.
+                # --- Universal ECDF probability — SHADOW ONLY (2026-04-29) ---
+                # MLB Probability Rebuild: ECDF no longer overrides
+                # `p_true_model` for live MLB. The distribution layer
+                # above is the canonical model probability (matching
+                # the NBA pattern: projection μ + σ + line → P).
+                # ECDF output is still computed and persisted in
+                # shadow fields for audit / future re-enable.
                 if model_projection is not None:
                     try:
                         from services.probability import get_universal_ecdf
                         canonical_stat = hf_model._normalize_stat(stat_type)
-                        # 2026-05 P0 — pass `raw_prediction` (NOT the
-                        # park / opp-K-modified `model_projection`) to
-                        # the ECDF lookup. Training pool was built on
-                        # raw_pred so any other value puts the
-                        # inference projection in the wrong bucket.
                         ecdf_projection = (
                             float(raw_prediction)
                             if raw_prediction is not None
@@ -427,13 +428,8 @@ class MLBScoringAdapter(ScoringAdapter):
                     except Exception as _exc:
                         ecdf_pred = None
                     if ecdf_pred is not None:
-                        if "UNDER" in side:
-                            p_true_model = round(ecdf_pred.p_under, 4)
-                        else:
-                            p_true_model = round(ecdf_pred.p_over, 4)
-                        # Record audit fields so the calibration-stats
-                        # observability endpoint can surface MLB ECDF
-                        # usage the same way it surfaces NBA.
+                        # SHADOW persistence only — do NOT touch
+                        # `p_true_model` or `probability_method`.
                         prop["raw_gaussian_p_over"] = round(
                             float(prob_over_pct) / 100.0, 4,
                         )
@@ -441,23 +437,21 @@ class MLBScoringAdapter(ScoringAdapter):
                         prop["ecdf_bucket"] = int(ecdf_pred.bucket)
                         prop["ecdf_bucket_n"] = int(ecdf_pred.bucket_n)
                         prop["ecdf_version"] = ecdf_pred.version
-                        prop["probability_method"] = "ecdf"
-                    # 2026-04-27 — when ECDF artifact is missing, leave
-                    # `probability_method` as whatever the upstream
-                    # distribution layer stamped ("normal_cdf_cv" or
-                    # "gaussian" fallback). The legacy `else: gaussian`
-                    # branch was deleted because it incorrectly
-                    # overwrote the new normal-CDF-from-CV layer.
+                        prop["p_ecdf_shadow"] = round(
+                            (1.0 - ecdf_pred.p_over) if "UNDER" in side
+                            else ecdf_pred.p_over, 4)
+                        prop["probability_method_shadow_ecdf"] = "ecdf_shadow"
 
-                # --- Universal Line-Outcome Model (LOM) override ----------
-                # 2026-05 — preferred translator when a per-stat-family
-                # artifact exists at
-                # `models/probability/lom/mlb/{family}.pkl`. v1 features
-                # are intentionally market-independent (no
-                # `market_implied_prob`, no `odds_bucket`) so the
-                # LOM-derived edge stays comparable to TP. Gracefully
-                # falls through to whatever ECDF / Gaussian decision the
-                # block above already made when the artifact is missing.
+                # --- Universal Line-Outcome Model (LOM) — SHADOW ONLY ---
+                # MLB Probability Rebuild (2026-04-29): LOM is fully
+                # disabled as a live MLB probability source. It is no
+                # longer permitted to:
+                #   • set p_true_model
+                #   • set probability_method (live)
+                #   • influence p_model / edge_pct / tier ranking
+                # The model is still invoked so the calibrated output
+                # is persisted for shadow comparison, but every live
+                # consumer reads only the distribution layer above.
                 if model_projection is not None:
                     try:
                         from services.probability.line_outcome import (
@@ -487,13 +481,16 @@ class MLBScoringAdapter(ScoringAdapter):
                     except Exception as _exc:
                         lom_p_over = None
                     if lom_p_over is not None:
-                        if "UNDER" in side:
-                            p_true_model = round(1.0 - lom_p_over, 4)
-                        else:
-                            p_true_model = round(lom_p_over, 4)
+                        # SHADOW persistence ONLY — do NOT touch
+                        # `p_true_model` or `probability_method`.
                         prop["lom_p_over"] = round(lom_p_over, 4)
                         prop["lom_version"] = "v1-no-market"
-                        prop["probability_method"] = "lom_v1"
+                        prop["p_lom_shadow"] = round(
+                            (1.0 - lom_p_over) if "UNDER" in side
+                            else lom_p_over, 4)
+                        prop["probability_method_shadow"] = "lom_shadow"
+                # MLB-LOM live disablement marker (read by audit tools).
+                prop["lom_disabled"] = True
 
         # Books available
         books = 0

@@ -28,6 +28,68 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
 
 ## Recent work (changelog)
 
+### 2026-04-29 — MLB Probability Rebuild (LOM-disabled, distribution-canonical)
+**Why**: User audit showed MLB SH was rejecting positive-projection picks
+(e.g. Mike Trout HRR 0.5 OVER, μ=2.756 vs line=0.5) with negative
+edge because the LOM v1 calibrated classifier was overriding the
+distribution-derived probability with a near-market value (0.7566 vs
+distribution's 0.8342). Spec: make MLB work like NBA — projection μ
++ σ + line → P(over) → edge, no LOM, no live ECDF override.
+
+**Files changed**:
+- `services/scoring/adapters/mlb_scoring.py`:
+  - LOM block (formerly lines 460-504) now SHADOW-only. No live writes
+    to `p_true_model` / `probability_method`. Persists `lom_p_over`,
+    `p_lom_shadow`, `probability_method_shadow="lom_shadow"`.
+  - ECDF block (formerly lines 406-458) now SHADOW-only. No live
+    writes to `p_true_model` / `probability_method`. Persists
+    `ecdf_p_over`, `p_ecdf_shadow`, `probability_method_shadow_ecdf=
+    "ecdf_shadow"`.
+  - Distribution layer block stamps
+    `probability_method = "distribution_mlb_v1"` and
+    `p_distribution = p_over/p_under (side-aware)`.
+  - Adds `prop["lom_disabled"] = True` audit marker.
+- `services/scoring/prop_scores_store.py`:
+  - Whitelist now includes `p_distribution`, `lom_disabled`,
+    `p_lom_shadow`, `probability_method_shadow`,
+    `p_ecdf_shadow`, `probability_method_shadow_ecdf`.
+- `services/scoring/recompute.py`:
+  - Mirror block propagates the 6 new audit fields into the score doc.
+- `tests/test_mlb_probability_rebuild.py`:
+  - 7 tests covering LOM-disabled invariant, shadow stamps, distribution
+    layer correctness for Mike Trout-style high-projection setups,
+    NBA byte-equivalence (no MLB stamps leak into NBA adapter).
+
+**Live verification** (`final-mlb`, 3,931 props recomputed):
+- `probability_method = lom_v1`: **0** ✅ (was 100% live)
+- `probability_method = ecdf`: **0** ✅
+- `probability_method = distribution_mlb_v1`: **3,733**
+- `lom_disabled = True`: 3,733 / 3,931
+- Shadow LOM persisted: 3,724
+- Shadow ECDF persisted: 3,724
+- Tier counts BEFORE: SH=3, FL=1,035, WZ=47, unq=2,846
+- Tier counts AFTER:  SH=14, FL=1,035, WZ=55, unq=2,827
+- **NBA tier counts unchanged** (SH=7, FL=52, WZ=5, unq=2,123 — same
+  as previous recompute).
+
+**Mike Trout HRR 0.5 OVER**:
+| Field | BEFORE (LOM live) | AFTER (distribution live) |
+|---|---|---|
+| p_true_model | 0.7566 | **0.8342** |
+| probability_method | lom_v1 | **distribution_mlb_v1** |
+| edge_pct | −2.1 | **+5.6** |
+| tier | unqualified | **safe_haven** |
+| tier_reason | safe_haven_failed: gate_edge_fail | gates_passed |
+
+**Top-20 SH-routed-rejects pool** (HRR 0.5 OVER series):
+- 6 picks newly passing Safe Haven (Mike Trout, Yandy Diaz, Drake
+  Baldwin, Josh Jung, Ronald Acuna Jr., Kevin McGonigle).
+- 2 newly passing Front Lines (Otto Lopez, Elly De La Cruz).
+- 12 still rejected — distribution probability still below TP for
+  those (model agrees with market or below).
+
+**Tests**: 173/173 green across 10 active modules.
+
 ### 2026-04-29 — NBA UNDER tuning (skew vs volatility)
 **Why**: Differentiate good high-CV UNDER picks (skew-driven, e.g. 3PM
 where median is ~1 but variance is high) from bad high-CV UNDERs

@@ -49,6 +49,14 @@ _SCORE_OUTPUT_FIELDS = (
     # p_true diagnostic panel
     "p_true_active", "p_true_method", "p_true_hit_rate", "p_true_model",
     "model_projection", "model_sigma",
+    # MLB Probability Rebuild (2026-04-29) — distribution-canonical fields
+    # that mirror the NBA pattern (projection μ + σ + line → P).
+    "p_distribution",                  # canonical distribution-derived P (live)
+    "lom_disabled",                    # always True for MLB live now
+    "p_lom_shadow",                    # LOM output (no live effect)
+    "probability_method_shadow",       # "lom_shadow" when LOM artifact ran
+    "p_ecdf_shadow",                   # ECDF output (no live effect)
+    "probability_method_shadow_ecdf",  # "ecdf_shadow" when ECDF artifact ran
     # VK2 (5-year adv-stat) diagnostics — parallel to legacy VK model_*
     "p_true_vk2", "vk2_projection", "vk2_sigma", "vk2_error",
     # Side-aware hit-rate diagnostics (the side passed to gates is in hit_rate)
