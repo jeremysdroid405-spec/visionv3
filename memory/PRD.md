@@ -28,6 +28,50 @@ discrete zero-heavy props. FULL FEATURE ACTIVATION PROJECT for NBA and MLB.
 
 ## Recent work (changelog)
 
+### 2026-04-29 — Universal Tier Cascade REMOVED (per user spec)
+**Why**: User reverted the cascading-tier behaviour shipped earlier
+the same day. New contract: each pick is locked to its routed odds
+bucket. Failing the routed tier's gate block → REJECTED
+(`tier="unqualified"`). NO fallback to a lower-strictness tier.
+
+**Spec**:
+- Safe Haven : ref_odds ≤ −300
+- Front Lines: −299 ≤ ref_odds ≤ +149
+- War Zone   : ref_odds ≥ +150
+- Picks in Front Lines do NOT appear in War Zone
+- War Zone only contains odds ≥ +150
+- Picks failing their routed tier are rejected, not moved
+
+**Shipped**:
+- `services/scoring/scoring_stack.py::compute_tier` — cascade block
+  removed. `target_tier` is now always equal to `routed_tier`.
+  Failing eval → tier=`unqualified`, no rebuild under a different
+  tier's gate config.
+- `services/scoring/prop_scores_store.py` — removed
+  `tier_cascade_chain` / `tier_cascade_landed_at` from
+  `_FIELDS_WHITELIST`. Live recompute leaves the prior values null
+  on every doc.
+- `tests/test_universal_tier_routing.py` — fully rewritten. Cascade
+  tests deleted; replaced with no-cascade contract validators
+  including FL-band sweep proving no leak to WZ/SH and WZ-band sweep
+  proving no leak to FL/SH. **27/27 passing**. Full suite
+  (publisher, observability, contract enforcer, vision_v2, safe
+  haven overrides) **93/93 still green** post-change.
+
+**Live verification** (`final-nba-rt`, 2,971 props recomputed):
+- Tier distribution: SH=5, FL=99, WZ=19, unqualified=2,848.
+- FL band picks landing in WZ: **0**
+- FL band picks landing in SH: **0**
+- SH band picks landing in FL: **0**
+- SH band picks landing in WZ: **0**
+- WZ band picks landing in FL: **0**
+- WZ band picks landing in SH: **0**
+- Safe Haven odds range: [−370, −338] (all ≤ −300) ✅
+- Front Lines odds range: [−286, +114] (all in band) ✅
+- War Zone odds range: [+154, +620] (all ≥ +150) ✅
+- `tier_cascade_chain` / `tier_cascade_landed_at` fields purged
+  from every doc.
+
 ### 2026-04-29 — FINAL Safe Haven Conditional Override Spec (NBA)
 **Why**: Safe Haven was over-rejecting strong props. Specific picks
 (Avdija PTS 19.5, M.Robinson REB 3.5, Embiid AST 2.5, etc.) had

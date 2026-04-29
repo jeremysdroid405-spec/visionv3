@@ -41,13 +41,6 @@ _SCORE_OUTPUT_FIELDS = (
     # the hard-guard in `scoring_stack.compute_tier`.
     "routed_tier",
     "tier_gate_results",
-    # Universal Tier Cascade audit fields (2026-04-29). Populated only
-    # when a pick's routed-tier gate block fails and the cascade tries
-    # the next-lower bucket. `tier_cascade_chain` lists the visited
-    # tiers in order; `tier_cascade_landed_at` is set when the pick
-    # actually survives in a non-routed tier.
-    "tier_cascade_chain",
-    "tier_cascade_landed_at",
     # pp_utility dimension
     "pp_utility", "pp_utility_category", "pp_utility_components",
     "pp_multiplier", "pp_multiplier_label", "pp_multiplier_source",

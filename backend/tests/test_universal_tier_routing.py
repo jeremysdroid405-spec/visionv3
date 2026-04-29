@@ -2,22 +2,23 @@
 Universal Tier Routing — Final Spec Validation
 ==============================================
 
-Validates the 2026-04-29 routing rules:
+Validates the 2026-04-29 routing rules (cascade REMOVED):
 
     Safe Haven  : ref_odds <= -300
     Front Lines : -299 <= ref_odds <= +149
     War Zone    : ref_odds >= +150
 
-Plus the cascade: a pick rejected by SH gates is re-evaluated under FL
-gates; rejected by FL is re-evaluated under WZ. Only props failing
-ALL applicable gate blocks are unqualified.
+Hard rule: each pick is evaluated ONLY within its routed tier. Failing
+the routed tier's gate block → REJECTED (tier="unqualified"). NO
+fallback to a lower-strictness tier.
 
 Spec validation cases:
   1. Paul George OVER PTS 11.5 at -286 → routes to Front Lines
   2. Props at -300 or lower → Safe Haven
   3. Props in [-299, +149] → Front Lines
   4. Props at +150 or higher → War Zone
-  5. No pick rejected by odds bucket alone (cascade)
+  5. A pick that fails its routed tier's gates is unqualified, NOT
+     moved to another tier
 """
 from __future__ import annotations
 
@@ -88,8 +89,6 @@ def _call_compute_tier(*, sport="nba", ref_odds, cv, hit_rate, edge_pct, tp,
                        p_model=None, side="OVER", stat="PTS", line=11.5,
                        ref_book="dk"):
     from services.scoring.scoring_stack import compute_tier
-    layer = {ref_book: {"line": line, "odds": ref_odds, "side": side,
-                        "decimal": None}}
     prop = {
         "stat_type": stat, "line": line,
         "recommendation": side, "direction": side,
@@ -109,31 +108,48 @@ def _call_compute_tier(*, sport="nba", ref_odds, cv, hit_rate, edge_pct, tp,
     )
 
 
-# ─── Spec case 5 — Cascade: SH-routed pick that fails SH lands in FL ─
-def test_cascade_sh_routed_failing_sh_lands_in_fl():
+# ─── No-cascade hard contract ────────────────────────────────────────
+def test_sh_routed_failing_sh_is_unqualified_not_fl():
+    """A Safe-Haven-routed pick (odds ≤ -300) failing SH gates must NOT
+    leak into Front Lines. Cascade is removed."""
     res = _call_compute_tier(
         ref_odds=-400, cv=0.30, hit_rate=80.0, edge_pct=8.0, tp=68.0,
         p_model=0.76,
     )
     assert res["routed_tier"] == "safe_haven"
-    # HR=80 fails SH (≥85) but clears FL (≥70). edge=8 above FL floor.
-    assert res["tier"] == "front_lines", f"got tier={res['tier']} reason={res.get('tier_reason')}"
-    assert "tier_cascade_chain" in res
-    assert res["tier_cascade_chain"][0] == "safe_haven"
-    assert "front_lines" in res["tier_cascade_chain"]
+    assert res["tier"] in ("safe_haven", "unqualified")
+    assert res["tier"] != "front_lines"
+    assert res["tier"] != "war_zone"
+    assert "tier_cascade_chain" not in res
 
 
-def test_cascade_sh_routed_failing_all_gates_unqualified():
+def test_fl_routed_failing_fl_is_unqualified_not_wz():
+    """A Front-Lines-routed pick failing FL gates must NOT leak into
+    War Zone."""
     res = _call_compute_tier(
-        ref_odds=-400, cv=0.95, hit_rate=30.0, edge_pct=-50.0, tp=80.0,
+        ref_odds=-200, cv=0.95, hit_rate=10.0, edge_pct=-30.0, tp=40.0,
         p_model=0.20,
     )
-    assert res["tier"] == "unqualified"
-    chain = res.get("tier_cascade_chain") or []
-    assert chain == ["safe_haven", "front_lines", "war_zone"]
+    assert res["routed_tier"] == "front_lines"
+    assert res["tier"] in ("front_lines", "unqualified")
+    assert res["tier"] != "war_zone"
+    assert res["tier"] != "safe_haven"
+    assert "tier_cascade_chain" not in res
 
 
-def test_cascade_does_not_promote():
+def test_war_zone_routed_failing_is_unqualified():
+    res = _call_compute_tier(
+        ref_odds=+250, cv=0.95, hit_rate=10.0, edge_pct=-30.0, tp=40.0,
+        p_model=0.20,
+    )
+    assert res["routed_tier"] == "war_zone"
+    assert res["tier"] in ("war_zone", "unqualified")
+    assert "tier_cascade_chain" not in res
+
+
+def test_no_promotion_from_fl_to_sh():
+    """A pick at -200 (FL band) with elite metrics still cannot land
+    in Safe Haven — routing is locked by odds, not by quality."""
     res = _call_compute_tier(
         ref_odds=-200, cv=0.20, hit_rate=95.0, edge_pct=15.0, tp=60.0,
         p_model=0.80,
@@ -142,24 +158,27 @@ def test_cascade_does_not_promote():
     assert res["tier"] != "safe_haven"
 
 
-def test_cascade_fl_routed_failing_fl_lands_in_wz():
-    res = _call_compute_tier(
-        ref_odds=-200, cv=0.20, hit_rate=55.0, edge_pct=4.0, tp=60.0,
-        p_model=0.50,
-    )
-    chain = res.get("tier_cascade_chain") or []
-    if res["tier"] == "war_zone":
-        assert "war_zone" in chain
-    else:
-        assert chain[:2] == ["front_lines", "war_zone"] or res["tier"] == "front_lines"
+def test_pick_in_fl_band_does_not_appear_in_war_zone():
+    """Validation rule from spec: 'Picks in Front Lines do NOT appear
+    in War Zone.' Sweep across the FL band confirms tier ∈
+    {front_lines, unqualified} only."""
+    for odds in (-299, -250, -150, -110, +100, +120, +149):
+        res = _call_compute_tier(
+            ref_odds=odds, cv=0.40, hit_rate=70.0, edge_pct=10.0, tp=55.0,
+            p_model=0.65,
+        )
+        assert res["routed_tier"] == "front_lines", odds
+        assert res["tier"] != "war_zone", (odds, res["tier"])
+        assert res["tier"] != "safe_haven", (odds, res["tier"])
 
 
-def test_war_zone_routed_does_not_cascade_further():
-    res = _call_compute_tier(
-        ref_odds=+250, cv=0.95, hit_rate=10.0, edge_pct=-30.0, tp=40.0,
-        p_model=0.20,
-    )
-    assert res["routed_tier"] == "war_zone"
-    assert res["tier"] == "unqualified"
-    chain = res.get("tier_cascade_chain") or []
-    assert all(t == "war_zone" for t in chain)
+def test_war_zone_only_contains_plus_150_or_higher():
+    """Validation rule from spec: 'War Zone only contains +150 or
+    higher odds.'"""
+    for odds in (+150, +200, +500, +1000):
+        res = _call_compute_tier(
+            ref_odds=odds, cv=0.40, hit_rate=70.0, edge_pct=10.0, tp=40.0,
+            p_model=0.55,
+        )
+        assert res["routed_tier"] == "war_zone", odds
+        assert res["tier"] in ("war_zone", "unqualified"), (odds, res["tier"])

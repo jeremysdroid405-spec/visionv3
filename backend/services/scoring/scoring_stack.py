@@ -495,46 +495,15 @@ def compute_tier(
 
     eval_result = evaluate_tier_with_overrides(metrics)
 
-    # ── Universal Tier Cascade (2026-04-29) ────────────────────────────
-    # If the routed tier's gate block fails, try the next-lower tier
-    # block. Cascade order is fixed: safe_haven → front_lines → war_zone
-    # → unqualified. The cascade NEVER promotes (a pick routed to FL
-    # cannot land in SH); it only allows a pick to fall into a less-
-    # strict tier when the strict one rejects it. This implements the
-    # spec rule "do NOT let a pick disappear solely because it failed
-    # the first odds bucket."
-    cascade_chain: List[str] = []
-    if not eval_result.passed:
-        order = ("safe_haven", "front_lines", "war_zone")
-        try:
-            start_idx = order.index(routed_tier)
-        except ValueError:
-            start_idx = len(order)
-        cascade_chain = [routed_tier]
-        for next_tier in order[start_idx + 1:]:
-            cascade_chain.append(next_tier)
-            # Rebuild metrics under the next tier's gate config and
-            # re-evaluate. NO scoring / projection / TP / edge / vision
-            # change — only `tier` (gate config selector) flips.
-            cascade_cv_cap = _resolve_cv_cap_override(sport, next_tier, stat_raw)
-            cascade_metrics = build_metrics_from_context(
-                prop=prop, sport=sport,
-                target_tier=next_tier, stat_raw=stat_raw, side=side,
-                ref_book=ref_book, ref_odds=ref_odds, book_count=book_count,
-                cv=cv, hit_rate=hit_rate, edge_pct=edge_pct, tp=tp,
-                ceiling_rate=ceiling_rate, p_model_pct=p_model_pct,
-                cv_cap_override=cascade_cv_cap,
-                avg_hit_margin=avg_hit_margin, avg_miss_margin=avg_miss_margin,
-            )
-            cascade_eval = evaluate_tier_with_overrides(cascade_metrics)
-            if cascade_eval.passed:
-                target_tier = next_tier
-                eval_result = cascade_eval
-                metrics = cascade_metrics
-                break
-            # Otherwise keep cascading; preserve last failure for audit.
-            eval_result = cascade_eval
-            metrics = cascade_metrics
+    # ── Tier locked to routed bucket (2026-04-29, cascade REMOVED) ─────
+    # Each pick is evaluated ONLY within its routed odds tier. Failing
+    # the routed tier's gate block → REJECTED (tier="unqualified"). No
+    # cross-tier fallback. This enforces the user spec:
+    #   * Safe Haven : odds ≤ -300
+    #   * Front Lines: -299 ≤ odds ≤ +149
+    #   * War Zone   : odds ≥ +150
+    # A pick at +105 must land in Front Lines if and only if its FL
+    # gate block passes; it must NEVER appear in War Zone.
 
     # War-Zone CV ranking modifier — INFORMATIONAL ONLY.
     # The CV floor on War Zone eligibility was removed 2026-04-23 (design
@@ -563,10 +532,7 @@ def compute_tier(
     }
 
     if eval_result.passed:
-        # Cascade-aware: a pick that fails its routed tier may now land
-        # in a less-strict tier. The cascade above sets `target_tier`
-        # to the tier whose gate block actually passed; we record the
-        # original `routed_tier` for audit.
+        # Cascade removed: target_tier is always equal to routed_tier.
         out = {
             "tier": target_tier,
             "tier_reason": ReasonCode.GATES_PASSED,
@@ -576,9 +542,6 @@ def compute_tier(
             "tier_gate_results": legacy_gate_results,
             "gate_eval": eval_result.to_dict(),
         }
-        if cascade_chain and target_tier != routed_tier:
-            out["tier_cascade_chain"] = cascade_chain
-            out["tier_cascade_landed_at"] = target_tier
         if war_zone_cv_mod is not None:
             out["war_zone_cv_modifier"] = war_zone_cv_mod
         return out
@@ -592,8 +555,6 @@ def compute_tier(
         "tier_gate_results": legacy_gate_results,
         "gate_eval": eval_result.to_dict(),
     }
-    if cascade_chain and len(cascade_chain) > 1:
-        out["tier_cascade_chain"] = cascade_chain
     if war_zone_cv_mod is not None:
         out["war_zone_cv_modifier"] = war_zone_cv_mod
     return out
