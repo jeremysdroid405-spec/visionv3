@@ -212,11 +212,45 @@ class BDLGameLogsSyncBatched:
         
         now = datetime.now(timezone.utc).isoformat()
         operations = []
-        
-        for bdl_id, logs in player_id_to_logs.items():
-            # Sort logs by date (most recent first)
-            sorted_logs = sorted(logs, key=lambda x: x.get("date", ""), reverse=True)
-            
+
+        # 2026-04-29: MERGE (not replace) to preserve historical
+        # multi-season logs that the rehydration sync brought in.
+        # Pull existing logs once, then dedupe by game_id and write back.
+        existing_map: Dict[int, List[Dict]] = {}
+        if player_id_to_logs:
+            cursor = self.hub.find(
+                {"bdl_id": {"$in": list(player_id_to_logs.keys())}},
+                {"_id": 0, "bdl_id": 1, "bdl_game_logs": 1},
+            )
+            async for d in cursor:
+                bid = d.get("bdl_id")
+                if bid is None: continue
+                existing_map[int(bid)] = d.get("bdl_game_logs") or []
+
+        for bdl_id, incoming in player_id_to_logs.items():
+            existing = existing_map.get(int(bdl_id), [])
+            by_gid: Dict[int, Dict] = {}
+            no_gid: list = []
+            for x in existing:
+                gid = x.get("game_id")
+                if gid is not None:
+                    try: by_gid[int(gid)] = x
+                    except (TypeError, ValueError): no_gid.append(x)
+                else:
+                    no_gid.append(x)
+            for x in incoming:
+                gid = x.get("game_id")
+                if gid is not None:
+                    try:
+                        # incoming wins on conflict — sync is fresher
+                        by_gid[int(gid)] = x
+                    except (TypeError, ValueError):
+                        no_gid.append(x)
+                else:
+                    no_gid.append(x)
+            merged = list(by_gid.values()) + no_gid
+            sorted_logs = sorted(merged, key=lambda x: x.get("date", ""), reverse=True)
+
             operations.append(UpdateOne(
                 {"bdl_id": bdl_id},
                 {
@@ -224,7 +258,7 @@ class BDLGameLogsSyncBatched:
                         "bdl_game_logs": sorted_logs,
                         "bdl_game_logs_count": len(sorted_logs),
                         "bdl_game_logs_updated_at": now,
-                        "bdl_game_logs_source": "bdl_stats_api_batched"
+                        "bdl_game_logs_source": "bdl_stats_api_batched_merged"
                     }
                 }
             ))

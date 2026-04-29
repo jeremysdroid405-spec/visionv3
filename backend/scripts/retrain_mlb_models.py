@@ -7,6 +7,10 @@ import sys, os
 sys.path.insert(0, '/app/backend')
 os.chdir('/app/backend')
 
+# 2026-04-29 — HARD LOCK GUARD (see services/mlb_model_lock.py)
+from services.mlb_model_lock import enforce_lock
+enforce_lock(action="retrain_mlb_models (v1)")
+
 import pymongo, numpy as np, pickle, logging, gc
 from datetime import datetime, timezone
 from xgboost import XGBRegressor

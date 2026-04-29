@@ -19,6 +19,13 @@ import sys, os
 sys.path.insert(0, '/app/backend')
 os.chdir('/app/backend')
 
+# 2026-04-29 — HARD LOCK GUARD. If `/app/backend/models/mlb_hf/.LOCKED`
+# exists, this script must refuse to run. To unlock, the operator must
+# manually delete the lock file (root permission). Bypassing this guard
+# requires deliberate human action.
+from services.mlb_model_lock import enforce_lock
+enforce_lock(action="retrain_mlb_models_v2")
+
 import pymongo, numpy as np, pickle, logging, gc, json
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -132,6 +139,15 @@ for d in db.mlb_statcast_pitcher_features.find(
 logger.info(f"  pitcher SC: {sum(len(v) for v in sc_pitcher.values()):,} (pitcher,date) keys "
             f"across {len(sc_pitcher):,} pitchers")
 
+# 2026-04-29 v2.1 — Per-PA Statcast cache (mlb_statcast_raw)
+logger.info("Loading mlb_statcast_raw → PA cache …")
+from services.mlb_pa_features import MLBPACache
+pa_cache = MLBPACache()
+n_raw = pa_cache.load_from_db(db)
+logger.info(f"  PA cache: {n_raw:,} rows  →  "
+            f"{pa_cache.stats()['batters']:,} batters / "
+            f"{pa_cache.stats()['pitchers']:,} pitchers")
+
 
 def _resolve_mlbam(player: dict, *, pitcher: bool) -> int | None:
     bdl = player.get("bdl_id") or player.get("bdl_player_id") or player.get("player_id")
@@ -239,10 +255,15 @@ for stat_name in STATS:
             gdate = _date_str(target_game)
 
             sc_b = None; sc_p = None
+            pa_b = None; pa_p = None
             if is_pitcher_stat:
                 sc_p = _sc_lookup_pitcher(mlbam_id, gdate)
+                if mlbam_id is not None and gdate:
+                    pa_p = pa_cache.pitcher_features(int(mlbam_id), gdate)
             else:
                 sc_b = _sc_lookup_batter(mlbam_id, gdate)
+                if mlbam_id is not None and gdate:
+                    pa_b = pa_cache.batter_features(int(mlbam_id), gdate)
             if sc_b is not None or sc_p is not None: sc_hit += 1
             else: sc_miss += 1
 
@@ -252,6 +273,8 @@ for stat_name in STATS:
                 dk_odds=None, line=line,
                 statcast_features=sc_b,
                 pitcher_statcast_features=sc_p,
+                pa_batter_features=pa_b,
+                pa_pitcher_features=pa_p,
             )
             if features is None:
                 continue

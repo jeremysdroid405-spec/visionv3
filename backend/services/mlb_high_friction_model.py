@@ -185,6 +185,26 @@ class MLBHighFrictionModel:
     # for a player. mlbam_id is resolved via the identity map (bdl_id)
     # with a normalized-name fallback.
     # =========================================================================
+    # 2026-04-29 v2.1 — lazy-loaded PA cache (mlb_statcast_raw)
+    def _get_pa_cache(self):
+        """Lazy-build & cache the PA-windowed Statcast index. Returns
+        None if the collection is empty."""
+        cache = getattr(self, "_pa_cache", None)
+        if cache is not None:
+            return cache
+        try:
+            from services.mlb_pa_features import MLBPACache
+            c = MLBPACache()
+            n = c.load_from_db(self.db)
+            if n == 0:
+                self._pa_cache = None
+                return None
+            self._pa_cache = c
+            return c
+        except Exception:
+            self._pa_cache = None
+            return None
+
     def _resolve_mlbam_id(self, player: Dict[str, Any]) -> Optional[int]:
         """Return the player's MLBAM (statcast) numeric ID or None."""
         # Direct fields on the hub doc, if any.
@@ -482,10 +502,12 @@ class MLBHighFrictionModel:
         line: float = None,
         statcast_features: Optional[Dict[str, Any]] = None,
         pitcher_statcast_features: Optional[Dict[str, Any]] = None,
+        pa_batter_features: Optional[Dict[str, Any]] = None,
+        pa_pitcher_features: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, float]]:
         """
         Build the FULL High-Friction feature vector.
-        
+
         Categories:
         1. PvP (Pitcher-Batter Collision)
         2. Environmental Friction
@@ -495,6 +517,9 @@ class MLBHighFrictionModel:
            - Batter rolling 7/14/30 + season xwOBA/wOBA/HardHit/Barrel/EV/LA
            - Pitcher rolling 14/30 xwOBA-allowed/HardHit-allowed/Barrel-allowed/K%/BB%
         6. Workload (expected PA derived from recent L10).
+        7. PA-windowed Statcast (2026-04-29 v2.1):
+           - Batter last-7/14/30 PA + season xwOBA/wOBA/HardHit/Barrel/EV/LA/SS%/K%/BB%/Whiff%/Contact%
+           - Pitcher last-14/30 PA + season xwOBA-allowed/HardHit-allowed/Barrel-allowed/K%/BB%/Whiff%
         """
         features = {}
         
@@ -741,6 +766,30 @@ class MLBHighFrictionModel:
             features["expected_pa_l10"] = 4.0
             features["expected_pa_is_imputed"] = 1
 
+        # =====================================================================
+        # CATEGORY 7: PA-WINDOWED STATCAST (v2.1, 2026-04-29)
+        # =====================================================================
+        # Built from `mlb_statcast_raw` per-pitch rows; windows are
+        # plate-appearance-counted (last 7/14/30 PA, plus season-to-date).
+        # Distinct from Category 5 which is calendar-day windowed.
+        from services.mlb_pa_features import (
+            BATTER_FIELDS as _PA_B_FIELDS, PITCHER_FIELDS as _PA_P_FIELDS,
+            BATTER_WINDOWS as _PA_B_WINDOWS, PITCHER_WINDOWS as _PA_P_WINDOWS,
+        )
+        for tag, _ in _PA_B_WINDOWS + (("pa_season", None),):
+            block = (pa_batter_features or {}).get(tag) or {}
+            for fld in _PA_B_FIELDS:
+                v = block.get(fld)
+                features[f"pa_b_{tag}_{fld}"] = float(v) if v is not None else 0.0
+        features["pa_batter_is_imputed"] = 0 if pa_batter_features else 1
+
+        for tag, _ in _PA_P_WINDOWS + (("pa_season", None),):
+            block = (pa_pitcher_features or {}).get(tag) or {}
+            for fld in _PA_P_FIELDS:
+                v = block.get(fld)
+                features[f"pa_p_{tag}_{fld}"] = float(v) if v is not None else 0.0
+        features["pa_pitcher_is_imputed"] = 0 if pa_pitcher_features else 1
+
         return features
     
     def build_training_dataset(self, stat_type: str) -> pd.DataFrame:
@@ -907,6 +956,13 @@ class MLBHighFrictionModel:
     
     def load_models(self) -> int:
         """Load trained models."""
+        # 2026-04-29 — verify on-disk SHA256 matches `.LOCKED` manifest
+        # (warns only; load proceeds either way).
+        try:
+            from services.mlb_model_lock import assert_load_ok
+            assert_load_ok()
+        except Exception as e:
+            logger.warning(f"[MLB_HF_MODEL] lock-integrity check failed: {e!r}")
         loaded = 0
         for stat in self.MLB_STAT_TYPES:
             path = os.path.join(self.MODEL_DIR, f'mlb_hf_{stat}.pkl')
@@ -1101,6 +1157,22 @@ class MLBHighFrictionModel:
             else:
                 sc_batter = self._get_batter_sc_latest(player)
 
+            # 2026-04-29 v2.1: PA-windowed Statcast lookup (live).
+            pa_batter = None
+            pa_pitcher = None
+            mlbam_id = self._resolve_mlbam_id(player)
+            if mlbam_id is not None:
+                # Use today's date as the as_of cutoff (everything strictly
+                # before "today" counts).
+                from datetime import datetime as _dt
+                as_of = _dt.utcnow().strftime("%Y-%m-%d")
+                pa_cache = self._get_pa_cache()
+                if pa_cache is not None:
+                    if norm_stat in pitcher_stat_set:
+                        pa_pitcher = pa_cache.pitcher_features(int(mlbam_id), as_of)
+                    else:
+                        pa_batter = pa_cache.batter_features(int(mlbam_id), as_of)
+
             features = self._build_friction_features(
                 player,
                 game_logs,
@@ -1111,6 +1183,8 @@ class MLBHighFrictionModel:
                 line,
                 statcast_features=sc_batter,
                 pitcher_statcast_features=sc_pitcher,
+                pa_batter_features=pa_batter,
+                pa_pitcher_features=pa_pitcher,
             )
             
             if features is None:
