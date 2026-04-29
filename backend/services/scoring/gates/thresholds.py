@@ -475,7 +475,7 @@ MLB_GATES_DISABLED_FOR_AUDIT: bool = False
 # Behaviour: routed_tier == "front_lines" → final tier == "front_lines"
 # for every prop that reached the gate stage (i.e. survived 0-book
 # exclusion + has a reference_odds in -239..+149).
-MLB_FRONT_LINES_GATES_DISABLED: bool = False
+MLB_FRONT_LINES_GATES_DISABLED: bool = True
 
 # Frozen pre-audit config (kept verbatim so the rebuild has a reference
 # to diff against — DO NOT EDIT until the audit lands.)
