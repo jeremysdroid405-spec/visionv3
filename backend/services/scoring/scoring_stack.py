@@ -33,7 +33,7 @@ LOCKED SPEC (user 2026-04-17):
       (pp_premium and pp_discount are RESERVED until a real multiplier source
        is wired in; do not emit them from odds heuristics.)
 """
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
@@ -495,6 +495,47 @@ def compute_tier(
 
     eval_result = evaluate_tier_with_overrides(metrics)
 
+    # ── Universal Tier Cascade (2026-04-29) ────────────────────────────
+    # If the routed tier's gate block fails, try the next-lower tier
+    # block. Cascade order is fixed: safe_haven → front_lines → war_zone
+    # → unqualified. The cascade NEVER promotes (a pick routed to FL
+    # cannot land in SH); it only allows a pick to fall into a less-
+    # strict tier when the strict one rejects it. This implements the
+    # spec rule "do NOT let a pick disappear solely because it failed
+    # the first odds bucket."
+    cascade_chain: List[str] = []
+    if not eval_result.passed:
+        order = ("safe_haven", "front_lines", "war_zone")
+        try:
+            start_idx = order.index(routed_tier)
+        except ValueError:
+            start_idx = len(order)
+        cascade_chain = [routed_tier]
+        for next_tier in order[start_idx + 1:]:
+            cascade_chain.append(next_tier)
+            # Rebuild metrics under the next tier's gate config and
+            # re-evaluate. NO scoring / projection / TP / edge / vision
+            # change — only `tier` (gate config selector) flips.
+            cascade_cv_cap = _resolve_cv_cap_override(sport, next_tier, stat_raw)
+            cascade_metrics = build_metrics_from_context(
+                prop=prop, sport=sport,
+                target_tier=next_tier, stat_raw=stat_raw, side=side,
+                ref_book=ref_book, ref_odds=ref_odds, book_count=book_count,
+                cv=cv, hit_rate=hit_rate, edge_pct=edge_pct, tp=tp,
+                ceiling_rate=ceiling_rate, p_model_pct=p_model_pct,
+                cv_cap_override=cascade_cv_cap,
+                avg_hit_margin=avg_hit_margin, avg_miss_margin=avg_miss_margin,
+            )
+            cascade_eval = evaluate_tier_with_overrides(cascade_metrics)
+            if cascade_eval.passed:
+                target_tier = next_tier
+                eval_result = cascade_eval
+                metrics = cascade_metrics
+                break
+            # Otherwise keep cascading; preserve last failure for audit.
+            eval_result = cascade_eval
+            metrics = cascade_metrics
+
     # War-Zone CV ranking modifier — INFORMATIONAL ONLY.
     # The CV floor on War Zone eligibility was removed 2026-04-23 (design
     # decision: War Zone must not penalize consistency). This modifier
@@ -522,33 +563,12 @@ def compute_tier(
     }
 
     if eval_result.passed:
-        # Hard-guard (2026-04-25): final tier MUST equal routed_tier
-        # for a passing prop. The current pipeline can't violate this
-        # because gate thresholds are resolved per-target_tier — but
-        # the assertion exists to catch any future regression
-        # (e.g. someone wiring cross-tier gate evaluation) at the
-        # exact moment the constraint would be broken.
-        if target_tier != routed_tier:
-            logger.error(
-                "[ROUTING_GUARD] passed-prop tier mismatch: "
-                f"target={target_tier} != routed={routed_tier} "
-                f"sport={sport} ref_odds={ref_odds} — forcing unqualified"
-            )
-            out = {
-                "tier": "unqualified",
-                "tier_reason": "routing_guard_violation",
-                "tier_reference_book": ref_book,
-                "tier_reference_odds": ref_odds,
-                "routed_tier": routed_tier,
-                "tier_gate_results": legacy_gate_results,
-                "gate_eval": eval_result.to_dict(),
-            }
-            if war_zone_cv_mod is not None:
-                out["war_zone_cv_modifier"] = war_zone_cv_mod
-            return out
-
+        # Cascade-aware: a pick that fails its routed tier may now land
+        # in a less-strict tier. The cascade above sets `target_tier`
+        # to the tier whose gate block actually passed; we record the
+        # original `routed_tier` for audit.
         out = {
-            "tier": routed_tier,
+            "tier": target_tier,
             "tier_reason": ReasonCode.GATES_PASSED,
             "tier_reference_book": ref_book,
             "tier_reference_odds": ref_odds,
@@ -556,19 +576,24 @@ def compute_tier(
             "tier_gate_results": legacy_gate_results,
             "gate_eval": eval_result.to_dict(),
         }
+        if cascade_chain and target_tier != routed_tier:
+            out["tier_cascade_chain"] = cascade_chain
+            out["tier_cascade_landed_at"] = target_tier
         if war_zone_cv_mod is not None:
             out["war_zone_cv_modifier"] = war_zone_cv_mod
         return out
 
     out = {
         "tier": "unqualified",
-        "tier_reason": f"{routed_tier}_failed: {eval_result.reason_code}",
+        "tier_reason": f"{target_tier}_failed: {eval_result.reason_code}",
         "tier_reference_book": ref_book,
         "tier_reference_odds": ref_odds,
         "routed_tier": routed_tier,
         "tier_gate_results": legacy_gate_results,
         "gate_eval": eval_result.to_dict(),
     }
+    if cascade_chain and len(cascade_chain) > 1:
+        out["tier_cascade_chain"] = cascade_chain
     if war_zone_cv_mod is not None:
         out["war_zone_cv_modifier"] = war_zone_cv_mod
     return out

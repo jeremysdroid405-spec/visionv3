@@ -397,11 +397,18 @@ def resolve_thresholds(
 #     ref_odds >= +150          → war_zone    (longshot)
 #     ref_odds is None          → unqualified (no reference market)
 #
-# Hard contract: a prop's FINAL tier is constrained to be one of
-# {routed_tier, "unqualified"}. Promotions across buckets are forbidden.
-# The constraint is enforced at `scoring_stack.compute_tier` and
-# audit-checkable via the persisted `routed_tier` score-doc field.
-UNIVERSAL_SAFE_HAVEN_MAX: int = -240
+# ── Universal Tier Routing Boundaries (2026-04-29) ─────────────────
+# New odds buckets per FINAL tier-routing spec:
+#   Safe Haven  : ref_odds <= -300   (heavy chalk)
+#   Front Lines : -299 <= ref_odds <= +149
+#   War Zone    : ref_odds >= +150
+#
+# Hard contract change (2026-04-29): a prop is no longer locked to its
+# routed tier. If it fails the SH gate block, it is RE-EVALUATED under
+# the FL gate block. If it fails FL, it is re-evaluated under WZ. Only
+# props that fail ALL applicable gate blocks are rejected. Implemented
+# by `compute_tier` cascade — see `services/scoring/scoring_stack.py`.
+UNIVERSAL_SAFE_HAVEN_MAX: int = -300
 UNIVERSAL_WAR_ZONE_MIN: int = 150
 
 # Per-sport ODDS_BUCKETS retained as a thin alias on the universal
