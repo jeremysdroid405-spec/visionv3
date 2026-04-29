@@ -1,0 +1,22 @@
+{
+  "ts": "2026-04-29T15:20:51.906728+00:00",
+  "seasons": [
+    2023,
+    2024,
+    2025
+  ],
+  "dry_run": false,
+  "fetch_errors": 0,
+  "players_processed": 6655,
+  "players_updated": 3283,
+  "players_no_new_data": 3365,
+  "avg_logs_before": 12.3,
+  "median_logs_before": 5.0,
+  "min_logs_before": 0,
+  "max_logs_before": 852,
+  "avg_logs_after": 52.0,
+  "median_logs_after": 9,
+  "min_logs_after": 0,
+  "max_logs_after": 595,
+  "fetch_seconds": 1671.8
+}
