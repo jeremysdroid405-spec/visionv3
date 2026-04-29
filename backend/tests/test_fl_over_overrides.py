@@ -43,6 +43,11 @@ def _m(**overrides):
         extras={"projection": 1.86},
     )
     base.update(overrides)
+    # 2026-04-29 — Universal tp_gate semantics: tp_gate reads
+    # p_model_pct, so mirror tp into p_model_pct unless explicitly
+    # overridden by the caller. Preserves test intent (the prop has
+    # X% true probability) without reshaping every call site.
+    base.setdefault("p_model_pct", base.get("tp"))
     return NormalizedMetrics(**base)
 
 

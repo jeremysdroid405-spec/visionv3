@@ -79,45 +79,33 @@ class UniversalGateEngine:
 
     @staticmethod
     def _eval_tp(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
-        # 2026-04-29 — UNIFIED tp_gate source.
+        # 2026-04-29 — UNIVERSAL tp_gate semantics.
         #
-        # `cfg["source"]` ∈ {"market", "model"}:
-        #   - "model"  → reads `m.p_model_pct` (model distribution prob)
-        #     applied UNIFORMLY to OVER and UNDER (parity guaranteed).
-        #   - "market" → reads `m.tp` (sportsbook devig'd implied prob)
-        #     for OVERs.
+        # tp_gate ALWAYS evaluates the model-derived probability
+        # (`m.p_model_pct`, AKA `p_distribution`) — uniform across:
+        #   • NBA, MLB, NFL, every future sport
+        #   • every tier (Safe Haven / Front Lines / War Zone)
+        #   • both directions (OVER and UNDER)
         #
-        # If `source` is unset, the historical NBA semantics are
-        # preserved: UNDERs that have `under_floor` in cfg read
-        # `m.p_model_pct`; OVERs read `m.tp`. NBA is intentionally NOT
-        # migrated in this pass and relies on this fallback.
-        source = (cfg.get("source") or "").lower()
-        is_under_with_floor = (m.side == "UNDER" and "under_floor" in cfg)
+        # Market-implied probability (`m.tp`) is intentionally NOT
+        # consulted here. It is still used elsewhere for:
+        #   1. Tier routing (`tier_reference_odds`)
+        #   2. Edge calculation (`edge = p_model − market_implied`)
+        #   3. Book coverage / market context displays
+        #
+        # The legacy `cfg["source"]` flag is accepted but no-op'd
+        # (kept for schema compatibility — older threshold dicts
+        # carrying `source: "model"` continue to load cleanly).
+        # Threshold selection (UNDER vs OVER) is the only remaining
+        # direction-dependent logic.
+        actual = _py(m.p_model_pct)
 
-        # Decide source field
-        if source == "model":
-            actual = _py(m.p_model_pct)
-            note_suffix = "model_confidence"
-        elif source == "market":
-            actual = _py(m.tp)
-            note_suffix = "market_implied"
-        else:
-            # Legacy / unset path. Preserves NBA UNDER+under_floor →
-            # model behavior and OVER → market.
-            if is_under_with_floor:
-                actual = _py(m.p_model_pct)
-                note_suffix = "model_confidence"
-            else:
-                actual = _py(m.tp)
-                note_suffix = "market_implied"
-
-        # Threshold: UNDERs use under_floor when present, else `min`.
-        if is_under_with_floor:
+        if m.side == "UNDER" and "under_floor" in cfg:
             threshold = float(cfg["under_floor"])
-            note = f"{note_suffix}_under"
+            note = "model_confidence_under"
         else:
             threshold = float(cfg.get("min", 0.0))
-            note = f"{note_suffix}_{(m.side or 'over').lower()}"
+            note = f"model_confidence_{(m.side or 'over').lower()}"
 
         if actual is None:
             return GateDetail(
