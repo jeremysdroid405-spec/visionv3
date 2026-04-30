@@ -51,10 +51,23 @@ async def get_board(
             {"game_start_utc": {"$exists": False}},
         ],
     }
-    # When sorting on ranking_score_v2, exclude rows where the field is
-    # missing/null so MongoDB doesn't float null → top of DESC order.
-    if primary == "ranking_score_v2":
-        query["ranking_score_v2"] = {"$ne": None}
+    # INTENTIONAL: Do NOT filter out rows where the primary sort key is
+    # null/missing. MongoDB sorts BSON null/missing values as LOWEST, so
+    # DESC naturally places them LAST — exactly where we want them.
+    #
+    # Previously this branch added `{$ne: null}` for the gap-sort key
+    # (`ranking_score_v2`) under the false assumption that null would
+    # float to the top of DESC order. That assumption was wrong AND the
+    # filter had a destructive side effect: the filtered candidate pool
+    # was passed to `publisher.reconcile(...)`, which interprets
+    # "canonical_key missing from candidates" as "pick no longer
+    # qualifying" and false-evicts the pick from the persisted
+    # `board_state`. Every gap-sort read silently shrank the published
+    # board; every non-gap read healed it. The dashboard flapped on
+    # every poll.
+    #
+    # Regression tests: `tests/test_reader_gap_sort_null_filter.py`
+    # (INV-G1 / G2 / G3 — 2026-04-30 bug).
     projection = {"_id": 0}
 
     # Deterministic sort: primary key desc, pp_utility desc as tiebreak.
