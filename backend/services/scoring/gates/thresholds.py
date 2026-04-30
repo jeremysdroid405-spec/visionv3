@@ -70,6 +70,14 @@ STAT_FAMILY_ALIASES: Dict[str, Dict[str, str]] = {
         "pitching_outs": "pitching_outs",
         "pitcher_strikeouts": "pitcher_strikeouts",
         "earned_runs": "earned_runs",
+        # Explicit aliases (2026-04-29) so per-family thresholds can
+        # be keyed without relying on the lowercase-fallback path.
+        "batter_strikeouts": "batter_strikeouts",
+        "batter_walks":      "batter_walks",
+        "walks_allowed":     "walks_allowed",
+        "singles":           "singles",
+        "doubles":           "doubles",
+        "hits_allowed":      "hits_allowed",
     },
     "nfl": {
         # Ready-to-fill scaffold. The engine already supports NFL once
@@ -112,6 +120,14 @@ def resolve_stat_family(sport: str, raw_stat: Optional[str]) -> str:
 #   4. market_structure_gate (reject alt AND tp_source=one_sided)
 # No tp_gate / edge_gate / coverage_gate / context_gate in Safe Haven.
 _NBA_SAFE_HAVEN_BASE = {
+    # ── Universal OVER-side rule (2026-04-29): proj >= line + edge > 0
+    # Applies to all OVER picks across all sports/tiers. UNDER picks
+    # bypass via `applies_to_sides=["OVER"]`.
+    "direction_gate": {
+        "applies_to_sides":          ["OVER"],
+        "min_projection_minus_line": 0.0,
+    },
+    "edge_gate":      {"min": 0.01},   # edge > 0 (strictly positive)
     "hit_rate_gate":  {"min": 85.0, "window": "default"},
     "vision_score_gate": {"min": 85.0},
     "cv_gate": {
@@ -328,6 +344,9 @@ _NBA_WAR_ZONE_BASE = {
         "applies_to_sides":              ["OVER"],
         "min_projection_to_line_ratio":  1.05,
     },
+    # ── Universal OVER-side edge floor (2026-04-29): edge > 0 strict.
+    # Direction is already stricter (proj >= line × 1.05) above.
+    "edge_gate":         {"min": 0.01},
     "hit_rate_gate":     {"min": 55.0, "window": "default"},
     "cv_gate":           {"max": 0.75},
     "vision_score_gate": {"min": 60.0},
@@ -385,25 +404,41 @@ def _mlb_thresholds(per_stat: Dict[str, Dict[str, Any]], *, war_zone: bool = Fal
     threshold *values* differ by sport/stat/tier."""
     out: Dict[str, Dict[str, Any]] = {}
     for family, vals in per_stat.items():
+        # Universal OVER-side rule (2026-04-29): every OVER pick must
+        # have `projection >= line`. Apply to SH / FL / WZ uniformly.
+        # UNDER picks bypass the gate (`applies_to_sides=["OVER"]`).
+        _UNIVERSAL_OVER_DIRECTION = {
+            "applies_to_sides":          ["OVER"],
+            "min_projection_minus_line": 0.0,
+        }
+        # Universal OVER-side rule (2026-04-29): edge > 0 (strictly
+        # positive). Per-stat `edge_min` is honoured when stricter
+        # than 0.01; otherwise the universal floor takes over.
+        _UNIVERSAL_OVER_EDGE_FLOOR = 0.01
+        family_edge_min = max(
+            float(vals.get("edge_min", 0.0)), _UNIVERSAL_OVER_EDGE_FLOOR
+        )
         if war_zone:
             out[family] = {
-                "coverage_gate": {"min_books": 1},
-                "ceiling_gate":  {"min": vals["ceiling_min"]},
-                "edge_gate":     {"min": vals["edge_min"]},
+                "coverage_gate":  {"min_books": 1},
+                "direction_gate": _UNIVERSAL_OVER_DIRECTION,
+                "ceiling_gate":   {"min": vals["ceiling_min"]},
+                "edge_gate":      {"min": family_edge_min},
             }
         else:
             out[family] = {
-                "coverage_gate": {"min_books": 1},
+                "coverage_gate":  {"min_books": 1},
+                "direction_gate": _UNIVERSAL_OVER_DIRECTION,
                 # cv_gate carries `min_margin` so the engine's MLB+0.5
                 # swap can read the per-stat-family margin floor
                 # without consulting another table.
-                "cv_gate":       {
+                "cv_gate":        {
                     "max": vals["cv_max"],
                     "min_margin": vals.get("min_margin", 0.75),
                 },
-                "hit_rate_gate": {"min": vals["hr_min"], "window": "default"},
-                "edge_gate":     {"min": vals["edge_min"]},
-                "tp_gate":       {"min": vals["tp_min"]},
+                "hit_rate_gate":  {"min": vals["hr_min"], "window": "default"},
+                "edge_gate":      {"min": family_edge_min},
+                "tp_gate":        {"min": vals["tp_min"]},
             }
     return out
 
@@ -499,43 +534,70 @@ if MLB_GATES_DISABLED_FOR_AUDIT:
         "war_zone":    {"_default": _AUDIT_PASS_ALL},
     }
 elif MLB_FRONT_LINES_GATES_DISABLED:
-    # Surgical variant: pull ONLY the Front Lines gate suite. SH + WZ
-    # MLB gates remain on. Same `coverage_gate` min_books=0 idiom so
-    # every routed-FL prop passes (the engine returns `failed_gates=[]`
-    # when its only gate is satisfied).
+    # Surgical variant: production `_MLB_FRONT_LINES` block remains
+    # disabled (not loaded). Instead a TEMPORARY user-calibrated FL
+    # config is layered on. Both blocks (frozen production +
+    # temporary calibration) coexist; flipping
+    # `MLB_FRONT_LINES_GATES_DISABLED = False` swaps in the production
+    # block.
     #
-    # 2026-04-29 — TEMPORARY BASIC FL GATES (additive narrow-down).
-    # While the production FL suite (`_MLB_FRONT_LINES`) remains
-    # disabled pending recalibration, three minimal gates are layered
-    # on top of the audit-pass-all anchor so the FL board narrows
-    # from the raw 1,800+ pool to a manageable shortlist:
-    #     1. OVERs : direction_gate → projection >= line
-    #     2. UNDERs: direction_gate → projection <= line
-    #     3. Both  : hit_rate_gate  → HR >= 70
-    # The frozen `_MLB_FRONT_LINES` config is preserved verbatim for
-    # the eventual full re-enable; flip `MLB_FRONT_LINES_GATES_DISABLED
-    # = False` and re-run `recompute_sport` to restore it.
+    # 2026-04-29 — USER-CALIBRATED FL GATES (per-family OVER, global UNDER).
+    # Universal across all sports: every OVER pick must have
+    # `edge > 0` AND `projection >= line`. UNDER picks must have
+    # `projection <= line`. Per-stat thresholds below for OVER side;
+    # one global gate block for UNDER side (HR>=75, CV<=0.85).
     _AUDIT_PASS_ALL = {"coverage_gate": {"min_books": 0}}
-    _FL_BASIC_OVER = {
-        "coverage_gate": {"min_books": 0},
+
+    def _mlb_fl_over(*, hr: float, cv: float, tp: Optional[float] = None,
+                     ) -> Dict[str, Dict[str, Any]]:
+        cfg: Dict[str, Dict[str, Any]] = {
+            "coverage_gate": {"min_books": 1},
+            "direction_gate": {
+                "applies_to_sides":          ["OVER"],
+                "min_projection_minus_line": 0.0,    # proj >= line
+            },
+            "edge_gate":     {"min": 0.01},          # edge > 0 (strictly positive)
+            "hit_rate_gate": {"min": hr, "window": "default"},
+            "cv_gate":       {"max": cv},
+        }
+        if tp is not None:
+            cfg["tp_gate"] = {"min": float(tp)}
+        return cfg
+
+    _MLB_FL_UNDER_GLOBAL = {
+        "coverage_gate": {"min_books": 1},
         "direction_gate": {
-            "applies_to_sides": ["OVER"],
-            "min_projection_minus_line": 0.0,   # proj >= line
+            "applies_to_sides":           ["UNDER"],
+            "max_projection_minus_line":  0.0,        # proj <= line
         },
-        "hit_rate_gate": {"min": 70.0, "window": "default"},
+        "hit_rate_gate": {"min": 75.0, "window": "default"},
+        "cv_gate":       {"max": 0.85},
     }
-    _FL_BASIC_UNDER = {
-        "coverage_gate": {"min_books": 0},
-        "direction_gate": {
-            "applies_to_sides": ["UNDER"],
-            "max_projection_minus_line": 0.0,   # proj <= line
-        },
-        "hit_rate_gate": {"min": 70.0, "window": "default"},
-    }
+
     THRESHOLDS["mlb"]["front_lines"] = {
-        "_default":       _AUDIT_PASS_ALL,
-        "_default_over":  _FL_BASIC_OVER,
-        "_default_under": _FL_BASIC_UNDER,
+        # _default fallback (when neither side suffix matches and
+        # the family has no entry) — keeps any unknown stat from
+        # accidentally crashing the engine.
+        "_default": _AUDIT_PASS_ALL,
+        # Global UNDER gate (resolves before family lookup when
+        # side==UNDER per resolve_thresholds order).
+        "_default_under":            _MLB_FL_UNDER_GLOBAL,
+        # Per-family OVER configs (resolve_thresholds picks
+        # `{family}_over` first when side==OVER).
+        "hits_runs_rbis_over":       _mlb_fl_over(hr=80.0, cv=0.85),
+        "hits_over":                 _mlb_fl_over(hr=75.0, cv=0.75),
+        "total_bases_over":          _mlb_fl_over(hr=80.0, cv=0.90, tp=50.0),
+        "batter_strikeouts_over":    _mlb_fl_over(hr=75.0, cv=0.75, tp=60.0),
+        "runs_over":                 _mlb_fl_over(hr=75.0, cv=0.75),
+        "pitcher_strikeouts_over":   _mlb_fl_over(hr=70.0, cv=0.50),
+        "singles_over":              _mlb_fl_over(hr=75.0, cv=0.75),
+        "batter_walks_over":         _mlb_fl_over(hr=80.0, cv=0.85),
+        "walks_allowed_over":        _mlb_fl_over(hr=80.0, cv=0.85),
+        # OVER fallback for any stat family not listed above (e.g.,
+        # rbis, pitching_outs, earned_runs, hits_allowed, doubles,
+        # stolen_bases, home_runs). Mirrors the looser "Walks" tier
+        # so unlisted families still surface.
+        "_default_over":             _mlb_fl_over(hr=75.0, cv=0.85),
     }
 
 
