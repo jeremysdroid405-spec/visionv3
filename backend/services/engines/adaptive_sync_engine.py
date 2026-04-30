@@ -43,8 +43,15 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # ADAPTIVE SYNC INTERVALS (Seconds) - Market Stability Logic
 # =============================================================================
+# 2026-04-30 fix: STANDBY was 14400 (4h). When the game_registry was empty
+# (overnight, off-day, fork before slate published) the loop slept 4h
+# between polls. A single silent task death during that 4h → 17h of dead
+# pipeline before anyone noticed. Capping STANDBY at 30min ensures the
+# engine probes upstream often enough to discover new slates and ensures
+# any silent loop death is surfaced within minutes by the heartbeat doc
+# (`adaptive_sync_heartbeat`) instead of next hour/day.
 class PollInterval(Enum):
-    STANDBY = 14400      # 4 hours (> 8h to tip) - Early board scouting
+    STANDBY = 1800       # 30 minutes (> 8h to tip) - Early board scouting + slate discovery
     ACTIVE = 3600        # 60 minutes (2-8h to tip) - Catching line moves
     LOCK_IN = 900        # 15 minutes (30m-2h to tip) - Lineup Gate phase
     FINAL_CALL = 600     # 10 minutes (< 30m to tip) - Sharp moves verification
@@ -1237,7 +1244,30 @@ class AdaptiveSyncEngine:
                 logger.info(f"[ADAPTIVE_SYNC] Poll complete. Next: {min_interval}s. "
                            f"Games: {len(self.game_registry)} | "
                            f"Status: {status_counts}")
-                
+
+                # ── Heartbeat (2026-04-30) ────────────────────────────
+                # Persist a document on every poll so the freeze that
+                # killed us overnight (4h sleep + silent task death =
+                # 17h dead pipeline) is detectable from outside the
+                # process. `/api/health/adaptive-sync` (or any external
+                # monitor) can alert when `last_heartbeat_at` is older
+                # than ~3× the configured `next_poll_in_seconds`.
+                try:
+                    await self.db["adaptive_sync_heartbeat"].update_one(
+                        {"_id": "adaptive_sync"},
+                        {"$set": {
+                            "last_heartbeat_at": datetime.now(timezone.utc),
+                            "next_poll_in_seconds": int(min_interval),
+                            "games_in_registry": len(self.game_registry),
+                            "status_breakdown": status_counts,
+                        }},
+                        upsert=True,
+                    )
+                except Exception as _hb_err:
+                    logger.warning(
+                        "[ADAPTIVE_SYNC] heartbeat write failed: %s", _hb_err
+                    )
+
                 # Wait for next poll
                 await asyncio.sleep(min_interval)
                 
