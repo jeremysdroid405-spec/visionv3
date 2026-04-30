@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from config.db_config import get_collection_name, validate_sport
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -321,8 +322,8 @@ class MLBCachedBoardBuilder:
             if value is not None:
                 try:
                     values.append(float(value))
-                except (ValueError, TypeError):
-                    pass
+                except (ValueError, TypeError) as _swept_exc:
+                    log_silent_failure("services.mlb_cached_board_builder.extract_stat_values", _swept_exc)  # sweep-auto-converted
         
         return values, field_name
     

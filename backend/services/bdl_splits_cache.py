@@ -11,6 +11,7 @@ import httpx
 import asyncio
 from typing import Dict, Any, Optional, Set
 from datetime import datetime, timezone
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,8 @@ async def _fetch_single_player_splits(player_id: int, season: int) -> Optional[D
                 data = resp.json().get("data", {})
                 if data.get("byBreakdown") or data.get("byBattingOrder"):
                     return data
-    except Exception:
-        pass
+    except Exception as _swept_exc:
+        log_silent_failure("services.bdl_splits_cache._fetch_single_player_splits", _swept_exc)  # sweep-auto-converted
     return None
 
 

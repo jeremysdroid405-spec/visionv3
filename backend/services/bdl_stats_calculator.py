@@ -13,6 +13,7 @@ from typing import Dict, Any, List
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +112,9 @@ async def recalculate_all_baseline_stats(db: AsyncIOMotorDatabase) -> Dict[str, 
                 key=lambda x: x.get(date_key) or x.get('game', {}).get('date', '') or '', 
                 reverse=True
             )
-        except:
+        except Exception as _swept_exc:
             # If sorting fails, use as-is
-            pass
+            log_silent_failure("services.bdl_stats_calculator.recalculate_all_baseline_stats", _swept_exc)  # sweep-auto-converted
         
         l5 = logs[:5]
         l10 = logs[:10]

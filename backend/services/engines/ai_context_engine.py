@@ -20,6 +20,7 @@ from typing import Dict, Any, Optional, List
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -329,8 +330,8 @@ Output ONLY valid JSON, no markdown, no explanation:"""
                             }
                         }
                     )
-                except:
-                    pass
+                except Exception as _swept_exc:
+                    log_silent_failure("services.engines.ai_context_engine.update_master_hub_with_context", _swept_exc)  # sweep-auto-converted
         
         end_time = datetime.now(timezone.utc)
         duration = (end_time - start_time).total_seconds()

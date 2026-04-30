@@ -21,8 +21,8 @@ def _py(v):
         import numpy as np  # optional — only if the adapter uses numpy
         if isinstance(v, np.generic):
             return v.item()
-    except ImportError:
-        pass
+    except ImportError as _swept_exc:
+        log_silent_failure("services.scoring.gates.engine._py", _swept_exc)  # sweep-auto-converted
     if isinstance(v, bool):
         return bool(v)
     if isinstance(v, (int, float, str)):
@@ -32,6 +32,7 @@ def _py(v):
 
 from .schema import GateDetail, GateEvalResult, NormalizedMetrics, ReasonCode
 from .thresholds import resolve_thresholds
+from services.observability import log_silent_failure
 
 
 class UniversalGateEngine:

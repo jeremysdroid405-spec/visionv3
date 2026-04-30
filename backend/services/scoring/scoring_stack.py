@@ -35,6 +35,7 @@ LOCKED SPEC (user 2026-04-17):
 """
 from typing import Dict, Any, List, Optional, Tuple
 import logging
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -591,8 +592,8 @@ def _extract_pp_multiplier(prop: Dict) -> Tuple[Optional[float], Optional[str], 
     if m is not None:
         try:
             return float(m), None, "pp_combo"
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as _swept_exc:
+            log_silent_failure("services.scoring.scoring_stack._extract_pp_multiplier", _swept_exc)  # sweep-auto-converted
     lab = prop.get("pp_label")
     if lab in ("goblin", "standard", "demon"):
         return None, lab, "pp_label"
@@ -600,8 +601,8 @@ def _extract_pp_multiplier(prop: Dict) -> Tuple[Optional[float], Optional[str], 
     if m2 is not None:
         try:
             return float(m2), None, "model"
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as _swept_exc:
+            log_silent_failure("services.scoring.scoring_stack._extract_pp_multiplier", _swept_exc)  # sweep-auto-converted
     return None, None, "none"
 
 

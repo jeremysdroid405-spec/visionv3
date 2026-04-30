@@ -26,6 +26,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 import asyncio
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -577,8 +578,8 @@ class ForwardTestingService:
             if key in data and data[key] is not None:
                 try:
                     return float(data[key])
-                except (ValueError, TypeError):
-                    pass
+                except (ValueError, TypeError) as _swept_exc:
+                    log_silent_failure("services.forward_testing_service._get_first_match", _swept_exc)  # sweep-auto-converted
         return None
     
     # =========================================================================

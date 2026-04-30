@@ -21,6 +21,7 @@ from fastapi import APIRouter, HTTPException, Query
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -591,8 +592,8 @@ async def get_live_scores(sport: str = Query("nba", description="Sport: nba or m
                                         utc_time = datetime.fromisoformat(game_time_utc.replace("Z", "+00:00"))
                                         est_time = utc_time - timedelta(hours=5)
                                         start_time_display = est_time.strftime("%-I:%M %p ET")
-                                    except:
-                                        pass
+                                    except Exception as _swept_exc:
+                                        log_silent_failure("routes.live.get_live_scores", _swept_exc)  # sweep-auto-converted
                                 
                                 # Determine status
                                 period = game.get("period", 0)
@@ -769,8 +770,8 @@ async def _fetch_news_fallback(sport: str = "nba"):
                                 "type": "breaking",
                                 "source": f"espn_{sport}"
                             })
-            except:
-                pass
+            except Exception as _swept_exc:
+                log_silent_failure("routes.live._fetch_news_fallback", _swept_exc)  # sweep-auto-converted
         
         return {"success": True, "headlines": headlines, "cached": False, "sport": sport}
         
@@ -861,8 +862,8 @@ async def get_mlb_live_scores():
                         utc_time = datetime.fromisoformat(game_time_utc.replace("Z", "+00:00"))
                         est_time = utc_time - timedelta(hours=4)  # EDT
                         start_time_display = est_time.strftime("%-I:%M %p ET")
-                    except:
-                        pass
+                    except Exception as _swept_exc:
+                        log_silent_failure("routes.live.get_mlb_live_scores", _swept_exc)  # sweep-auto-converted
                 
                 # Build status display
                 if status_raw == "STATUS_FINAL":

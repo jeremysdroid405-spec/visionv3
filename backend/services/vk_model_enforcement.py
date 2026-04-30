@@ -33,6 +33,7 @@ import logging
 from typing import Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 import numpy as np
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -180,8 +181,8 @@ def _get_l20_std_dev_from_db(
                     if val is not None:
                         try:
                             values.append(float(val))
-                        except (ValueError, TypeError):
-                            pass
+                        except (ValueError, TypeError) as _swept_exc:
+                            log_silent_failure("services.vk_model_enforcement._get_l20_std_dev_from_db", _swept_exc)  # sweep-auto-converted
                         break
         
         if len(values) < 10:

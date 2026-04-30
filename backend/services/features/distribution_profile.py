@@ -38,6 +38,7 @@ Feature count
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Sequence
+from services.observability import log_silent_failure
 
 THRESHOLDS: Dict[str, List[int]] = {
     "pts":   [1, 5, 10, 15, 20, 25, 30, 35],
@@ -145,8 +146,8 @@ def build(history_logs: Sequence[Dict[str, Any]]) -> Dict[str, float]:
         try:
             if g0 is not None and g1 is not None and int(g0) > int(g1):
                 logs = list(reversed(logs))
-        except (TypeError, ValueError):
-            pass  # leave as-is; ordering-insensitive logic below
+        except (TypeError, ValueError) as _swept_exc:
+            log_silent_failure("services.features.distribution_profile.build", _swept_exc)  # sweep-auto-converted
 
     out: Dict[str, float] = {}
     for stat, thresholds in THRESHOLDS.items():

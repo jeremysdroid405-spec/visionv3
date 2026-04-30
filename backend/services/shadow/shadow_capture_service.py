@@ -44,6 +44,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +95,8 @@ async def _build_player_id_lookup(db: AsyncIOMotorDatabase) -> Dict[str, int]:
             continue
         try:
             out[nm] = int(pid)
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as _swept_exc:
+            log_silent_failure("services.shadow.shadow_capture_service._build_player_id_lookup", _swept_exc)  # sweep-auto-converted
     return out
 
 

@@ -185,6 +185,7 @@ _BOARD_PLAYER_FIELDS = (
 # Imported here so routes/player.py and routes/ferrari_tiers.py share
 # one normalizer and cannot drift apart.
 from services.scoring.stat_family import canonical_stat_family as _canonical_stat_family  # noqa: E402
+from services.observability import log_silent_failure
 
 
 async def _build_nba_cached_board_index(player_name: str) -> Dict[str, Dict[tuple, Dict[str, Any]]]:
@@ -432,8 +433,8 @@ async def get_player_with_badges(
                 v = pp.get(fld)
                 if v not in (None, "", []):
                     board_fallback[fld] = v
-        except Exception:
-            pass
+        except Exception as _swept_exc:
+            log_silent_failure("routes.player.get_player_with_badges", _swept_exc)  # sweep-auto-converted
     team = hub.get("team") or hub.get("team_full") or board_fallback.get("team")
     position = hub.get("position") or board_fallback.get("position")
     photo_url = (

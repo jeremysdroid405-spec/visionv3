@@ -21,6 +21,7 @@ from typing import Dict, List, Optional, Any
 import time
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -165,8 +166,8 @@ async def get_career_stats(db, player_name: str, force_refresh: bool = False) ->
                     if age_hours < CACHE_DURATION_HOURS:
                         logger.debug(f"[NBA_API] Using cached stats for {player_name} (age: {age_hours:.1f}h)")
                         return cached
-                except:
-                    pass
+                except Exception as _swept_exc:
+                    log_silent_failure("services.nba_career_service.get_career_stats", _swept_exc)  # sweep-auto-converted
     
     # Fetch fresh data
     loop = asyncio.get_event_loop()

@@ -31,6 +31,7 @@ import httpx
 import numpy as np
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -844,8 +845,8 @@ if __name__ == "__main__":
         try:
             max_players = int(sys.argv[1])
             print(f"[CLI] Limiting to {max_players} players for testing")
-        except ValueError:
-            pass
+        except ValueError as _swept_exc:
+            log_silent_failure("services.mlb_deep_ingestion.<module>", _swept_exc)  # sweep-auto-converted
     
     # Run ingestion
     print("\n" + "="*60)

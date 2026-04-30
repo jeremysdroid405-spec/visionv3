@@ -7,6 +7,7 @@ Extracted from picks_getter_service.py for modularity.
 
 from typing import Dict, List, Optional, Any
 from .game_utils import did_play, normalize_stat_key
+from services.observability import log_silent_failure
 
 
 class HitRateCalculator:
@@ -112,8 +113,8 @@ class HitRateCalculator:
         if len(values) >= 3:
             try:
                 std_dev = round(statistics.stdev(values), 2)
-            except:
-                pass
+            except Exception as _swept_exc:
+                log_silent_failure("services.picks.hit_rate_service.calculate_l10_avg", _swept_exc)  # sweep-auto-converted
         
         return {
             "l10_avg": round(avg, 1),

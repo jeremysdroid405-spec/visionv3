@@ -1152,8 +1152,8 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         prop["vk_predicted"] = round(float(vk2), 2)
         try:
             prop["vk_edge"] = round(float(vk2) - float(score.get("line") or 0), 2)
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as _swept_exc:
+            log_silent_failure("routes.ferrari_tiers._merge_score_with_board", _swept_exc)  # sweep-auto-converted
     prop["vk2_projection"] = vk2
     prop["vk2_sigma"] = score.get("vk2_sigma")
     prop["model_projection"] = score.get("model_projection")
@@ -1168,8 +1168,8 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
             mp = float(score["model_projection"])
             prop["vk_predicted"] = round(mp, 2)
             prop["vk_edge"] = round(mp - float(score.get("line") or 0), 2)
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as _swept_exc:
+            log_silent_failure("routes.ferrari_tiers._merge_score_with_board", _swept_exc)  # sweep-auto-converted
     prop["p_true_active"] = score.get("p_true_active")
     prop["p_true_method"] = score.get("p_true_method")
     prop["p_true_vk2"] = score.get("p_true_vk2")
@@ -1207,8 +1207,8 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
             else:
                 prop["vk_prob_over"] = p_pct
                 prop["vk_prob_under"] = round(100 - p_pct, 1)
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as _swept_exc:
+            log_silent_failure("routes.ferrari_tiers._merge_score_with_board", _swept_exc)  # sweep-auto-converted
 
     # ============================================================
     # CANONICAL STAT FIELD CONTRACT
@@ -1303,8 +1303,8 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         if hr is not None:
             try:
                 prop["h10_rate"] = int(round(float(hr)))
-            except (TypeError, ValueError):
-                pass
+            except (TypeError, ValueError) as _swept_exc:
+                log_silent_failure("routes.ferrari_tiers._merge_score_with_board", _swept_exc)  # sweep-auto-converted
 
     # Headshot URL path rewrite (2026-04-24). Master_hub stores
     # headshots as `/static/player-headshots/{id}.png`. The k8s
@@ -1437,8 +1437,8 @@ async def _get_nba_tier_picks_from_scores(
             if hr is not None:
                 try:
                     merged["h10_rate"] = int(round(float(hr)))
-                except (TypeError, ValueError):
-                    pass
+                except (TypeError, ValueError) as _swept_exc:
+                    log_silent_failure("routes.ferrari_tiers._get_nba_tier_picks_from_scores", _swept_exc)  # sweep-auto-converted
         # Stash the score doc so downstream post-overlay passes can rewire
         # side-aware fields (UNDER badges, UNDER vision_intel) after the
         # enrichment cache overlay injects OVER-side data.
@@ -1646,8 +1646,8 @@ async def _get_mlb_tier_picks_from_scores(
             if model_proj is not None:
                 try:
                     pick["vk_predicted"] = round(float(model_proj), 2)
-                except (TypeError, ValueError):
-                    pass
+                except (TypeError, ValueError) as _swept_exc:
+                    log_silent_failure("routes.ferrari_tiers._get_mlb_tier_picks_from_scores", _swept_exc)  # sweep-auto-converted
             if p_model is not None:
                 try:
                     prob_over = float(p_model) * 100.0
@@ -1655,8 +1655,8 @@ async def _get_mlb_tier_picks_from_scores(
                     pick["vk_prob_over"]  = round(prob_over if side == "OVER" else (100.0 - prob_over), 1)
                     pick["vk_prob_under"] = round(100.0 - pick["vk_prob_over"], 1)
                     pick["vk_probability"] = pick["vk_prob_over"]
-                except (TypeError, ValueError):
-                    pass
+                except (TypeError, ValueError) as _swept_exc:
+                    log_silent_failure("routes.ferrari_tiers._get_mlb_tier_picks_from_scores", _swept_exc)  # sweep-auto-converted
             pick["vk_source"] = "model"
             # Surface canonical model fields on the pick as well.
             pick["model_projection"]  = model_proj
@@ -2060,6 +2060,7 @@ async def get_oracle_apex_picks(
 # ---------------------------------------------------------------------------
 from dataclasses import dataclass
 from typing import Awaitable, Callable
+from services.observability import log_silent_failure
 
 
 @dataclass(frozen=True)
@@ -2115,8 +2116,8 @@ async def _post_process_mlb_picks(
     for pick in picks:
         try:
             enrich_mlb_prop_with_tempo(pick)
-        except Exception:
-            pass
+        except Exception as _swept_exc:
+            log_silent_failure("routes.ferrari_tiers._post_process_mlb_picks", _swept_exc)  # sweep-auto-converted
         enrich_mlb_intel_suite(pick)
 
 
@@ -2726,8 +2727,8 @@ async def rebuild_ferrari_tiers(
     coord = get_coordinator()
     try:
         coord._db = _db  # ensure the singleton has the live db handle
-    except Exception:
-        pass
+    except Exception as _swept_exc:
+        log_silent_failure("routes.ferrari_tiers.rebuild_ferrari_tiers", _swept_exc)  # sweep-auto-converted
     return await coord.dispatch_master_sync(target_sport)
 
 
@@ -3622,8 +3623,8 @@ async def get_mlb_player_props(
         for prop in player["props"]:
             try:
                 enrich_mlb_prop_with_tempo(prop)
-            except Exception:
-                pass
+            except Exception as _swept_exc:
+                log_silent_failure("routes.ferrari_tiers.get_mlb_player_props", _swept_exc)  # sweep-auto-converted
             enrich_mlb_intel_suite(prop)
     
     return {
@@ -4042,8 +4043,8 @@ async def get_mlb_safe_haven_picks(
     for pick in confirmed:
         try:
             enrich_mlb_prop_with_tempo(pick)
-        except Exception:
-            pass
+        except Exception as _swept_exc:
+            log_silent_failure("routes.ferrari_tiers.get_mlb_safe_haven_picks", _swept_exc)  # sweep-auto-converted
         enrich_mlb_intel_suite(pick)
 
     return {
@@ -4081,8 +4082,8 @@ async def get_mlb_front_lines_picks(
     for pick in picks:
         try:
             enrich_mlb_prop_with_tempo(pick)
-        except Exception:
-            pass
+        except Exception as _swept_exc:
+            log_silent_failure("routes.ferrari_tiers.get_mlb_front_lines_picks", _swept_exc)  # sweep-auto-converted
         enrich_mlb_intel_suite(pick)
 
     return {
@@ -4119,8 +4120,8 @@ async def get_mlb_war_zone_picks(
     for pick in picks:
         try:
             enrich_mlb_prop_with_tempo(pick)
-        except Exception:
-            pass
+        except Exception as _swept_exc:
+            log_silent_failure("routes.ferrari_tiers.get_mlb_war_zone_picks", _swept_exc)  # sweep-auto-converted
         enrich_mlb_intel_suite(pick)
 
     return {

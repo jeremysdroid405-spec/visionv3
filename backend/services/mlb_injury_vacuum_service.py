@@ -28,6 +28,7 @@ import logging
 import json
 import re
 import hashlib
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -178,8 +179,8 @@ class MLBInjuryVacuumService:
             try:
                 self.injury_log = db.mlb_injury_log
                 self.vacuum_alerts = db.mlb_vacuum_alerts
-            except Exception:
-                pass
+            except Exception as _swept_exc:
+                log_silent_failure("services.mlb_injury_vacuum_service.__init__", _swept_exc)  # sweep-auto-converted
         
         # Initialize with star profiles
         for name, profile in MLB_STAR_PROFILES.items():

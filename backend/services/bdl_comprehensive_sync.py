@@ -32,6 +32,7 @@ from nba_api.stats.static import players as nba_players_static
 from nba_api.stats.endpoints import playerdashboardbylastngames
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -1272,8 +1273,8 @@ class BDLComprehensiveSyncService:
                         try:
                             if int(mins) > 0:
                                 played_games.append(g)
-                        except ValueError:
-                            pass
+                        except ValueError as _swept_exc:
+                            log_silent_failure("services.bdl_comprehensive_sync.fetch_bdl_game_logs", _swept_exc)  # sweep-auto-converted
                     elif mins and float(mins) > 0:
                         played_games.append(g)
                 

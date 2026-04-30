@@ -19,6 +19,7 @@ import httpx
 import os
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -464,8 +465,8 @@ class BDLEnhancedDataService:
                             else:
                                 mins = int(minutes)
                             total_minutes += mins
-                        except:
-                            pass
+                        except Exception as _swept_exc:
+                            log_silent_failure("services.bdl_enhanced_data.check_gassed_status", _swept_exc)  # sweep-auto-converted
                 
                 # Check for gassed conditions
                 avg_minutes = total_minutes / len(stats[:5]) if stats else 0
@@ -478,8 +479,8 @@ class BDLEnhancedDataService:
                         game_date = datetime.strptime(date_str[:10], "%Y-%m-%d").date()
                         if (today - game_date).days <= 5:
                             games_last_5_days += 1
-                    except:
-                        pass
+                    except Exception as _swept_exc:
+                        log_silent_failure("services.bdl_enhanced_data.check_gassed_status", _swept_exc)  # sweep-auto-converted
                 
                 is_gassed = (games_last_5_days >= 3) or (avg_minutes >= 36)
                 

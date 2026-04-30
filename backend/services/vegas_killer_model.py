@@ -45,6 +45,7 @@ import pickle
 import os
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 # XGBoost for better non-linear modeling
 try:
@@ -1067,8 +1068,8 @@ class VegasFeatureEngineer:
                     days_diff = (target_date - prior_date).days
                     features['rest_days'] = max(0, days_diff - 1)
                     features['is_b2b'] = 1 if days_diff == 1 else 0
-            except:
-                pass
+            except Exception as _swept_exc:
+                log_silent_failure("services.vegas_killer_model.extract_features", _swept_exc)  # sweep-auto-converted
         
         # Games in last 7 days (schedule density)
         features['games_in_7_days'] = min(len(prior_games), 4)  # Approximation

@@ -21,6 +21,7 @@ import aiohttp
 import os
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +81,8 @@ class LiveInjuryMicroSync:
             self._task.cancel()
             try:
                 await self._task
-            except asyncio.CancelledError:
-                pass
+            except asyncio.CancelledError as _swept_exc:
+                log_silent_failure("services.live_injury_micro_sync.stop_micro_loop", _swept_exc)  # sweep-auto-converted
         logger.info("[INJURY-MICRO] Stopped")
 
     async def _polling_loop(self):

@@ -1254,8 +1254,8 @@ async def threshold_simulate(
                     near_miss_2 += 1
                 if dist <= 5.0:
                     near_miss_5 += 1
-            except (TypeError, ValueError):
-                pass
+            except (TypeError, ValueError) as _swept_exc:
+                log_silent_failure("routes.admin.threshold_simulate", _swept_exc)  # sweep-auto-converted
 
         # Classify
         def _sample_shape() -> Dict[str, Any]:
@@ -1351,6 +1351,7 @@ async def threshold_simulate(
 # PRA Dual-Projection Audit (2026-04-23)
 # ---------------------------------------------------------------------------
 from datetime import datetime, timezone
+from services.observability import log_silent_failure
 
 
 def _player_archetype_from_position(pos: Optional[str], name: Optional[str]) -> str:

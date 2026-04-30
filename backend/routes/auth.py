@@ -15,6 +15,7 @@ import os
 
 from supabase import create_client, Client
 from jose import JWTError, jwt
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +94,8 @@ async def verify_jwt(credentials: HTTPAuthorizationCredentials = Depends(securit
             payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"], audience="authenticated")
             if payload.get("is_master"):
                 return payload
-        except JWTError:
-            pass
+        except JWTError as _swept_exc:
+            log_silent_failure("routes.auth.verify_jwt", _swept_exc)  # sweep-auto-converted
         
         # Try Supabase JWT
         if JWT_SECRET:

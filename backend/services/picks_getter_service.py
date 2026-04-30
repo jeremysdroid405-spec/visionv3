@@ -33,6 +33,7 @@ from utils.player_lookup import get_player_by_id, get_player_by_name as shared_g
 
 # Probability scoring service - imported once at module level
 from services.probability_score_service import ProbabilityScoreService
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -534,8 +535,8 @@ class PicksGetterService:
                     last_dt = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
                     age = (datetime.now(timezone.utc) - last_dt).total_seconds()
                     is_stale = age > 86400
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as _swept_exc:
+                log_silent_failure("services.picks_getter_service._get_player_stats", _swept_exc)  # sweep-auto-converted
         
         # ========================================================
         # BDL SHOOTING & DEFENSIVE STATS (Open Door - Direct Read)
@@ -944,8 +945,8 @@ class PicksGetterService:
             if date_str:
                 try:
                     return datetime.strptime(date_str[:10], "%Y-%m-%d")
-                except Exception:
-                    pass
+                except Exception as _swept_exc:
+                    log_silent_failure("services.picks_getter_service.get_game_date", _swept_exc)  # sweep-auto-converted
             return datetime.min
         
         sorted_logs = sorted(played_games, key=get_game_date, reverse=True)
@@ -1001,8 +1002,8 @@ class PicksGetterService:
             if date_str:
                 try:
                     return datetime.strptime(date_str[:10], "%Y-%m-%d")
-                except Exception:
-                    pass
+                except Exception as _swept_exc:
+                    log_silent_failure("services.picks_getter_service.get_game_date", _swept_exc)  # sweep-auto-converted
             return datetime.min
         
         sorted_logs = sorted(played_games, key=get_game_date, reverse=True)
@@ -1056,8 +1057,8 @@ class PicksGetterService:
             if date_str:
                 try:
                     return datetime.strptime(date_str[:10], "%Y-%m-%d")
-                except Exception:
-                    pass
+                except Exception as _swept_exc:
+                    log_silent_failure("services.picks_getter_service.get_game_date", _swept_exc)  # sweep-auto-converted
             return datetime.min
         
         sorted_logs = sorted(played_games, key=get_game_date, reverse=True)
@@ -1410,8 +1411,8 @@ class PicksGetterService:
             if date_str:
                 try:
                     return datetime.strptime(date_str[:10], "%Y-%m-%d")
-                except Exception:
-                    pass
+                except Exception as _swept_exc:
+                    log_silent_failure("services.picks_getter_service.get_game_date", _swept_exc)  # sweep-auto-converted
             return datetime.min
         
         sorted_logs = sorted(played_games, key=get_game_date, reverse=True)
@@ -1829,8 +1830,8 @@ class PicksGetterService:
             if date_str:
                 try:
                     return datetime.strptime(date_str[:10], "%Y-%m-%d")
-                except Exception:
-                    pass
+                except Exception as _swept_exc:
+                    log_silent_failure("services.picks_getter_service.get_game_date", _swept_exc)  # sweep-auto-converted
             return datetime.min
         
         sorted_logs = sorted(played_games, key=get_game_date, reverse=True)

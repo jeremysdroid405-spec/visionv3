@@ -36,6 +36,7 @@ from enum import Enum
 import httpx
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -1304,8 +1305,8 @@ class AdaptiveSyncEngine:
             self.main_task.cancel()
             try:
                 await self.main_task
-            except asyncio.CancelledError:
-                pass
+            except asyncio.CancelledError as _swept_exc:
+                log_silent_failure("services.engines.adaptive_sync_engine.stop", _swept_exc)  # sweep-auto-converted
         
         # Update status
         await self.db[self.sync_status_collection].update_one(

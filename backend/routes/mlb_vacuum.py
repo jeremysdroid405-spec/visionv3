@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 import logging
 
 from services.mlb_injury_vacuum_service import get_mlb_vacuum_service
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["MLB Usage Vacuum"])
@@ -177,8 +178,8 @@ async def get_mlb_live_alerts(
                             time_ago = f"{int(delta // 3600)}h ago"
                         else:
                             time_ago = f"{int(delta // 86400)}d ago"
-                    except (ValueError, TypeError):
-                        pass
+                    except (ValueError, TypeError) as _swept_exc:
+                        log_silent_failure("routes.mlb_vacuum.get_mlb_live_alerts", _swept_exc)  # sweep-auto-converted
                 if not injury_reason:
                     disp = inj.get("display_only") or {}
                     injury_reason = (disp.get("description")

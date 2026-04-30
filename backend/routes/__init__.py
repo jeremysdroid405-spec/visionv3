@@ -33,6 +33,7 @@ from .intel_cache import router as intel_cache_router, set_db as set_intel_cache
 from .scores import router as scores_router
 from .delta_admin import router as delta_admin_router, set_delta_admin_db
 from .gemini_admin import router as gemini_admin_router
+from .admin_errors import router as admin_errors_router, set_admin_errors_db
 
 
 def register_all_routes(
@@ -169,3 +170,10 @@ def register_all_routes(
 
     # Gemini admin
     app.include_router(gemini_admin_router, prefix="/api")
+
+    # Structured error-log admin (observability)
+    # Route already carries its own `/api/v3/admin/errors` prefix; no
+    # additional prefix needed here.
+    if db is not None:
+        set_admin_errors_db(db)
+    app.include_router(admin_errors_router)

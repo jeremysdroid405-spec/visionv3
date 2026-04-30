@@ -43,6 +43,7 @@ from datetime import datetime, timezone
 from scipy import stats
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -227,8 +228,8 @@ class MLBHighFrictionModel:
                 if m:
                     v = m.get("statcast_id") or m.get("mlb_id")
                     if v is not None: return int(v)
-            except Exception:
-                pass
+            except Exception as _swept_exc:
+                log_silent_failure("services.mlb_high_friction_model._resolve_mlbam_id", _swept_exc)  # sweep-auto-converted
         # Last resort: normalized-name match on identity map.
         name = (player.get("display_name") or player.get("player_name") or "").lower().strip()
         if name:
@@ -241,8 +242,8 @@ class MLBHighFrictionModel:
                 if m:
                     v = m.get("statcast_id") or m.get("mlb_id")
                     if v is not None: return int(v)
-            except Exception:
-                pass
+            except Exception as _swept_exc:
+                log_silent_failure("services.mlb_high_friction_model._resolve_mlbam_id", _swept_exc)  # sweep-auto-converted
         return None
 
     def _get_batter_sc_latest(self, player: Dict[str, Any]) -> Optional[Dict[str, Any]]:

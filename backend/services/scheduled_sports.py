@@ -176,6 +176,7 @@ SPORT_INTERVAL_CALLABLES: Dict[str, callable] = {
 # (with `delta_enabled=True`); zero `server.py` edits needed.
 # ---------------------------------------------------------------------------
 import asyncio as _asyncio
+from services.observability import log_silent_failure
 
 # Tracks per-sport background tasks so shutdown can cancel them cleanly.
 _DELTA_TASKS: Dict[str, "_asyncio.Task"] = {}
@@ -228,8 +229,8 @@ async def stop_delta_engine_loops() -> Dict[str, Any]:
         task.cancel()
         try:
             await task
-        except _asyncio.CancelledError:
-            pass
+        except _asyncio.CancelledError as _swept_exc:
+            log_silent_failure("services.scheduled_sports.stop_delta_engine_loops", _swept_exc)  # sweep-auto-converted
         except Exception as exc:  # noqa: BLE001
             results[sport] = {"stopped": True, "error_on_shutdown": str(exc)}
             continue

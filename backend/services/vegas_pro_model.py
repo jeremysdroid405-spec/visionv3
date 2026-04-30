@@ -34,6 +34,7 @@ import pickle
 import os
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -310,8 +311,8 @@ class FeatureEngineer:
                     days_diff = (t_date - p_date).days
                     features['rest_days'] = max(0, days_diff - 1)
                     features['is_b2b'] = 1 if days_diff == 1 else 0
-            except:
-                pass
+            except Exception as _swept_exc:
+                log_silent_failure("services.vegas_pro_model._extract_features", _swept_exc)  # sweep-auto-converted
         
         # =================================================================
         # OPPONENT (simplified - use team's overall defensive ranking)

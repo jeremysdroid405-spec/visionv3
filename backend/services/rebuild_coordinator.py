@@ -24,6 +24,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from services.event_bus import BoardEvent, EventBus, get_event_bus
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -247,8 +248,8 @@ class RebuildCoordinator:
                     from services.market_moves_engine import get_recent_events
                     mm_events = await get_recent_events(self._db, sport=sport, limit=20)
                     mm_count = len(mm_events)
-                except Exception:
-                    pass
+                except Exception as _swept_exc:
+                    log_silent_failure("services.rebuild_coordinator._execute_rebuild", _swept_exc)  # sweep-auto-converted
 
                 self._metrics["rebuilds_completed"] += 1
                 durations = self._metrics["pipeline_durations"][sport]

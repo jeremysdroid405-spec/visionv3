@@ -11,6 +11,7 @@ from typing import Optional
 import logging
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +48,8 @@ async def get_player_intel(player_id: str):
     try:
         bdl_id = int(player_id)
         player = await _hub_functions["fetchPlayerIntel"](bdl_id)
-    except (ValueError, TypeError):
-        pass
+    except (ValueError, TypeError) as _swept_exc:
+        log_silent_failure("routes.master_hub.get_player_intel", _swept_exc)  # sweep-auto-converted
     
     # Fall back to name lookup
     if not player:

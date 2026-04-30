@@ -18,6 +18,7 @@ import logging
 import asyncio
 import re
 from typing import Dict, List, Optional
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -135,8 +136,8 @@ async def generate_gemini_scout_intel(payload: Dict, max_retries: int = 3) -> st
                 from services.gemini_metrics import record_gemini_call
                 record_gemini_call("scout_engine_single",
                                    sport=payload.get("sport"), hit=False)
-            except Exception:
-                pass
+            except Exception as _swept_exc:
+                log_silent_failure("services.gemini_scout_engine.generate_gemini_scout_intel", _swept_exc)  # sweep-auto-converted
 
             if len(text) >= 50:
                 return await _rewrite_if_banned(text, payload)

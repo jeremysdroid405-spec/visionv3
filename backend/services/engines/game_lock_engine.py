@@ -24,6 +24,7 @@ from typing import Optional, Dict, Any, List, Set
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +74,8 @@ class GameLockEngine:
             self._lock_check_task.cancel()
             try:
                 await self._lock_check_task
-            except asyncio.CancelledError:
-                pass
+            except asyncio.CancelledError as _swept_exc:
+                log_silent_failure("services.engines.game_lock_engine.stop", _swept_exc)  # sweep-auto-converted
         logger.info("[GAME LOCK] Background lock-check stopped")
     
     async def _lock_check_loop(self):
@@ -271,8 +272,8 @@ class GameLockEngine:
                             })
                             is_valid = False
                             break
-                    except Exception:
-                        pass
+                    except Exception as _swept_exc:
+                        log_silent_failure("services.engines.game_lock_engine.validate_parlay", _swept_exc)  # sweep-auto-converted
             
             if is_valid:
                 valid_picks.append(player_name)

@@ -37,6 +37,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 import httpx
 
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -672,8 +673,8 @@ class BDLPlayerBadgeService:
                         if age_hours < BADGE_CACHE_HOURS:
                             logger.debug(f"[BDL_BADGES] Using cached badges for {player_name}")
                             return cached
-                    except Exception:
-                        pass
+                    except Exception as _swept_exc:
+                        log_silent_failure("services.bdl_player_badge_service.get_player_badges", _swept_exc)  # sweep-auto-converted
         
         # Fetch fresh stats
         logger.info(f"[BDL_BADGES] Fetching badges for {player_name} (BDL ID: {bdl_id})")

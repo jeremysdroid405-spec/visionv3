@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from services.scoring.adapters.base import ScoringAdapter, ScoringContext
 from services.config.collection_names import COLL
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -628,8 +629,8 @@ class NBAScoringAdapter(ScoringAdapter):
                     return_game_number = i + 1
                     games_missed_recently = max(1, gap_days // 2 - 1)
                     break
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as _swept_exc:
+            log_silent_failure("services.scoring.adapters.nba_scoring._classify_availability", _swept_exc)  # sweep-auto-converted
 
         # DNP-risk patterns.
         recent_n = logs[: cls._AVAIL_DNP_LOWMIN_LAST_N]

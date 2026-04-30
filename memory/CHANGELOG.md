@@ -1,6 +1,30 @@
 # Changelog
 
 
+## 2026-04-30 — Structured Observability (P0 #1)
+**Problem**: 44 `except [Exception]: pass` handlers across services + routes
+were silently swallowing exceptions. Primary cause of regression-churn —
+bugs caught, nothing alerted, fixes rotted, same fix shipped twice.
+
+**Fix**:
+- New module `services/observability/error_log.py` with `log_caught_exception`
+  (async) and `log_silent_failure` (sync). Writes structured rows to
+  `error_log` collection with TTL 14d, indexed by subsystem + exception_type.
+- Admin endpoints `GET /api/v3/admin/errors/summary` and `/recent` for triage.
+- One-shot AST-based converter `scripts/sweep_silent_handlers.py`
+  (idempotent) swept 37 silent handlers across 27 files into
+  `log_silent_failure(...)` calls. Remaining 7 handlers are in files with
+  pre-existing AST-blocking syntax issues; convert manually on next touch.
+- 5 regression tests in `tests/test_error_log_observability.py` lock the
+  primitive's invariants.
+- Full doc at `/app/memory/SYSTEMS_observability.md`.
+
+**Invariants** (must not regress):
+- Logger never raises (even when DB is down).
+- TTL on `ts` maintained, traceback truncated at 16KB.
+- New silent `except: pass` is banned; re-running the sweep is idempotent.
+
+
 ## 2026-04-27 — Cached Board Combo / Alt-Market Routing Fix
 
 **User directive**: *"Ensure cached board props are routed and displayed correctly for combo stats and alt-market lines. Backend only. Do not change scoring/LOM/gates/thresholds/TP/frontend."*

@@ -24,6 +24,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List
+from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +54,9 @@ async def run_master_sync(db, sport: str) -> Dict[str, Any]:
                 "Delta engine cannot detect this sync; race possible.",
                 sport,
             )
-    except Exception:
+    except Exception as _swept_exc:
         # Never fail the sync over the warning check.
-        pass
+        log_silent_failure("services.master_sync.run_master_sync", _swept_exc)  # sweep-auto-converted
 
     started = datetime.now(timezone.utc)
     metrics: Dict[str, Any] = {
@@ -166,8 +167,8 @@ async def run_master_sync(db, sport: str) -> Dict[str, Any]:
                     if pid:
                         try:
                             pids.add(int(pid))
-                        except (ValueError, TypeError):
-                            pass
+                        except (ValueError, TypeError) as _swept_exc:
+                            log_silent_failure("services.master_sync.run_master_sync", _swept_exc)  # sweep-auto-converted
                 clear_cache()
                 cached_ok = await prefetch_all_splits(pids)
                 sup_metrics["bdl_splits_players_cached"] = cached_ok
