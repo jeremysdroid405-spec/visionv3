@@ -237,6 +237,51 @@ async def test_inv_l3_new_starter_gets_ab_delta_and_flag(db):
             "default. Got: "
             f"{rookie['current_expected_pa']}"
         )
+        # HONEST additional-AB: slot-3 PA (4.35) minus bench baseline
+        # (1.0) ≈ 3.35 → rounds to 3 in the UI.
+        assert rookie["extra_ab_from_injury"] is not None
+        assert 3.0 <= rookie["extra_ab_from_injury"] <= 3.5, (
+            "New-starter extra_ab_from_injury must be "
+            "current_expected_pa - bench_baseline (~1.0). Got: "
+            f"{rookie['extra_ab_from_injury']}"
+        )
+        assert round(rookie["extra_ab_from_injury"]) == 3
+    finally:
+        await _cleanup(db, tag)
+
+
+@pytest.mark.asyncio
+async def test_inv_l6_slot_shifter_extra_ab_is_fractional(db):
+    """INV-L6: A slot-shift beneficiary's `extra_ab_from_injury` is
+    the projected_ab_delta (current_pa - previous_pa). For typical
+    2-slot moves this is ~0.25-0.55 — rounds to 0 and the UI hides
+    the AB column. Lock in the small, honest value (NOT the full
+    current_expected_pa)."""
+    from services.mlb_lineup_delta import (
+        build_lineup_delta_index, extract_deltas_for_player,
+    )
+    tag = f"inv_l6_{uuid.uuid4().hex[:8]}"
+    await _cleanup(db, tag)
+    try:
+        await db["mlb_projected_lineups"].insert_many([
+            _make_projected_doc("NYM", "2999-10-01", [
+                {"name": "Slot Shifter Test", "slot": 6},
+            ], test_tag=tag),
+            _make_projected_doc("NYM", "2999-10-02", [
+                {"name": "Slot Shifter Test", "slot": 4},
+            ], test_tag=tag),
+        ])
+        idx = await build_lineup_delta_index(db)
+        shifter = extract_deltas_for_player(idx, "Slot Shifter Test")
+        assert shifter["is_new_starter"] is False
+        assert shifter["extra_ab_from_injury"] is not None
+        # Slot 6 = 3.95 PA, Slot 4 = 4.20 PA → delta = 0.25.
+        assert 0.2 <= shifter["extra_ab_from_injury"] <= 0.3, (
+            "Slot-shifter extra_ab_from_injury MUST equal "
+            "projected_ab_delta, NOT current_expected_pa. Got: "
+            f"{shifter['extra_ab_from_injury']}"
+        )
+        assert round(shifter["extra_ab_from_injury"]) == 0
     finally:
         await _cleanup(db, tag)
 

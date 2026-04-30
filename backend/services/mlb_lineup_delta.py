@@ -52,6 +52,13 @@ _DEFAULT_PA_BY_SLOT: Tuple[float, ...] = (
 )
 
 
+# Average PA a typical non-starter gets per game (pinch-hit appearances,
+# late-inning subs, etc.). Used as the baseline when computing HONEST
+# additional AB for new starters who weren't in yesterday's lineup.
+# Empirical — most bench bats see ~1 PA/game; some get zero.
+_BENCH_PA_BASELINE: float = 1.0
+
+
 def _expected_pa_for_slot(slot: Optional[int]) -> Optional[float]:
     """Return projected PA for a given lineup slot (1..9), or None."""
     if not isinstance(slot, int):
@@ -288,12 +295,35 @@ def extract_deltas_for_player(
         # 1-9 given `_DEFAULT_PA_BY_SLOT`.
         projected_ab_delta = round(float(cur_pa), 2)
 
+    # ── HONEST additional-AB attributable to the injury (2026-04-30) ─
+    # The team's total PA is unchanged by an injury; only SPECIFIC
+    # beneficiaries gain real AB:
+    #   * New starter — they weren't starting, now they are. Their gain
+    #     is today's projected PA MINUS what they'd have gotten as a
+    #     bench / pinch-hitter baseline (~1 PA/game).
+    #   * Slot shifter — they were starting anyway; moving up the order
+    #     gives them a FRACTIONAL PA gain (usually < 1 AB).
+    # The UI hides the AB column for rows whose honest delta rounds to
+    # zero, because "+0 AB" is misleading. This field is the single
+    # source of truth for that display decision.
+    extra_ab_from_injury: Optional[float] = None
+    if is_new_starter and isinstance(cur_pa, (int, float)):
+        extra_ab_from_injury = round(
+            max(0.0, float(cur_pa) - _BENCH_PA_BASELINE), 2,
+        )
+    elif (
+        isinstance(projected_ab_delta, (int, float))
+        and projected_ab_delta > 0
+    ):
+        extra_ab_from_injury = round(float(projected_ab_delta), 2)
+
     return {
         "previous_lineup_slot":  prev_slot,
         "current_lineup_slot":   cur_slot,
         "lineup_delta":          lineup_delta,
         "projected_ab_delta":    projected_ab_delta,
         "current_expected_pa":   cur_pa,
+        "extra_ab_from_injury":  extra_ab_from_injury,
         "is_new_starter":        is_new_starter,
     }
 
@@ -305,6 +335,7 @@ def _empty_deltas() -> Dict[str, Optional[float]]:
         "lineup_delta":          None,
         "projected_ab_delta":    None,
         "current_expected_pa":   None,
+        "extra_ab_from_injury":  None,
         "is_new_starter":        False,
     }
 

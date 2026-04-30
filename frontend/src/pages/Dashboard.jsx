@@ -1372,14 +1372,24 @@ const MLBLiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
                       </div>
                     </div>
                   </div>
-                  {Number.isFinite(ben.current_expected_pa) && (
-                    <div className="text-right">
-                      <div className={`text-sm font-bold ${idx === 0 ? 'text-orange-400' : 'text-orange-400/70'}`}>
-                        {Math.round(ben.current_expected_pa)} AB
+                  {(() => {
+                    // Show the AB column ONLY when the injury-
+                    // attributable gain rounds to >= 1. Team PA is
+                    // constant across an injury — only new starters
+                    // and sufficiently-large slot shifts see a real
+                    // additional AB. "+0 AB" would be misleading.
+                    const extra = ben.extra_ab_from_injury;
+                    const rounded = Number.isFinite(extra) ? Math.round(extra) : 0;
+                    if (rounded < 1) return null;
+                    return (
+                      <div className="text-right">
+                        <div className={`text-sm font-bold ${idx === 0 ? 'text-orange-400' : 'text-orange-400/70'}`}>
+                          +{rounded} AB
+                        </div>
+                        <div className="text-[8px] text-zinc-500">from injury</div>
                       </div>
-                      <div className="text-[8px] text-zinc-500">projected</div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               ))}
             </div>
