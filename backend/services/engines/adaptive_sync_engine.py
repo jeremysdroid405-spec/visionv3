@@ -43,15 +43,28 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # ADAPTIVE SYNC INTERVALS (Seconds) - Market Stability Logic
 # =============================================================================
-# 2026-04-30 fix: STANDBY was 14400 (4h). When the game_registry was empty
-# (overnight, off-day, fork before slate published) the loop slept 4h
-# between polls. A single silent task death during that 4h → 17h of dead
-# pipeline before anyone noticed. Capping STANDBY at 30min ensures the
-# engine probes upstream often enough to discover new slates and ensures
-# any silent loop death is surfaced within minutes by the heartbeat doc
-# (`adaptive_sync_heartbeat`) instead of next hour/day.
+# 2026-04-30 product invariant: the watcher MUST run 24/7. Sportsbooks
+# typically release the next slate's props OVERNIGHT (in the
+# game_registry-empty "Standby" window). Our edge depends on detecting
+# those releases before the lines move, so STANDBY cannot be a low-
+# priority interval. It's the WHOLE GAME for early-line discovery.
+#
+# Tier rationale:
+#   STANDBY (no games within 8h)   = 5 min  — catch new prop releases ASAP
+#   ACTIVE  (2-8h to tip)          = 60 min — markets stable, line moves slow
+#   LOCK_IN (30m-2h to tip)        = 15 min — Lineup Gate phase, sharper moves
+#   FINAL_CALL (<30m to tip)       = 10 min — Vegas sharp action
+# Note STANDBY is now TIGHTER than ACTIVE on purpose: empty registry is
+# the precise window where new lines appear; we want to detect them
+# fast, then fall back to the calmer ACTIVE cadence once games are
+# discovered and the market stabilizes.
+#
+# Earlier history: STANDBY was 14400 (4h). On 2026-04-30 a single
+# silent task death during one of those 4h sleeps caused a 17h dead
+# pipeline. Heartbeat doc + 5min STANDBY makes that failure mode
+# impossible to hide for more than ~15 min (3× heartbeat interval).
 class PollInterval(Enum):
-    STANDBY = 1800       # 30 minutes (> 8h to tip) - Early board scouting + slate discovery
+    STANDBY = 300        # 5 minutes - 24/7 watcher for early prop releases
     ACTIVE = 3600        # 60 minutes (2-8h to tip) - Catching line moves
     LOCK_IN = 900        # 15 minutes (30m-2h to tip) - Lineup Gate phase
     FINAL_CALL = 600     # 10 minutes (< 30m to tip) - Sharp moves verification

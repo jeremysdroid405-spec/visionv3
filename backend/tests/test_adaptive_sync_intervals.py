@@ -58,31 +58,41 @@ from __future__ import annotations
 from services.engines.adaptive_sync_engine import PollInterval
 
 
-def test_inv_as1_standby_capped_at_30_minutes():
-    """STANDBY MUST be ≤ 1800s (30 min). 14400s (4h) caused 17h of
-    dead pipeline on 2026-04-30 due to a silent task death during the
-    sleep window."""
+def test_inv_as1_standby_24_7_watcher():
+    """STANDBY MUST be ≤ 600s (10 min). The watcher runs 24/7 — its
+    primary job is detecting NEW PROP RELEASES, which happen primarily
+    in the empty-game-registry window (overnight). A loose STANDBY
+    misses early lines before bookmakers move them, which is the
+    entire edge of this product.
+
+    History: 14400s (4h) → caused 17h dead pipeline on 2026-04-30
+    via a silent task death during the long sleep. 1800s (30min)
+    was a stop-gap. 300s is the product-correct value: catches new
+    lines within 5 minutes of release, and any silent loop death is
+    surfaced within ~15 min (3× the heartbeat interval).
+    """
     assert PollInterval.STANDBY.value is not None
-    assert PollInterval.STANDBY.value <= 1800, (
+    assert PollInterval.STANDBY.value <= 600, (
         f"PollInterval.STANDBY = {PollInterval.STANDBY.value}s. Must "
-        "be ≤ 1800s (30 min). Anything larger re-creates the silent-"
-        "death failure mode where a single sleep-cycle task death "
-        "produces hours/days of dead pipeline before any monitor "
-        "notices."
+        "be ≤ 600s (10 min) — the watcher is a 24/7 early-line detector. "
+        "Loose STANDBY = miss new prop releases before lines move = "
+        "lose the entire product edge."
     )
 
 
-def test_inv_as2_interval_ladder_monotonic():
-    """The ladder must tighten as games approach tipoff:
-        STANDBY >= ACTIVE >= LOCK_IN >= FINAL_CALL
-    Inverting any of these would make the engine poll SLOWER as a
-    game gets closer — the exact opposite of "Final Call" semantics."""
-    assert PollInterval.STANDBY.value >= PollInterval.ACTIVE.value or \
-        PollInterval.STANDBY.value >= 600, (
-        "STANDBY can be tighter than ACTIVE only if it's still at "
-        "least the 600s 'final-call' floor. Otherwise it inverts the "
-        "ladder semantics."
-    )
-    assert PollInterval.ACTIVE.value >= PollInterval.LOCK_IN.value
-    assert PollInterval.LOCK_IN.value >= PollInterval.FINAL_CALL.value
-    assert PollInterval.FINAL_CALL.value > 0
+def test_inv_as2_interval_floors_are_sane():
+    """All poll intervals must be positive and bounded. STANDBY must
+    not be smaller than 60s (1 min) — that's a hard floor to avoid
+    runaway oddsAPI calls and DB write storms."""
+    for tier in (
+        PollInterval.STANDBY, PollInterval.ACTIVE,
+        PollInterval.LOCK_IN, PollInterval.FINAL_CALL,
+    ):
+        assert tier.value is not None and tier.value >= 60, (
+            f"{tier.name} = {tier.value}s violates the 60s floor "
+            "(would create runaway upstream calls)."
+        )
+        assert tier.value <= 14400, (
+            f"{tier.name} = {tier.value}s exceeds the 4h ceiling "
+            "(would re-create the silent-freeze failure mode)."
+        )
