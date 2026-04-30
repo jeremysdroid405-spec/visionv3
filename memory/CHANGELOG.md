@@ -1,6 +1,38 @@
 # Changelog
 
 
+## 2026-04-30 — Orphan Collection Sweep (P0 #6)
+**Problem**: 9 archive/backup collections in Mongo totaling **861,813
+docs and 188.9 MB** — 8 months of rename-residue, not read or written
+by any runtime code. Only references were docstring prose and one
+dead `_SPORT_COLLECTIONS["prop_scores_archive"]` dict entry.
+
+**Fix**:
+- New idempotent sweep script `scripts/sweep_orphan_collections.py`
+  writes a JSON manifest (counts, schema, sample docs, timestamps) to
+  `/app/backend/data/snapshots/archives/` BEFORE dropping each
+  collection.
+- 9 collections dropped: `dg_cached_board_backup`,
+  `dg_events_cache_backup`, `dg_live_props_backup`,
+  `dg_master_roster_backup`, `dg_odds_cache_backup`,
+  `line_history_backup`, `mlb_prop_scores_archive_stale_tags`,
+  `nba_prop_scores_archive_stale_tags`, `referee_assignments_backup`.
+- Removed dead `prop_scores_archive` entry from
+  `services/config/collection_names.py::_SPORT_COLLECTIONS`.
+- 3 regression tests in `tests/test_orphan_sweep_integrity.py`:
+  - INV-1: no dropped name may reappear in the database
+  - INV-2: no dropped name may be reintroduced in collection_names.py
+  - INV-3: manifest directory + all 9 manifest files must exist
+
+**Verified**: zero archive/backup collections remain; live MLB+NBA
+endpoints return HTTP 200 post-restart; full P0 suite passes 32/32
+in 5.6s.
+
+**Audit trail**: 9 JSON manifests preserved under
+`/app/backend/data/snapshots/archives/`. Full doc at
+`/app/memory/SYSTEMS_orphan_sweep.md`.
+
+
 ## 2026-04-30 — Sync Failure Rate: 15% → ~0% (P0 #3)
 **Problem**: 75 of 76 MLB sync failures (98.7%) had one root cause:
 `E11000 duplicate key error` on `(canonical_key, version_tag)` in

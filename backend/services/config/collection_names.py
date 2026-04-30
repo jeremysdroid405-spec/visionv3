@@ -145,8 +145,11 @@ _SPORT_COLLECTIONS: Dict[str, Dict[str, str]] = {
     # ---- Scoring & board output --------------------------------------------
     "prop_scores":          {"nba": "nba_prop_scores",
                              "mlb": "mlb_prop_scores"},
-    "prop_scores_archive":  {"nba": "nba_prop_scores_archive_stale_tags",
-                             "mlb": "mlb_prop_scores_archive_stale_tags"},
+    # NOTE: `prop_scores_archive` removed 2026-04-30. The archive
+    # collections (`{sport}_prop_scores_archive_stale_tags`) were never
+    # read or written by any runtime path; dropped in the orphan sweep.
+    # If archival-on-rebuild is ever required, add it back HERE and
+    # wire the writer from `services/scoring/prop_scores_store.py`.
 
     # ---- Player identity / hub ---------------------------------------------
     "master_hub":           {"nba": "nba_master_hub_2026",

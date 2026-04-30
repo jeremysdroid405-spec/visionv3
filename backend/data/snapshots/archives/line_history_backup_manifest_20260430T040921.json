@@ -1,0 +1,185 @@
+{
+  "collection": "line_history_backup",
+  "dropped_at": "2026-04-30T04:09:21.485663+00:00",
+  "stats": {
+    "doc_count": 801955,
+    "size_bytes": 97593109,
+    "avg_obj_size": 121,
+    "storage_size": 14872576,
+    "n_indexes": 1
+  },
+  "field_schema": [
+    "_id",
+    "line",
+    "player_name",
+    "recorded_at",
+    "stat_type",
+    "team"
+  ],
+  "approx_oldest_doc_ts": "2026-04-04T21:51:30+00:00",
+  "approx_newest_doc_ts": "2026-04-19T14:35:32+00:00",
+  "sample_first_docs": [
+    {
+      "_id": "69d187e22b9780b88a5148f8",
+      "player_name": "Paul George",
+      "team": "PHI",
+      "stat_type": "AST",
+      "line": 4.0,
+      "recorded_at": "2026-04-04 21:51:30.518000"
+    },
+    {
+      "_id": "69d187e22b9780b88a5148f9",
+      "player_name": "Paul George",
+      "team": "PHI",
+      "stat_type": "AST",
+      "line": 4.0,
+      "recorded_at": "2026-04-04 21:51:30.518000"
+    },
+    {
+      "_id": "69d187e22b9780b88a5148fa",
+      "player_name": "Paul George",
+      "team": "PHI",
+      "stat_type": "AST",
+      "line": 6.5,
+      "recorded_at": "2026-04-04 21:51:30.518000"
+    },
+    {
+      "_id": "69d187e22b9780b88a5148fb",
+      "player_name": "Paul George",
+      "team": "PHI",
+      "stat_type": "AST",
+      "line": 5.5,
+      "recorded_at": "2026-04-04 21:51:30.518000"
+    },
+    {
+      "_id": "69d187e22b9780b88a5148fc",
+      "player_name": "Paul George",
+      "team": "PHI",
+      "stat_type": "AST",
+      "line": 4.5,
+      "recorded_at": "2026-04-04 21:51:30.518000"
+    },
+    {
+      "_id": "69d187e22b9780b88a5148fd",
+      "player_name": "Paul George",
+      "team": "PHI",
+      "stat_type": "AST",
+      "line": 3.5,
+      "recorded_at": "2026-04-04 21:51:30.518000"
+    },
+    {
+      "_id": "69d187e22b9780b88a5148fe",
+      "player_name": "Paul George",
+      "team": "PHI",
+      "stat_type": "AST",
+      "line": 2.5,
+      "recorded_at": "2026-04-04 21:51:30.518000"
+    },
+    {
+      "_id": "69d187e22b9780b88a5148ff",
+      "player_name": "Paul George",
+      "team": "PHI",
+      "stat_type": "PTS",
+      "line": 19.5,
+      "recorded_at": "2026-04-04 21:51:30.518000"
+    },
+    {
+      "_id": "69d187e22b9780b88a514900",
+      "player_name": "Paul George",
+      "team": "PHI",
+      "stat_type": "PTS",
+      "line": 19.5,
+      "recorded_at": "2026-04-04 21:51:30.518000"
+    },
+    {
+      "_id": "69d187e22b9780b88a514901",
+      "player_name": "Paul George",
+      "team": "PHI",
+      "stat_type": "PTS",
+      "line": 24.5,
+      "recorded_at": "2026-04-04 21:51:30.518000"
+    }
+  ],
+  "sample_last_docs": [
+    {
+      "_id": "69e4e834c3585185474ae630",
+      "player_name": "Matisse Thybulle",
+      "team": "POR",
+      "stat_type": "REB",
+      "line": 0.5,
+      "recorded_at": "2026-04-19 14:35:31.831000"
+    },
+    {
+      "_id": "69e4e834c3585185474ae62f",
+      "player_name": "Matisse Thybulle",
+      "team": "POR",
+      "stat_type": "REB",
+      "line": 1.5,
+      "recorded_at": "2026-04-19 14:35:31.831000"
+    },
+    {
+      "_id": "69e4e834c3585185474ae62e",
+      "player_name": "Matisse Thybulle",
+      "team": "POR",
+      "stat_type": "REB",
+      "line": 2.5,
+      "recorded_at": "2026-04-19 14:35:31.831000"
+    },
+    {
+      "_id": "69e4e834c3585185474ae62d",
+      "player_name": "Matisse Thybulle",
+      "team": "POR",
+      "stat_type": "PRA",
+      "line": 3.5,
+      "recorded_at": "2026-04-19 14:35:31.831000"
+    },
+    {
+      "_id": "69e4e834c3585185474ae62c",
+      "player_name": "Matisse Thybulle",
+      "team": "POR",
+      "stat_type": "AST",
+      "line": 0.5,
+      "recorded_at": "2026-04-19 14:35:31.831000"
+    },
+    {
+      "_id": "69e4e834c3585185474ae62b",
+      "player_name": "Matisse Thybulle",
+      "team": "POR",
+      "stat_type": "AST",
+      "line": 1.5,
+      "recorded_at": "2026-04-19 14:35:31.831000"
+    },
+    {
+      "_id": "69e4e834c3585185474ae62a",
+      "player_name": "Josh Okogie",
+      "team": "HOU",
+      "stat_type": "REB",
+      "line": 2.5,
+      "recorded_at": "2026-04-19 14:35:31.831000"
+    },
+    {
+      "_id": "69e4e834c3585185474ae629",
+      "player_name": "Josh Okogie",
+      "team": "HOU",
+      "stat_type": "REB",
+      "line": 3.5,
+      "recorded_at": "2026-04-19 14:35:31.831000"
+    },
+    {
+      "_id": "69e4e834c3585185474ae628",
+      "player_name": "Josh Okogie",
+      "team": "HOU",
+      "stat_type": "REB",
+      "line": 4.5,
+      "recorded_at": "2026-04-19 14:35:31.831000"
+    },
+    {
+      "_id": "69e4e834c3585185474ae627",
+      "player_name": "Josh Okogie",
+      "team": "HOU",
+      "stat_type": "REB",
+      "line": 5.5,
+      "recorded_at": "2026-04-19 14:35:31.831000"
+    }
+  ]
+}

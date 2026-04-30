@@ -1,0 +1,1332 @@
+{
+  "collection": "mlb_prop_scores_archive_stale_tags",
+  "dropped_at": "2026-04-30T04:09:21.490093+00:00",
+  "stats": {
+    "doc_count": 10090,
+    "size_bytes": 13714347,
+    "avg_obj_size": 1359,
+    "storage_size": 2183168,
+    "n_indexes": 1
+  },
+  "field_schema": [
+    "_archived_at",
+    "_archived_reason",
+    "_id",
+    "active",
+    "active_changed_at",
+    "canonical_key",
+    "computed_at",
+    "confidence",
+    "edge_vs_fair",
+    "event_id",
+    "fair_prob",
+    "game_start_utc",
+    "inactive_reason",
+    "line",
+    "player_name",
+    "pp_multiplier",
+    "pp_multiplier_label",
+    "pp_multiplier_source",
+    "pp_reference_source",
+    "pp_utility",
+    "pp_utility_category",
+    "pp_utility_components",
+    "quality_source",
+    "recommendation",
+    "sport",
+    "stability",
+    "stat_type",
+    "tier",
+    "tier_gate_results",
+    "tier_reason",
+    "tier_reference_book",
+    "tier_reference_odds",
+    "version_tag",
+    "vision_score",
+    "vision_score_raw"
+  ],
+  "approx_oldest_doc_ts": "2026-04-18T23:21:34+00:00",
+  "approx_newest_doc_ts": "2026-04-18T23:26:40+00:00",
+  "sample_first_docs": [
+    {
+      "_id": "69e411fe5372bec8e87f64b5",
+      "canonical_key": null,
+      "sport": "mlb",
+      "event_id": "45655eea8b0523564f56d5ba45520388",
+      "player_name": "Alex Bregman",
+      "stat_type": "Doubles",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 0.0,
+      "vision_score_raw": 0.0,
+      "quality_source": "consensus",
+      "fair_prob": 0.2363,
+      "stability": 0.3,
+      "confidence": 1.0,
+      "edge_vs_fair": -0.1533,
+      "tier": "unqualified",
+      "tier_reason": "war_zone_failed: Failed gates: gate2_ceiling, gate3_edge",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 267,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 4.472,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 5.0,
+          "passed": false
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": -15.3,
+          "passed": false
+        }
+      },
+      "pp_utility": 63.2,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.621,
+        "edge_confidence": 0.0,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 63.2,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": null,
+      "version_tag": "live",
+      "computed_at": "2026-04-18T23:14:22.389492+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f64b6",
+      "canonical_key": "mlb|ed205a37de8d35d5fe44ef82f8644637|Ildemaro Vargas|Total Bases|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "ed205a37de8d35d5fe44ef82f8644637",
+      "player_name": "Ildemaro Vargas",
+      "stat_type": "Total Bases",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 97.8,
+      "vision_score_raw": 0.23481,
+      "quality_source": "mgm",
+      "fair_prob": 0.6667,
+      "stability": 0.768,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.3123,
+      "tier": "front_lines",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "mgm",
+      "tier_reference_odds": -200,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.95,
+          "value": 0.696,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 60,
+          "value": 85.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 15,
+          "value": 31.2,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 66.7,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.3754,
+        "edge_confidence": 0.7808,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "mgm",
+      "version_tag": "live-test-v1",
+      "computed_at": "2026-04-17T21:26:14.403008+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f64b7",
+      "canonical_key": "mlb|7067ff8b35400b4b9c0c1b2cf807fe58|Matt Olson|Total Bases|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "7067ff8b35400b4b9c0c1b2cf807fe58",
+      "player_name": "Matt Olson",
+      "stat_type": "Total Bases",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 96.0,
+      "vision_score_raw": 0.200606,
+      "quality_source": "mgm",
+      "fair_prob": 0.6667,
+      "stability": 0.7253,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.2893,
+      "tier": "front_lines",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "mgm",
+      "tier_reference_odds": -200,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.95,
+          "value": 0.824,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 60,
+          "value": 85.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 15,
+          "value": 28.9,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 66.7,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.4214,
+        "edge_confidence": 0.7232,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "mgm",
+      "version_tag": "live-test-v1",
+      "computed_at": "2026-04-17T21:26:14.403008+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f64b8",
+      "canonical_key": "mlb|7e51baba35f9e72d4028c265cbceb500|Brooks Lee|Hits|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "7e51baba35f9e72d4028c265cbceb500",
+      "player_name": "Brooks Lee",
+      "stat_type": "Hits",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 95.8,
+      "vision_score_raw": 0.196737,
+      "quality_source": "consensus",
+      "fair_prob": 0.639,
+      "stability": 0.7437,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.286,
+      "tier": "front_lines",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -179,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.85,
+          "value": 0.769,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 65,
+          "value": 70.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 10,
+          "value": 28.6,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 63.9,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.4332,
+        "edge_confidence": 0.7085,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "version_tag": "live-test-v1",
+      "computed_at": "2026-04-17T21:26:14.403008+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f64b9",
+      "canonical_key": "mlb|ed205a37de8d35d5fe44ef82f8644637|Jorge Barrosa|Total Bases|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "ed205a37de8d35d5fe44ef82f8644637",
+      "player_name": "Jorge Barrosa",
+      "stat_type": "Total Bases",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 95.5,
+      "vision_score_raw": 0.193764,
+      "quality_source": "pinnacle",
+      "fair_prob": 0.6212,
+      "stability": 0.708,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.2978,
+      "tier": "front_lines",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "mgm",
+      "tier_reference_odds": -160,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.95,
+          "value": 0.876,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 60,
+          "value": 70.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 15,
+          "value": 30.4,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 61.5,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.3928,
+        "edge_confidence": 0.759,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "mgm",
+      "version_tag": "live-test-v1",
+      "computed_at": "2026-04-17T21:26:14.403008+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f64ba",
+      "canonical_key": "mlb|7067ff8b35400b4b9c0c1b2cf807fe58|Matt Olson|Hits|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "7067ff8b35400b4b9c0c1b2cf807fe58",
+      "player_name": "Matt Olson",
+      "stat_type": "Hits",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 95.4,
+      "vision_score_raw": 0.192976,
+      "quality_source": "consensus",
+      "fair_prob": 0.6827,
+      "stability": 0.7823,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.2613,
+      "tier": "front_lines",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -232,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.85,
+          "value": 0.653,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 65,
+          "value": 85.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 10,
+          "value": 26.1,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 68.3,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.5096,
+        "edge_confidence": 0.613,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "version_tag": "live-test-v1",
+      "computed_at": "2026-04-17T21:26:14.403008+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f64bb",
+      "canonical_key": "mlb|49988d9d2bd029a05b88766f7a72ca27|Luis Campusano|Hits|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "49988d9d2bd029a05b88766f7a72ca27",
+      "player_name": "Luis Campusano",
+      "stat_type": "Hits",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 94.1,
+      "vision_score_raw": 0.178851,
+      "quality_source": "dk",
+      "fair_prob": 0.6032,
+      "stability": 0.7557,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.2708,
+      "tier": "front_lines",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -152,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.85,
+          "value": 0.733,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 65,
+          "value": 70.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 10,
+          "value": 27.1,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 60.3,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.4584,
+        "edge_confidence": 0.677,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "version_tag": "live-test-v1",
+      "computed_at": "2026-04-17T21:26:14.403008+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f64bc",
+      "canonical_key": "mlb|72adcb72b594dcf90c1756f4f9358d4c|CJ Abrams|Total Bases|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "72adcb72b594dcf90c1756f4f9358d4c",
+      "player_name": "CJ Abrams",
+      "stat_type": "Total Bases",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 94.0,
+      "vision_score_raw": 0.177019,
+      "quality_source": "mgm",
+      "fair_prob": 0.6875,
+      "stability": 0.7203,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.2595,
+      "tier": "front_lines",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "mgm",
+      "tier_reference_odds": -220,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.95,
+          "value": 0.839,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 60,
+          "value": 85.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 15,
+          "value": 25.9,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 68.8,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.481,
+        "edge_confidence": 0.6488,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "mgm",
+      "version_tag": "live-test-v1",
+      "computed_at": "2026-04-17T21:26:14.403008+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f64bd",
+      "canonical_key": "mlb|ed205a37de8d35d5fe44ef82f8644637|Ildemaro Vargas|Hits|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "ed205a37de8d35d5fe44ef82f8644637",
+      "player_name": "Ildemaro Vargas",
+      "stat_type": "Hits",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 93.9,
+      "vision_score_raw": 0.176515,
+      "quality_source": "consensus",
+      "fair_prob": 0.6785,
+      "stability": 0.7903,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.2425,
+      "tier": "front_lines",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": -223,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.85,
+          "value": 0.629,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 65,
+          "value": 85.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 10,
+          "value": 24.2,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 67.9,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.5388,
+        "edge_confidence": 0.5765,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "version_tag": "live-test-v1",
+      "computed_at": "2026-04-17T21:26:14.403008+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f64be",
+      "canonical_key": "mlb|ed205a37de8d35d5fe44ef82f8644637|Andres Gimenez|Total Bases|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "ed205a37de8d35d5fe44ef82f8644637",
+      "player_name": "Andres Gimenez",
+      "stat_type": "Total Bases",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 93.1,
+      "vision_score_raw": 0.170875,
+      "quality_source": "pinnacle",
+      "fair_prob": 0.6785,
+      "stability": 0.702,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.2595,
+      "tier": "front_lines",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "mgm",
+      "tier_reference_odds": -185,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": 0.95,
+          "value": 0.894,
+          "passed": true
+        },
+        "gate2_hit_rate": {
+          "threshold": 60,
+          "value": 70.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 15,
+          "value": 28.9,
+          "passed": true
+        },
+        "gate4_tp": {
+          "threshold": 58,
+          "value": 64.9,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.4222,
+        "edge_confidence": 0.7222,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "mgm",
+      "version_tag": "live-test-v1",
+      "computed_at": "2026-04-17T21:26:14.403008+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    }
+  ],
+  "sample_last_docs": [
+    {
+      "_id": "69e41330cfb056a481f5aefa",
+      "canonical_key": null,
+      "sport": "mlb",
+      "event_id": "45655eea8b0523564f56d5ba45520388",
+      "player_name": "Alex Bregman",
+      "stat_type": "Doubles",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 0.0,
+      "vision_score_raw": 0.0,
+      "quality_source": "consensus",
+      "fair_prob": 0.2363,
+      "stability": 0.3,
+      "confidence": 1.0,
+      "edge_vs_fair": -0.1533,
+      "tier": "unqualified",
+      "tier_reason": "war_zone_failed: Failed gates: gate2_ceiling, gate3_edge",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 267,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 4.472,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 5.0,
+          "passed": false
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": -15.3,
+          "passed": false
+        }
+      },
+      "pp_utility": 63.2,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.621,
+        "edge_confidence": 0.0,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        },
+        "pp_utility_raw": 63.2,
+        "category_raw": "pp_fair"
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "active": true,
+      "inactive_reason": null,
+      "active_changed_at": null,
+      "game_start_utc": null,
+      "version_tag": "live",
+      "computed_at": "2026-04-18T23:24:30.988175+00:00",
+      "_archived_at": "2026-04-18T23:26:40.071655+00:00",
+      "_archived_reason": "stray_tag_after_step6_cleanup"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f8c1d",
+      "canonical_key": "mlb|45655eea8b0523564f56d5ba45520388|Pete Crow-Armstrong|Singles|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "45655eea8b0523564f56d5ba45520388",
+      "player_name": "Pete Crow-Armstrong",
+      "stat_type": "Singles",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 75.0,
+      "vision_score_raw": 0.105467,
+      "quality_source": "dk",
+      "fair_prob": 0.1739,
+      "stability": 0.6183,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.3351,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 475,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.145,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 50.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 33.5,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.3298,
+        "edge_confidence": 0.8378,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "version_tag": "ver-b",
+      "computed_at": "2026-04-17T21:30:23.463072+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f8c1c",
+      "canonical_key": "mlb|45655eea8b0523564f56d5ba45520388|Dansby Swanson|RBIs|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "45655eea8b0523564f56d5ba45520388",
+      "player_name": "Dansby Swanson",
+      "stat_type": "RBIs",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 80.0,
+      "vision_score_raw": 0.111843,
+      "quality_source": "dk",
+      "fair_prob": 0.2,
+      "stability": 0.581,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.35,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 400,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.257,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 45.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 35.0,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.3,
+        "edge_confidence": 0.875,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "version_tag": "ver-b",
+      "computed_at": "2026-04-17T21:30:23.463072+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f8c1b",
+      "canonical_key": "mlb|45655eea8b0523564f56d5ba45520388|Pete Crow-Armstrong|Hits|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "45655eea8b0523564f56d5ba45520388",
+      "player_name": "Pete Crow-Armstrong",
+      "stat_type": "Hits",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 81.7,
+      "vision_score_raw": 0.11934,
+      "quality_source": "dk",
+      "fair_prob": 0.2817,
+      "stability": 0.634,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.3153,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 255,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.098,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 55.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 31.5,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.3694,
+        "edge_confidence": 0.7882,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "version_tag": "ver-b",
+      "computed_at": "2026-04-17T21:30:23.463072+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f8c1a",
+      "canonical_key": "mlb|45655eea8b0523564f56d5ba45520388|Luis Robert Jr.|Hits|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "45655eea8b0523564f56d5ba45520388",
+      "player_name": "Luis Robert Jr.",
+      "stat_type": "Hits",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 86.7,
+      "vision_score_raw": 0.13349,
+      "quality_source": "dk",
+      "fair_prob": 0.2778,
+      "stability": 0.6527,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.3342,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 260,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.042,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 60.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 33.4,
+          "passed": true
+        }
+      },
+      "pp_utility": 75.0,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.3316,
+        "edge_confidence": 0.8355,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "version_tag": "ver-b",
+      "computed_at": "2026-04-17T21:30:23.463072+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f8c19",
+      "canonical_key": "mlb|45655eea8b0523564f56d5ba45520388|Francisco Lindor|Runs|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "45655eea8b0523564f56d5ba45520388",
+      "player_name": "Francisco Lindor",
+      "stat_type": "Runs",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 88.3,
+      "vision_score_raw": 0.143857,
+      "quality_source": "dk",
+      "fair_prob": 0.1905,
+      "stability": 0.5097,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.4445,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 425,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.471,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 40.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 44.5,
+          "passed": true
+        }
+      },
+      "pp_utility": 72.2,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.111,
+        "edge_confidence": 1.0,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "version_tag": "ver-b",
+      "computed_at": "2026-04-17T21:30:23.463072+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f8c18",
+      "canonical_key": "mlb|45655eea8b0523564f56d5ba45520388|Francisco Lindor|Singles|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "45655eea8b0523564f56d5ba45520388",
+      "player_name": "Francisco Lindor",
+      "stat_type": "Singles",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 91.7,
+      "vision_score_raw": 0.168642,
+      "quality_source": "dk",
+      "fair_prob": 0.1905,
+      "stability": 0.584,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.4505,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 425,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.248,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 45.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 45.1,
+          "passed": true
+        }
+      },
+      "pp_utility": 71.8,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.099,
+        "edge_confidence": 1.0,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "version_tag": "ver-b",
+      "computed_at": "2026-04-17T21:30:23.463072+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f8c17",
+      "canonical_key": "mlb|45655eea8b0523564f56d5ba45520388|Ian Happ|Runs|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "45655eea8b0523564f56d5ba45520388",
+      "player_name": "Ian Happ",
+      "stat_type": "Runs",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 93.3,
+      "vision_score_raw": 0.197321,
+      "quality_source": "dk",
+      "fair_prob": 0.25,
+      "stability": 0.6333,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.447,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 300,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.1,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 50.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 44.7,
+          "passed": true
+        }
+      },
+      "pp_utility": 72.1,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.106,
+        "edge_confidence": 1.0,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "version_tag": "ver-b",
+      "computed_at": "2026-04-17T21:30:23.463072+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f8c16",
+      "canonical_key": "mlb|45655eea8b0523564f56d5ba45520388|Seiya Suzuki|Runs|1.5|OVER",
+      "sport": "mlb",
+      "event_id": "45655eea8b0523564f56d5ba45520388",
+      "player_name": "Seiya Suzuki",
+      "stat_type": "Runs",
+      "line": 1.5,
+      "recommendation": "OVER",
+      "vision_score": 95.0,
+      "vision_score_raw": 0.212558,
+      "quality_source": "dk",
+      "fair_prob": 0.2083,
+      "stability": 0.6463,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.4787,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 380,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.061,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": null,
+          "passed": true,
+          "skipped": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 47.9,
+          "passed": true
+        }
+      },
+      "pp_utility": 70.1,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.0426,
+        "edge_confidence": 1.0,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "version_tag": "ver-b",
+      "computed_at": "2026-04-17T21:30:23.463072+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    },
+    {
+      "_id": "69e411ff5372bec8e87f8c15",
+      "canonical_key": "mlb|45655eea8b0523564f56d5ba45520388|Luis Robert Jr.|Total Bases|0.5|OVER",
+      "sport": "mlb",
+      "event_id": "45655eea8b0523564f56d5ba45520388",
+      "player_name": "Luis Robert Jr.",
+      "stat_type": "Total Bases",
+      "line": 0.5,
+      "recommendation": "OVER",
+      "vision_score": 96.7,
+      "vision_score_raw": 0.220976,
+      "quality_source": "dk",
+      "fair_prob": 0.2778,
+      "stability": 0.6327,
+      "confidence": 1.0,
+      "edge_vs_fair": 0.4682,
+      "tier": "war_zone",
+      "tier_reason": "gates_passed",
+      "tier_reference_book": "dk",
+      "tier_reference_odds": 260,
+      "tier_gate_results": {
+        "gate1_cv": {
+          "threshold": ">= 1.0",
+          "value": 1.102,
+          "passed": true
+        },
+        "gate2_ceiling": {
+          "threshold": 35,
+          "value": 60.0,
+          "passed": true
+        },
+        "gate3_edge": {
+          "threshold": 30,
+          "value": 46.8,
+          "passed": true
+        }
+      },
+      "pp_utility": 70.7,
+      "pp_utility_category": "pp_fair",
+      "pp_utility_components": {
+        "availability": 1.0,
+        "line_fairness": 1.0,
+        "model_alignment": 0.0636,
+        "edge_confidence": 1.0,
+        "multiplier_value": null,
+        "weights": {
+          "availability": 0.18749999999999997,
+          "line_fairness": 0.25,
+          "model_alignment": 0.3125,
+          "edge_confidence": 0.25
+        }
+      },
+      "pp_multiplier": null,
+      "pp_multiplier_label": null,
+      "pp_multiplier_source": "none",
+      "pp_reference_source": "dk",
+      "version_tag": "ver-b",
+      "computed_at": "2026-04-17T21:30:23.463072+00:00",
+      "_archived_at": "2026-04-18T23:21:32.935266+00:00",
+      "_archived_reason": "stale_experimental_version_tag"
+    }
+  ]
+}

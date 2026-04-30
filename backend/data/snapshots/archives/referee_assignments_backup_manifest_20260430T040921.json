@@ -1,0 +1,248 @@
+{
+  "collection": "referee_assignments_backup",
+  "dropped_at": "2026-04-30T04:09:21.501295+00:00",
+  "stats": {
+    "doc_count": 118,
+    "size_bytes": 30490,
+    "avg_obj_size": 258,
+    "storage_size": 45056,
+    "n_indexes": 1
+  },
+  "field_schema": [
+    "_id",
+    "away_team",
+    "crew_chief",
+    "date",
+    "fetched_at",
+    "game",
+    "home_team",
+    "referee",
+    "umpire"
+  ],
+  "approx_oldest_doc_ts": "2026-04-04T22:12:25+00:00",
+  "approx_newest_doc_ts": "2026-04-19T17:31:22+00:00",
+  "sample_first_docs": [
+    {
+      "_id": "69d18cc9104e7ff190aaad77",
+      "game": "Washington @ Miami",
+      "away_team": "WAS",
+      "home_team": "MIA",
+      "crew_chief": "Ed Malloy (#7)",
+      "referee": "Eric Dalen (#37)",
+      "umpire": "Phenizee Ransom (#70)",
+      "date": "2026-04-04",
+      "fetched_at": "2026-04-04T22:12:25.363607+00:00"
+    },
+    {
+      "_id": "69d18cc9104e7ff190aaad78",
+      "game": "San Antonio @ Denver",
+      "away_team": "SAS",
+      "home_team": "DEN",
+      "crew_chief": "Josh Tiven (#58)",
+      "referee": "Ray Acosta (#54)",
+      "umpire": "Nate Green (#41)",
+      "date": "2026-04-04",
+      "fetched_at": "2026-04-04T22:12:25.363659+00:00"
+    },
+    {
+      "_id": "69d18cc9104e7ff190aaad79",
+      "game": "Detroit @ Philadelphia",
+      "away_team": "DET",
+      "home_team": "PHI",
+      "crew_chief": "Marc Davis (#8)",
+      "referee": "Mark Lindsay (#29)",
+      "umpire": "Brandon Schwab (#86)",
+      "date": "2026-04-04",
+      "fetched_at": "2026-04-04T22:12:25.363699+00:00"
+    },
+    {
+      "_id": "69d2d2f3d8533e307d7a21e1",
+      "game": "Toronto @ Boston",
+      "away_team": "TOR",
+      "home_team": "BOS",
+      "crew_chief": "James Williams (#60)",
+      "referee": "Nick Buchert (#3)",
+      "umpire": "Che Flores (#91)",
+      "date": "2026-04-05",
+      "fetched_at": "2026-04-05T21:24:03.196174+00:00"
+    },
+    {
+      "_id": "69d2d2f3d8533e307d7a21e2",
+      "game": "Washington @ Brooklyn",
+      "away_team": "WAS",
+      "home_team": "BKN",
+      "crew_chief": "Scott Foster (#48)",
+      "referee": "JB DeRosa (#14)",
+      "umpire": "Brandon Adair (#67)",
+      "date": "2026-04-05",
+      "fetched_at": "2026-04-05T21:24:03.196227+00:00"
+    },
+    {
+      "_id": "69d2d2f3d8533e307d7a21e3",
+      "game": "Phoenix @ Chicago",
+      "away_team": "PHX",
+      "home_team": "CHI",
+      "crew_chief": "Sean Wright (#4)",
+      "referee": "Brian Forte (#45)",
+      "umpire": "Jason Goldenberg (#35)",
+      "date": "2026-04-05",
+      "fetched_at": "2026-04-05T21:24:03.196279+00:00"
+    },
+    {
+      "_id": "69d2d2f3d8533e307d7a21e4",
+      "game": "Memphis @ Milwaukee",
+      "away_team": "MEM",
+      "home_team": "MIL",
+      "crew_chief": "Ben Taylor (#46)",
+      "referee": "Jacyn Goble (#68)",
+      "umpire": "Intae Hwang (#73)",
+      "date": "2026-04-05",
+      "fetched_at": "2026-04-05T21:24:03.196317+00:00"
+    },
+    {
+      "_id": "69d2d2f3d8533e307d7a21e5",
+      "game": "Indiana @ Cleveland",
+      "away_team": "IND",
+      "home_team": "CLE",
+      "crew_chief": "John Goble (#10)",
+      "referee": "Dedric Taylor (#21)",
+      "umpire": "Jonathan Sterling (#17)",
+      "date": "2026-04-05",
+      "fetched_at": "2026-04-05T21:24:03.196355+00:00"
+    },
+    {
+      "_id": "69d2d2f3d8533e307d7a21e6",
+      "game": "Charlotte @ Minnesota",
+      "away_team": "CHA",
+      "home_team": "MIN",
+      "crew_chief": "Curtis Blair (#74)",
+      "referee": "John Butler (#30)",
+      "umpire": "CJ Washington (#12)",
+      "date": "2026-04-05",
+      "fetched_at": "2026-04-05T21:24:03.196389+00:00"
+    },
+    {
+      "_id": "69d2d2f3d8533e307d7a21e7",
+      "game": "Orlando @ New Orleans",
+      "away_team": "ORL",
+      "home_team": "NOP",
+      "crew_chief": "Tony Brothers (#25)",
+      "referee": "Pat Fraher (#26)",
+      "umpire": "Leon Wood (#40)",
+      "date": "2026-04-05",
+      "fetched_at": "2026-04-05T21:24:03.196426+00:00"
+    }
+  ],
+  "sample_last_docs": [
+    {
+      "_id": "69e5116af2af6141c79db2bc",
+      "game": "Portland @ San Antonio",
+      "away_team": "POR",
+      "home_team": "SAS",
+      "crew_chief": "Josh Tiven (#58)",
+      "referee": "Courtney Kirkland (#61)",
+      "umpire": "JB DeRosa (#14)",
+      "date": "2026-04-19",
+      "fetched_at": "2026-04-19T17:31:22.967335+00:00"
+    },
+    {
+      "_id": "69e5116af2af6141c79db2bb",
+      "game": "Phoenix @ Oklahoma City",
+      "away_team": "PHX",
+      "home_team": "OKC",
+      "crew_chief": "Marc Davis (#8)",
+      "referee": "Sean Wright (#4)",
+      "umpire": "Mark Lindsay (#29)",
+      "date": "2026-04-19",
+      "fetched_at": "2026-04-19T17:31:22.967303+00:00"
+    },
+    {
+      "_id": "69e5116af2af6141c79db2ba",
+      "game": "Philadelphia @ Boston",
+      "away_team": "PHI",
+      "home_team": "BOS",
+      "crew_chief": "Scott Foster (#48)",
+      "referee": "Pat Fraher (#26)",
+      "umpire": "Tre Maddox (#23)",
+      "date": "2026-04-19",
+      "fetched_at": "2026-04-19T17:31:22.967268+00:00"
+    },
+    {
+      "_id": "69e5116af2af6141c79db2b9",
+      "game": "Orlando @ Detroit",
+      "away_team": "ORL",
+      "home_team": "DET",
+      "crew_chief": "James Williams (#60)",
+      "referee": "Kevin Scott (#24)",
+      "umpire": "Brian Forte (#45)",
+      "date": "2026-04-19",
+      "fetched_at": "2026-04-19T17:31:22.967222+00:00"
+    },
+    {
+      "_id": "69e416175790b1e5d423c21b",
+      "game": "Houston @ L.A. Lakers",
+      "away_team": "HOU",
+      "home_team": "LAL",
+      "crew_chief": "James Capers (#19)",
+      "referee": "Tyler Ford (#39)",
+      "umpire": "Ed Malloy (#7)",
+      "date": "2026-04-18",
+      "fetched_at": "2026-04-18T23:39:03.172628+00:00"
+    },
+    {
+      "_id": "69e416175790b1e5d423c21a",
+      "game": "Minnesota @ Denver",
+      "away_team": "MIN",
+      "home_team": "DEN",
+      "crew_chief": "Zach Zarba (#15)",
+      "referee": "Jacyn Goble (#68)",
+      "umpire": "Eric Dalen (#37)",
+      "date": "2026-04-18",
+      "fetched_at": "2026-04-18T23:39:03.172583+00:00"
+    },
+    {
+      "_id": "69e416175790b1e5d423c219",
+      "game": "Toronto @ Cleveland",
+      "away_team": "TOR",
+      "home_team": "CLE",
+      "crew_chief": "Tony Brothers (#25)",
+      "referee": "Karl Lane (#77)",
+      "umpire": "Brent Barnaky (#36)",
+      "date": "2026-04-18",
+      "fetched_at": "2026-04-18T23:39:03.172544+00:00"
+    },
+    {
+      "_id": "69e416175790b1e5d423c218",
+      "game": "Atlanta @ New York",
+      "away_team": "ATL",
+      "home_team": "NYK",
+      "crew_chief": "John Goble (#10)",
+      "referee": "Curtis Blair (#74)",
+      "umpire": "Ray Acosta (#54)",
+      "date": "2026-04-18",
+      "fetched_at": "2026-04-18T23:39:03.172493+00:00"
+    },
+    {
+      "_id": "69e2c75eb11a6d9071bba084",
+      "game": "Golden State @ Phoenix",
+      "away_team": "GSW",
+      "home_team": "PHX",
+      "crew_chief": "Scott Foster (#48)",
+      "referee": "Mitchell Ervin (#27)",
+      "umpire": "Tre Maddox (#23)",
+      "date": "2026-04-17",
+      "fetched_at": "2026-04-17T23:50:54.572559+00:00"
+    },
+    {
+      "_id": "69e2c75eb11a6d9071bba083",
+      "game": "Charlotte @ Orlando",
+      "away_team": "CHA",
+      "home_team": "ORL",
+      "crew_chief": "Marc Davis (#8)",
+      "referee": "Sean Wright (#4)",
+      "umpire": "Justin Van Duyne (#64)",
+      "date": "2026-04-17",
+      "fetched_at": "2026-04-17T23:50:54.572506+00:00"
+    }
+  ]
+}

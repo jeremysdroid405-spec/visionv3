@@ -1,0 +1,47 @@
+{
+  "collection": "dg_events_cache_backup",
+  "dropped_at": "2026-04-30T04:09:21.386192+00:00",
+  "stats": {
+    "doc_count": 1,
+    "size_bytes": 267,
+    "avg_obj_size": 267,
+    "storage_size": 36864,
+    "n_indexes": 1
+  },
+  "field_schema": [
+    "_id",
+    "away_team",
+    "commence_time",
+    "fetched_at",
+    "home_team",
+    "id",
+    "sport_key",
+    "sport_title"
+  ],
+  "approx_oldest_doc_ts": "2026-04-19T16:16:32+00:00",
+  "approx_newest_doc_ts": "2026-04-19T16:16:32+00:00",
+  "sample_first_docs": [
+    {
+      "_id": "69e4ffe0479bf05d3ef3165c",
+      "id": "00d1efd43d0790297fb68684a9171191",
+      "sport_key": "basketball_nba",
+      "sport_title": "NBA",
+      "commence_time": "2026-04-19T17:10:00Z",
+      "home_team": "Boston Celtics",
+      "away_team": "Philadelphia 76ers",
+      "fetched_at": "2026-04-19T16:16:32.707336+00:00"
+    }
+  ],
+  "sample_last_docs": [
+    {
+      "_id": "69e4ffe0479bf05d3ef3165c",
+      "id": "00d1efd43d0790297fb68684a9171191",
+      "sport_key": "basketball_nba",
+      "sport_title": "NBA",
+      "commence_time": "2026-04-19T17:10:00Z",
+      "home_team": "Boston Celtics",
+      "away_team": "Philadelphia 76ers",
+      "fetched_at": "2026-04-19T16:16:32.707336+00:00"
+    }
+  ]
+}
