@@ -200,6 +200,7 @@ async def get_mlb_live_alerts(
             projected_ab_delta = deltas.get("projected_ab_delta")
             previous_slot = deltas.get("previous_lineup_slot")
             current_slot = deltas.get("current_lineup_slot")
+            current_expected_pa = deltas.get("current_expected_pa")
 
             alerts.append({
                 "id": f"{adv['injured_player']}-{adv['beneficiary_name']}".replace(" ", "-").lower(),
@@ -227,6 +228,11 @@ async def get_mlb_live_alerts(
                 "projected_ab_delta":  projected_ab_delta,
                 "previous_lineup_slot": previous_slot,
                 "current_lineup_slot":  current_slot,
+                # Absolute today's projected PA/AB — used by the UI
+                # "X AB projected" column because a PA-based delta
+                # overstates new-starter signal (you can't gain
+                # +4 AB vs. an unknown baseline).
+                "current_expected_pa": current_expected_pa,
                 # Option B (2026-04-30): surface new-starter status so
                 # the UI can render "new starter" copy instead of a
                 # +N-slots shift.

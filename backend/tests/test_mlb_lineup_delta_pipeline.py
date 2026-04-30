@@ -229,6 +229,14 @@ async def test_inv_l3_new_starter_gets_ab_delta_and_flag(db):
             "from _DEFAULT_PA_BY_SLOT). Got: "
             f"{rookie['projected_ab_delta']}"
         )
+        # `current_expected_pa` is the absolute projected PA the UI
+        # renders (not a delta). Must match the slot-3 default.
+        assert rookie["current_expected_pa"] is not None
+        assert 3.5 < rookie["current_expected_pa"] < 5.0, (
+            "New-starter current_expected_pa must reflect the slot-3 "
+            "default. Got: "
+            f"{rookie['current_expected_pa']}"
+        )
     finally:
         await _cleanup(db, tag)
 

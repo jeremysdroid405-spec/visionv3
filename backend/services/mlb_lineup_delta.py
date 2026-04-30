@@ -293,6 +293,7 @@ def extract_deltas_for_player(
         "current_lineup_slot":   cur_slot,
         "lineup_delta":          lineup_delta,
         "projected_ab_delta":    projected_ab_delta,
+        "current_expected_pa":   cur_pa,
         "is_new_starter":        is_new_starter,
     }
 
@@ -303,6 +304,7 @@ def _empty_deltas() -> Dict[str, Optional[float]]:
         "current_lineup_slot":   None,
         "lineup_delta":          None,
         "projected_ab_delta":    None,
+        "current_expected_pa":   None,
         "is_new_starter":        False,
     }
 

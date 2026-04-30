@@ -1170,12 +1170,10 @@ const LiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
               </div>
             </div>
 
-            {/* Injury Reason Headline - larger textbox */}
-            {injury.injury_reason && (
-              <div className="text-sm text-zinc-200 bg-zinc-800/60 rounded-lg p-3 mb-3">
-                {injury.injury_reason}
-              </div>
-            )}
+            {/* Injury Reason paragraph removed per 2026-04-30 UX
+                request — the player name + status is the signal; the
+                long injury description added visual noise without
+                actionable info. */}
 
             {/* Usage Spike Indicator */}
             <div className="flex items-center gap-1 mb-2 text-[10px] text-orange-400 font-semibold">
@@ -1188,17 +1186,25 @@ const LiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
               {injury.beneficiaries.map((ben, idx) => (
                 <div
                   key={ben.id}
-                  className="flex items-center gap-2 p-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-800/70 transition-colors"
+                  className="flex items-center justify-between p-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-800/70 transition-colors"
                   data-testid="nba-injury-beneficiary-row"
                 >
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                    idx === 0 ? 'bg-orange-500/30 text-orange-400' : 'bg-zinc-700 text-zinc-400'
-                  }`}>
-                    {idx + 1}
+                  <div className="flex items-center gap-2">
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                      idx === 0 ? 'bg-orange-500/30 text-orange-400' : 'bg-zinc-700 text-zinc-400'
+                    }`}>
+                      {idx + 1}
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-white">{ben.beneficiary_name}</div>
+                      <div className="text-[9px] text-zinc-500">+{ben.minutes_bump || 0} mins projected</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-xs font-semibold text-white">{ben.beneficiary_name}</div>
-                    <div className="text-[9px] text-zinc-500">+{ben.minutes_bump || 0} mins projected</div>
+                  <div className="text-right">
+                    <div className={`text-sm font-bold ${idx === 0 ? 'text-orange-400' : 'text-orange-400/70'}`}>
+                      +{ben.usage_bump}%
+                    </div>
+                    <div className="text-[8px] text-zinc-500">usage</div>
                   </div>
                 </div>
               ))}
@@ -1330,12 +1336,10 @@ const MLBLiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
               </div>
             </div>
 
-            {/* Injury Reason Headline */}
-            {injury.injury_reason && (
-              <div className="text-sm text-zinc-200 bg-zinc-800/60 rounded-lg p-3 mb-3">
-                {injury.injury_reason}
-              </div>
-            )}
+            {/* Injury Reason paragraph removed per 2026-04-30 UX
+                request — the player name + status is the signal; the
+                long injury description added visual noise without
+                actionable info. */}
 
             {/* Lineup Change Indicator */}
             <div className="flex items-center gap-1 mb-2 text-[10px] text-orange-400 font-semibold">
@@ -1348,24 +1352,34 @@ const MLBLiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
               {injury.beneficiaries.map((ben, idx) => (
                 <div
                   key={ben.id}
-                  className="flex items-center gap-2 p-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-800/70 transition-colors"
+                  className="flex items-center justify-between p-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-800/70 transition-colors"
                   data-testid="mlb-injury-beneficiary-row"
                 >
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                    idx === 0 ? 'bg-orange-500/30 text-orange-400' : 'bg-zinc-700 text-zinc-400'
-                  }`}>
-                    {idx + 1}
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-white">{ben.beneficiary_name}</div>
-                    <div className="text-[9px] text-zinc-500">
-                      {ben.is_new_starter === true
-                        ? `new starter — slot ${ben.current_lineup_slot}`
-                        : (Number.isFinite(ben.lineup_delta) && ben.lineup_delta >= 1
-                          ? `+${ben.lineup_delta} lineup spots`
-                          : `slot ${ben.previous_lineup_slot} → ${ben.current_lineup_slot}`)}
+                  <div className="flex items-center gap-2">
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                      idx === 0 ? 'bg-orange-500/30 text-orange-400' : 'bg-zinc-700 text-zinc-400'
+                    }`}>
+                      {idx + 1}
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-white">{ben.beneficiary_name}</div>
+                      <div className="text-[9px] text-zinc-500">
+                        {ben.is_new_starter === true
+                          ? `new starter — slot ${ben.current_lineup_slot}`
+                          : (Number.isFinite(ben.lineup_delta) && ben.lineup_delta >= 1
+                            ? `+${ben.lineup_delta} lineup spots`
+                            : `slot ${ben.previous_lineup_slot} → ${ben.current_lineup_slot}`)}
+                      </div>
                     </div>
                   </div>
+                  {Number.isFinite(ben.current_expected_pa) && (
+                    <div className="text-right">
+                      <div className={`text-sm font-bold ${idx === 0 ? 'text-orange-400' : 'text-orange-400/70'}`}>
+                        {Math.round(ben.current_expected_pa)} AB
+                      </div>
+                      <div className="text-[8px] text-zinc-500">projected</div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
