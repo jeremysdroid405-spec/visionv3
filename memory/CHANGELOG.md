@@ -1,6 +1,35 @@
 # Changelog
 
 
+## 2026-04-30 — Canonical Key Adapter Parity Test (P0 #7)
+**Problem**: On 2026-04-29 the NBA adapter was discovered to have been
+silently returning `None` for every `canonical_key(doc)` call — the
+realtime scoring pipeline silently dropped every NBA prop for DAYS.
+The bug was invisible because nothing tested it.
+
+**Fix**:
+- New file `tests/test_canonical_key_adapter_parity.py` with 4 tests
+  (2 parametrized over `SUPPORTED_SPORTS`):
+  1. Adapter's `canonical_key()` returns non-None for 100 real docs.
+  2. Reconstructed key matches the precomputed `canonical_key` field
+     exactly when present (catches ingest-vs-adapter drift).
+  3. Key starts with the sport prefix (catches accidental field swap).
+  4. Synthetic minimal-doc shape produces a valid key.
+- Parametrized over `SUPPORTED_SPORTS` so adding a new sport auto-adds
+  coverage with no test changes.
+- Skips cleanly if a sport has no live_props yet (fresh env).
+
+**Invariants**:
+- Adapter `canonical_key()` must never return None for a valid
+  live_props doc.
+- Reconstructed key must be byte-identical to the precomputed
+  `canonical_key` field when present.
+- Every sport in `SUPPORTED_SPORTS` must have a registered adapter.
+
+**Verified**: 4/4 new tests pass (MLB + NBA parametrized, synthetic,
+registry). Total suite: 11/11 pass across P0 #1, #2, #7.
+
+
 ## 2026-04-30 — Version Tag Single Source of Truth (P0 #2)
 **Problem**: 22 hardcoded `final-<sport>-<suffix>` string literals
 scattered across `services/` + `routes/`. Every rename silently
