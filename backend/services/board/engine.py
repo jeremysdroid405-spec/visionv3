@@ -201,37 +201,57 @@ async def on_new_props(
             return {**result, "duration_ms": duration_ms, "reason": "no_match"}
 
         try:
-            # 2026-04-29 — Step 6 cutover (path 1c per ROADMAP):
-            # the real-time engine now writes DIRECTLY to the canonical
-            # live tag. Previously this routed to a `<canonical>-rt`
-            # shadow tag (e.g. `final-mlb-rt-rt`) which the live UI
-            # reader did not consult — so newly posted props sat dark
-            # for up to 60 min until the hourly master_sync rebuilt
-            # the canonical tag.
+            # 2026-04-29 — Universal dual-write (Step 6 cutover).
+            # Real-time engine writes EVERY event to two tags:
             #
-            # Hourly master_sync still runs as a periodic full
-            # rebuild for the SAME canonical tag using `mode=replace`,
-            # which is safe because master_sync re-loads every prop in
-            # `{sport}_live_props` (kept fresh by the same watcher
-            # that fires this engine). Stale realtime upserts cannot
-            # outlive an hourly rebuild because the rebuild's load
-            # already includes the prop.
+            #   1. CANONICAL live tag  (`board_adapter.version_tag`,
+            #      e.g. `final-mlb-rt` / `final-nba-rt`):
+            #      what the live UI reader pins to. Upserts here are
+            #      what surface to users in seconds.
             #
-            # Drift audit (services/board/drift_audit.py) and the
-            # `final-{sport}` baseline tag (written separately by
-            # master_sync) remain untouched — they observe the same
-            # canonical state without needing a separate write tag.
-            rt_version_tag = board_adapter.version_tag
+            #   2. SHADOW backtest tag (`<canonical>-shadow`,
+            #      e.g. `final-mlb-rt-shadow`):
+            #      append-only audit trail of every real-time decision,
+            #      used by the fast-path-vs-full-rebuild backtester.
+            #
+            # Both writes use `mode=upsert` so neither destroys the
+            # other. Master_sync's hourly `mode=replace` rebuild only
+            # touches the canonical tag — the shadow accumulates
+            # uninterrupted across rebuilds.
+            #
+            # Universal (sport-agnostic): every adapter's
+            # `version_tag` flows through the same dual-write below.
+            canonical_tag = board_adapter.version_tag
+            shadow_tag = f"{canonical_tag}-shadow"
             rc = await recompute_sport(
                 db=db,
                 sport=sport_key,
-                version_tag=rt_version_tag,
+                version_tag=canonical_tag,
                 dry_run=False,
                 limit=None,
                 override_config=None,
                 write_mode="upsert",
                 props=matched,
             )
+            # Shadow write: same matched props, same scoring config,
+            # different version_tag. Wrapped so a shadow failure can
+            # never poison the canonical write the user actually sees.
+            try:
+                await recompute_sport(
+                    db=db,
+                    sport=sport_key,
+                    version_tag=shadow_tag,
+                    dry_run=False,
+                    limit=None,
+                    override_config=None,
+                    write_mode="upsert",
+                    props=matched,
+                )
+            except Exception as shadow_e:
+                logger.warning(
+                    f"[BOARD_ENGINE] {sport_key} on_new_props shadow "
+                    f"write failed (canonical succeeded): {shadow_e}"
+                )
         except Exception as e:
             logger.exception(
                 f"[BOARD_ENGINE] {sport_key} on_new_props recompute failed: {e}"
