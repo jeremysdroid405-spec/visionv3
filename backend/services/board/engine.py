@@ -201,12 +201,27 @@ async def on_new_props(
             return {**result, "duration_ms": duration_ms, "reason": "no_match"}
 
         try:
-            # Step 6 observation window: real-time engine writes to a shadow
-            # `<canonical>-rt` tag so it no longer races with the legacy
-            # full-rebuild on the canonical tag. The live board reader stays
-            # pinned to the canonical tag during the window; only the drift
-            # auditor reads both. See /app/memory/ROADMAP.md §1a.
-            rt_version_tag = f"{board_adapter.version_tag}-rt"
+            # 2026-04-29 — Step 6 cutover (path 1c per ROADMAP):
+            # the real-time engine now writes DIRECTLY to the canonical
+            # live tag. Previously this routed to a `<canonical>-rt`
+            # shadow tag (e.g. `final-mlb-rt-rt`) which the live UI
+            # reader did not consult — so newly posted props sat dark
+            # for up to 60 min until the hourly master_sync rebuilt
+            # the canonical tag.
+            #
+            # Hourly master_sync still runs as a periodic full
+            # rebuild for the SAME canonical tag using `mode=replace`,
+            # which is safe because master_sync re-loads every prop in
+            # `{sport}_live_props` (kept fresh by the same watcher
+            # that fires this engine). Stale realtime upserts cannot
+            # outlive an hourly rebuild because the rebuild's load
+            # already includes the prop.
+            #
+            # Drift audit (services/board/drift_audit.py) and the
+            # `final-{sport}` baseline tag (written separately by
+            # master_sync) remain untouched — they observe the same
+            # canonical state without needing a separate write tag.
+            rt_version_tag = board_adapter.version_tag
             rc = await recompute_sport(
                 db=db,
                 sport=sport_key,
