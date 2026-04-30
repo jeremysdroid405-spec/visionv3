@@ -160,32 +160,50 @@ async def enforce_lineup_opportunity_contract(
     """Strip any row that would render `+0 lineup spots` / `+ AB`
     placeholder. If ALL rows fail, return [] so the section hides.
 
-    Each row MUST have:
-        beneficiary_name        (truthy string)
-        current_lineup_slot     (numeric)
-        previous_lineup_slot    (numeric)
-        lineup_delta            (numeric, != 0)
-        projected_ab_delta      (numeric, > 0)
+    Two valid row shapes (2026-04-30, Option A+B):
+      (a) Slot-shift row — day-over-day lineup movement:
+            beneficiary_name      (truthy string)
+            current_lineup_slot   (numeric)
+            previous_lineup_slot  (numeric)
+            lineup_delta          (numeric, != 0)
+            projected_ab_delta    (numeric, > 0)
+      (b) New-starter row — player entered the lineup today:
+            beneficiary_name      (truthy string)
+            current_lineup_slot   (numeric)
+            previous_lineup_slot  (None allowed)
+            lineup_delta          (None allowed)
+            projected_ab_delta    (numeric, > 0)
+            is_new_starter        (True)
     """
     kept: List[Dict[str, Any]] = []
     for a in alerts or []:
-        ld = a.get("lineup_delta")
         ad = a.get("projected_ab_delta")
         bad: List[str] = []
         if not a.get("beneficiary_name"):
             bad.append("beneficiary_name")
-        for k in ("current_lineup_slot", "previous_lineup_slot"):
-            if not _is_finite_number(a.get(k)):
-                bad.append(k)
-        if not _is_finite_number(ld) or float(ld or 0) == 0:
-            bad.append("lineup_delta")
+        if not _is_finite_number(a.get("current_lineup_slot")):
+            bad.append("current_lineup_slot")
         if not _is_finite_number(ad) or float(ad or 0) <= 0:
             bad.append("projected_ab_delta")
+
+        if a.get("is_new_starter") is True:
+            # Path (b) — previous_slot / lineup_delta are EXPECTED None.
+            # Don't flag them. current_slot + ab_delta are the signal.
+            pass
+        else:
+            # Path (a) — full slot-shift contract.
+            ld = a.get("lineup_delta")
+            if not _is_finite_number(a.get("previous_lineup_slot")):
+                bad.append("previous_lineup_slot")
+            if not _is_finite_number(ld) or float(ld or 0) == 0:
+                bad.append("lineup_delta")
+
         if bad:
             await _record_violation(db, EVT_LINEUP_OPPORTUNITY_SUPPRESSED, sport, {
                 "beneficiary": a.get("beneficiary_name"),
                 "injured":     a.get("injured_player"),
                 "invalid_fields": bad,
+                "is_new_starter": bool(a.get("is_new_starter")),
             })
             continue
         kept.append(a)

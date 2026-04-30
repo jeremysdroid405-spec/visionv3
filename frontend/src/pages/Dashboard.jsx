@@ -1248,21 +1248,30 @@ const MLBLiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
     );
   }
 
-  // ── Strict MLB Lineup Opportunity row guard (2026-04-29) ──────────
-  // Block any beneficiary lacking a real numeric delta. The backend
+  // ── MLB Lineup Opportunity row guard (2026-04-30, Option A+B) ────
+  // Block any beneficiary lacking a real numeric signal. The backend
   // already filters the `/api/v3/mlb/vacuum/live-alerts` payload, but
-  // the same contract is enforced here so we never render "+0 lineup
-  // spots" or "+ AB projected" placeholders even if a stale row slips
-  // through (e.g. service-worker cache).
+  // the same contract is enforced here so we never render
+  // "+0 lineup spots" or "+ AB projected" placeholders even if a stale
+  // row slips through. Two valid row shapes:
+  //   (a) Slot-shift — both previous/current slots numeric,
+  //       lineup_delta >= 1.
+  //   (b) New starter — previous_slot may be null, but current_slot
+  //       is numeric and projected_ab_delta >= 0.5.
+  //       Flagged via `is_new_starter === true`.
   const _isFiniteNum = (v) => typeof v === 'number' && Number.isFinite(v);
   const _qualifies = (b) => {
-    const ld = b?.lineup_delta;
+    if (!b?.beneficiary_name) return false;
+    if (!_isFiniteNum(b?.current_lineup_slot)) return false;
     const ad = b?.projected_ab_delta;
-    return (
-      ((_isFiniteNum(ld) && ld >= 1) || (_isFiniteNum(ad) && ad >= 0.5)) &&
-      _isFiniteNum(b?.current_lineup_slot) &&
-      _isFiniteNum(b?.previous_lineup_slot)
-    );
+    const ld = b?.lineup_delta;
+    if (b?.is_new_starter === true) {
+      return _isFiniteNum(ad) && ad >= 0.5;
+    }
+    // Day-over-day slot shift path.
+    if (!_isFiniteNum(b?.previous_lineup_slot)) return false;
+    if (!_isFiniteNum(ld) || ld < 1) return false;
+    return _isFiniteNum(ad);
   };
 
   // Group alerts by injured player
@@ -1357,9 +1366,11 @@ const MLBLiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
                     <div>
                       <div className="text-xs font-semibold text-white">{ben.beneficiary_name}</div>
                       <div className="text-[9px] text-zinc-500">
-                        {Number.isFinite(ben.lineup_delta) && ben.lineup_delta >= 1
-                          ? `+${ben.lineup_delta} lineup spots`
-                          : `slot ${ben.previous_lineup_slot} → ${ben.current_lineup_slot}`}
+                        {ben.is_new_starter === true
+                          ? `new starter — slot ${ben.current_lineup_slot}`
+                          : (Number.isFinite(ben.lineup_delta) && ben.lineup_delta >= 1
+                            ? `+${ben.lineup_delta} lineup spots`
+                            : `slot ${ben.previous_lineup_slot} → ${ben.current_lineup_slot}`)}
                       </div>
                     </div>
                   </div>

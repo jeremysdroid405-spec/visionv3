@@ -227,6 +227,10 @@ async def get_mlb_live_alerts(
                 "projected_ab_delta":  projected_ab_delta,
                 "previous_lineup_slot": previous_slot,
                 "current_lineup_slot":  current_slot,
+                # Option B (2026-04-30): surface new-starter status so
+                # the UI can render "new starter" copy instead of a
+                # +N-slots shift.
+                "is_new_starter":      bool(deltas.get("is_new_starter")),
                 # Internal NBA-shape fields kept for cross-sport readers
                 # (universal Vacuum tools / debugging dashboards). They
                 # are NOT consumed by the MLB Live Injury Advantage UI.
@@ -239,8 +243,13 @@ async def get_mlb_live_alerts(
                 ),
             })
 
-        # ── Strict MLB Lineup Opportunity contract (2026-04-29) ───────
-        # Drop every alert where neither delta is a numeric real signal.
+        # ── MLB Lineup Opportunity contract (2026-04-30, updated A+B) ──
+        # A row qualifies when EITHER:
+        #   (a) A real slot shift exists (lineup_delta >= 1, with both
+        #       previous_lineup_slot and current_lineup_slot numeric), OR
+        #   (b) NEW STARTER — player entered the lineup today (previous_slot
+        #       is None, current_slot numeric, projected_ab_delta ≥ 0.5).
+        # We do NOT accept placeholder "+0 lineup spots" rows in either path.
         # Cap to top-5 (sorted projected_ab_delta desc, then lineup_delta).
         def _is_numeric(x: Any) -> bool:
             if x is None or isinstance(x, bool):
@@ -252,20 +261,29 @@ async def get_mlb_live_alerts(
                 return False
 
         def _row_qualifies(row: Dict[str, Any]) -> bool:
-            ld = row.get("lineup_delta")
-            ad = row.get("projected_ab_delta")
-            ld_ok = _is_numeric(ld) and float(ld) >= 1.0
-            ad_ok = _is_numeric(ad) and float(ad) >= 0.5
-            if not (ld_ok or ad_ok):
+            if not row.get("beneficiary_name"):
                 return False
-            # Hard required-fields assertion mirroring the spec.
-            return all([
-                row.get("beneficiary_name"),
-                _is_numeric(row.get("current_lineup_slot")),
-                _is_numeric(row.get("previous_lineup_slot")),
-                row.get("lineup_delta") not in (0, None),
-                _is_numeric(row.get("projected_ab_delta")),
-            ])
+            cur_slot = row.get("current_lineup_slot")
+            if not _is_numeric(cur_slot):
+                return False  # No current slot → not a lineup opportunity
+            ad = row.get("projected_ab_delta")
+            ld = row.get("lineup_delta")
+
+            # Path (b): new-starter — prev slot is None, current is numeric,
+            # and projected AB delta is a real signal.
+            if row.get("is_new_starter") is True:
+                return _is_numeric(ad) and float(ad) >= 0.5
+
+            # Path (a): day-over-day slot shift.
+            prev_slot = row.get("previous_lineup_slot")
+            if not _is_numeric(prev_slot):
+                return False  # Neither new-starter NOR valid shift
+            if not _is_numeric(ld) or float(ld) < 1.0:
+                return False
+            # lineup_delta explicitly non-zero (placeholder guard).
+            if ld in (0, None):
+                return False
+            return _is_numeric(ad)
 
         filtered = [a for a in alerts if _row_qualifies(a)]
         filtered.sort(

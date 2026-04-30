@@ -94,9 +94,14 @@ async def build_lineup_delta_index(db) -> Dict[str, Dict[str, Any]]:
 
     out: Dict[str, Dict[str, Any]] = {}
 
-    # ── 1) "Previous" snapshot ── prefer canonical mlb_lineups when
-    #    populated, else fall back to whatever is older in
-    #    mlb_projected_lineups. Same shape: docs carry a `players` list.
+    # ── 1) "Previous" snapshot ── prefer canonical `mlb_lineups` when
+    #    populated. It is NOT written to by any scheduler today
+    #    (vestigial design target for a future daily-snapshot job), so
+    #    in practice the fallback in step 2 below — splitting
+    #    `mlb_projected_lineups` by `game_date` — is what produces the
+    #    live delta. The early-return on step-1 content is kept so that
+    #    whenever the snapshot job does ship, its output takes priority
+    #    without code churn.
     prev_docs: List[Mapping[str, Any]] = []
     try:
         async for doc in db["mlb_lineups"].find(
@@ -107,15 +112,56 @@ async def build_lineup_delta_index(db) -> Dict[str, Dict[str, Any]]:
     except Exception as e:  # collection may not exist — that's fine
         logger.debug("[mlb_lineup_delta] mlb_lineups unavailable: %s", e)
 
+    # ── 2) "Current" snapshot + fallback "previous" from same collection
+    #    When `mlb_lineups` is empty (today's reality, 2026-04-30), split
+    #    `mlb_projected_lineups` by `game_date` — most recent date is
+    #    "current", next most recent is "previous". This is the only
+    #    real source of a day-over-day lineup delta on this slate.
+    #
+    #    Why inline split (instead of two queries): a single pass over
+    #    the collection yields both buckets without a second round-trip
+    #    AND handles docs with missing `game_date` gracefully (they
+    #    default into the current bucket so the index is never empty).
     cur_docs: List[Mapping[str, Any]] = []
+    fallback_prev_docs: List[Mapping[str, Any]] = []
     try:
+        # Collect distinct game_dates in DESC order. Most recent = current,
+        # next = fallback previous.
+        all_projected: List[Mapping[str, Any]] = []
         async for doc in db["mlb_projected_lineups"].find(
             {}, {"_id": 0, "team_abbr": 1, "team": 1, "players": 1,
-                 "lineup": 1, "batting_order": 1}
+                 "lineup": 1, "batting_order": 1, "game_date": 1}
         ):
-            cur_docs.append(doc)
+            all_projected.append(doc)
+
+        # Sort game_dates DESC. Non-string values sort last via the key
+        # tuple so docs without the field never hijack the "current" slot.
+        distinct_dates = sorted(
+            {d.get("game_date") for d in all_projected
+             if isinstance(d.get("game_date"), str)},
+            reverse=True,
+        )
+        current_date = distinct_dates[0] if distinct_dates else None
+        previous_date = distinct_dates[1] if len(distinct_dates) >= 2 else None
+
+        for doc in all_projected:
+            gd = doc.get("game_date")
+            if current_date is not None and gd == current_date:
+                cur_docs.append(doc)
+            elif previous_date is not None and gd == previous_date:
+                fallback_prev_docs.append(doc)
+            elif current_date is None:
+                # No game_date in any doc — treat everything as current
+                # (the old last-write-wins behaviour is preserved here as
+                # a safety net; delta will still be None for those rows).
+                cur_docs.append(doc)
     except Exception as e:
         logger.debug("[mlb_lineup_delta] mlb_projected_lineups unavailable: %s", e)
+
+    # If the canonical `mlb_lineups` didn't provide a previous snapshot,
+    # use the day-N-1 slice of `mlb_projected_lineups` we just isolated.
+    if not prev_docs and fallback_prev_docs:
+        prev_docs = fallback_prev_docs
 
     # Helper: extract `(player_name, slot, expected_pa)` triples from a doc
     def _triples(doc: Mapping[str, Any]) -> List[Tuple[str, int, float]]:
@@ -191,11 +237,25 @@ def extract_deltas_for_player(
           "current_lineup_slot":   int|None,
           "lineup_delta":          float|None,
           "projected_ab_delta":    float|None,
+          "is_new_starter":        bool,
         }
 
     `lineup_delta` is `previous_slot - current_slot` so a player who
     moved from 6th → 2nd has `lineup_delta = +4`.
     `projected_ab_delta` is `current_pa - previous_pa`.
+
+    NEW STARTER CONTRACT (2026-04-30, Option B):
+      When a player appears in the CURRENT lineup but not the PREVIOUS
+      one, they are a direct injury-driven beneficiary (the injured
+      star's slot became theirs). For this case we emit:
+         previous_lineup_slot = None    (still unknown — cannot fake)
+         current_lineup_slot  = <int>   (today's slot)
+         lineup_delta         = None    (can't compute movement)
+         projected_ab_delta   = current_expected_pa  (full PA since
+                                they previously had 0 projected PA)
+         is_new_starter       = True
+      The caller's filter accepts this shape and renders "new starter"
+      copy instead of a +N-slots shift.
     """
     if not player_name:
         return _empty_deltas()
@@ -216,11 +276,24 @@ def extract_deltas_for_player(
     if isinstance(prev_pa, (int, float)) and isinstance(cur_pa, (int, float)):
         projected_ab_delta = round(float(cur_pa) - float(prev_pa), 2)
 
+    # Option B: new-starter signal — player in current slate only.
+    is_new_starter = (
+        isinstance(cur_slot, int)
+        and prev_slot is None
+        and isinstance(cur_pa, (int, float))
+    )
+    if is_new_starter and projected_ab_delta is None:
+        # They had 0 projected PA before (wasn't in any lineup); today
+        # their full projected PA is the delta. Always ≥ 0.5 for slots
+        # 1-9 given `_DEFAULT_PA_BY_SLOT`.
+        projected_ab_delta = round(float(cur_pa), 2)
+
     return {
         "previous_lineup_slot":  prev_slot,
         "current_lineup_slot":   cur_slot,
         "lineup_delta":          lineup_delta,
         "projected_ab_delta":    projected_ab_delta,
+        "is_new_starter":        is_new_starter,
     }
 
 
@@ -230,6 +303,7 @@ def _empty_deltas() -> Dict[str, Optional[float]]:
         "current_lineup_slot":   None,
         "lineup_delta":          None,
         "projected_ab_delta":    None,
+        "is_new_starter":        False,
     }
 
 
