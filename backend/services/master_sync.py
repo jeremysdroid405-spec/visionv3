@@ -24,6 +24,8 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List
+
+from config.version_tags import NBA_LIVE, for_sport
 from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
@@ -684,7 +686,7 @@ async def _enrich_nba_momentum(db) -> dict:
     # ------------------------------------------------------------------
     bulk_by_pair: dict = defaultdict(list)
     cursor = db["nba_prop_scores"].find(
-        {"version_tag": "final-nba-rt"},
+        {"version_tag": NBA_LIVE},
         {
             "_id": 0, "event_id": 1, "bdl_player_id": 1, "stat_type": 1,
             "canonical_key": 1, "player_name": 1,
@@ -757,7 +759,7 @@ async def _enrich_nba_momentum(db) -> dict:
         bulk_ops.append(
             UpdateMany(
                 {
-                    "version_tag": "final-nba-rt",
+                    "version_tag": NBA_LIVE,
                     "canonical_key": {"$in": keys},
                 },
                 {"$set": {"momentum_data": momentum_data}},
@@ -979,7 +981,7 @@ async def _enrich_nba_pace_delta(db) -> dict:
     # ------------------------------------------------------------------
     bulk_by_pair: dict = defaultdict(list)
     cursor = db["nba_prop_scores"].find(
-        {"version_tag": "final-nba-rt"},
+        {"version_tag": NBA_LIVE},
         {
             "_id": 0, "event_id": 1, "bdl_player_id": 1,
             "canonical_key": 1, "player_name": 1,
@@ -1057,7 +1059,7 @@ async def _enrich_nba_pace_delta(db) -> dict:
         bulk_ops.append(
             UpdateMany(
                 {
-                    "version_tag": "final-nba-rt",
+                    "version_tag": NBA_LIVE,
                     "canonical_key": {"$in": keys},
                 },
                 {"$set": {"intel_suite.pace_delta": pd}},
@@ -1236,7 +1238,7 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
     board_picks: list = []
     async for d in db["nba_prop_scores"].find(
         {
-            "version_tag": "final-nba-rt",
+            "version_tag": NBA_LIVE,
             "tier": {"$in": BOARD_TIERS},
             "active": True,
         }
@@ -1346,7 +1348,7 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
                 UpdateMany(
                     {
                         "canonical_key": ck,
-                        "version_tag": "final-nba-rt",
+                        "version_tag": NBA_LIVE,
                     },
                     {
                         "$set": {
@@ -1416,7 +1418,7 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
     # template fingerprint AFTER the run (informational only).
     metrics["fallback_in_db_after"] = await db["nba_prop_scores"].count_documents(
         {
-            "version_tag": "final-nba-rt",
+            "version_tag": NBA_LIVE,
             "tier": {"$in": BOARD_TIERS},
             "$or": [
                 {"vision_intel": None},

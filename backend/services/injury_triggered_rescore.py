@@ -52,13 +52,16 @@ from typing import Any, Dict, List, Optional, Set
 from services.event_bus import BoardEvent, get_event_bus
 from services.scoring import recompute as _recompute_mod
 
+from config.version_tags import LIVE_TAG_BY_SPORT, NBA_LIVE
 from services.config.collection_names import COLL
 
 logger = logging.getLogger(__name__)
 
 
-_VERSION_TAG_BY_SPORT = {"nba": "final-nba-rt", "mlb": "final-mlb-rt"}
-_VERSION_TAG = "final-nba-rt"  # legacy alias kept for callers
+# Single source of truth: `config/version_tags.py`. The two aliases
+# below are kept for call-site readability only.
+_VERSION_TAG_BY_SPORT = dict(LIVE_TAG_BY_SPORT)  # {"nba": "final-nba-rt", "mlb": "final-mlb-rt"}
+_VERSION_TAG = NBA_LIVE  # legacy alias kept for callers
 _DEDUP_WINDOW_SEC = 10.0
 
 

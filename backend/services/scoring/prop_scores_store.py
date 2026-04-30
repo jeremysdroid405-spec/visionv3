@@ -543,13 +543,14 @@ async def write_prop_scores(db, scored_props: List[Dict[str, Any]]) -> Dict[str,
     Legacy single-version writer for MLB `enrich_and_score`.
     Thin wrapper around `write_versioned_scores`.
 
-    Step 6 cleanup: writes to the canonical `final-mlb` tag so the active
-    board isn't populated with a separate `live` tag that evades the Step 6
-    observation window. See /app/memory/ROADMAP.md §1b.
+    Step 6 cleanup: writes to the canonical `MLB_BASELINE` tag so the
+    active board isn't populated with a separate `live` tag that evades
+    the Step 6 observation window. See /app/memory/ROADMAP.md §1b.
     """
+    from config.version_tags import MLB_BASELINE
     result = await write_versioned_scores(
         db=db, sport="mlb", score_docs=scored_props,
-        version_tag="final-mlb", dry_run=False,
+        version_tag=MLB_BASELINE, dry_run=False,
     )
     return {
         "inserted": result["written"],

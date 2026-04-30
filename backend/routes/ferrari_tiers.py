@@ -14,6 +14,7 @@ import logging
 import os
 
 from services.config.collection_names import COLL
+from config.version_tags import MLB_LIVE, NBA_LIVE
 from services.referee_scraper_service import get_referee_service
 from services.mlb_matchup_math import get_mlb_matchup_analysis
 from services.market_gap import annotate_market_gap
@@ -1817,7 +1818,7 @@ async def _enrich_under_picks_with_gemini(
     # (P1.1, 2026-04-21) — a rescore alone no longer invalidates the cache.
     ckeys = [p.get("canonical_key") for p in under_picks if p.get("canonical_key")]
     cache_docs = await _db[COLL("prop_scores", "nba")].find(
-        {"canonical_key": {"$in": ckeys}, "version_tag": "final-nba-rt",
+        {"canonical_key": {"$in": ckeys}, "version_tag": NBA_LIVE,
          "vision_intel": {"$ne": None}},
         {"_id": 0, "canonical_key": 1, "vision_intel": 1,
          "vision_intel_generated_at": 1, "vision_intel_content_hash": 1,
@@ -1875,7 +1876,7 @@ async def _enrich_under_picks_with_gemini(
             src["vision_intel_content_hash"] = content_hash
             persist_ops.append(
                 _db[COLL("prop_scores", "nba")].update_one(
-                    {"canonical_key": ck, "version_tag": "final-nba-rt"},
+                    {"canonical_key": ck, "version_tag": NBA_LIVE},
                     {"$set": {
                         "vision_intel": vi,
                         "vision_intel_generated_at": now,
@@ -4166,7 +4167,7 @@ async def get_mlb_hrr_picks(
     collection = _db["mlb_prop_scores"]
 
     query = {
-        "version_tag": "final-mlb-rt",
+        "version_tag": MLB_LIVE,
         "tier": "war_zone",
         "stat_type": "Hits+Runs+RBIs",
         "edge_pct": {"$gte": min_edge},

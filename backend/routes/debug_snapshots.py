@@ -39,6 +39,8 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query, Response
 
+from config.version_tags import LIVE_TAG_BY_SPORT
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/debug/snapshots", tags=["Debug Snapshots"])
@@ -47,7 +49,7 @@ _db = None  # Injected at startup
 
 # Reuse the snapshot config from the script for parity.
 SH_REF_ODDS_CEILING = -240
-DEFAULT_VERSION_TAG = {"nba": "final-nba-rt", "mlb": "final-mlb-rt"}
+DEFAULT_VERSION_TAG = dict(LIVE_TAG_BY_SPORT)
 LOCK_TTL_SECONDS = 60   # tight TTL — analysis reads are quick
 MAX_TOP = 100
 
@@ -284,7 +286,7 @@ async def shadow_board_compare(
     # Pull score docs once for metric joining.
     score_docs: Dict[str, Dict[str, Any]] = {}
     cursor = _db[f"{sport}_prop_scores"].find(
-        {"version_tag": "final-nba-rt"},
+        {"version_tag": DEFAULT_VERSION_TAG[sport]},
         {"_id": 0, "canonical_key": 1, "player_name": 1, "stat_type": 1,
          "line": 1, "recommendation": 1, "tier": 1, "p_true_active": 1,
          "edge_pct": 1, "tp": 1, "vision_score": 1, "vision_score_v2": 1,

@@ -1,6 +1,35 @@
 # Changelog
 
 
+## 2026-04-30 — Version Tag Single Source of Truth (P0 #2)
+**Problem**: 22 hardcoded `final-<sport>-<suffix>` string literals
+scattered across `services/` + `routes/`. Every rename silently
+drifted at least one caller. NBA realtime was dead for days because
+of exactly this pattern.
+
+**Fix**:
+- New module `config/version_tags.py` exports `MLB_LIVE`, `MLB_SHADOW`,
+  `MLB_BASELINE`, `NBA_LIVE`, `NBA_SHADOW`, `NBA_BASELINE` plus
+  `for_sport()`, `shadow_for()`, `is_live_tag()`, `sport_of()` helpers.
+- Lint test `tests/test_version_tag_literals.py` scans all of
+  `services/` + `routes/` via AST and FAILS the suite if any file
+  reintroduces a raw `final-<sport>...` literal. Only
+  `config/version_tags.py` itself is allowlisted.
+- 19 literals replaced with named imports across 6 files:
+  `master_sync.py`, `injury_triggered_rescore.py`,
+  `board/adapters/{mlb,nba}.py`, `scoring/prop_scores_store.py`,
+  `routes/debug_snapshots.py`, `routes/ferrari_tiers.py`.
+- Full doc at `/app/memory/SYSTEMS_version_tags.md`.
+
+**Invariants**:
+- No hardcoded `"final-<sport>..."` string in `services/` or `routes/`.
+- `config/version_tags.py` stays allowlist of one.
+- `for_sport("unknown")` raises `ValueError` (no silent fallback).
+
+**Verified**: 7/7 tests pass (2 new + 5 observability). Backend startup
+clean. Live MLB + NBA endpoints return HTTP 200 post-restart.
+
+
 ## 2026-04-30 — Structured Observability (P0 #1)
 **Problem**: 44 `except [Exception]: pass` handlers across services + routes
 were silently swallowing exceptions. Primary cause of regression-churn —
