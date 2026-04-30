@@ -35,12 +35,22 @@ from services.event_bus import BoardEvent, get_event_bus
 logger = logging.getLogger(__name__)
 
 
-# Guardrail: if the delta is ridiculously large (new slate or full
-# wipe-reinsert of a stale collection) we skip emission — the
-# legacy full-rebuild coordinator will pick it up. This prevents
-# the real-time path from duplicating the coordinator's work during
-# boot / day-rollover.
-_MAX_DELTA_FOR_REALTIME = 500
+# 2026-04-29 — guardrail raised from 500 → 5000.
+# The original 500 cap was put in place during the 48h Step 6 A/B
+# observation window (now retired) to keep the realtime path off the
+# event bus during full slate rollovers. With dual-write live
+# (canonical + shadow) and master_sync's hourly rebuild as the
+# safety net, the realtime path is the PRIMARY surface — slate
+# rollovers (typically 800–1500 new keys for NBA, 1500–3000 for MLB)
+# MUST score immediately so newly posted props reach the live tier
+# system within seconds, not at the next hourly rebuild.
+#
+# Sanity check: 5,000 keys × ~30ms scoring = ~150s wall time, still
+# inside the engine's per-event budget. Anything genuinely larger
+# (e.g., > one full slate's worth) is almost certainly a corruption
+# event and should fall through to the rebuild — hence the cap is
+# raised, not removed.
+_MAX_DELTA_FOR_REALTIME = 5000
 
 
 async def capture_live_props_keys(

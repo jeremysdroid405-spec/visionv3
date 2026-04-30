@@ -42,19 +42,40 @@ class NBABoardAdapter(SportBoardAdapter):
         `NBAScoringAdapter.build_context()` exactly. Pure string I/O,
         no DB, no model inference. Used by the universal engine to
         pre-filter scoped-ingest batches in O(N) without running
-        `build_context` across the entire live pool."""
+        `build_context` across the entire live pool.
+
+        Prefers the precomputed `canonical_key` already persisted on
+        the live-props doc (matches MLB's behaviour). Falls back to
+        field-by-field reconstruction only when the field is absent —
+        which protects the universal delta path from silently
+        zero-keying when adapter ↔ ingest field-name conventions
+        drift (the cause of the 2026-04-29 NBA realtime miss)."""
+        ck = prop.get("canonical_key")
+        if ck:
+            return ck
         player_name = prop.get("player_name")
         line = prop.get("line")
         if player_name is None or line is None:
             return None
-        market = prop.get("market", "") or ""
-        stat_type = _NBA_STAT_TYPE_MAP.get(
-            market, prop.get("stat_type_extracted") or market
+        # Field-name resilience: accept either historical aliases or
+        # the canonical names persisted by `universal_odds_sync`.
+        market = (
+            prop.get("market")
+            or prop.get("market_key")
+            or ""
+        )
+        stat_type = (
+            prop.get("stat_type")
+            or _NBA_STAT_TYPE_MAP.get(market, prop.get("stat_type_extracted") or market)
         )
         if not stat_type:
             return None
-        direction = (prop.get("direction") or "OVER").upper()
-        side = "OVER" if "OVER" in direction else "UNDER"
+        direction = (
+            prop.get("direction")
+            or prop.get("recommendation")
+            or "OVER"
+        )
+        side = "OVER" if "OVER" in direction.upper() else "UNDER"
         event_id = prop.get("event_id", "?")
         try:
             return f"nba|{event_id}|{player_name}|{stat_type}|{float(line)}|{side}"
