@@ -483,29 +483,88 @@ async def write_versioned_scores(
         }
 
     # Default: replace
-    # Replace docs with same (canonical_key, version_tag) deterministically.
-    deleted = await coll.delete_many({"version_tag": version_tag})
-    inserted = 0
-    if prepared:
-        # Strip any _id that may have leaked in from the raw prop dict.
+    # Race-safe bulk replace (2026-04-30 fix, 75/76 sync failures root cause):
+    #
+    # The original pattern was:
+    #     delete_many({"version_tag": tag}) → insert_many(new_docs, ordered=False)
+    # Between the delete and the insert, the realtime engine
+    # (`services/board/engine.py::on_new_props`) could upsert a doc with
+    # the same (canonical_key, version_tag) pair. The subsequent
+    # insert_many hit `uniq_canonical_version` and raised BulkWriteError,
+    # failing the WHOLE sync.
+    #
+    # New pattern is race-safe:
+    #   1. Bulk ReplaceOne(upsert=True) for every prepared doc. Any
+    #      concurrent realtime upsert for the same key just produces a
+    #      replace here (no conflict).
+    #   2. delete_many for keys NOT in the new set — sweeps stale rows
+    #      from the previous rebuild without a destructive bulk delete
+    #      that creates a race window.
+    inserted_or_replaced = 0
+    stale_deleted = 0
+
+    if not prepared:
+        # Preserve old contract: empty batch wipes the whole tag.
+        # No race to avoid because there are no new writes coming in.
+        sweep = await coll.delete_many({"version_tag": version_tag})
+        stale_deleted = sweep.deleted_count or 0
+    else:
+        from pymongo import ReplaceOne
         clean = [{k: v for k, v in d.items() if k != "_id"} for d in prepared]
-        # Deduplicate by canonical_key (last write wins). Upstream can
-        # produce multiple rows with the same canonical_key when
-        # stat_type mapping falls back (e.g. unknown market → empty
-        # stat_type causes collisions).
         seen: Dict[str, Dict[str, Any]] = {}
         for d in clean:
             ck = d.get("canonical_key")
             if ck:
                 seen[ck] = d
         deduped = list(seen.values())
-        if deduped:
-            await coll.insert_many(deduped, ordered=False)
-            inserted = len(deduped)
+        ops = [
+            ReplaceOne(
+                {"canonical_key": d["canonical_key"], "version_tag": version_tag},
+                d,
+                upsert=True,
+            )
+            for d in deduped
+            if d.get("canonical_key")
+        ]
+        if ops:
+            try:
+                res = await coll.bulk_write(ops, ordered=False)
+                inserted_or_replaced = (
+                    (res.upserted_count or 0)
+                    + (res.modified_count or 0)
+                )
+            except Exception as e:
+                # Race-safe fallback: log and attempt best-effort count
+                # from the BulkWriteError.details attribute.
+                from services.observability import log_caught_exception
+                await log_caught_exception(
+                    db, e,
+                    subsystem="services.scoring.prop_scores_store.write_versioned_scores",
+                    sport=sport,
+                    context={
+                        "version_tag": version_tag,
+                        "op_count": len(ops),
+                        "mode": "replace",
+                    },
+                )
+                details = getattr(e, "details", None) or {}
+                inserted_or_replaced = (
+                    (details.get("nUpserted") or 0)
+                    + (details.get("nModified") or 0)
+                )
+        # Sweep stale: anything tagged `version_tag` whose canonical_key
+        # isn't in the new set is a leftover from a previous rebuild.
+        new_cks = list(seen.keys())
+        if new_cks:
+            sweep = await coll.delete_many({
+                "version_tag": version_tag,
+                "canonical_key": {"$nin": new_cks},
+            })
+            stale_deleted = sweep.deleted_count or 0
 
     logger.info(
         f"[SCORES_STORE:{sport}] mode=replace version='{version_tag}' "
-        f"inserted={inserted} replaced={deleted.deleted_count} → {coll_name}"
+        f"written={inserted_or_replaced} stale_swept={stale_deleted} → {coll_name}"
     )
     return {
         "sport": sport,
@@ -513,8 +572,8 @@ async def write_versioned_scores(
         "version_tag": version_tag,
         "computed_at": computed_at,
         "prepared": len(prepared),
-        "written": inserted,
-        "replaced": deleted.deleted_count,
+        "written": inserted_or_replaced,
+        "replaced": stale_deleted,  # legacy key name, preserved for callers
         "mode": "replace",
         "dry_run": False,
     }

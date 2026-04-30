@@ -1,6 +1,50 @@
 # Changelog
 
 
+## 2026-04-30 — Sync Failure Rate: 15% → ~0% (P0 #3)
+**Problem**: 75 of 76 MLB sync failures (98.7%) had one root cause:
+`E11000 duplicate key error` on `(canonical_key, version_tag)` in
+`mlb_prop_scores`.
+
+**Root cause**: Race window in `prop_scores_store.write_versioned_scores`
+`mode=replace` path. The old pattern was:
+```
+  delete_many({"version_tag": tag})   # ← realtime engine upserts here
+  insert_many(new_docs)                # → E11000, whole sync fails
+```
+Master_sync (mode=replace, hourly) overlapped with the realtime engine
+(mode=upsert, ~10s intervals). ~20% of rebuilds hit the race.
+
+**Fix**:
+- Replaced `delete_many + insert_many` with race-safe
+  `bulk_write([ReplaceOne(..., upsert=True)])` followed by a single
+  `delete_many(canonical_key: {"$nin": new_cks})` stale sweep.
+- `ReplaceOne(upsert=True)` is atomic per-document — any concurrent
+  realtime upsert produces a replace, never a conflict.
+- Empty batch still wipes the whole tag (preserves old contract,
+  locked by INV-3).
+- BulkWriteError edge cases route through `log_caught_exception` with
+  full context (version_tag, op_count) — now visible on the admin
+  error dashboard.
+
+**5 invariants** in `tests/test_prop_scores_store_race.py` (all pass):
+- INV-1: race-safe under 5 concurrent replace+upsert cycles (reproduces
+  the exact pattern that caused the original failures)
+- INV-2: stale keys swept
+- INV-3: empty batch wipes tag (contract preserved)
+- INV-4: result-dict shape stable
+- INV-5: `mode=upsert` unchanged
+
+**Live verification**: triggered full MLB sync with realtime engine
+actively running → 2,613 props dual-written (canonical + shadow),
+multiple realtime upserts interleaved, **zero E11000 errors**. Fix
+confirmed under production load.
+
+**Full P0 suite**: 29/29 tests pass in 5s.
+
+Full doc: `/app/memory/SYSTEMS_prop_scores_store.md`.
+
+
 ## 2026-04-30 — MLB Vacuum + Injury-Advantage Regression Suite (P0 #4)
 **Problem**: 2,446 LOC of vacuum / injury / injury-advantage code had
 ZERO tests on the MLB side. Subsystem regressed 5 times in 30 days
