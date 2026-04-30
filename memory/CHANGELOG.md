@@ -1,6 +1,32 @@
 # Changelog
 
 
+## 2026-04-30 — MLB Vacuum + Injury-Advantage Regression Suite (P0 #4)
+**Problem**: 2,446 LOC of vacuum / injury / injury-advantage code had
+ZERO tests on the MLB side. Subsystem regressed 5 times in 30 days
+(late-scratch alerts silently stopped; `live-alerts` returned
+placeholder rows; routing silently swapped to wrong engine; etc.).
+Every fix shipped without a test. Every bug came back.
+
+**Fix**:
+- New file `tests/test_mlb_vacuum_injury.py` — 13 tests covering:
+  - Pure `_estimate_benefit` function (3 tests)
+  - Universal engine `compute_injury_advantages` contracts (4 tests)
+    - INV-1: empty DB → `[]`, never raises
+    - INV-4: same-team gate + no self-boost
+    - INV-5: one advantage per beneficiary (dedup)
+  - HTTP endpoints `/api/v3/mlb/vacuum/{live-alerts,active,clear,updates}`
+    (5 tests, including cache-control + 404-vs-500)
+  - `_get_recency_window` fallback behavior
+- Isolated `seeded_db` fixture with per-test UUID tag → clean teardown,
+  no production data disturbance.
+- Full invariants doc at `/app/memory/SYSTEMS_mlb_vacuum_injury.md`
+  with named INV-1 through INV-5 referenced in every failure message.
+
+**Verified**: 13/13 new tests pass. Full P0 suite (observability + version
+tags + canonical-key parity + vacuum/injury): **24/24 pass in 3.1s**.
+
+
 ## 2026-04-30 — Canonical Key Adapter Parity Test (P0 #7)
 **Problem**: On 2026-04-29 the NBA adapter was discovered to have been
 silently returning `None` for every `canonical_key(doc)` call — the
