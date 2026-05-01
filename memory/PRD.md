@@ -1,4 +1,9 @@
 # PROD STATUS (2026-05-01)
+- **Hit-Rate Window Trio on Pick Cards** — LIVE (2026-05-01).
+  - Card now displays **L20 / L10 / L5** for every pick. L20 (gate value) is the headline; L10 (graph parity) and L5 (recent-form sub-gate) stacked beneath. Resolves user complaint "Mobley shows 70% in SH but floor is 80?" — gate evaluates L20=80 (passes), display now reflects that with L10=70 + L5=80 visible below.
+  - Backend: `services/dashboard_card_contract.py` (trio fields), `routes/ferrari_tiers.py` (score-doc merge).
+  - Frontend: `UniversalPlayerCard.jsx` (trio render).
+  - Tests: `tests/test_card_contract_hr_trio.py` (6/6 green).
 - **Hit-Rate Standardization (NBA↔MLB parity, L5 sub-gate, SH 80)** — LIVE & PRODUCTION-VALIDATED (2026-05-01).
   - NBA hit-rate uses MLB-parity strict-denominator window (20 if ≥20 logs, 10 if 10–19, none if <10). Fixes the "Max Strus 94.1%/17g" variable-denom bug.
   - Cross-season blended logs (rolling, no season filter) eliminate season-start dead zones.

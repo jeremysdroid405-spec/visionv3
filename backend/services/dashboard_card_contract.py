@@ -152,6 +152,19 @@ def to_card_contract(pick: Dict[str, Any]) -> Dict[str, Any]:
         # NBA cards already populate `h10_rate` upstream of this point.
         hit_rate = _f(pick.get("h10_rate")) or _f(pick.get("hit_rate"))
 
+    # ── 6b. hit_rate WINDOW TRIO (2026-05-01) ────────────────────────
+    # Card displays L20 (gate input) / L10 (graph parity) / L5 (recent
+    # form sub-gate input) so the operator can see EVERY window the
+    # gate evaluated. Side-awareness:
+    #   - L20: use hit_rate_under for UNDER, hit_rate_over for OVER
+    #     (these fields ARE explicitly OVER/UNDER on the score doc)
+    #   - L10 / L5: hit_rate_l5 / hit_rate_l10 are ALREADY side-aware
+    #     on the score doc — adapters compute them with the prop's
+    #     direction. Pass through verbatim, no complement.
+    hit_rate_l20 = hr_under if side == "UNDER" else hr_over
+    hit_rate_l10 = _f(pick.get("hit_rate_l10"))
+    hit_rate_l5  = _f(pick.get("hit_rate_l5"))
+
     # ── 7. avg — historical mean (any reasonable source) ─────────────
     avg = (
         _f(pick.get("season_avg"))
@@ -173,6 +186,13 @@ def to_card_contract(pick: Dict[str, Any]) -> Dict[str, Any]:
         "big_pick_text":  big_pick_text,
         "projection":     projection,
         "hit_rate":       hit_rate,
+        # 2026-05-01 — full hit-rate window trio (gate L20, graph L10,
+        # recent-form L5). All three are side-correct. Frontend renders
+        # them stacked under the "Hit Rate" cell so the gate decision
+        # is auditable straight from the card.
+        "hit_rate_l20":   hit_rate_l20,
+        "hit_rate_l10":   hit_rate_l10,
+        "hit_rate_l5":    hit_rate_l5,
         "avg":            avg,
         "short_sentence": short_sentence,
     }

@@ -874,9 +874,50 @@ const UniversalPlayerCard = memo(({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Hit Rate</div>
-                  <div className={`text-sm md:text-[15px] font-bold font-mono tabular-nums ${getHitRateColor(hitRate || 0)}`}>
-                    {hitRate != null ? `${Math.round(hitRate)}%` : '—'}
-                  </div>
+                  {(() => {
+                    // 2026-05-01 — Show full window trio (L20 / L10 / L5)
+                    // from the dashboard card contract. L20 is the gate
+                    // input and the headline; L10 + L5 are stacked beneath
+                    // for full transparency. Fall back to legacy single
+                    // value when trio fields are absent.
+                    const l20 = player.hit_rate_l20 ?? null;
+                    const l10 = player.hit_rate_l10 ?? null;
+                    const l5  = player.hit_rate_l5  ?? null;
+                    const headline = l20 ?? hitRate;
+                    const showTrio = l20 != null || l10 != null || l5 != null;
+                    return (
+                      <>
+                        <div
+                          className={`text-sm md:text-[15px] font-bold font-mono tabular-nums ${getHitRateColor(headline || 0)}`}
+                          data-testid={`player-hit-rate-l20-${playerSlug}`}
+                          title={showTrio ? "L20 hit rate — what the gate evaluates" : undefined}
+                        >
+                          {headline != null ? `${Math.round(headline)}%` : '—'}
+                          {showTrio && (
+                            <span className="ml-1 text-[8px] font-mono uppercase tracking-[0.1em] text-zinc-500 align-middle">L20</span>
+                          )}
+                        </div>
+                        {showTrio && (
+                          <div className="flex gap-2 mt-0.5 text-[9px] font-mono tabular-nums">
+                            <span
+                              className={`${l10 != null ? getHitRateColor(l10) : 'text-zinc-500'}`}
+                              data-testid={`player-hit-rate-l10-${playerSlug}`}
+                              title="L10 hit rate — graph parity window"
+                            >
+                              L10 {l10 != null ? `${Math.round(l10)}%` : '—'}
+                            </span>
+                            <span
+                              className={`${l5 != null ? getHitRateColor(l5) : 'text-zinc-500'}`}
+                              data-testid={`player-hit-rate-l5-${playerSlug}`}
+                              title="L5 hit rate — recent-form sub-gate input"
+                            >
+                              L5 {l5 != null ? `${Math.round(l5)}%` : '—'}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Avg</div>

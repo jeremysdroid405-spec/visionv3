@@ -1240,6 +1240,16 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         prop["model_hit_rate_active"] = round(float(hu), 1)
     elif ho is not None:
         prop["model_hit_rate_active"] = round(float(ho), 1)
+    # 2026-05-01 — Universal hit-rate window trio. The card contract
+    # surfaces L20 (gate input), L10 (graph parity), L5 (recent-form
+    # sub-gate input) so the operator can audit the gate decision
+    # straight from the card. These fields ARE side-aware on the
+    # score doc — the adapter computes them with the prop's
+    # direction. Pure read; never clobbers the canonical chart fields.
+    for _key in ("hit_rate_l5", "hit_rate_l10", "hit_rate_sample_size"):
+        v = score.get(_key)
+        if v is not None:
+            prop[_key] = v
     # NOTE: prop["h10_rate"] is intentionally NOT written here. It is the
     # canonical L10 hit rate computed by _normalize_hit_rates_from_game_logs
     # (line ~239) from the first 10 game_logs. Any downstream write here
