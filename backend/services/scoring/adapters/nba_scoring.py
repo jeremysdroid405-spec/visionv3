@@ -1982,6 +1982,16 @@ class NBAScoringAdapter(ScoringAdapter):
         )
         pre_intercept_projection = projection
         projection = apply_projection_intercept(stat_type, projection)
+        # 2026-05-01 — NBA box-score stats are non-negative.
+        # XGBoost can output slightly-negative values for low-volume
+        # players (e.g. 3PM = -0.029), and the per-stat intercept
+        # calibration can subtract enough to push a small positive
+        # projection below zero (e.g. PTS=0.05 - 0.094 = -0.044).
+        # Clamp at zero AFTER intercept so neither the final projection
+        # nor the downstream Gaussian/ECDF p_over can see a physically
+        # impossible value.
+        if projection < 0:
+            projection = 0.0
         calibration_meta: Dict[str, Any] = {}
         if calibration_flag_enabled() and intercept_for(stat_type):
             calibration_meta = {

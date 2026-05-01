@@ -2136,3 +2136,68 @@ mutation_test_v3.sh: 7/7 mutations DETECTED, post-restore regression: 70/70 pass
 HTTP GET `/api/v3/ferrari/{safe-haven|front-lines|war-zone}?sport=mlb`
 returns picks where each one stamps `projection_model_version=MLB_HF_v3.0_bayes`,
 and zero live picks exceed 4× the player's L20 mean.
+
+---
+
+## 2026-05-01 — NBA VK2 Production-Grade Test Stack COMPLETE
+
+Mirror of the MLB v3.0_bayes battery applied to the NBA model
+(`NBA_VK_v2_5yr_weighted_pruned52`, 5 stats, 52 features each).
+
+### Test files (NBA)
+- `tests/test_nba_vk2_validation.py`           (16 tests) — artifact schema, R²_test floors, RMSE_test ceilings, version stamping, σ presence
+- `tests/test_nba_vk2_production_integration.py` (16 tests) — VK2 schema for ALL 5 stats, determinism, insufficient_history, unknown_stat, None bdl_id, per-stat coverage, predicted ≥ 0 (incl. deterministic stub-based clamp test), model_version stamp, p_over range
+- `tests/test_nba_vk2_calibration.py`          ( 8 tests) — μ/σ distributions across 100-player sample, 4× L20 canary, σ matches RMSE artifact, PRA additivity correlation
+- `tests/test_nba_vk2_performance.py`          ( 3 tests) — cold/warm latency, vk2 load_models budget
+- `tests/test_nba_vk2_live_api.py`             ( 4 tests) — `/api/v3/ferrari/{tier}?sport=nba` returns picks with vk2_projection/vk2_sigma/p_true_vk2; live 4× canary
+- `scripts/mutation_test_nba_vk2.sh`           ( 7 mutations) — bash harness with auto-restore on trap exit
+
+### Final run
+```
+NBA only:        46 passed, 0 skipped, 0 failed in 7.93s
+NBA mutation:    7/7 mutations DETECTED, post-restore: 39/39 regressions pass
+MLB+NBA total:  130 passed, 2 skipped, 0 failed in 52.98s
+```
+
+### NBA mutations injected & detected
+| #  | Mutation                                       | Detected by                                  |
+|----|------------------------------------------------|----------------------------------------------|
+| N1 | Strip VK2 version stamp                        | test_nba_vk2_live_metrics_consistent          |
+| N2 | Force projection=99 constant                   | test_prod_nba_cal_02_no_blowup_in_sample      |
+| N3 | Disable post-intercept negative clamp          | test_prod_nba_int_07_negative_clamp_deterministic (stub-based, deterministic) |
+| N4 | Break model loader (skip pkl loads)            | test_nba_vk2_live_models_loaded               |
+| N5 | Feature builder returns None                   | test_prod_nba_int_06_per_stat_coverage         |
+| N6 | Force sigma=0 for all stats                    | test_prod_nba_cal_03_sigma_matches_rmse        |
+| N7 | Corrupt PTS predictions w/ random multiplier   | test_prod_nba_cal_04_pra_additive_correlation  |
+
+### Production budgets verified (NBA)
+- Cold VK2 predict (history seeded): ≤ 3000 ms (actual: ~2 ms)
+- **Warm VK2 predict: median 1.0 ms, p95 1.2 ms** (budget 100 ms)
+- vk2 load_models (5 artifacts): **0.02 s** (budget 5 s)
+
+### Distribution medians (active contributor sample, n=70-74)
+| Stat | Median | p95   | Band         |
+|------|-------:|------:|-------------:|
+| PTS  | 10.65  | 22.88 | [8.0, 22.0]  |
+| REB  |  3.94  |  9.19 | [2.5,  8.5]  |
+| AST  |  1.85  |  6.14 | [1.5,  6.5]  |
+| 3PM  |  1.20  |  2.36 | [0.6,  2.8]  |
+| PRA  | 17.98  | 32.87 | [15.0,38.0]  |
+| PRA vs PTS+REB+AST corr | **0.991** | (>0.85 floor) |
+
+### Real production bug surfaced & fixed
+NBA VK2 was returning **negative projections** for low-volume stats
+(e.g. Oscar Tshiebwe 3PM = -0.029). NBA box-score stats are
+non-negative — a negative projection breaks p_over math downstream.
+Added `if projection < 0: projection = 0.0` clamp **after** the
+per-stat intercept calibration in
+`services/scoring/adapters/nba_scoring.py::_predict_vk2_prob_over`,
+so neither the stand-alone XGBoost negative output nor a small
+positive value pushed below zero by the (-0.094 PTS / -0.103 PRA)
+intercept can surface negative.
+
+### Live API verified end-to-end (NBA)
+HTTP GET `/api/v3/ferrari/{safe-haven|front-lines|war-zone}?sport=nba`
+returns picks where every `vk2_projection` is ≥ 0, every `vk2_sigma`
+> 0, every `p_true_vk2` ∈ [0,1], and zero live picks exceed 4× the
+player's L20 mean for that stat.
