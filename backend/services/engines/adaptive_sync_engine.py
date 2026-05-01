@@ -119,6 +119,20 @@ class AdaptiveSyncEngine:
     3. Track and display last_updated timestamps
     4. Detect and alert on stale intel
     """
+
+    # ── Watchdog tunables (class-level so tests can override) ────────
+    _WATCHDOG_INTERVAL_SECONDS: int = 30
+    # Hard ceiling on staleness — even if `next_poll_in_seconds` is
+    # short (e.g. STANDBY=300s), don't restart more aggressively than
+    # every 10 min. Avoids restart storms during oddsAPI outages
+    # where polls legitimately take longer than a tick.
+    _WATCHDOG_STALE_FLOOR_SECONDS: int = 600
+    _WATCHDOG_MAX_RESTARTS_IN_WINDOW: int = 5
+    _WATCHDOG_RESTART_WINDOW_SECONDS: int = 1800  # 30 min
+    # Don't tear down a brand-new engine while the very first
+    # heartbeat is still being written (BDL game-log refresh on
+    # cold start can take several minutes).
+    _WATCHDOG_WARMUP_SECONDS: int = 600
     
     def __init__(self, db: AsyncIOMotorDatabase, odds_api_key: str):
         self.db = db
@@ -132,6 +146,12 @@ class AdaptiveSyncEngine:
         # Background worker state
         self.is_running = False
         self.main_task: Optional[asyncio.Task] = None
+        # Watchdog (2026-04-30): a separate task that detects a frozen
+        # poll loop and forcibly restarts it. Without this, a silent
+        # `asyncio.sleep` task death produces unbounded dead pipeline.
+        self._watchdog_task: Optional[asyncio.Task] = None
+        self._watchdog_restart_count: int = 0
+        self._watchdog_first_restart_at: Optional[datetime] = None
         
         # Collections
         self.cached_board_collection = COLL("board_cache", "nba")
@@ -1330,6 +1350,177 @@ class AdaptiveSyncEngine:
         callers don't error; it is a no-op."""
         return None
     
+    async def _watchdog_loop(self) -> None:
+        """Watchdog: detects a frozen poll loop and restarts it.
+
+        On 2026-04-30 a silent asyncio task death during
+        `asyncio.sleep(14400)` produced 17h of dead pipeline. The
+        heartbeat doc + 5-min STANDBY made future freezes detectable
+        within ~15 min, but only an external monitor would notice.
+        This watchdog closes the loop:
+
+          * Every 30s, read `adaptive_sync_heartbeat.last_heartbeat_at`.
+          * If it's older than `max(3 × expected_interval, 600s)`,
+            consider the poll task DEAD.
+          * Cancel `self.main_task`. Spawn a fresh `_adaptive_poll_loop`.
+          * Track restart count; if we restart > 5 times within 30
+            minutes, emit a HIGH-SEVERITY observability event
+            (engine is restarting in a tight loop — code bug or
+            persistent upstream failure, not a transient hiccup).
+
+        Watchdog itself NEVER dies on exception — every iteration is
+        wrapped in try/except. On failure it logs and continues; the
+        only way to stop it is `stop()` calling `cancel()`.
+
+        Constants are class attributes (`_WATCHDOG_*`) so tests can
+        override them without monkey-patching the function locals.
+        """
+        WATCHDOG_INTERVAL_SECONDS = self._WATCHDOG_INTERVAL_SECONDS
+        STALE_FLOOR_SECONDS = self._WATCHDOG_STALE_FLOOR_SECONDS
+        MAX_RESTARTS_IN_WINDOW = self._WATCHDOG_MAX_RESTARTS_IN_WINDOW
+        RESTART_WINDOW_SECONDS = self._WATCHDOG_RESTART_WINDOW_SECONDS
+        WARMUP_SECONDS = self._WATCHDOG_WARMUP_SECONDS
+
+        engine_started_at = datetime.now(timezone.utc)
+        logger.info(
+            "[WATCHDOG] starting (interval=%ds, stale_floor=%ds, "
+            "max_restarts=%d/%dmin, warmup=%ds)",
+            WATCHDOG_INTERVAL_SECONDS, STALE_FLOOR_SECONDS,
+            MAX_RESTARTS_IN_WINDOW, RESTART_WINDOW_SECONDS // 60,
+            WARMUP_SECONDS,
+        )
+
+        while self.is_running:
+            try:
+                await asyncio.sleep(WATCHDOG_INTERVAL_SECONDS)
+                if not self.is_running:
+                    break
+
+                now = datetime.now(timezone.utc)
+                # Skip checks during warmup window.
+                if (now - engine_started_at).total_seconds() < WARMUP_SECONDS:
+                    continue
+
+                hb = await self.db["adaptive_sync_heartbeat"].find_one(
+                    {"_id": "adaptive_sync"}
+                )
+                if hb is None:
+                    # No heartbeat ever written. After warmup, that
+                    # itself is suspicious — the poll loop should
+                    # have written one by now.
+                    logger.warning(
+                        "[WATCHDOG] no heartbeat doc found post-warmup. "
+                        "Poll loop may be stuck before first heartbeat."
+                    )
+                    await self._restart_poll_loop("no_heartbeat_post_warmup")
+                    continue
+
+                last = hb.get("last_heartbeat_at")
+                if not isinstance(last, datetime):
+                    continue
+                if last.tzinfo is None:
+                    last = last.replace(tzinfo=timezone.utc)
+                age_s = (now - last).total_seconds()
+
+                expected_interval = int(hb.get("next_poll_in_seconds") or 300)
+                stale_threshold = max(3 * expected_interval, STALE_FLOOR_SECONDS)
+
+                if age_s > stale_threshold:
+                    # Restart-loop guard: count restarts in window.
+                    if self._watchdog_first_restart_at is None or (
+                        now - self._watchdog_first_restart_at
+                    ).total_seconds() > RESTART_WINDOW_SECONDS:
+                        # Reset the counter (window expired or first restart).
+                        self._watchdog_first_restart_at = now
+                        self._watchdog_restart_count = 0
+
+                    self._watchdog_restart_count += 1
+
+                    if self._watchdog_restart_count > MAX_RESTARTS_IN_WINDOW:
+                        logger.critical(
+                            "[WATCHDOG] RESTART_STORM_DETECTED — "
+                            "%d restarts in %dmin, NOT restarting again. "
+                            "Engine likely has a persistent code bug or "
+                            "upstream outage; manual investigation required.",
+                            self._watchdog_restart_count,
+                            RESTART_WINDOW_SECONDS // 60,
+                        )
+                        # Record once via the structured logger so the
+                        # admin /api/v3/admin/errors/summary endpoint
+                        # surfaces it.
+                        try:
+                            log_silent_failure(
+                                "adaptive_sync_engine.watchdog.restart_storm",
+                                RuntimeError(
+                                    f"watchdog restart storm: "
+                                    f"{self._watchdog_restart_count} "
+                                    f"restarts in "
+                                    f"{RESTART_WINDOW_SECONDS // 60}min"
+                                ),
+                            )
+                        except Exception:  # noqa: BLE001 — observability
+                            pass
+                        # Sleep through the rest of the window to avoid
+                        # log-spamming this critical line.
+                        await asyncio.sleep(RESTART_WINDOW_SECONDS)
+                        # Reset for next window.
+                        self._watchdog_restart_count = 0
+                        self._watchdog_first_restart_at = None
+                        continue
+
+                    logger.critical(
+                        "[WATCHDOG] POLL_LOOP_FROZEN — heartbeat is %.0fs "
+                        "old (threshold=%ds, expected_interval=%ds). "
+                        "Restart #%d in current window.",
+                        age_s, stale_threshold, expected_interval,
+                        self._watchdog_restart_count,
+                    )
+                    await self._restart_poll_loop(
+                        f"frozen_heartbeat_{int(age_s)}s",
+                    )
+            except asyncio.CancelledError:
+                logger.info("[WATCHDOG] cancelled")
+                raise
+            except Exception as e:  # noqa: BLE001 — watchdog must never die
+                logger.error("[WATCHDOG] iteration error: %s", e)
+                # Continue — watchdog must keep running even on transient
+                # DB errors. Sleep an extra interval to avoid hot-looping.
+                try:
+                    await asyncio.sleep(WATCHDOG_INTERVAL_SECONDS)
+                except asyncio.CancelledError:
+                    raise
+
+    async def _restart_poll_loop(self, reason: str) -> None:
+        """Cancel the (presumed-dead) poll task and spawn a new one.
+
+        Called by the watchdog. NEVER call directly elsewhere — would
+        race with the watchdog's restart-loop guard.
+        """
+        try:
+            log_silent_failure(
+                "adaptive_sync_engine.watchdog.restart",
+                RuntimeError(f"watchdog restart: {reason}"),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+        old = self.main_task
+        if old is not None and not old.done():
+            old.cancel()
+            try:
+                await asyncio.wait_for(old, timeout=10)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "[WATCHDOG] old task raised on cancel: %s", e
+                )
+        self.main_task = asyncio.create_task(self._adaptive_poll_loop())
+        logger.warning(
+            "[WATCHDOG] poll loop restarted (reason=%s, restart_count=%d)",
+            reason, self._watchdog_restart_count,
+        )
+
     async def start(self) -> None:
         """Start the adaptive sync engine."""
         if self.is_running:
@@ -1338,12 +1529,25 @@ class AdaptiveSyncEngine:
         
         self.is_running = True
         self.main_task = asyncio.create_task(self._adaptive_poll_loop())
-        logger.info("[ADAPTIVE_SYNC] Engine started")
+        # Spawn the watchdog AFTER the poll task so the poll task is
+        # the only one writing heartbeats.
+        self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+        logger.info("[ADAPTIVE_SYNC] Engine started (with watchdog)")
     
     async def stop(self) -> None:
         """Stop the adaptive sync engine."""
         self.is_running = False
         
+        # Cancel watchdog first so it doesn't try to restart the
+        # poll task while we're tearing it down.
+        if self._watchdog_task:
+            self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+            self._watchdog_task = None
+
         if self.main_task:
             self.main_task.cancel()
             try:
