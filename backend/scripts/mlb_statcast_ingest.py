@@ -153,10 +153,17 @@ def _row_to_doc(row, batter_id_to_name: Dict[int, str]) -> Optional[Dict[str, An
 # ---------------------------------------------------------------------------
 async def ingest_range(db, *, start: str, end: str,
                         dry_run: bool = False,
-                        chunk_days: int = 7) -> Dict[str, int]:
+                        chunk_days: int = 7,
+                        pause_seconds: float = 1.0) -> Dict[str, int]:
     """Pull pybaseball.statcast() in `chunk_days`-wide windows so the
     HTTP fetches stay small (the public endpoint limits at ~25k rows)
-    and bulk-write into Mongo. Idempotent on the unique key."""
+    and bulk-write into Mongo. Idempotent on the unique key.
+
+    Pacing: between chunks we sleep `pause_seconds` (default 1s) so a
+    long historical backfill doesn't pound Baseball Savant. Raise if
+    you start seeing 429 / connection-reset errors. Set to 0 for full
+    speed (only safe for small ranges or after-hours runs).
+    """
     import pybaseball as pb
     from pymongo import UpdateOne
 
@@ -171,10 +178,20 @@ async def ingest_range(db, *, start: str, end: str,
 
     total_rows = inserted = updated = errors = 0
     cur = d_start
+    chunk_idx = 0
     while cur <= d_end:
         chunk_end = min(cur + timedelta(days=chunk_days - 1), d_end)
         s, e = cur.isoformat(), chunk_end.isoformat()
-        logger.info(f"[fetch] {s} → {e}")
+        chunk_idx += 1
+
+        # Inter-chunk pacing — 2026-04-30 user spec: respect upstream
+        # by sleeping `pause_seconds` between chunks. Skipped on the
+        # first chunk so a single-day fetch doesn't pay an unnecessary
+        # cold-start tax.
+        if chunk_idx > 1 and pause_seconds > 0:
+            await asyncio.sleep(pause_seconds)
+
+        logger.info(f"[fetch #{chunk_idx}] {s} → {e}")
         try:
             df = pb.statcast(start_dt=s, end_dt=e, verbose=False)
         except Exception as ex:
@@ -236,6 +253,8 @@ async def _amain() -> None:
                     help="YYYY-MM-DD (defaults to --start, single day)")
     p.add_argument("--chunk-days", type=int, default=7,
                     help="HTTP request window size (default 7).")
+    p.add_argument("--pause-seconds", type=float, default=1.0,
+                    help="Sleep between chunks (default 1.0s).")
     p.add_argument("--dry", action="store_true",
                     help="Fetch + project but do not write.")
     args = p.parse_args()
@@ -247,7 +266,8 @@ async def _amain() -> None:
     db = cli[os.environ["DB_NAME"]]
     res = await ingest_range(db, start=start, end=end,
                               dry_run=args.dry,
-                              chunk_days=args.chunk_days)
+                              chunk_days=args.chunk_days,
+                              pause_seconds=args.pause_seconds)
     logger.info(f"DONE  scanned={res['scanned']:,}  "
                   f"inserted={res['inserted']:,}  "
                   f"updated={res['updated']:,}  "
