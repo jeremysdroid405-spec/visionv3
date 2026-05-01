@@ -66,9 +66,23 @@ DEFAULT_MAX_DELAY = 15.0
 # Batch caps.
 MAX_BATCH_SIZE = 50
 DEFAULT_BATCH_SIZE = 5  # admin endpoint default
+RUN_NOW_HARD_CAP = 25   # `run-now` (auto-source + run) is more cautious
 
 # Stop responses.
 STOP_STATUS_CODES = (401, 403, 429)
+
+# Cache: discovered projection IDs (so repeat run-now calls don't
+# re-hit the public projections endpoint within a short window).
+PROJECTION_ID_CACHE = "pp_projection_id_cache"
+DEFAULT_DISCOVERY_TTL_MINUTES = 15
+
+# Public PrizePicks league IDs (commonly known + visible in browser
+# Network panel; these are NOT auth-bound). We map sport → league_id
+# only as a convenience; caller can override.
+SPORT_TO_LEAGUE_ID = {
+    "NBA": "7", "MLB": "2", "NFL": "9", "NHL": "8",
+    "WNBA": "3", "PGA": "12", "MMA": "20",
+}
 
 
 # ─── Module-level state (db handle injected from server) ────────────
@@ -151,7 +165,69 @@ def ensure_collection_and_indexes() -> Dict[str, Any]:
     return {
         "collection": COLLECTION_NAME,
         "indexes_created_or_existing": created,
+        "projection_id_cache": _ensure_projection_id_cache(),
     }
+
+
+# ─── Projection-ID cache (discovered IDs, TTL'd) ────────────────────
+def _ensure_projection_id_cache() -> Dict[str, Any]:
+    """Idempotent index ensure for the projection-id cache."""
+    db = _require_db()
+    if PROJECTION_ID_CACHE not in db.list_collection_names():
+        db.create_collection(PROJECTION_ID_CACHE)
+        logger.info("[PP_LAB] Created collection %s", PROJECTION_ID_CACHE)
+    coll = db[PROJECTION_ID_CACHE]
+    created: List[str] = []
+    for keys, opts in [
+        ([("league_id", 1)], {"name": "ix_league_id", "unique": True}),
+        ([("fetched_at", -1)], {"name": "ix_fetched_at"}),
+    ]:
+        try:
+            coll.create_index(keys, **opts)
+            created.append(opts["name"])
+        except PyMongoError as e:
+            logger.warning(
+                "[PP_LAB] cache index %s failed: %s", opts["name"], e
+            )
+    return {"collection": PROJECTION_ID_CACHE,
+            "indexes_created_or_existing": created}
+
+
+def _read_cached_projection_ids(
+    league_id: str, max_age_minutes: int = DEFAULT_DISCOVERY_TTL_MINUTES,
+) -> Optional[Dict[str, Any]]:
+    """Return cached projection-ID list if newer than `max_age_minutes`."""
+    db = _require_db()
+    doc = db[PROJECTION_ID_CACHE].find_one(
+        {"league_id": str(league_id)}, {"_id": 0},
+    )
+    if not doc:
+        return None
+    fetched_at = doc.get("fetched_at")
+    if not isinstance(fetched_at, datetime):
+        return None
+    age_s = (datetime.now(timezone.utc) - fetched_at).total_seconds()
+    if age_s > max_age_minutes * 60:
+        return None
+    return doc
+
+
+def _write_cached_projection_ids(
+    league_id: str, projection_ids: List[str], source: str,
+    raw_count: int,
+) -> None:
+    db = _require_db()
+    db[PROJECTION_ID_CACHE].update_one(
+        {"league_id": str(league_id)},
+        {"$set": {
+            "league_id": str(league_id),
+            "projection_ids": list(projection_ids),
+            "source": source,
+            "raw_count": int(raw_count),
+            "fetched_at": datetime.now(timezone.utc),
+        }},
+        upsert=True,
+    )
 
 
 # ─── Helper field derivations ───────────────────────────────────────
@@ -641,3 +717,285 @@ def get_stats() -> Dict[str, Any]:
         "grouped_counts": grouped_counts,
         "latest_tests": get_recent_tests(limit=5),
     }
+
+
+
+# ─── Auto-source: projection-ID discovery ──────────────────────────
+async def discover_projection_ids(
+    *,
+    sport: Optional[str] = None,
+    league_id: Optional[str] = None,
+    max_age_minutes: int = DEFAULT_DISCOVERY_TTL_MINUTES,
+    force_refresh: bool = False,
+    max_ids: int = 100,
+) -> Dict[str, Any]:
+    """Get a list of current PrizePicks projection IDs for a league.
+
+    Source preference (in order):
+      1. `pp_projection_id_cache` (TTL'd, default 15 min) — preferred.
+      2. ONE read-only HTTP GET to the public
+         `https://api.prizepicks.com/projections?league_id=…&per_page=N`
+         endpoint (same endpoint a logged-out browser hits when
+         viewing the lineup builder). Goes through the existing
+         `_safety_check_url` so it can never accidentally hit
+         px-cloud / PerimeterX / entries / auth / picks.
+
+    Returns:
+        {
+          "ok": bool,
+          "league_id": str,
+          "projection_ids": List[str],  # may be []
+          "source": "cache" | "live_http" | "none",
+          "raw_count": int,
+          "fetched_at": iso8601,
+          "error": Optional[str],
+        }
+    """
+    if not league_id:
+        league_id = SPORT_TO_LEAGUE_ID.get((sport or "").upper())
+    if not league_id:
+        return {
+            "ok": False, "league_id": None, "projection_ids": [],
+            "source": "none", "raw_count": 0, "fetched_at": None,
+            "error": (
+                f"unknown sport={sport!r} — pass league_id explicitly"
+            ),
+        }
+    league_id = str(league_id)
+
+    # 1) Cache hit
+    if not force_refresh:
+        cached = _read_cached_projection_ids(league_id, max_age_minutes)
+        if cached and cached.get("projection_ids"):
+            return {
+                "ok": True, "league_id": league_id,
+                "projection_ids": list(cached["projection_ids"])[:max_ids],
+                "source": "cache",
+                "raw_count": int(cached.get("raw_count") or 0),
+                "fetched_at": cached["fetched_at"].isoformat()
+                    if isinstance(cached.get("fetched_at"), datetime)
+                    else cached.get("fetched_at"),
+                "error": None,
+            }
+
+    # 2) Single read-only fetch
+    headers = {
+        "User-Agent": "PickVision-PPMultiplierLab/1.0 (read-only research)",
+        "Accept": "application/json",
+    }
+    params = {
+        "league_id": league_id,
+        "per_page": str(min(max_ids, 250)),
+        "single_stat": "true",
+    }
+    try:
+        async with httpx.AsyncClient(headers=headers) as client:
+            _safety_check_url(PRIZEPICKS_PROJECTIONS_URL)
+            resp = await client.get(
+                PRIZEPICKS_PROJECTIONS_URL, params=params, timeout=20.0
+            )
+            status = resp.status_code
+            if status in STOP_STATUS_CODES:
+                return {
+                    "ok": False, "league_id": league_id,
+                    "projection_ids": [], "source": "live_http",
+                    "raw_count": 0,
+                    "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    "error": f"HTTP {status} from /projections — abort",
+                }
+            try:
+                body = resp.json()
+            except (ValueError, json.JSONDecodeError):
+                body = None
+            if not body or not isinstance(body, dict):
+                return {
+                    "ok": False, "league_id": league_id,
+                    "projection_ids": [], "source": "live_http",
+                    "raw_count": 0,
+                    "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    "error": f"non-JSON response (status={status})",
+                }
+    except RuntimeError as e:
+        return {
+            "ok": False, "league_id": league_id, "projection_ids": [],
+            "source": "live_http", "raw_count": 0, "fetched_at": None,
+            "error": f"safety_block: {e}",
+        }
+    except (httpx.HTTPError, asyncio.CancelledError) as e:
+        return {
+            "ok": False, "league_id": league_id, "projection_ids": [],
+            "source": "live_http", "raw_count": 0, "fetched_at": None,
+            "error": f"http_error: {type(e).__name__}: {e}",
+        }
+
+    rows = body.get("data") or []
+    ids = [str(r.get("id")) for r in rows if r.get("id")][:max_ids]
+    if ids:
+        _write_cached_projection_ids(
+            league_id, ids, source="live_http", raw_count=len(rows)
+        )
+    return {
+        "ok": bool(ids),
+        "league_id": league_id,
+        "projection_ids": ids,
+        "source": "live_http",
+        "raw_count": len(rows),
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "error": None if ids else "no projections returned",
+    }
+
+
+# ─── End-to-end auto runner ─────────────────────────────────────────
+async def run_now(
+    *,
+    sport: Optional[str] = "NBA",
+    league_id: Optional[str] = None,
+    state_code: Optional[str] = None,
+    game_mode: Optional[str] = "power",
+    leg_count: int = 2,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    min_delay: float = DEFAULT_MIN_DELAY,
+    max_delay: float = DEFAULT_MAX_DELAY,
+    dry_run: bool = False,
+    max_candidates: int = 25,
+) -> Dict[str, Any]:
+    """End-to-end auto-runner: discover IDs → build lineups → run batch.
+
+    Wraps the existing `run_batch` so all of its safety guarantees
+    (no entries, no auth, no PerimeterX, hard-stop on 401/403/429,
+    8-15 s randomized delays, batch size cap) flow through unchanged.
+
+    `run-now` is more cautious than `run-batch`: hard-cap is
+    `RUN_NOW_HARD_CAP` (25) instead of `MAX_BATCH_SIZE` (50).
+    """
+    batch_size = max(1, min(int(batch_size), RUN_NOW_HARD_CAP))
+    leg_count = max(2, int(leg_count))
+
+    # ── 1. Discover candidate projection IDs
+    disc = await discover_projection_ids(
+        sport=sport, league_id=league_id,
+        max_ids=max(max_candidates, batch_size * leg_count + 5),
+        force_refresh=not bool(dry_run),
+    )
+    discovered = disc.get("projection_ids") or []
+
+    # In dry-run mode, if discovery returned nothing (no cache + no
+    # network), fall back to synthetic IDs from `nba_cached_board`
+    # composite_keys so the operator can still smoke-test the
+    # pipeline without leaving the box. These pseudo-IDs are
+    # clearly tagged via the test doc's `notes` field.
+    synthetic_used = False
+    if dry_run and not discovered:
+        synthetic = _synthetic_ids_from_cached_board(sport, batch_size * leg_count + 5)
+        if synthetic:
+            discovered = synthetic
+            synthetic_used = True
+
+    report: Dict[str, Any] = {
+        "ok": True,
+        "sport": sport,
+        "league_id": disc.get("league_id"),
+        "leg_count": leg_count,
+        "batch_size_requested": batch_size,
+        "discovery": {
+            "source": "synthetic_cached_board" if synthetic_used else disc.get("source"),
+            "raw_count": disc.get("raw_count"),
+            "fetched_at": disc.get("fetched_at"),
+            "error": disc.get("error"),
+        },
+        "total_candidates_found": len(discovered),
+        "tests_attempted": 0,
+        "tests_saved": 0,
+        "stopped_early": False,
+        "stop_reason": None,
+        "multipliers_found": [],
+        "latest_test_ids": [],
+        "errors": [],
+    }
+    if len(discovered) < leg_count:
+        report["ok"] = False
+        report["stop_reason"] = (
+            f"only {len(discovered)} candidate projection IDs available; "
+            f"need at least {leg_count}"
+        )
+        return report
+
+    # ── 2. Run the existing batch pipeline
+    notes_prefix = (
+        "synthetic_dry_run (no PP HTTP)" if synthetic_used
+        else None
+    )
+    batch_summary = await run_batch(
+        sport=sport,
+        league_id=disc.get("league_id"),
+        state_code=state_code,
+        game_mode=game_mode,
+        leg_count=leg_count,
+        projection_ids=discovered,
+        batch_size=batch_size,
+        min_delay=min_delay,
+        max_delay=max_delay,
+        dry_run=dry_run,
+    )
+
+    report["tests_attempted"] = batch_summary.get("generated_lineups", 0)
+    report["tests_saved"] = batch_summary.get("lineups_persisted", 0)
+    report["stopped_early"] = batch_summary.get("stopped_early", False)
+    report["stop_reason"] = batch_summary.get("stop_reason")
+    report["latest_test_ids"] = batch_summary.get("test_ids") or []
+    report["errors"] = batch_summary.get("errors") or []
+
+    # Annotate dry-run synthetic notes after the fact so /recent
+    # shows the source clearly.
+    if notes_prefix and report["latest_test_ids"]:
+        db = _require_db()
+        db[COLLECTION_NAME].update_many(
+            {"test_id": {"$in": report["latest_test_ids"]}},
+            {"$set": {"notes": notes_prefix}},
+        )
+
+    # Multipliers seen in the just-saved tests.
+    if report["latest_test_ids"]:
+        db = _require_db()
+        cur = db[COLLECTION_NAME].find(
+            {"test_id": {"$in": report["latest_test_ids"]}},
+            {"_id": 0, "power_play_multiplier": 1},
+        )
+        report["multipliers_found"] = sorted({
+            d.get("power_play_multiplier") for d in cur
+            if d.get("power_play_multiplier") is not None
+        })
+    return report
+
+
+def _synthetic_ids_from_cached_board(
+    sport: Optional[str], n: int
+) -> List[str]:
+    """Pseudo-IDs derived from the cached_board's composite_keys.
+
+    Used ONLY for `run_now(dry_run=True)` when the operator has no
+    network access AND no projection-ID cache hit. The inserted docs
+    are clearly labelled `synthetic_dry_run` in their `notes` field.
+    """
+    if not sport:
+        return []
+    coll_name = f"{sport.lower()}_cached_board"
+    db = _require_db()
+    if coll_name not in db.list_collection_names():
+        return []
+    cur = db[coll_name].find(
+        {}, {"_id": 0, "_composite_key": 1,
+             "standard": {"$slice": 1},
+             "demons": {"$slice": 1}, "goblins": {"$slice": 1}}
+    ).limit(max(n, 5))
+    out: List[str] = []
+    for doc in cur:
+        for fld in ("standard", "demons", "goblins"):
+            arr = doc.get(fld) or []
+            for item in arr:
+                ck = item.get("_composite_key") if isinstance(item, dict) else None
+                if ck:
+                    out.append(f"synthetic:{ck}")
+                if len(out) >= n:
+                    return out
+    return out

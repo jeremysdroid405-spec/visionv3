@@ -2264,3 +2264,79 @@ payout structure can be reverse-engineered over time.
 - Default `dry_run=true` so accidental triggers can't reach PP
 - `_safety_check_url()` raises BEFORE any outbound request when
   any forbidden host fragment appears in the URL
+
+---
+
+## 2026-05-01 — PP Multiplier Lab `/run-now` (auto-source projection IDs)
+
+Adds an admin-only "run lab now" endpoint so the operator no longer
+needs to manually supply `projection_ids` via curl.
+
+### Files changed
+- `backend/services/pp_multiplier_lab.py`:
+  - New collection `pp_projection_id_cache` (TTL'd, 15 min default)
+    with indexes on `league_id` (unique) + `fetched_at`.
+  - `_ensure_projection_id_cache()`, `_read_cached_projection_ids`,
+    `_write_cached_projection_ids` — TTL'd cache helpers.
+  - `discover_projection_ids(sport, league_id, ...)` — source order:
+    `cache` → ONE read-only `GET /projections?league_id=…` →
+    fail-safe. Goes through the same `_safety_check_url` filter so
+    PerimeterX / px-cloud / entries / auth / picks endpoints are
+    impossible to hit even by accident.
+  - `run_now(sport, leg_count, batch_size, dry_run, ...)` — auto
+    end-to-end: discover → build candidate lineups → call existing
+    `run_batch` → return summary report with `total_candidates_found`,
+    `tests_attempted`, `tests_saved`, `stopped_early`, `stop_reason`,
+    `multipliers_found`, `latest_test_ids`, `errors`.
+  - `_synthetic_ids_from_cached_board()` — dry-run-only fallback
+    that mints pseudo-IDs from the existing `nba_cached_board`/
+    `mlb_cached_board` `_composite_key` fields when both the cache
+    and the network are unavailable. Inserted docs are clearly
+    labelled `notes="synthetic_dry_run (no PP HTTP)"`.
+  - `RUN_NOW_HARD_CAP = 25` (more cautious than `MAX_BATCH_SIZE=50`).
+- `backend/routes/pp_multiplier_lab.py`:
+  - `RunNowRequest` Pydantic body model.
+  - `POST /api/admin/pp-multiplier-lab/run-now` (admin token).
+
+### Cached projection-source used
+**Preferred (live)**: ONE read-only HTTP GET to
+`https://api.prizepicks.com/projections?league_id={id}&per_page=N&single_stat=true`
+on the FIRST call per 15 min, then cached in
+`pp_projection_id_cache`. Same endpoint a logged-out browser hits.
+
+**Dry-run fallback**: when network unavailable, pseudo-IDs derived
+from `nba_cached_board.[standard|demons|goblins]._composite_key`
+(synthetic, never sent over HTTP).
+
+NOTE: our existing `*_cached_board` collections do NOT contain real
+PrizePicks projection IDs (they're sourced from the-odds-api.com
+which doesn't expose PP's internal IDs). That's why a one-shot
+discovery hit is needed to seed the cache.
+
+### Verification
+1. **Dry-run** (`POST /run-now`, `dry_run=true`):
+   - Discovery: synthetic from cached_board (network 403'd).
+   - 11 candidates found, 3 tests saved, multipliers_found=[].
+   - 3 docs persisted with `notes="synthetic_dry_run (no PP HTTP)"`.
+2. **Live mode** (`POST /run-now`, `dry_run=false`, `batch_size=1`):
+   - Discovery hit `https://api.prizepicks.com/projections?league_id=7`
+     ONCE → got HTTP 403 → STOP'd correctly.
+   - `tests_attempted=0`, `tests_saved=0`, no batch run, no
+     additional PP HTTP made.
+3. **Mongo doc proof**: `test_id=09310e138dc7225c`, `sport=NBA`,
+   `mix_type=standard_standard`, `notes=synthetic_dry_run (no PP HTTP)`,
+   pseudo-IDs from Chet Holmgren composite_keys.
+4. **Stats**: `total_tests=7`, all 7 leg_count=2, mix_type breakdown
+   `{standard_standard: 6, demon_standard: 1}`.
+5. **No bot-protection requests**: 0 hits to px-cloud / PerimeterX
+   in backend logs since boot. The two api.prizepicks.com requests
+   were the documented `/projections?league_id=7` discovery calls
+   only — no `/entries`, `/auth`, `/picks/submit`.
+
+### Live-mode caveat (preview env)
+PrizePicks returns `403 Forbidden` to the preview pod's egress IP
+(generic User-Agent + cloud IP range). The safety guard treats 403
+as STOP per spec, so live-mode currently gets 0 tests in this env.
+On a deployed prod pod with a residential-routed UA the same
+endpoint should return 200 and live mode will work end-to-end.
+
