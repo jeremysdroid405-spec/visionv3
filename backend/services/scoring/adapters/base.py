@@ -86,11 +86,17 @@ class ScoringContext:
     hit_rate_under: Optional[float] = None
     # Sample size behind hit_rate{,_over,_under} (2026-04-25, HR v3).
     # Number of valid game logs used to compute HR. `None` when HR
-    # itself is None or when the source path doesn't surface it (NBA
-    # is currently always 20 by construction → leaves it None).
-    # Gate engine reads this to apply small-sample penalty when
-    # 10 ≤ n < 20 and to fail INSUFFICIENT_SAMPLE when n < 10.
+    # itself is None or when the source path doesn't surface it.
+    # 2026-05-01 — NBA now ALSO populates this (window=20 or 10) per
+    # MLB-parity. Gate engine reads this to apply small-sample
+    # penalty when 10 ≤ n < 20 and to fail INSUFFICIENT_SAMPLE when
+    # n < 10.
     hit_rate_sample_size: Optional[int] = None
+    # 2026-05-01 — sub-window hit rates surfaced for the universal
+    # L5 sub-gate (`gates/engine.py:_eval_hit_rate`). Both NBA and
+    # MLB populate these; gate engine ignores L5 when sample < 4.
+    hit_rate_l5: Optional[float] = None
+    hit_rate_l10: Optional[float] = None
     # Global Identity Rule (2026-04-23): canonical player identity
     # stamped at ingest. `bdl_player_id` is the join key for every
     # downstream stat / projection computation; `player_name` is

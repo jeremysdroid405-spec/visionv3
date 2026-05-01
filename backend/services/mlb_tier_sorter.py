@@ -550,6 +550,82 @@ class MLBTierSorter:
         avg = round(sum_val / valid_count, 2) if valid_count else None
         return hit_rate_over, hit_rate_under, avg, window
 
+    def _calculate_l5_hit_rate(
+        self,
+        bdl_player_id: Optional[int],
+        stat_type: str,
+        line: float,
+        side: str = "OVER",
+    ) -> "Tuple[Optional[float], Optional[int]]":
+        """L5 hit rate for the universal sub-gate (2026-05-01).
+
+        Same strict-denominator contract as `_calculate_hit_rate_sides`
+        but with a fixed 5-game window. Returns
+        ``(hit_rate_pct, sample_size)`` where sample_size is the number
+        of games actually in the window (≤5). When fewer than 4 games
+        are available, returns ``(None, n)`` so the gate engine falls
+        back to L20-only (sample-size escape hatch).
+        """
+        game_logs = self._get_logs_by_id(bdl_player_id)
+        if not game_logs:
+            return None, 0
+        sorted_logs = sorted(
+            game_logs, key=lambda x: x.get("date", "") or "", reverse=True
+        )
+        window = min(5, len(sorted_logs))
+        if window < 4:
+            return None, window
+
+        stat_map = {
+            "hits": "hits", "total_bases": "total_bases",
+            "rbis": "rbis", "runs": "runs", "home_runs": "home_runs",
+            "stolen_bases": "stolen_bases", "singles": "singles",
+            "doubles": "doubles", "triples": "triples",
+            "batter_walks": "walks", "walks": "walks",
+            "batter_strikeouts": "strikeouts", "strikeouts": "strikeouts",
+            "hits+runs+rbis": ["hits", "runs", "rbis"],
+            "pitcher_strikeouts": "pitcher_strikeouts",
+            "pitcher_outs": "innings_pitched",
+            "pitching_outs": "innings_pitched",
+            "earned_runs": "earned_runs",
+            "hits_allowed": "hits_allowed",
+            "walks_allowed": "pitcher_walks",
+        }
+        stat_key = self._normalize_stat_type(stat_type)
+        field = stat_map.get(stat_key, stat_key)
+        is_under = "UNDER" in (side or "OVER").upper()
+        hits = 0
+        for g in sorted_logs[:window]:
+            if isinstance(field, list):
+                val = sum(g.get(f) or 0 for f in field)
+            elif field == "innings_pitched":
+                ip = g.get(field)
+                val = (ip * 3) if ip is not None else None
+            elif field == "singles":
+                h = g.get("hits")
+                if h is not None:
+                    d = g.get("doubles") or 0
+                    t = g.get("triples") or 0
+                    hr = g.get("home_runs") or 0
+                    val = max(0, h - d - t - hr)
+                else:
+                    val = None
+            else:
+                val = g.get(field)
+            if val is None:
+                # missing → miss for OVER, hit for UNDER (complement)
+                if is_under:
+                    hits += 1
+                continue
+            if is_under:
+                if val < line:
+                    hits += 1
+            else:
+                if val > line:
+                    hits += 1
+        return float(round((hits / window) * 100, 1)), window
+
+
     def _calculate_ceiling_hit_rate(
         self, 
         bdl_player_id: Optional[int],

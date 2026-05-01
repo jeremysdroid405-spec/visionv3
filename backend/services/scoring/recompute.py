@@ -448,6 +448,12 @@ async def recompute_sport(
             # None (insufficient sample / missing identity / etc).
             # Gate engine reads this for small-sample penalty.
             "hit_rate_sample_size": ctx.hit_rate_sample_size,
+            # 2026-05-01 — sub-window hit rates persisted so the
+            # universal L5 sub-gate (`gates/engine.py:_eval_hit_rate`)
+            # can read them on re-eval, and so the API/UI can
+            # display recent-form alongside the L20 gate input.
+            "hit_rate_l5": ctx.hit_rate_l5,
+            "hit_rate_l10": ctx.hit_rate_l10,
             # Ceiling rate (PR-2, 2026-04-25). Persisted so the
             # post-vision re-eval has the exact value the first pass
             # used as input to `ceiling_gate` (MLB war_zone). Without

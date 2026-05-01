@@ -2306,51 +2306,64 @@ class NBAScoringAdapter(ScoringAdapter):
     ):
         """Compute line-independent CV and line-aware hit_rate / ceiling.
 
-        CV is derived from the player's underlying stat-family
-        distribution and is IDENTICAL across every line / alt-line for
-        the same (player, family). Hit-rate and ceiling-rate still
-        depend on the line / side (they count games relative to the
-        threshold).
+        2026-05-01 — Aligned to MLB's contract (`mlb_tier_sorter.py`):
+          * Logs sorted most-recent first. **Cross-season is rolling**:
+            we do not filter by season here — `bdl_game_logs` already
+            contains both prior and current season entries for most
+            players, so "last 20 chronologically" naturally crosses the
+            season boundary when the current season is short. The
+            master_hub loader is the source of truth for what's in
+            scope.
+          * **Fixed-denominator window selection:**
+              - len(logs) ≥ 20  →  window = 20
+              - 10 ≤ len < 20   →  window = 10
+              - len < 10        →  return None (insufficient sample)
+          * Hit-rate denominator = window (NOT `len(vals)`). Games
+            with missing component fields count as MISS for OVER,
+            HIT for UNDER (complement) — same as MLB.
+          * Adds L5 and L10 sub-window hit rates to support the
+            universal L5 sub-gate (`engine.py:_eval_hit_rate`).
 
         Returns:
           (cv, cv_status, hit_rate, ceiling_rate,
-           hit_rate_over, hit_rate_under, hit_rate_status)
+           hit_rate_over, hit_rate_under, hit_rate_status,
+           hit_rate_l5, hit_rate_l10, hit_rate_sample_size)
 
         `cv_status` and `hit_rate_status` share a state machine:
           * "computed"                    – real values produced
           * "unavailable_stat_family"     – no family spec yet
           * "missing_bdl_id"              – prop has no bdl_player_id
-          * "missing_source_distribution" – fewer than 5 L20 games
+          * "missing_source_distribution" – fewer than 10 logs total
                                             (or, for CV only, a
                                             degenerate zero-mean).
-        HR and CV can disagree on one edge case: when mean is 0 across
-        the window (e.g. a specialist with zero steals in L20), CV
-        becomes None (degenerate) but HR is a legitimate 0% (the
-        player never hit the line). In that case
-        `hit_rate_status="computed"`, `cv_status="missing_source_distribution"`.
         """
-        # Global Identity Rule (2026-04-23): no name-based fallback.
-        # If the prop has no canonical ID, we cannot compute metrics.
+        # Empty-tail tuple (matches new arity).
+        _empty = (
+            None, "missing_source_distribution",
+            None, None, None, None, "missing_source_distribution",
+            None, None, None,
+        )
         if bdl_player_id is None:
             return (None, "missing_bdl_id",
                     None, None, None, None,
-                    "missing_bdl_id")
+                    "missing_bdl_id",
+                    None, None, None)
         family = self._resolve_family(stat_type)
         if family is None:
             return (None, "unavailable_stat_family",
                     None, None, None, None,
-                    "unavailable_stat_family")
+                    "unavailable_stat_family",
+                    None, None, None)
         fields = self._FAMILY_SPEC.get(family)
         if not fields:
             return (None, "unavailable_stat_family",
                     None, None, None, None,
-                    "unavailable_stat_family")
+                    "unavailable_stat_family",
+                    None, None, None)
 
         logs = self._get_logs_by_id(bdl_player_id)
         if not logs:
-            return (None, "missing_source_distribution",
-                    None, None, None, None,
-                    "missing_source_distribution")
+            return _empty
 
         try:
             logs_sorted = sorted(
@@ -2359,23 +2372,78 @@ class NBAScoringAdapter(ScoringAdapter):
                 reverse=True,
             )
         except Exception:
-            logs_sorted = logs
-        window_logs = logs_sorted[:window]
+            logs_sorted = list(logs)
 
+        # MLB-parity: fixed-denominator window selection.
+        if len(logs_sorted) >= 20:
+            chosen_window = 20
+        elif len(logs_sorted) >= 10:
+            chosen_window = 10
+        else:
+            return _empty
+
+        side = (direction or "OVER").upper()
+
+        def _hr_for_window(win: int) -> Optional[float]:
+            """Hit rate (% on `side`) over the most-recent `win` logs.
+            Denominator is FIXED at `win`. Missing component fields
+            count as MISS for OVER (HIT for UNDER)."""
+            if len(logs_sorted) < win:
+                return None
+            block = logs_sorted[:win]
+            hits = 0
+            for g in block:
+                per = [g.get(f) for f in fields]
+                if any(v is None for v in per):
+                    # Missing → MISS for OVER, HIT for UNDER.
+                    if "UNDER" in side:
+                        hits += 1
+                    continue
+                try:
+                    v = float(sum(per))
+                except (TypeError, ValueError):
+                    if "UNDER" in side:
+                        hits += 1
+                    continue
+                if "UNDER" in side:
+                    if v < line:
+                        hits += 1
+                else:
+                    if v > line:
+                        hits += 1
+            return round(hits / float(win) * 100.0, 1)
+
+        # Side-aware HR using the chosen window (20 or 10).
+        hit_rate = _hr_for_window(chosen_window)
+        # OVER / UNDER complementary fields (same window, same denom).
+        hit_rate_over = hit_rate if "UNDER" not in side else round(
+            100.0 - hit_rate, 1
+        ) if hit_rate is not None else None
+        hit_rate_under = hit_rate if "UNDER" in side else round(
+            100.0 - hit_rate, 1
+        ) if hit_rate is not None else None
+        hit_rate_l5 = _hr_for_window(5) if len(logs_sorted) >= 5 else None
+        hit_rate_l10 = _hr_for_window(10) if len(logs_sorted) >= 10 else None
+        hit_rate_status = "computed" if hit_rate is not None else \
+            "missing_source_distribution"
+
+        # CV from numeric per-game values (skip missing for distribution).
         import numpy as np
-
-        # Build per-game value as sum of family component fields.
         vals: List[float] = []
-        for g in window_logs:
+        for g in logs_sorted[:chosen_window]:
             per_field = [g.get(f) for f in fields]
             if any(v is None for v in per_field):
                 continue
-            vals.append(float(sum(per_field)))
-
+            try:
+                vals.append(float(sum(per_field)))
+            except (TypeError, ValueError):
+                continue
         if len(vals) < 5:
             return (None, "missing_source_distribution",
-                    None, None, None, None,
-                    "missing_source_distribution")
+                    hit_rate, None,
+                    hit_rate_over, hit_rate_under,
+                    hit_rate_status,
+                    hit_rate_l5, hit_rate_l10, chosen_window)
 
         arr = np.array(vals)
         mean = float(arr.mean())
@@ -2386,35 +2454,23 @@ class NBAScoringAdapter(ScoringAdapter):
             cv = round(float(arr.std(ddof=1) / mean), 4)
             cv_status = "computed"
 
-        # Cache CV per (bdl_player_id, family) so downstream code paths
-        # that re-query the same family on a different line read a
-        # consistent value without re-traversing logs.
         self._cv_cache[(int(bdl_player_id), family)] = (cv, cv_status)
 
-        # Side-aware hit rate (line-dependent). HR is a legitimate
-        # value even when mean==0 — zero hit rate IS information.
-        over_hits = int(sum(1 for v in vals if v > line))
-        under_hits = int(sum(1 for v in vals if v <= line))
-        hit_rate_over = round((over_hits / len(vals)) * 100.0, 1)
-        hit_rate_under = round((under_hits / len(vals)) * 100.0, 1)
-        hit_rate_status = "computed"
-
-        side = (direction or "OVER").upper()
-        hit_rate = hit_rate_under if "UNDER" in side else hit_rate_over
-
-        # Side-aware ceiling: tail probability in the direction of the bet
+        # Side-aware ceiling: tail probability in the direction of the bet.
         if "UNDER" in side:
             floor_thresh = min(line * 0.5, line - 0.5)
             tail_hits = int(sum(1 for v in vals if v <= floor_thresh))
         else:
             ceiling_thresh = max(line * 1.5, line + 0.5)
             tail_hits = int(sum(1 for v in vals if v >= ceiling_thresh))
-        ceiling_rate = round((tail_hits / len(vals)) * 100.0, 1)
+        ceiling_rate = round((tail_hits / float(chosen_window)) * 100.0, 1)
 
         return (cv, cv_status,
                 hit_rate, ceiling_rate,
                 hit_rate_over, hit_rate_under,
-                hit_rate_status)
+                hit_rate_status,
+                hit_rate_l5, hit_rate_l10, chosen_window)
+
 
     async def build_context(
         self, db, prop: Dict[str, Any], config: Dict[str, Any]
@@ -2523,8 +2579,12 @@ class NBAScoringAdapter(ScoringAdapter):
         )
 
         # CV + SIDE-AWARE hit_rate + ceiling_rate — ID-based join only.
+        # 2026-05-01 returns three additional fields:
+        # `hit_rate_l5`, `hit_rate_l10`, `hit_rate_sample_size` (window
+        # actually used: 20 if ≥20 logs available, else 10).
         (cv, cv_status, computed_hit_rate, ceiling_rate,
-         hit_rate_over, hit_rate_under, hit_rate_status) = \
+         hit_rate_over, hit_rate_under, hit_rate_status,
+         hit_rate_l5, hit_rate_l10, hit_rate_sample_size) = \
             self._compute_cv_and_hit_rate(
                 bdl_player_id, stat_type, float(line),
                 direction=side, window=20,
@@ -3123,6 +3183,11 @@ class NBAScoringAdapter(ScoringAdapter):
             vk2_error=vk2_error,
             hit_rate_over=hit_rate_over,
             hit_rate_under=hit_rate_under,
+            # 2026-05-01 — surface sub-window hit rates + sample-size
+            # so the universal L5 sub-gate and the API can read them.
+            hit_rate_l5=hit_rate_l5,
+            hit_rate_l10=hit_rate_l10,
+            hit_rate_sample_size=hit_rate_sample_size,
             projection_method=projection_method,
             # Global Identity Rule (2026-04-23): stamp both on the
             # scoring context so the score doc persists the identity
