@@ -70,6 +70,10 @@ async def test_inv_wd1_stale_heartbeat_triggers_restart(real_db, monkeypatch):
     # Disable warmup + tight iteration so the test runs in ms.
     eng._WATCHDOG_WARMUP_SECONDS = 0
     eng._WATCHDOG_INTERVAL_SECONDS = 0
+    # Simulate an engine that's been running for an hour — required
+    # so that a 30-min-stale heartbeat is genuinely stale (not just
+    # older than this engine's start time).
+    eng._engine_started_at = datetime.now(timezone.utc) - timedelta(hours=1)
 
     real_sleep = asyncio.sleep
 
@@ -126,9 +130,6 @@ async def test_inv_wd2_warmup_window_blocks_restart(real_db, monkeypatch):
     legitimately takes several minutes."""
     eng = _make_engine(real_db)
     eng._restart_poll_loop = AsyncMock()  # type: ignore[method-assign]
-    # Tight loop for the test; KEEP warmup at default 600s so we can
-    # actually verify warmup gates restarts.
-    eng._WATCHDOG_INTERVAL_SECONDS = 0
 
     # Patch asyncio.sleep used inside the watchdog so the test
     # completes in milliseconds. The patched sleep yields control
@@ -143,15 +144,15 @@ async def test_inv_wd2_warmup_window_blocks_restart(real_db, monkeypatch):
         _instant_sleep,
     )
 
-    # Heartbeat: 30 min old (would be stale outside warmup).
-    await real_db["adaptive_sync_heartbeat"].update_one(
-        {"_id": "adaptive_sync"},
-        {"$set": {
-            "last_heartbeat_at": datetime.now(timezone.utc) - timedelta(minutes=30),
-            "next_poll_in_seconds": 300,
-        }},
-        upsert=True,
+    # Clear the heartbeat doc — simulate first-ever cold start where
+    # no poll loop has yet written one. Without warmup, the watchdog
+    # would immediately restart on the "no heartbeat" branch. With
+    # warmup active, that restart is gated until BDL game-log refresh
+    # has had a chance to complete (~5-10 min in production).
+    await real_db["adaptive_sync_heartbeat"].delete_one(
+        {"_id": "adaptive_sync"}
     )
+    eng._engine_started_at = datetime.now(timezone.utc)
 
     eng.is_running = True
     task = asyncio.create_task(eng._watchdog_loop())

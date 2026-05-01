@@ -152,6 +152,10 @@ class AdaptiveSyncEngine:
         self._watchdog_task: Optional[asyncio.Task] = None
         self._watchdog_restart_count: int = 0
         self._watchdog_first_restart_at: Optional[datetime] = None
+        # Promoted to an instance attribute (instead of a local in the
+        # watchdog loop) so that tests can backdate it to simulate a
+        # long-running engine. Set by `start()` to "now" in production.
+        self._engine_started_at: Optional[datetime] = None
         
         # Collections
         self.cached_board_collection = COLL("board_cache", "nba")
@@ -1381,7 +1385,9 @@ class AdaptiveSyncEngine:
         RESTART_WINDOW_SECONDS = self._WATCHDOG_RESTART_WINDOW_SECONDS
         WARMUP_SECONDS = self._WATCHDOG_WARMUP_SECONDS
 
-        engine_started_at = datetime.now(timezone.utc)
+        engine_started_at = (
+            self._engine_started_at or datetime.now(timezone.utc)
+        )
         logger.info(
             "[WATCHDOG] starting (interval=%ds, stale_floor=%ds, "
             "max_restarts=%d/%dmin, warmup=%ds)",
@@ -1420,7 +1426,27 @@ class AdaptiveSyncEngine:
                     continue
                 if last.tzinfo is None:
                     last = last.replace(tzinfo=timezone.utc)
-                age_s = (now - last).total_seconds()
+
+                # The "alive timestamp" is whichever is more recent:
+                #   * the last heartbeat (if from this engine generation)
+                #   * the engine start time (gives the poll loop the
+                #     full stale_threshold to write its first heartbeat
+                #     before being considered frozen)
+                #
+                # This handles two failure modes correctly:
+                #   1. Healthy engine starting up with a previous-run
+                #      heartbeat still in the DB → engine_started_at
+                #      wins, no spurious restart.
+                #   2. Engine ran fine, then poll loop died silently →
+                #      `last` is recent but stops advancing; eventually
+                #      `now - last > threshold` and a real restart
+                #      fires.
+                #
+                # Bug discovered by integration test
+                # `test_live_no_restart_when_pipeline_healthy`
+                # on 2026-04-30.
+                alive_ts = max(last, engine_started_at)
+                age_s = (now - alive_ts).total_seconds()
 
                 expected_interval = int(hb.get("next_poll_in_seconds") or 300)
                 stale_threshold = max(3 * expected_interval, STALE_FLOOR_SECONDS)
@@ -1528,6 +1554,12 @@ class AdaptiveSyncEngine:
             return
         
         self.is_running = True
+        # Stamp engine start so the watchdog can correctly distinguish
+        # heartbeats from this engine generation vs prior ones. Tests
+        # may pre-set this attribute to simulate a long-running engine
+        # — we honor that and only default if unset.
+        if self._engine_started_at is None:
+            self._engine_started_at = datetime.now(timezone.utc)
         self.main_task = asyncio.create_task(self._adaptive_poll_loop())
         # Spawn the watchdog AFTER the poll task so the poll task is
         # the only one writing heartbeats.
