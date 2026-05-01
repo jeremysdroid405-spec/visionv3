@@ -2085,3 +2085,54 @@ No new gate-evaluation code.
 - Feature count: 208
 - Total training samples: 766,010 across 15 stats
 - Locked at: 2026-05-01
+
+---
+
+## 2026-05-01 — MLB HF v3.0_bayes Production-Grade Test Stack COMPLETE
+
+Per user agreement (real fixes / real tests / mutation testing): full
+production verification battery built and passing.
+
+### Test files
+- `tests/test_mlb_hf_v3_bayes_validation.py`     (18 tests)  — artifact + Bleday + canary
+- `tests/test_mlb_hf_v3_production_integration.py` (24 tests) — schema for ALL 15 stats, prob sanity, determinism, alias resolution, imputation, version stamp, workload anchor, active baseline floor
+- `tests/test_mlb_hf_v3_calibration.py`           (12 tests) — μ/σ distribution bands across 75 batters & 30 pitchers; 4× L20 canary on extended pool; prob_over symmetry
+- `tests/test_mlb_hf_v3_edge_cases.py`            ( 7 tests) — unknown player/stat, missing park, dk_odds dropped, feature_health consistency, pitcher_outs no-starts, SC-missing rectangularity
+- `tests/test_mlb_hf_v3_performance.py`           ( 4 tests) — cold/warm latency, load_models, PA cache memory
+- `tests/test_mlb_hf_v3_live_api.py`              ( 4 tests) — HTTP `/api/v3/ferrari/{tier}` returns picks stamped v3.0_bayes; live 4× canary
+- `scripts/mutation_test_v3.sh`                   ( 7 mutations) — bash harness with bash-trap auto-restore
+
+### Final run
+```
+84 passed, 2 skipped (data-dependent), 0 failed in 46.27s
+mutation_test_v3.sh: 7/7 mutations DETECTED, post-restore regression: 70/70 passed
+```
+
+### Mutations injected & detected (proof tests aren't fake)
+| # | Mutation                                   | Detected by                                    |
+|---|--------------------------------------------|------------------------------------------------|
+| M1| Disable Bayesian shrinkage (return raw)    | test_v3_bleday_hrr_shrunk                       |
+| M2| League-avg `barrel_rate` = 1.0             | test_inv_bs4_bleday_barrel_rate_shrinks_to_realistic |
+| M3| Skip `bayes_shrink_rolling_window` call    | test_v3_bleday_hrr_shrunk                       |
+| M4| Strip `model_version` stamp                | test_prod_int_06_version_stamp_exact            |
+| M5| `predict()` always returns error           | test_prod_int_01_batter_schema                  |
+| M6| Disable active-baseline floor              | test_prod_int_08_active_baseline                |
+| M7| Disable pitcher workload-anchored μ        | test_prod_int_07_pitcher_k_workload_anchored    |
+
+### Production budgets verified
+- Cold predict (incl. PA-cache build, 1.6M Statcast rows): ≤ 8000 ms
+- Warm predict (live serving): **median 10 ms, p95 10.8 ms** (budget: 250 ms)
+- load_models (15 artifacts): **0.04 s** (budget: 5 s)
+- σ for hits: median 0.70  | σ for K: median 1.94 (both inside healthy bands)
+- prob_over symmetry: median 50.4% when line=μ (perfectly balanced)
+
+### Real production bug surfaced & fixed
+- `services/mlb_high_friction_model.py`: `prob_over: round(p,1) if prob_over else None`
+  was converting 0.0% to None (Python falsy 0). Changed to
+  `if prob_over is not None`. Same fix applied to `z_score`. Found by
+  PROD-INT-02 prob-sign-vs-line test.
+
+### Live API verified end-to-end
+HTTP GET `/api/v3/ferrari/{safe-haven|front-lines|war-zone}?sport=mlb`
+returns picks where each one stamps `projection_model_version=MLB_HF_v3.0_bayes`,
+and zero live picks exceed 4× the player's L20 mean.
