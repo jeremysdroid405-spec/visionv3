@@ -2201,3 +2201,66 @@ HTTP GET `/api/v3/ferrari/{safe-haven|front-lines|war-zone}?sport=nba`
 returns picks where every `vk2_projection` is ≥ 0, every `vk2_sigma`
 > 0, every `p_true_vk2` ∈ [0,1], and zero live picks exceed 4× the
 player's L20 mean for that stat.
+
+---
+
+## 2026-05-01 — PrizePicks Multiplier Lab (research tool)
+
+Admin-only, READ-ONLY backend workflow that stores tested PrizePicks
+lineup combinations and their returned payout multipliers, so the
+payout structure can be reverse-engineered over time.
+
+### Files added
+- `backend/services/pp_multiplier_lab.py` — service (sync pymongo;
+  parallel-sync handle when async motor is injected). Includes:
+  - `ensure_collection_and_indexes()` — idempotent (11 indexes)
+  - `derive_mix_type` / `derive_same_game` /
+    `derive_same_player_or_group_conflict`
+  - `extract_selected_projection` / `parse_game_types_response`
+  - `candidate_lineups_from_projection_ids`
+  - `run_batch(...)` with `dry_run=True` default + 8-15 s
+    randomized delays + hard-stop on 401/403/429 + forbidden-host
+    safety filter blocking PerimeterX / px-cloud / entries / auth /
+    captcha / picks endpoints
+  - `get_recent_tests` / `get_stats`
+- `backend/routes/pp_multiplier_lab.py` — admin-gated endpoints
+  (`X-Admin-Token` reusing `ADMIN_DEBUG_TOKEN`):
+  - `GET  /api/admin/pp-multiplier-lab/recent`
+  - `GET  /api/admin/pp-multiplier-lab/stats`
+  - `POST /api/admin/pp-multiplier-lab/run-batch` (default dry_run=true,
+    batch hard-cap 50)
+- `backend/routes/__init__.py` — wired router + startup-time
+  `set_db()` + `ensure_collection_and_indexes()` call
+
+### Mongo collection
+`pick_vision.pp_payout_structure_tests` with indexes:
+`ix_created_at`, `ix_leg_count`, `ix_sport`, `ix_league_id`,
+`ix_mix_type`, `ix_power_play_multiplier`, `ix_is_adjusted`,
+`ix_selected_projection_ids`, `ix_proj_odds_type`,
+`ix_proj_stat_type`, `ix_proj_group_key`.
+
+### Verification (all gates ✓)
+1. Mongo collection exists ✓
+2. All 11 indexes present ✓
+3. Auth gate: 401 without token / wrong token, 200 with correct ✓
+4. Manual insert returns expected mix_type=demon_standard,
+   power_play_multiplier=2.2, is_adjusted=True, srp_multiplier=1.3 ✓
+5. `/recent` returns the manual test ✓
+6. `/stats` groups correctly by leg_count, mix_type,
+   power_play_multiplier, same_game, odds_type_legs ✓
+7. Dry-run batch persisted 3 stub tests, no PP HTTP made ✓
+8. ZERO direct requests to api.prizepicks.com or any
+   px-cloud/PerimeterX/captcha/auth/entries endpoint ✓
+9. Forbidden-host safety check blocks: PerimeterX, /entries,
+   /auth/login, /picks/submit ✓
+10. Stats refreshed after batch insert (4 total tests) ✓
+
+### Safety properties enforced
+- No bets / entries / auth flows hit
+- No bot-protection endpoints (PerimeterX, px-cloud, captcha)
+- 8-15 s randomized delays between requests in live mode
+- Hard-bail on first 401/403/429 (`stopped_early=true`)
+- Batch size hard-capped at 50, default 5
+- Default `dry_run=true` so accidental triggers can't reach PP
+- `_safety_check_url()` raises BEFORE any outbound request when
+  any forbidden host fragment appears in the URL

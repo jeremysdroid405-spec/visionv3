@@ -34,6 +34,7 @@ from .scores import router as scores_router
 from .delta_admin import router as delta_admin_router, set_delta_admin_db
 from .gemini_admin import router as gemini_admin_router
 from .admin_errors import router as admin_errors_router, set_admin_errors_db
+from .pp_multiplier_lab import router as pp_multiplier_lab_router
 
 
 def register_all_routes(
@@ -177,3 +178,16 @@ def register_all_routes(
     if db is not None:
         set_admin_errors_db(db)
     app.include_router(admin_errors_router)
+
+    # PrizePicks Multiplier Lab (admin-only, read-only research tool)
+    if db is not None:
+        from services import pp_multiplier_lab as _pp_lab
+        _pp_lab.set_db(db)
+        try:
+            _pp_lab.ensure_collection_and_indexes()
+        except Exception as e:  # noqa: BLE001 — startup must not crash
+            import logging
+            logging.getLogger(__name__).warning(
+                "[PP_LAB] index ensure failed at boot: %s", e
+            )
+    app.include_router(pp_multiplier_lab_router, prefix="/api")
