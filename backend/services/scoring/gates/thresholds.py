@@ -335,8 +335,12 @@ _NBA_WAR_ZONE_BASE = {
     # cv caps map.
     #
     # OVER rules (UNDER side gates auto-skip via direction_gate config):
-    #   • direction_gate  : projection >= line × 1.05 (OVER only)
-    #   • hit_rate_gate   : HR >= 55  (universal)
+    #   • direction_gate  : projection >= line (OVER only, 2026-05-01
+    #                       relaxed 1.05 → 1.00 as part of WZ volume
+    #                       tuning; model-edge alone is gate enough)
+    #   • hit_rate_gate   : HR >= 55  (WZ opts OUT of the universal
+    #                       L5 sub-gate — the tier thesis IS variance
+    #                       of recent form; see `enforce_l5_subgate`)
     #   • cv_gate         : CV <= 0.75 (flat)
     #   • vision_score_gate : v2 >= 60 (uses extras['vision_score_v2'])
     #
@@ -346,12 +350,17 @@ _NBA_WAR_ZONE_BASE = {
     "coverage_gate": {"min_books": 1},
     "direction_gate": {
         "applies_to_sides":              ["OVER"],
-        "min_projection_to_line_ratio":  1.05,
+        "min_projection_to_line_ratio":  1.00,
     },
     # ── Universal OVER-side edge floor (2026-04-29): edge > 0 strict.
-    # Direction is already stricter (proj >= line × 1.05) above.
+    # Direction is proj >= line above (relaxed to 1.00 on 2026-05-01).
     "edge_gate":         {"min": 0.01},
-    "hit_rate_gate":     {"min": 55.0, "window": "default"},
+    # 2026-05-01 — War Zone explicitly DISABLES the universal L5
+    # sub-gate. L5 drawdowns ARE the high-variance shots WZ exists to
+    # take; enforcing L5 >= L20 floor kills the tier's supply (1 pick
+    # across 920 rejects). Safe Haven + Front Lines still enforce it.
+    "hit_rate_gate":     {"min": 55.0, "window": "default",
+                          "enforce_l5_subgate": False},
     "cv_gate":           {"max": 0.75},
     "vision_score_gate": {"min": 60.0},
     "__war_zone_overrides__": {
