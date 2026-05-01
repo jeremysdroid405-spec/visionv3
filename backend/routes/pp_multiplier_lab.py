@@ -73,6 +73,29 @@ class RunNowRequest(BaseModel):
     max_candidates: int = Field(default=25, ge=2, le=100)
 
 
+class SeedProjectionIdsRequest(BaseModel):
+    """Body for POST /seed-projection-ids — local runner posts the
+    projection IDs it saw in its own Chrome session."""
+    league_id: str
+    sport: Optional[str] = None
+    projection_ids: List[str] = Field(..., min_length=1)
+
+
+class IngestCapturedTestRequest(BaseModel):
+    """Body for POST /ingest-captured-test — local runner posts a
+    captured payout result from PP's network responses."""
+    sport: str
+    league_id: str
+    leg_count: int = Field(..., ge=2, le=6)
+    selected_projection_ids: List[str] = Field(..., min_length=2)
+    projections_response: Dict[str, Any] = Field(default_factory=dict)
+    game_types_response: Dict[str, Any] = Field(default_factory=dict)
+    state_code: Optional[str] = None
+    game_mode: Optional[str] = "power"
+    capture_metadata: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+
+
 # ─── Endpoints ──────────────────────────────────────────────────────
 @router.get("/recent")
 async def recent_tests(
@@ -154,3 +177,54 @@ async def run_now(
         dry_run=body.dry_run,
         max_candidates=body.max_candidates,
     )
+
+
+
+# ─── Local-runner endpoints ─────────────────────────────────────────
+@router.post("/seed-projection-ids")
+async def seed_projection_ids(
+    body: SeedProjectionIdsRequest,
+    x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+) -> Dict[str, Any]:
+    """Local runner posts projection IDs it observed in its own
+    Chrome session. Stored in `pp_projection_id_cache`."""
+    _require_admin_token(x_admin_token)
+    return lab.seed_projection_ids(
+        league_id=body.league_id,
+        projection_ids=body.projection_ids,
+        sport=body.sport,
+    )
+
+
+@router.get("/next-candidates")
+async def next_candidates(
+    sport: str = "NBA",
+    league_id: Optional[str] = None,
+    leg_count: int = 2,
+    limit: int = 10,
+    skip_already_tested: bool = True,
+    x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+) -> Dict[str, Any]:
+    """Return up to `limit` candidate ID-combinations the local
+    runner should drive next."""
+    _require_admin_token(x_admin_token)
+    return lab.get_next_candidate_combos(
+        sport=sport, league_id=league_id,
+        leg_count=int(leg_count), limit=int(limit),
+        skip_already_tested=bool(skip_already_tested),
+    )
+
+
+@router.post("/ingest-captured-test")
+async def ingest_captured_test(
+    body: IngestCapturedTestRequest,
+    x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+) -> Dict[str, Any]:
+    """Persist a payout-test result captured by the local Chrome
+    runner. The backend never touches PrizePicks — it just stores
+    what the runner observed in the operator's own browser."""
+    _require_admin_token(x_admin_token)
+    try:
+        return lab.ingest_captured_test(body.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

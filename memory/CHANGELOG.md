@@ -2340,3 +2340,88 @@ as STOP per spec, so live-mode currently gets 0 tests in this env.
 On a deployed prod pod with a residential-routed UA the same
 endpoint should return 200 and live mode will work end-to-end.
 
+
+---
+
+## 2026-05-01 — PP Local Multiplier Runner (local Chrome)
+
+Local-only Python script that drives the operator's already-running
+Chrome session to select 2 props at a time, captures the network
+responses PrizePicks returns to that browser, and POSTs the result
+to PropVision. Designed to run ON THE OPERATOR'S COMPUTER, never
+from the VPS.
+
+### Files added/changed
+- `/app/tools/pp_local_multiplier_runner.py` (NEW, executable)
+  - Uses Playwright `connect_over_cdp("http://127.0.0.1:9222")` to
+    attach to operator's existing Chrome (started with
+    `--remote-debugging-port=9222`).
+  - Auto-scrapes visible projection IDs from the rendered PP board
+    via `data-projection-id` / `data-test-id^=projection-` /
+    `id^=projection-`.
+  - Seeds the backend's `pp_projection_id_cache` so the rest of the
+    backend can build candidate combos.
+  - Calls `GET /api/admin/pp-multiplier-lab/next-candidates` to
+    fetch combos to drive (defaults to 5; hard-cap 25).
+  - For each combo: clicks the "More" side of each prop card
+    (never any submit/place-entry/confirm/pay button), waits up to
+    18s for `/projections?ids=` and `/game_types` responses,
+    POSTs payload to `ingest-captured-test`, then clears the slip
+    and sleeps random 8-15s.
+  - Hardcoded forbidden-fragment filter blocks navigation to
+    `px-cloud`, `perimeterx`, `/entries`, `/auth`, `/picks/submit`,
+    `captcha`, `bot-defender`, `/picks/post`.
+  - Hardcoded forbidden-button-text filter prevents clicking any
+    element whose text contains "submit entry", "submit", "place
+    entry", "place bet", "confirm entry", "confirm bet", "pay $",
+    or "deposit".
+  - `--dry-run` flag connects, scrapes IDs, fetches combos, but
+    DOES NOT click anything.
+- `backend/services/pp_multiplier_lab.py` (extended)
+  - `seed_projection_ids(league_id, projection_ids, sport)`
+  - `get_next_candidate_combos(sport, league_id, leg_count, limit,
+    skip_already_tested)` — sorted-tuple match against
+    already-saved tests.
+  - `ingest_captured_test(payload)` — flattens projections + parses
+    game_types via existing helpers; sets
+    `source="prizepicks_network_local_runner"`.
+- `backend/routes/pp_multiplier_lab.py` (extended)
+  - `POST /api/admin/pp-multiplier-lab/seed-projection-ids`
+  - `GET  /api/admin/pp-multiplier-lab/next-candidates`
+  - `POST /api/admin/pp-multiplier-lab/ingest-captured-test`
+
+### Verifications
+1. **seed-projection-ids**: `{"ok":true,"stored_count":5}`
+2. **next-candidates**: Returned 3 unseen 2-leg combos out of 5 IDs;
+   `skipped_tested=7` (correctly excluded already-saved combos).
+3. **ingest-captured-test**: `test_id=05d53275a9ec39db`,
+   `mix_type=demon_standard`, `power_play_multiplier=2.2`,
+   `is_adjusted=true`, `srp_multiplier=1.3`, `same_game=true`.
+4. **Saved doc** has `source: prizepicks_network_local_runner` and
+   `request_metadata.captured_via: local_chrome_runner`.
+
+### Operator instructions
+1. Close all Chrome windows.
+2. Launch Chrome with `--remote-debugging-port=9222
+   --user-data-dir=$HOME/chrome-debug-pp`.
+3. Sign in to PrizePicks normally; open the league/board to test.
+4. `pip install playwright httpx`.
+5. `python tools/pp_local_multiplier_runner.py
+       --backend-url $PV_URL
+       --admin-token $ADMIN_DEBUG_TOKEN
+       --sport NBA --num-combos 5`
+
+### Safety properties enforced (in-code, not just promises)
+- No bets / no entries / no `submit`/`place`/`confirm`/`pay`
+  buttons clickable (string-blocklist).
+- No navigation to `px-cloud`, `perimeterx`, `/entries`, `/auth`,
+  `/picks/submit`, `captcha`, `bot-defender`.
+- No proxy rotation, no UA spoofing — uses the operator's existing
+  Chrome session as-is.
+- Hard cap of 25 combos per run; default 5.
+- Randomized 8-15s delay between combos.
+- Backend admin token required (X-Admin-Token).
+- Script refuses to run if `--admin-token` is missing.
+- Backend never makes HTTP to PrizePicks during this flow — only
+  the operator's own browser does, and the script just listens
+  passively to its responses.

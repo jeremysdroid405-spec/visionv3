@@ -999,3 +999,202 @@ def _synthetic_ids_from_cached_board(
                 if len(out) >= n:
                     return out
     return out
+
+
+# ─── Local-runner support: seed IDs, get next combos, ingest ────────
+def seed_projection_ids(
+    *, league_id: str, projection_ids: List[str],
+    sport: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Persist projection IDs that the local runner saw in its own
+    Chrome session. Stored in `pp_projection_id_cache` with
+    `source='local_runner'`.
+
+    The local runner is the operator's own browser — it sees PP
+    responses naturally and POSTs the IDs back here so the rest of
+    the backend (`/next-candidates`, `/run-now`) can use them.
+
+    No bot-protection bypass, no PP HTTP from the backend; this just
+    accepts what the operator's own browser already received.
+    """
+    if not league_id:
+        raise ValueError("league_id required")
+    ids = [str(i).strip() for i in projection_ids if str(i).strip()]
+    if not ids:
+        raise ValueError("projection_ids cannot be empty")
+    _write_cached_projection_ids(
+        str(league_id), ids, source="local_runner",
+        raw_count=len(ids),
+    )
+    return {
+        "ok": True, "league_id": str(league_id), "sport": sport,
+        "stored_count": len(ids),
+    }
+
+
+def get_next_candidate_combos(
+    *,
+    sport: Optional[str] = "NBA",
+    league_id: Optional[str] = None,
+    leg_count: int = 2,
+    limit: int = 10,
+    skip_already_tested: bool = True,
+) -> Dict[str, Any]:
+    """Return up to `limit` candidate ID-combinations for the local
+    runner to drive in the operator's Chrome.
+
+    Source: `pp_projection_id_cache` (seeded by the local runner or
+    by `discover_projection_ids`). When `skip_already_tested=True`,
+    combos that already have a saved doc in
+    `pp_payout_structure_tests` (matched by sorted
+    `selected_projection_ids`) are filtered out.
+    """
+    if not league_id:
+        league_id = SPORT_TO_LEAGUE_ID.get((sport or "").upper())
+    if not league_id:
+        return {"ok": False, "combos": [],
+                "error": f"unknown sport={sport!r} and no league_id"}
+    league_id = str(league_id)
+    leg_count = max(2, int(leg_count))
+    limit = max(1, min(int(limit), 50))
+
+    db = _require_db()
+    cache_doc = db[PROJECTION_ID_CACHE].find_one(
+        {"league_id": league_id}, {"_id": 0},
+    )
+    pool = (cache_doc or {}).get("projection_ids") or []
+    if len(pool) < leg_count:
+        return {
+            "ok": False, "combos": [],
+            "league_id": league_id,
+            "pool_size": len(pool),
+            "error": (
+                f"need at least {leg_count} cached projection IDs "
+                f"(have {len(pool)}); seed via "
+                "POST /seed-projection-ids first"
+            ),
+        }
+
+    # Already-tested combos (sorted-tuple match).
+    tested: set = set()
+    if skip_already_tested:
+        cur = db[COLLECTION_NAME].find(
+            {"league_id": league_id, "leg_count": leg_count},
+            {"_id": 0, "selected_projection_ids": 1},
+        )
+        for d in cur:
+            ids = sorted(str(i) for i in (d.get("selected_projection_ids") or []))
+            if ids:
+                tested.add(tuple(ids))
+
+    # Build combos lazily until we hit `limit`.
+    out: List[Dict[str, Any]] = []
+    for combo in combinations(sorted(str(p) for p in pool), leg_count):
+        if combo in tested:
+            continue
+        out.append({"projection_ids": list(combo)})
+        if len(out) >= limit:
+            break
+
+    return {
+        "ok": True,
+        "league_id": league_id,
+        "sport": sport,
+        "leg_count": leg_count,
+        "pool_size": len(pool),
+        "skipped_tested": len(tested),
+        "combos": out,
+    }
+
+
+def ingest_captured_test(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Persist a payout-test result captured by the local Chrome
+    runner.
+
+    Expected payload (all keys optional except marked):
+      - sport (required) e.g. "NBA"
+      - league_id (required) e.g. "7"
+      - leg_count (required, int >= 2)
+      - selected_projection_ids (required, List[str])
+      - projections_response (required, dict — full body of
+        /projections?ids=… that the browser received)
+      - game_types_response (required, dict — full body of /game_types
+        that the browser received)
+      - state_code, game_mode, capture_metadata, notes — optional
+
+    The function:
+      - Re-uses `extract_selected_projection` / `parse_game_types_response`
+        to flatten and stamp helper fields (mix_type, same_game, …).
+      - Inserts ONE doc into `pp_payout_structure_tests`.
+      - Sets `source = "prizepicks_network_local_runner"` so admin
+        review can distinguish backend-driven vs local-runner-driven
+        tests.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a dict")
+
+    sport = payload.get("sport")
+    league_id = payload.get("league_id")
+    leg_count = int(payload.get("leg_count") or 0)
+    selected_ids = payload.get("selected_projection_ids") or []
+    proj_body = payload.get("projections_response") or {}
+    gt_body = payload.get("game_types_response") or {}
+
+    if not sport or not league_id or leg_count < 2 or not selected_ids:
+        raise ValueError(
+            "missing required fields: sport, league_id, "
+            "leg_count (>=2), selected_projection_ids"
+        )
+
+    # Flatten projection rows from the captured response.
+    rows = (proj_body or {}).get("data") or []
+    included = (proj_body or {}).get("included") or []
+    included_index = {
+        (str(it.get("type")), str(it.get("id"))): (
+            it.get("attributes") or {}
+        )
+        for it in included
+    }
+    selected_projections = [
+        extract_selected_projection(r, included_index) for r in rows
+    ]
+    # If for any reason the projections response didn't include the
+    # selected IDs (e.g. the browser hit a slightly different endpoint
+    # shape), fall back to bare-ID stubs so the doc still saves.
+    if not selected_projections:
+        selected_projections = [
+            {"projection_id": str(pid), "odds_type": "standard"}
+            for pid in selected_ids
+        ]
+
+    parsed = parse_game_types_response(gt_body, leg_count=leg_count)
+
+    doc = build_test_document(
+        sport=str(sport),
+        league_id=str(league_id),
+        state_code=payload.get("state_code"),
+        game_mode=payload.get("game_mode") or "power",
+        leg_count=leg_count,
+        selected_projections=selected_projections,
+        raw_projection_response=proj_body,
+        game_types_parsed=parsed,
+        request_metadata={
+            "captured_via": "local_chrome_runner",
+            **(payload.get("capture_metadata") or {}),
+        },
+        notes=payload.get("notes")
+            or "captured via local Chrome runner — no backend HTTP to PP",
+    )
+    # Override source so admin review can filter cleanly.
+    doc["source"] = "prizepicks_network_local_runner"
+    tid = insert_test(doc)
+    return {
+        "ok": True,
+        "test_id": tid,
+        "mix_type": doc.get("mix_type"),
+        "power_play_multiplier": doc.get("power_play_multiplier"),
+        "is_adjusted": doc.get("is_adjusted"),
+        "srp_multiplier": doc.get("srp_multiplier"),
+        "same_game": doc.get("same_game"),
+    }
+
