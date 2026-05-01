@@ -69,13 +69,38 @@ class UniversalGateEngine:
         else:
             actual = _py(m.hit_rate if m.hit_rate is not None else m.hit_rate_l20)
         passed = bool(actual is not None and actual >= min_val)
+        # ── Universal L5 sub-gate (2026-05-01) ───────────────────────
+        # Block: pre-resolved metric for the "default"/"l20" floor must
+        # also be backed by the recent-form L5. If hit_rate_l5 is
+        # populated (adapter floors it at 4 games) AND L5 < required
+        # min_val, the gate fails REGARDLESS of L20. Caller may
+        # disable via `enforce_l5_subgate: False` per-tier; default
+        # is ON for the standard window paths.
+        # Skip when caller asked for a specific L5/L10 window (no need
+        # to second-check the same window).
+        note = None
+        if (
+            passed
+            and window in ("default", "l20")
+            and cfg.get("enforce_l5_subgate", True)
+            and m.hit_rate_l5 is not None
+            and m.hit_rate_l5 < min_val
+        ):
+            passed = False
+            note = (
+                f"l5_below_l20_floor: l5={m.hit_rate_l5} < min={min_val}"
+            )
         return GateDetail(
             gate_type="hit_rate_gate",
-            threshold={"min": min_val, "window": window},
+            threshold={"min": min_val, "window": window,
+                       "l5_subgate_enforced": cfg.get(
+                           "enforce_l5_subgate", True
+                       )},
             actual=actual,
             passed=passed,
             comparator=">=",
             reason_code=None if passed else ReasonCode.HIT_RATE_FAIL,
+            note=note,
         )
 
     @staticmethod

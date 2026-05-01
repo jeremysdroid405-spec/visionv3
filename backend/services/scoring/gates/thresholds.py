@@ -128,7 +128,11 @@ _NBA_SAFE_HAVEN_BASE = {
         "min_projection_minus_line": 0.0,
     },
     "edge_gate":      {"min": 0.01},   # edge > 0 (strictly positive)
-    "hit_rate_gate":  {"min": 85.0, "window": "default"},
+    # 2026-05-01 — L20 floor lowered to 80 per user spec; L5 sub-gate
+    # (universal, in `engine.py:_eval_hit_rate`) now BACKS this floor
+    # by requiring recent-form L5 ≥ 80 too. Together: "elite L20 only
+    # if recent form is still elite". Replaces the previous 85 floor.
+    "hit_rate_gate":  {"min": 80.0, "window": "default"},
     "vision_score_gate": {"min": 85.0},
     "cv_gate": {
         "caps": {

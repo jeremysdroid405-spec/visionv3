@@ -65,6 +65,12 @@ _SCORE_OUTPUT_FIELDS = (
     # was computed; None otherwise. Gate engine consumes this for
     # small-sample-aware hit_rate_gate evaluation.
     "hit_rate_sample_size",
+    # 2026-05-01 — sub-window hit rates surfaced for the universal
+    # L5 sub-gate (`gates/engine.py:_eval_hit_rate`) and for
+    # recent-form display alongside the L20 gate input. Both NBA
+    # and MLB populate these (NBA via `_compute_cv_and_hit_rate`,
+    # MLB via `_calculate_subwindow_hit_rate`).
+    "hit_rate_l5", "hit_rate_l10",
     # Projection-gap ranking signal (2026-02-20 shadow G1).
     # Persisted for `?sort=gap` opt-in on tier endpoints.
     "ranking_score_v2",

@@ -186,6 +186,8 @@ class MLBScoringAdapter(ScoringAdapter):
             hit_rate_under = None
             hit_rate_status = "missing_bdl_id"
             hr_sample_size = None
+            hit_rate_l5 = None
+            hit_rate_l10 = None
             ceiling_rate = None
             avg_hit_margin = None
             avg_miss_margin = None
@@ -216,6 +218,17 @@ class MLBScoringAdapter(ScoringAdapter):
             hit_rate_status = (
                 "computed" if hit_rate is not None
                 else "missing_source_distribution"
+            )
+            # 2026-05-01 — sub-window hit rates for the universal L5
+            # sub-gate (`gates/engine.py:_eval_hit_rate`) and for
+            # recent-form display alongside the L20 gate input.
+            hit_rate_l5, _l5_n = stats._calculate_subwindow_hit_rate(
+                bdl_player_id, stat_type, line,
+                side=side_for_hr, window=5, min_games=4,
+            )
+            hit_rate_l10, _l10_n = stats._calculate_subwindow_hit_rate(
+                bdl_player_id, stat_type, line,
+                side=side_for_hr, window=10, min_games=4,
             )
             ceiling_rate = stats._calculate_ceiling_hit_rate(
                 bdl_player_id, stat_type, line,
@@ -585,6 +598,8 @@ class MLBScoringAdapter(ScoringAdapter):
             hit_rate_over=hit_rate_over,
             hit_rate_under=hit_rate_under,
             hit_rate_sample_size=hr_sample_size,
+            hit_rate_l5=hit_rate_l5,
+            hit_rate_l10=hit_rate_l10,
             hit_rate_status=hit_rate_status,
             projection_method=projection_method,
             edge_pct=edge_pct,

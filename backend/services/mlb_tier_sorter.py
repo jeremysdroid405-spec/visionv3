@@ -550,21 +550,24 @@ class MLBTierSorter:
         avg = round(sum_val / valid_count, 2) if valid_count else None
         return hit_rate_over, hit_rate_under, avg, window
 
-    def _calculate_l5_hit_rate(
+    def _calculate_subwindow_hit_rate(
         self,
         bdl_player_id: Optional[int],
         stat_type: str,
         line: float,
         side: str = "OVER",
+        window: int = 5,
+        min_games: int = 4,
     ) -> "Tuple[Optional[float], Optional[int]]":
-        """L5 hit rate for the universal sub-gate (2026-05-01).
+        """Sub-window (L5 / L10) hit rate for the universal L5 sub-gate
+        and recent-form display (2026-05-01).
 
         Same strict-denominator contract as `_calculate_hit_rate_sides`
-        but with a fixed 5-game window. Returns
-        ``(hit_rate_pct, sample_size)`` where sample_size is the number
-        of games actually in the window (≤5). When fewer than 4 games
-        are available, returns ``(None, n)`` so the gate engine falls
-        back to L20-only (sample-size escape hatch).
+        but with a caller-provided fixed window. Returns
+        ``(hit_rate_pct, sample_size)`` where ``sample_size`` is the
+        number of games actually used (≤ ``window``). When fewer than
+        ``min_games`` are available, returns ``(None, n)`` so the gate
+        engine falls back to the L20 path (sample-size escape hatch).
         """
         game_logs = self._get_logs_by_id(bdl_player_id)
         if not game_logs:
@@ -572,9 +575,9 @@ class MLBTierSorter:
         sorted_logs = sorted(
             game_logs, key=lambda x: x.get("date", "") or "", reverse=True
         )
-        window = min(5, len(sorted_logs))
-        if window < 4:
-            return None, window
+        actual = min(window, len(sorted_logs))
+        if actual < min_games:
+            return None, actual
 
         stat_map = {
             "hits": "hits", "total_bases": "total_bases",
@@ -595,7 +598,7 @@ class MLBTierSorter:
         field = stat_map.get(stat_key, stat_key)
         is_under = "UNDER" in (side or "OVER").upper()
         hits = 0
-        for g in sorted_logs[:window]:
+        for g in sorted_logs[:actual]:
             if isinstance(field, list):
                 val = sum(g.get(f) or 0 for f in field)
             elif field == "innings_pitched":
@@ -623,7 +626,7 @@ class MLBTierSorter:
             else:
                 if val > line:
                     hits += 1
-        return float(round((hits / window) * 100, 1)), window
+        return float(round((hits / actual) * 100, 1)), actual
 
 
     def _calculate_ceiling_hit_rate(

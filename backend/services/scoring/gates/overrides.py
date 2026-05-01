@@ -113,9 +113,17 @@ def apply_safe_haven_overrides(
         min_vs   = float(elite.get("min_vision_score", 90.0))
         max_cv   = float(elite.get("max_cv", 0.35))
         relax_hr = float(elite.get("relax_hit_rate_to", 75.0))
+        # 2026-05-01 — L5 sub-gate must ALSO back the relaxed floor.
+        # Without this guard the override would re-introduce the
+        # original "L20 elite, L5 slumping" bug via the rescue path.
+        l5_ok = (
+            metrics.hit_rate_l5 is None
+            or metrics.hit_rate_l5 >= relax_hr
+        )
         if (vs is not None and vs >= min_vs and
                 cv is not None and cv <= max_cv and
-                hr is not None and hr >= relax_hr):
+                hr is not None and hr >= relax_hr and
+                l5_ok):
             _mark_passed(details, passed, failed,
                          "hit_rate_gate",
                          f"safe_haven_override:elite_vision "
