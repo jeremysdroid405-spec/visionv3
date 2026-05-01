@@ -1,149 +1,144 @@
 {
-  "locked_at": "2026-04-29T16:15:06.457369+00:00",
-  "version": "MLB_HF_v2.0_statcast",
-  "feature_count": 138,
-  "policy": "READ_ONLY \u2014 DO NOT RETRAIN OR OVERWRITE",
-  "owner_decision": "User-initiated freeze on 2026-04-29",
+  "locked_at": "2026-05-01T02:51:44.202451+00:00",
+  "version": "MLB_HF_v3.0_bayes",
+  "feature_count": 208,
+  "total_training_samples": 766010,
+  "reason": "Bayesian Statcast shrinkage retrain \u2014 fixes Bleday H+R+RBI 6.55\u21923.39 small-sample blow-up.",
   "files": {
     "mlb_hf_doubles.pkl": {
-      "sha256": "38d2fb57bda81fd46e925f9207efa6e7f38d4cddfa8d0dc1935fe4ca80a3d2a6",
-      "size_bytes": 521831,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 189007,
-      "trained_at": "2026-04-29T15:42:52.212498+00:00",
-      "r2_test": 0.0065
+      "sha256": "c3652381b02eca8a653049b88bb97678cd5cf1c92fcad41d0b02f77905177f1d",
+      "size": 528969,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.0122,
+      "mae_test": 0.2275,
+      "samples": 34504,
+      "feature_count": 208
     },
     "mlb_hf_earned_runs.pkl": {
-      "sha256": "1c76fc38c2c7ed9046c954e6d83f80eaf2685118cd146b2e2a677094049d512b",
-      "size_bytes": 529941,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 76641,
-      "trained_at": "2026-04-29T15:44:54.303258+00:00",
-      "r2_test": 0.2579
+      "sha256": "8aa88bf4c6a7570b770c311075289b9fbfe76bf1b737dfb1b256bf55a1275698",
+      "size": 534471,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.3104,
+      "mae_test": 0.8736,
+      "samples": 24142,
+      "feature_count": 208
     },
     "mlb_hf_hits+runs+rbis.pkl": {
-      "sha256": "9b9b346be209e34d38ed1e0ea30977c197e4d8c0618dfb33592b31f9f58c5098",
-      "size_bytes": 542901,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 291379,
-      "trained_at": "2026-04-29T15:44:42.682869+00:00",
-      "r2_test": 0.1999
+      "sha256": "4b48fb1cf20ff54bc64c5bd514bf8375f4389988a1a9b0c12e600eecd5bdb27e",
+      "size": 538265,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.267,
+      "mae_test": 0.8922,
+      "samples": 80074,
+      "feature_count": 208
     },
     "mlb_hf_hits.pkl": {
-      "sha256": "7e45e077d17a0a96f1ea54f5a028d435fa30f43337f9ebd21aff75c2b8abdc74",
-      "size_bytes": 545285,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 220703,
-      "trained_at": "2026-04-29T15:39:08.426360+00:00",
-      "r2_test": 0.0803
+      "sha256": "13f0db5c0e27d8c36fddfb53a218162eb34e31610c71cbc6ac90a58d62f07f15",
+      "size": 544716,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.1901,
+      "mae_test": 0.5538,
+      "samples": 61990,
+      "feature_count": 208
     },
     "mlb_hf_hits_allowed.pkl": {
-      "sha256": "a48df302af02af5dfd55c932ba0e334cf1cdd902d0b0ecfb4d717db43bbf8bca",
-      "size_bytes": 534771,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 76337,
-      "trained_at": "2026-04-29T15:45:05.837449+00:00",
-      "r2_test": 0.5135
+      "sha256": "17765f2efdb710a598e6ae7095797beca5d4bd407d3880f691a67f696d978eb2",
+      "size": 538407,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.5381,
+      "mae_test": 1.0383,
+      "samples": 23838,
+      "feature_count": 208
     },
     "mlb_hf_home_runs.pkl": {
-      "sha256": "a7383f75ebddbeff380eb03096cc2c704ef986e6a08320e29b59efabe1d62fdb",
-      "size_bytes": 530261,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 220703,
-      "trained_at": "2026-04-29T15:41:23.244414+00:00",
-      "r2_test": 0.0268
+      "sha256": "65ac7b7a21582b36f74dd6f4d2fb853c699afa8b2faf9cfa991fe064eba71fd7",
+      "size": 519973,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.0789,
+      "mae_test": 0.1398,
+      "samples": 61990,
+      "feature_count": 208
     },
     "mlb_hf_pitcher_strikeouts.pkl": {
-      "sha256": "00c9a8f6081c3f63ef3de3c80b1e0ed72d5b90e8f7026d0b35b6b9d41b3a9b73",
-      "size_bytes": 539395,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 76641,
-      "trained_at": "2026-04-29T15:40:52.359071+00:00",
-      "r2_test": 0.5272
+      "sha256": "257e980641764d291cefe49910366d7494bb01c5ea19fa0dba72cb254561e0ad",
+      "size": 535275,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.5759,
+      "mae_test": 0.9292,
+      "samples": 24140,
+      "feature_count": 208
     },
     "mlb_hf_pitcher_walks.pkl": {
-      "sha256": "644d4cc0520ab5830692284c13119f23d4845f3504d6467fc80b9869558ab6f6",
-      "size_bytes": 534155,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 76641,
-      "trained_at": "2026-04-29T15:45:17.493522+00:00",
-      "r2_test": 0.2553
+      "sha256": "25c2b5ef4b5cf5f76bee767370a4739be359ccb5dce97ca6b015b43f1d9a9ce7",
+      "size": 535210,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.343,
+      "mae_test": 0.6007,
+      "samples": 24142,
+      "feature_count": 208
     },
     "mlb_hf_rbis.pkl": {
-      "sha256": "effee4d81b99fd6ce026c975811c59f598356a7521255110714ccc639640dafb",
-      "size_bytes": 526585,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 220703,
-      "trained_at": "2026-04-29T15:40:09.917922+00:00",
-      "r2_test": 0.0273
+      "sha256": "d60a85a6e53c939e41c47f44a442ae1093eee557e3f6745759908377fc2a49bc",
+      "size": 513171,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.072,
+      "mae_test": 0.4682,
+      "samples": 61990,
+      "feature_count": 208
     },
     "mlb_hf_runs.pkl": {
-      "sha256": "4eb91636735ceafda01c481c89d123cce31adb75af9314ad456599490100ef36",
-      "size_bytes": 519039,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 220703,
-      "trained_at": "2026-04-29T15:40:40.688526+00:00",
-      "r2_test": 0.0412
+      "sha256": "543937ae7cb4e6037ed7415776a7b1d7be4046ace78f50e64c33a413d3910f3e",
+      "size": 528004,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.0999,
+      "mae_test": 0.4287,
+      "samples": 61990,
+      "feature_count": 208
     },
     "mlb_hf_singles.pkl": {
-      "sha256": "1bbb30be9f29e8f4f88f93b3d9e3e88804babdc3a030f342992e8b37b07898f2",
-      "size_bytes": 532977,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 220703,
-      "trained_at": "2026-04-29T15:43:57.215430+00:00",
-      "r2_test": 0.0508
+      "sha256": "8949ee34cff36d18ebd08f9268a97c6053034b0a3ebc7ee14261ba4c2b203041",
+      "size": 530237,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.1111,
+      "mae_test": 0.5127,
+      "samples": 61991,
+      "feature_count": 208
     },
     "mlb_hf_stolen_bases.pkl": {
-      "sha256": "1d8868e80870c726ff0896df1dc8b9c4a760fe0e1c251a17455eb0abf54914e5",
-      "size_bytes": 501023,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 215122,
-      "trained_at": "2026-04-29T15:41:53.038732+00:00",
-      "r2_test": 0.0345
+      "sha256": "d9ba57d51f10ae968fc3ed5556d044fdd88744cd81fd4a7bb650ee4d5a76c2f1",
+      "size": 460877,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.0072,
+      "mae_test": 0.0765,
+      "samples": 60619,
+      "feature_count": 208
     },
     "mlb_hf_strikeouts.pkl": {
-      "sha256": "7797f5bf5d86a073154bfcfce4471f622a1e79ee81f0ce4a89bfed454ba6fc4d",
-      "size_bytes": 546713,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 220703,
-      "trained_at": "2026-04-29T15:42:24.196043+00:00",
-      "r2_test": 0.092
+      "sha256": "1b4b8e655bc78f773b316302d8cc4642467cb1bd9aec4f75da76cb2da7e58ac0",
+      "size": 539209,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.2402,
+      "mae_test": 0.5441,
+      "samples": 61990,
+      "feature_count": 208
     },
     "mlb_hf_total_bases.pkl": {
-      "sha256": "9329a3de067b2efe65f5431fe8828db8942fba57d158876b94decf857cac3786",
-      "size_bytes": 536919,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 215122,
-      "trained_at": "2026-04-29T15:39:38.934005+00:00",
-      "r2_test": 0.0655
+      "sha256": "653798e5c91d4bcdfdd3f7d251d3a9e1f238191242416376514d92fb367001b1",
+      "size": 532488,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.2191,
+      "mae_test": 0.9379,
+      "samples": 60619,
+      "feature_count": 208
     },
     "mlb_hf_walks.pkl": {
-      "sha256": "9b2e9f4ad6922932fea1427dfaebc160bbc047a7843b688c9fda9c98b6725628",
-      "size_bytes": 527267,
-      "version": "MLB_HF_v2.0_statcast",
-      "feature_count": 138,
-      "samples": 220703,
-      "trained_at": "2026-04-29T15:43:23.144111+00:00",
-      "r2_test": 0.041
-    },
-    "_train_report_v2.json": {
-      "sha256": "5977612b13fd81809269e124b37a340522851a1b49e5fd1362f246b436c59a42",
-      "size_bytes": 41204
+      "sha256": "258abb2ba4f9966dea52746d7d8758a86b8c7bb9e29534a1e1faf245a1b710da",
+      "size": 529638,
+      "version": "MLB_HF_v3.0_bayes",
+      "r2_test": 0.0925,
+      "mae_test": 0.3596,
+      "samples": 61991,
+      "feature_count": 208
     }
-  },
-  "total_training_samples": 2761811
+  }
 }

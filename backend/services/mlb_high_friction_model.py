@@ -175,7 +175,7 @@ class MLBHighFrictionModel:
         self.feature_cols = {}
         
         os.makedirs(self.MODEL_DIR, exist_ok=True)
-        logger.info("[MLB_HF_MODEL] Initialized MLB High-Friction Ensemble v1.0")
+        logger.info("[MLB_HF_MODEL] Initialized MLB High-Friction Ensemble v3.0_bayes")
     
     # =========================================================================
     # 2026-04-29 — Statcast LIVE lookups (v2.0 retrain wiring)
@@ -964,7 +964,7 @@ class MLBHighFrictionModel:
                 'model': self.models[stat],
                 'scaler': self.scalers[stat],
                 'features': self.feature_cols[stat],
-                'version': 'MLB_HF_v1.0',
+                'version': 'MLB_HF_v3.0_bayes',
                 'trained_at': datetime.now(timezone.utc).isoformat()
             }
             path = os.path.join(self.MODEL_DIR, f'mlb_hf_{stat}.pkl')
@@ -1355,7 +1355,7 @@ class MLBHighFrictionModel:
                 'friction_audit': friction_audit,
                 'full_features': friction_audit,
                 'mlr_features_used': True,
-                'model_version': 'MLB_HF_v1.0',
+                'model_version': 'MLB_HF_v3.0_bayes',
                 'feature_health': feature_health,
                 # 2026-04-27 — μ-override audit fields
                 'mu_raw_model_projection': round(mu_raw_model_projection, 4),

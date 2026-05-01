@@ -2032,3 +2032,56 @@ compute normalized metrics.
 4. Ship a scoring adapter that emits `NormalizedMetrics`.
 No new gate-evaluation code.
 
+
+---
+
+## 2026-05-01 — MLB HF Model Retrain (v3.0_bayes) COMPLETE
+
+**P0 task closed.** Bayesian Statcast shrinkage retrain is live and locked.
+
+### What changed
+- Bumped `retrain_mlb_models_v2.py` and `services/mlb_high_friction_model.py`
+  version tags from `MLB_HF_v2.0_statcast` → `MLB_HF_v3.0_bayes`.
+- Added `MLB_HF_STATS` env-var filter to the retrain script for crash-resume
+  (training large stats one-by-one when memory is tight).
+- Trained all 15 stat models with `bayes_shrink_rolling_window` applied to
+  Statcast rolling windows inside `_build_friction_features`.
+- Retrain ran under supervisor (`mlb_retrain` program) so it survives pod
+  restarts. Supervisor program removed after completion.
+- Re-locked `/app/backend/models/mlb_hf/.LOCKED` with fresh sha256 manifest
+  for v3.0_bayes (15 files, 766,010 total training samples, 208 features).
+
+### Validation (real, not curl-faked)
+- New regression suite `tests/test_mlb_hf_v3_bayes_validation.py` (4 tests
+  + 14 parametrised artifact checks) — **17 passed, 1 skipped**.
+- Existing `tests/test_mlb_statcast_bayes.py` — **10 passed** (no
+  regressions to the shrinkage helper invariants).
+- **JJ Bleday H+R+RBI**: **6.55-6.74 → 3.39** (49% reduction, well under
+  the 4.0 sanity gate).
+- 25-player random sample: zero batters with H+R+RBI > 4× their L20 mean
+  (the small-sample blow-up canary).
+
+### Per-stat R²_test (post-retrain)
+| Stat                | R²_test | Notes                                         |
+|---------------------|---------|-----------------------------------------------|
+| pitcher_strikeouts  | 0.576   | Best — workload-anchored stat                |
+| hits_allowed        | 0.538   | Strong pitcher signal                        |
+| pitcher_walks       | 0.343   |                                              |
+| earned_runs         | 0.310   |                                              |
+| hits+runs+rbis      | 0.267   | Up from v2 — Bayesian smoothing helped fit   |
+| strikeouts (batter) | 0.240   |                                              |
+| total_bases         | 0.219   |                                              |
+| hits                | 0.190   |                                              |
+| singles             | 0.111   |                                              |
+| runs                | 0.100   |                                              |
+| walks (batter)      | 0.092   |                                              |
+| home_runs           | 0.079   | Sparse, low-signal target                    |
+| rbis                | 0.072   |                                              |
+| doubles             | 0.012   |                                              |
+| stolen_bases        | 0.007   | Heavy 0-floor; future calibration             |
+
+### Lock manifest
+- Version: `MLB_HF_v3.0_bayes`
+- Feature count: 208
+- Total training samples: 766,010 across 15 stats
+- Locked at: 2026-05-01

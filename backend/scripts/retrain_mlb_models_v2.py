@@ -68,6 +68,17 @@ STATS = [
     'home_runs', 'stolen_bases', 'strikeouts', 'doubles', 'walks',
     'singles', 'hits+runs+rbis', 'earned_runs', 'hits_allowed', 'pitcher_walks',
 ]
+# 2026-05-01 — Optional CLI/env filter for resuming after partial run.
+# Pass `MLB_HF_STATS=foo,bar,baz` to train only those stats. The lookup
+# tables and PA cache are still built once; this just filters which
+# target stats actually iterate.
+_stat_filter = os.environ.get("MLB_HF_STATS", "").strip()
+if _stat_filter:
+    requested = {s.strip() for s in _stat_filter.split(",") if s.strip()}
+    STATS = [s for s in STATS if s in requested]
+    logging.getLogger(__name__).warning(
+        f"MLB_HF_STATS env filter active → training only: {STATS}"
+    )
 PITCHER_STATS = {'pitcher_strikeouts', 'pitcher_walks', 'hits_allowed',
                  'earned_runs', 'pitcher_outs'}
 
@@ -195,7 +206,7 @@ def _sc_lookup_pitcher(mlbam_id: int | None, gdate: str | None) -> dict | None:
 # Train each stat
 # =============================================================================
 report: dict = {"trained_at": datetime.now(timezone.utc).isoformat(),
-                 "version": "MLB_HF_v2.0_statcast",
+                 "version": "MLB_HF_v3.0_bayes",
                  "stats": {}}
 
 for stat_name in STATS:
@@ -342,7 +353,7 @@ for stat_name in STATS:
 
     data = {
         'model': xgb, 'scaler': scaler, 'features': feature_cols,
-        'version': 'MLB_HF_v2.0_statcast',
+        'version': 'MLB_HF_v3.0_bayes',
         'trained_at': datetime.now(timezone.utc).isoformat(),
         'samples': total_samples, 'feature_count': len(feature_cols),
         'r2_train': round(r2_tr, 4), 'r2_test': round(r2_te, 4),
@@ -374,10 +385,20 @@ for stat_name in STATS:
                 f"R2_tr={r2_tr:.4f} | R2_te={r2_te:.4f} | MAE_te={mae_te:.4f} | "
                 f"sc_hit={sc_hit}/{sc_hit + sc_miss}")
 
-# Persist a JSON report for inspection.
-report_path = os.path.join(MODEL_DIR, "_train_report_v2.json")
+# Persist a JSON report for inspection. Merge with any prior partial
+# report so a resumed run preserves earlier stats' metrics.
+report_path = os.path.join(MODEL_DIR, "_train_report_v3.json")
+if os.path.exists(report_path):
+    try:
+        with open(report_path, "r") as fh:
+            prior = json.load(fh) or {}
+        prior_stats = (prior.get("stats") or {})
+        for k, v in prior_stats.items():
+            report["stats"].setdefault(k, v)
+    except Exception:
+        pass
 with open(report_path, "w") as fh:
     json.dump(report, fh, indent=2, default=str)
 logger.info(f"REPORT WRITTEN → {report_path}")
-logger.info("ALL MODELS RETRAINED — MLB_HF_v2.0_statcast")
+logger.info("ALL MODELS RETRAINED — MLB_HF_v3.0_bayes")
 client.close()

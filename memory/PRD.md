@@ -1,3 +1,12 @@
+# PROD STATUS (2026-05-01)
+- **MLB HF Model**: `MLB_HF_v3.0_bayes` LIVE & LOCKED (15 stats, 208 features, 766k samples).
+  Bayesian Statcast shrinkage active; JJ Bleday H+R+RBI = 3.39 (was 6.55-6.74 pre-bayes).
+- See `CHANGELOG.md` 2026-05-01 entry for full retrain details.
+- Tests: `/app/backend/tests/test_mlb_hf_v3_bayes_validation.py` (17/18 pass + 1 data-skip),
+  `test_mlb_statcast_bayes.py` (10/10 pass).
+
+---
+
 # PRD — Living Document
 
 ## Problem Statement (verbatim)

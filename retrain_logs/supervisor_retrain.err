@@ -1,0 +1,86 @@
+2026-05-01 02:43:59,772 [MLB_HF_MODEL] Initialized MLB High-Friction Ensemble v3.0_bayes
+2026-05-01 02:43:59,772 Loading master_hub split blocks (bdl_id → splits dict)...
+2026-05-01 02:43:59,788   hub splits: 6,594 entries
+2026-05-01 02:43:59,788 MLB_HF_STATS env filter active → training only: ['singles', 'hits+runs+rbis', 'earned_runs', 'hits_allowed', 'pitcher_walks']
+2026-05-01 02:43:59,788 Building identity-map (bdl_id → mlbam_id)...
+2026-05-01 02:43:59,790   identity map: 373 entries
+2026-05-01 02:43:59,790 Building name → mlbam_id fallbacks...
+2026-05-01 02:44:00,335   batter name index: 807
+2026-05-01 02:44:00,336   pitcher name index: 1,399
+2026-05-01 02:44:00,336 Loading Statcast batter features into memory...
+2026-05-01 02:44:01,479   batter SC: 109,864 (player,date) keys across 1,420 players
+2026-05-01 02:44:01,480 Loading Statcast pitcher features into memory...
+2026-05-01 02:44:01,805   pitcher SC: 47,021 (pitcher,date) keys across 1,402 pitchers
+2026-05-01 02:44:01,805 Loading mlb_statcast_raw → PA cache …
+2026-05-01 02:46:56,660 [MLB_HF_MODEL] Initialized MLB High-Friction Ensemble v3.0_bayes
+2026-05-01 02:46:56,660 Loading master_hub split blocks (bdl_id → splits dict)...
+2026-05-01 02:46:57,744   hub splits: 6,594 entries
+2026-05-01 02:46:57,744 MLB_HF_STATS env filter active → training only: ['singles', 'hits+runs+rbis', 'earned_runs', 'hits_allowed', 'pitcher_walks']
+2026-05-01 02:46:57,745 Building identity-map (bdl_id → mlbam_id)...
+2026-05-01 02:46:57,750   identity map: 373 entries
+2026-05-01 02:46:57,750 Building name → mlbam_id fallbacks...
+2026-05-01 02:46:58,516   batter name index: 807
+2026-05-01 02:46:58,516   pitcher name index: 1,399
+2026-05-01 02:46:58,516 Loading Statcast batter features into memory...
+2026-05-01 02:47:00,233   batter SC: 109,864 (player,date) keys across 1,420 players
+2026-05-01 02:47:00,233 Loading Statcast pitcher features into memory...
+2026-05-01 02:47:00,651   pitcher SC: 47,021 (pitcher,date) keys across 1,402 pitchers
+2026-05-01 02:47:00,651 Loading mlb_statcast_raw → PA cache …
+2026-05-01 02:47:07,789   PA cache: 1,602,169 rows  →  1,420 batters / 1,402 pitchers
+2026-05-01 02:47:20,468   singles: 200 players, 3682 samples, sc_hit=3615/3682
+2026-05-01 02:47:33,893   singles: 400 players, 7351 samples, sc_hit=7267/7351
+2026-05-01 02:47:40,371   singles: 600 players, 10263 samples, sc_hit=10115/10263
+2026-05-01 02:47:47,409   singles: 800 players, 28286 samples, sc_hit=14087/28286
+2026-05-01 02:47:51,552   singles: 1000 players, 41787 samples, sc_hit=16234/41787
+2026-05-01 02:47:53,584   singles: 1200 players, 47313 samples, sc_hit=17192/47313
+2026-05-01 02:47:55,863   singles: 1400 players, 53648 samples, sc_hit=18483/53648
+2026-05-01 02:47:59,698   singles: 1600 players, 58573 samples, sc_hit=20948/58573
+2026-05-01 02:48:00,287   singles: 1800 players, 59973 samples, sc_hit=21366/59973
+2026-05-01 02:48:00,739   singles: 2000 players, 61250 samples, sc_hit=21412/61250
+2026-05-01 02:48:03,629 singles                |    61991 samples | 208 feat | R2_tr=0.2205 | R2_te=0.1111 | MAE_te=0.5127 | sc_hit=21424/61991
+2026-05-01 02:48:16,158   hits+runs+rbis: 200 players, 4415 samples, sc_hit=3620/4415
+2026-05-01 02:48:29,511   hits+runs+rbis: 400 players, 8611 samples, sc_hit=7284/8611
+2026-05-01 02:48:35,859   hits+runs+rbis: 600 players, 12173 samples, sc_hit=10137/12173
+2026-05-01 02:48:43,231   hits+runs+rbis: 800 players, 32193 samples, sc_hit=14113/32193
+2026-05-01 02:48:47,789   hits+runs+rbis: 1000 players, 48105 samples, sc_hit=16262/48105
+2026-05-01 02:48:50,532   hits+runs+rbis: 1200 players, 58464 samples, sc_hit=17235/58464
+2026-05-01 02:48:53,332   hits+runs+rbis: 1400 players, 68176 samples, sc_hit=18528/68176
+2026-05-01 02:48:57,593   hits+runs+rbis: 1600 players, 76217 samples, sc_hit=20993/76217
+2026-05-01 02:48:58,231   hits+runs+rbis: 1800 players, 77953 samples, sc_hit=21411/77953
+2026-05-01 02:48:58,698   hits+runs+rbis: 2000 players, 79298 samples, sc_hit=21457/79298
+2026-05-01 02:49:02,289 hits+runs+rbis         |    80074 samples | 208 feat | R2_tr=0.3596 | R2_te=0.2670 | MAE_te=0.8922 | sc_hit=21469/80074
+2026-05-01 02:49:03,337   earned_runs: 200 players, 796 samples, sc_hit=446/796
+2026-05-01 02:49:04,336   earned_runs: 400 players, 1319 samples, sc_hit=918/1319
+2026-05-01 02:49:05,353   earned_runs: 600 players, 1964 samples, sc_hit=1511/1964
+2026-05-01 02:49:06,612   earned_runs: 800 players, 4954 samples, sc_hit=2281/4954
+2026-05-01 02:49:08,182   earned_runs: 1000 players, 8623 samples, sc_hit=3394/8623
+2026-05-01 02:49:11,102   earned_runs: 1200 players, 15615 samples, sc_hit=5501/15615
+2026-05-01 02:49:12,793   earned_runs: 1400 players, 19898 samples, sc_hit=6924/19898
+2026-05-01 02:49:15,030   earned_runs: 1600 players, 23667 samples, sc_hit=9108/23667
+2026-05-01 02:49:15,421   earned_runs: 1800 players, 24019 samples, sc_hit=9375/24019
+2026-05-01 02:49:15,711   earned_runs: 2000 players, 24097 samples, sc_hit=9436/24097
+2026-05-01 02:49:17,026 earned_runs            |    24142 samples | 208 feat | R2_tr=0.5093 | R2_te=0.3104 | MAE_te=0.8736 | sc_hit=9439/24142
+2026-05-01 02:49:18,082   hits_allowed: 200 players, 796 samples, sc_hit=446/796
+2026-05-01 02:49:19,088   hits_allowed: 400 players, 1319 samples, sc_hit=918/1319
+2026-05-01 02:49:20,098   hits_allowed: 600 players, 1964 samples, sc_hit=1511/1964
+2026-05-01 02:49:21,353   hits_allowed: 800 players, 4954 samples, sc_hit=2281/4954
+2026-05-01 02:49:22,905   hits_allowed: 1000 players, 8623 samples, sc_hit=3394/8623
+2026-05-01 02:49:25,802   hits_allowed: 1200 players, 15615 samples, sc_hit=5501/15615
+2026-05-01 02:49:27,475   hits_allowed: 1400 players, 19781 samples, sc_hit=6924/19781
+2026-05-01 02:49:29,672   hits_allowed: 1600 players, 23363 samples, sc_hit=9105/23363
+2026-05-01 02:49:30,059   hits_allowed: 1800 players, 23715 samples, sc_hit=9372/23715
+2026-05-01 02:49:30,346   hits_allowed: 2000 players, 23793 samples, sc_hit=9433/23793
+2026-05-01 02:49:31,606 hits_allowed           |    23838 samples | 208 feat | R2_tr=0.6803 | R2_te=0.5381 | MAE_te=1.0383 | sc_hit=9436/23838
+2026-05-01 02:49:32,643   pitcher_walks: 200 players, 796 samples, sc_hit=446/796
+2026-05-01 02:49:33,623   pitcher_walks: 400 players, 1319 samples, sc_hit=918/1319
+2026-05-01 02:49:34,618   pitcher_walks: 600 players, 1964 samples, sc_hit=1511/1964
+2026-05-01 02:49:35,861   pitcher_walks: 800 players, 4954 samples, sc_hit=2281/4954
+2026-05-01 02:49:37,388   pitcher_walks: 1000 players, 8623 samples, sc_hit=3394/8623
+2026-05-01 02:49:40,284   pitcher_walks: 1200 players, 15615 samples, sc_hit=5501/15615
+2026-05-01 02:49:41,971   pitcher_walks: 1400 players, 19898 samples, sc_hit=6924/19898
+2026-05-01 02:49:44,196   pitcher_walks: 1600 players, 23667 samples, sc_hit=9108/23667
+2026-05-01 02:49:44,582   pitcher_walks: 1800 players, 24019 samples, sc_hit=9375/24019
+2026-05-01 02:49:44,862   pitcher_walks: 2000 players, 24097 samples, sc_hit=9436/24097
+2026-05-01 02:49:46,116 pitcher_walks          |    24142 samples | 208 feat | R2_tr=0.5227 | R2_te=0.3430 | MAE_te=0.6007 | sc_hit=9439/24142
+2026-05-01 02:49:46,118 REPORT WRITTEN → /app/backend/models/mlb_hf/_train_report_v3.json
+2026-05-01 02:49:46,118 ALL MODELS RETRAINED — MLB_HF_v3.0_bayes
