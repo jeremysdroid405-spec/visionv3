@@ -299,16 +299,25 @@ def test_rolling_window_excludes_pitching_only_appearances():
     """Pitching-only appearances (no AB, no PA) MUST be excluded
     from the rolling window — even if they're chronologically among
     the last 20 events for the player.
+
+    Test design: pitching games are given a non-null `rbis: 0` so
+    that the ONLY thing distinguishing them from batter games is
+    the AB/PA filter. If the filter is broken, those rows would
+    contaminate the count AND drag the mean toward zero.
     """
     os.environ["MLB_HF_EB_SHRINKAGE_ENABLED"] = "true"
     logs = []
-    # 5 pitching-only appearances (recent) + 15 batter games (older).
+    # 5 pitching-only appearances (recent) — non-null rbis=0 to
+    # ensure they DO contribute if the filter is broken.
     for i in range(5):
         logs.append({
             "at_bats": 0, "plate_appearances": 0,
             "innings_pitched": 1.0, "earned_runs": 0,
+            "hits": 0, "runs": 0, "rbis": 0,  # non-null!
+            "home_runs": 0, "total_bases": 0,
             "date": f"2026-05-{i+1:02d}T20:00:00Z",
         })
+    # 15 batter games (older) — RBI=2 each.
     for i in range(15):
         logs.append({
             "at_bats": 4, "plate_appearances": 4,
@@ -318,9 +327,22 @@ def test_rolling_window_excludes_pitching_only_appearances():
         })
     hub = _fake_hub([{"bdl_player_id": 13, "bdl_game_logs": logs}])
     shrunk, audit = ebs.apply_eb_shrinkage(hub, 13, "rbis", 2.0)
-    # Window = 15 batter games at v=2 → mean=2.0
-    assert audit["eb_career_sample_n"] == 15
-    assert audit["eb_player_career_mean"] == pytest.approx(2.0, abs=1e-6)
+    # With the filter ON: window = 15 batter games at v=2 → mean=2.0,
+    # n=15.
+    # With the filter OFF (mutation): window would be the 20 most-
+    # recent logs (5 pitching at rbis=0 + 15 batter at rbis=2),
+    # mean would be (0*5 + 2*15)/20 = 1.5, n=20.
+    assert audit["eb_career_sample_n"] == 15, (
+        f"Pitching-only games must NOT count toward window size. "
+        f"Got n={audit['eb_career_sample_n']} (expected 15). If this "
+        f"fails, the AB/PA filter is broken — every RP appearance "
+        f"would contaminate the prior."
+    )
+    assert audit["eb_player_career_mean"] == pytest.approx(2.0, abs=1e-6), (
+        f"Mean MUST be 2.0 (15 batter games × 2 rbis / 15). Got "
+        f"{audit['eb_player_career_mean']}. If this dropped to ~1.5, "
+        f"pitching-only rows are leaking into the window."
+    )
 
 
 # ─── Sample-size ramp (2026-04-30) ──────────────────────────────────
