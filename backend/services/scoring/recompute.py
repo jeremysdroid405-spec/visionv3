@@ -387,6 +387,16 @@ async def recompute_sport(
                 "vk2_projection":   getattr(ctx, "vk2_projection",   None),
                 "model_sigma":      getattr(ctx, "model_sigma",      None),
                 "vk2_sigma":        getattr(ctx, "vk2_sigma",        None),
+                # 2026-05-01 — sub-window hit rates + sample size piped
+                # so the universal L5 sub-gate (gates/engine.py:
+                # _eval_hit_rate) and metrics_builder see them on the
+                # FIRST pass. Without this the gate evaluates with
+                # m.hit_rate_l5 == None and the sub-gate is skipped.
+                "hit_rate_l5":          getattr(ctx, "hit_rate_l5",          None),
+                "hit_rate_l10":         getattr(ctx, "hit_rate_l10",         None),
+                "hit_rate_sample_size": getattr(ctx, "hit_rate_sample_size", None),
+                "hit_rate_over":        getattr(ctx, "hit_rate_over",        None),
+                "hit_rate_under":       getattr(ctx, "hit_rate_under",       None),
             },
             p_model=ctx.p_model,
             cv=ctx.cv,
