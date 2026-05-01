@@ -872,50 +872,42 @@ const UniversalPlayerCard = memo(({
                     {projection != null ? Number(projection).toFixed(1) : '—'}
                   </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">Hit Rate</div>
+                <div className="flex-[2] min-w-0">
+                  {/* 2026-05-01 — Hit-rate window trio (L20 / L10 / L5)
+                      laid out as three equal sub-columns. L20 is the
+                      gate input; L10 is graph parity; L5 is the recent-
+                      form sub-gate input. Equal visual weight makes the
+                      gate decision auditable at a glance. */}
                   {(() => {
-                    // 2026-05-01 — Show full window trio (L20 / L10 / L5)
-                    // from the dashboard card contract. L20 is the gate
-                    // input and the headline; L10 + L5 are stacked beneath
-                    // for full transparency. Fall back to legacy single
-                    // value when trio fields are absent.
-                    const l20 = player.hit_rate_l20 ?? null;
+                    const l20 = player.hit_rate_l20 ?? hitRate ?? null;
                     const l10 = player.hit_rate_l10 ?? null;
                     const l5  = player.hit_rate_l5  ?? null;
-                    const headline = l20 ?? hitRate;
-                    const showTrio = l20 != null || l10 != null || l5 != null;
-                    return (
-                      <>
-                        <div
-                          className={`text-sm md:text-[15px] font-bold font-mono tabular-nums ${getHitRateColor(headline || 0)}`}
-                          data-testid={`player-hit-rate-l20-${playerSlug}`}
-                          title={showTrio ? "L20 hit rate — what the gate evaluates" : undefined}
-                        >
-                          {headline != null ? `${Math.round(headline)}%` : '—'}
-                          {showTrio && (
-                            <span className="ml-1 text-[8px] font-mono uppercase tracking-[0.1em] text-zinc-500 align-middle">L20</span>
-                          )}
+                    const Cell = ({ label, rate, title, testid }) => (
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5">
+                          {label}
                         </div>
-                        {showTrio && (
-                          <div className="flex gap-2 mt-0.5 text-[9px] font-mono tabular-nums">
-                            <span
-                              className={`${l10 != null ? getHitRateColor(l10) : 'text-zinc-500'}`}
-                              data-testid={`player-hit-rate-l10-${playerSlug}`}
+                        <div
+                          className={`text-sm md:text-[15px] font-bold font-mono tabular-nums ${rate != null ? getHitRateColor(rate) : 'text-zinc-500'}`}
+                          title={title}
+                          data-testid={testid}
+                        >
+                          {rate != null ? `${Math.round(rate)}%` : '—'}
+                        </div>
+                      </div>
+                    );
+                    return (
+                      <div className="flex gap-3">
+                        <Cell label="L20" rate={l20}
+                              title="L20 hit rate — what the gate evaluates"
+                              testid={`player-hit-rate-l20-${playerSlug}`} />
+                        <Cell label="L10" rate={l10}
                               title="L10 hit rate — graph parity window"
-                            >
-                              L10 {l10 != null ? `${Math.round(l10)}%` : '—'}
-                            </span>
-                            <span
-                              className={`${l5 != null ? getHitRateColor(l5) : 'text-zinc-500'}`}
-                              data-testid={`player-hit-rate-l5-${playerSlug}`}
-                              title="L5 hit rate — recent-form sub-gate input"
-                            >
-                              L5 {l5 != null ? `${Math.round(l5)}%` : '—'}
-                            </span>
-                          </div>
-                        )}
-                      </>
+                              testid={`player-hit-rate-l10-${playerSlug}`} />
+                        <Cell label="L5" rate={l5}
+                              title="L5 hit rate — recent-form sub-gate"
+                              testid={`player-hit-rate-l5-${playerSlug}`} />
+                      </div>
                     );
                   })()}
                 </div>

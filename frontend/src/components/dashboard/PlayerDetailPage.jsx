@@ -1538,60 +1538,74 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 </div>
               )}
               
-              {/* Hit Rate Analysis */}
+              {/* Hit Rate Analysis — 2026-05-01: L20 / L10 / L5 trio
+                  matches the pick card byte-for-byte. L20 is the gate
+                  input, L10 is graph parity, L5 is the recent-form
+                  sub-gate input. */}
               <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-4">
                 <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
                   <Zap className="w-4 h-4 text-cyan-400" />
                   HIT RATE ANALYSIS
                 </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-zinc-900/50 rounded-lg p-3">
-                    <div className="text-xs text-zinc-500">LAST 10 GAMES</div>
-                    <div className={`text-2xl font-bold ${
-                      (selectedVisionProp.h10_rate ?? selectedVisionProp.hit_rates?.l10?.hit_rate) >= 70 
-                        ? 'text-green-400' 
-                        : (selectedVisionProp.h10_rate ?? selectedVisionProp.hit_rates?.l10?.hit_rate) >= 50 
-                          ? 'text-yellow-400' 
-                          : 'text-red-400'
-                    }`}>
-                      {selectedVisionProp.h10_rate != null 
-                        ? `${Math.round(selectedVisionProp.h10_rate)}%`
-                        : selectedVisionProp.hit_rates?.l10?.hit_rate != null
-                          ? `${Math.round(selectedVisionProp.hit_rates.l10.hit_rate)}%`
-                          : '-'}
+                {(() => {
+                  const colorFor = (r) =>
+                    r == null ? 'text-zinc-500'
+                      : r >= 70 ? 'text-green-400'
+                      : r >= 50 ? 'text-yellow-400'
+                      : 'text-red-400';
+                  const l20 = selectedVisionProp.hit_rate_l20 ?? null;
+                  const l10 =
+                    selectedVisionProp.hit_rate_l10 ??
+                    selectedVisionProp.h10_rate ??
+                    selectedVisionProp.hit_rates?.l10?.hit_rate ?? null;
+                  const l5 =
+                    selectedVisionProp.hit_rate_l5 ??
+                    selectedVisionProp.h5_rate ??
+                    selectedVisionProp.hit_rates?.l5?.hit_rate ?? null;
+                  const Cell = ({ label, sub, rate, testid }) => (
+                    <div className="bg-zinc-900/50 rounded-lg p-3" data-testid={testid}>
+                      <div className="text-xs text-zinc-500">{label}</div>
+                      <div className={`text-2xl font-bold ${colorFor(rate)}`}>
+                        {rate != null ? `${Math.round(rate)}%` : '—'}
+                      </div>
+                      {sub && (
+                        <div className="text-xs text-zinc-500 mt-1">{sub}</div>
+                      )}
                     </div>
-                    <div className="text-xs text-zinc-500 mt-1">
-                      {selectedVisionProp.l10_avg != null 
-                        ? `Avg: ${selectedVisionProp.l10_avg}`
-                        : selectedVisionProp.hit_rates?.l10 
-                          ? `${selectedVisionProp.hit_rates.l10.games_over || 0}/${selectedVisionProp.hit_rates.l10.total_games || 0} games over`
-                          : ''}
+                  );
+                  return (
+                    <div className="grid grid-cols-3 gap-3">
+                      <Cell
+                        label="LAST 20 (GATE)"
+                        rate={l20}
+                        sub={selectedVisionProp.hit_rate_sample_size != null
+                          ? `${selectedVisionProp.hit_rate_sample_size} games`
+                          : null}
+                        testid="player-detail-hr-l20"
+                      />
+                      <Cell
+                        label="LAST 10"
+                        rate={l10}
+                        sub={selectedVisionProp.l10_avg != null
+                          ? `Avg: ${selectedVisionProp.l10_avg}`
+                          : selectedVisionProp.hit_rates?.l10
+                            ? `${selectedVisionProp.hit_rates.l10.games_over || 0}/${selectedVisionProp.hit_rates.l10.total_games || 0} games over`
+                            : ''}
+                        testid="player-detail-hr-l10"
+                      />
+                      <Cell
+                        label="LAST 5"
+                        rate={l5}
+                        sub={selectedVisionProp.l5_avg != null
+                          ? `Avg: ${selectedVisionProp.l5_avg}`
+                          : selectedVisionProp.hit_rates?.l5
+                            ? `${selectedVisionProp.hit_rates.l5.games_over || 0}/${selectedVisionProp.hit_rates.l5.total_games || 0} games over`
+                            : ''}
+                        testid="player-detail-hr-l5"
+                      />
                     </div>
-                  </div>
-                  <div className="bg-zinc-900/50 rounded-lg p-3">
-                    <div className="text-xs text-zinc-500">LAST 5 GAMES</div>
-                    <div className={`text-2xl font-bold ${
-                      (selectedVisionProp.h5_rate ?? selectedVisionProp.hit_rates?.l5?.hit_rate) >= 70 
-                        ? 'text-green-400' 
-                        : (selectedVisionProp.h5_rate ?? selectedVisionProp.hit_rates?.l5?.hit_rate) >= 50 
-                          ? 'text-yellow-400' 
-                          : 'text-red-400'
-                    }`}>
-                      {selectedVisionProp.h5_rate != null 
-                        ? `${Math.round(selectedVisionProp.h5_rate)}%`
-                        : selectedVisionProp.hit_rates?.l5?.hit_rate != null
-                          ? `${Math.round(selectedVisionProp.hit_rates.l5.hit_rate)}%`
-                          : '-'}
-                    </div>
-                    <div className="text-xs text-zinc-500 mt-1">
-                      {selectedVisionProp.l5_avg != null 
-                        ? `Avg: ${selectedVisionProp.l5_avg}`
-                        : selectedVisionProp.hit_rates?.l5 
-                          ? `${selectedVisionProp.hit_rates.l5.games_over || 0}/${selectedVisionProp.hit_rates.l5.total_games || 0} games over`
-                          : ''}
-                    </div>
-                  </div>
-                </div>
+                  );
+                })()}
                 
                 {/* Additional MLB Stats Row */}
                 {(selectedVisionProp.cv != null || selectedVisionProp.edge_pct != null || selectedVisionProp.tp_odds != null) && (

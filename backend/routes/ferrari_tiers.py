@@ -3468,6 +3468,41 @@ async def get_mlb_player_props(
         return round(total / valid_games, 1) if valid_games else None
     
     if player.get("props"):
+        # 2026-05-01 — Universal hit-rate window trio merge.
+        # The pick card surfaces L20 (gate) / L10 / L5 from
+        # `mlb_prop_scores @ MLB_LIVE`. The player-detail page used to
+        # compute its own L5 / L10 (a parallel calculation) and never
+        # surfaced L20 at all — making the detail page disagree with
+        # the card on L20 (null vs gate value) and risking drift on
+        # L5 / L10 if the formulas diverged. Now: pull the same
+        # score-doc fields the card uses, in ONE batch query, and
+        # merge them on top of the local L5 / L10 calc. Score-doc
+        # values WIN — they are the canonical adapter-computed
+        # strict-window numbers the gate evaluated.
+        score_match: Dict[str, Any] = {}
+        try:
+            scores_coll = _db[COLL("prop_scores", "mlb")]
+            cursor_s = scores_coll.find(
+                {"player_name": {"$regex": f"^{player_name}$", "$options": "i"},
+                 "version_tag": MLB_LIVE},
+                {"_id": 0, "stat_type": 1, "line": 1, "recommendation": 1,
+                 "hit_rate_over": 1, "hit_rate_under": 1,
+                 "hit_rate_l5": 1, "hit_rate_l10": 1,
+                 "hit_rate_sample_size": 1,
+                 "tier": 1, "version_tag": 1},
+            )
+            async for sc in cursor_s:
+                k = (
+                    str(sc.get("stat_type") or ""),
+                    float(sc.get("line") or 0),
+                    str(sc.get("recommendation") or "OVER").upper(),
+                )
+                score_match[k] = sc
+        except Exception as _exc:
+            logger.warning(
+                "[MLB_PLAYER_DETAIL] score-doc merge skipped: %s", _exc
+            )
+
         for prop in player["props"]:
             stat_type = prop.get("stat_type", "")
             line = prop.get("line", 0)
@@ -3505,6 +3540,44 @@ async def get_mlb_player_props(
                 
                 # Add game_logs to prop for bar chart
                 prop["game_logs"] = game_logs
+
+            # 2026-05-01 — Score-doc merge. Pulls hit_rate_over (=L20),
+            # hit_rate_l5/l10 (canonical strict-window adapter values),
+            # tier, and version_tag from MLB_LIVE so the detail page
+            # is byte-equivalent to the pick card on these fields.
+            try:
+                k = (str(stat_type), float(line or 0),
+                     str(prop.get("recommendation") or
+                         prop.get("direction") or "OVER").upper())
+                sc = score_match.get(k)
+                if sc:
+                    side = k[2]
+                    hr_o = sc.get("hit_rate_over")
+                    hr_u = sc.get("hit_rate_under")
+                    if hr_o is not None:
+                        prop["hit_rate_over"] = hr_o
+                    if hr_u is not None:
+                        prop["hit_rate_under"] = hr_u
+                    # L20 = side-aware hit_rate_{over,under}
+                    prop["hit_rate_l20"] = (
+                        hr_u if side == "UNDER" else hr_o
+                    )
+                    # L5 / L10 are already side-aware on the score doc.
+                    if sc.get("hit_rate_l5") is not None:
+                        prop["hit_rate_l5"] = sc["hit_rate_l5"]
+                    if sc.get("hit_rate_l10") is not None:
+                        prop["hit_rate_l10"] = sc["hit_rate_l10"]
+                    if sc.get("hit_rate_sample_size") is not None:
+                        prop["hit_rate_sample_size"] = sc["hit_rate_sample_size"]
+                    if sc.get("tier") is not None:
+                        prop["tier"] = sc["tier"]
+                    if sc.get("version_tag") is not None:
+                        prop["version_tag"] = sc["version_tag"]
+            except Exception as _merge_exc:
+                logger.debug(
+                    "[MLB_PLAYER_DETAIL] score merge per-prop skipped: %s",
+                    _merge_exc,
+                )
     
     # =========================================================================
     # ROLLING CACHE MERGE - Vision Intel Suite
