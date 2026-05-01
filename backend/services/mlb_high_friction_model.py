@@ -690,24 +690,21 @@ class MLBHighFrictionModel:
         # =====================================================================
         # CATEGORY 3: MARKET ALIGNMENT
         # =====================================================================
-        if dk_odds is not None and dk_odds != 0:
-            # Calculate implied probability (vig-removed approximation)
-            if dk_odds < 0:
-                raw_prob = abs(dk_odds) / (abs(dk_odds) + 100)
-            else:
-                raw_prob = 100 / (dk_odds + 100)
-            
-            # Vig removal (approximate - assumes equal vig on both sides)
-            features['dk_implied_prob'] = raw_prob * 100
-            features['dk_vig_removed_prob'] = (raw_prob / 1.05) * 100  # ~5% vig approximation
-            features['dk_odds_raw'] = dk_odds
-            features['dk_odds_is_imputed'] = 0
-        else:
-            features['dk_implied_prob'] = 50.0
-            features['dk_vig_removed_prob'] = 50.0
-            features['dk_odds_raw'] = -110  # Default
-            features['dk_odds_is_imputed'] = 1
-        
+        # 2026-04-30: dk_odds-derived features removed from training inputs.
+        # Investigation showed these features had 0.000 importance in v2.0
+        # because the training corpus had stale/missing dk_odds in most
+        # rows. More importantly, including market signal in projection
+        # creates a circular reference when we then compute
+        # `edge = model_p - market_p` — the model partially tracks market,
+        # dampening the edge signal we're trying to extract. Market data
+        # IS used downstream (TP, devig) where it belongs — for SCORING,
+        # not projection. v3.0_bayes drops them entirely.
+        # If a future re-train wants to bring them back, restore this
+        # block and add the field names back into `_get_feature_columns`.
+        if dk_odds is not None:
+            # Keep the parameter signature for callers; it's just unused
+            # in the feature dict now.
+            pass
         # Line features
         if line is not None:
             features['line'] = line
@@ -724,11 +721,30 @@ class MLBHighFrictionModel:
         # =====================================================================
         # Emit a fixed feature shape regardless of whether SC data was
         # available. Imputed flag = 1 when the lookup missed.
+        #
+        # 2026-04-30 (v3.0_bayes): Apply Bayesian shrinkage to every
+        # rate BEFORE writing it into the feature dict. Tiny-sample
+        # rolling windows (e.g. Bleday's 1 BBE → barrel_rate=1.0)
+        # were producing values far outside the model's training
+        # distribution, causing wild extrapolation (μ=6.74 for a
+        # 2.0-mean player). The shrinkage formula
+        #     shrunk = (X*N + league_avg*prior_n) / (N + prior_n)
+        # smoothly pulls small-sample rates toward league average
+        # while leaving large-sample rates essentially unchanged.
+        # Applied at BOTH training and inference time so features
+        # are always on the same scale.
+        # See `services.scoring.mlb_statcast_bayes` for the math
+        # and `tests/test_mlb_statcast_bayes.py` for the locked-in
+        # invariants.
+        from services.scoring.mlb_statcast_bayes import (
+            bayes_shrink_rolling_window,
+        )
         for window in ("rolling_7", "rolling_14", "rolling_30", "season_window"):
             wkey = window.replace("rolling_", "r").replace("season_window", "season")
             block = (statcast_features or {}).get(window) or {}
+            block_shrunk = bayes_shrink_rolling_window(block) if block else {}
             for fld in self._SC_BATTER_FIELDS:
-                v = block.get(fld)
+                v = block_shrunk.get(fld)
                 features[f"sc_b_{wkey}_{fld}"] = float(v) if v is not None else 0.0
         features["sc_batter_is_imputed"] = 0 if statcast_features else 1
 
@@ -737,8 +753,9 @@ class MLBHighFrictionModel:
         for window in ("rolling_14", "rolling_30", "season_window"):
             wkey = window.replace("rolling_", "r").replace("season_window", "season")
             block = (pitcher_statcast_features or {}).get(window) or {}
+            block_shrunk = bayes_shrink_rolling_window(block) if block else {}
             for fld in self._SC_PITCHER_FIELDS:
-                v = block.get(fld)
+                v = block_shrunk.get(fld)
                 features[f"sc_p_{wkey}_{fld}"] = float(v) if v is not None else 0.0
         features["sc_pitcher_is_imputed"] = 0 if pitcher_statcast_features else 1
 
