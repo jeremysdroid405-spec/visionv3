@@ -1,11 +1,13 @@
 # PROD STATUS (2026-05-01)
-- **Hit-Rate Standardization (NBA↔MLB parity, L5 sub-gate, SH 80)** — LIVE & LOCKED (2026-05-01).
-  - NBA hit-rate now uses MLB-parity strict-denominator window (20 if ≥20 logs, 10 if 10–19, none if <10). Fixes the "Max Strus 94.1% over 17 games" variable-denom bug.
-  - Cross-season blended logs (rolling) eliminate season-start dead zones.
-  - **Universal L5 sub-gate**: when `hit_rate_l5` is populated (≥4 recent games for MLB, ≥5 for NBA), it MUST clear the L20 floor — across NBA + MLB, every tier. Slumping players (Tobias 70% L20 / 40% L5) now correctly REJECTED.
-  - **NBA Safe Haven floor lowered 85 → 80**, backed by the new L5 sub-gate.
-  - **Elite Vision override** also enforces L5-≥-relaxed-floor (no rescue path for slumping players).
-  - Tests: `tests/test_hit_rate_subwindow_plumbing.py` (10/10), `tests/test_l5_subgate_and_floors.py` (12/12). Mutation harness `scripts/mutation_test_l5_subgate.sh` catches 5/5 mutants.
+- **Hit-Rate Standardization (NBA↔MLB parity, L5 sub-gate, SH 80)** — LIVE & PRODUCTION-VALIDATED (2026-05-01).
+  - NBA hit-rate uses MLB-parity strict-denominator window (20 if ≥20 logs, 10 if 10–19, none if <10). Fixes the "Max Strus 94.1%/17g" variable-denom bug.
+  - Cross-season blended logs (rolling, no season filter) eliminate season-start dead zones.
+  - **Universal L5 sub-gate**: when `hit_rate_l5` populated, MUST clear L20 floor — NBA + MLB, every tier.
+  - **NBA Safe Haven floor lowered 85 → 80**, backed by L5 sub-gate.
+  - **Elite Vision override** also enforces L5-≥-relaxed-floor.
+  - **Production validation post-recompute**: NBA 2,791 props / MLB 6,468 props / 0 variable-denom artifacts / 0 slumping-pass bugs / 179 NBA + 58 MLB visible L5 sub-gate rejections in real data.
+  - Tests: `tests/test_hit_rate_subwindow_plumbing.py` (10/10), `tests/test_l5_subgate_and_floors.py` (12/12), full regression 126/126. Mutation harness 5/5.
+  - Testing agent stress test (iteration_42): 5x repeated calls per tier endpoint stable, all health endpoints OK, 100% backend success rate.
 - **MLB HF Model**: `MLB_HF_v3.0_bayes` LIVE & LOCKED (15 stats, 208 features, 766k samples).
   Bayesian Statcast shrinkage active; JJ Bleday H+R+RBI = 3.39 (was 6.55-6.74 pre-bayes).
 - See `CHANGELOG.md` 2026-05-01 entry for full retrain details.
