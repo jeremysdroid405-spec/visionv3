@@ -142,14 +142,52 @@ async def detect_changed_props(db, sport: str) -> DeltaDetectionResult:
     )
 
     # --- signal 2: new_keys = active live keys − scored RT keys ---
-    active_live_keys: Set[str] = set()
+    # 2026-05-02 FIX: pre-filter active_live docs through the SAME
+    # coverage filters the scorer applies (priceable + pp_playable).
+    # Without this, the detector reported ~5.6k "new" keys that the
+    # scorer immediately dropped at load_live_props → 0 rescored per
+    # tick → board froze (real bug hit on NBA + MLB live pods).
+    # Resolving adapter's load_live_props would re-query the DB; we
+    # already have the docs here, so run the filters in-process.
+    raw_active_docs: List[Dict[str, Any]] = []
     async for doc in live_coll.find(
         {"$or": [{"active": {"$ne": False}}, {"active": {"$exists": False}}]},
         _KEY_PROJECTION,
     ):
-        ck = resolve_key(doc)
-        if ck:
-            active_live_keys.add(ck)
+        raw_active_docs.append(doc)
+
+    try:
+        from services.scoring.coverage_filter import (
+            filter_priceable, filter_pp_playable,
+        )
+        # The coverage filters need book-odds fields that aren't in
+        # _KEY_PROJECTION. Re-query the full docs for ONLY the active
+        # set so we can filter correctly. Small cost: this runs once
+        # per tick and we already know exactly which ids to pull.
+        full_docs_cursor = live_coll.find(
+            {"$or": [{"active": {"$ne": False}}, {"active": {"$exists": False}}]},
+            {"_id": 0},
+        )
+        full_docs = await full_docs_cursor.to_list(length=None)
+        priceable, _cov = filter_priceable(full_docs, sport=sport)
+        playable,  _pp  = filter_pp_playable(priceable, sport=sport)
+        scorable_keys: Set[str] = set()
+        for p in playable:
+            k = resolve_key(p)
+            if k:
+                scorable_keys.add(k)
+        active_live_keys = scorable_keys
+    except Exception as _filter_exc:
+        logger.warning(
+            f"[DELTA:{sport}] coverage-filter pre-pass FAILED: "
+            f"{_filter_exc!r} — falling back to unfiltered active set "
+            "(may cause rescore-cap thrash)."
+        )
+        active_live_keys = set()
+        for doc in raw_active_docs:
+            ck = resolve_key(doc)
+            if ck:
+                active_live_keys.add(ck)
 
     scored_rt_keys: Set[str] = set()
     async for doc in scored_coll.find(
