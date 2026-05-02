@@ -546,10 +546,68 @@ class InjuryVacuumService:
     
     async def _get_todays_teams(self) -> set:
         """
-        Get teams playing today from BDL live box scores.
-        Returns set of team abbreviations (e.g., {'MIA', 'WAS', 'DEN', 'SAS', 'PHI', 'DET'})
+        Get teams playing in the UPCOMING WINDOW (not just today) so the
+        injury-vacuum alert set reflects every game currently on our
+        board — including tomorrow's / weekend's slate whose props are
+        already scored.
+
+        Order of sources (2026-05-02):
+            1. Our own `nba_live_props` — authoritative, already
+               respects `commence_time > now`. Returns every team with
+               at least one active prop on the board.
+            2. BDL live box scores (games in progress right now).
+            3. BDL scheduled games for today (legacy behaviour).
+            4. live_scores_cache / ticker_cache fallbacks.
+
+        Returns set of team abbreviations.
         """
-        teams = set()
+        teams: set = set()
+
+        # 1. PRIMARY — our own live_props set. This is the source of
+        #    truth for what games are actually showing on the board.
+        if hasattr(self, "db") and self.db is not None:
+            try:
+                # NBA full-name → abbreviation map. live_props uses
+                # full team names; injuries_normalized stores abbrs.
+                _NBA_NAME_TO_ABBR = {
+                    "Atlanta Hawks": "ATL", "Boston Celtics": "BOS",
+                    "Brooklyn Nets": "BKN", "Charlotte Hornets": "CHA",
+                    "Chicago Bulls": "CHI", "Cleveland Cavaliers": "CLE",
+                    "Dallas Mavericks": "DAL", "Denver Nuggets": "DEN",
+                    "Detroit Pistons": "DET", "Golden State Warriors": "GSW",
+                    "Houston Rockets": "HOU", "Indiana Pacers": "IND",
+                    "LA Clippers": "LAC", "Los Angeles Clippers": "LAC",
+                    "Los Angeles Lakers": "LAL", "Memphis Grizzlies": "MEM",
+                    "Miami Heat": "MIA", "Milwaukee Bucks": "MIL",
+                    "Minnesota Timberwolves": "MIN",
+                    "New Orleans Pelicans": "NOP",
+                    "New York Knicks": "NYK",
+                    "Oklahoma City Thunder": "OKC",
+                    "Orlando Magic": "ORL", "Philadelphia 76ers": "PHI",
+                    "Phoenix Suns": "PHX", "Portland Trail Blazers": "POR",
+                    "Sacramento Kings": "SAC", "San Antonio Spurs": "SAS",
+                    "Toronto Raptors": "TOR", "Utah Jazz": "UTA",
+                    "Washington Wizards": "WAS",
+                }
+                coll = self.db["nba_live_props"]
+                home_list = await coll.distinct("home_team")
+                away_list = await coll.distinct("away_team")
+                for v in (home_list or []) + (away_list or []):
+                    if not v:
+                        continue
+                    abbr = _NBA_NAME_TO_ABBR.get(v, v)
+                    teams.add(abbr)
+                for fld in ("home_abbr", "away_abbr", "team_abbr"):
+                    try:
+                        for v in await coll.distinct(fld):
+                            if v:
+                                teams.add(v)
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.warning(
+                    f"[VacuumService] live_props team-pull failed: {e}"
+                )
         
         try:
             # Try BDL live endpoint first
@@ -974,9 +1032,62 @@ class InjuryVacuumService:
     async def get_active_vacuums_for_today(self) -> List[Dict]:
         """
         Get active vacuums filtered to only teams playing today.
+
+        2026-05-02 FIX: don't rely on in-memory `self.active_vacuums`
+        which only populates on status-change events and zeros out on
+        every backend restart. Instead, every call builds a fresh set
+        of vacuums from the CURRENT injury state — any currently-OUT
+        star player on a team with a game in the upcoming window
+        produces a vacuum. This is idempotent and survives restarts.
         """
         todays_teams = await self._get_todays_teams()
-        return self.get_active_vacuums(todays_teams)
+
+        # Always re-scan: pull current OUT/DOUBTFUL stars for today's
+        # teams and build fresh vacuums. This replaces the cache-based
+        # state that kept dropping Luka/KD after pod restarts.
+        fresh: Dict[str, Dict] = {}
+        try:
+            current_injuries = await self.fetch_injury_report()
+        except Exception as e:
+            logger.warning(f"[VacuumService] live injury fetch failed: {e}")
+            current_injuries = []
+
+        for injury in current_injuries:
+            player_name = injury.get("player_name") or ""
+            status = (injury.get("status") or "").upper()
+            if status not in TRIGGER_STATUSES:
+                continue
+            is_star, star_profile = self._is_star_player(player_name)
+            if not is_star:
+                continue
+            correct_team = star_profile.get("team") or injury.get("team")
+            # Skip unless the star's team is in today's/upcoming set
+            if todays_teams and correct_team not in todays_teams:
+                continue
+            beneficiaries = self._get_beneficiaries(player_name, correct_team)
+            if not beneficiaries:
+                continue
+            fresh[player_name] = {
+                "injured_player": player_name,
+                "team":           correct_team,
+                "status":         status,
+                "reason":         injury.get("reason"),
+                "return_date":    injury.get("return_date"),
+                "tier_level":     injury.get("tier_level", 0),
+                "usage_rate":     star_profile.get("usage_rate", 0),
+                "beneficiaries":  beneficiaries,
+                "triggered_at":   datetime.now(timezone.utc).isoformat(),
+                "confirmed_at":   datetime.now(timezone.utc).isoformat(),
+                "is_late_scratch": False,
+                "source":         "live_scan",
+            }
+
+        # Merge into the in-memory cache so the legacy state-dependent
+        # paths (e.g. `calculate_vacuum_modifier`) also see these.
+        for name, vac in fresh.items():
+            self.active_vacuums[name] = vac
+
+        return list(fresh.values())
     
     def get_vacuum_for_player(self, player_name: str) -> Optional[Dict]:
         """Check if a player is a beneficiary of any active vacuum."""
