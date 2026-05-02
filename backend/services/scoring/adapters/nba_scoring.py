@@ -2768,6 +2768,22 @@ class NBAScoringAdapter(ScoringAdapter):
                     stat_type=model_key, bdl_player_id=bdl_player_id,
                     prop=prop, mu_current=model_projection,
                 )
+                # 2026-05-02 — Per-stat projection debias calibration.
+                # Forward-test audit of 272 settled OVER picks showed the
+                # model over-projects by 1.2-3.8 units per stat. Subtract
+                # the measured mean bias so edge_pct stops being inflated.
+                # See config/nba_projection_calibration.py for provenance.
+                # Applied AFTER all recency / rate / availability layers
+                # and BEFORE the probability engine so p_over flows from
+                # the debiased μ.
+                from config.nba_projection_calibration import apply_debias
+                prop["projection_raw_pre_debias"] = model_projection
+                model_projection, _deb_amt = apply_debias(
+                    model_key, model_projection
+                )
+                if _deb_amt:
+                    prop["projection_debias_amount"] = _deb_amt
+                    prop["projection_debias_source"] = "forward_test_2026_05_02"
                 # Universal probability engine override
                 # for the legacy VK path. Engine receives empirical
                 # (μ, σ) and re-derives p_over via Normal CDF (or
@@ -2851,6 +2867,17 @@ class NBAScoringAdapter(ScoringAdapter):
                     stat_type=model_key, bdl_player_id=bdl_player_id,
                     prop=prop, mu_current=vk2_projection,
                 )
+                # 2026-05-02 — Per-stat debias calibration (VK2 path).
+                # See comment on legacy-VK path for provenance. Applies
+                # after all adjustment layers, before _engine_p_over.
+                from config.nba_projection_calibration import apply_debias
+                prop["projection_raw_pre_debias"] = vk2_projection
+                vk2_projection, _deb_amt = apply_debias(
+                    model_key, vk2_projection
+                )
+                if _deb_amt:
+                    prop["projection_debias_amount"] = _deb_amt
+                    prop["projection_debias_source"] = "forward_test_2026_05_02"
                 # 2026-04-27 — universal-engine override on the VK2 path.
                 _eng_v2 = self._engine_p_over(
                     stat_type=model_key, line=float(line),

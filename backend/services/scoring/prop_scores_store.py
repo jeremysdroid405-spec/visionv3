@@ -273,6 +273,12 @@ _SCORE_OUTPUT_FIELDS = (
     "mu_rate_projection",
     "mu_model_projection",
     "mu_final_projection",
+    # NBA per-stat projection debias (2026-05-02). Persisted so every
+    # score doc carries audit of how much was subtracted from the raw
+    # projection and which calibration snapshot produced the value.
+    "projection_raw_pre_debias",
+    "projection_debias_amount",
+    "projection_debias_source",
     "rate_model_blend_weights",
     "rate_model_blend_mode",
     "rate_model_trigger",
