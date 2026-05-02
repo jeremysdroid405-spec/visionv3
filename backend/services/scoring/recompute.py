@@ -619,6 +619,9 @@ async def recompute_sport(
             "mu_rate_ast_shadow", "mu_rate_ast_shadow_applied",
             "delta_mu_rate_ast_shadow_vs_current", "rate_ast_per_min_shadow",
             "expected_minutes_shadow",
+            # NBA — Phase 2 heteroscedastic sigma (2026-05-02)
+            "hetero_sigma_base", "hetero_sigma_adjusted",
+            "hetero_sigma_multipliers",
         ):
             if _prob_k in raw:
                 doc[_prob_k] = raw[_prob_k]

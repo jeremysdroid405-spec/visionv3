@@ -1,0 +1,30 @@
+# Heteroscedastic-sigma bucket provenance (auto-generated).
+# Source: forward_test_outcomes (sport=nba, settled).
+
+AST:
+  n: 21
+  overall_std_z: 1.1595
+  line_quartiles: {'q25': 3.5, 'q50': 4.5, 'q75': 5.5}
+  minutes_counts: {'34_plus': 9, '28_34': 11, '0_22': 1}
+  line_counts: {'low': 8, 'mid_low': 6, 'mid_high': 7}
+
+PRA:
+  n: 127
+  overall_std_z: 0.8973
+  line_quartiles: {'q25': 13.5, 'q50': 16.5, 'q75': 25.5}
+  minutes_counts: {'34_plus': 31, '22_28': 52, '0_22': 10, '28_34': 34}
+  line_counts: {'high': 30, 'low': 36, 'mid_high': 29, 'mid_low': 32}
+
+PTS:
+  n: 95
+  overall_std_z: 0.8301
+  line_quartiles: {'q25': 9.5, 'q50': 12.5, 'q75': 14.5}
+  minutes_counts: {'22_28': 31, '34_plus': 25, '28_34': 34, '0_22': 5}
+  line_counts: {'low': 31, 'mid_high': 15, 'high': 20, 'mid_low': 29}
+
+REB:
+  n: 29
+  overall_std_z: 1.2485
+  line_quartiles: {'q25': 3.5, 'q50': 6.5, 'q75': 7.5}
+  minutes_counts: {'28_34': 11, '34_plus': 3, '22_28': 14, '0_22': 1}
+  line_counts: {'high': 3, 'mid_high': 8, 'low': 9, 'mid_low': 9}

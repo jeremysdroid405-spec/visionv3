@@ -1516,14 +1516,55 @@ class NBAScoringAdapter(ScoringAdapter):
         line: float,
         projection: Optional[float],
         sigma: Optional[float],
+        avg_mins: Optional[float] = None,
     ) -> Optional[Dict[str, Any]]:
         """Compute p_over via the universal probability engine.
 
         Returns a small dict with `p_over` plus the audit fields the
         score loop needs to persist; or `None` if inputs are missing.
+
+        `avg_mins` feeds the Phase 2 heteroscedastic-sigma lookup
+        (2026-05-02). When non-null AND a bucket multiplier is defined
+        for this stat/minutes combo, sigma is rescaled before the
+        probability engine runs. Bucket + line-bucket multipliers are
+        multiplicative and capped to [0.4, 2.5]× of base in the lookup
+        helper. Audit fields land on the returned dict so the caller
+        can persist per-prop sigma provenance.
         """
         if projection is None or sigma is None or sigma <= 0:
             return None
+        # ── Heteroscedastic sigma lookup (Phase 2, 2026-05-02) ──────
+        sigma_base = float(sigma)
+        sigma_adjusted = sigma_base
+        sigma_mults: Dict[str, float] = {}
+        try:
+            from config.nba_sigma_heteroscedastic import (
+                sigma_for_prop, minutes_bucket_for, line_bucket_for,
+            )
+            mb = minutes_bucket_for(avg_mins)
+            lb = line_bucket_for(stat_type, line)
+            # Only fire when we have at least one feature; otherwise
+            # sigma_for_prop returns base unchanged (harmless but no-op).
+            if mb is not None or lb is not None:
+                sig_new, mults = sigma_for_prop(
+                    stat_key=stat_type,
+                    minutes_bucket=mb, line_bucket=lb,
+                )
+                if sig_new is not None and mults:
+                    # Apply ratio of new base-σ (from BASE_SIGMAS×mults)
+                    # to the scaffold's base. We don't overwrite sigma
+                    # with sig_new directly because the VK-trained σ
+                    # already baked in per-player signal; we only scale
+                    # it by the bucket multiplier product.
+                    total_mult = 1.0
+                    for v in mults.values():
+                        total_mult *= v
+                    total_mult = max(0.4, min(2.5, total_mult))
+                    sigma_adjusted = sigma_base * total_mult
+                    sigma_mults = dict(mults)
+                    sigma_mults["__total__"] = round(total_mult, 4)
+        except Exception as _het_err:  # pragma: no cover — defensive
+            logger.debug(f"[NBA_SCORING] heteroscedastic sigma skipped: {_het_err}")
         try:
             from services.probability.distribution import compute_probability
             res = compute_probability(
@@ -1531,7 +1572,7 @@ class NBAScoringAdapter(ScoringAdapter):
                 stat_family=stat_type,
                 mu=float(projection),
                 line=float(line),
-                sigma=float(sigma),
+                sigma=float(sigma_adjusted),
             )
         except Exception as e:  # pragma: no cover - defensive
             logger.debug(f"[NBA_SCORING] engine p_over failed: {e}")
@@ -1555,6 +1596,10 @@ class NBAScoringAdapter(ScoringAdapter):
             "distribution_threshold": res.threshold,
             "distribution_dispersion_r": res.dispersion_r,
             "distribution_p_param": res.p_param,
+            # Phase 2 heteroscedastic audit fields
+            "hetero_sigma_base": round(sigma_base, 4),
+            "hetero_sigma_adjusted": round(sigma_adjusted, 4),
+            "hetero_sigma_multipliers": sigma_mults,
         }
 
 
@@ -2792,6 +2837,7 @@ class NBAScoringAdapter(ScoringAdapter):
                 _eng = self._engine_p_over(
                     stat_type=model_key, line=float(line),
                     projection=model_projection, sigma=model_sigma,
+                    avg_mins=prop.get("mu_minutes_l10"),
                 )
                 if _eng is not None:
                     p_over = _eng["p_over"]
@@ -2882,6 +2928,7 @@ class NBAScoringAdapter(ScoringAdapter):
                 _eng_v2 = self._engine_p_over(
                     stat_type=model_key, line=float(line),
                     projection=vk2_projection, sigma=vk2_sigma,
+                    avg_mins=prop.get("mu_minutes_l10"),
                 )
                 if _eng_v2 is not None:
                     p_over_v2 = _eng_v2["p_over"]
@@ -2940,6 +2987,7 @@ class NBAScoringAdapter(ScoringAdapter):
                         stat_type=model_key, line=float(line),
                         projection=model_projection_synth,
                         sigma=model_sigma_synth,
+                        avg_mins=prop.get("mu_minutes_l10"),
                     )
                     if _eng_c is not None:
                         p_over_c = _eng_c["p_over"]
@@ -3013,6 +3061,7 @@ class NBAScoringAdapter(ScoringAdapter):
                         stat_type=model_key, line=float(line),
                         projection=model_projection_synth,
                         sigma=model_sigma_synth,
+                        avg_mins=prop.get("mu_minutes_l10"),
                     )
                     if _eng_pra is not None:
                         p_over_c = _eng_pra["p_over"]
@@ -3068,6 +3117,7 @@ class NBAScoringAdapter(ScoringAdapter):
                     stat_type=model_key or resolved_family,
                     line=float(line),
                     projection=model_projection, sigma=model_sigma,
+                    avg_mins=prop.get("mu_minutes_l10"),
                 )
                 if _eng_combo is not None:
                     p_over_c = _eng_combo["p_over"]

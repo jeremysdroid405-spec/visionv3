@@ -71,11 +71,106 @@ BASE_SIGMAS: Dict[str, float] = {
 }
 
 
-# Placeholder — all 1.0 until real tables are built.
-# Structure: { stat : { feature : { bucket : multiplier } } }
+# Populated 2026-05-02 via `scripts/build_nba_sigma_buckets.py` from
+# 272 settled NBA outcomes in `forward_test_outcomes`. Multipliers are
+# std(z_bucket)/std(z_overall) clipped to [0.5, 2.0], rounded 2dp.
+# Buckets with fewer than 8 settled samples are omitted and the engine
+# treats missing buckets as multiplier=1.0 (no adjustment).
+# Provenance: /app/backend/config/nba_sigma_buckets_provenance.yaml
 MULTIPLIER_TABLES: Dict[str, Dict[str, Dict[str, float]]] = {
-    # Populate via `scripts/build_nba_sigma_buckets.py` — TO BUILD.
+    "AST": {
+        "line_bucket": {
+            "low": 0.92,
+        },
+        "minutes_bucket": {
+            "28_34":   0.5,
+            "34_plus": 1.24,
+        },
+    },
+    "PRA": {
+        "line_bucket": {
+            "high":     0.86,
+            "low":      0.67,
+            "mid_high": 0.89,
+            "mid_low":  1.2,
+        },
+        "minutes_bucket": {
+            "0_22":    1.16,
+            "22_28":   0.93,
+            "28_34":   0.92,
+            "34_plus": 0.85,
+        },
+    },
+    "PTS": {
+        "line_bucket": {
+            "high":     1.1,
+            "low":      0.81,
+            "mid_high": 1.18,
+            "mid_low":  0.82,
+        },
+        "minutes_bucket": {
+            "22_28":   0.5,
+            "28_34":   1.19,
+            "34_plus": 0.65,
+        },
+    },
+    "REB": {
+        "line_bucket": {
+            "low":      0.65,
+            "mid_high": 0.83,
+            "mid_low":  0.81,
+        },
+        "minutes_bucket": {
+            "22_28": 1.13,
+            "28_34": 0.58,
+        },
+    },
 }
+
+
+# Line-quartile boundaries used to label `line_bucket`. Built from the
+# same settled-outcomes slice that MULTIPLIER_TABLES was fit on — keeping
+# them in-code lets the live scorer classify a prop's line into the
+# same bucket the multiplier was calibrated against. Stats without a
+# boundary fall back to `unknown` (multiplier=1.0).
+LINE_QUARTILES: Dict[str, Dict[str, float]] = {
+    "AST": {"q25": 4.5,  "q50": 6.5,  "q75": 7.5},
+    "PRA": {"q25": 24.5, "q50": 31.5, "q75": 38.5},
+    "PTS": {"q25": 15.5, "q50": 19.5, "q75": 24.5},
+    "REB": {"q25": 5.5,  "q50": 7.5,  "q75": 9.5},
+}
+
+
+def minutes_bucket_for(avg_mins):
+    """Classify `avg_mins` into a MULTIPLIER_TABLES key. `None` → None."""
+    if avg_mins is None:
+        return None
+    try:
+        m = float(avg_mins)
+    except (TypeError, ValueError):
+        return None
+    if m < 22.0:  return "0_22"
+    if m < 28.0:  return "22_28"
+    if m < 34.0:  return "28_34"
+    return "34_plus"
+
+
+def line_bucket_for(stat_key, line):
+    """Classify `line` into a MULTIPLIER_TABLES key via per-stat
+    quartiles. `None` / unknown stat → None."""
+    if line is None or stat_key is None:
+        return None
+    q = LINE_QUARTILES.get(str(stat_key).upper())
+    if q is None:
+        return None
+    try:
+        lf = float(line)
+    except (TypeError, ValueError):
+        return None
+    if lf <= q["q25"]: return "low"
+    if lf <= q["q50"]: return "mid_low"
+    if lf <= q["q75"]: return "mid_high"
+    return "high"
 
 
 def sigma_for_prop(

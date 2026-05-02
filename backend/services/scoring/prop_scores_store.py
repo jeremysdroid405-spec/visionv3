@@ -279,6 +279,16 @@ _SCORE_OUTPUT_FIELDS = (
     "projection_raw_pre_debias",
     "projection_debias_amount",
     "projection_debias_source",
+    # NBA Phase 2 — heteroscedastic sigma (2026-05-02). Per-prop σ
+    # audit captured from `_engine_p_over` so every score doc records
+    # the base σ, the adjusted σ after bucket multipliers, and the
+    # exact multipliers applied. Sigma is adjusted BEFORE the
+    # probability engine evaluates `distribution_sigma`, so
+    # `hetero_sigma_adjusted` should match `distribution_sigma` when
+    # the distribution kind is Gaussian.
+    "hetero_sigma_base",
+    "hetero_sigma_adjusted",
+    "hetero_sigma_multipliers",
     "rate_model_blend_weights",
     "rate_model_blend_mode",
     "rate_model_trigger",

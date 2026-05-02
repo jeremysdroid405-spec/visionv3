@@ -37,12 +37,28 @@ from typing import Dict, Optional
 
 # Per-stat additive debias — subtract from projection.
 # Keys match `model_key` in `nba_scoring.py` (uppercase).
+#
+# REVERTED 2026-05-02 (superseded by heteroscedastic sigma Phase 2).
+# The additive (mean-shift) debias over-corrected high-volume stars:
+# a flat -3.4 PTS shave is ~10% of a league-average scorer's mean but
+# ~10-12% of a 32+ PPG superstar's mean, pushing elite projections
+# (SGA, Tatum PTS, Mitchell PTS) *below* realistic lines and flipping
+# legitimate OVERs into direction-gate failures. Root cause of the
+# miscalibration is sigma heteroscedasticity, not a μ bias — fat-tail
+# residuals on REB/AST and usage-spike volatility on PTS create the
+# illusion of a mean offset on a qualified-picks sample. Fix belongs
+# in `nba_sigma_heteroscedastic.py`, not here.
+#
+# All constants zeroed so `apply_debias` becomes a pure no-op. The
+# function signature and provenance fields stay intact so the Phase 2
+# rollout can reuse the same plumbing if we revisit additive debias
+# on a per-bucket basis.
 NBA_PROJECTION_DEBIAS: Dict[str, float] = {
-    "PTS":  3.4,    # mean 3.418, round to 1dp for stability
-    "PRA":  3.8,    # mean 3.774
-    "REB":  1.4,    # mean 1.421  — small-sample
-    "AST":  1.2,    # mean 1.200  — small-sample
-    "3PM":  0.0,    # no settled data yet → no debias
+    "PTS":  0.0,
+    "PRA":  0.0,
+    "REB":  0.0,
+    "AST":  0.0,
+    "3PM":  0.0,
 }
 
 # Per-stat sample size at time of fit. Surfaced on the score doc so
