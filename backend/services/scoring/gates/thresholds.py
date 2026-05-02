@@ -127,13 +127,21 @@ _NBA_SAFE_HAVEN_BASE = {
         "applies_to_sides":          ["OVER"],
         "min_projection_minus_line": 0.0,
     },
-    "edge_gate":      {"min": 0.01},   # edge > 0 (strictly positive)
+    # 2026-05-02 — edge floor lowered to 0.0 per user spec. Any
+    # non-negative edge qualifies for SH; downstream gates
+    # (vision / HR / CV / direction / market-structure) remain the
+    # binding quality bar. Replaces the previous 0.01 floor.
+    "edge_gate":      {"min": 0.0},
     # 2026-05-01 — L20 floor lowered to 80 per user spec; L5 sub-gate
     # (universal, in `engine.py:_eval_hit_rate`) now BACKS this floor
     # by requiring recent-form L5 ≥ 80 too. Together: "elite L20 only
     # if recent form is still elite". Replaces the previous 85 floor.
     "hit_rate_gate":  {"min": 80.0, "window": "default"},
-    "vision_score_gate": {"min": 85.0},
+    # 2026-05-02 — Vision floor lowered from 85 → 80 per user spec
+    # post NBA Phase 1 Debias. Debiased projections compressed vision
+    # scores; 85 was calibrated pre-debias and was rejecting legit
+    # SH candidates (e.g., Tatum 3PM 1.5 OVER @ VS 83.2).
+    "vision_score_gate": {"min": 80.0},
     "cv_gate": {
         "caps": {
             "pts":         0.40,
@@ -247,7 +255,9 @@ _NBA_SAFE_HAVEN_UNDER = {
     "hit_rate_gate":   {"min": 65.0, "window": "default"},
     "cv_gate":         {"caps": _NBA_UNDER_CV_CAPS,
                         "hr_relax": _NBA_UNDER_CV_HR_RELAX},
-    "vision_score_gate": {"min": 85.0},
+    # 2026-05-02 — SH UNDER vision floor lowered from 85 → 80 per user
+    # spec (mirrors OVER-side change; same debias rationale).
+    "vision_score_gate": {"min": 80.0},
     # Preserve SH market-structure rule (alt + one_sided UNDERs are
     # still rejected — per "do not override market structure gates").
     "market_structure_gate": {
