@@ -1293,27 +1293,58 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                       })()}
                     </div>
                     
-                    {/* Stability Index */}
-                    <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-2 sm:p-4 overflow-hidden">
-                      <h3 className="text-[10px] sm:text-xs font-bold text-zinc-400 mb-1 sm:mb-2 truncate">VARIANCE</h3>
-                      <div className={`text-lg sm:text-2xl font-bold truncate ${
-                        selectedVisionProp.intel_suite.stability_index?.score >= 75 
-                          ? 'text-green-400' 
-                          : selectedVisionProp.intel_suite.stability_index?.score >= 45
-                            ? 'text-yellow-400'
-                            : 'text-red-400'
-                      }`}>
-                        {selectedVisionProp.intel_suite.stability_index?.display || '-'}
-                      </div>
-                      <div className="text-[9px] sm:text-xs text-zinc-500 mt-1 truncate">
-                        {selectedVisionProp.intel_suite.stability_index?.consistency}
-                      </div>
-                      {selectedVisionProp.intel_suite.stability_index?.std_dev && (
-                        <div className="text-[8px] sm:text-[10px] text-zinc-600 mt-1 sm:mt-2 truncate hidden sm:block">
-                          Std Dev: {selectedVisionProp.intel_suite.stability_index.std_dev}
+                    {/* Variance — uses the directly-computed CV /
+                        volatility_score off the pick (always populated
+                        by scoring) instead of `stability_index` which
+                        produced std_dev=0 / "Unknown" for composite
+                        MLB stat types like H+R+RBI because its
+                        log-extractor doesn't unpack composites.
+                        2026-05-02. */}
+                    {(() => {
+                      const cv = selectedVisionProp.cv ?? selectedVisionProp.cv_raw;
+                      const volScore = selectedVisionProp.volatility_score;
+                      const volLabel = selectedVisionProp.volatility_label;
+                      // Color: low volatility = green, mid = yellow, high = red.
+                      // volatility_score is 0-100 where HIGHER means MORE volatile,
+                      // so we invert for the color palette.
+                      let color = "text-zinc-300";
+                      if (typeof volScore === "number") {
+                        color = volScore <= 40
+                          ? "text-green-400"
+                          : volScore <= 70
+                            ? "text-yellow-400"
+                            : "text-red-400";
+                      }
+                      const display =
+                        typeof volScore === "number"
+                          ? `${Math.round(volScore)}/100`
+                          : (typeof cv === "number" ? cv.toFixed(2) : "—");
+                      const labelText = volLabel
+                        ? `${volLabel.charAt(0).toUpperCase() + volLabel.slice(1)} volatility`
+                        : (typeof cv === "number" ? "CV-based" : "No data");
+                      return (
+                        <div
+                          className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-2 sm:p-4 overflow-hidden"
+                          data-testid="variance-tile"
+                        >
+                          <h3 className="text-[10px] sm:text-xs font-bold text-zinc-400 mb-1 sm:mb-2 truncate">VARIANCE</h3>
+                          <div
+                            className={`text-lg sm:text-2xl font-bold truncate ${color}`}
+                            data-testid="variance-value"
+                          >
+                            {display}
+                          </div>
+                          <div className="text-[9px] sm:text-xs text-zinc-500 mt-1 truncate">
+                            {labelText}
+                          </div>
+                          {typeof cv === "number" && (
+                            <div className="text-[8px] sm:text-[10px] text-zinc-600 mt-1 sm:mt-2 truncate hidden sm:block">
+                              CV: {cv.toFixed(2)}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })()}
                   </div>
                   
                   {/* Blowout Risk Warning */}
