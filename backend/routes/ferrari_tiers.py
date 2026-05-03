@@ -1095,6 +1095,25 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         prop["bdl_player_id"] = score.get("bdl_player_id")
     if score.get("canonical_key") is not None:
         prop.setdefault("canonical_key", score.get("canonical_key"))
+    # Game-time + event identity passthrough (2026-05-02). Pick cards
+    # show "vs OPP · TipTime" so users know which matchup the prop is
+    # against. `game_start_utc` is stored as a Mongo BSON datetime on
+    # the score doc — serialize to ISO string so the JSON payload is
+    # browser-friendly and the frontend can format with toLocaleString.
+    gs = score.get("game_start_utc")
+    if gs is not None:
+        from datetime import datetime as _dt, timezone as _tz
+        try:
+            if isinstance(gs, _dt):
+                if gs.tzinfo is None:
+                    gs = gs.replace(tzinfo=_tz.utc)
+                prop["game_start_utc"] = gs.isoformat()
+            elif isinstance(gs, str):
+                prop["game_start_utc"] = gs
+        except Exception:
+            prop["game_start_utc"] = None
+    if score.get("event_id") is not None and prop.get("event_id") in (None, ""):
+        prop["event_id"] = score.get("event_id")
 
     # Vision Intel passthrough from score doc (added 2026-04-25 alongside
     # master_sync Step 6 board-only Gemini enrichment). Score doc carries
@@ -1455,6 +1474,33 @@ async def _get_nba_tier_picks_from_scores(
         # enrichment cache overlay injects OVER-side data.
         merged["_nba_score_doc"] = sc
         picks.append(merged)
+
+    # ---- Trust live_props for matchup (2026-05-02) ----
+    # `nba_cached_board` carries `opponent` per-player but the value is
+    # locked to a `locked_event_id` that goes stale across schedule
+    # rolls (e.g. Dylan Harper showed POR while the actual matchup was
+    # MIN). `nba_live_props` is keyed by canonical_key and is always
+    # current — bulk-fetch and override here so the truth wins.
+    canonical_keys = [p.get("canonical_key") for p in picks if p.get("canonical_key")]
+    if canonical_keys:
+        lp_matchup: Dict[str, Dict[str, Any]] = {}
+        async for lp in _db["nba_live_props"].find(
+            {"canonical_key": {"$in": canonical_keys}},
+            {"_id": 0, "canonical_key": 1,
+             "opponent_team": 1, "home_team": 1, "away_team": 1},
+        ):
+            lp_matchup[lp["canonical_key"]] = lp
+        for p in picks:
+            lp = lp_matchup.get(p.get("canonical_key") or "")
+            if not lp:
+                continue
+            if lp.get("opponent_team"):
+                p["opponent"] = lp["opponent_team"]
+                p["opponent_abbr"] = lp["opponent_team"]
+            if lp.get("home_team"):
+                p["home_team"] = lp["home_team"]
+            if lp.get("away_team"):
+                p["away_team"] = lp["away_team"]
 
     # --- Identity fallback for picks missing from cached_board ---
     # A subset of picks can miss both the 5-tuple and 4-tuple lookups

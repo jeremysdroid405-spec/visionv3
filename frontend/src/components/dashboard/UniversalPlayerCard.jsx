@@ -783,6 +783,46 @@ const UniversalPlayerCard = memo(({
                 </span>
               )}
             </div>
+            {/* Matchup row (2026-05-02): "vs OPP · TipTime" so users see
+                exactly which game / opponent the prop is against. Only
+                renders when at least one of opponent / game_start_utc is
+                present — both are optional and degrade gracefully. */}
+            {(player.opponent || player.opponent_abbr || player.game_start_utc) && (
+              <div
+                className="flex items-center gap-1.5 text-[10px] font-mono text-zinc-400 mt-0.5 leading-tight"
+                data-testid={`matchup-row-${playerSlug}`}
+              >
+                {(player.opponent_abbr || player.opponent) && (
+                  <span data-testid={`opponent-${playerSlug}`}>
+                    <span className="text-zinc-500">vs</span>{' '}
+                    <span className="text-zinc-200 uppercase tracking-wider">
+                      {player.opponent_abbr || player.opponent}
+                    </span>
+                  </span>
+                )}
+                {(player.opponent || player.opponent_abbr) && player.game_start_utc && (
+                  <span className="text-zinc-700">·</span>
+                )}
+                {player.game_start_utc && (
+                  <span data-testid={`tipoff-${playerSlug}`}>
+                    {(() => {
+                      try {
+                        const d = new Date(player.game_start_utc);
+                        // Format as "Mon 7:40 PM ET" (user-local zone)
+                        // — keeps the row compact while still useful.
+                        const day = d.toLocaleDateString(undefined, { weekday: 'short' });
+                        const time = d.toLocaleTimeString(undefined, {
+                          hour: 'numeric', minute: '2-digit',
+                        });
+                        return `${day} ${time}`;
+                      } catch {
+                        return null;
+                      }
+                    })()}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.12em] truncate mt-0.5 flex items-center gap-1.5">
               <span className="truncate">{sideLabel} · {line} · {formatStatType(stat_type)}</span>
               <MarketGapBadge pick={player} />
