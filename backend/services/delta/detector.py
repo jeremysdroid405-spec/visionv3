@@ -200,6 +200,27 @@ async def detect_changed_props(db, sport: str) -> DeltaDetectionResult:
     new_keys = active_live_keys - scored_rt_keys
 
     # --- signal 3: retired = scored RT keys whose live row is inactive ---
+    # 2026-05-02 BUG FIX: scored_rt_keys must NOT include inactive rt
+    # rows when computing the NEW set-diff above. Otherwise stale
+    # `active=False` rows (e.g. left over from a prior recompute or
+    # marked inactive by the game-clock scanner) MASK their canonical
+    # key from being re-scored, freezing the board (real bug seen on
+    # MLB after a slate roll: every scorable Sunday key existed in rt
+    # with active=False from the previous run → set-diff empty → 0
+    # rescores per tick → MLB tiers blank in the UI).
+    # The scored_rt_keys set above is reused only for `retired`
+    # detection (which needs the FULL set including stale ones).
+    scored_rt_active_keys: Set[str] = set()
+    async for doc in scored_coll.find(
+        {"version_tag": rt_tag, "active": True},
+        {"_id": 0, "canonical_key": 1},
+    ):
+        ck = doc.get("canonical_key")
+        if ck:
+            scored_rt_active_keys.add(ck)
+    # Override the new_keys diff with the corrected active-only base.
+    new_keys = active_live_keys - scored_rt_active_keys
+
     inactive_live_keys: Set[str] = set()
     async for doc in live_coll.find({"active": False}, _KEY_PROJECTION):
         ck = resolve_key(doc)
