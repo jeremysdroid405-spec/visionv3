@@ -632,16 +632,20 @@ async def get_live_scores(sport: str = Query("nba", description="Sport: nba or m
                                     "away_record": ""
                                 })
                             
-                            # 2026-04-29 — Live Ticker filter contract:
-                            #   commence_time >= now (UTC) AND status != Final
-                            # Drop yesterday's finals and any other game that
-                            # started in the past unless still in-play.
+                            # 2026-05-02 — Live Ticker filter contract (relaxed):
+                            # Keep these in priority order so the ticker is
+                            # never empty when there's any signal at all:
+                            #   1. In-play games (status_code == 2) — always keep
+                            #   2. Recent Finals (status_code == 3) within last 12h
+                            #   3. Scheduled games (status_code == 1) with
+                            #      commence_time >= now
                             now_utc = datetime.now(timezone.utc)
+                            recent_final_window = timedelta(hours=12)
                             kept = []
                             for g in games:
-                                if g.get("status_code") == 3:  # Final → drop
-                                    continue
+                                code = g.get("status_code")
                                 ct = g.get("start_time")
+                                ct_utc = None
                                 try:
                                     if ct:
                                         ct_utc = datetime.fromisoformat(
@@ -649,30 +653,112 @@ async def get_live_scores(sport: str = Query("nba", description="Sport: nba or m
                                         )
                                         if ct_utc.tzinfo is None:
                                             ct_utc = ct_utc.replace(tzinfo=timezone.utc)
-                                        if g.get("status_code") == 2:
-                                            # In-play → keep regardless of ct
-                                            kept.append(g)
-                                        elif ct_utc >= now_utc:
-                                            kept.append(g)
-                                        # else: scheduled but commence_time in the past → drop
                                 except (ValueError, TypeError):
-                                    # Unparseable timestamp: keep only if currently in-play.
-                                    if g.get("status_code") == 2:
+                                    ct_utc = None
+                                if code == 2:                      # live
+                                    kept.append(g)
+                                elif code == 3:                    # final
+                                    if ct_utc is None or (now_utc - ct_utc) <= recent_final_window:
+                                        kept.append(g)
+                                elif code == 1:                    # scheduled
+                                    if ct_utc is None or ct_utc >= now_utc:
                                         kept.append(g)
                             games = kept
-                            # Sort by start time
-                            games.sort(key=lambda x: x.get("start_time", ""))
+                            # Sort: live first (most-recent start), then
+                            # finals (most-recent start), then scheduled
+                            # (soonest tipoff). Status code (asc) puts live
+                            # (2) first, finals (3) next, scheduled (1)
+                            # last — so we negate live to top with a key.
+                            def _sort_key(g):
+                                c = g.get("status_code") or 0
+                                bucket = 0 if c == 2 else (1 if c == 3 else 2)
+                                ct = g.get("start_time") or ""
+                                # Within finals, we want most-recent first
+                                # (negate by using a high reference). For
+                                # live/scheduled we want chronological.
+                                return (bucket, ct if bucket != 1 else "~" + ct)
+                            games.sort(key=_sort_key)
 
-                            # ── Runtime Contract Enforcer (2026-04-29) ────
-                            # Final freshness gate. Any past-game / final
-                            # row that slipped past the in-place filter is
-                            # dropped here and counted in
-                            # /api/health/contracts.
+                            # ── Always-show fallback (2026-05-02) ─────────
+                            # Augment with today/tomorrow scheduled games
+                            # so users always see *both* the recent Final
+                            # and the next tipoffs. Skip event_ids we
+                            # already have so live boxscores stay
+                            # authoritative.
+                            if api_key:
+                                have_ids = {str(g.get("game_id")) for g in games}
+                                try:
+                                    today_str = now_utc.strftime("%Y-%m-%d")
+                                    tomorrow_str = (now_utc + timedelta(days=1)).strftime("%Y-%m-%d")
+                                    for d_str in (today_str, tomorrow_str):
+                                        r2 = await client.get(
+                                            "https://api.balldontlie.io/v1/games",
+                                            params={"dates[]": d_str, "per_page": 30},
+                                            headers={"Authorization": api_key},
+                                        )
+                                        if r2.status_code != 200:
+                                            continue
+                                        for g in (r2.json().get("data") or []):
+                                            gid = str(g.get("id"))
+                                            if gid in have_ids:
+                                                continue
+                                            home = g.get("home_team", {}) or {}
+                                            away = g.get("visitor_team", {}) or g.get("away_team", {}) or {}
+                                            ct_iso = g.get("datetime") or ""
+                                            ct_u = None
+                                            try:
+                                                if ct_iso:
+                                                    ct_u = datetime.fromisoformat(str(ct_iso).replace("Z", "+00:00"))
+                                            except Exception:
+                                                ct_u = None
+                                            # Only include scheduled-future games
+                                            # (status text == 'Final' for finished
+                                            # games is filtered via ct_u check too).
+                                            status_raw = g.get("status", "") or ""
+                                            if "Final" in str(status_raw):
+                                                continue
+                                            if ct_u is None or ct_u < now_utc:
+                                                continue
+                                            tip_disp = ""
+                                            try:
+                                                tip_disp = (ct_u - timedelta(hours=5)).strftime("%-I:%M %p ET")
+                                            except Exception:
+                                                tip_disp = ""
+                                            games.append({
+                                                "game_id": gid,
+                                                "home_team": home.get("abbreviation", "???"),
+                                                "home_score": 0,
+                                                "home_name": home.get("name", ""),
+                                                "away_team": away.get("abbreviation", "???"),
+                                                "away_score": 0,
+                                                "away_name": away.get("name", ""),
+                                                "status": tip_disp or "Scheduled",
+                                                "status_code": 1,
+                                                "period": 0,
+                                                "start_time": ct_iso,
+                                                "start_time_display": tip_disp,
+                                                "home_record": "",
+                                                "away_record": "",
+                                            })
+                                            have_ids.add(gid)
+                                    games.sort(key=_sort_key)
+                                except Exception as _tm_err:
+                                    logger.warning(f"[TICKER] schedule augment failed: {_tm_err}")
+
+                            # ── Runtime Contract Enforcer (relaxed 2026-05-02) ─
+                            # Only suppresses past-game scheduled rows; recent
+                            # Finals (kept by the relaxed filter above) and
+                            # live games are passed through untouched.
                             try:
                                 from services.contract_enforcer import (
                                     enforce_ticker_freshness,
                                 )
-                                games = await enforce_ticker_freshness(_db, games, sport="nba")
+                                # Pull aside finals we want to preserve;
+                                # send only scheduled+live to the enforcer.
+                                _finals = [g for g in games if g.get("status_code") == 3]
+                                _other = [g for g in games if g.get("status_code") != 3]
+                                _other = await enforce_ticker_freshness(_db, _other, sport="nba")
+                                games = _other + _finals
                             except Exception as _ce_err:
                                 logger.error(
                                     f"[CONTRACT_ENFORCER:nba:ticker] failed: {_ce_err}",
@@ -897,15 +983,17 @@ async def get_mlb_live_scores():
                     "venue": game.get("venue", "")
                 })
             
-            # 2026-04-29 — Live Ticker filter contract:
-            #   commence_time >= now (UTC) AND status != Final
-            # Drops yesterday's tail-end games and same-day finished games.
+            # 2026-05-02 — Live Ticker filter contract (relaxed):
+            #   1. In-play games — always keep
+            #   2. Recent Finals (status_code == 3) within last 12h
+            #   3. Scheduled games (status_code == 1) with ct >= now
             now_utc = datetime.now(timezone.utc)
+            recent_final_window = timedelta(hours=12)
             kept = []
             for g in games:
-                if g.get("status_code") == 3:  # Final → drop
-                    continue
+                code = g.get("status_code")
                 ct = g.get("start_time")
+                ct_utc = None
                 try:
                     if ct:
                         ct_utc = datetime.fromisoformat(
@@ -913,29 +1001,80 @@ async def get_mlb_live_scores():
                         )
                         if ct_utc.tzinfo is None:
                             ct_utc = ct_utc.replace(tzinfo=timezone.utc)
-                        if g.get("status_code") == 2:
-                            # In-play → keep regardless of ct
-                            kept.append(g)
-                        elif ct_utc >= now_utc:
-                            kept.append(g)
-                        # else: scheduled but ct in the past → drop
                 except (ValueError, TypeError):
-                    if g.get("status_code") == 2:
+                    ct_utc = None
+                if code == 2:
+                    kept.append(g)
+                elif code == 3:
+                    if ct_utc is None or (now_utc - ct_utc) <= recent_final_window:
+                        kept.append(g)
+                elif code == 1:
+                    if ct_utc is None or ct_utc >= now_utc:
                         kept.append(g)
             games = kept
 
-            # Sort by start time
-            games.sort(key=lambda x: x.get("start_time", ""))
+            # Sort: live → recent finals → upcoming scheduled
+            def _mlb_sort_key(g):
+                c = g.get("status_code") or 0
+                bucket = 0 if c == 2 else (1 if c == 3 else 2)
+                ct = g.get("start_time") or ""
+                return (bucket, ct if bucket != 1 else "~" + ct)
+            games.sort(key=_mlb_sort_key)
 
-            # ── Runtime Contract Enforcer (2026-04-29) ────────────────
-            # Final freshness gate. Past-game / final rows that slipped
-            # past the in-place filter are dropped here and counted in
-            # /api/health/contracts.
+            # ── Always-show fallback (2026-05-02) ─────────────────────
+            # If no live / final / future games today, show tomorrow's
+            # scheduled MLB games so the ticker has tipoff times.
+            if not games:
+                try:
+                    tomorrow = (now_utc.astimezone(eastern) + timedelta(days=1)).strftime("%Y-%m-%d")
+                    r2 = await client.get(
+                        "https://api.balldontlie.io/mlb/v1/games",
+                        params={"dates[]": tomorrow, "per_page": 30},
+                        headers={"Authorization": api_key},
+                    )
+                    if r2.status_code == 200:
+                        for g in (r2.json().get("data") or []):
+                            home_team = g.get("home_team", {}) or {}
+                            away_team = g.get("away_team", {}) or {}
+                            ct_iso = g.get("date") or ""
+                            tip_disp = ""
+                            try:
+                                if ct_iso:
+                                    ct_u = datetime.fromisoformat(str(ct_iso).replace("Z", "+00:00"))
+                                    tip_disp = (ct_u - timedelta(hours=4)).strftime("%-I:%M %p ET")
+                            except Exception:
+                                tip_disp = ""
+                            games.append({
+                                "game_id": str(g.get("id")),
+                                "home_team": home_team.get("abbreviation", "???"),
+                                "home_score": 0,
+                                "home_name": home_team.get("name", ""),
+                                "away_team": away_team.get("abbreviation", "???"),
+                                "away_score": 0,
+                                "away_name": away_team.get("name", ""),
+                                "status": tip_disp or "Scheduled",
+                                "status_code": 1,
+                                "inning": 0,
+                                "inning_half": "",
+                                "start_time": ct_iso,
+                                "start_time_display": tip_disp,
+                                "sport": "mlb",
+                                "venue": g.get("venue", ""),
+                            })
+                        games.sort(key=lambda x: x.get("start_time", ""))
+                except Exception as _tm_err:
+                    logger.warning(f"[MLB TICKER] tomorrow-fallback failed: {_tm_err}")
+
+            # ── Runtime Contract Enforcer (relaxed 2026-05-02) ────
+            # Pass-through finals; enforce scheduled-future rule on the rest.
             try:
                 from services.contract_enforcer import (
                     enforce_ticker_freshness,
                 )
-                games = await enforce_ticker_freshness(_db, games, sport="mlb")
+                _finals = [g for g in games if g.get("status_code") == 3]
+                _other = [g for g in games if g.get("status_code") != 3]
+                _other = await enforce_ticker_freshness(_db, _other, sport="mlb")
+                games = _other + _finals
             except Exception as _ce_err:
                 logger.error(
                     f"[CONTRACT_ENFORCER:mlb:ticker] failed: {_ce_err}",
