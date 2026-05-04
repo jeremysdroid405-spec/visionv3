@@ -198,88 +198,85 @@ def _resolve_prop_direction(pick: dict) -> str:
     return "OVER"
 
 
-def _generate_vision_fallback(pick: dict) -> str:
-    """Generate a punchy fallback vision_intel summary — DIRECTION-AWARE.
+def _generate_vision_fallback(pick: dict) -> Optional[str]:
+    """SSOT enforcement (2026-05-04, FIELD_OWNERSHIP.md:vision_intel).
 
-    Same reasoning shape for OVER and UNDER; only the interpretive verbs
-    and hit-rate field used flip. No sport-specific branches.
+    The templated "Player stat at line — model sees X" fallback text
+    that historically lived here was the #1 class of "the system is
+    lying" user complaint: when the real Vision Intel engine failed to
+    enrich a pick, we invented plausible-looking reasoning from the
+    model's own numbers, creating the illusion of analysis where there
+    was none. Under strict Single Source of Truth the ONLY writer for
+    `vision_intel` is the (planned) Universal Vision Intel engine;
+    when that engine has not produced text for a pick, the value is
+    `None` and the frontend renders a `Vision unavailable` banner.
+
+    This function is retained as a stable symbol so existing call
+    sites compile, but now returns `None` unconditionally. Delete
+    after all callers are migrated off the import.
     """
-    player = pick.get("player_name", "Player")
-    stat = pick.get("stat_type", "stat")
-    line = pick.get("line") or 0
-    vk_pred = pick.get("vk_predicted")
-    vk_edge_raw = pick.get("vk_edge") or pick.get("true_edge") or 0
-    prob_over = pick.get("vk_prob_over") or pick.get("propvision_true_prob") or 0
-    prob_under = pick.get("vk_prob_under")
-    if prob_under is None and prob_over:
-        prob_under = max(0.0, 100.0 - float(prob_over))
-
-    direction = _resolve_prop_direction(pick)
-    is_under = direction == "UNDER"
-
-    # Side-aware hit-rate. The template labels this as "L10" so we MUST pull
-    # the HISTORICAL last-10 hit rate (h10_rate / l10_rate), NOT the model's
-    # inferred hit_rate_over (which is the model's ceiling-probability and
-    # often ~5% higher than actual L10). 2026-04-21 bug: Jarrett Allen PTS
-    # 9.5 showed "95% L10" when real L10 was 90% because this list began
-    # with hit_rate_over.
-    h_over = (
-        pick.get("h10_rate")
-        or pick.get("l10_rate")
-        or pick.get("h10_hit_rate")
-        or pick.get("hit_rate_over")      # last-resort model fallback
-        or pick.get("true_hit_rate")
-        or 0
-    )
-    h_under = pick.get("hit_rate_under")
-    if h_under is None and h_over is not None:
-        h_under = max(0.0, 100.0 - float(h_over))
-    h_side = h_under if is_under else h_over
-
-    # Side-aware edge (vk_edge is OVER-edge; flip for UNDER).
-    try:
-        vk_edge = -float(vk_edge_raw) if is_under else float(vk_edge_raw)
-    except (TypeError, ValueError):
-        vk_edge = 0
-
-    # Side-aware probability for the low-confidence fallback.
-    prob_side = prob_under if is_under else prob_over
-    prob_side = float(prob_side or 0)
-
-    # Verbs / floor-vs-ceiling chosen per side.
-    if is_under:
-        hammer_verb = "suppressing"           # high under-rate
-        relation = "below"                    # projection sits BELOW line
-        pick_verb = "ride the under"
-        caution_noun = "ceiling"              # UNDER loses if the ceiling breaks
-        math_backs = "the math backs the under"
-    else:
-        hammer_verb = "hammering"
-        relation = "above"
-        pick_verb = "ride"
-        caution_noun = "floor"
-        math_backs = "the math backs the over"
-
-    if vk_pred and vk_edge_raw:
-        if h_side >= 80:
-            return (f"{player} is {hammer_verb} {stat} at an {h_side:.0f}% L10 {direction.lower()} clip — "
-                    f"projection of {vk_pred:.1f} sits {relation} the {line} line for a {vk_edge:+.1f} edge to {pick_verb}.")
-        elif h_side >= 65:
-            return (f"{player} {stat} projects to {vk_pred:.1f} against a {line} line ({direction} {vk_edge:+.1f}). "
-                    f"L10 {direction.lower()} rate at {h_side:.0f}% — consistent enough to back.")
-        else:
-            return (f"{player} {stat} at {line} — model sees {vk_pred:.1f} ({direction} {vk_edge:+.1f}). "
-                    f"Stay cautious, the {caution_noun} isn't locked here.")
-    elif prob_side >= 70:
-        return (f"{player} {stat} at {line} — model confidence at {prob_side:.0f}%. "
-                f"L10 {direction.lower()} rate {h_side:.0f}%. {math_backs}.")
-    else:
-        return (f"{player} {stat} at {line} — riding the {direction.lower()} with {prob_side:.0f}% model probability "
-                f"and {h_side:.0f}% recent form.")
+    return None
 
 
 def overlay_enrichment_cache(picks: list, sport: str) -> list:
-    """Merge vision_intel, scout_badges, and Lasso data from the enrichment cache onto picks."""
+    """Post-processing stamp — volatility profile ONLY.
+
+    SSOT enforcement (2026-05-04, FIELD_OWNERSHIP.md:vision_intel):
+    this function used to merge `vision_intel`, `scout_badges`, and
+    intel-suite `lasso` data from a static JSON file
+    (`/app/backend/data/{sport}_master_active_cache.json`). That path
+    was the #2 class of "system is lying" bugs: the file is written
+    by an offline enrichment job and can lag the DB by hours or days,
+    so we were routinely overwriting fresh DB-sourced `vision_intel`
+    with a stale cached narrative that cited the wrong line / hit-rate /
+    matchup.
+
+    Under strict Single Source of Truth the ONLY authoritative source
+    for `vision_intel` is the prop_scores column populated by the
+    Vision Intel engine (planned). The JSON override path is disabled.
+    What remains here is the sport-agnostic volatility-profile stamp
+    which is computed locally from the pick's own `cv` — no external
+    cache, no silent override.
+
+    See /app/memory/VISION_INTEL_REFACTOR_SCOPE.md for the full
+    replacement plan.
+    """
+    # Apply shared volatility profile to ALL picks (both sports)
+    from services.volatility_profile import get_volatility_profile
+    for pick in picks:
+        cv = pick.get("cv")
+        stat_type = pick.get("stat_type", "")
+        line_val = pick.get("line")
+        vol = get_volatility_profile(cv, stat_type, line_val)
+        pick["volatility_score"] = vol.score
+        pick["volatility_label"] = vol.label
+        pick["volatility_family"] = vol.family
+
+        # Reconcile scout_badges with volatility profile
+        scout = pick.get("scout_badges") or []
+        if isinstance(scout, list):
+            if vol.is_extreme:
+                has_it = any(
+                    (b.get("badge_key") if isinstance(b, dict) else b) == "volatility_extreme"
+                    for b in scout
+                )
+                if not has_it:
+                    scout.append({"badge_key": "volatility_extreme", "id": "volatility_extreme"})
+            else:
+                scout = [
+                    b for b in scout
+                    if (b.get("badge_key") if isinstance(b, dict) else b) != "volatility_extreme"
+                ]
+            pick["scout_badges"] = scout
+
+    return picks
+
+
+def _overlay_enrichment_cache_legacy(picks: list, sport: str) -> list:
+    """LEGACY — DO NOT CALL. Preserved only so the git-blame trail
+    stays intact for future archaeology. Disabled 2026-05-04 when
+    the stale-JSON override path was identified as the #2 cause of
+    "system is lying" bugs. See `overlay_enrichment_cache` above."""
     import json as _json
     cache_path = f"/app/backend/data/{'nba' if sport == 'nba' else 'mlb'}_master_active_cache.json"
 
@@ -2271,10 +2268,18 @@ async def _serve_ferrari_tier(
     # Sport-specific finalization via dispatch table.
     await helpers.post_process(picks, tier_name)
 
-    # Common fallback + canonical guards (sport-agnostic).
+    # SSOT enforcement (2026-05-04, FIELD_OWNERSHIP.md:vision_intel):
+    # No templated fallback text. `_generate_vision_fallback` now
+    # returns `None`, so this loop is a no-op; picks without a
+    # DB-persisted `vision_intel` surface `None` and the frontend
+    # renders a `Vision unavailable` banner. Loop retained as a safety
+    # check — if the helper is ever re-enabled with stub text, the
+    # guard will still refuse to overwrite a populated field.
     for pick in picks:
         if not pick.get("vision_intel"):
-            pick["vision_intel"] = _generate_vision_fallback(pick)
+            vi = _generate_vision_fallback(pick)
+            if vi:
+                pick["vision_intel"] = vi
     picks = _guard_board_picks(picks)
     picks = _dedupe_picks_by_player(picks, sort=sort)
 

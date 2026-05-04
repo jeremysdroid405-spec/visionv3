@@ -100,16 +100,24 @@ def _truncate_vision(raw: Any) -> Optional[str]:
 def to_card_contract(pick: Dict[str, Any]) -> Dict[str, Any]:
     """Build the 8-field contract from any sport's pick dict."""
     # ── 1. player_name ────────────────────────────────────────────────
-    player_name = pick.get("player_name") or pick.get("player") or pick.get("name")
+    # SSOT (FIELD_OWNERSHIP.md:player_name): owner is
+    # master_hub.display_name. By the time a pick reaches this card
+    # contract it has ALREADY been populated with master_hub-derived
+    # player_name upstream (universal_odds_sync → live_props →
+    # picks_getter). Reading `pick.get("player_name")` directly is the
+    # canonical path. Previously-accepted aliases (`player`, `name`)
+    # were silent-rename footguns with no owning writer — removed.
+    player_name = pick.get("player_name")
 
     # ── 2. team ──────────────────────────────────────────────────────
-    team = (
-        pick.get("team")
-        or pick.get("team_abbr")
-        or pick.get("player_team")
-        or pick.get("home_team_abbr")
-        or pick.get("away_team_abbr")
-    )
+    # SSOT (FIELD_OWNERSHIP.md:team): owner is live_props.team (3-letter
+    # abbr). Aliases `team_abbr` / `player_team` / `home_team_abbr` /
+    # `away_team_abbr` do not have an owner and each historically
+    # represented a different (and sometimes contradictory) source. The
+    # fallback chain below was removed 2026-05-04 so a missing team
+    # surfaces as None (→ UI renders `—`) instead of being quietly
+    # replaced with a mismatched value.
+    team = pick.get("team")
 
     # ── helpers ──────────────────────────────────────────────────────
     stat_type = pick.get("stat_type") or ""
@@ -246,8 +254,11 @@ async def stamp_dashboard_card_contract(
 
 
 async def _attach_mlb_team(db, picks: List[Dict[str, Any]]) -> None:
+    # SSOT (FIELD_OWNERSHIP.md:team): only backfill from live_props
+    # when the canonical `team` field is missing. The legacy alias
+    # `team_abbr` is no longer checked here (removed 2026-05-04).
     need = [p for p in picks
-            if not (p.get("team") or p.get("team_abbr"))
+            if not p.get("team")
             and p.get("bdl_player_id") is not None
             and p.get("event_id")]
     if not need:
@@ -509,11 +520,14 @@ async def _backfill_avg_from_game_logs(
         profiled += 1
 
         # ---- team abbr (only when missing) --------------------------
-        if not (p.get("team") or p.get("team_abbr")):
-            t = hub.get("team_abbr") or hub.get("team")
-            if t:
-                p["team"] = t
-                team_stamped += 1
+        # SSOT (FIELD_OWNERSHIP.md:team): owner is live_props.team, not
+        # master_hub. This backfill was historically the #1 source of
+        # team/opponent contradictions (e.g. hub cached an offseason
+        # trade while live_props already had the correct new team).
+        # Disabled 2026-05-04 — a missing team now surfaces as None
+        # and the card renders `—`. To re-enable this path cleanly,
+        # fix the upstream `live_props` writer (`universal_odds_sync`)
+        # to stamp `team` on every row, then delete this block.
 
     logger.info(
         "[CARD_CONTRACT:%s] hit_profile stamped on %d/%d picks (team=%d)",

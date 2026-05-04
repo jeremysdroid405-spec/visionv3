@@ -1503,6 +1503,11 @@ async def startup_event():
         # Universal Stable Board Publisher (2026-04-29). Idempotent.
         from services.board.publisher import ensure_indexes as _bp_ensure
         await _bp_ensure(db)
+        # Universal `active`-transition audit collection (2026-05-04).
+        # Backs SSOT enforcement of the `active` field on
+        # {sport}_prop_scores; TTL-indexed so the table self-prunes.
+        from services.board.set_active import ensure_indexes as _sa_ensure
+        await _sa_ensure(db)
         # Vision v2 SHADOW Board Publisher (2026-04-29). Idempotent.
         from services.board.shadow_publisher import ensure_indexes as _shp_ensure
         await _shp_ensure(db)

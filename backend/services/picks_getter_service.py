@@ -1147,11 +1147,17 @@ class PicksGetterService:
         results = await self.cached_board.aggregate(pipeline).to_list(3000)
         
         # Flatten to prop documents with player info
+        # SSOT (FIELD_OWNERSHIP.md:team): `team` owner is live_props,
+        # which flows into `prop.get("team")`. The cached_board
+        # aggregation join above may expose its own `team` field, but
+        # the board cache has historically lagged trades. Prefer the
+        # upstream prop's `team`; only backfill when the prop has none.
         all_props = []
         for result in results:
             prop = result.get("prop", {})
             prop["player_name"] = result.get("player_name")
-            prop["team"] = result.get("team") or prop.get("team")
+            if not prop.get("team"):
+                prop["team"] = result.get("team")
             prop["photo_url"] = result.get("photo_url") or result.get("headshot_url")
             all_props.append(prop)
         
@@ -1533,11 +1539,15 @@ class PicksGetterService:
         results = await self.cached_board.aggregate(pipeline).to_list(3000)
         
         # Flatten to prop documents with player info
+        # SSOT (FIELD_OWNERSHIP.md:team): prefer upstream live_props
+        # `team`; only backfill from the cached_board join when the
+        # prop itself lacks one. See twin note in v5 helper above.
         all_props = []
         for result in results:
             prop = result.get("prop", {})
             prop["player_name"] = result.get("player_name")
-            prop["team"] = result.get("team") or prop.get("team")
+            if not prop.get("team"):
+                prop["team"] = result.get("team")
             prop["photo_url"] = result.get("photo_url") or result.get("headshot_url")
             all_props.append(prop)
         

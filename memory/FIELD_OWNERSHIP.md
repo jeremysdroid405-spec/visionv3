@@ -1,8 +1,8 @@
 # FIELD OWNERSHIP — PropVision
 
-**Status:** Phase 1 (foundation) complete. 2 of 23 fields migrated end-to-end.
-**Last updated:** 2026-05-04
-**Enforcement mode:** Log-warn (Phase 1). Pydantic-raise (Phase 2, planned).
+**Status:** Phase 2 complete. **6 of 23 fields migrated end-to-end** (scored_at, opponent, active, player_name, team, vision_intel).
+**Last updated:** 2026-05-04 (Phase 2)
+**Enforcement mode:** Log-warn (Phase 1). Pydantic-raise (Phase 3, planned).
 
 ---
 
@@ -40,8 +40,10 @@ Each field has a canonical spec in `backend/services/field_ownership/registry.py
 | `line` | `live_props.line` | `universal_odds_sync:_persist_prop` | fail_loud | 🟢 enforced |
 | `p_true` | `prop_scores.p_true_active` | `recompute:recompute_sport` | fail_loud | 🟢 enforced |
 | `tier` | `prop_scores.tier` | `gates/engine + tiering + recompute` | fail_loud | 🟢 enforced |
-| `player_name` | `master_hub.display_name` | `bdl_universal_sync:sync_players` | fail_loud | ⚪ documented |
-| `team` | `live_props.team` | `universal_odds_sync:_build_prop_record` | return_null | ⚪ documented |
+| `active` | `prop_scores.active` | `board/set_active:set_active` | fail_loud | 🟡 locked |
+| `player_name` | `master_hub.display_name` | `bdl_universal_sync:sync_players` | fail_loud | 🟡 locked |
+| `team` | `live_props.team` | `universal_odds_sync:_build_prop_record` | return_null | 🟡 locked |
+| `vision_intel` | `prop_scores.vision_intel` | PLANNED: `vision_intel/engine:enrich` | return_null | 🟡 locked (nullification phase) |
 | `stat_type` | `live_props.stat_type` | `universal_odds_sync:_build_prop_record` | fail_loud | ⚪ documented |
 | `side` | `live_props.recommendation` | `universal_odds_sync:_build_prop_record` | fail_loud | ⚪ documented |
 | `edge` | `prop_scores.edge_vs_fair` | `scoring_stack:compute_vision_score` | return_null | ⚪ documented |
@@ -50,9 +52,7 @@ Each field has a canonical spec in `backend/services/field_ownership/registry.py
 | `hit_rate_l20` | `prop_scores.hit_rate_over_l20` | `nba_scoring + mlb_scoring:score` | return_null | ⚪ documented |
 | `cv` | `prop_scores.cv` | `nba_scoring + mlb_scoring:score` | return_null | ⚪ documented |
 | `ranking_score_v2` | `prop_scores.ranking_score_v2` | `recompute:recompute_sport` | fail_loud | ⚪ documented |
-| `active` | `prop_scores.active` | PLANNED: `board/set_active:set_active` | fail_loud | ⚪ documented |
 | `game_start_utc` | `live_props.game_start_utc` | `universal_odds_sync:_persist_prop` | return_null | ⚪ documented |
-| `vision_intel` | `prop_scores.vision_intel` | PLANNED: `vision_intel/engine:enrich` | return_null | ⚪ documented |
 | `photo_url` | `master_hub.photo_url` | `bdl_universal_sync:sync_players` | return_null | ⚪ documented |
 | `pp_projection_id` | `pp_projection_id_cache.projection_id` | `pp_multiplier_lab:seed_projection_ids_from_scraper` | return_null | ⚪ documented |
 | `odds_type` | `pp_projection_id_cache.odds_type` | `pp_multiplier_lab:build_projection` | return_null | ⚪ documented |

@@ -25,9 +25,9 @@ than each reimplementing a mark-inactive loop.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, Set
+from typing import Any, Dict, Iterable
 
+from services.board.set_active import set_active
 from services.config.collection_names import COLL
 
 logger = logging.getLogger(__name__)
@@ -42,55 +42,34 @@ async def mark_retired_inactive(
 ) -> Dict[str, Any]:
     """Flip `active=False` on scored RT docs whose live prop retired.
 
-    Parameters
-    ----------
-    db
-        Motor AsyncIO database handle.
-    sport
-        Lowercase sport key, e.g. "nba" / "mlb".
-    version_tag
-        Typically `final-{sport}-rt` — the RT tag the Ferrari endpoints
-        read from.
-    retired_keys
-        Canonical keys of props that retired this delta tick.
-    reason
-        Free-form string stored on the scored doc for audit.
+    SSOT enforcement (2026-05-04): this function now routes the write
+    through the single canonical helper `services.board.set_active` so
+    the `active` field on `{sport}_prop_scores` has exactly one
+    allowed writer path. See FIELD_OWNERSHIP.md:active.
 
-    Returns
-    -------
-    dict
-        `{matched, modified, keys_processed}` summary.
+    Parameters & return: unchanged (back-compatible) — still returns
+    `{matched, modified, keys_processed}`.
     """
     keys = list(retired_keys)
     if not keys:
         return {"matched": 0, "modified": 0, "keys_processed": 0}
 
-    coll = db[COLL("prop_scores", sport)]
-    now = datetime.now(timezone.utc)
-    result = await coll.update_many(
-        {
-            "canonical_key": {"$in": keys},
-            "version_tag": version_tag,
-            "active": {"$ne": False},
-        },
-        {
-            "$set": {
-                "active": False,
-                "inactive_reason": reason,
-                "active_changed_at": now,
-            }
-        },
+    result = await set_active(
+        db,
+        sport=sport,
+        canonical_keys=keys,
+        active=False,
+        reason=reason,
+        version_tag=version_tag,
     )
-    matched = getattr(result, "matched_count", 0)
-    modified = getattr(result, "modified_count", 0)
     logger.info(
         f"[DELTA_TIERING:{sport}] mark_retired_inactive version='{version_tag}' "
-        f"keys={len(keys)} matched={matched} modified={modified}"
+        f"keys={len(keys)} matched={result['matched']} modified={result['modified']}"
     )
     return {
-        "matched": matched,
-        "modified": modified,
-        "keys_processed": len(keys),
+        "matched":        result["matched"],
+        "modified":       result["modified"],
+        "keys_processed": result["keys_processed"],
     }
 
 

@@ -58,7 +58,7 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         owner_collection="prop_scores",
         owner_field="active",
         writers=[
-            "services/board/set_active.py:set_active",  # PLANNED helper; 8 writers route through it
+            "services/board/set_active.py:set_active",
         ],
         readers_allowed=[
             "services/board/reader.py:*",
@@ -68,8 +68,16 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         fallback_policy="NONE",
         null_policy="fail_loud",
         frontend_display="n/a — filter field, not user-visible",
-        status="documented",
-        notes="8 writers today with no contract. Today's watcher bug lives here. Migration = single set_active() helper + audit collection + strict {active: True} queries only.",
+        status="locked",
+        notes=(
+            "2026-05-04 migration: all active-flip writers route through "
+            "services.board.set_active.set_active(). `active_transitions` "
+            "audit collection records every transition (TTL 30d). "
+            "Legacy direct-update sites removed: tiering.mark_retired_inactive "
+            "and scanner.scan_sport now delegate. Initial active=True on "
+            "first-time score doc persistence is an insert default (not a "
+            "transition) and lives in prop_scores_store._project_score_doc."
+        ),
     ),
     "computed_at": FieldSpec(
         name="computed_at",
@@ -281,8 +289,16 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         fallback_policy="NONE",
         null_policy="fail_loud",
         frontend_display="required field",
-        status="documented",
-        notes="Canonical by bdl_player_id. 9 write sites in picks_getter_service.py must be deleted.",
+        status="locked",
+        notes=(
+            "2026-05-04: route-layer fallback chains removed. Card "
+            "contract (dashboard_card_contract.to_card_contract) now "
+            "reads `pick.get('player_name')` only — aliases `player` "
+            "and `name` were silent-rename footguns with no owning "
+            "writer and are removed. Canonical path still flows "
+            "master_hub.display_name → universal_odds_sync → live_props "
+            "→ picks_getter."
+        ),
     ),
     "pp_projection_id": FieldSpec(
         name="pp_projection_id",
@@ -361,8 +377,18 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         fallback_policy="NONE",
         null_policy="return_null",
         frontend_display="— when missing",
-        status="documented",
-        notes="Aliases team / team_abbr / team_name coexist. Canonicalize to team (3-letter abbr).",
+        status="locked",
+        notes=(
+            "2026-05-04: route-layer fallback chains removed. Card "
+            "contract (dashboard_card_contract.to_card_contract) now "
+            "reads `pick.get('team')` only. Aliases team_abbr / "
+            "player_team / home_team_abbr / away_team_abbr are no "
+            "longer consulted — they were the #1 source of team/"
+            "opponent contradictions after an offseason trade hit hub "
+            "before live_props re-synced. Hub-level backfill in "
+            "_stamp_hit_profile_on_picks is also disabled; a missing "
+            "team now surfaces as `None` (UI renders `—`)."
+        ),
     ),
     "tier": FieldSpec(
         name="tier",
@@ -388,11 +414,21 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         fallback_policy="NONE",
         null_policy="return_null",
         frontend_display='"Vision unavailable" when null; NEVER show template text',
-        status="documented",
+        status="locked",
         notes=(
-            "4 parallel writers + 3-level fallback cascade. Full refactor "
-            "scoped in /app/memory/VISION_INTEL_REFACTOR_SCOPE.md. "
-            "Until shipped: MLB must return null, not template."
+            "2026-05-04: NULLIFICATION PHASE shipped. Two fake-data "
+            "sources neutralised ahead of the full Universal Vision "
+            "Intel engine refactor: (1) `_generate_vision_fallback` "
+            "in routes/ferrari_tiers.py now returns None instead of a "
+            "templated \"Player stat at line — model sees X\" string; "
+            "(2) `overlay_enrichment_cache` no longer reads from the "
+            "stale JSON cache at /app/backend/data/{sport}_master_active_cache.json "
+            "(it now stamps only the locally-computed volatility "
+            "profile). The legacy JSON-reading body is preserved as "
+            "`_overlay_enrichment_cache_legacy` strictly for archaeology. "
+            "Full refactor — single universal writer at "
+            "services/vision_intel/engine.py:enrich — scoped in "
+            "/app/memory/VISION_INTEL_REFACTOR_SCOPE.md."
         ),
     ),
 }
