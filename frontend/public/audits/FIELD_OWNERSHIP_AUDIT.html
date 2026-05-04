@@ -1,0 +1,1300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PropVision — Field Ownership Audit (2026-05-03)</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', 'Menlo', monospace;
+    background: #0e0e10;
+    color: #e4e4e7;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 32px 48px;
+    line-height: 1.55;
+    font-size: 13px;
+  }
+  h1 {
+    font-size: 26px;
+    border-bottom: 2px solid #52525b;
+    padding-bottom: 10px;
+    margin-top: 32px;
+    color: #fafafa;
+  }
+  h2 {
+    font-size: 19px;
+    margin-top: 32px;
+    color: #a78bfa;
+    border-bottom: 1px solid #27272a;
+    padding-bottom: 4px;
+  }
+  h3 { font-size: 15px; color: #86efac; margin-top: 20px; }
+  p { margin: 8px 0; }
+  ul { margin: 6px 0 10px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+  strong { color: #fafafa; }
+  code {
+    background: #27272a;
+    color: #fca5a5;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+  hr { border: 0; border-top: 1px dashed #3f3f46; margin: 24px 0; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 18px 0;
+    font-size: 12px;
+  }
+  th, td {
+    border: 1px solid #3f3f46;
+    padding: 6px 10px;
+    vertical-align: top;
+    text-align: left;
+  }
+  th { background: #27272a; color: #fafafa; font-weight: 600; }
+  tr:nth-child(even) td { background: #18181b; }
+  tr:nth-child(odd) td { background: #0e0e10; }
+  /* Status colors */
+  td:contains("BROKEN") { color: #fca5a5; }
+  @media print {
+    body { background: white; color: #18181b; }
+    h1 { color: #000; border-color: #666; }
+    h2 { color: #6d28d9; border-color: #ccc; }
+    h3 { color: #059669; }
+    code { background: #f4f4f5; color: #be123c; }
+    tr:nth-child(even) td { background: #f4f4f5; }
+    tr:nth-child(odd) td { background: white; }
+    th { background: #e4e4e7; color: #000; }
+  }
+  .download-banner {
+    background: linear-gradient(90deg, #7c3aed 0%, #a855f7 100%);
+    color: white;
+    padding: 14px 24px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .download-banner a {
+    background: rgba(0,0,0,0.25);
+    color: white;
+    padding: 6px 14px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 12px;
+  }
+  .download-banner a:hover { background: rgba(0,0,0,0.4); }
+  @media print {
+    .download-banner { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="download-banner">
+  <div>
+    <strong>PropVision — Field Ownership Audit</strong><br/>
+    <small>Generated 2026-05-03 · To save as PDF, use your browser's Print → Save as PDF.</small>
+  </div>
+  <a href="FIELD_OWNERSHIP_AUDIT.md" download>⬇ Download Markdown</a>
+</div>
+<h1>Field Ownership Audit — PropVision — 2026-05-03</h1>
+
+<p>Format: per-field blocks in the structure requested.</p>
+<p>Scope: 20 fields + 7 cross-cutting systems.</p>
+<p>Evidence: <code>file.py:line → function_name</code> from static code audit.</p>
+<p>No patches applied.</p>
+
+<hr/>
+
+<h2>FIELD: opponent</h2>
+
+<p><strong>OWNER:</strong> <code>nba_live_props.opponent_team</code> / <code>mlb_live_props.opponent_team</code></p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/universal_odds_sync.py:1022 → _build_prop_record</code> — writes opponent_team at odds ingest</li>
+<li><code>services/mlb_cached_board_builder.py:470 → run_mlb_board_build</code> — writes <code>opponent</code> onto cached_board from game log</li>
+<li><code>services/context_badge_service.py:159-161 → get_todays_games</code> — writes <code>opponent</code> into badge docs from cached_board</li>
+<li><code>services/picks_getter_service.py:1260 → get_goblin_vault</code> — copies opponent onto pick dicts</li>
+<li><code>services/picks_getter_service.py:1700 → get_front_lines</code> — copies opponent onto pick dicts</li>
+<li><code>services/picks_getter_service.py:2338 → get_cached_player</code> — copies opponent from <code>player_doc</code></li>
+<li><code>routes/ferrari_tiers.py:1486-1523 → _get_nba_tier_picks_from_scores</code> — live_props override layer (added 2026-05-03)</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>services/dvp_service.py:955 → apply_dvp_to_prop</code> — reads with <code>.get("opponent") or .get("opponent_team")</code></li>
+<li><code>services/vegas_regression_model.py:536 → predict_batch</code> — reads with <code>.get('opponent') or .get('opponent_abbr')</code></li>
+<li><code>services/simulation_service.py:199 → _process_leg</code> — reads <code>.get("opponent", "")</code></li>
+<li><code>services/mlb_vision_intel.py:173 → _build_batch_prompt</code> — reads <code>.get('opponent', 'TBD')</code></li>
+<li><code>routes/ferrari_tiers.py:599 → enrich_mlb_intel_suite</code> — reads <code>opposing_team or opponent or ...</code> (4-way fallback)</li>
+<li><code>routes/ferrari_tiers.py:1291 → merge</code> — reads <code>opponent_defensive_rank</code> from score doc</li>
+<li><code>routes/player.py:431,463 → get_player_with_badges</code> — reads from <code>score_docs[0]</code> then falls back to <code>board_fallback.opponent</code></li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li><code>nba_cached_board.opponent</code> — player-grain, locked to <code>locked_event_id</code>, goes stale across schedule rolls</li>
+<li><code>master_hub.opponent</code> — hub-level, updated at master_sync time</li>
+<li><code>player_context_features.opponent_team</code> — parallel computation</li>
+<li>Multiple readers have <code>.get("opponent") or .get("opponent_team") or .get("opponent_abbr")</code> chains</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>Stale <code>nba_cached_board.locked_event_id</code> produced the 2026-05-03 "Dylan Harper SAS vs POR" bug (actual matchup was MIN).</li>
+<li>4 parallel writers; no source is declared authoritative.</li>
+<li>Reader-side merge at <code>ferrari_tiers.py:1486</code> was a 2026-05-03 patch that overrides cached_board with live_props, but other readers still trust cached_board.</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Delete <code>opponent</code> writes from <code>mlb_cached_board_builder.py:470</code></li>
+<li>Delete <code>opponent</code> writes from <code>context_badge_service.py:159-161</code></li>
+<li>All readers query <code>live_props.opponent_team</code> by canonical_key only</li>
+<li>Return <code>null</code> if missing; frontend renders "—"</li>
+<li>Remove 4-way <code>.get() or .get()</code> fallback chains</li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE — read path patched today, writers still leak into multiple collections.</p>
+
+<hr/>
+
+<h2>FIELD: player_name</h2>
+
+<p><strong>OWNER:</strong> <code>master_hub.display_name</code> (by <code>bdl_player_id</code>)</p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/odds_api_service.py:511</code> — ingest, uses raw name from Odds API</li>
+<li><code>services/bdl_universal_sync.py</code> — writes <code>display_name</code> on master_hub</li>
+<li><code>services/bdl_game_logs_sync.py</code> — writes <code>player_name</code> on game_logs (independent of master)</li>
+<li><code>services/context_badge_service.py:159,356</code> — writes into badge docs</li>
+<li><code>services/feature_hydration.py:393</code> — writes onto hydrated props</li>
+<li><code>services/picks_getter_service.py:1258, 1698, 2308, 2336, 2575, 2738, 2751, 2784, 2919</code> — 9 separate write sites</li>
+<li><code>services/sharp_edge_calculator.py:300, 403</code> — writes onto sharp-edge docs</li>
+<li><code>services/dashboard_card_contract.py</code> — normalizes at card-build time</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li>40+ files. Every service that touches a pick reads <code>player_name</code>.</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li><code>display_name</code> vs <code>player_name</code> used interchangeably</li>
+<li>Normalization to lowercase-no-apostrophe in some paths (<code>De'Aaron Fox</code> → <code>deaaron fox</code>), not others</li>
+<li>Game-log <code>player_name</code> sometimes overrides master_hub <code>display_name</code> at enrichment time</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>No canonical capitalization / apostrophe handling</li>
+<li>Can produce duplicate player cards when normalized vs raw names collide</li>
+<li>Traded players may be enriched with wrong display name for 24h until master_hub re-sync</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Canonical owner = <code>master_hub.display_name</code> by <code>bdl_player_id</code></li>
+<li>All collections reference by <code>bdl_player_id</code> only</li>
+<li>Display name derived at read time via a shared <code>resolve_display_name(bdl_id)</code> helper</li>
+<li>Delete 9 write sites in <code>picks_getter_service.py</code></li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE</p>
+
+<hr/>
+
+<h2>FIELD: team</h2>
+
+<p><strong>OWNER:</strong> <code>master_hub.team_abbr</code></p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/universal_odds_sync.py:1022</code> — writes <code>team</code> onto live_props at ingest</li>
+<li><code>services/bdl_universal_sync.py</code> — writes <code>team_abbr</code> on master_hub</li>
+<li><code>services/context_badge_service.py:160</code> — writes into badge docs</li>
+<li><code>services/feature_hydration.py:115, 392</code> — writes onto hydrated docs</li>
+<li><code>services/picks_getter_service.py:298, 320, 1259, 1699, 2337</code> — 5 write sites</li>
+<li><code>services/usage_spike_detector.py:112, 184</code> — writes onto usage-spike records</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li>50+ files. Every display / scoring / badge service reads it.</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li><code>team</code>, <code>team_abbr</code>, <code>team_name</code> used interchangeably</li>
+<li><code>team</code> is 3-letter abbr in some docs, full name in others (<code>team_name</code>)</li>
+<li>Frontend normalizes with <code>team || team_abbr || team_name</code></li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>Traded players show last-known team for up to 24h (cached_board + master_hub drift)</li>
+<li>Full name vs abbreviation inconsistency across docs</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Owner: <code>live_props.team</code> (ingested with the prop — always current)</li>
+<li>Drop <code>cached_board.team</code> writes</li>
+<li>Drop <code>master_hub.team</code> reads from pick-display paths (keep for master-hub admin views only)</li>
+<li>Return <code>null</code> if missing</li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE</p>
+
+<hr/>
+
+<h2>FIELD: game_id / event_id</h2>
+
+<p><strong>OWNER:</strong> <code>live_props.event_id</code></p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/universal_odds_sync.py:1207 → _persist_prop</code> — writes event_id at ingest</li>
+<li><code>services/master_sync.py:691</code> — propagates in enrichment queries</li>
+<li><code>services/scoring/recompute.py:61 → _coerce_score_ctx_from_live</code> — copies into ScoringContext</li>
+<li><code>services/scoring/recompute.py:433, 767 → recompute_sport</code> — writes onto score doc</li>
+<li><code>services/scoring/adapters/nba_scoring.py:205, 2580</code> — reads raw_prop event_id</li>
+<li><code>routes/ferrari_tiers.py:3387</code> — <code>"game_id": game.get("game_id")</code> (debug path only)</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>services/delta/detector.py:119</code> — reads for delta key diffing</li>
+<li>25+ files read at enrichment / display / history</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li>None — <code>event_id</code> is propagated cleanly through the pipeline.</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>None discovered.</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>N/A</li>
+</ul>
+
+<p><strong>STATUS:</strong> CLEAN</p>
+
+<hr/>
+
+<h2>FIELD: stat_type</h2>
+
+<p><strong>OWNER:</strong> <code>live_props.stat_type</code> (raw from Odds API)</p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/universal_odds_sync.py:1022</code> — writes raw stat_type at ingest</li>
+<li><code>services/master_sync.py:691</code> — propagates in queries</li>
+<li><code>services/sharp_edge_calculator.py:302, 404</code> — writes onto sharp-edge docs</li>
+<li><code>services/picks_getter_service.py:1265, 1705, 2372</code> — 3 write sites; <code>2372</code> does <code>stat_type_extracted or stat_type</code></li>
+<li><code>services/vegas_killer_model.py:1458, 1656, 1800</code> — writes onto model output</li>
+<li><code>services/dvp_service.py:782</code> — writes onto DvP lookup</li>
+<li><code>services/mlb_high_friction_model.py:1070</code> — writes onto friction model output</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li>Every scoring / gate / display path.</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li>Normalization layers:</li>
+</ul>
+<p>  - <code>Hits+Runs+RBIs</code> (display)</p>
+<p>  - <code>H+R+RBI</code> (internal)</p>
+<p>  - <code>hits_runs_rbis</code> (snake_case stored)</p>
+<p>  - <code>batter_hits_runs_rbis</code> (Odds API native)</p>
+<ul>
+<li><code>stat_type_extracted</code> used as fallback when <code>stat_type</code> is the composite raw string</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li><code>services/intel_suite_calculator.py:303 → _calculate_stability_index</code> calls <code>_extract_stat_values(active_logs, stat_type)</code> which fails on composite types → returns empty list → std_dev=0. Source of today's variance-tile bug on MLB H+R+RBI picks.</li>
+<li>4 string forms for the same stat silently coexist; serializer/deserializer can disagree.</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Canonical snake_case stored value (<code>hits_runs_rbis</code>)</li>
+<li>Display mapper at frontend only</li>
+<li><code>_extract_stat_values</code> must handle composite stats explicitly (split on <code>+</code>, sum component values)</li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE — broken specifically for composite stat types.</p>
+
+<hr/>
+
+<h2>FIELD: line</h2>
+
+<p><strong>OWNER:</strong> <code>live_props.line</code> (PrizePicks line from Odds API)</p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/universal_odds_sync.py:1022</code> — writes from Odds API payload</li>
+<li><code>services/scoring/adapters/nba_scoring.py</code> + <code>mlb_scoring.py</code> — propagate into score doc</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li>100+ call sites. Scoring, gates, display, history, ticker.</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li>Per-book line fields: <code>pp_line</code>, <code>dk_line</code>, <code>fd_line</code>, <code>mgm_line</code>, <code>bol_line</code> — separate truth per book for book-line drift detection. Not a fallback for the canonical <code>line</code>; coexists.</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>None discovered at the field level.</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>N/A</li>
+</ul>
+
+<p><strong>STATUS:</strong> CLEAN</p>
+
+<hr/>
+
+<h2>FIELD: side / recommendation</h2>
+
+<p><strong>OWNER:</strong> <code>live_props.recommendation</code> (<code>OVER</code> | <code>UNDER</code>)</p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/universal_odds_sync.py:1022</code> — writes at ingest</li>
+<li><code>services/scoring/adapters/nba_scoring.py</code> + <code>mlb_scoring.py</code> — propagate</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li>Everywhere. Also read as <code>direction</code> (alias) and <code>side</code> (normalized).</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li><code>direction</code> field is a second name for the same value</li>
+<li><code>side</code> used in board_publisher</li>
+<li>Some code paths default to <code>OVER</code> when value missing</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>3 names (<code>recommendation</code>, <code>direction</code>, <code>side</code>) for same value — reader-side coercion layer</li>
+<li>Default-to-OVER assumption in <code>picks_getter_service.py</code> hides ingest errors</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Canonical = <code>side ∈ {OVER, UNDER}</code>, Pydantic-enum-validated</li>
+<li>Drop <code>direction</code> alias</li>
+<li>Null = explicit ingest failure, do not default</li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE</p>
+
+<hr/>
+
+<h2>FIELD: p_true (stored as p_true_active)</h2>
+
+<p><strong>OWNER:</strong> <code>prop_scores.p_true_active</code></p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/scoring/recompute.py:444 → recompute_sport</code> — writes <code>p_true_active = ctx.p_model</code></li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>services/scoring/metrics_builder.py:158 → build_metrics</code> — reads for metrics</li>
+<li>Gates engine, display layers, ranking computations</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li>None. <code>p_true_active = None</code> means unscorable; readers handle explicitly.</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>None discovered.</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>N/A</li>
+</ul>
+
+<p><strong>STATUS:</strong> CLEAN</p>
+
+<hr/>
+
+<h2>FIELD: edge (stored as edge_vs_fair)</h2>
+
+<p><strong>OWNER:</strong> <code>prop_scores.edge_vs_fair</code></p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/scoring/scoring_stack.py:285 → compute_vision_score</code> — writes <code>edge_vs_fair = round(edge, 4)</code></li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>services/scoring/gates/engine.py</code> — edge_gate evaluator</li>
+<li><code>routes/ferrari_tiers.py</code> — display / filter</li>
+<li><code>services/board/publisher.py</code> — read for snapshot</li>
+<li>20+ other files</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li>Aliases: <code>vk_edge</code>, <code>true_edge</code>, <code>edge</code>, <code>edge_pct</code>, <code>edge_percentage</code></li>
+<li>Historical values for related-but-different edge computations</li>
+<li>Frontend displays different aliases on different screens</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>Users see different edge values on the same pick across screens (Goblin Vault vs Safe Haven vs Player Detail)</li>
+<li>Aliases are not guaranteed equal to <code>edge_vs_fair</code></li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Canonical name = <code>edge</code>, value = <code>p_model - fair_prob</code></li>
+<li>Compute once, persist once, display one name everywhere</li>
+<li>Delete alias fields <code>vk_edge</code>, <code>true_edge</code>, <code>edge_pct</code>, <code>edge_percentage</code> from score doc</li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE</p>
+
+<hr/>
+
+<h2>FIELD: hit_rate</h2>
+
+<p><strong>OWNER:</strong> <code>prop_scores.hit_rate_over</code> / <code>prop_scores.hit_rate_under</code> (L20 window)</p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/scoring/adapters/nba_scoring.py:2464-2467, 3261-3262 → score</code> — writes L20 hit rates</li>
+<li><code>services/scoring/adapters/mlb_scoring.py:598-599 → score</code> — writes L20 hit rates</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>services/scoring/gates/engine.py</code> — hit_rate_gate evaluator</li>
+<li><code>routes/ferrari_tiers.py:226-232 → _generate_vision_fallback</code> — side-aware pull chain</li>
+<li><code>routes/ferrari_tiers.py:267-275</code> — displays as "L10" label while reading L20 field</li>
+<li>15+ other readers</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li>Windows: <code>h10_rate</code>, <code>l10_rate</code>, <code>l20_rate</code>, <code>hit_rate_over</code>, <code>hit_rate_under</code>, <code>h10_hit_rate</code>, <code>true_hit_rate</code></li>
+<li><code>_generate_vision_fallback</code> chain: <code>h10_rate → l10_rate → h10_hit_rate → hit_rate_over</code></li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>Fallback labels <code>hit_rate_over</code> (L20) as "L10" in the template — surfaces as "95% L10" when actual L10 is 90% (recurring bug)</li>
+<li>7 different window-named aliases</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Window-explicit fields only: <code>hit_rate_l5</code>, <code>hit_rate_l10</code>, <code>hit_rate_l20</code> (per side)</li>
+<li>Delete generic <code>hit_rate_over</code> / <code>hit_rate_under</code></li>
+<li>Template references specific window, never "hit_rate" alone</li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE — recurring display-vs-stored-window mismatch</p>
+
+<hr/>
+
+<h2>FIELD: cv</h2>
+
+<p><strong>OWNER:</strong> <code>prop_scores.cv</code> (std_dev / mean of L30 game logs)</p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/scoring/adapters/nba_scoring.py:2499 → score</code> — writes <code>cv = std / mean</code></li>
+<li><code>services/scoring/adapters/mlb_scoring.py:195, 329, 490, 593 → score</code> — writes</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>services/scoring/gates/thresholds.py</code> — cv_gate caps</li>
+<li><code>frontend/src/components/dashboard/PlayerDetailPage.jsx</code> — Variance tile (2026-05-03 patch reads <code>cv</code> instead of <code>stability_index</code>)</li>
+<li><code>services/intel_suite_calculator.py:306-327 → _calculate_stability_index</code> — <strong>INDEPENDENT re-computation</strong>, disagrees with cv</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li><code>cv_raw</code> (alias)</li>
+<li><code>volatility_score</code> (derived scaled score)</li>
+<li><code>volatility_label</code> (derived label)</li>
+<li><code>intel_suite.stability_index.std_dev</code> — independently computed, ignores stored cv</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>Two CV sources on one pick. <code>stability_index</code> returns std_dev=0 for composite MLB stats; <code>cv</code> on same pick is correct (0.79).</li>
+<li>Today's frontend patch bound Variance UI to <code>cv</code> directly; <code>stability_index</code> still computed server-side for other surfaces.</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Delete <code>_calculate_stability_index</code> — engine computes <code>cv</code> once at scoring time</li>
+<li>Intel suite reads <code>cv</code> field, derives labels if needed</li>
+<li>Remove <code>std_dev</code> duplicate computation</li>
+</ul>
+
+<p><strong>STATUS:</strong> BROKEN — frontend patched 2026-05-03; server-side <code>stability_index</code> still produces wrong values on other surfaces.</p>
+
+<hr/>
+
+<h2>FIELD: ranking_score_v2</h2>
+
+<p><strong>OWNER:</strong> <code>prop_scores.ranking_score_v2</code></p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/scoring/recompute.py:493 → recompute_sport</code> — writes <code>ranking_score_v2 = _compute_ranking_score_v2(raw_gap, line, p_model)</code> (see <code>recompute.py:137-150</code>)</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>routes/player.py:101 → get_player</code> — reads for display</li>
+<li><code>routes/player.py:306, 315, 516 → get_players_by_tier</code> — <code>.sort([("ranking_score_v2", -1)])</code></li>
+<li><code>routes/ferrari_tiers.py:149, 1197, 1722 → _get_*_tier_picks_from_scores</code> — reads for merge</li>
+<li><code>routes/ferrari_tiers.py:1376, 1604 → get_*_tier</code> — sort override key</li>
+<li><code>routes/vacuum.py:276 → vacuum_alerts</code> — sort key</li>
+<li><code>services/market_moves_engine.py:265 → get_market_moves</code> — projection field</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li><code>routes/ferrari_tiers.py:149-150</code> — falls back to <code>vision_score</code> when ranking_score_v2 is None</li>
+<li>Other readers tolerate None implicitly (<code>sort</code> places nulls last)</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>Fallback to <code>vision_score</code> produces inconsistent sort order across tabs (some use v2, some fallback to vision)</li>
+<li>No test asserts <code>ranking_score_v2</code> is always populated post-recompute</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Make <code>ranking_score_v2</code> mandatory in <code>prop_scores</code> Pydantic schema</li>
+<li>Drop the <code>vision_score</code> fallback in <code>ferrari_tiers.py:149</code></li>
+<li>If compute fails, drop the pick (do not tier it)</li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE</p>
+
+<hr/>
+
+<h2>FIELD: tier</h2>
+
+<p><strong>OWNER:</strong> <code>prop_scores.tier</code> ∈ <code>{safe_haven, front_lines, war_zone, unqualified}</code></p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/scoring/tiering.py</code> — sets via gate evaluation</li>
+<li><code>services/scoring/gates/engine.py</code> — evaluates gates, returns tier string</li>
+<li><code>services/scoring/recompute.py</code> — persists via <code>ctx.tier</code></li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>services/board/reader.py:47</code> — reads for board publish</li>
+<li><code>routes/ferrari_tiers.py</code> — all tier endpoints filter by this</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li>None — <code>unqualified</code> is the explicit fallback value.</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>None discovered.</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>N/A</li>
+</ul>
+
+<p><strong>STATUS:</strong> CLEAN</p>
+
+<hr/>
+
+<h2>FIELD: active</h2>
+
+<p><strong>OWNER:</strong> <code>prop_scores.active</code> (bool) + <code>live_props.active</code> (bool)</p>
+
+<p><strong>WRITERS (prop_scores):</strong></p>
+<ul>
+<li><code>services/scoring/recompute.py:439 → recompute_sport</code> — writes <code>active: True</code> unconditionally</li>
+<li><code>services/board/scanner.py:39, 43 → scan_sport</code> — flips True/False based on tipoff</li>
+<li><code>services/board/publisher.py:198, 209, 218, 220 → _persist</code> — flips True/False per publisher lifecycle</li>
+<li><code>services/board/shadow_publisher.py:112, 122, 129, 131, 152 → _persist</code> — mirrors publisher for shadow board</li>
+<li><code>services/scoring/tiering.py:78 → mark_retired_inactive</code> — flips False when live prop retires</li>
+<li><code>services/badge_resolver.py:561 → add_flag</code> — writes True when adding badge flag</li>
+<li><code>services/badge_resolver.py:576 → deactivate_flag</code> — writes False on flag deactivation</li>
+</ul>
+
+<p><strong>WRITERS (live_props):</strong></p>
+<ul>
+<li><code>services/master_sync.py</code> — flips False on game start</li>
+<li><code>services/odds_api_service.py</code> — writes True at ingest</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li>20+ files. Two DIFFERENT QUERY PATTERNS used inconsistently:</li>
+</ul>
+<p>  - <code>{"active": True}</code> (strict)</p>
+<p>  - <code>{"active": {"$ne": False}}</code> (lenient; matches missing field too)</p>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li>Missing <code>active</code> field behaves differently per query pattern (see above)</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li><strong>Root cause of 2026-05-03 watcher freeze.</strong> Delta detector used <code>{"active": {"$ne": False}}</code> for reading scorable live keys but set-diffed against ALL scored rt keys including <code>active=False</code> stale rows. Masked 195 MLB keys silently for 18h.</li>
+<li>8 independent writers with no single contract on when True vs False is correct.</li>
+<li>No audit of active-flip transitions.</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Single helper <code>set_active(canonical_key, state, reason, timestamp)</code> — all 8 writers route through it</li>
+<li>Audit log collection <code>active_transitions</code> captures every flip with reason</li>
+<li>Readers standardize on ONE query pattern (<code>active: True</code> strict); missing is an invariant violation</li>
+<li>Write an invariant test: every canonical_key in <code>live_props.active=True</code> must have matching <code>prop_scores.active=True</code> under current <code>version_tag</code></li>
+</ul>
+
+<p><strong>STATUS:</strong> BROKEN — detector patched 2026-05-03; root cause (multi-writer no-contract) remains.</p>
+
+<hr/>
+
+<h2>FIELD: computed_at / scored_at</h2>
+
+<p><strong>OWNER:</strong> <code>prop_scores.computed_at</code> (written)</p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/scoring/prop_scores_store.py:452 → write_versioned_scores</code> — <code>computed_at = datetime.now(timezone.utc).isoformat()</code></li>
+<li><code>services/scoring/prop_scores_store.py:464, 498, 595</code> — writes at persist</li>
+</ul>
+
+<p><strong><code>scored_at</code> WRITERS:</strong></p>
+<ul>
+<li><strong>NONE.</strong> Field is never populated anywhere in the codebase.</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>services/board/drift_audit.py:105, 244, 273, 285, 389, 531, 538, 546</code> — reads <code>computed_at</code></li>
+<li><code>routes/health_sync.py:91 → _probe_prop_scores</code> — reads <code>scored_at</code> (always returns null)</li>
+<li><code>services/shadow/shadow_capture_service.py:112, 191, 253</code> — reads <code>computed_at</code></li>
+<li><code>services/injury_advantage.py:485</code> — writes <code>computed_at</code> onto injury docs (separate collection)</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li>N/A — <code>scored_at</code> simply doesn't exist; probe silently returns null.</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li><code>/api/health/sync</code> probes <code>last_scored_at</code> for both sports</li>
+<li>Probe returns <code>null</code> for both → freshness monitoring silently dead for months</li>
+<li>Makes the entire <code>/api/health/*</code> surface non-functional for the most important metric (staleness)</li>
+</ul>
+
+<p><strong>FIX (ONE-LINE):</strong></p>
+<ul>
+<li>Either write <code>scored_at = computed_at</code> in <code>prop_scores_store.py:452</code> block</li>
+<li>Or rename probe field to <code>computed_at</code> in <code>routes/health_sync.py:91</code></li>
+</ul>
+
+<p><strong>STATUS:</strong> BROKEN — one-line fix candidate.</p>
+
+<hr/>
+
+<h2>FIELD: vision_intel</h2>
+
+<p><strong>OWNER (de jure):</strong> <code>prop_scores.vision_intel</code></p>
+<p><strong>OWNER (de facto):</strong> Nobody — 4 writer paths, 3 fallback cascade, MLB has zero real writers.</p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/vision_intel_service.py:553, 564 → _merge_intel_to_prop</code> — NBA Gemini path; writes real or fallback</li>
+<li><code>services/mlb_vision_intel.py:378, 389, 441 → _merge_intel_to_prop</code> — MLB Gemini path; <strong>NOT WIRED into <code>mlb_master_sync</code></strong> so never runs in live pipeline</li>
+<li><code>services/master_sync.py:1355, 1424-1426 → _enrich_nba_board_vision_intel</code> — NBA-only; persists Gemini output to prop_scores</li>
+<li><code>services/normalize_to_intel_mapping.py:224, 226</code> — writes via mapping</li>
+<li><code>routes/ferrari_tiers.py:337 → _ferrari_response_for_tier</code> — reads from cache, writes onto pick at response time</li>
+<li><code>routes/ferrari_tiers.py:1128 → _get_nba_tier_picks_from_scores</code> — override layer</li>
+<li><code>routes/ferrari_tiers.py:2273 → _augment_mlb_picks</code> — <code>pick["vision_intel"] = _generate_vision_fallback(pick)</code> — the template lie</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li>Frontend <code>UniversalPlayerCard.jsx</code>, <code>PlayerDetailPage.jsx</code></li>
+<li>Backend card-contract at <code>services/dashboard_card_contract.py:177</code></li>
+<li><code>routes/player.py:122</code></li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li>Level 1: <code>prop_scores.vision_intel</code> (Gemini NBA only)</li>
+<li>Level 2: <code>overlay_enrichment_cache</code> reads <code>/app/backend/data/{sport}_master_active_cache.json</code> (mtime 2026-04-23, stale)</li>
+<li>Level 3: <code>_generate_vision_fallback</code> produces "the math backs the over" template</li>
+<li>Level 4: Frontend shows empty</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>4 writer paths with no ownership.</li>
+<li>MLB: literally no live Gemini writer. Every MLB summary is template.</li>
+<li>NBA: Gemini writes, but template can overwrite at read time.</li>
+<li>Stale JSON file from Apr 23 overrides live score-doc fields via <code>overlay_enrichment_cache</code>.</li>
+<li>User cannot distinguish Gemini-authored from template.</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Universal Vision Intel engine — already scoped in <code>/app/memory/VISION_INTEL_REFACTOR_SCOPE.md</code></li>
+<li>Delete <code>_generate_vision_fallback</code> + <code>overlay_enrichment_cache</code> + stale JSON</li>
+<li>Single writer: <code>services/vision_intel/engine.py</code> writes structured <code>{badges, summary}</code> at master_sync time</li>
+<li><code>null</code> when engine can't produce output; frontend renders "Vision unavailable"</li>
+</ul>
+
+<p><strong>STATUS:</strong> BROKEN (MLB is 100% template); FRAGILE (NBA has 4-layer override chain)</p>
+
+<hr/>
+
+<h2>FIELD: photo_url / headshot_url</h2>
+
+<p><strong>OWNER:</strong> <code>master_hub.photo_url</code></p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/bdl_universal_sync.py</code> — writes <code>photo_url</code> / <code>headshot_url</code> on master_hub at sync</li>
+<li><code>services/picks_getter_service.py:278-320 → _get_photo_cache</code> — builds in-memory cache</li>
+<li><code>services/picks_getter_service.py:1264, 1527</code> — writes onto pick dicts from cache</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li>Frontend <code>PlayerHeadshot</code> component</li>
+<li><code>routes/ferrari_tiers.py</code> — all tier reads</li>
+<li><code>routes/player.py</code> — player detail</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li><code>photo_url</code> (canonical)</li>
+<li><code>headshot_url</code> (alias)</li>
+<li><code>/static/player-headshots/{nba_id}.png</code> (file-system fallback if no URL)</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li><code>services/picks_getter_service.py:237</code> holds a <strong>MODULE-GLOBAL <code>_photo_cache</code> dict with no TTL, no invalidation</strong>. First bad lookup persists for lifetime of backend process.</li>
+<li>Traded players keep old team's headshot until pod restart.</li>
+</ul>
+
+<p><strong>FIX (ONE-LINE CANDIDATE):</strong></p>
+<ul>
+<li>Delete the module-global <code>_photo_cache</code></li>
+<li>Read master_hub directly each request (indexed lookup, ~1ms)</li>
+<li>OR add TTL+invalidation-on-master-sync</li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE — one-line fix candidate (delete the cache).</p>
+
+<hr/>
+
+<h2>FIELD: pp_projection_id</h2>
+
+<p><strong>OWNER:</strong> <code>pp_projection_id_cache</code> collection (TTL 15 min)</p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/pp_multiplier_lab.py:1010 → seed_projection_ids_from_scraper</code> — external Chrome scraper path</li>
+<li><code>services/pp_multiplier_lab.py:329</code> — writes during projection build</li>
+<li><code>services/pp_multiplier_lab.py:554</code> — writes <code>"standard"</code> default when scraper missing</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>services/pp_multiplier_lab.py:735 → get_projection_id</code> — preferred source</li>
+<li><code>routes/pp_multiplier_lab.py:155, 190 → multiplier_lab_*</code> endpoints</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li><code>"standard"</code> default when cache miss</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>External Chrome scraper is out-of-band. If runner is down, cache expires, all projections get <code>"standard"</code> → demons/goblins look like standards → multiplier math wrong.</li>
+<li>No visible alarm when scraper is stale.</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Surface PP scraper health in <code>/api/health/sync</code></li>
+<li>Hard-fail PP-multi-leg pricing when scraper age > 30 min</li>
+<li>Default to <code>null</code>, not <code>"standard"</code></li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE — external dependency, no health surface.</p>
+
+<hr/>
+
+<h2>FIELD: odds_type</h2>
+
+<p><strong>OWNER:</strong> <code>pp_projection_id_cache.odds_type</code> normalized by <code>pp_multiplier_lab.py:_norm_odds_type</code></p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/pp_multiplier_lab.py:329 → build_projection</code> — writes from scraper's <code>attrs.odds_type</code></li>
+<li><code>services/pp_multiplier_lab.py:554 → _fallback_projection</code> — defaults to <code>"standard"</code></li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>services/pp_multiplier_lab.py:234 → _norm_odds_type</code> — normalizer</li>
+<li><code>services/pp_multiplier_lab.py:254, 702, 705</code> — grouping / filtering</li>
+<li>MongoDB index <code>ix_proj_odds_type</code> (line 135-136)</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li>Defaults to <code>"standard"</code> when raw value missing</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>Same as <code>pp_projection_id</code> — tied to external scraper.</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Same as <code>pp_projection_id</code>. Surface freshness; null on miss.</li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE</p>
+
+<hr/>
+
+<h2>FIELD: start_time / game_start_utc / commence_time</h2>
+
+<p><strong>OWNER:</strong> <code>live_props.game_start_utc</code> (datetime) + <code>live_props.commence_time</code> (ISO string)</p>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/universal_odds_sync.py:1220 → _persist_prop</code> — writes <code>commence_time</code> string</li>
+<li><code>services/scoring/recompute.py:67, 442 → _coerce_score_ctx_from_live, recompute_sport</code> — propagates <code>game_start_utc</code> into score doc</li>
+<li><code>routes/live.py:211, 411, 629, 738, 980, 1059 → live_scores_endpoints</code> — writes <code>start_time</code> onto ticker rows (NBA + MLB, live and fallback paths)</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>services/board/scanner.py</code> — uses for tipoff detection</li>
+<li><code>routes/ferrari_tiers.py:1486-1523 → _get_nba_tier_picks_from_scores</code> — exposes as ISO string to API</li>
+<li><code>frontend/UniversalPlayerCard.jsx</code> — parses ISO for matchup row (2026-05-03)</li>
+<li><code>routes/live.py</code> — ticker</li>
+</ul>
+
+<p><strong>FALLBACKS:</strong></p>
+<ul>
+<li>3 parallel names: <code>game_start_utc</code> (datetime), <code>commence_time</code> (string), <code>start_time</code> (ticker-only alias)</li>
+<li>Some readers do <code>datetime.fromisoformat(str(...).replace("Z", "+00:00"))</code> chains</li>
+<li>Pick card fix today stringifies <code>game_start_utc</code> at API boundary → frontend re-parses</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>Three names for the same value</li>
+<li>String/datetime coexistence; readers do unnecessary round-trips</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Store ONE datetime field (<code>game_start_utc</code>)</li>
+<li>Serialize to ISO at API boundary only</li>
+<li>Delete <code>commence_time</code> and <code>start_time</code> aliases from score docs (keep <code>commence_time</code> on live_props only if it's the raw Odds API string we need to preserve)</li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE</p>
+
+<hr/>
+
+<h1>Cross-cutting audit</h1>
+
+<h2>SYSTEM: _SCORE_OUTPUT_FIELDS allowlist</h2>
+
+<p><strong>LOCATION:</strong> <code>services/scoring/prop_scores_store.py:21</code></p>
+
+<p><strong>PURPOSE:</strong> Hand-maintained tuple of ~200 field names the score-doc writer will persist.</p>
+
+<p><strong>WRITERS (of allowlist):</strong> Developer commits — field must be added manually on every schema change.</p>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>services/scoring/prop_scores_store.py:374 → _project_score_doc</code> — filters writes via <code>for k in _SCORE_OUTPUT_FIELDS</code></li>
+<li><code>services/scoring/recompute.py:507</code> — uses for filtering</li>
+<li><code>services/scoring/adapters/base.py:182</code> — documents the contract</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>SILENTLY DROPS any field not in allowlist. No log. No warning. No error.</li>
+<li>Fields dropped silently this session until manually added: <code>hetero_sigma_base</code>, <code>hetero_sigma_adjusted</code>, <code>hetero_sigma_multipliers</code>.</li>
+<li>Drift between the 3 allowlists (<code>_SCORE_OUTPUT_FIELDS</code>, <code>_IDENTITY_FIELDS</code>, <code>_UNIVERSAL_POOL_FIELDS</code>) is an accident waiting to happen.</li>
+</ul>
+
+<p><strong>FIX (ONE-LINE PATCH POSSIBLE):</strong></p>
+<ul>
+<li>Add <code>logger.warning</code> in <code>_project_score_doc</code> when a key from <code>context_out</code> is not in the allowlist.</li>
+<li>Proper fix: Pydantic model; writing a non-schema field raises <code>ValidationError</code>.</li>
+</ul>
+
+<p><strong>STATUS:</strong> BROKEN (silent-drop mechanism).</p>
+
+<hr/>
+
+<h2>SYSTEM: Score doc allowlists (plural!)</h2>
+
+<p><strong>LOCATIONS:</strong></p>
+<ul>
+<li><code>services/scoring/prop_scores_store.py:21</code> → <code>_SCORE_OUTPUT_FIELDS</code> (~200 fields)</li>
+<li><code>services/scoring/prop_scores_store.py:353</code> → <code>_IDENTITY_FIELDS</code> (8 fields)</li>
+<li><code>services/scoring/prop_scores_store.py:361</code> → <code>_UNIVERSAL_POOL_FIELDS</code> (4 fields: active, inactive_reason, active_changed_at, game_start_utc)</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>3 allowlists maintained separately</li>
+<li>A field in <code>_UNIVERSAL_POOL_FIELDS</code> but not in <code>_SCORE_OUTPUT_FIELDS</code> can disagree</li>
+<li>No single source of truth for "what belongs on a score doc"</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Replace all 3 with single Pydantic <code>ScoreDocument</code> model</li>
+<li><code>_IDENTITY_FIELDS</code> / <code>_UNIVERSAL_POOL_FIELDS</code> become model method partitions</li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE</p>
+
+<hr/>
+
+<h2>SYSTEM: Vision Intel fallback cascade</h2>
+
+<p><strong>LEVELS (in order of preference at read time):</strong></p>
+<p>1. <code>prop_scores.vision_intel</code> — Gemini-authored, NBA only</p>
+<p>2. <code>overlay_enrichment_cache</code> — reads <code>/app/backend/data/{sport}_master_active_cache.json</code> (Apr 23, stale)</p>
+<p>3. <code>_generate_vision_fallback</code> — templated string <code>"{player} is hammering {stat}..."</code></p>
+<p>4. Frontend shows empty</p>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>Each layer silently takes over when the one above is empty</li>
+<li>User has no way to distinguish real from template</li>
+<li>MLB never reaches Level 1 (no writer), goes Level 2 (stale) → Level 3 (template)</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>See Vision Intel Refactor scope</li>
+<li>Single writer, single reader, null on miss</li>
+</ul>
+
+<p><strong>STATUS:</strong> BROKEN</p>
+
+<hr/>
+
+<h2>SYSTEM: Cached JSON enrichment files</h2>
+
+<p><strong>FILES:</strong></p>
+<ul>
+<li><code>/app/backend/data/nba_master_active_cache.json</code> — mtime <code>2026-04-23 00:40</code> (10 days stale)</li>
+<li><code>/app/backend/data/mlb_master_active_cache.json</code> — mtime <code>2026-04-23 00:25</code> (10 days stale)</li>
+</ul>
+
+<p><strong>LOADED BY:</strong> <code>routes/ferrari_tiers.py:281-337 → overlay_enrichment_cache</code></p>
+
+<p><strong>CALLED BY:</strong> <code>ferrari_tiers.py:2265, 4170, 4209, 4247</code> — every tier read + MLB batch endpoints</p>
+
+<p><strong>WRITERS:</strong> <strong>None found in codebase.</strong> Files are orphaned.</p>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>No live writer — whatever used to populate these is gone</li>
+<li>Content overrides live score-doc fields (per function name "overlay")</li>
+<li>Every tier read pulls 10-day-old enrichment</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Delete the JSON files</li>
+<li>Delete <code>overlay_enrichment_cache</code> + all 4 call sites</li>
+<li>Verify nothing depends on fields only those files provide</li>
+</ul>
+
+<p><strong>STATUS:</strong> BROKEN (dead code silently overriding live data)</p>
+
+<hr/>
+
+<h2>SYSTEM: dg_cached_board usage</h2>
+
+<p><strong>COLLECTION ROW COUNT:</strong> 0 (verified via Mongo count)</p>
+
+<p><strong>REFERENCED IN (14 files):</strong></p>
+<ul>
+<li><code>repositories/board_repo.py:21-23</code></li>
+<li><code>routes/command.py:232</code></li>
+<li><code>routes/player.py:164, 189, 202, 216, 345, 364, 441</code></li>
+<li><code>routes/ferrari_tiers.py:852, 943, 1010, 1479-1480, 1584, 1614, 1851, 1966, 3239, 3251, 3257, 3267, 3280</code></li>
+<li><code>services/picks_getter_service.py:8, 231</code></li>
+<li><code>services/mlb_cached_board_builder.py:21, 25</code></li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>Dead read path. Collection is empty; code treats zero-match as "no enrichment needed".</li>
+<li>Every <code>player.py</code> endpoint calls <code>_build_nba_cached_board_index</code> which queries an empty collection — wasted query on every player detail page load.</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Delete <code>dg_cached_board</code> references</li>
+<li>If any reader genuinely depends on a field from it, re-source from <code>live_props</code> or <code>master_hub</code></li>
+<li>Delete <code>nba_cached_board</code> writes unless confirmed consumer exists</li>
+</ul>
+
+<p><strong>STATUS:</strong> BROKEN (dead code)</p>
+
+<hr/>
+
+<h2>SYSTEM: version_tag usage</h2>
+
+<p><strong>ACTIVE TAGS OBSERVED:</strong></p>
+<ul>
+<li><code>final-nba-rt</code> — canonical live NBA tag (~2,400 active docs)</li>
+<li><code>final-mlb-rt</code> — canonical live MLB tag</li>
+<li><code>final-mlb-rt-shadow</code> — parallel run, NOT read by API</li>
+<li><code>stage2-verify-nba</code> / <code>stage2-verify-mlb</code> — historical debugging tags (144k docs in MLB)</li>
+<li><code>recompute-<timestamp>-<hash></code> — per-recompute snapshots, never cleaned up</li>
+</ul>
+
+<p><strong>WRITERS:</strong></p>
+<ul>
+<li><code>services/scoring/recompute.py</code> — writes caller-provided version_tag</li>
+<li><code>routes/scores.py:85 → recompute_all</code> — default tag per version variant</li>
+<li>Manual admin calls</li>
+</ul>
+
+<p><strong>READERS:</strong></p>
+<ul>
+<li><code>routes/ferrari_tiers.py</code> — defaults to <code>final-nba-rt</code> / <code>final-mlb-rt</code></li>
+<li><code>services/delta/detector.py</code> — reads <code>rt_tag</code> param</li>
+<li><code>services/board/*</code> — various</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>Free-form string, 5+ active tags, no enum</li>
+<li>No TTL cleanup — <code>recompute-*</code> tags accumulate indefinitely (144k docs in MLB)</li>
+<li>Reader defaults to <code>final-mlb-rt</code>; if a recompute writes to a different tag accidentally, reader silently returns empty</li>
+<li>Multi-session agents have repeatedly confused which tag is authoritative</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Enum in Pydantic: <code>VersionTag = Literal["final-nba-rt", "final-mlb-rt", ...]</code></li>
+<li>TTL cleanup job: drop <code>recompute-*</code> and <code>stage*</code> tags older than 48h</li>
+<li>Contract test: every read path specifies tag explicitly, no defaults</li>
+</ul>
+
+<p><strong>STATUS:</strong> FRAGILE</p>
+
+<hr/>
+
+<h2>SYSTEM: Active-row writers</h2>
+
+<p><strong>WRITERS WRITING <code>active: True</code>:</strong></p>
+<ul>
+<li><code>services/scoring/recompute.py:439 → recompute_sport</code></li>
+<li><code>services/scoring/tiering.py:78 → mark_retired_inactive</code> (writes False; shown for completeness)</li>
+<li><code>services/board/scanner.py:39 → scan_sport</code></li>
+<li><code>services/board/publisher.py:198, 218 → _persist</code></li>
+<li><code>services/board/publisher.py:493 → stamp_longevity_on_picks</code></li>
+<li><code>services/board/shadow_publisher.py:112, 129, 152 → _persist</code></li>
+<li><code>services/badge_resolver.py:561 → add_flag</code></li>
+</ul>
+
+<p><strong>WRITERS WRITING <code>active: False</code>:</strong></p>
+<ul>
+<li><code>services/board/scanner.py:43 → scan_sport</code></li>
+<li><code>services/board/publisher.py:209, 220 → _persist</code></li>
+<li><code>services/board/shadow_publisher.py:122, 131 → _persist</code></li>
+<li><code>services/scoring/tiering.py:78 → mark_retired_inactive</code></li>
+<li><code>services/badge_resolver.py:576 → deactivate_flag</code></li>
+</ul>
+
+<p><strong>READER PATTERNS (inconsistent):</strong></p>
+<ul>
+<li><code>{"active": True}</code> — strict match</li>
+<li><code>{"active": {"$ne": False}}</code> — lenient (matches True + missing)</li>
+<li>Both patterns coexist across 20+ reader files</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>No contract on when True vs False is correct</li>
+<li>No audit of flip transitions</li>
+<li>Today's watcher bug: delta detector used lenient pattern for live_props reads but set-diffed against ALL rt keys (both active and inactive) → stale <code>active=False</code> rt rows masked 195 scorable MLB keys</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Single <code>set_active(db, coll, canonical_key, state, reason, timestamp)</code> helper</li>
+<li><code>active_transitions</code> audit collection capturing every flip</li>
+<li>All readers use strict <code>{"active": True}</code> pattern</li>
+<li>Invariant test: every canonical_key in <code>live_props.active=True</code> has matching <code>prop_scores.active=True</code> under current version_tag</li>
+</ul>
+
+<p><strong>STATUS:</strong> BROKEN — detector patched 2026-05-03; multi-writer problem remains.</p>
+
+<hr/>
+
+<h2>SYSTEM: Scheduler / watcher freshness logic</h2>
+
+<p><strong>SCHEDULERS:</strong></p>
+<ul>
+<li><code>hourly_nba_master_sync</code> — <code>scheduler_jobs._id = "hourly_nba_master_sync"</code></li>
+<li><code>hourly_mlb_master_sync</code> — same pattern</li>
+<li><code>nba_l5l10_batch_{1..5}</code> — daily at 09:00-09:08 UTC</li>
+<li><code>services/scheduled_sports.py</code> — registers sport-specific jobs</li>
+</ul>
+
+<p><strong>WATCHERS:</strong></p>
+<ul>
+<li><code>services/delta/detector.py → detect_deltas</code> — called every 20s (NBA) / 30s (MLB) per <code>services/pipeline/delta_steps.py</code></li>
+<li>Watermark-based progression on <code>live_props.updated_at</code></li>
+</ul>
+
+<p><strong>FRESHNESS PROBES (readers):</strong></p>
+<ul>
+<li><code>routes/health_sync.py:69 → _probe_live_props</code> — <code>sync_age_sec = now - max(live_props.updated_at)</code></li>
+<li><code>routes/health_sync.py:91 → _probe_prop_scores</code> — reads <code>scored_at</code> (returns null, see FIELD above)</li>
+<li><code>routes/health_sync.py:209 → _probe_delta_engine</code> — reads <code>delta_watermarks</code> collection</li>
+<li><code>routes/health_sync.py:219 → _probe_watchers</code> — reads watcher heartbeat</li>
+</ul>
+
+<p><strong>PROBLEM:</strong></p>
+<ul>
+<li>MLB master_sync actual last-run: 2026-05-03 05:14 UTC (18.5h ago at audit time)</li>
+<li><code>hourly_mlb_master_sync</code> next-run: 2026-05-04 00:13 UTC (+50 min)</li>
+<li>Scheduler rows look healthy but jobs silently skipped/failed for 18h — no visible log entries, no alarm</li>
+<li><code>/api/health/sync</code> returns <code>overall_status: "critical"</code> right now — nothing acts on it, no UI surface</li>
+</ul>
+
+<p><strong>FIX:</strong></p>
+<ul>
+<li>Root-cause investigation: why <code>hourly_mlb_master_sync</code> skipped 18 runs</li>
+<li>Alarm when scheduler_age > (interval × 2)</li>
+<li>Surface <code>/api/health/sync</code> status in admin UI (temp, per user 2026-05-03 request)</li>
+</ul>
+
+<p><strong>STATUS:</strong> BROKEN</p>
+
+<hr/>
+
+<h1>Top 10 SSOT violations — ranked by impact</h1>
+
+<p>1. <strong><code>_SCORE_OUTPUT_FIELDS</code> silent drops</strong> — loses data without warning; burned us 3x this session. (BROKEN)</p>
+<p>2. <strong><code>active</code> multi-writer no-contract</strong> — root cause of today's watcher freeze. (BROKEN)</p>
+<p>3. <strong><code>vision_intel</code> 4-writer cascade</strong> — MLB 100% templated. (BROKEN)</p>
+<p>4. <strong><code>scored_at</code> never written</strong> — kills health endpoint. (BROKEN; one-line fix.)</p>
+<p>5. <strong>Stale JSON overlay_enrichment_cache</strong> — 10-day-old data overriding live. (BROKEN)</p>
+<p>6. <strong><code>dg_cached_board</code> queries empty collection in 14 files</strong> — dead code treated as "no enrichment". (BROKEN)</p>
+<p>7. <strong><code>version_tag</code> free-form, no cleanup</strong> — 144k stage-tagged MLB docs; easy to silently freeze readers. (FRAGILE)</p>
+<p>8. <strong><code>opponent</code> 4-source merge</strong> — today's Dylan Harper bug; writers still leak. (FRAGILE, read-patched)</p>
+<p>9. <strong><code>hit_rate</code> 7 window-named aliases</strong> — recurring "L10 says 95% but real L10 is 90%" bug. (FRAGILE)</p>
+<p>10. <strong><code>photo_url</code> zombie module cache</strong> — stale headshots for process lifetime. (FRAGILE; one-line fix.)</p>
+
+<hr/>
+
+<h1>Proposed patch plan — exact file:line</h1>
+
+<h2>Tier 0 — Obvious one-line fixes (await approval)</h2>
+
+<p>1. <strong><code>services/scoring/prop_scores_store.py:452</code> — write <code>scored_at</code> alongside <code>computed_at</code>.</strong></p>
+<p>   Delta: add <code>scored_at = computed_at</code> below the existing line. 1 line. Unblocks <code>/api/health/sync</code>.</p>
+
+<p>2. <strong><code>services/scoring/prop_scores_store.py:374 → _project_score_doc</code> — log on allowlist drop.</strong></p>
+<p>   Delta: change silent <code>for k in _SCORE_OUTPUT_FIELDS</code> filter to warn when <code>context_out</code> contains keys NOT in the allowlist. 3 lines.</p>
+
+<p>3. <strong>`services/picks_getter_service.py:237 → _photo_cache module-global</strong> — delete cache, read master_hub each request.**</p>
+<p>   Delta: remove dict init + cache read/write paths in lines 237, 278-320, 376-399. ~12 lines deleted.</p>
+
+<h2>Tier 1 — Data-layer cleanup (1 session each)</h2>
+
+<p>4. Fix <code>active</code> contract — <code>services/board/set_active.py</code> helper + <code>active_transitions</code> audit collection. Migrate 8 call sites.</p>
+<p>5. Consolidate <code>version_tag</code> — enum + TTL cleanup job.</p>
+<p>6. Delete <code>dg_cached_board</code> reads — 14 files.</p>
+<p>7. Delete <code>*_master_active_cache.json</code> reads — <code>ferrari_tiers.py:281-337 → overlay_enrichment_cache</code> + 4 call sites.</p>
+
+<h2>Tier 2 — Schema contracts (2 sessions)</h2>
+
+<p>8. Pydantic <code>ScoreDocument</code> replaces 3 allowlists.</p>
+<p>9. Pydantic <code>LivePropDocument</code> for ingest.</p>
+<p>10. Per-field ownership enforcement — delete duplicate writers for <code>opponent</code>, <code>player_name</code>, <code>team</code>, <code>hit_rate</code>, <code>edge</code>.</p>
+
+<h2>Tier 3 — Vision Intel refactor</h2>
+
+<p>11. Ship per <code>/app/memory/VISION_INTEL_REFACTOR_SCOPE.md</code>.</p>
+<p>12. Delete <code>_generate_vision_fallback</code>, <code>overlay_enrichment_cache</code>, stale JSONs.</p>
+
+<h2>Tier 4 — Observability</h2>
+
+<p>13. Admin <code>/admin/health</code> page reading <code>/api/health/sync</code> + <code>/api/health/contracts</code> + <code>/api/health/board</code>.</p>
+<p>14. Admin-only red/amber/green status pill in dashboard header.</p>
+<p>15. Weekly regression test on cron — asserts every cross-service contract.</p>
+
+</body>
+</html>
