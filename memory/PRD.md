@@ -18,12 +18,13 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
 - **Watcher bug fix (P0):** `services/delta/detector.py` — `new_keys` set-diff now subtracts only `active=True` rt keys. Stale `active=False` rows no longer mask scorable canonical_keys. Verified: MLB rescored 195 silently-blocked picks immediately after fix.
 - **Variance tile (frontend):** `PlayerDetailPage.jsx` Variance now reads `volatility_score`/`cv` instead of broken `intel_suite.stability_index` (which returned std_dev=0 for composite MLB stat types).
 - **SSOT Enforcement Phase 1 (2026-05-04):** shipped `services/field_ownership/` (registry+accessors+validators). Migrated `scored_at` (100% populated both sports) + `opponent` (0 team==opp violations). 12 contract tests green.
-- **SSOT Enforcement Phase 2 — Core Stability Fields (2026-05-04):** 4 more fields locked.
-  - `active`: new canonical writer `services/board/set_active.py::set_active()` + `active_transitions` audit (TTL 30d). `tiering.mark_retired_inactive` and `scanner.scan_sport` delegate.
-  - `player_name`: removed `player`/`name` alias chain in `dashboard_card_contract.to_card_contract`.
-  - `team`: removed 4-way alias chain (team_abbr/player_team/home_team_abbr/away_team_abbr) + disabled master_hub team backfill. Twin fix in `picks_getter_service` v5/front-lines aggregations (now backfill-only, never override).
-  - `vision_intel` NULLIFICATION: `_generate_vision_fallback` returns `None` (no templated text); `overlay_enrichment_cache` no longer reads stale `{sport}_master_active_cache.json` (volatility-profile stamping preserved). Legacy body parked as `_overlay_enrichment_cache_legacy`.
-  - **27 contract tests green** (up from 12); 78 tests across all relevant suites pass.
+- **SSOT Enforcement Tier C (2026-05-04):** 6 more fields locked (→ **16/23 enforced-or-locked**).
+  - `game_start_utc`: `commence_time` alias pinned to canonical in `_merge_score_with_board` (kills 10-day stale drift).
+  - `photo_url`: `_load_photo_cache` no longer synthesises `/static/player-headshots/{nba_id}.png` and no longer backfills from `master_roster` — master_hub.photo_url (or same-owner headshot_url) only.
+  - `stat_type`: canonical/display separation confirmed; composite splitter scoped to variance calc only.
+  - `side`: canonical `OVER`/`UNDER` enum now stamped on card contract next to legacy `direction` alias.
+  - `pp_projection_id` + `odds_type`: honest health surface at `/api/health/sync.sports.{sport}.pp_projection_ids` (stale/source_available flags; never fakes IDs).
+  - **49 contract tests green, 100/100 across all relevant suites.** Permanent repair ~60% complete.
 
 ## Open issues (priority)
 - **P0** Vision Intel universal refactor — full scope in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`. Nullification phase shipped (Phase 2); engine refactor remains.

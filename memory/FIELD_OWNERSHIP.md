@@ -1,9 +1,11 @@
 # FIELD OWNERSHIP — PropVision
 
-**Status:** Phase 2.5 complete. **10 of 23 fields migrated end-to-end** (scored_at, opponent, active, player_name, team, vision_intel, ranking_score_v2, hit_rate_l20, cv, edge).
-**Last updated:** 2026-05-04 (Phase 2.5)
+**Status:** Phase 2.6 (Tier C) complete. **16 of 23 fields migrated end-to-end.**
+**Last updated:** 2026-05-04 (Tier C)
 **Enforcement mode:** Log-warn (Phase 1). Pydantic-raise (Phase 3, planned).
-**Diagnostic:** `GET /api/health/active-transitions?sport=nba&hours=24`
+**Diagnostics:**
+  - `GET /api/health/active-transitions?sport=nba&hours=24` — active lifecycle audit replay
+  - `GET /api/health/sync` — now surfaces `sports.{sport}.pp_projection_ids` with staleness flag
 
 ---
 
@@ -45,18 +47,20 @@ Each field has a canonical spec in `backend/services/field_ownership/registry.py
 | `player_name` | `master_hub.display_name` | `bdl_universal_sync:sync_players` | fail_loud | 🟡 locked |
 | `team` | `live_props.team` | `universal_odds_sync:_build_prop_record` | return_null | 🟡 locked |
 | `vision_intel` | `prop_scores.vision_intel` | PLANNED: `vision_intel/engine:enrich` | return_null | 🟡 locked (nullification phase) |
-| `stat_type` | `live_props.stat_type` | `universal_odds_sync:_build_prop_record` | fail_loud | ⚪ documented |
-| `side` | `live_props.recommendation` | `universal_odds_sync:_build_prop_record` | fail_loud | ⚪ documented |
+| `stat_type` | `live_props.stat_type` | `universal_odds_sync:_build_prop_record` | fail_loud | 🟡 locked (duplicate row removed) |
+| `side` | `live_props.recommendation` | `universal_odds_sync:_build_prop_record` | fail_loud | 🟡 locked (duplicate row removed) |
 | `cv` | `prop_scores.cv` | `nba_scoring + mlb_scoring:score` | return_null | 🟡 locked |
 | `edge` | `prop_scores.edge_vs_fair` | `scoring_stack:compute_vision_score` | return_null | 🟡 locked |
 | `hit_rate_l5` | `prop_scores.hit_rate_l5` | `nba_scoring + mlb_scoring:score` | return_null | 🟡 locked |
 | `hit_rate_l10` | `prop_scores.hit_rate_l10` | `nba_scoring + mlb_scoring:score` | return_null | 🟡 locked |
 | `hit_rate_l20` | `prop_scores.hit_rate_l20` | `recompute:recompute_sport` (dual-write with legacy `hit_rate_over`) | return_null | 🟡 locked |
 | `ranking_score_v2` | `prop_scores.ranking_score_v2` | `recompute:recompute_sport` | return_null | 🟡 locked |
-| `game_start_utc` | `live_props.game_start_utc` | `universal_odds_sync:_persist_prop` | return_null | ⚪ documented |
-| `photo_url` | `master_hub.photo_url` | `bdl_universal_sync:sync_players` | return_null | ⚪ documented |
-| `pp_projection_id` | `pp_projection_id_cache.projection_id` | `pp_multiplier_lab:seed_projection_ids_from_scraper` | return_null | ⚪ documented |
-| `odds_type` | `pp_projection_id_cache.odds_type` | `pp_multiplier_lab:build_projection` | return_null | ⚪ documented |
+| `game_start_utc` | `live_props.game_start_utc` | `universal_odds_sync:_persist_prop` | return_null | 🟡 locked |
+| `photo_url` | `master_hub.photo_url` | `bdl_universal_sync:sync_players` | return_null | 🟡 locked |
+| `stat_type` | `live_props.stat_type` | `universal_odds_sync:_build_prop_record` | fail_loud | 🟡 locked |
+| `side` | `live_props.recommendation` | `universal_odds_sync:_build_prop_record` | fail_loud | 🟡 locked |
+| `pp_projection_id` | `pp_projection_id_cache.projection_ids[]` | `pp_multiplier_lab:seed_projection_ids_from_scraper` | return_null | 🟡 locked |
+| `odds_type` | `pp_multiplier_lab.selected_projections.odds_type` | `pp_multiplier_lab:build_projection` | return_null | 🟡 locked |
 
 ---
 

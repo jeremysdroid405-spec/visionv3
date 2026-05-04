@@ -263,67 +263,56 @@ class PicksGetterService:
         self._injured_players_cache = None
     
     async def _load_photo_cache(self):
-        """
-        Pre-load ALL player photo data into memory for instant lookups.
-        This eliminates individual DB queries for each pick.
+        """Pre-load player photo data into memory for O(1) lookups.
+
+        SSOT (FIELD_OWNERSHIP.md:photo_url, 2026-05-04 Tier C): the
+        canonical owner is `master_hub.photo_url`. Previously this
+        method (a) synthesised `/static/player-headshots/{nba_id}.png`
+        when any nba_id was present — overriding the canonical
+        `master_hub.photo_url` even when it was already set to a
+        different (correct) value — and (b) backfilled from a SECOND
+        source, `master_roster`, whenever master_hub had no entry —
+        producing a photo for a player that master_hub didn't know
+        existed.
+
+        Both paths have been removed. Now: read `photo_url`
+        (canonical) from master_hub; fall back to master_hub's own
+        `headshot_url` column only because that's the same owner. No
+        nba_id synthesis, no master_roster source. Missing photo →
+        `photo_url=None` → frontend renders the initials placeholder.
         """
         if PicksGetterService._photo_cache_loaded:
             return
-        
-        logger.info("[PHOTO_CACHE] Loading player photo data...")
-        
-        # Load from master hub
+
+        logger.info("[PHOTO_CACHE] Loading player photo data (SSOT-strict)...")
+
         cursor = self.master_hub.find(
             {},
             {"_id": 0, "display_name": 1, "photo_url": 1, "headshot_url": 1, "team": 1, "position": 1, "nba_id": 1}
         )
         players = await cursor.to_list(6000)
-        
+
         for player in players:
             name = player.get("display_name")
-            if name:
-                # Normalize name for lookup
-                name_key = name.lower().strip()
-                nba_id = player.get("nba_id")
-                
-                # LOCAL-FIRST: Use static path if we have nba_id
-                photo_url = None
-                if nba_id:
-                    photo_url = f"/static/player-headshots/{nba_id}.png"
-                else:
-                    photo_url = player.get("photo_url") or player.get("headshot_url")
-                
-                PicksGetterService._photo_cache[name_key] = {
-                    "photo_url": photo_url,
-                    "team": player.get("team"),
-                    "position": player.get("position"),
-                    "nba_id": nba_id
-                }
-        
-        # Also load from master roster as backup
-        roster_cursor = self.db[COLL("master_roster", "nba")].find(
-            {},
-            {"_id": 0, "full_name": 1, "team_abbreviation": 1, "nba_id": 1}
-        )
-        roster = await roster_cursor.to_list(6000)
-        
-        for player in roster:
-            name = player.get("full_name")
-            if name:
-                name_key = name.lower().strip()
-                nba_id = player.get("nba_id")
-                
-                # Only add if not already in cache - LOCAL STATIC PATH
-                if name_key not in PicksGetterService._photo_cache and nba_id:
-                    PicksGetterService._photo_cache[name_key] = {
-                        "photo_url": f"/static/player-headshots/{nba_id}.png",
-                        "team": player.get("team_abbreviation"),
-                        "position": None,
-                        "nba_id": nba_id
-                    }
-        
+            if not name:
+                continue
+            name_key = name.lower().strip()
+            # Canonical path. Prefer `photo_url`; fall back only to
+            # `headshot_url` which has the same owner. No nba_id
+            # synthesis — if both columns are absent this stays None.
+            photo_url = player.get("photo_url") or player.get("headshot_url")
+            PicksGetterService._photo_cache[name_key] = {
+                "photo_url": photo_url,
+                "team":     player.get("team"),
+                "position": player.get("position"),
+                "nba_id":   player.get("nba_id"),
+            }
+
         PicksGetterService._photo_cache_loaded = True
-        logger.info(f"[PHOTO_CACHE] Loaded {len(PicksGetterService._photo_cache)} player photos into memory")
+        logger.info(
+            f"[PHOTO_CACHE] Loaded {len(PicksGetterService._photo_cache)} "
+            f"player photos from master_hub (SSOT-strict)."
+        )
     
     async def _get_injured_players(self) -> set:
         """

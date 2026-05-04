@@ -198,6 +198,89 @@ async def _probe_statcast(db) -> Dict[str, Any]:
         return {"error": repr(exc)}
 
 
+async def _probe_pp_projection_ids(db, sport: str) -> Dict[str, Any]:
+    """Coverage probe for `pp_projection_id_cache` (FIELD_OWNERSHIP.md:
+    pp_projection_id + odds_type).
+
+    The PP scraper writes one doc per `league_id` into
+    `pp_projection_id_cache` — each doc carries a `projection_ids`
+    array + `fetched_at` timestamp + `source`. When the scraper
+    stops (rate limit, DNS, cron drift), the cache goes stale
+    silently: downstream code falls back to "standard" odds_type
+    everywhere and nobody notices. This probe makes staleness
+    visible.
+
+    Read-only. If the doc for this sport's league_id is missing or
+    stale beyond 60 min, we flag `source_available=False` — we do
+    NOT synthesise a projection ID.
+
+    The paired `odds_type` coverage lives on `selected_projections`
+    inside each `pp_multiplier_lab` doc (indexed at
+    `ix_proj_odds_type`), so we surface its top-level distribution
+    from there.
+    """
+    try:
+        _LEAGUE_ID = {"nba": "7", "mlb": "2"}  # PrizePicks internal IDs
+        league_id = _LEAGUE_ID.get(sport)
+        if league_id is None:
+            return {"source_available": False, "reason": "no_league_id_mapping"}
+
+        cache = db["pp_projection_id_cache"]
+        doc = await cache.find_one(
+            {"league_id": league_id},
+            {"_id": 0, "projection_ids": 1, "fetched_at": 1,
+             "raw_count": 1, "source": 1},
+        )
+        if not doc:
+            return {
+                "league_id":           league_id,
+                "cached":              False,
+                "source_available":    False,
+                "projection_id_count": 0,
+                "last_refresh":        None,
+                "last_refresh_age_sec": None,
+            }
+
+        pids   = doc.get("projection_ids") or []
+        fetched = _coerce_dt(doc.get("fetched_at"))
+        age_s   = _age_seconds(fetched)
+        # 60 minutes = scraper cron is 15 min → anything older than
+        # 4 ticks means the scraper has stopped.
+        stale   = (age_s is not None and age_s > 60 * 60)
+
+        # odds_type mix lives on pp_multiplier_lab.selected_projections.
+        odds_mix: Dict[str, int] = {}
+        try:
+            mix_cursor = db["pp_multiplier_lab"].aggregate([
+                {"$match": {"league_id": league_id}},
+                {"$unwind": "$selected_projections"},
+                {"$group": {
+                    "_id": "$selected_projections.odds_type",
+                    "count": {"$sum": 1},
+                }},
+            ])
+            async for r in mix_cursor:
+                key = r.get("_id") or "null"
+                odds_mix[key] = int(r.get("count") or 0)
+        except Exception:  # pragma: no cover
+            odds_mix = {}
+
+        return {
+            "league_id":            league_id,
+            "cached":               True,
+            "projection_id_count":  len(pids),
+            "raw_count":            doc.get("raw_count"),
+            "source":               doc.get("source"),
+            "last_refresh":         fetched.isoformat() if fetched else None,
+            "last_refresh_age_sec": age_s,
+            "stale":                stale,
+            "source_available":     (not stale) and len(pids) > 0,
+            "odds_type_mix":        odds_mix,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"error": repr(exc)}
+
+
 async def _probe_locks(db) -> Dict[str, Any]:
     try:
         from services.sync_lock import describe
@@ -295,6 +378,8 @@ async def health_sync(
             "prop_scores":   await _probe_prop_scores(_db, sp),
             "pick_history":  await _probe_pick_history(_db, sp),
             "delta_engine":  await _probe_delta_engine(_db, sp),
+            # 2026-05-04 Tier C — PP multiplier source health.
+            "pp_projection_ids": await _probe_pp_projection_ids(_db, sp),
         }
         if sp == "mlb":
             sport_payload["lineups"]  = await _probe_lineups_mlb(_db)

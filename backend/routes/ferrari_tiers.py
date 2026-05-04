@@ -1101,6 +1101,15 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     # against. `game_start_utc` is stored as a Mongo BSON datetime on
     # the score doc — serialize to ISO string so the JSON payload is
     # browser-friendly and the frontend can format with toLocaleString.
+    #
+    # SSOT (FIELD_OWNERSHIP.md:game_start_utc, 2026-05-04 Tier C):
+    # `commence_time` is a legacy alias stamped by
+    # picks_getter_service upstream from the live_props scrape
+    # record — it can lag the canonical score-doc value when the
+    # odds row is days old (Tyrese Maxey case: commence_time was
+    # 10 days stale on an active NBA pick). We pin both to the
+    # same value here so any backend reader still reaching for
+    # `commence_time` gets the canonical game time.
     gs = score.get("game_start_utc")
     if gs is not None:
         from datetime import datetime as _dt, timezone as _tz
@@ -1108,11 +1117,17 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
             if isinstance(gs, _dt):
                 if gs.tzinfo is None:
                     gs = gs.replace(tzinfo=_tz.utc)
-                prop["game_start_utc"] = gs.isoformat()
+                iso = gs.isoformat()
+                prop["game_start_utc"] = iso
+                prop["commence_time"]  = iso   # alias pinned to canonical
             elif isinstance(gs, str):
                 prop["game_start_utc"] = gs
+                prop["commence_time"]  = gs    # alias pinned to canonical
         except Exception:
             prop["game_start_utc"] = None
+            # Don't touch commence_time on failure — leave whatever
+            # the upstream scrape stamped so downstream game_status
+            # helpers still have SOMETHING to parse.
     if score.get("event_id") is not None and prop.get("event_id") in (None, ""):
         prop["event_id"] = score.get("event_id")
 

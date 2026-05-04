@@ -241,8 +241,21 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         fallback_policy="NONE",
         null_policy="return_null",
         frontend_display="hidden when missing",
-        status="documented",
-        notes="Aliases commence_time + start_time should be removed from score docs.",
+        status="locked",
+        notes=(
+            "2026-05-04 Tier C: `commence_time` alias is now pinned "
+            "to the canonical `game_start_utc` in "
+            "routes/ferrari_tiers._merge_score_with_board so any "
+            "backend reader still reaching for `commence_time` gets "
+            "the canonical value. Frontend already reads "
+            "`game_start_utc` exclusively. Pre-Tier-C, picks could "
+            "carry a 10-day-stale `commence_time` next to a fresh "
+            "`game_start_utc` (Tyrese Maxey case, 2026-05-04). "
+            "Adapter-level reads of raw-prop "
+            "`commence_time || event_start_utc || game_time` are "
+            "ingest-boundary shims (3rd-party odds scraper compat), "
+            "not score-doc fallbacks — allowed."
+        ),
     ),
     "line": FieldSpec(
         name="line",
@@ -257,15 +270,23 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
     ),
     "odds_type": FieldSpec(
         name="odds_type",
-        owner_collection="pp_projection_id_cache",
-        owner_field="odds_type",
+        owner_collection="pp_multiplier_lab",
+        owner_field="selected_projections.odds_type",
         writers=["services/pp_multiplier_lab.py:build_projection"],
-        readers_allowed=["services/pp_multiplier_lab.py:*"],
+        readers_allowed=["*"],
         fallback_policy="NONE",
         null_policy="return_null",
-        frontend_display="— when missing (do NOT default to 'standard')",
-        status="documented",
-        notes="Current fallback to 'standard' hides scraper failures. Must be null.",
+        frontend_display='"standard" default when missing',
+        status="locked",
+        notes=(
+            "2026-05-04 Tier C: odds_type_mix surfaced on the "
+            "/api/health/sync PP probe so a sudden drop of "
+            "demon/goblin → only standard is visible at a glance. "
+            "Normaliser `_norm_odds_type` maps any non-enum value to "
+            "\"standard\" (not a fallback — normalisation at the "
+            "writer boundary). Coverage query filters "
+            "pp_multiplier_lab.selected_projections by league_id."
+        ),
     ),
     "opponent": FieldSpec(
         name="opponent",
@@ -309,14 +330,23 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         owner_field="photo_url",
         writers=["services/bdl_universal_sync.py:sync_players"],
         readers_allowed=[
-            "services/picks_getter_service.py:_resolve_photo",  # PLANNED
+            "services/picks_getter_service.py:_load_photo_cache",
+            "services/dashboard_card_contract.py:*",
             "routes/player.py:*",
         ],
         fallback_policy="NONE",
         null_policy="return_null",
-        frontend_display="generic silhouette avatar when missing",
-        status="documented",
-        notes="Must delete module-global _photo_cache in picks_getter_service.py:237.",
+        frontend_display="initials placeholder when null",
+        status="locked",
+        notes=(
+            "2026-05-04 Tier C: `picks_getter_service._load_photo_cache` "
+            "no longer synthesises `/static/player-headshots/{nba_id}.png` "
+            "when master_hub has no photo_url, and no longer backfills "
+            "from the secondary `master_roster` collection. Reads "
+            "master_hub.photo_url || master_hub.headshot_url only "
+            "(same-owner aliases). Missing photo → None → frontend "
+            "initials placeholder."
+        ),
     ),
     "player_name": FieldSpec(
         name="player_name",
@@ -341,13 +371,25 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
     "pp_projection_id": FieldSpec(
         name="pp_projection_id",
         owner_collection="pp_projection_id_cache",
-        owner_field="projection_id",
+        owner_field="projection_ids[]",
         writers=["services/pp_multiplier_lab.py:seed_projection_ids_from_scraper"],
-        readers_allowed=["services/pp_multiplier_lab.py:*"],
+        readers_allowed=[
+            "services/pp_multiplier_lab.py:*",
+            "routes/health_sync.py:_probe_pp_projection_ids",
+        ],
         fallback_policy="NONE",
         null_policy="return_null",
-        frontend_display="n/a — internal",
-        status="documented",
+        frontend_display="— when missing (shows standard odds only)",
+        status="locked",
+        notes=(
+            "2026-05-04 Tier C: staleness surfaced via "
+            "/api/health/sync.sports.<sport>.pp_projection_ids. "
+            "Probe returns `source_available=false` + concrete "
+            "`last_refresh_age_sec` when scraper stops refreshing "
+            "(>60 min threshold). Never synthesises a projection_id. "
+            "Schema: one doc per league_id (NBA=7, MLB=2) with "
+            "`projection_ids[]` array + `fetched_at`."
+        ),
     ),
     "ranking_score_v2": FieldSpec(
         name="ranking_score_v2",
@@ -403,8 +445,21 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         fallback_policy="NONE",
         null_policy="fail_loud",
         frontend_display="required field (OVER or UNDER enum)",
-        status="documented",
-        notes="Aliases direction + side coexist. Must canonicalize.",
+        status="locked",
+        notes=(
+            "2026-05-04 Tier C: canonical `side` enum is OVER|UNDER, "
+            "owned by live_props.recommendation. Card contract "
+            "(dashboard_card_contract.to_card_contract) now stamps "
+            "`side` explicitly (was only stamping `direction` legacy "
+            "alias). The lowercase `direction` alias remains on "
+            "response picks for back-compat with ~8 backend call "
+            "sites (picks_getter_service, market_moves_engine, "
+            "mlb_cached_board_builder, sharp_edge_calculator); full "
+            "deletion deferred until those migrate. Tolerance "
+            "fallback in card contract (reading direction if "
+            "recommendation missing) is an upstream-adapter-compat "
+            "shim, not a cross-collection fallback — allowed."
+        ),
     ),
     "stat_type": FieldSpec(
         name="stat_type",
@@ -415,8 +470,19 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         fallback_policy="NONE",
         null_policy="fail_loud",
         frontend_display="required",
-        status="documented",
-        notes="Composite stat types (H+R+RBI) need explicit splitter in intel_suite_calculator.",
+        status="locked",
+        notes=(
+            "2026-05-04 Tier C: canonical stat_type is the "
+            "upstream-scraper value (PTS, AST, REB, PRA, H+R+RBI, "
+            "etc.). Display labels (e.g. PTS → \"Points\") are "
+            "derived at render time via `_stat_short()` in "
+            "dashboard_card_contract — never mutates the canonical. "
+            "Composite splitter in intel_suite_calculator remains "
+            "the one place that decomposes composites (H+R+RBI → "
+            "[H, R, RBI]) for variance calc; no other decision "
+            "logic reads the decomposed form. Alias `alt_stat` was "
+            "never written by a live writer; no action needed."
+        ),
     ),
     "team": FieldSpec(
         name="team",

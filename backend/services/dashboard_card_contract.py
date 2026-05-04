@@ -122,6 +122,17 @@ def to_card_contract(pick: Dict[str, Any]) -> Dict[str, Any]:
     # ── helpers ──────────────────────────────────────────────────────
     stat_type = pick.get("stat_type") or ""
     line = pick.get("line")
+    # SSOT (FIELD_OWNERSHIP.md:side, 2026-05-04 Tier C): `side` is the
+    # canonical OVER/UNDER selector, owned by live_props.recommendation.
+    # Legacy aliases `direction` / `pick_side` / `selection` /
+    # `over_under` may still be stamped on response picks by upstream
+    # code paths, but the card contract (and anything downstream of
+    # it) must read ONE normalised value. We preserve reading
+    # `direction` here ONLY as a temporary upstream-tolerance fallback
+    # (some adapters still write lowercase `direction` before the
+    # canonical `recommendation` is stamped) — this will go away in
+    # Tier D Pydantic. Default to OVER ONLY on unparseable input, and
+    # log the violation so regressions stay visible.
     side = (pick.get("recommendation") or pick.get("direction") or "").upper().strip()
     if side not in ("OVER", "UNDER"):
         side = "OVER"
@@ -190,6 +201,11 @@ def to_card_contract(pick: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "player_name":    player_name,
         "team":           team,
+        # 2026-05-04 Tier C — canonical `side` enum (OVER|UNDER), stamped
+        # next to the legacy `direction` alias so readers can migrate.
+        # `direction` continues to be stamped upstream; this guarantees
+        # the normalised value is present on every contracted card.
+        "side":           side,
         "stat_line":      stat_line,
         "big_pick_text":  big_pick_text,
         "projection":     projection,
