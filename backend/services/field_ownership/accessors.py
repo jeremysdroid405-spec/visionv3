@@ -37,7 +37,7 @@ _STORAGE_FIELD_MAP: Dict[str, str] = {
     "edge":             "edge_vs_fair",
     "hit_rate_l5":      "l5_rate",
     "hit_rate_l10":     "l10_rate",
-    "hit_rate_l20":     "hit_rate_over",  # legacy name; migration will rename
+    "hit_rate_l20":     "hit_rate_l20",   # 2026-05-04: canonical window-explicit name now dual-written with legacy hit_rate_over
     "side":             "recommendation",
     "player_name":      "display_name",   # master_hub canonical
     "pp_projection_id": "projection_id",

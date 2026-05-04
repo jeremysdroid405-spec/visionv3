@@ -71,6 +71,10 @@ _SCORE_OUTPUT_FIELDS = (
     # and MLB populate these (NBA via `_compute_cv_and_hit_rate`,
     # MLB via `_calculate_subwindow_hit_rate`).
     "hit_rate_l5", "hit_rate_l10",
+    # 2026-05-04 — window-explicit canonical name for the L20 OVER
+    # hit rate per FIELD_OWNERSHIP.md:hit_rate_l20. Written in parallel
+    # with legacy `hit_rate_over` until all readers migrate.
+    "hit_rate_l20",
     # Projection-gap ranking signal (2026-02-20 shadow G1).
     # Persisted for `?sort=gap` opt-in on tier endpoints.
     "ranking_score_v2",

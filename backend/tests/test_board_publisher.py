@@ -46,28 +46,34 @@ def pick(player: str, side: str = "OVER", *,
          stat: str = "PTS",
          line: float = 10.5,
          event: str = "evt1") -> Dict[str, Any]:
-    """A minimal scored pick for the publisher to consume."""
+    """A minimal scored pick for the publisher to consume.
+
+    SSOT (2026-05-04): `ranking_score_v2` is the canonical key.
+    Legacy `ranking_score` alias was dropped from
+    `services.board.publisher._rank_score`; tests must stamp the v2
+    field directly.
+    """
     ck = f"nba|{event}|{player}|{stat}|{line}|{side}"
     return {
-        "canonical_key":   ck,
-        "player_name":     player,
-        "stat_type":       stat,
-        "line":            line,
-        "recommendation":  side,
-        "ranking_score":   ranking,
-        "vision_score":    vision,
-        "edge_pct":        edge,
+        "canonical_key":    ck,
+        "player_name":      player,
+        "stat_type":        stat,
+        "line":             line,
+        "recommendation":   side,
+        "ranking_score_v2": ranking,
+        "vision_score":     vision,
+        "edge_pct":         edge,
     }
 
 
 def state_entry(p: Dict[str, Any], rank: int) -> Dict[str, Any]:
     """Convert a candidate dict into a persisted state entry."""
     return {
-        "canonical_key":  p["canonical_key"],
-        "rank":           rank,
-        "ranking_score":  p["ranking_score"],
-        "vision_score":   p["vision_score"],
-        "edge_pct":       p["edge_pct"],
+        "canonical_key":    p["canonical_key"],
+        "rank":             rank,
+        "ranking_score_v2": p["ranking_score_v2"],
+        "vision_score":     p["vision_score"],
+        "edge_pct":         p["edge_pct"],
     }
 
 
@@ -212,7 +218,7 @@ def test_f_majority_remain_only_incremental_changes_across_snapshots():
     for i, p in enumerate(survivors):
         wiggle = (-0.5 if i % 2 else +0.5)  # tiny noise
         candidates_t2.append(pick(
-            p["player_name"], ranking=p["ranking_score"] + wiggle,
+            p["player_name"], ranking=p["ranking_score_v2"] + wiggle,
         ))
     newcomer = pick("newcomer", ranking=58)  # beats old_9 (55), not old_8 (60)
     candidates_t2.append(newcomer)
@@ -292,7 +298,7 @@ def test_g_zero_full_board_replacement():
     candidates: List[Dict[str, Any]] = []
     for p in survivors:
         candidates.append(pick(p["player_name"],
-                               ranking=p["ranking_score"] + 0.1))
+                               ranking=p["ranking_score_v2"] + 0.1))
     # 5 newcomers with scores 60.5, 60.4, 60.3, 60.2, 60.1
     # Old #10 starts at ranking=55, so all 5 do beat #10 — but each
     # insertion bumps the new last pick. Spec is fine with cumulative
@@ -501,7 +507,7 @@ async def test_e2e_universal_works_for_arbitrary_sport():
         {"canonical_key": f"nhl|game1|player_{i}|GOALS|0.5|OVER",
          "player_name": f"player_{i}", "stat_type": "GOALS",
          "line": 0.5, "recommendation": "OVER",
-         "ranking_score": 50 + i, "vision_score": 50 + i,
+         "ranking_score_v2": 50 + i, "vision_score": 50 + i,
          "edge_pct": 0.0}
         for i in range(5)
     ]

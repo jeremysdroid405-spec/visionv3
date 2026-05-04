@@ -385,3 +385,165 @@ async def health_board(response: Response):
             "error": repr(exc),
             "generated_at": _now().isoformat(),
         }
+
+
+# ---------------------------------------------------------------------------
+@router.get("/active-transitions")
+async def health_active_transitions(
+    response: Response,
+    sport: str = Query("nba", regex="^(nba|mlb)$"),
+    hours: int = Query(24, ge=1, le=24 * 7),
+) -> Dict[str, Any]:
+    """Diagnostic surface for the `active_transitions` audit collection
+    written by `services.board.set_active::set_active`.
+
+    Read-only. Does NOT mutate state, does NOT re-score, does NOT
+    touch the canonical `active` field on `{sport}_prop_scores`. This
+    endpoint exists purely to answer "why did this pick fall off /
+    reappear" by replaying the last N hours of lifecycle transitions.
+
+    Query params:
+        sport   — "nba" or "mlb"
+        hours   — 1 .. 168, default 24
+
+    Returns a small envelope:
+        {
+          "generated_at": iso,
+          "sport":        "nba",
+          "window_hours": 24,
+          "total":              <int>,
+          "active_to_inactive": <int>,
+          "inactive_to_active": <int>,
+          "top_reasons":        [{"reason": str, "count": int}, ...up to 5],
+          "top_writers":        [{"source_writer": str, "count": int}, ...up to 5],
+          "latest":             [... up to 25 transition rows ...]
+        }
+
+    Each `latest` row is grouped around the fields the operator needs
+    to pinpoint a specific transition:
+        sport · player · prop (stat_type + line + side) · active_from
+        · active_to · reason · source_writer · timestamp
+    """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    if _db is None:
+        return {
+            "error": "db_not_initialised",
+            "generated_at": _now().isoformat(),
+        }
+
+    from services.board.set_active import AUDIT_COLL
+    since = _now() - timedelta(hours=hours)
+
+    try:
+        audit = _db[AUDIT_COLL]
+        match_stage = {"sport": sport, "occurred_at": {"$gte": since}}
+
+        total = await audit.count_documents(match_stage)
+        to_inactive = await audit.count_documents(
+            {**match_stage, "to_state": False}
+        )
+        to_active = await audit.count_documents(
+            {**match_stage, "to_state": True}
+        )
+
+        # Top reasons — aggregation. Cheap, indexed on (sport,
+        # canonical_key, occurred_at) already.
+        reason_cursor = audit.aggregate([
+            {"$match": match_stage},
+            {"$group": {"_id": "$reason", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 5},
+        ])
+        top_reasons: List[Dict[str, Any]] = []
+        async for row in reason_cursor:
+            top_reasons.append({
+                "reason": row.get("_id") or "unknown",
+                "count":  int(row.get("count") or 0),
+            })
+
+        # `source_writer` isn't currently on the audit doc; we derive
+        # it from the reason string (each reason is emitted by exactly
+        # one writer per the SSOT contract). Keeps this endpoint
+        # truthful without adding a new field to the writer — when
+        # Tier B ships we can add the explicit column.
+        _REASON_WRITER_MAP = {
+            "retired_by_delta_engine": "services/scoring/tiering.py:mark_retired_inactive",
+            "game_started":            "services/board/scanner.py:scan_sport",
+        }
+        writer_counts: Dict[str, int] = {}
+        for r in top_reasons:
+            w = _REASON_WRITER_MAP.get(r["reason"], "unknown")
+            writer_counts[w] = writer_counts.get(w, 0) + r["count"]
+        top_writers = sorted(
+            ({"source_writer": w, "count": c} for w, c in writer_counts.items()),
+            key=lambda x: x["count"], reverse=True,
+        )[:5]
+
+        # Latest 25 transitions — join with `{sport}_prop_scores` on
+        # canonical_key to surface player / stat / line / side in one
+        # hop so the frontend doesn't have to look them up.
+        latest_cursor = audit.find(
+            match_stage, {"_id": 0}
+        ).sort("occurred_at", -1).limit(25)
+        latest_rows = await latest_cursor.to_list(length=25)
+
+        keys = [r.get("canonical_key") for r in latest_rows if r.get("canonical_key")]
+        id_lookup: Dict[str, Dict[str, Any]] = {}
+        if keys:
+            scores = _db[f"{sport}_prop_scores"]
+            id_cursor = scores.find(
+                {"canonical_key": {"$in": keys}},
+                {"_id": 0, "canonical_key": 1, "player_name": 1,
+                 "stat_type": 1, "line": 1, "recommendation": 1},
+            )
+            async for d in id_cursor:
+                ck = d.get("canonical_key")
+                if ck and ck not in id_lookup:
+                    id_lookup[ck] = d
+
+        latest: List[Dict[str, Any]] = []
+        for r in latest_rows:
+            ck = r.get("canonical_key")
+            ident = id_lookup.get(ck) or {}
+            reason = r.get("reason") or "unknown"
+            to_state = bool(r.get("to_state"))
+            # `active_from` is the logical inverse of `active_to` per
+            # the set_active contract (we only audit actual transitions,
+            # not no-ops). Stored explicitly for frontend clarity.
+            active_from = not to_state
+            occurred = r.get("occurred_at")
+            latest.append({
+                "sport":         r.get("sport"),
+                "canonical_key": ck,
+                "player":        ident.get("player_name"),
+                "stat_type":     ident.get("stat_type"),
+                "line":          ident.get("line"),
+                "side":          ident.get("recommendation"),
+                "active_from":   active_from,
+                "active_to":     to_state,
+                "reason":        reason,
+                "source_writer": _REASON_WRITER_MAP.get(reason, "unknown"),
+                "version_tag":   r.get("version_tag"),
+                "timestamp":     occurred.isoformat()
+                                 if hasattr(occurred, "isoformat") else occurred,
+            })
+
+        return {
+            "generated_at":       _now().isoformat(),
+            "sport":              sport,
+            "window_hours":       hours,
+            "total":              int(total),
+            "active_to_inactive": int(to_inactive),
+            "inactive_to_active": int(to_active),
+            "top_reasons":        top_reasons,
+            "top_writers":        top_writers,
+            "latest":             latest,
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("[HEALTH/active-transitions] failed: %s", exc)
+        return {
+            "error":        repr(exc),
+            "generated_at": _now().isoformat(),
+            "sport":        sport,
+            "window_hours": hours,
+        }

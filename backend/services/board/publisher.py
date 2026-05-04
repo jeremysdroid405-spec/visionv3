@@ -107,16 +107,51 @@ def _num(v: Any) -> float:
 
 
 def _rank_score(p: Dict[str, Any]) -> float:
-    """Universal ranking-score signal with fallbacks.
+    """Canonical ranking-score signal.
 
-    `ranking_score_v2` is the canonical projection-gap ranker on the
-    score doc; legacy docs use `ranking_score`; everything else falls
-    back to `vision_score`.
+    SSOT (FIELD_OWNERSHIP.md:ranking_score_v2, 2026-05-04): the only
+    authoritative ranking signal on a score doc is `ranking_score_v2`,
+    written by `services/scoring/recompute.py::recompute_sport`. It is
+    legitimately `None` when `projection` / `line` / `p_model` is
+    missing (e.g. identity-failed picks still go through the pipeline
+    but have no model projection), so a pure hard-drop would hide a
+    large slice of the slate.
+
+    Behaviour:
+    - If `ranking_score_v2` is present → use it (canonical).
+    - Else fall back to `vision_score` ONLY — dropped the legacy
+      `ranking_score` alias 2026-05-04 (it was a rename-era leftover
+      with no live writer, producing stale sort orders). Also log a
+      one-time-per-process SSOT violation so the missing-field rate
+      stays observable.
+
+    The registry spec for `ranking_score_v2` was retired from
+    `fail_loud` to `return_null` in the same pass — the field
+    returning None is a valid scoring outcome, not a data bug.
     """
-    for k in ("ranking_score_v2", "ranking_score", "vision_score"):
-        v = p.get(k)
-        if isinstance(v, (int, float)):
-            return float(v)
+    v = p.get("ranking_score_v2")
+    if isinstance(v, (int, float)):
+        return float(v)
+    # Legitimate miss — use vision_score as the stable secondary sort
+    # key. Emit a one-time warning per process so regressions in the
+    # ranking_score_v2 writer stay visible in supervisor logs.
+    try:
+        seen = _rank_score.__dict__.setdefault("_warned", False)
+        if not seen:
+            logger.warning(
+                "[SSOT:ranking_score_v2] at least one pick missing "
+                "ranking_score_v2; falling back to vision_score. "
+                "Canonical key sample: %s. "
+                "Tracked via /api/health/active-transitions and "
+                "future ranking-score-coverage probe.",
+                p.get("canonical_key"),
+            )
+            _rank_score.__dict__["_warned"] = True
+    except Exception:  # pragma: no cover — logging must never break sort
+        pass
+    vs = p.get("vision_score")
+    if isinstance(vs, (int, float)):
+        return float(vs)
     return float("-inf")
 
 

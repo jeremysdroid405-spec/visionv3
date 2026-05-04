@@ -292,24 +292,62 @@ class IntelSuiteCalculator:
         return {"possessions": round(delta, 1), "display": f"{'+' if delta>=0 else ''}{delta:.1f} Possessions", "pace_factor": round(pace_factor, 2), "tempo_label": label, "team_pace": round(team_pace, 1), "opponent_pace": round(opp_pace, 1), "expected_game_pace": round(expected, 1)}
 
     def _calculate_stability_index(self, active_logs: List[Dict], stat_type: str, board_pick: Optional[Dict]) -> Dict:
-        """Compute stability from LIVE game logs — no baseline_stats.
+        """Compute stability index for the intel suite tile.
 
-        NEWEST-L10 CONTRACT:
-        `active_logs` is sorted DESC (newest first) by `_get_active_logs`.
-        Use values[:10] (newest 10) — not values[-10:] which was the oldest
-        10 games of the season and produced contradictory "L10" windows
-        across tile vs. badge (root-caused 2026-04-19 on Sengun AST 6.5).
+        SSOT (FIELD_OWNERSHIP.md:cv, 2026-05-04): canonical variance
+        for a pick lives in `cv` (coefficient of variation) on the
+        score doc. Prior behaviour computed std_dev locally from raw
+        game logs; on composite MLB stat_types (H+R+RBI etc.) that
+        local compute returned std_dev≈0 because
+        `_extract_stat_values` doesn't decompose composites, producing
+        a "100% Elite" label that contradicted the canonical cv.
+
+        New preference order:
+          1. Derive `std_dev = cv * model_projection` when both are
+             present on `board_pick`. This binds stability_index to
+             the same signal the Variance tile already reads (after
+             2026-05-03 PlayerDetailPage.jsx fix) so the two can no
+             longer disagree.
+          2. Use `board_pick.std_dev` if explicitly set.
+          3. Fall back to local game-log std_dev only when neither of
+             the above is available (identity-failed picks, legacy
+             docs).
+
+        NEWEST-L10 CONTRACT for the local fallback:
+        `active_logs` is sorted DESC (newest first) by
+        `_get_active_logs`. Use values[:10] (newest 10) — not
+        values[-10:] which was the oldest 10 games of the season and
+        produced contradictory "L10" windows across tile vs. badge
+        (root-caused 2026-04-19 on Sengun AST 6.5).
         """
-        values = _extract_stat_values(active_logs, stat_type)
+        std_dev: Optional[float] = None
+        bp = board_pick or {}
 
-        # Use board_pick std_dev if available
-        std_dev = board_pick.get("std_dev") if board_pick else None
+        # Preferred: canonical cv-derived std_dev. `cv` is σ/μ, so
+        # σ = cv × μ. `model_projection` IS μ on the canonical score
+        # doc (fair-value projection).
+        cv_val = bp.get("cv")
+        mu_val = bp.get("model_projection")
+        if isinstance(cv_val, (int, float)) and isinstance(mu_val, (int, float)) and mu_val > 0:
+            try:
+                std_dev = float(cv_val) * float(mu_val)
+            except (TypeError, ValueError):
+                std_dev = None
 
-        if std_dev is None and len(values) >= 5:
-            recent = values[:10] if len(values) >= 10 else values
-            std_dev = float(np.std(recent, ddof=1))
-        elif std_dev is None:
-            std_dev = 3.0
+        # Secondary: explicit std_dev stamped by scoring stack.
+        if std_dev is None:
+            raw_sd = bp.get("std_dev")
+            if isinstance(raw_sd, (int, float)):
+                std_dev = float(raw_sd)
+
+        # Last resort: local game-log compute (legacy path).
+        if std_dev is None:
+            values = _extract_stat_values(active_logs, stat_type)
+            if len(values) >= 5:
+                recent = values[:10] if len(values) >= 10 else values
+                std_dev = float(np.std(recent, ddof=1))
+            else:
+                std_dev = 3.0
 
         if std_dev <= 1.5:
             score, label, consistency = 95, "Elite", "Extremely Consistent"

@@ -453,6 +453,12 @@ async def recompute_sport(
             "vk2_error": ctx.vk2_error,
             "hit_rate_over": ctx.hit_rate_over,
             "hit_rate_under": ctx.hit_rate_under,
+            # SSOT (FIELD_OWNERSHIP.md:hit_rate_l20, 2026-05-04): the
+            # window-explicit canonical name for the L20 OVER hit rate.
+            # `hit_rate_over` is retained in parallel as a legacy alias
+            # until all readers migrate. `hit_rate_l20` is the one
+            # readers should reach for going forward.
+            "hit_rate_l20": ctx.hit_rate_over,
             # HR sample-size telemetry (2026-04-25, HR v3). Sample
             # size in [10, 20] when HR is computed; None when HR is
             # None (insufficient sample / missing identity / etc).

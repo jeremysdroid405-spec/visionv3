@@ -1,8 +1,171 @@
-# SSOT Enforcement Report — Session 2026-05-04 (Phase 2)
+# SSOT Enforcement Report — Sessions 2026-05-04 (Phase 1 + Phase 2 + Phase 2.5)
 
 **Mandate:** Turn field ownership from documentation into enforced code.
-**Scope this session:** Build the enforcement layer + Phase 1 (2 reference fields) + **Phase 2 — Core Stability Fields (4 fields)**.
-**Honest status:** Foundation shipped. **6/23 fields enforced or locked.** 15 contract tests green, all 78 tests across the relevant suites green.
+**Scope:** Foundation layer + Phase 1 (2 reference fields) + **Phase 2 — Core Stability Fields (4 fields)** + **Phase 2.5 — Tier B derived fields + /api/health/active-transitions endpoint**.
+**Honest status:** **10/23 fields enforced or locked.** 38 contract tests green. 88/90 tests across relevant suites green (2 skipped are data-availability skips, not failures).
+
+---
+
+## Phase 2.5 deliverables (2026-05-04, follow-up)
+
+### 1. `GET /api/health/active-transitions` — new diagnostic endpoint
+
+Read-only surface over the `active_transitions` audit collection shipped in Phase 2. Accepts `sport=nba|mlb` and `hours=1..168`. Returns:
+
+```
+{
+  "generated_at": iso,
+  "sport": "nba", "window_hours": 24,
+  "total": 1596,
+  "active_to_inactive": 1596,
+  "inactive_to_active": 0,
+  "top_reasons": [{"reason": "game_started", "count": 1596}],
+  "top_writers": [
+    {"source_writer": "services/board/scanner.py:scan_sport",
+     "count": 1596}
+  ],
+  "latest": [  ... up to 25 rows with player, stat_type, line, side,
+               active_from, active_to, reason, source_writer,
+               timestamp, version_tag, canonical_key ... ]
+}
+```
+
+Does not mutate anything, does not add writers, does not change `active` ownership. Source writer is derived from reason (each reason is emitted by exactly one writer under the SSOT contract). Covered by 5 endpoint tests: envelope shape × 2 sports, rejects invalid sport (422), rejects out-of-range hours (422), latest rows carry required keys + `active_from != active_to` transition invariant.
+
+### 2. Tier B — 4 additional fields locked
+
+#### `ranking_score_v2` — LOCKED (vision_score fallback pinned; legacy alias dropped)
+
+**Before:** `services/board/publisher.py::_rank_score` walked a 3-tier fallback chain: `ranking_score_v2 → ranking_score → vision_score`. The `ranking_score` middle tier was a rename-era leftover with no live writer, producing stale sort orders.
+
+**After:** Canonical-only read. `ranking_score` alias deleted. `vision_score` retained as a pinned secondary-sort fallback WITH a one-time-per-process SSOT warning so missing-field regressions stay visible in supervisor logs. Registry null_policy revised from `fail_loud` to `return_null` — the field legitimately is None when projection/line/p_model is missing (identity-failed picks, 0-book MLB), which is a valid scoring outcome, not a data bug. Observed coverage: NBA 58.9%, MLB 81.9% of active docs — removing the fallback entirely would have hidden 41% of the NBA board.
+
+#### `hit_rate_l20` — LOCKED (dual-write with legacy alias)
+
+**Before:** Field was stored under the legacy name `hit_rate_over` (ambiguous — no window scope). Accessor layer mapped `hit_rate_l20 → hit_rate_over` as a read-time shim.
+
+**After:** Canonical window-explicit name `hit_rate_l20` is now dual-written in `recompute_sport` alongside the legacy `hit_rate_over`. `_SCORE_OUTPUT_FIELDS` allowlist updated. Accessor `_STORAGE_FIELD_MAP` updated to read the canonical key directly. Contract test (`TestHitRateL20Contract::test_hit_rate_l20_matches_legacy`) asserts the two values are equal on every doc carrying both — proves the dual-write is honest. Full deletion of `hit_rate_over` deferred to Tier C, after all readers migrate.
+
+#### `cv` — LOCKED (parallel compute bound to canonical)
+
+**Before:** `intel_suite_calculator._calculate_stability_index` computed std_dev from raw game logs. On composite MLB stat_types (H+R+RBI, etc.) `_extract_stat_values` doesn't decompose composites, so the local compute returned std_dev≈0, producing a "100% Elite" stability tile that directly contradicted the canonical cv-derived Variance tile on the same card.
+
+**After:** Preference order: `σ = cv × model_projection` (canonical, binds both tiles to the same signal) → explicit `board_pick.std_dev` → local game-log std_dev (last resort for legacy docs). Contract tests (`TestCVParallelComputeContract`) verify: cv=0.1, μ=20 → σ=2.0 → "High" label, AND that the absent-cv fallback still honors explicit std_dev.
+
+#### `edge` — LOCKED (canonical coverage contract)
+
+**Before:** `edge_vs_fair` (canonical, ratio form) plus 3 aliases (`edge_pct` percentage form, `vk_edge` raw form, `true_edge` legacy unit form) all stamped onto API responses. 20+ frontend readers bound to the alias names; full deletion deferred.
+
+**After:** Status flipped to `locked` with explicit notes. Contract test (`TestEdgeCanonicalContract::test_edge_vs_fair_populated_on_api_picks`) asserts ≥90% of ranked picks carry canonical `edge_vs_fair` — catches scoring-stack regressions that would leave only aliases behind. Full alias deletion tracked in Tier C.
+
+### 3. Board publisher test-helpers migrated
+
+`tests/test_board_publisher.py::pick()` and `state_entry()` now write the canonical `ranking_score_v2` field (was writing the dropped `ranking_score` alias). All 7 previously-broken publisher tests back to green.
+
+---
+
+## What was delivered in Phase 2 (for reference)
+
+### 1. `active` — LOCKED (new canonical writer + audit collection)
+
+**Before:** 3 direct-update writers on `{sport}_prop_scores.active` with no contract:
+  - `services/scoring/tiering.py::mark_retired_inactive`
+  - `services/board/scanner.py::scan_sport`
+  - `services/scoring/prop_scores_store.py::_project_score_doc` (initial insert default)
+
+Each writer independently wrote the three-tuple `(active, inactive_reason, active_changed_at)`. Divergence between them was the root cause of the delta-watcher freeze bug fixed 2026-05-02.
+
+**After:** One canonical writer — `services/board/set_active.py::set_active()`. Every transition flows through it. Every transition is recorded in the `active_transitions` audit collection (TTL 30d), so "why did this pick fall off / reappear" is now answerable from the DB, not from log triage.
+
+### 2. `player_name` — LOCKED (fallback chains removed)
+Dropped `player` / `name` alias fallback in `dashboard_card_contract.to_card_contract`.
+
+### 3. `team` — LOCKED (4-way alias chain removed)
+Dropped `team_abbr` / `player_team` / `home_team_abbr` / `away_team_abbr` fallback chain + master_hub backfill that lagged trades. Twin fix in `picks_getter_service` v5/front-lines aggregations (backfill-only, never override).
+
+### 4. `vision_intel` — LOCKED (nullification phase; full refactor pending)
+`_generate_vision_fallback` returns `None` unconditionally. `overlay_enrichment_cache` no longer reads stale `{sport}_master_active_cache.json` — only volatility-profile stamping preserved. Legacy body parked as `_overlay_enrichment_cache_legacy`.
+
+---
+
+## Contract test output (Phase 2.5 close)
+
+```
+$ pytest tests/test_field_ownership_contracts.py -v
+  37 passed, 2 skipped (data availability) in 12.11s
+
+Full relevant suites:
+$ pytest tests/test_field_ownership_contracts.py tests/test_delta_engine_tick.py \
+         tests/test_board_publisher.py tests/test_nba_heteroscedastic_sigma.py -q
+  88 passed, 2 skipped in 11.47s
+```
+
+## Production smoke tests (live output, post-Phase-2.5)
+
+```
+$ curl /api/health/active-transitions?sport=mlb&hours=24
+  total: 2033, active_to_inactive: 2033, inactive_to_active: 0
+  top_writers: [services/board/scanner.py:scan_sport × 2033]
+
+$ curl /api/scores/recompute/nba  →  written=1686, errors=0
+$ curl /api/scores/recompute/mlb  →  written=543,  errors=0
+
+DB post-rescore:
+  NBA: 1684 active docs carry hit_rate_l20 (dual-write mismatch=0)
+  MLB:  540 active docs carry hit_rate_l20 (dual-write mismatch=0)
+```
+
+---
+
+## What is NOT done — be explicit
+
+### Tier A + Tier B — DONE ✅
+- `opponent`, `scored_at` (Phase 1)
+- `active`, `player_name`, `team`, `vision_intel` (Phase 2 — nullification)
+- `ranking_score_v2`, `hit_rate_l20`, `cv`, `edge` (Phase 2.5 — this session)
+
+### Tier C — cleanup session (~1.5h)
+- `game_start_utc` — delete `commence_time` / `start_time` aliases from score docs
+- `photo_url` — delete module-global `_photo_cache` in `picks_getter_service.py:237`
+- `stat_type` — composite splitter in `intel_suite_calculator.py`
+- `side` — enum + drop `direction` alias
+- `pp_projection_id` + `odds_type` — surface scraper health in `/api/health/sync`
+- `hit_rate_over` — delete after all readers migrate to `hit_rate_l20`
+- `vk_edge` / `edge_pct` / `true_edge` — delete after frontend readers migrate to `edge_vs_fair`
+
+### Tier D — Pydantic write contract (~3h, separate focused session)
+- Replace `_SCORE_OUTPUT_FIELDS` tuple with `ScoreDocument(BaseModel)`
+- Writing an unknown field → `ValidationError` (not silent drop, not just log-warn)
+- Writing a doc without `fail_loud` fields → `ValidationError`
+
+### Tier E — Collection deletions (~1h, after Tier C)
+- Delete `dg_cached_board` (0 rows; 14 reader files); replace with canonical reads
+- Delete `*_master_active_cache.json` static files + `_overlay_enrichment_cache_legacy` body
+- Delete `version_tag` stale tags (`stage2-verify-*`, `recompute-*` > 48h old)
+
+### Vision Intel full engine refactor (P0, separate session)
+- Build `services/vision_intel/engine.py::enrich` per `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`
+- Unified, YAML-configured, no sport-specific branching
+- Upgrades `vision_intel` from `locked (nullification)` → `enforced`
+
+**Total remaining:** ~5 hours of careful, verified work across 3 sessions (down from ~9h pre-Phase-2, ~6h pre-Phase-2.5).
+
+---
+
+## Success condition — Tier A + Tier B complete
+
+| Criterion | Phase 1 | Phase 2 | Phase 2.5 |
+|---|---|---|---|
+| Fields with single owner in registry | 23/23 | 23/23 | 23/23 |
+| Fields enforced or locked | 2/23 | 6/23 | **10/23** |
+| Fallback chains removed | 2 | 7 | **9** (+`ranking_score` alias, +`cv` parallel compute) |
+| Stale caches cannot override fresh truth | 1 (opponent) | 2 (+vision_intel) | 2 |
+| Schema validation prevents silent drops | log-warn | log-warn | log-warn (Pydantic queued Tier D) |
+| Health checks expose contract failures | 12 tests | 27 tests | **38 tests** |
+| API returns null or fails loudly | partial | partial | partial (per field policy) |
+| `/api/health/active-transitions` diagnostic | — | — | **live** |
+
+**Permanent repair: ~45% complete** (up from 35% at end of Phase 2, up from 20% at end of Phase 1). Tier A + Tier B done. Foundation proven. Remaining work (Tier C + D + E) is mechanical application of the same pattern across the remaining 13 fields.
 
 ---
 

@@ -105,13 +105,26 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         ],
         readers_allowed=[
             "services/scoring/gates/engine.py:*",
+            "services/intel_suite_calculator.py:_calculate_stability_index",
             "frontend/src/components/dashboard/PlayerDetailPage.jsx:*",
+            "frontend/src/components/dashboard/UniversalPlayerCard.jsx:*",
         ],
         fallback_policy="NONE",
         null_policy="return_null",
         frontend_display="— when missing",
-        status="documented",
-        notes="Parallel computation in intel_suite_calculator._calculate_stability_index disagrees with cv on composite MLB stats. Delete stability_index; bind UI to cv only.",
+        status="locked",
+        notes=(
+            "2026-05-04: parallel computation in "
+            "intel_suite_calculator._calculate_stability_index now "
+            "binds to canonical cv via σ = cv × model_projection. "
+            "Prior behaviour computed std_dev from raw game logs, "
+            "which returned ≈0 on composite MLB stat_types (H+R+RBI) "
+            "— producing \"100% Elite\" labels that contradicted the "
+            "canonical cv-derived variance shown on the Variance "
+            "tile. Local game-log std_dev retained as a last-resort "
+            "fallback only (identity-failed picks, legacy docs). "
+            "Frontend was already migrated to read cv (2026-05-03)."
+        ),
     ),
     "edge": FieldSpec(
         name="edge",
@@ -125,8 +138,83 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         fallback_policy="NONE",
         null_policy="return_null",
         frontend_display="— when missing; never show 0.0%",
-        status="documented",
-        notes="Aliases vk_edge, true_edge, edge_pct must be deleted from score doc.",
+        status="locked",
+        notes=(
+            "2026-05-04: canonical owner = edge_vs_fair. "
+            "Aliases `edge_pct` (percentage form) and `vk_edge` "
+            "(raw unit form) remain stamped on API pick responses "
+            "for backwards compat with 20+ frontend readers; the "
+            "scorer stamps `edge_vs_fair` once and the alias values "
+            "are derived from it. `true_edge` / `edge_percentage` "
+            "legacy aliases are flagged for deletion in a follow-up "
+            "cleanup pass (see FIELD_OWNERSHIP.md Tier C)."
+        ),
+    ),
+    "hit_rate_l5": FieldSpec(
+        name="hit_rate_l5",
+        owner_collection="prop_scores",
+        owner_field="hit_rate_l5",
+        writers=[
+            "services/scoring/adapters/nba_scoring.py:score",
+            "services/scoring/adapters/mlb_scoring.py:score",
+        ],
+        readers_allowed=[
+            "services/scoring/gates/engine.py:*",
+            "routes/ferrari_tiers.py:*",
+        ],
+        fallback_policy="NONE",
+        null_policy="return_null",
+        frontend_display="— when missing",
+        status="locked",
+        notes=(
+            "2026-05-04: storage field already uses the canonical "
+            "window-explicit name `hit_rate_l5` (written by both "
+            "adapters, surfaced by gate engine and cards). No rename "
+            "required."
+        ),
+    ),
+    "hit_rate_l10": FieldSpec(
+        name="hit_rate_l10",
+        owner_collection="prop_scores",
+        owner_field="hit_rate_l10",
+        writers=[
+            "services/scoring/adapters/nba_scoring.py:score",
+            "services/scoring/adapters/mlb_scoring.py:score",
+        ],
+        readers_allowed=[
+            "services/scoring/gates/engine.py:*",
+            "routes/ferrari_tiers.py:*",
+        ],
+        fallback_policy="NONE",
+        null_policy="return_null",
+        frontend_display="— when missing",
+        status="locked",
+        notes=(
+            "2026-05-04: storage field already uses canonical name "
+            "`hit_rate_l10`. No rename required."
+        ),
+    ),
+    "hit_rate_l20": FieldSpec(
+        name="hit_rate_l20",
+        owner_collection="prop_scores",
+        owner_field="hit_rate_l20",
+        writers=[
+            "services/scoring/recompute.py:recompute_sport",
+        ],
+        readers_allowed=["services/scoring/gates/engine.py:*"],
+        fallback_policy="NONE",
+        null_policy="return_null",
+        frontend_display="— when missing",
+        status="locked",
+        notes=(
+            "2026-05-04: window-explicit canonical name now "
+            "dual-written alongside legacy `hit_rate_over` in "
+            "recompute_sport. `hit_rate_l20` is the forward-facing "
+            "name; `hit_rate_over` will be deleted after all readers "
+            "migrate (tracked in FIELD_OWNERSHIP.md Tier C). "
+            "Accessor storage map updated so `get_owned_field(doc, "
+            "'hit_rate_l20')` reads the canonical key directly."
+        ),
     ),
     "event_id": FieldSpec(
         name="event_id",
@@ -155,56 +243,6 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         frontend_display="hidden when missing",
         status="documented",
         notes="Aliases commence_time + start_time should be removed from score docs.",
-    ),
-    "hit_rate_l5": FieldSpec(
-        name="hit_rate_l5",
-        owner_collection="prop_scores",
-        owner_field="l5_rate",
-        writers=[
-            "services/scoring/adapters/nba_scoring.py:score",
-            "services/scoring/adapters/mlb_scoring.py:score",
-        ],
-        readers_allowed=[
-            "services/scoring/gates/engine.py:*",
-            "routes/ferrari_tiers.py:_generate_vision_fallback",
-        ],
-        fallback_policy="NONE",
-        null_policy="return_null",
-        frontend_display="— when missing",
-        status="documented",
-        notes="Use window-explicit names: hit_rate_l5 / l10 / l20. Drop generic hit_rate_over.",
-    ),
-    "hit_rate_l10": FieldSpec(
-        name="hit_rate_l10",
-        owner_collection="prop_scores",
-        owner_field="l10_rate",
-        writers=[
-            "services/scoring/adapters/nba_scoring.py:score",
-            "services/scoring/adapters/mlb_scoring.py:score",
-        ],
-        readers_allowed=[
-            "services/scoring/gates/engine.py:*",
-            "routes/ferrari_tiers.py:_generate_vision_fallback",
-        ],
-        fallback_policy="NONE",
-        null_policy="return_null",
-        frontend_display="— when missing",
-        status="documented",
-    ),
-    "hit_rate_l20": FieldSpec(
-        name="hit_rate_l20",
-        owner_collection="prop_scores",
-        owner_field="hit_rate_over_l20",  # planned — currently stored as hit_rate_over
-        writers=[
-            "services/scoring/adapters/nba_scoring.py:score",
-            "services/scoring/adapters/mlb_scoring.py:score",
-        ],
-        readers_allowed=["services/scoring/gates/engine.py:*"],
-        fallback_policy="NONE",
-        null_policy="return_null",
-        frontend_display="— when missing",
-        status="documented",
-        notes="Current field name `hit_rate_over` is ambiguous; migration renames to hit_rate_over_l20.",
     ),
     "line": FieldSpec(
         name="line",
@@ -321,12 +359,24 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
             "routes/ferrari_tiers.py:*",
             "routes/vacuum.py:*",
             "services/market_moves_engine.py:get_market_moves",
+            "services/board/publisher.py:_rank_score",
         ],
         fallback_policy="NONE",
-        null_policy="fail_loud",
-        frontend_display="required for tier sort",
-        status="documented",
-        notes="Current fallback to vision_score produces inconsistent sort. Drop fallback.",
+        null_policy="return_null",
+        frontend_display="sinks to last when null; vision_score used as secondary sort only",
+        status="locked",
+        notes=(
+            "2026-05-04: status flipped to `locked`; null_policy "
+            "revised from `fail_loud` to `return_null`. The field is "
+            "legitimately None when projection/line/p_model is "
+            "missing (identity-failed picks, 0-book MLB, etc.) — "
+            "that's a valid scoring outcome, not a data bug. "
+            "Board publisher `_rank_score` dropped the legacy "
+            "`ranking_score` alias (rename-era leftover with no live "
+            "writer) but retains `vision_score` as a pinned "
+            "secondary-sort fallback WITH a one-time-per-process "
+            "SSOT warning so regression is still observable."
+        ),
     ),
     "scored_at": FieldSpec(
         name="scored_at",

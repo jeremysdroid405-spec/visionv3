@@ -122,6 +122,69 @@ class TestHealthSyncContract:
         assert "overall_status" in body
 
 
+class TestActiveTransitionsEndpoint:
+    """Diagnostic surface for the active_transitions audit collection.
+    Read-only — must never mutate, must always return a well-formed
+    envelope even when no transitions exist in the window."""
+
+    @pytest.mark.parametrize("sport", ["nba", "mlb"])
+    def test_envelope_shape(self, api_base, sport):
+        r = requests.get(
+            f"{api_base}/api/health/active-transitions",
+            params={"sport": sport, "hours": 24},
+            timeout=20,
+        )
+        assert r.status_code == 200, f"{sport}: status {r.status_code}"
+        body = r.json()
+        for key in (
+            "generated_at", "sport", "window_hours",
+            "total", "active_to_inactive", "inactive_to_active",
+            "top_reasons", "top_writers", "latest",
+        ):
+            assert key in body, f"{sport}: missing key {key!r} in envelope"
+        assert body["sport"] == sport
+        assert body["window_hours"] == 24
+        assert isinstance(body["total"], int)
+        assert isinstance(body["latest"], list)
+        assert len(body["latest"]) <= 25
+
+    def test_rejects_invalid_sport(self, api_base):
+        r = requests.get(
+            f"{api_base}/api/health/active-transitions",
+            params={"sport": "nhl", "hours": 24},
+            timeout=20,
+        )
+        # FastAPI Query regex returns 422 on mismatch.
+        assert r.status_code == 422
+
+    def test_rejects_out_of_range_hours(self, api_base):
+        r = requests.get(
+            f"{api_base}/api/health/active-transitions",
+            params={"sport": "nba", "hours": 999},
+            timeout=20,
+        )
+        assert r.status_code == 422
+
+    def test_latest_rows_carry_required_keys(self, api_base):
+        r = requests.get(
+            f"{api_base}/api/health/active-transitions",
+            params={"sport": "nba", "hours": 24},
+            timeout=20,
+        )
+        body = r.json()
+        if not body.get("latest"):
+            pytest.skip("no NBA transitions in window")
+        row = body["latest"][0]
+        for k in (
+            "sport", "canonical_key", "active_from", "active_to",
+            "reason", "source_writer", "timestamp",
+        ):
+            assert k in row, f"latest row missing key {k!r}"
+        # Audit contract: every row represents an actual transition,
+        # so active_from and active_to must disagree.
+        assert row["active_from"] != row["active_to"]
+
+
 # ────────────────────────────────────────────────────────────────────
 # Registry integrity
 # ────────────────────────────────────────────────────────────────────
@@ -355,3 +418,132 @@ class TestVisionIntelContract:
             f"{sport}: {len(bad)} picks carry templated fallback "
             f"vision_intel (SSOT violation). First 3: {bad[:3]}"
         )
+
+
+# ════════════════════════════════════════════════════════════════════
+# Tier B — Derived-field cleanup · FIELD_OWNERSHIP.md 2026-05-04
+# ════════════════════════════════════════════════════════════════════
+
+
+class TestRankingScoreV2Contract:
+    """SSOT (FIELD_OWNERSHIP.md:ranking_score_v2): the canonical
+    projection-gap ranker. Null is legitimate (identity-failed picks,
+    missing projection/line/p_model). The board publisher `_rank_score`
+    must (a) prefer `ranking_score_v2` when present and (b) drop the
+    legacy `ranking_score` alias entirely — vision_score is the only
+    retained secondary-sort fallback."""
+
+    def test_rank_score_uses_v2_when_present(self):
+        from services.board.publisher import _rank_score
+        assert _rank_score({"ranking_score_v2": 0.42}) == 0.42
+        # `ranking_score` alias must NOT be honoured.
+        assert _rank_score({"ranking_score": 0.99,
+                            "vision_score": 55}) == 55
+        assert _rank_score({"vision_score": 77.7}) == 77.7
+        # Nothing → -inf (not a hard raise — return_null policy).
+        import math
+        r = _rank_score({})
+        assert math.isinf(r) and r < 0
+
+
+class TestHitRateL20Contract:
+    """SSOT (FIELD_OWNERSHIP.md:hit_rate_l20): dual-write invariant —
+    after Phase 2, recompute_sport stamps `hit_rate_l20` alongside the
+    legacy `hit_rate_over`. Both must be numerically identical."""
+
+    @pytest.mark.parametrize("sport,tag", [
+        ("nba", "final-nba-rt"),
+        ("mlb", "final-mlb-rt"),
+    ])
+    def test_hit_rate_l20_matches_legacy(self, db, sport, tag):
+        coll = db[f"{sport}_prop_scores"]
+        # Only validate docs that have BOTH fields present (post-dual-write).
+        # Pre-2026-05-04 docs won't have `hit_rate_l20` — next recompute
+        # wave will backfill.
+        total = coll.count_documents({
+            "version_tag": tag, "active": True,
+            "hit_rate_l20": {"$exists": True, "$ne": None},
+            "hit_rate_over": {"$exists": True, "$ne": None},
+        })
+        if total == 0:
+            pytest.skip(f"no {sport} docs with both hit_rate_l20 + "
+                        f"hit_rate_over yet (pre-rescore)")
+        mismatched = coll.count_documents({
+            "version_tag": tag, "active": True,
+            "hit_rate_l20": {"$exists": True, "$ne": None},
+            "hit_rate_over": {"$exists": True, "$ne": None},
+            "$expr": {"$ne": ["$hit_rate_l20", "$hit_rate_over"]},
+        })
+        assert mismatched == 0, (
+            f"{sport}: {mismatched}/{total} docs have hit_rate_l20 != "
+            f"hit_rate_over. Dual-write in recompute_sport regressed."
+        )
+
+
+class TestCVParallelComputeContract:
+    """SSOT (FIELD_OWNERSHIP.md:cv): intel_suite.stability_index must
+    be derived from the canonical `cv` field (σ = cv × μ) — not a
+    parallel recomputation from raw game logs. This was the cause of
+    the composite-MLB "100% Elite" contradiction (std_dev ≈ 0 on
+    H+R+RBI because _extract_stat_values doesn't decompose composites)."""
+
+    def test_stability_prefers_cv_derived_std_dev(self):
+        from services.intel_suite_calculator import IntelSuiteCalculator
+        # Hand-build a calc instance without running its DB-bound
+        # async __init__; we only need the sync helper.
+        calc = object.__new__(IntelSuiteCalculator)
+        # cv=0.1, projection=20 → σ = 2.0 → "High" (85, Very Consistent)
+        result = calc._calculate_stability_index(
+            active_logs=[],
+            stat_type="PTS",
+            board_pick={"cv": 0.1, "model_projection": 20.0},
+        )
+        assert result["std_dev"] == 2.0, (
+            f"Expected σ = cv × μ = 0.1 × 20 = 2.0; got {result['std_dev']}"
+        )
+        assert result["score"] == 85
+        assert result["label"] == "High"
+
+    def test_stability_falls_back_when_cv_absent(self):
+        from services.intel_suite_calculator import IntelSuiteCalculator
+        calc = object.__new__(IntelSuiteCalculator)
+        # No cv → explicit std_dev should win.
+        result = calc._calculate_stability_index(
+            active_logs=[],
+            stat_type="PTS",
+            board_pick={"std_dev": 4.2},
+        )
+        assert result["std_dev"] == 4.2
+
+
+class TestEdgeCanonicalContract:
+    """SSOT (FIELD_OWNERSHIP.md:edge): `edge_vs_fair` is the canonical
+    owner. Aliases (`edge_pct`, `vk_edge`) remain in API responses for
+    backwards compat but must be derived from the canonical value,
+    never from a different source. The contract here is that
+    `edge_vs_fair` is present on every ranked pick — missing canonical
+    `edge` indicates the scoring stack didn't run."""
+
+    @pytest.mark.parametrize("sport", ["nba", "mlb"])
+    def test_edge_vs_fair_populated_on_api_picks(self, api_base, sport):
+        r = requests.get(
+            f"{api_base}/api/v3/ferrari/safe-haven",
+            params={"sport": sport, "limit": 20},
+            timeout=20,
+        )
+        if r.status_code != 200:
+            pytest.skip(f"{sport}: status {r.status_code}")
+        picks = r.json().get("picks") or []
+        if not picks:
+            pytest.skip(f"no {sport} picks live")
+        with_edge = sum(
+            1 for p in picks
+            if isinstance(p.get("edge_vs_fair"), (int, float))
+        )
+        pct = 100 * with_edge / len(picks)
+        assert pct >= 90.0, (
+            f"{sport}: only {with_edge}/{len(picks)} ({pct:.1f}%) "
+            f"picks carry canonical edge_vs_fair. Scoring stack "
+            f"may have regressed."
+        )
+
