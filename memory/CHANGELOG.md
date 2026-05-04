@@ -1,5 +1,68 @@
 # Changelog
 
+## 2026-05-04 — `vision_score == 0.0` false-zero fix (NARROW Path B promotion)
+
+**Problem**: Legitimate Safe Haven candidates (Tyrese Maxey 3PM 1.5 OVER,
+KAT PTS 14.5 OVER, Brunson AST 4.5 OVER, etc.) were being saved with
+`vision_score=0.0`, hiding them downstream. Root cause traced to the
+`pos_edge = max(0.0, edge)` clamp in
+`scoring_stack.compute_vision_score`: any prop where the model sees
+fractionally less value than the sportsbook de-vig consensus
+(`edge_vs_fair < 0`) collapses `vision_score_raw` to 0, which then
+collapses the percentile pass to 0.
+
+**First attempt (REVERTED)**: unconditional v2 promotion (use
+`vision_score_v2` whenever non-zero) — this fixed the false zeros but
+**broke gate selectivity**: v2's distribution tops out around 60 for
+strong picks while `vision_score_gate` was calibrated to v1's slate
+percentile (`min: 80` SH / `min: 60` WZ). Result: NBA SH/WZ tier
+counts collapsed to 0/0.
+
+**Approved fix (NARROW Path B)** — `backend/services/scoring/recompute.py`,
+function `_apply_vision_score_normalization` (single function, ~6 lines):
+
+```python
+for d in score_docs:
+    if d.get("quality_source") == "insufficient_market":
+        continue
+    if d.get("vision_score") == 0.0:                # NEW: only when v1 collapsed
+        v2 = d.get("vision_score_v2")
+        if isinstance(v2, (int, float)) and v2 > 0:
+            d["vision_score"] = round(float(v2), 1)
+```
+
+**Result on `final-nba-rt`** (post-recompute, full slate of 2,363):
+
+| Metric | Before patch | After patch |
+|---|---|---|
+| Safe Haven | 0 | **12** |
+| War Zone | 0 | **8** |
+| Front Lines | 48 | 48 (unchanged) |
+| `vision_score == 0.0` | 860 | **249** (-71%) |
+| `vision_score >= 80` (SH gate) | 0 | **157** |
+
+**Targeted gate-pass verification**: Maxey PTS 19.5 OVER
+(vs=96.4), Harden PRA 24.5 OVER (vs=95.5), Embiid PRA 34.5 OVER
+(vs=96.3), Embiid alt PA 24.5 OVER (vs=87.8), Dylan Harper PTS 5.5
+OVER (vs=86.3) — all `tier=safe_haven, tier_reason=gates_passed`.
+
+**False-zero rescue verification**: Maxey 3PM 1.5 OVER (vs=30.2,
+v1_raw=0.0), KAT PTS 14.5 OVER (vs=32.5, v1_raw=0.0), Brunson AST
+4.5 OVER (vs=36.7, v1_raw=0.0) — vision_score now non-zero in audit,
+but they still correctly fail downstream gates (edge_fail /
+hit_rate_fail) so they don't pollute Safe Haven.
+
+**Files changed**: 1 — `backend/services/scoring/recompute.py`.
+**Gates / scoring formulas / new fields**: untouched.
+**SSOT guarantees**: preserved — only declared fields mutated;
+`vision_score_v2` and `vision_score_raw` audit fields unchanged.
+**Tests**: 135 passed, 3 skipped, 0 failed.
+**API smoke (NBA)**: safe-haven 7 picks (7/7 vs>=80), front-lines 12,
+war-zone 6. **API smoke (MLB)**: safe-haven 10, front-lines 13,
+war-zone 9.
+
+
+
 ## 2026-05-04 — SSOT Tier F #4: `ScoreDocument` strict mode LIVE
 
 **The flip**: `ScoreDocument.model_config.extra` flipped from

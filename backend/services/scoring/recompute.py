@@ -219,16 +219,22 @@ def _apply_vision_score_normalization(score_docs: List[Dict[str, Any]]) -> None:
                 rank = sum(1 for s in raw if s <= vr)
                 d["vision_score"] = round((rank / len(raw)) * 100.0, 1)
 
-    # ── Path B promotion: prefer v2 directional score when available ──
-    # This runs AFTER the v1 percentile pass so that v1 stays available
-    # as a fallback. Only override when v2 is a non-null, > 0 number;
-    # leave `insufficient_market` (vision_score=None) untouched.
+    # ── Path B promotion (NARROW, 2026-05-04): rescue legitimate
+    # picks whose v1 percentile collapsed to 0.0 because of the
+    # `pos_edge = max(0, edge)` clamp in
+    # scoring_stack.compute_vision_score. We ONLY substitute v2 when
+    # the percentile pass produced 0; picks with v1>0 keep their
+    # slate-percentile so vision_score_gate selectivity (calibrated
+    # to v1's distribution at min=80 for Safe Haven, min=60 for War
+    # Zone) is unchanged. Audit fields (vision_score_raw,
+    # vision_score_v2) are preserved on the doc for diagnostics.
     for d in score_docs:
         if d.get("quality_source") == "insufficient_market":
             continue
-        v2 = d.get("vision_score_v2")
-        if isinstance(v2, (int, float)) and v2 > 0:
-            d["vision_score"] = round(float(v2), 1)
+        if d.get("vision_score") == 0.0:
+            v2 = d.get("vision_score_v2")
+            if isinstance(v2, (int, float)) and v2 > 0:
+                d["vision_score"] = round(float(v2), 1)
 
 
 def _reevaluate_tiers_post_vision(score_docs: List[Dict[str, Any]]) -> None:

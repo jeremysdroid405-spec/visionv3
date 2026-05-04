@@ -56,6 +56,10 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
   - New `/api/health/score-document-schema-parity` read-only probe — returns `parity_ok`, `extras_setting`, `declared_count`, `projected_count`, `missing_declarations`, `declared_extras`. Zero schedulers / writers.
   - Verified: ~900 prepared docs through dry-run NBA+MLB at multiple limits — 0 ValidationErrors. Live recompute NBA(20)/MLB(20) wrote 30/30 docs. Backend logs clean post-flip. **124/124 tests green.**
   - **Six-tier SSOT campaign complete.** Score-doc write boundary is now strictly typed and CI-locked.
+- **`vision_score == 0.0` false-zero fix (2026-05-04) — NARROW Path B promotion:**
+  - Single-function patch in `backend/services/scoring/recompute.py::_apply_vision_score_normalization`: when v1 percentile collapses to 0.0 (negative-edge picks) AND `vision_score_v2 > 0`, substitute v2 into `vision_score`. Picks with v1>0 keep their slate-percentile so `vision_score_gate` selectivity (calibrated to v1's `min: 80` SH / `min: 60` WZ) is unchanged.
+  - First attempt (unconditional v2 promotion) collapsed NBA Safe Haven / War Zone counts to 0/0; reverted to narrow form per user direction.
+  - Result on `final-nba-rt`: Safe Haven 0→12, War Zone 0→8, Front Lines 48 unchanged. `vision_score==0.0` 860→249. Maxey/Harden/Embiid PRA / Dylan Harper now pass gates with vs ≥86. **135/135 tests green; API smoke NBA SH=7 FL=12 WZ=6, MLB SH=10 FL=13 WZ=9.**
 
 ## Open issues (priority)
 - **P0** Vision Intel universal refactor — full scope in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`. Nullification phase shipped (Phase 2); engine refactor remains.
