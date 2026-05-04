@@ -1,5 +1,123 @@
 # Changelog
 
+## 2026-05-04 — SSOT Tier F #4: `ScoreDocument` strict mode LIVE
+
+**The flip**: `ScoreDocument.model_config.extra` flipped from
+`"allow"` → `"forbid"`. Silent field drift in the score-doc write
+path is now structurally impossible — any adapter or projector that
+introduces an undeclared field hard-fails at write time.
+
+**108 field declarations added** to `ScoreDocument`, grouped by
+domain:
+- Distribution probability layer (15) — `distribution_p_over`,
+  `distribution_p_under`, `distribution_kind`,
+  `distribution_selector_reason`, σ + sigma_source, clamp /
+  effective_mu / mu_floor flags, λ / threshold / dispersion_r /
+  p_param.
+- ECDF / calibration audit (12) — `ecdf_p_over`, `ecdf_bucket`
+  (declared `Optional[int]` after dry-run revealed adapters stamp
+  `int(bucket)`), `ecdf_bucket_n`, `ecdf_version`,
+  `raw_gaussian_p_over`, `isotonic_p_over`, `probability_method`,
+  `probability_calibration_applied`, `raw_p_over`,
+  `projection_intercept_*`, `pre_intercept_projection`.
+- NBA availability guard (16) — `availability_guard_*`,
+  `availability_status`, `dnp_risk_flag`, `injury_return_flag`,
+  `minutes_*` flags + factors, `mu_before_availability_guard`,
+  `mu_after_availability_guard`.
+- NBA rate × minutes layer (10) — `rate_model_applied`,
+  `rate_pts_per_min` / `rate_reb_per_min` / `rate_ast_per_min`,
+  `mu_rate_projection` / `mu_model_projection` /
+  `mu_final_projection`, blend weights/mode/trigger.
+- NBA recency μ blend (11) — `mu_recency_blended` + L3/L5/L10med/L20
+  components, weights, minutes-regression flags.
+- NBA shadow projections (18) — Recipe-E + VK2 PTS + REB/AST shadow
+  rates with their `_applied` flags and `delta_*` audit fields.
+- NBA Phase 2 hetero σ (2) — `hetero_sigma_adjusted`,
+  `hetero_sigma_multipliers`.
+- NBA per-stat debias (3) — `projection_raw_pre_debias`,
+  `projection_debias_amount`, `projection_debias_source`.
+- NBA RFA minutes penalty (4) — flag + factor + before/after.
+- MLB Empirical-Bayes shrinkage (8) — `eb_shrunk_projection`,
+  `eb_player_career_mean`, `eb_weight_*`, `eb_shrinkage_applied`,
+  `eb_skip_reason`, `eb_career_sample_n`, `raw_hf_projection`.
+- MLB pitcher / batter μ overrides (5) —
+  `mu_pitcher_workload_anchored`, `mu_active_baseline_*`,
+  `expected_ip_used`, `projection_model_version`.
+- LOM audit (2) — `lom_p_over`, `lom_version`.
+- Misc — `war_zone_cv_modifier`, `ceiling_rate`.
+
+**`SSOT_PYDANTIC_STRICT` env semantics clarified**: now defaults to
+`true`. With `extra="forbid"` LIVE the schema raises on its own;
+the env flag governs only whether `validate_score_document` re-raises
+(=true, blocks the batch) or downgrades to a WARN log line (=false,
+emergency observation-only escape hatch). Production should never
+run with the flag false.
+
+**New parity test suite** (`tests/test_score_document_parity.py` —
+5 cases):
+- `test_strict_extras_forbid` — `model_config.extra` MUST be `"forbid"`.
+- `test_every_projected_field_is_declared` — bidirectional key-set
+  check; `_IDENTITY_FIELDS ∪ _SCORE_OUTPUT_FIELDS ∪ _UNIVERSAL_POOL_FIELDS`
+  must be a subset of `ScoreDocument.model_fields`.
+- `test_no_unaccounted_declared_extras` — declared-but-not-projected
+  fields are tracked in an explicit `_ALLOWED_DECLARED_EXTRAS` set
+  (currently 9); growth requires a CHANGELOG entry.
+- `test_required_identity_fields_are_required` — identity +
+  versioning fields cannot be Optional.
+- `test_live_db_has_zero_undeclared_fields` — scans 4,000 live docs;
+  0 undeclared keys.
+
+**Existing test fix** — `TestPydanticWriteContract.test_schema_accepts_valid_doc`
+inverted: previously `ScoreDocument.model_validate({**doc, "some_diagnostic_field": 42})`
+was expected to PASS under `extra="allow"`. Now it MUST raise
+`ValidationError` (Tier F #4 invariant).
+
+**New health probe**: `GET /api/health/score-document-schema-parity`
+— tiny read-only diff returning
+```
+{
+  "parity_ok": true,
+  "extras_setting": "forbid",
+  "declared_count": 235,
+  "projected_count": 226,
+  "missing_declarations": [],
+  "missing_count": 0,
+  "declared_extras": [...9 tracked entries...],
+  "declared_extras_count": 9,
+  "generated_at": "..."
+}
+```
+No scheduler, no writer, no fallback path — purely an in-process
+metadata read.
+
+**Verified**:
+- Dry-run recompute (NBA + MLB) at limits 50, 200, 500 — total ~900
+  prepared docs, **0 ValidationErrors**.
+- Live recompute NBA (limit=20): processed=14, written=14.
+- Live recompute MLB (limit=20): processed=16, written=16.
+- Backend `/var/log/supervisor/backend.err.log` post-flip: zero
+  `SSOT_PYDANTIC` / `score doc failed` entries.
+- All 6 tier endpoints serving picks normally post-flip.
+- **124/124 SSOT tests green** (was 119; +5 new parity tests).
+
+**Remaining SSOT debt** (post-Tier-F):
+- **P0 — Tier G**: drop the `direction` reader-fallback once frontend
+  purges `pick.direction`; writer purge of legacy `edge_pct` /
+  `vk_edge` from DB docs (post-TTL aging-out).
+- **P0 — `dg_cached_board` Option-D phased migration** (3 sessions:
+  dual-write enrichment into `prop_scores`/`master_hub` → reader
+  migration → drop `nba_cached_board`/`mlb_cached_board`).
+- **P1 — `vision_score == 0.0` root-cause** (legit Safe Haven picks
+  hidden by score collapse).
+- **P1 — PP-Only stat-family TP fallback** in `mlb_scoring.py`
+  (derive fair odds from PP alt-line ladder when sportsbook anchors
+  missing).
+- **P1 — Pitcher Strikeouts L20 distribution-derived fallback**.
+- **P2** — collapse `_SCORE_OUTPUT_FIELDS` tuple in favour of
+  `ScoreDocument.model_fields` once one full slate proves parity holds.
+
+
+
 ## 2026-05-04 — SSOT Tier F #3 (Option C): legacy `dg_cached_board*` cleanup
 
 **Decision (per user)**: a full migration off `nba_cached_board` /

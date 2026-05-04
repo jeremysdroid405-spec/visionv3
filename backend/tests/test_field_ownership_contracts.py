@@ -734,14 +734,15 @@ class TestLockedFieldsInventory:
 
 
 class TestPydanticWriteContract:
-    """Tier D: every score doc goes through ScoreDocument.model_validate.
-    Schema runs `extra="allow"` during migration; strict flips on
-    SSOT_PYDANTIC_STRICT=true. LOCKED SSOT fields are typed so type
-    drift is caught at write time."""
+    """Tier D + Tier F #4: every score doc goes through
+    ScoreDocument.model_validate. As of 2026-05-04 the schema is
+    `extra="forbid"` LIVE — silent drift is impossible. LOCKED SSOT
+    fields are typed so type drift is caught at write time."""
 
     def test_schema_accepts_valid_doc(self):
         from services.scoring.score_document_schema import ScoreDocument
         from datetime import datetime, timezone
+        from pydantic import ValidationError
         doc = {
             "canonical_key":  "nba|evt1|Jayson Tatum|PTS|25.5|OVER",
             "sport":          "nba",
@@ -762,8 +763,10 @@ class TestPydanticWriteContract:
         validated = ScoreDocument.model_validate(doc)
         assert validated.canonical_key == doc["canonical_key"]
         assert validated.edge_vs_fair == 0.14
-        # extras=allow — diagnostic fields pass through.
-        ScoreDocument.model_validate({**doc, "some_diagnostic_field": 42})
+        # Tier F #4: extras=forbid — undeclared diagnostic fields
+        # MUST be rejected at write time.
+        with pytest.raises(ValidationError):
+            ScoreDocument.model_validate({**doc, "some_undeclared_field": 42})
 
     def test_schema_rejects_missing_required(self):
         from services.scoring.score_document_schema import ScoreDocument

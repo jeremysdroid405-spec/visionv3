@@ -3,16 +3,20 @@ Pydantic write contract for `{sport}_prop_scores` documents.
 =============================================================
 
 This schema is the single source of truth for what a score document
-may contain. Phase 1 (Tier D, 2026-05-04) runs in **validate-and-log**
-mode: unknown or malformed fields are counted and surfaced at WARN
-level on each write batch, but writes are NOT blocked. A follow-up
-session will flip `SSOT_PYDANTIC_STRICT=true` to raise on violation.
+may contain. As of 2026-05-04 Tier F #4 the schema runs in **strict
+mode** (`extra="forbid"`): any field produced by the scoring
+adapter that has not been declared here causes the write batch to
+raise `ValidationError`. Silent drift (the pre-Tier-F bug class
+that hid `hetero_sigma_*` for two weeks) is structurally impossible
+now.
 
-The schema is derived from the existing `_SCORE_OUTPUT_FIELDS` tuple
-in `prop_scores_store.py`. Both continue to coexist during the
-migration — the tuple is still the projection allowlist, the schema
-is the validator. Once parity is verified for one full slate, the
-tuple can be deleted and replaced by `ScoreDocument.model_fields`.
+The companion key-set parity test
+(`tests/test_score_document_parity.py`) asserts that
+`ScoreDocument.model_fields` mirrors
+`_IDENTITY_FIELDS ∪ _SCORE_OUTPUT_FIELDS ∪ _UNIVERSAL_POOL_FIELDS ∪
+{version_tag, computed_at, scored_at}` from
+`prop_scores_store.py`. Adding a field on one side without the
+other will fail CI.
 """
 from __future__ import annotations
 
@@ -25,7 +29,14 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 logger = logging.getLogger(__name__)
 
-SSOT_PYDANTIC_STRICT = os.environ.get("SSOT_PYDANTIC_STRICT", "false").lower() == "true"
+SSOT_PYDANTIC_STRICT = os.environ.get("SSOT_PYDANTIC_STRICT", "true").lower() == "true"
+# 2026-05-04 Tier F #4: with `extra="forbid"` LIVE, the schema itself
+# raises `ValidationError` on any unknown field. The env flag now
+# governs ONE thing: whether `validate_score_document` re-raises
+# (=true, blocks the write batch) or downgrades to a WARN log line
+# (=false, observation-only). Default is true so production is
+# always strict; setting it to false is an emergency escape hatch
+# only.
 
 
 class ScoreDocument(BaseModel):
@@ -47,21 +58,14 @@ class ScoreDocument(BaseModel):
     """
 
     model_config = ConfigDict(
-        # 2026-05-04 Tier D: `extra="allow"` during the migration
-        # phase — the scoring adapters produce ~150+ fields, many of
-        # which are audit/diagnostic outputs that `_project_score_doc`
-        # deliberately drops but which still pass through Pydantic
-        # before the drop. Strictly `forbid`-ing extras here would
-        # either (a) require enumerating every diagnostic field
-        # across NBA + MLB adapters, or (b) force a pipeline refactor
-        # that decouples adapter-output from persistable-write.
-        # Deferred to Tier E (`SSOT_PYDANTIC_STRICT=true` will flip
-        # this to "forbid" once the persist-boundary is cleaned).
-        # Today the schema still delivers strong value: every
-        # LOCKED SSOT field has a typed declaration so type drift
-        # (int/str/None mismatch) is caught at write time — the
-        # primary Tier D-motivating bug class.
-        extra="allow",
+        # 2026-05-04 Tier F #4: flipped from `extra="allow"` to
+        # `extra="forbid"`. Every projected score-doc field is now
+        # explicitly declared on this model. Any adapter/projector
+        # that adds a field without also declaring it here will fail
+        # at write time — silent drift is impossible. The
+        # `tests/test_score_document_parity.py` declared-vs-projected
+        # parity guard locks this invariant in CI.
+        extra="forbid",
         arbitrary_types_allowed=True,
         str_strip_whitespace=False,  # never silently mutate values
     )
@@ -254,19 +258,166 @@ class ScoreDocument(BaseModel):
     l20_rate:                   Optional[float] = None
     consistency_band:           Optional[str]   = None
 
+    # ── Tier F #4 (2026-05-04): 108-field backfill for `extra="forbid"` flip ─
+    # These are all fields that `_SCORE_OUTPUT_FIELDS` projects today but
+    # were missing from the original Pydantic declaration set. Types are
+    # derived from the inline comments in `prop_scores_store.py` and from
+    # adapter output shapes. All are Optional because any given pick may
+    # not compute every signal. Grouped by domain for readability — order
+    # has no effect on Pydantic validation.
+
+    # Distribution probability layer (2026-04-27)
+    distribution_p_over:              Optional[float] = None
+    distribution_p_under:             Optional[float] = None
+    distribution_kind:                Optional[str]   = None
+    distribution_selector_reason:     Optional[str]   = None
+    distribution_sigma:               Optional[float] = None
+    distribution_sigma_source:        Optional[str]   = None
+    distribution_clamped:             Optional[bool]  = None
+    distribution_effective_mu:        Optional[float] = None
+    distribution_mu_floor_applied:    Optional[bool]  = None
+    distribution_mu_floor_capped:     Optional[bool]  = None
+    distribution_cv_floor_applied:    Optional[bool]  = None
+    distribution_lambda:              Optional[float] = None
+    distribution_threshold:           Optional[float] = None
+    distribution_dispersion_r:        Optional[float] = None
+    distribution_p_param:             Optional[float] = None
+
+    # ECDF / calibration audit (2026-04-24)
+    ecdf_p_over:                       Optional[float] = None
+    ecdf_bucket:                       Optional[int]   = None
+    ecdf_bucket_n:                     Optional[int]   = None
+    ecdf_version:                      Optional[str]   = None
+    raw_gaussian_p_over:               Optional[float] = None
+    isotonic_p_over:                   Optional[float] = None
+    probability_method:                Optional[str]   = None
+    probability_calibration_applied:   Optional[bool]  = None
+    raw_p_over:                        Optional[float] = None
+    projection_intercept_applied:      Optional[bool]  = None
+    projection_intercept_delta:        Optional[float] = None
+    pre_intercept_projection:          Optional[float] = None
+
+    # NBA availability guard (2026-04-27)
+    availability_guard_applied:        Optional[bool]  = None
+    availability_status:               Optional[str]   = None
+    availability_sub_status:           Optional[str]   = None
+    availability_guard_reason:         Optional[str]   = None
+    dnp_risk_flag:                     Optional[bool]  = None
+    injury_return_flag:                Optional[bool]  = None
+    minutes_restriction_flag:          Optional[bool]  = None
+    minutes_restriction_factor:        Optional[float] = None
+    minutes_recovery_ratio:            Optional[float] = None
+    games_missed_recently:             Optional[int]   = None
+    return_game_number:                Optional[int]   = None
+    normal_minutes:                    Optional[float] = None
+    expected_minutes:                  Optional[float] = None
+    expected_minutes_raw:              Optional[float] = None
+    mu_before_availability_guard:      Optional[float] = None
+    mu_after_availability_guard:       Optional[float] = None
+
+    # NBA rate × minutes layer (2026-04-28)
+    rate_model_applied:                Optional[bool]  = None
+    rate_pts_per_min:                  Optional[float] = None
+    rate_reb_per_min:                  Optional[float] = None
+    rate_ast_per_min:                  Optional[float] = None
+    mu_rate_projection:                Optional[float] = None
+    mu_model_projection:               Optional[float] = None
+    mu_final_projection:               Optional[float] = None
+    rate_model_blend_weights:          Optional[Dict[str, Any]] = None
+    rate_model_blend_mode:             Optional[str]   = None
+    rate_model_trigger:                Optional[str]   = None
+
+    # NBA recency μ blend (PTS / PRA)
+    mu_recency_blended:                Optional[float] = None
+    mu_recency_blend_l3:               Optional[float] = None
+    mu_recency_blend_l5:               Optional[float] = None
+    mu_recency_blend_l10_median:       Optional[float] = None
+    mu_recency_blend_l20:              Optional[float] = None
+    mu_recency_blend_weights:          Optional[Dict[str, Any]] = None
+    mu_minutes_regression_applied:     Optional[bool]  = None
+    mu_minutes_regression_factor:      Optional[float] = None
+    mu_minutes_l3:                     Optional[float] = None
+    mu_minutes_l10:                    Optional[float] = None
+    mu_raw_model_projection:           Optional[float] = None
+
+    # NBA shadow projections (E + VK2 PTS + REB/AST shadow rates) — AUDIT-ONLY
+    mu_recency_E:                      Optional[float] = None
+    mu_recency_E_applied:              Optional[bool]  = None
+    delta_mu_E_vs_A:                   Optional[float] = None
+    mu_recency_E_l3:                   Optional[float] = None
+    mu_recency_E_l10:                  Optional[float] = None
+    mu_recency_E_l10med:               Optional[float] = None
+    mu_pts_vk2:                        Optional[float] = None
+    mu_pts_vk2_applied:                Optional[bool]  = None
+    delta_mu_pts_vk2_vs_vk1:           Optional[float] = None
+    mu_rate_reb_shadow:                Optional[float] = None
+    mu_rate_reb_shadow_applied:        Optional[bool]  = None
+    delta_mu_rate_reb_shadow_vs_current: Optional[float] = None
+    rate_reb_per_min_shadow:           Optional[float] = None
+    mu_rate_ast_shadow:                Optional[float] = None
+    mu_rate_ast_shadow_applied:        Optional[bool]  = None
+    delta_mu_rate_ast_shadow_vs_current: Optional[float] = None
+    rate_ast_per_min_shadow:           Optional[float] = None
+    expected_minutes_shadow:           Optional[float] = None
+
+    # NBA Phase 2 heteroscedastic σ (2026-05-02) — extends the
+    # `hetero_sigma_base` / `hetero_sigma_multiplier` already declared.
+    hetero_sigma_adjusted:             Optional[float] = None
+    hetero_sigma_multipliers:          Optional[Dict[str, Any]] = None
+
+    # NBA per-stat projection debias (2026-05-02)
+    projection_raw_pre_debias:         Optional[float] = None
+    projection_debias_amount:          Optional[float] = None
+    projection_debias_source:          Optional[str]   = None
+
+    # NBA RFA-only minutes penalty (2026-04-29)
+    rfa_minutes_penalty_applied:       Optional[bool]  = None
+    rfa_minutes_penalty_factor:        Optional[float] = None
+    expected_minutes_before_rfa_penalty: Optional[float] = None
+    expected_minutes_after_rfa_penalty:  Optional[float] = None
+
+    # MLB Empirical-Bayes shrinkage (2026-04-24, zero-heavy stats)
+    eb_shrunk_projection:              Optional[float] = None
+    eb_player_career_mean:             Optional[float] = None
+    eb_weight_model:                   Optional[float] = None
+    eb_weight_player:                  Optional[float] = None
+    eb_shrinkage_applied:              Optional[bool]  = None
+    eb_skip_reason:                    Optional[str]   = None
+    eb_career_sample_n:                Optional[int]   = None
+    raw_hf_projection:                 Optional[float] = None
+
+    # MLB pitcher / batter μ overrides (2026-04-27)
+    mu_pitcher_workload_anchored:      Optional[float] = None
+    mu_active_baseline_applied:        Optional[bool]  = None
+    mu_active_baseline_value:          Optional[float] = None
+    expected_ip_used:                  Optional[float] = None
+    projection_model_version:          Optional[str]   = None
+
+    # LOM audit
+    lom_p_over:                        Optional[float] = None
+    lom_version:                       Optional[str]   = None
+
+    # War Zone CV scoring modifier (2026-04-22)
+    war_zone_cv_modifier:              Optional[float] = None
+
+    # Ceiling rate (PR-2, 2026-04-25, MLB war_zone)
+    ceiling_rate:                      Optional[float] = None
+
 
 def validate_score_document(doc: Dict[str, Any]) -> Optional[str]:
-    """Validate a single score doc against the Pydantic contract.
+    """Validate a single score doc against the strict Pydantic contract.
 
-    Returns `None` on success. On failure:
-      - SSOT_PYDANTIC_STRICT=true  → re-raises ValidationError.
-      - SSOT_PYDANTIC_STRICT=false → logs WARN and returns a
-        concise error string (caller tallies these for batch-level
-        summary).
+    `ScoreDocument.model_config.extra == "forbid"` is the structural
+    invariant. Returns `None` on success. On failure:
+      - SSOT_PYDANTIC_STRICT=true (default, production)  → re-raises
+        ValidationError so the write batch aborts loudly.
+      - SSOT_PYDANTIC_STRICT=false (escape hatch)        → logs WARN
+        and returns a concise error string (caller tallies these
+        for batch-level summary).
 
-    This is intentionally cheap. The default mode is observational
-    so we can bake the schema against real slates without risk;
-    flipping the env flag later gives us the strict enforcement.
+    The escape-hatch mode is only for emergency rollback (e.g. an
+    adapter regression slipped past CI and prod is down); steady
+    state is always strict.
     """
     try:
         ScoreDocument.model_validate(doc)

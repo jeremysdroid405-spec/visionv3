@@ -47,11 +47,15 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
   - This session: dropped orphaned `dg_cached_board_temp` (122 docs, last write 2026-04-23, zero active readers/writers), removed the `board_cache_temp` mapping + `BOARD_CACHE_TEMP_NBA` constant + `server.py` startup index-creation call so it cannot be recreated, renamed `self.dg_cached_board` → `self.cached_board` in `board_intelligence_engine.py`, and migrated every misleading "live data source" docstring/comment to the canonical `nba_cached_board` name.
   - New regression test `TestDgCachedBoardRetired` (4 cases): asserts both legacy collections are absent in Mongo, live cached_board collections still exist, and a static AST-style scan finds zero `db["dg_cached_board*"].find/.update/...` patterns in non-archive/non-test code.
   - **119/119 tests green.** Architecture clearly documented: `dg_cached_board*` is gone forever; `nba_cached_board` / `mlb_cached_board` remain live until Option-D phased migration.
-- **SSOT Tier F #4 (2026-05-04) — `ScoreDocument` `extra="forbid"` readiness check (NO FLIP YET):**
-  - Schema currently `extra="allow"`; `SSOT_PYDANTIC_STRICT=true` env is a no-op against extras-rejection.
-  - Inventory: 127 fields declared / 226 fields projected by `_project_score_doc` / **108 projected-but-undeclared** / **0 live-DB undeclared** fields. The projection allowlist filters before Pydantic, so the live DB has zero pollution.
-  - Risk: flipping `extra="forbid"` today would fail every NBA+MLB write batch with 108 ValidationErrors per doc until declarations are added. **Not safe to flip without preparation.**
-  - Detailed report saved to `/app/memory/SSOT_TIER_F4_READINESS.md` with field-by-field domain grouping, recommended 5-step prep flow (declarations → parity test → flip → dry-run smoke → env cleanup), and ~1-hour effort estimate.
+- **SSOT Tier F #4 (2026-05-04) — `ScoreDocument` strict mode LIVE:**
+  - Flipped `model_config.extra` from `"allow"` → `"forbid"`. Silent score-doc field drift is now structurally impossible.
+  - Added 108 `Optional[…] = None` declarations grouped by domain (distribution probability layer, ECDF/calibration, NBA availability guard, NBA rate × minutes, NBA recency μ blend, NBA shadow projections, hetero σ, per-stat debias, RFA minutes, MLB Empirical-Bayes, MLB pitcher/batter μ overrides, LOM audit, war-zone CV, ceiling rate).
+  - `SSOT_PYDANTIC_STRICT` env default flipped to `true`; semantics clarified — with `extra="forbid"` LIVE the schema raises on its own, the env flag governs only the `validate_score_document` re-raise vs WARN-and-continue mode (latter is an emergency escape hatch).
+  - New parity-guard suite (`tests/test_score_document_parity.py`, 5 cases): `extra="forbid"` lock, projected ⊆ declared, declared-extras count tracked in `_ALLOWED_DECLARED_EXTRAS` (currently 9), required-fields check, live-DB scan finds 0 undeclared on 4,000 docs.
+  - Fixed `test_schema_accepts_valid_doc` inversion — undeclared fields now MUST raise `ValidationError`.
+  - New `/api/health/score-document-schema-parity` read-only probe — returns `parity_ok`, `extras_setting`, `declared_count`, `projected_count`, `missing_declarations`, `declared_extras`. Zero schedulers / writers.
+  - Verified: ~900 prepared docs through dry-run NBA+MLB at multiple limits — 0 ValidationErrors. Live recompute NBA(20)/MLB(20) wrote 30/30 docs. Backend logs clean post-flip. **124/124 tests green.**
+  - **Six-tier SSOT campaign complete.** Score-doc write boundary is now strictly typed and CI-locked.
 
 ## Open issues (priority)
 - **P0** Vision Intel universal refactor — full scope in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`. Nullification phase shipped (Phase 2); engine refactor remains.

@@ -678,3 +678,55 @@ async def health_active_transitions(
             "sport":        sport,
             "window_hours": hours,
         }
+
+
+
+# ---------------------------------------------------------------------------
+# SSOT Tier F #4 — score-document schema parity probe
+# ---------------------------------------------------------------------------
+#
+# Tiny read-only diff between the Pydantic `ScoreDocument` declaration
+# and the writer's `_project_score_doc` allowlist. Returns 200 with a
+# `parity_ok` boolean so ops dashboards / CI can fail fast if a future
+# adapter regression reopens the silent-drift gap.
+#
+# No scheduler, no writer, no fallback behaviour — the endpoint is a
+# pure read of in-process metadata.
+@router.get("/score-document-schema-parity")
+async def score_document_schema_parity() -> Dict[str, Any]:
+    try:
+        from services.scoring.score_document_schema import ScoreDocument
+        from services.scoring.prop_scores_store import (
+            _IDENTITY_FIELDS,
+            _SCORE_OUTPUT_FIELDS,
+            _UNIVERSAL_POOL_FIELDS,
+        )
+    except Exception as exc:  # pragma: no cover
+        return {
+            "parity_ok": False,
+            "error": f"import_failed: {exc!r}",
+            "generated_at": _now().isoformat(),
+        }
+
+    declared = set(ScoreDocument.model_fields.keys())
+    projected = (
+        set(_IDENTITY_FIELDS)
+        | set(_SCORE_OUTPUT_FIELDS)
+        | set(_UNIVERSAL_POOL_FIELDS)
+        | {"version_tag", "computed_at", "scored_at"}
+    )
+    missing_decls = sorted(projected - declared)
+    declared_extras = sorted(declared - projected)
+    extra_setting = ScoreDocument.model_config.get("extra")
+    return {
+        "parity_ok":               not missing_decls and extra_setting == "forbid",
+        "extras_setting":          extra_setting,
+        "declared_count":          len(declared),
+        "projected_count":         len(projected),
+        "missing_declarations":    missing_decls,
+        "missing_count":           len(missing_decls),
+        "declared_extras":         declared_extras,
+        "declared_extras_count":   len(declared_extras),
+        "generated_at":            _now().isoformat(),
+    }
+
