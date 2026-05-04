@@ -860,11 +860,24 @@ async def _enrich_nba_momentum(db) -> dict:
                 cb_bulk[i : i + CHUNK], ordered=False
             )
 
+    # 2026-05-04 SSOT: surface skip reasons + coverage at INFO so
+    # missing-momentum coverage is observable post-run. Per
+    # FIELD_OWNERSHIP.md:momentum_data the writer is the single owner
+    # for this field; emitting the bucketed counters here is the only
+    # source of truth for "why did N rows not get a momentum chip".
+    coverage_pct = (
+        round(metrics['props_enriched'] / metrics['props_total'] * 100.0, 2)
+        if metrics.get('props_total') else 0.0
+    )
+    skip_breakdown = {k: v for k, v in skip.items() if v}
     logger.info(
-        f"[MASTER_SYNC:nba] momentum_enrichment: enriched="
-        f"{metrics['props_enriched']}/{metrics['props_total']} "
+        f"[MASTER_SYNC:nba] momentum_enrichment: total_candidates="
+        f"{metrics['props_total']} enriched_count={metrics['props_enriched']} "
+        f"skipped_count={metrics['props_skipped']} "
+        f"coverage_pct={coverage_pct} "
         f"pairs={metrics['pairs_computed']}/{metrics['pairs_total']} "
-        f"skipped={metrics['props_skipped']}"
+        f"cached_board_updates={metrics.get('cached_board_updates', 0)} "
+        f"skip_reasons={skip_breakdown}"
     )
     return metrics
 

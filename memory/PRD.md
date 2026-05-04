@@ -60,6 +60,12 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
   - Single-function patch in `backend/services/scoring/recompute.py::_apply_vision_score_normalization`: when v1 percentile collapses to 0.0 (negative-edge picks) AND `vision_score_v2 > 0`, substitute v2 into `vision_score`. Picks with v1>0 keep their slate-percentile so `vision_score_gate` selectivity (calibrated to v1's `min: 80` SH / `min: 60` WZ) is unchanged.
   - First attempt (unconditional v2 promotion) collapsed NBA Safe Haven / War Zone counts to 0/0; reverted to narrow form per user direction.
   - Result on `final-nba-rt`: Safe Haven 0→12, War Zone 0→8, Front Lines 48 unchanged. `vision_score==0.0` 860→249. Maxey/Harden/Embiid PRA / Dylan Harper now pass gates with vs ≥86. **135/135 tests green; API smoke NBA SH=7 FL=12 WZ=6, MLB SH=10 FL=13 WZ=9.**
+- **`momentum_data` SSOT registration (2026-05-04) — NBA only, bounded patch:**
+  - Added FieldSpec entry to `services/field_ownership/registry.py`: owner=`prop_scores`, writer=`master_sync._enrich_nba_momentum`, fallback=NONE, null_policy=return_null, with full join-chain documentation (`bdl_player_id → master_hub.team_abbr → opponent_abbr → defensive_momentum_cache`).
+  - Declared `momentum_data: Optional[Dict[str, Any]] = None` on `ScoreDocument` (was implicit through `_SCORE_OUTPUT_FIELDS` only); added to `_ALLOWED_DECLARED_EXTRAS` since the writer is `master_sync` post-recompute, not the projector.
+  - `_enrich_nba_momentum` INFO log extended: `total_candidates`, `enriched_count`, `skipped_count`, `coverage_pct`, bucketed `skip_reasons` (no_bdl_id, no_team_lookup, no_event_match, no_canonical_key, no_stat_type, team_not_in_event, momentum_calc_failed). Skip-reason counters were pre-existing; only the surfacing changed.
+  - Live: NBA coverage 99.1 % → **99.42 %** (14 missing, all `no_bdl_id`). `/api/health/score-document-schema-parity` reports `parity_ok=true`, declared_extras count 9 → 10. **123/123 tests green.**
+  - **Out of scope** (documented in registry notes as missing feature, not bug): MLB momentum writer, `nba_cached_board.props[]` mirror coverage (~88.6 %), dedicated `/api/health/sync` momentum section.
 
 ## Open issues (priority)
 - **P0** Vision Intel universal refactor — full scope in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`. Nullification phase shipped (Phase 2); engine refactor remains.

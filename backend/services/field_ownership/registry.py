@@ -275,6 +275,51 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         frontend_display="required field; fail_loud if missing",
         status="enforced",
     ),
+    "momentum_data": FieldSpec(
+        name="momentum_data",
+        owner_collection="prop_scores",
+        owner_field="momentum_data",
+        writers=[
+            "services/master_sync.py:_enrich_nba_momentum",
+        ],
+        readers_allowed=[
+            "routes/player.py:get_player_with_badges",
+            "routes/ferrari_tiers.py:*",
+            "services/picks_getter_service.py:*",
+        ],
+        fallback_policy="NONE",
+        null_policy="return_null",
+        frontend_display="momentum chip suppressed when missing",
+        status="documented",
+        notes=(
+            "2026-05-04 SSOT registration: NBA-only display-layer "
+            "field carrying the defensive-momentum chip "
+            "(modifier, season_rank, l10_rank, narrative). "
+            "Owner write path is `_enrich_nba_momentum` running as "
+            "the post-recompute master_sync hook. "
+            "Join chain: `nba_prop_scores.bdl_player_id` → "
+            "`nba_master_hub_2026.team_abbr` → opponent_abbr (from "
+            "`nba_live_props.event_id` × home/away) → "
+            "`defensive_momentum_cache(team_abbr, stat_canon)`. "
+            "Stamped value comes from "
+            "`DefensiveMomentumService.calculate_momentum_modifier`. "
+            "Coverage SLA: 'high' — typically ~99% on "
+            "`nba_prop_scores`. Missing rows are EXPECTED for "
+            "players whose master-hub row is missing `bdl_id` or "
+            "`team_abbr` (skip_reason=`no_bdl_id` / `no_team_lookup`) "
+            "and for off-night players. The mirror into "
+            "`nba_cached_board.props[]` runs in the same enricher "
+            "(Step F) and tracks separately at ~88% because it "
+            "additionally depends on cached_board freshness. "
+            "MLB equivalent NOT IMPLEMENTED — `mlb_defensive_momentum_cache` "
+            "exists as an empty collection; building the MLB writer "
+            "is a tracked missing feature, not a bug. "
+            "Skip-reason counters surfaced at INFO level by the "
+            "writer; no /api/health/sync section yet — extend that "
+            "probe in a follow-up if dashboarding is needed."
+        ),
+    ),
+
     "odds_type": FieldSpec(
         name="odds_type",
         owner_collection="pp_multiplier_lab",

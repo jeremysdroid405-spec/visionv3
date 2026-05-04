@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-05-04 — `momentum_data` SSOT registration (NBA only)
+
+Bounded SSOT patch following the Defensive Momentum coverage audit. Three files changed; no writer math, no fallbacks, no gates touched.
+
+**Files changed**
+- `backend/services/field_ownership/registry.py` — new `momentum_data` FieldSpec entry: owner_collection=`prop_scores`, writer=`master_sync._enrich_nba_momentum`, fallback=NONE, null_policy=return_null, status=documented. Documents the join chain (`bdl_player_id → master_hub.team_abbr → opponent_abbr → defensive_momentum_cache`) and explicitly flags MLB momentum as a **missing feature**, not a bug.
+- `backend/services/scoring/score_document_schema.py` — explicit `Optional[Dict[str, Any]] = None` declaration for `momentum_data`. The field had been incidental through `_SCORE_OUTPUT_FIELDS` only; now Pydantic write contract recognizes it.
+- `backend/tests/test_score_document_parity.py` — `momentum_data` added to `_ALLOWED_DECLARED_EXTRAS` (declared on schema, but written by `master_sync._enrich_nba_momentum` post-recompute, not by the projector — same allowlist mechanism used by the 9 pre-existing tracked extras).
+- `backend/services/master_sync.py::_enrich_nba_momentum` — extended INFO summary to include `total_candidates`, `enriched_count`, `skipped_count`, `coverage_pct`, and bucketed `skip_reasons={'no_bdl_id': N, 'no_team_lookup': N, 'no_event_match': N, 'no_canonical_key': N, 'no_stat_type': N, 'team_not_in_event': N, 'momentum_calc_failed': N, ...}`. Replaces the prior compact log line.
+
+**Live verification (NBA)**
+```
+[MASTER_SYNC:nba] momentum_enrichment: total_candidates=2404
+  enriched_count=2390 skipped_count=14 coverage_pct=99.42
+  pairs=83/83 cached_board_updates=751 skip_reasons={'no_bdl_id': 14}
+```
+- Coverage: 99.1 % → **99.42 %** (skipped 22 → 14 — the pre-existing audit had run before tonight's master-hub bdl_id refresh).
+- All 14 skipped rows carry skip_reason=`no_bdl_id` (master-hub row missing `bdl_id` for those players); `no_team_lookup` count is now 0.
+- /api/health/score-document-schema-parity: `parity_ok=true`, `extras_setting="forbid"`, `declared_extras_count=10` (was 9; +momentum_data).
+
+**Tests**: 123 passed / 4 skipped / 0 failed across `test_score_document_parity`, `test_field_ownership_contracts`, `test_hit_rate_canonical`, `test_card_contract_hr_trio`, `test_player_detail_hr_trio`, `test_hit_profile`, `test_contract_enforcer`.
+
+**Out of scope (explicitly documented as future work, not bugs)**:
+- MLB defensive momentum writer (`mlb_defensive_momentum_cache` exists but is empty; no MLB enricher running).
+- `nba_cached_board.props[]` momentum mirror coverage (~88.6 %) — Option-D phased migration territory; not touched per directive.
+- `/api/health/sync` does not yet have a `momentum` section — left as a follow-up if dashboarding is needed.
+
+
+
 ## 2026-05-04 — `vision_score == 0.0` false-zero fix (NARROW Path B promotion)
 
 **Problem**: Legitimate Safe Haven candidates (Tyrese Maxey 3PM 1.5 OVER,

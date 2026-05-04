@@ -64,6 +64,14 @@ _ALLOWED_DECLARED_EXTRAS: Set[str] = {
     "l10_rate",
     "l20_rate",
     "stability_half_line",
+    # 2026-05-04: `momentum_data` is declared on ScoreDocument so the
+    # `extra="forbid"` write contract accepts it, but it is NOT
+    # stamped by the recompute projector — the writer is
+    # `services/master_sync.py::_enrich_nba_momentum`, which
+    # bulk-writes `$set: momentum_data` AFTER recompute completes.
+    # Field ownership is registered at
+    # `field_ownership/registry.py:momentum_data`.
+    "momentum_data",
 }
 
 

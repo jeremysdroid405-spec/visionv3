@@ -403,6 +403,19 @@ class ScoreDocument(BaseModel):
     # Ceiling rate (PR-2, 2026-04-25, MLB war_zone)
     ceiling_rate:                      Optional[float] = None
 
+    # ── 2026-05-04: explicit declaration of `momentum_data`. ──
+    # The field already flowed through via `_SCORE_OUTPUT_FIELDS`,
+    # but Tier F #4's parity guard now demands a typed declaration
+    # AND the FIELD_OWNERSHIP registry registers `prop_scores.momentum_data`
+    # as the owner column. Declared here as an Optional Dict to match
+    # the writer in `services/master_sync.py::_enrich_nba_momentum`
+    # (the dict shape is the `MomentumProfile.to_dict()` payload —
+    # modifier / season_rank / l10_rank / narrative + audit fields).
+    # `None` is the legitimate value for any prop where the master-hub
+    # join failed (skip_reason=no_bdl_id / no_team_lookup) or where
+    # the cache pair was absent — frontend suppresses the chip.
+    momentum_data:                     Optional[Dict[str, Any]] = None
+
 
 def validate_score_document(doc: Dict[str, Any]) -> Optional[str]:
     """Validate a single score doc against the strict Pydantic contract.
