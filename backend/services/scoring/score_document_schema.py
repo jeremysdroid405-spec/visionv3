@@ -197,6 +197,13 @@ class ScoreDocument(BaseModel):
     hetero_sigma_base:       Optional[float] = None
     hetero_sigma_multiplier: Optional[float] = None
 
+    # ── TTL marker (2026-05-04 Tier F) ──────────────────────────
+    # Present ONLY on docs whose version_tag is NOT in
+    # _LIVE_VERSION_TAGS. Mongo's partial-ish TTL sees the field and
+    # expires the doc 7 days after its value. Live docs never carry
+    # this field and are immune by absence.
+    ttl_at: Optional[Any] = None
+
     # ── Persisted score-doc fields (added post initial schema) ───
     # These are all fields the NBA/MLB scoring adapters produce and
     # that `_project_score_doc` stamps onto the persisted doc today.

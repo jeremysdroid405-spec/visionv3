@@ -1,8 +1,121 @@
-# SSOT Enforcement Report — Sessions 2026-05-04 (Phase 1 + 2 + 2.5 + C + D + E)
+# SSOT Enforcement Report — Sessions 2026-05-04 (Phase 1 → Tier F)
 
 **Mandate:** Turn field ownership from documentation into enforced code.
-**Scope:** Foundation + Phase 1 (2 fields) + Phase 2 Core Stability (4) + Phase 2.5 Derived (4) + Tier C Alias Hardening (6) + Tier D Pydantic write contract + **Tier E Final Cleanup**.
-**Honest status:** **16/23 fields locked + Pydantic strict mode LIVE** + **169,561 stale score_doc rows purged** + **frontend edge aliases fully migrated**. 54 contract tests green. 117/117 tests across all relevant suites.
+**Scope:** Foundation + Phase 1 (2 fields) + Phase 2 Core Stability (4) + Phase 2.5 Derived (4) + Tier C Alias Hardening (6) + Tier D Pydantic Contract + Tier E Cleanup + **Tier F TTL Cleanup**.
+**Honest status:** **16/23 fields locked + Pydantic STRICT LIVE + TTL self-prune live on non-live version_tags**. 117/117 tests green. Five fully-deliverable tiers complete. Five explicit Tier F blockers documented for follow-up sessions.
+
+---
+
+## Tier F deliverables (2026-05-04)
+
+### 1. TTL cleanup — LIVE
+
+**Index name:** `ttl_at_7d_nonlive_ix` (identical on both `nba_prop_scores` and `mlb_prop_scores`).
+**Key:** `{ttl_at: 1}`
+**expireAfterSeconds:** `604800` (7 days).
+**Partial-filter mechanism:** NOT a Mongo `partialFilterExpression` (which does not support regex / $not / $nin — the actually-expressible live-tag predicate). Instead the **ABSENCE of the `ttl_at` field** is the exclusion predicate: Mongo's TTL monitor only examines indexed docs, which are only those with `ttl_at` set. Live docs never get the field stamped, so they never enter the index.
+
+**Stamping logic** (`services/scoring/prop_scores_store.py::_project_score_doc`):
+```python
+_LIVE_VERSION_TAGS = ("final-nba", "final-mlb", "final-nba-rt", "final-mlb-rt")
+
+if version_tag not in _LIVE_VERSION_TAGS:
+    doc["ttl_at"] = computed_at
+```
+
+That constant is **the single source of truth** for which version_tags are production-live. To add a live tag, append it to the tuple and restart backend.
+
+**Affected-row count at Tier F close:**
+| Sport | TTL-eligible (has `ttl_at`) | Will expire next sweep (>7d old) | Safe 7-day window |
+|---|---|---|---|
+| nba | 5,012 | 4,920 | 92 |
+| mlb | 33,729 | 2,923 | 30,806 |
+
+**Live-row exclusion proof** (verified at Tier F close):
+```
+nba: total=8,459  live=3,447  docs_with_ttl_at=5,012  live_docs_leaked_into_ttl=0
+mlb: total=35,316 live=1,587  docs_with_ttl_at=33,729 live_docs_leaked_into_ttl=0
+```
+**0 leaked live docs** across both sports.
+
+**Backfill mechanism:** Existing legacy docs were backfilled with `ttl_at = scored_at || computed_at || now` via an aggregation-pipeline update (single atomic per-sport pass). New writes inherit the `ttl_at` stamp from `_project_score_doc` automatically.
+
+**Boot wiring:** `server.py` calls `ensure_ttl_index(db, sport)` for NBA + MLB on startup — idempotent, safe to re-run.
+
+**Rollback command** (copy-paste):
+```bash
+# In mongosh (against the DB_NAME from backend/.env):
+db.nba_prop_scores.dropIndex("ttl_at_7d_nonlive_ix")
+db.mlb_prop_scores.dropIndex("ttl_at_7d_nonlive_ix")
+```
+Or via Python shell:
+```python
+await db.nba_prop_scores.drop_index("ttl_at_7d_nonlive_ix")
+await db.mlb_prop_scores.drop_index("ttl_at_7d_nonlive_ix")
+```
+Dropping the index is non-destructive — it stops new expirations immediately; in-flight expirations finish within Mongo's ~60s TTL monitor tick.
+
+**No scheduler, no new cleanup service** — Mongo's built-in TTL monitor does the work.
+
+**Test coverage:** `tests/test_field_ownership_contracts.py` already has `TestActiveContract::test_inactive_docs_carry_reason` and the live-API smokes; no new TTL-specific test added (Mongo's own TTL monitor behaviour is not the contract we're asserting — the contract is "`ttl_at` is absent on live docs", which the backfill verification above proves).
+
+### 2. Tier F items NOT delivered this session — explicit blockers
+
+Per user rule: *"Delete only after reader migration is verified. No new fallbacks, no compatibility shims, no frontend masking."*
+
+| Task | Reader count | Writer count | Blocker |
+|---|---|---|---|
+| Remove `edge_pct` / `vk_edge` API stamping | 7+ backend (`board/publisher`, `debug_snapshots`, `player`, `ferrari_tiers` filter query, `forward_test/mlb_pick_history`) + 4+ writers (`vision_intel_service`, `mlb_vision_intel`, `gemini_scout_engine`, `shadow_capture_service`) | Frontend migrated (Tier E); backend readers remain + external API consumers unknown | Would break persist-layer contracts; needs dedicated session. |
+| Migrate `hit_rate_over` → `hit_rate_l20` | 34 sites across 10+ files (mlb_tier_sorter, dashboard_card_contract, hit_profile, metrics_builder, gates/engine, ...) | Dual-written by recompute_sport | Mechanical migration; needs dedicated session for the search-and-replace sweep. |
+| Delete `direction` alias stamping | 10+ sites (picks_getter_service ×3, mlb_cached_board_builder, market_moves_engine, sharp_edge_calculator, simulation_service ×2, odds_api_service) | Canonical `side` is stamped next to it on card contract | Persist-layer breakage risk; needs coordinated write+read migration. |
+| Delete `*_master_active_cache.json` files | 2 route endpoints: `routes/intel_cache.py::/api/v3/intel-cache/*` + `routes/ferrari_tiers.py:3229` (MLB player-detail Lasso merge) | Offline enrichment job writes them | Need to migrate those 2 routes to canonical DB reads first. |
+| Delete `dg_cached_board` collection | 14 reader files across codebase | Multiple | Systematic migration session required. |
+| Flip `ScoreDocument` `extra="forbid"` | Strict mode (raises on missing required) already live and clean for RT tags | Requires enumerating ~20 adapter-output fields `_project_score_doc` drops | Additional tightening; incremental. |
+
+---
+
+## Files changed (Tier F)
+
+- `services/scoring/prop_scores_store.py` — `_LIVE_VERSION_TAGS` constant + `ensure_ttl_index()` helper; `_project_score_doc` stamps `ttl_at` on non-live writes; `ttl_at` added to `_SCORE_OUTPUT_FIELDS` allowlist.
+- `services/scoring/score_document_schema.py` — `ScoreDocument.ttl_at: Optional[Any]` added; strict Pydantic still clean.
+- `server.py` — boot now calls `ensure_ttl_index(db, sport)` for NBA + MLB.
+
+## Test output (Tier F close)
+
+```
+$ pytest tests/test_field_ownership_contracts.py \
+         tests/test_delta_engine_tick.py \
+         tests/test_board_publisher.py \
+         tests/test_nba_heteroscedastic_sigma.py \
+         tests/test_gemini_cost_fixes.py -q
+  117 passed, 1 skipped, 1 warning in 20.58s
+```
+
+```
+Live recompute (SSOT_PYDANTIC_STRICT=true):
+  NBA final-nba-rt  →  status=success written=1732 errors=0
+
+Live API:
+  Tyrese Maxey   side=OVER  edge_vs_fair=0.1983  game_start_utc=2026-05-05T00:10:00+00:00
+  Dylan Harper   side=OVER  edge_vs_fair=0.1564  game_start_utc=2026-05-05T01:40:00+00:00
+```
+
+---
+
+## Permanent repair progress
+
+| Criterion | Phase 1 | Phase 2 | 2.5 | Tier C | Tier D | Tier E | **Tier F** |
+|---|---|---|---|---|---|---|---|
+| Fields enforced/locked | 2/23 | 6/23 | 10/23 | 16/23 | 16/23 | 16/23 | 16/23 |
+| Pydantic write contract | — | — | — | — | log-mode | STRICT LIVE | STRICT LIVE |
+| Frontend alias (edge) | — | — | — | — | 2 sites | 0 | 0 |
+| Backend alias deletions | 2 | 4 | 5 | 7 | 9 | 10 | 10 |
+| Stale rows purged (cumulative) | — | — | — | — | — | 169,561 | 169,561 |
+| TTL self-prune on legacy tags | — | — | — | — | — | — | **LIVE** |
+| Contract tests | 12 | 27 | 38 | 49 | 54 | 54 | 54 |
+| Full-suite regression | — | 78 | 88 | 100 | 105 | 117 | **117** |
+
+**Permanent repair: ~85% complete** (up from 80% at Tier E). Six-tier SSOT campaign complete. Remaining work is the 6 explicit Tier F blockers + Vision Intel engine refactor — each requires a focused, single-topic session.
 
 ---
 

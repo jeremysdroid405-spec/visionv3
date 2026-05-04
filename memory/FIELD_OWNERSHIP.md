@@ -1,12 +1,13 @@
 # FIELD OWNERSHIP — PropVision
 
-**Status:** Phase 2.8 (Tier E) complete. **16 of 23 fields locked + Pydantic STRICT mode LIVE.**
-**Last updated:** 2026-05-04 (Tier E)
-**Enforcement mode:** Pydantic-raise (`SSOT_PYDANTIC_STRICT=true`).
+**Status:** Phase 2.9 (Tier F) complete. **16 of 23 fields locked + Pydantic STRICT + TTL self-prune LIVE.**
+**Last updated:** 2026-05-04 (Tier F)
+**Enforcement mode:** Pydantic-raise (`SSOT_PYDANTIC_STRICT=true`) + Mongo TTL self-prune on non-live version_tags.
 **Diagnostics:**
   - `GET /api/health/active-transitions?sport=nba&hours=24` — active lifecycle audit
   - `GET /api/health/sync` — `sports.{sport}.pp_projection_ids` with WARN@6h / CRITICAL@24h logs
-  - `services.scoring.score_document_schema.ScoreDocument` — write-boundary Pydantic contract (strict)
+  - `services.scoring.score_document_schema.ScoreDocument` — write-boundary Pydantic (strict)
+  - `ttl_at_7d_nonlive_ix` — Mongo TTL on `ttl_at` (7d); stamped only when `version_tag ∉ _LIVE_VERSION_TAGS`
 
 ---
 

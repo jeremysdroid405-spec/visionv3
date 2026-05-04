@@ -17,6 +17,62 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# ──────────────────────────────────────────────────────────────────────
+# TTL cleanup — Tier F (2026-05-04)
+# ──────────────────────────────────────────────────────────────────────
+# Version tags whose docs are PRODUCTION-LIVE and must NEVER be
+# expired by the TTL index. Every other version_tag (stage2-*,
+# recompute-*, sh-audit-*, pick_history_*, ad-hoc audits) is eligible
+# for 7-day auto-prune.
+#
+# SINGLE SOURCE OF TRUTH. Adding a new live tag requires adding it
+# here and restarting backend so `_project_score_doc` skips the
+# `ttl_at` stamp on new writes.
+_LIVE_VERSION_TAGS: tuple = (
+    "final-nba",
+    "final-mlb",
+    "final-nba-rt",
+    "final-mlb-rt",
+)
+
+TTL_SECONDS:    int = 7 * 24 * 3600     # 7 days
+TTL_INDEX_NAME: str = "ttl_at_7d_nonlive_ix"
+
+
+async def ensure_ttl_index(db, sport: str) -> Dict[str, Any]:
+    """Create (or keep) the TTL index on `{sport}_prop_scores.ttl_at`.
+
+    Safe to call repeatedly at boot — Mongo ignores re-creates with
+    identical specs. Index expires docs 7 days after `ttl_at`; docs
+    without the field are untouched (live production docs never
+    receive it — see `_project_score_doc`).
+
+    Returns `{sport, index_name, ttl_seconds, scope}`. Rollback is
+    `db.{sport}_prop_scores.drop_index("ttl_at_7d_nonlive_ix")`.
+    """
+    coll = db[f"{sport}_prop_scores"]
+    try:
+        await coll.create_index(
+            "ttl_at",
+            expireAfterSeconds=TTL_SECONDS,
+            name=TTL_INDEX_NAME,
+        )
+        logger.info(
+            "[TTL_INDEX:%s] ensured index=%s expireAfterSeconds=%d "
+            "scope=docs with ttl_at set (non-live version_tags only)",
+            sport, TTL_INDEX_NAME, TTL_SECONDS,
+        )
+        return {
+            "sport":       sport,
+            "index_name":  TTL_INDEX_NAME,
+            "ttl_seconds": TTL_SECONDS,
+            "scope":       "ttl_at-set docs (non-live version_tags)",
+        }
+    except Exception as exc:  # pragma: no cover
+        logger.warning("[TTL_INDEX:%s] create_index failed: %s", sport, exc)
+        return {"sport": sport, "error": repr(exc)}
+
+
 # Exactly the fields a score doc may contain (plus canonical identity + versioning).
 _SCORE_OUTPUT_FIELDS = (
     # vision_score dimension
@@ -75,6 +131,11 @@ _SCORE_OUTPUT_FIELDS = (
     # hit rate per FIELD_OWNERSHIP.md:hit_rate_l20. Written in parallel
     # with legacy `hit_rate_over` until all readers migrate.
     "hit_rate_l20",
+    # 2026-05-04 Tier F — TTL marker stamped ONLY on non-live
+    # version_tags by `_project_score_doc`. See `ensure_ttl_index`
+    # and `_LIVE_VERSION_TAGS` at the top of this module. Omit the
+    # field on live docs so the partial TTL index never touches them.
+    "ttl_at",
     # Projection-gap ranking signal (2026-02-20 shadow G1).
     # Persisted for `?sort=gap` opt-in on tier endpoints.
     "ranking_score_v2",
@@ -428,6 +489,21 @@ def _project_score_doc(
     # work may distinguish them (e.g. scored_at = when we finished the
     # probability pass, computed_at = when we persisted).
     doc["scored_at"] = computed_at
+
+    # SSOT Tier F (2026-05-04) — TTL self-prune for non-live tags.
+    # The whitelist below is the EXCLUSIVE set of version_tags whose
+    # docs are considered production-live and must never be expired.
+    # Everything else (stage2-*, sh-recal-*, pick_history_*, ad-hoc
+    # audit tags) gets `ttl_at = scored_at`; Mongo's TTL monitor
+    # then deletes those rows 7 days after scored_at. Live docs NEVER
+    # receive the `ttl_at` field, so the partial TTL index never
+    # sees them. See `ensure_ttl_index()` below for the index spec.
+    #
+    # To add a new live version_tag, add it to this tuple.
+    # Intentional: this is the SINGLE source of truth for "which
+    # version_tags are live" — not a regex, not an env var.
+    if version_tag not in _LIVE_VERSION_TAGS:
+        doc["ttl_at"] = computed_at
     return doc
 
 

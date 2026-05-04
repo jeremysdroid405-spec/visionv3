@@ -1508,6 +1508,14 @@ async def startup_event():
         # {sport}_prop_scores; TTL-indexed so the table self-prunes.
         from services.board.set_active import ensure_indexes as _sa_ensure
         await _sa_ensure(db)
+        # SSOT Tier F (2026-05-04) — 7-day TTL on non-live prop-score
+        # rows. `_project_score_doc` stamps `ttl_at` on every write
+        # whose version_tag is outside _LIVE_VERSION_TAGS; this index
+        # makes Mongo self-prune those rows. Live docs never carry
+        # `ttl_at` and are immune by absence.
+        from services.scoring.prop_scores_store import ensure_ttl_index as _ttl_ensure
+        for _sport in ("nba", "mlb"):
+            await _ttl_ensure(db, _sport)
         # Vision v2 SHADOW Board Publisher (2026-04-29). Idempotent.
         from services.board.shadow_publisher import ensure_indexes as _shp_ensure
         await _shp_ensure(db)

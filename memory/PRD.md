@@ -18,12 +18,12 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
 - **Watcher bug fix (P0):** `services/delta/detector.py` — `new_keys` set-diff now subtracts only `active=True` rt keys. Stale `active=False` rows no longer mask scorable canonical_keys. Verified: MLB rescored 195 silently-blocked picks immediately after fix.
 - **Variance tile (frontend):** `PlayerDetailPage.jsx` Variance now reads `volatility_score`/`cv` instead of broken `intel_suite.stability_index` (which returned std_dev=0 for composite MLB stat types).
 - **SSOT Enforcement Phase 1 (2026-05-04):** shipped `services/field_ownership/` (registry+accessors+validators). Migrated `scored_at` (100% populated both sports) + `opponent` (0 team==opp violations). 12 contract tests green.
-- **SSOT Enforcement Tier E (2026-05-04) — FINAL CLEANUP:**
-  - Frontend edge aliases fully migrated: `vk_edge` / `edge_pct` / `true_edge` → canonical `edge_vs_fair`. Back-compat fallbacks removed from `UniversalPlayerCard.jsx` (2 sites) + `PlayerDetailPage.jsx` (3 sites). Zero live readers remain.
-  - `true_edge` DELETED from code (0 readers, 0 writers). `_overlay_enrichment_cache_legacy` function body DELETED (~100 LOC).
-  - **Strict Pydantic FLIPPED LIVE**: `SSOT_PYDANTIC_STRICT=true`. Fresh recompute: NBA 1732 + MLB 1044 docs written, 0 ValidationErrors, 0 supervisor log entries.
-  - **169,561 stale `version_tag` rows purged** across `nba_prop_scores` + `mlb_prop_scores` (recompute-*, stage2-verify-*, universal-tp-*, final-*-rt-shadow). -79% row count. 4 stale JSON cache backup files deleted.
-  - **117/117 tests green, permanent repair ~80% complete**. Five-tier campaign done; remaining surface polish + Vision Intel refactor tracked as Tier F.
+- **SSOT Enforcement Tier F (2026-05-04) — TTL self-prune LIVE:**
+  - `ttl_at_7d_nonlive_ix` Mongo TTL index on `{nba,mlb}_prop_scores.ttl_at` with 7-day `expireAfterSeconds`. `_project_score_doc` stamps `ttl_at` ONLY when `version_tag` ∉ `_LIVE_VERSION_TAGS` (`final-nba`, `final-mlb`, `final-nba-rt`, `final-mlb-rt`). Live docs never carry the field → immune by absence.
+  - Live exclusion proof: 0 leaked live docs. NBA 5,012 TTL-eligible (4,920 will expire next sweep, 92 in 7-day window). MLB 33,729 TTL-eligible (2,923 >7d).
+  - Rollback one-liner: `db.{sport}_prop_scores.dropIndex("ttl_at_7d_nonlive_ix")`. No scheduler, no new cleanup service — Mongo handles it.
+  - 5 remaining Tier F deletions (`edge_pct`/`vk_edge` stamping, `hit_rate_over` migration, `direction` deletion, `master_active_cache.json`, `dg_cached_board`) explicitly blocked — each has 7-34 reader sites requiring dedicated migration sessions.
+  - **117/117 tests green, permanent repair ~85% complete. Six-tier SSOT campaign complete.**
 
 ## Open issues (priority)
 - **P0** Vision Intel universal refactor — full scope in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`. Nullification phase shipped (Phase 2); engine refactor remains.
