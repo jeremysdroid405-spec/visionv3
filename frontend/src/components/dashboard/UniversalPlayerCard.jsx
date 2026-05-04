@@ -445,25 +445,18 @@ const PropRow = memo(({ prop, theme, onClick, onQuickAdd, onVKClick }) => {
   const vkProbUnder = prop.vk_prob_under;
   const hasVK = vkPredicted != null;
 
-  // Direction-aware edge. SSOT migration (Tier D, 2026-05-04):
-  // prefer canonical `edge_vs_fair` (ratio; OVER-side by convention,
-  // like `vk_edge`). When present, compute display edge as
-  // `edge_vs_fair * line` — that's equivalent to the old `vk_edge`
-  // raw-units value and consistent across sports. Fall back to
-  // `vk_edge` only for legacy API payloads that haven't rolled out
-  // the canonical field yet. For UNDER props, invert so the user
-  // sees the edge FOR the side they're betting.
+  // SSOT Tier E (2026-05-04): `edge_vs_fair` is the canonical ratio.
+  // Convert to raw units via × line. Legacy `vk_edge` fallback removed
+  // — all frontend readers migrated. For UNDER props, invert so the
+  // user sees the edge FOR the side they're betting.
   const _propSide = (prop.side || prop.recommendation || prop.direction || '').toString().toUpperCase();
   const _isUnderSide = _propSide.includes('UNDER');
   const _canonicalEdgeUnits = (prop.edge_vs_fair != null && prop.line != null)
     ? Number(prop.edge_vs_fair) * Number(prop.line)
     : null;
-  const _rawOverEdge = _canonicalEdgeUnits != null
-    ? _canonicalEdgeUnits
-    : (prop.vk_edge != null ? Number(prop.vk_edge) : null);
-  const vkEdge = (_rawOverEdge != null && _isUnderSide)
-    ? -_rawOverEdge
-    : _rawOverEdge;
+  const vkEdge = (_canonicalEdgeUnits != null && _isUnderSide)
+    ? -_canonicalEdgeUnits
+    : _canonicalEdgeUnits;
   
   // Determine card styling based on tier
   const tierBg = isMinefield ? 'bg-orange-950/40 border-orange-500/30'
@@ -735,18 +728,15 @@ const UniversalPlayerCard = memo(({
     const sideBar = tierBarStyles.bar;
     const sideBarGlow = tierBarStyles.glow;
 
-    // Direction-aware edge display. SSOT migration (Tier D,
-    // 2026-05-04): prefer canonical `edge_vs_fair * line`; fall back
-    // to legacy `vk_edge` raw units only for pre-migration payloads.
+    // Direction-aware edge display.
+    // SSOT Tier E (2026-05-04): canonical `edge_vs_fair * line`.
+    // Legacy `vk_edge` fallback removed.
     const _canonicalEdge = (player.edge_vs_fair != null && player.line != null)
       ? Number(player.edge_vs_fair) * Number(player.line)
       : null;
-    const _rawOverEdge = _canonicalEdge != null
-      ? _canonicalEdge
-      : (player.vk_edge != null ? Number(player.vk_edge) : null);
-    const dispEdge = (_rawOverEdge != null && sideIsUnder)
-      ? -_rawOverEdge
-      : _rawOverEdge;
+    const dispEdge = (_canonicalEdge != null && sideIsUnder)
+      ? -_canonicalEdge
+      : _canonicalEdge;
 
     // Inline Vision Intel one-liner — UNIVERSAL DASHBOARD CARD CONTRACT
     // (2026-04-28). Backend stamps `short_sentence` (truncated

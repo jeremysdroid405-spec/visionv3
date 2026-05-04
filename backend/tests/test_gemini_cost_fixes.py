@@ -26,7 +26,7 @@ def _base_pick():
         "line": 25.5,
         "direction": "OVER",
         "opponent": "BOS",
-        "true_edge": 0.12,
+        "edge_vs_fair": 0.12,
     }
 
 
@@ -71,14 +71,14 @@ def test_content_hash_invalidated_by_opponent_change():
 
 def test_content_hash_invalidated_by_edge_bucket_crossing():
     p1 = _base_pick()            # edge=0.12 → bucket 1
-    p2 = dict(p1); p2["true_edge"] = 0.23   # bucket 2
+    p2 = dict(p1); p2["edge_vs_fair"] = 0.23   # bucket 2
     assert _vision_intel_content_hash(p1) != _vision_intel_content_hash(p2)
 
 
 def test_content_hash_stable_within_edge_bucket():
     """Small edge jitter within the same bucket must NOT invalidate."""
     p1 = _base_pick()            # edge=0.12 → bucket 1
-    p2 = dict(p1); p2["true_edge"] = 0.17   # still bucket 1
+    p2 = dict(p1); p2["edge_vs_fair"] = 0.17   # still bucket 1
     assert _vision_intel_content_hash(p1) == _vision_intel_content_hash(p2)
 
 

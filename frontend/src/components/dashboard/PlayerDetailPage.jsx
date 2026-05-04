@@ -303,7 +303,13 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
       {(prop.vk_predicted || prop.vision_intel || prop.intel_suite?.lasso) && (() => {
         const lasso = prop.intel_suite?.lasso || {};
         const vkPred = prop.vk_predicted || lasso.projection;
-        const vkEdge = prop.vk_edge || (vkPred && line ? vkPred - line : null);
+        // SSOT Tier E (2026-05-04): canonical `edge_vs_fair` is a
+        // ratio; convert to raw units via × line. The previous
+        // `vk_edge || (vkPred - line)` fallback chain was the last
+        // frontend reader of `vk_edge` and has been removed.
+        const vkEdge = (prop.edge_vs_fair != null && line != null)
+          ? Number(prop.edge_vs_fair) * Number(line)
+          : (vkPred != null && line != null ? vkPred - line : null);
         const edgePct = vkEdge && line ? ((vkEdge / line) * 100) : 0;
         const confidenceTier = prop.lasso_confidence || lasso.confidence_tier;
         const visionText = prop.vision_intel || prop.vision_summary;
@@ -606,15 +612,20 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                       ...(prop.intel_suite || {}),
                       ...(clickedProp.intel_suite || {}),
                     },
-                    // Edge and probability fields
+                    // Edge and probability fields.
+                    // SSOT Tier E (2026-05-04): `edge_vs_fair` is the
+                    // canonical. Legacy aliases `edge_pct` and
+                    // `vk_edge` are stamped by upstream for back-
+                    // compat but no longer propagated through the
+                    // click-through merge — components read
+                    // `edge_vs_fair * line` directly.
                     edge: clickedProp.edge ?? prop.edge,
-                    edge_pct: clickedProp.edge_pct ?? prop.edge_pct,
+                    edge_vs_fair: clickedProp.edge_vs_fair ?? prop.edge_vs_fair,
                     cv: clickedProp.cv ?? prop.cv,
                     tp_odds: clickedProp.tp_odds ?? prop.tp_odds,
                     board_score: clickedProp.board_score ?? prop.board_score,
                     // VK prediction fields
                     vk_predicted: clickedProp.vk_predicted ?? prop.vk_predicted,
-                    vk_edge: clickedProp.vk_edge ?? prop.vk_edge,
                     vk_prob_over: clickedProp.vk_prob_over ?? prop.vk_prob_over,
                     vk_prob_under: clickedProp.vk_prob_under ?? prop.vk_prob_under,
                     vk_recommendation: clickedProp.vk_recommendation || prop.vk_recommendation,
@@ -1638,8 +1649,15 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   );
                 })()}
                 
-                {/* Additional MLB Stats Row */}
-                {(selectedVisionProp.cv != null || selectedVisionProp.edge_pct != null || selectedVisionProp.tp_odds != null) && (
+                {/* Additional MLB Stats Row.
+                    SSOT Tier E (2026-05-04): derive edge % from
+                    canonical `edge_vs_fair` ratio (× 100). Legacy
+                    `edge_pct` reads removed. */}
+                {(() => {
+                  const _edgePct = (selectedVisionProp.edge_vs_fair != null)
+                    ? Number(selectedVisionProp.edge_vs_fair) * 100
+                    : null;
+                  return (selectedVisionProp.cv != null || _edgePct != null || selectedVisionProp.tp_odds != null) && (
                   <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-zinc-700">
                     {selectedVisionProp.cv != null && (
                       <div className="text-center">
@@ -1649,11 +1667,11 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                         </div>
                       </div>
                     )}
-                    {selectedVisionProp.edge_pct != null && (
+                    {_edgePct != null && (
                       <div className="text-center">
                         <div className="text-[10px] text-zinc-500 uppercase">Edge</div>
-                        <div className={`text-sm font-bold ${selectedVisionProp.edge_pct > 15 ? 'text-green-400' : selectedVisionProp.edge_pct > 5 ? 'text-yellow-400' : 'text-zinc-400'}`}>
-                          {selectedVisionProp.edge_pct > 0 ? '+' : ''}{typeof selectedVisionProp.edge_pct === 'number' ? selectedVisionProp.edge_pct.toFixed(1) : selectedVisionProp.edge_pct}%
+                        <div className={`text-sm font-bold ${_edgePct > 15 ? 'text-green-400' : _edgePct > 5 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                          {_edgePct > 0 ? '+' : ''}{_edgePct.toFixed(1)}%
                         </div>
                       </div>
                     )}
@@ -1666,7 +1684,8 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                       </div>
                     )}
                   </div>
-                )}
+                  );
+                })()}
               </div>
               
               {/* Vision Intel Summary - shown only if not already shown above */}

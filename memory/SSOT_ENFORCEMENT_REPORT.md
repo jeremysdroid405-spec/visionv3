@@ -1,8 +1,162 @@
-# SSOT Enforcement Report — Sessions 2026-05-04 (Phase 1 + 2 + 2.5 + C + D)
+# SSOT Enforcement Report — Sessions 2026-05-04 (Phase 1 + 2 + 2.5 + C + D + E)
 
 **Mandate:** Turn field ownership from documentation into enforced code.
-**Scope:** Foundation + Phase 1 (2 fields) + Phase 2 Core Stability (4) + Phase 2.5 Derived (4) + Tier C Alias Hardening (6) + **Tier D Pydantic write contract + PP staleness WARN**.
-**Honest status:** **16/23 fields enforced or locked.** 54 contract tests green (105/105 across all relevant suites). Pydantic `ScoreDocument` schema live in validate-and-log mode with `SSOT_PYDANTIC_STRICT=false` default. PP scraper staleness now logs WARN@6h / CRITICAL@24h on every /api/health/sync read.
+**Scope:** Foundation + Phase 1 (2 fields) + Phase 2 Core Stability (4) + Phase 2.5 Derived (4) + Tier C Alias Hardening (6) + Tier D Pydantic write contract + **Tier E Final Cleanup**.
+**Honest status:** **16/23 fields locked + Pydantic strict mode LIVE** + **169,561 stale score_doc rows purged** + **frontend edge aliases fully migrated**. 54 contract tests green. 117/117 tests across all relevant suites.
+
+---
+
+## Tier E deliverables (2026-05-04)
+
+### 1. Frontend edge alias migration — COMPLETE
+
+All remaining `vk_edge` / `edge_pct` / `true_edge` readers in the frontend were migrated to canonical `edge_vs_fair` (ratio form; × `line` yields raw units equivalent to `vk_edge`).
+
+**Files changed:**
+  - `frontend/src/components/dashboard/UniversalPlayerCard.jsx` — back-compat fallbacks removed (2 sites). Now reads `edge_vs_fair` only.
+  - `frontend/src/components/dashboard/PlayerDetailPage.jsx` — 3 sites migrated:
+    - Vision/Lasso projection bar vkEdge calculation.
+    - click-through prop payload (drops `edge_pct` / `vk_edge` pass-through).
+    - MLB Vision Modal edge-display panel.
+
+**Verification:** `grep -r "vk_edge|edge_pct|true_edge" /app/frontend/src` shows 0 live reader sites; only migration comments remain.
+
+### 2. Backend alias deletion
+
+**`true_edge` — DELETED** (0 readers, 0 writers).
+  - `routes/ferrari_tiers.py::_edge_bucket` migrated from `pick.get("true_edge") || pick.get("vk_edge") || 0.0` to `pick.get("edge_vs_fair") || 0.0`.
+  - `tests/test_gemini_cost_fixes.py` fixtures migrated (2 `true_edge` → `edge_vs_fair`).
+  - Final grep: 0 live references remain.
+
+**`_overlay_enrichment_cache_legacy` — DELETED** (~100 LOC).
+  - Function body + its two memory-mapped caches (`_enrichment_cache`, `_enrichment_cache_mtime`) deleted from `routes/ferrari_tiers.py`.
+  - Only the no-op `overlay_enrichment_cache` (volatility-profile stamping only) remains.
+
+**`hit_rate_over` — DEFERRED.**
+  - Backend readers: 34 call sites across 10+ files (including MLB tier sorter, dashboard card contract, hit-profile builder, metrics).
+  - Dual-write contract (Phase 2.5) ensures `hit_rate_l20 == hit_rate_over` on every new doc, so readers can migrate at their own pace. Deletion tracked for future mechanical pass.
+
+**`direction` — KEPT** (canonical `side` stamped next to it on card contract).
+  - Grep of `.get("direction")` in backend: 0 direct reader calls (the scoring adapters read it at upstream boundary, which is allowed per SSOT rules). Alias stamping deferred until Tier F.
+
+**`commence_time` — REGISTRY-CORRECTED** (not an alias in `live_props` context).
+  - `live_props.commence_time` IS the canonical ingest-boundary field. `prop_scores.game_start_utc` is the derived canonical for score docs. Tier C pin in `_merge_score_with_board` remains the correct bridge.
+
+### 3. Strict Pydantic — FLIPPED LIVE
+
+`SSOT_PYDANTIC_STRICT=true` set in `/app/backend/.env`. `ScoreDocument.model_validate()` now raises `ValidationError` on any schema violation at write time.
+
+**Readiness verification (pre-flip):** sampled 500 NBA + 500 MLB `final-*-rt` docs post-recompute → **0 failures**. Legacy tags (`recompute-*`, `stage2-verify-*`, etc.) were failing on `scored_at` required-field check (33% of active NBA, 97% of all rows were pre-Phase-1). Those were purged in Tier E.4 below.
+
+**Post-flip production smoke:**
+```
+NBA recompute  → status=success written=1732 errors=0 ValidationErrors=0
+MLB recompute  → status=success written=1044 errors=0 ValidationErrors=0
+supervisor log → 0 SSOT_PYDANTIC entries post-restart
+```
+
+Strict mode is live; every score write now passes through typed validation.
+
+### 4. Stale collection / cache deletion
+
+**Stale `version_tag` rows PURGED** (169,561 rows deleted, 73-75% reduction):
+  - Patterns deleted: `recompute-2026*`, `stage2-verify-*`, `universal-tp-*`, `final-*-rt-shadow`.
+  - Grep verified 0 live readers for these patterns before deletion.
+  - NBA: `nba_prop_scores` 73,601 → 8,459 rows.
+  - MLB: `mlb_prop_scores` 139,735 → 35,316 rows.
+
+**Stale JSON cache backups DELETED:**
+  - `mlb_master_active_cache.json.linekeybak.*` (2026-04-21)
+  - `mlb_master_active_cache.json.prehashbak.*` (2026-04-21)
+  - `nba_master_active_cache.json.linekeybak.*` (2026-04-21)
+  - `nba_master_active_cache.json.prehashbak.*` (2026-04-21)
+
+**Live `*_master_active_cache.json` — KEPT** (still read by `routes/intel_cache.py` + `routes/ferrari_tiers.py` MLB player-detail endpoint). Deletion requires migrating those 2 routes to canonical DB reads; tracked as Tier F.
+
+**`dg_cached_board` collection — KEPT** (14 reader files across the codebase, requires a focused migration session; 0-rows check passed but deletion premature without reader re-wiring).
+
+### 5. LOC reduction estimate
+
+| Area | Before | After | Delta |
+|---|---|---|---|
+| `routes/ferrari_tiers.py` | 5,351 | 5,248 | **-103 LOC** (legacy overlay + backup cache) |
+| `tests/test_gemini_cost_fixes.py` | 154 | 154 | 0 (migration, not deletion) |
+| `frontend/UniversalPlayerCard.jsx` | 1,091 | 1,080 | **-11 LOC** (back-compat removed) |
+| `frontend/PlayerDetailPage.jsx` | 1,725 | 1,737 | **+12 LOC** (IIFE wrapper for edge derivation; net deletion of 2 alias pass-throughs) |
+| DB rows (prop_scores) | 213,336 | 43,775 | **-169,561 rows** (-79%) |
+| DB cache backup files | 4 files (~1MB) | 0 | **-4 files** |
+
+**Net source LOC delta: ~-100.** Net DB cleanup: **~170K stale rows**.
+
+---
+
+## Files changed (Tier E)
+
+- `routes/ferrari_tiers.py` — deleted `_overlay_enrichment_cache_legacy` + associated caches (~100 LOC); `_edge_bucket` migrated to canonical.
+- `services/scoring/score_document_schema.py` — strict Pydantic validated live.
+- `services/field_ownership/registry.py` — entries previously updated hold.
+- `backend/.env` — `SSOT_PYDANTIC_STRICT=true`.
+- `frontend/src/components/dashboard/UniversalPlayerCard.jsx` — edge-alias back-compat removed.
+- `frontend/src/components/dashboard/PlayerDetailPage.jsx` — 3 edge-alias sites migrated.
+- `tests/test_gemini_cost_fixes.py` — fixtures migrated.
+
+## Contract test output (Tier E close)
+
+```
+$ pytest tests/test_field_ownership_contracts.py \
+         tests/test_delta_engine_tick.py \
+         tests/test_board_publisher.py \
+         tests/test_nba_heteroscedastic_sigma.py \
+         tests/test_gemini_cost_fixes.py -q
+  117 passed, 1 skipped, 1 warning in 19.43s
+```
+
+## Production smoke (Tier E close)
+
+```
+API /api/v3/ferrari/safe-haven?sport=nba&limit=2:
+  Tyrese Maxey  side=OVER  edge_vs_fair * line = 3.87
+  Dylan Harper  side=OVER  edge_vs_fair * line = 0.86
+  (edge_pct / vk_edge still stamped on response for back-compat;
+   frontend no longer reads them)
+
+API /api/v3/ferrari/safe-haven?sport=mlb&limit=1:
+  Carlos Correa  side=OVER  edge_vs_fair=0.0725
+
+Recompute (SSOT_PYDANTIC_STRICT=true):
+  NBA → written=1732 ValidationErrors=0
+  MLB → written=1044 ValidationErrors=0
+```
+
+---
+
+## Remaining technical debt (Tier F — future session)
+
+| Item | Scope | Risk |
+|---|---|---|
+| Remove `edge_pct` / `vk_edge` stamping from API response | 4 writer sites (`vision_intel_service`, `mlb_vision_intel`, `gemini_scout_engine`). Frontend no longer reads them; external consumers unknown. | LOW |
+| Remove `hit_rate_over` from API response + score doc | 34 backend reader sites; requires mechanical migration to `hit_rate_l20`. Dual-write already in place. | LOW-MED |
+| Delete `direction` alias stamping | Adapter ingest is allowed to read upstream raw; card contract already stamps canonical `side`. | LOW |
+| Delete `*_master_active_cache.json` files | 2 route endpoints (`intel_cache`, `ferrari_tiers` MLB detail) still read them. | MED |
+| Delete `dg_cached_board` collection | 14 reader files; systematic migration required. | MED-HIGH |
+| Flip `extra="forbid"` on `ScoreDocument` | Requires enumerating ~20 adapter-output fields `_project_score_doc` drops. | MED |
+| Universal Vision Intel engine refactor | Scoped in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md` | MED-HIGH |
+
+## Permanent repair progress
+
+| Criterion | Phase 1 | Phase 2 | 2.5 | Tier C | Tier D | **Tier E** |
+|---|---|---|---|---|---|---|
+| Fields enforced or locked | 2/23 | 6/23 | 10/23 | 16/23 | 16/23 | 16/23 |
+| Pydantic write contract | — | — | — | — | log-mode | **STRICT LIVE** |
+| Frontend alias readers (edge family) | — | — | — | — | 2 sites | **0 remain** |
+| Backend alias deletions | 2 | 4 | 5 | 7 | 9 | **10** (+true_edge, +legacy overlay func) |
+| Stale rows purged | — | — | — | — | — | **169,561** |
+| Contract tests | 12 | 27 | 38 | 49 | 54 | **54** |
+| Full-suite regression | — | 78 | 88 | 100 | 105 | **117** |
+
+**Permanent repair: ~80% complete** (up from 70% at Tier D, 60% at C, 45% at 2.5, 35% at 2, 20% at 1).
+
+Five-tier SSOT enforcement campaign complete. Remaining work is surface polish + Vision Intel engine refactor (tracked separately).
 
 ---
 

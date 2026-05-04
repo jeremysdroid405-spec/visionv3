@@ -18,12 +18,12 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
 - **Watcher bug fix (P0):** `services/delta/detector.py` — `new_keys` set-diff now subtracts only `active=True` rt keys. Stale `active=False` rows no longer mask scorable canonical_keys. Verified: MLB rescored 195 silently-blocked picks immediately after fix.
 - **Variance tile (frontend):** `PlayerDetailPage.jsx` Variance now reads `volatility_score`/`cv` instead of broken `intel_suite.stability_index` (which returned std_dev=0 for composite MLB stat types).
 - **SSOT Enforcement Phase 1 (2026-05-04):** shipped `services/field_ownership/` (registry+accessors+validators). Migrated `scored_at` (100% populated both sports) + `opponent` (0 team==opp violations). 12 contract tests green.
-- **SSOT Enforcement Tier D (2026-05-04):** Pydantic write contract + PP scraper staleness WARN.
-  - `services/scoring/score_document_schema.py` — NEW. `ScoreDocument` BaseModel with 90+ typed fields covering every LOCKED SSOT field + persisted extras. `validate_score_document()` runs at the write boundary in `prop_scores_store.write_versioned_scores`; envelope carries `pydantic_failures` count.
-  - Migration mode (`extra="allow"` + `SSOT_PYDANTIC_STRICT=false`): validates types on known fields, tolerates diagnostic extras. Catches missing-required + type-drift. Strict-mode flip ready via env var.
-  - PP scraper staleness auto-alarm: `_probe_pp_projection_ids` logs WARN@6h and CRITICAL@24h on every /api/health/sync read. No scheduler, no cron, no fallback scraping, no synthesised IDs. Live sample: NBA cache 68h stale → `CRITICAL [PP_STALENESS:NBA]`.
-  - Frontend: `UniversalPlayerCard.jsx` prefers canonical `edge_vs_fair * line` over legacy `vk_edge` (2 sites migrated).
-  - **54 contract tests green, 105/105 across all relevant suites.** Permanent repair ~70% complete.
+- **SSOT Enforcement Tier E (2026-05-04) — FINAL CLEANUP:**
+  - Frontend edge aliases fully migrated: `vk_edge` / `edge_pct` / `true_edge` → canonical `edge_vs_fair`. Back-compat fallbacks removed from `UniversalPlayerCard.jsx` (2 sites) + `PlayerDetailPage.jsx` (3 sites). Zero live readers remain.
+  - `true_edge` DELETED from code (0 readers, 0 writers). `_overlay_enrichment_cache_legacy` function body DELETED (~100 LOC).
+  - **Strict Pydantic FLIPPED LIVE**: `SSOT_PYDANTIC_STRICT=true`. Fresh recompute: NBA 1732 + MLB 1044 docs written, 0 ValidationErrors, 0 supervisor log entries.
+  - **169,561 stale `version_tag` rows purged** across `nba_prop_scores` + `mlb_prop_scores` (recompute-*, stage2-verify-*, universal-tp-*, final-*-rt-shadow). -79% row count. 4 stale JSON cache backup files deleted.
+  - **117/117 tests green, permanent repair ~80% complete**. Five-tier campaign done; remaining surface polish + Vision Intel refactor tracked as Tier F.
 
 ## Open issues (priority)
 - **P0** Vision Intel universal refactor — full scope in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`. Nullification phase shipped (Phase 2); engine refactor remains.

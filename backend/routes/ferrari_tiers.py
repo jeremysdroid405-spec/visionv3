@@ -272,109 +272,6 @@ def overlay_enrichment_cache(picks: list, sport: str) -> list:
     return picks
 
 
-def _overlay_enrichment_cache_legacy(picks: list, sport: str) -> list:
-    """LEGACY — DO NOT CALL. Preserved only so the git-blame trail
-    stays intact for future archaeology. Disabled 2026-05-04 when
-    the stale-JSON override path was identified as the #2 cause of
-    "system is lying" bugs. See `overlay_enrichment_cache` above."""
-    import json as _json
-    cache_path = f"/app/backend/data/{'nba' if sport == 'nba' else 'mlb'}_master_active_cache.json"
-
-    # Memory-cache with file mtime check
-    try:
-        import os
-        mtime = os.path.getmtime(cache_path)
-        if cache_path not in _enrichment_cache or _enrichment_cache_mtime.get(cache_path) != mtime:
-            with open(cache_path) as f:
-                _enrichment_cache[cache_path] = _json.load(f).get("props", {})
-            _enrichment_cache_mtime[cache_path] = mtime
-        cache_props = _enrichment_cache.get(cache_path, {})
-    except Exception:
-        return picks
-
-    if not cache_props:
-        return picks
-
-    cache_lookup = {}
-    for pid, cprop in cache_props.items():
-        # Key on (player|stat|line|recommendation) — the 4-tuple that uniquely
-        # identifies a prop.  Bug fixed 2026-04-21: previously keyed on just
-        # (player|stat), which collided across lines (Jarrett Allen PTS 9.5
-        # received the narrative written for Jarrett Allen PTS 11.5 → wrong
-        # L10 hit rate, wrong projection, wrong edge).  Legacy cache entries
-        # that store line=None / recommendation=None are effectively orphaned
-        # by this stricter key, which is the intended behavior — they were
-        # the source of the bug.
-        p_name = (cprop.get("player_name") or "").strip().lower()
-        p_stat = (cprop.get("stat_type") or "").strip().lower()
-        p_line = cprop.get("line")
-        p_rec = (cprop.get("recommendation") or "").strip().lower()
-        key = f"{p_name}|{p_stat}|{p_line}|{p_rec}"
-        cache_lookup[key] = cprop
-
-    for pick in picks:
-        p_name = (pick.get("player_name") or "").strip().lower()
-        p_stat = (pick.get("stat_type") or "").strip().lower()
-        p_line = pick.get("line")
-        p_rec = ((pick.get("recommendation") or pick.get("direction") or "")
-                 .strip().lower())
-        key = f"{p_name}|{p_stat}|{p_line}|{p_rec}"
-        cached = cache_lookup.get(key)
-        if cached:
-            # Fix 2 (2026-04-21): require payload_hash on cached narrative.
-            # Pre-hash entries are legacy hallucinated text (see DvP trace)
-            # and must never overlay onto board responses. Scout badges +
-            # Lasso data are still safe to reuse (they're numeric, not LLM).
-            has_hash = cached.get("payload_hash") is not None
-            # Only overlay vision_intel if cache has LONGER text than DB
-            # (Phase 7 Gemini writes directly to DB — don't overwrite with stale cache)
-            cached_vi = cached.get("vision_intel", "") if has_hash else ""
-            existing_vi = pick.get("vision_intel", "")
-            if cached_vi and len(cached_vi) > len(existing_vi):
-                pick["vision_intel"] = cached_vi
-                pick["vision_summary"] = cached_vi
-            if cached.get("scout_badges"):
-                pick["scout_badges"] = cached["scout_badges"]
-            enriched_suite = cached.get("intel_suite")
-            if enriched_suite and enriched_suite.get("lasso"):
-                existing = pick.get("intel_suite", {})
-                existing.update(enriched_suite)
-                pick["intel_suite"] = existing
-
-    # Apply shared volatility profile to ALL picks (both sports)
-    from services.volatility_profile import get_volatility_profile
-    for pick in picks:
-        cv = pick.get("cv")
-        stat_type = pick.get("stat_type", "")
-        line_val = pick.get("line")
-        vol = get_volatility_profile(cv, stat_type, line_val)
-        pick["volatility_score"] = vol.score
-        pick["volatility_label"] = vol.label
-        pick["volatility_family"] = vol.family
-
-        # Reconcile scout_badges with volatility profile
-        scout = pick.get("scout_badges") or []
-        if isinstance(scout, list):
-            if vol.is_extreme:
-                # Ensure badge is present
-                has_it = any(
-                    (b.get("badge_key") if isinstance(b, dict) else b) == "volatility_extreme"
-                    for b in scout
-                )
-                if not has_it:
-                    scout.append({"badge_key": "volatility_extreme", "id": "volatility_extreme"})
-            else:
-                # Remove stale badge that contradicts the profile
-                scout = [
-                    b for b in scout
-                    if (b.get("badge_key") if isinstance(b, dict) else b) != "volatility_extreme"
-                ]
-            pick["scout_badges"] = scout
-
-    return picks
-
-
-
 def enrich_mlb_prop_with_averages(prop: Dict, player_data: Dict = None) -> Dict:
     """DEPRECATED — removed from live path in Stage 5 (2026-04-21, MLB↔NBA
     carbon-copy). Kept as an intentional stub for import-compat with any
@@ -1799,13 +1696,14 @@ def _vision_intel_content_hash(pick: Dict[str, Any]) -> str:
     import hashlib
 
     def _edge_bucket(pick: Dict[str, Any]) -> str:
-        # 10-percent buckets of true_edge (or vk_edge fallback). Crossing
-        # a bucket is a material change — staying inside it is not.
-        edge = pick.get("true_edge")
-        if edge is None:
-            edge = pick.get("vk_edge") or 0.0
+        # 10-percent buckets of canonical `edge_vs_fair`. Crossing a
+        # bucket is a material change — staying inside it is not.
+        # SSOT Tier E (2026-05-04): legacy `true_edge` / `vk_edge`
+        # fallbacks removed; caller upstream now stamps edge_vs_fair
+        # on every scored pick.
+        edge = pick.get("edge_vs_fair")
         try:
-            edge_f = float(edge)
+            edge_f = float(edge) if edge is not None else 0.0
         except (TypeError, ValueError):
             edge_f = 0.0
         # Convert to integer bucket (e.g. edge=0.12 → bucket=1, edge=-0.04 → bucket=0).
