@@ -95,7 +95,9 @@ def _score_to_prop(doc: Dict[str, Any]) -> Dict[str, Any]:
             else (doc.get("hit_rate_l20") or doc.get("hit_rate_over"))
         ),
         "hit_rate_sample_size": doc.get("hit_rate_sample_size"),
-        "edge_pct": doc.get("edge_pct"),
+        # SSOT Tier F #2 (2026-05-04): canonical `edge_vs_fair` (was
+        # legacy `edge_pct`).
+        "edge_vs_fair": doc.get("edge_vs_fair"),
         "tp": doc.get("tp"),
         "tp_method": doc.get("tp_method"),
         "tp_books_list": doc.get("tp_books_list"),

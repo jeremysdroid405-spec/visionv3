@@ -34,6 +34,14 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
   - Removed `"direction"` from `PICK_CARD_REQUIRED_KEYS` contract lockdown; new regression test `TestDirectionAliasStampingRemoved` asserts live API never returns `direction` key (6 endpoints × 40 picks confirmed 0).
   - Contract-enforcer `missing_or_null=['direction']` errors eliminated from backend logs.
   - **109/109 hit-rate + field-ownership tests green. Tier F remaining: `direction` reader-fallback deletion (Tier G once frontend purges `pick.direction`); `edge_pct`/`vk_edge` API stamping removal; `dg_cached_board` drop; `ScoreDocument` `extra="forbid"` flip.**
+- **SSOT Tier F #2 (2026-05-04) — `edge_pct` / `vk_edge` / `true_edge` API alias deletion:**
+  - Deleted 9 response-level alias stamps across `ferrari_tiers.py` (7), `player.py` (1), `debug_snapshots.py` (1).
+  - Migrated 4 backend reader sites (rank tiebreaker, `lasso_high_edge` badge, HRR war-zone Mongo filter, value_score) to canonical `edge_vs_fair` only; 0 alias `.get()` reads remain in routes or response-building services.
+  - Defensive `.pop("edge_pct"/"vk_edge"/"true_edge")` on the NBA `_merge_score_with_board` board-entry clone and MLB `dict(sc)` base shape to guarantee no upstream leakage.
+  - Debug endpoints migrated too: `/api/v3/debug/safe-haven-rejects` sort key, `/api/v3/debug/shadow_board/compare` projection + `avg_edge_vs_fair` metric + rank-tuple metadata.
+  - New regression test `TestEdgeAliasStampingRemoved` — 6 live-API parametrized cases assert zero alias leakage and 100% canonical field presence.
+  - Live smoke (6 endpoints × 41 picks): `edge_pct=0 vk_edge=0 true_edge=0 edge_vs_fair=41/41`.
+  - **115/115 tests green.**
 
 ## Open issues (priority)
 - **P0** Vision Intel universal refactor — full scope in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`. Nullification phase shipped (Phase 2); engine refactor remains.

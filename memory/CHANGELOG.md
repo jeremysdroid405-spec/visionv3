@@ -1,5 +1,85 @@
 # Changelog
 
+## 2026-05-04 — SSOT Tier F #2: `edge_pct` / `vk_edge` / `true_edge` alias stamping deletion
+
+**Problem**: Backend response paths were stamping three legacy edge
+aliases (`edge_pct`, `vk_edge`, `true_edge`) onto every API pick, in
+parallel with the canonical `edge_vs_fair`. Frontend had already
+migrated off all three (Tier E — verified: zero active readers,
+only commented migration markers remain), so the aliases lingered
+purely as back-compat debt. Per FIELD_OWNERSHIP.md:edge, the
+canonical owner is `edge_vs_fair` (stamped by
+`scoring_stack.compute_vision_score`).
+
+**Writer deletions (response never carries legacy edge aliases)**:
+- `routes/ferrari_tiers.py::_merge_score_with_board` — removed
+  `prop["vk_edge"] = …` from vk2-projection branch and from
+  `model_projection` fallback branch; removed
+  `prop["edge_pct"] = score.get("edge_pct")`; added defensive
+  `prop.pop("edge_pct"/"vk_edge"/"true_edge", None)` after
+  `board_entry["prop"]` clone.
+- `routes/ferrari_tiers.py` MLB prop-merge — removed
+  `pick["edge_pct"] = sc.get("edge_pct")`; added defensive pops on
+  the `dict(sc)` base shape.
+- `routes/ferrari_tiers.py::normalize_mlb_pick_for_ui` — deleted
+  the `if 'edge_pct' in normalized: normalized['vk_edge'] =
+  normalized['edge_pct']` bridging shim.
+- `routes/ferrari_tiers.py::enrich_picks_with_vk` — removed
+  `pick["vk_edge"]` stamp (canonical `edge_vs_fair` already on the
+  pick from upstream).
+- `routes/ferrari_tiers.py` cached-board merge — dropped
+  `prop["vk_edge"] = vk_data.get("edge")`.
+- `routes/ferrari_tiers.py::top_5_goblins` response — renamed
+  `"edge_pct"` → `"edge_vs_fair"`.
+- `routes/player.py::_score_to_prop` — player-detail response
+  surfaces `"edge_vs_fair"` only (was `"edge_pct"`).
+- `routes/debug_snapshots.py::_normalize_reject` — dropped
+  `"edge_pct"` surfaced-alias field; response keeps
+  `"edge_vs_fair"` only.
+
+**Reader migrations to canonical `edge_vs_fair`**:
+- `_rank_score` rank tiebreaker (ferrari_tiers.py) — reads
+  `edge_vs_fair` only.
+- `lasso_high_edge` badge rule — reads `edge_vs_fair` only.
+- HRR war-zone Mongo filter
+  (`/api/v3/ferrari/war-zone-hrr` equivalent) — switched
+  `$gte` predicate from `edge_pct` to `edge_vs_fair`; value_score
+  calc migrated too.
+- `debug_snapshots.py` — `_query_rejects` sort, shadow_board_compare
+  projection + `_agg` (reports `avg_edge_vs_fair`), rank-tuple
+  metadata, and top20_diffs entries all migrated.
+
+**Registry note** (`services/field_ownership/registry.py::edge`)
+updated to reflect alias STAMPING deletion; DB may still carry
+`edge_pct` on pre-Tier-F docs (writer purge deferred to a dedicated
+backfill sweep) but nothing escapes to public API.
+
+**Contract enforcement**:
+- New regression class
+  `TestEdgeAliasStampingRemoved` in
+  `tests/test_field_ownership_contracts.py` — 6 live-API tests
+  (NBA+MLB × safe-haven/front-lines/war-zone) assert NO pick
+  contains any of `edge_pct` / `vk_edge` / `true_edge`, and every
+  pick carries `edge_vs_fair`.
+
+**Metrics**:
+- **Writer count before → after**: 9 response-level alias stamps in
+  routes (`ferrari_tiers.py × 7` + `player.py × 1` +
+  `debug_snapshots.py × 1`) → **0**.
+- **Backend reader count before → after** (routes + card-building
+  services): 4 canonical-fallback reads (rank tiebreaker, badge
+  rule, HRR filter, value_score) → **0** legacy alias reads.
+  `.get("edge_pct"/"vk_edge"/"true_edge")` count in
+  routes/ + dashboard_card_contract.py + picks_getter_service.py +
+  mlb_cached_board_builder.py = **0**.
+- **Frontend reader count**: already 0 active reads (Tier E);
+  re-verified: only commented migration markers remain.
+- **Live API alias absence**: 6 tier endpoints × 41 picks →
+  `edge_pct=0 vk_edge=0 true_edge=0 edge_vs_fair=41/41`.
+- **Tests**: 115 passed / 0 failed.
+
+
+
 ## 2026-05-04 — SSOT Tier F #1: `direction` alias stamping deletion
 
 **Problem**: Response-building writers were duplicating the canonical

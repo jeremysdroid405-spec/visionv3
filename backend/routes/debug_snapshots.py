@@ -24,7 +24,7 @@ Endpoints
 ---------
 GET /api/debug/snapshots/safe-haven-rejects?sport=nba&top=20&freeze=true
     Returns the deterministic top-N safe-haven rejects (sorted by
-    edge_pct DESC, vision_score DESC, canonical_key ASC). When
+    edge_vs_fair DESC, vision_score DESC, canonical_key ASC). When
     freeze=true (default) the recompute / sync locks are held for
     the duration of the read.
 """
@@ -119,7 +119,8 @@ def _normalize_reject(doc: Dict[str, Any]) -> Dict[str, Any]:
         "hit_rate":            hit,
         "cv":                  doc.get("cv"),
         "tp":                  doc.get("tp"),
-        "edge_pct":            doc.get("edge_pct"),
+        # SSOT Tier F #2 (2026-05-04): canonical `edge_vs_fair` only;
+        # legacy `edge_pct` surfaced-alias stamp removed.
         "edge_vs_fair":        doc.get("edge_vs_fair"),
         "tp_books_used":       doc.get("tp_books_used"),
         "book_count":          doc.get("book_count"),
@@ -147,8 +148,9 @@ async def _query_rejects(db, sport: str, top: int) -> List[Dict[str, Any]]:
         {"_id": 0},
     )
     raw = await cursor.to_list(length=10000)
+    # SSOT Tier F #2 (2026-05-04): sort on canonical `edge_vs_fair`.
     raw.sort(key=lambda r: (
-        -_num(r.get("edge_pct")),
+        -_num(r.get("edge_vs_fair")),
         -_num(r.get("vision_score")),
         r.get("canonical_key") or "",
     ))
@@ -173,7 +175,7 @@ async def safe_haven_rejects(
 ):
     """Top-N Safe Haven rejects, deterministic, admin-gated, opt-in freeze.
 
-    Sort key tuple: `edge_pct DESC, vision_score DESC, canonical_key ASC`.
+    Sort key tuple: `edge_vs_fair DESC, vision_score DESC, canonical_key ASC`.
     Returns SHA-256 of the sorted payload so two consecutive calls can be
     compared trivially.
     """
@@ -220,7 +222,7 @@ async def safe_haven_rejects(
             "version_tag":        DEFAULT_VERSION_TAG[sport],
             "filter":             {"tier_reference_odds_lte": SH_REF_ODDS_CEILING,
                                    "exclude_tier":            "safe_haven"},
-            "sort_key":           ["edge_pct DESC", "vision_score DESC",
+            "sort_key":           ["edge_vs_fair DESC", "vision_score DESC",
                                    "canonical_key ASC"],
             "freeze":             freeze,
             "delta_locks_held":   [h.lock_key for h in handles],
@@ -295,7 +297,8 @@ async def shadow_board_compare(
         {"version_tag": DEFAULT_VERSION_TAG[sport]},
         {"_id": 0, "canonical_key": 1, "player_name": 1, "stat_type": 1,
          "line": 1, "recommendation": 1, "tier": 1, "p_true_active": 1,
-         "edge_pct": 1, "tp": 1, "vision_score": 1, "vision_score_v2": 1,
+         # SSOT Tier F #2: canonical edge field is `edge_vs_fair`.
+         "edge_vs_fair": 1, "tp": 1, "vision_score": 1, "vision_score_v2": 1,
          "vision_direction_alignment": 1},
     )
     async for d in cursor:
@@ -308,7 +311,8 @@ async def shadow_board_compare(
         if not ds:
             return {"n": 0}
         ps = [d.get("p_true_active") for d in ds if isinstance(d.get("p_true_active"), (int, float))]
-        es = [d.get("edge_pct") for d in ds if isinstance(d.get("edge_pct"), (int, float))]
+        # SSOT Tier F #2: canonical edge field is `edge_vs_fair`.
+        es = [d.get("edge_vs_fair") for d in ds if isinstance(d.get("edge_vs_fair"), (int, float))]
         als = [d.get("vision_direction_alignment") for d in ds
                if isinstance(d.get("vision_direction_alignment"), (int, float))]
         wrong = sum(1 for d in ds
@@ -317,7 +321,7 @@ async def shadow_board_compare(
         return {
             "n":                   len(ds),
             "avg_p_true_active":   round(sum(ps) / len(ps), 4) if ps else None,
-            "avg_edge_pct":        round(sum(es) / len(es), 4) if es else None,
+            "avg_edge_vs_fair":    round(sum(es) / len(es), 4) if es else None,
             "avg_direction_alignment":
                                   round(sum(als) / len(als), 4) if als else None,
             "wrong_side_count":    wrong,
@@ -328,9 +332,9 @@ async def shadow_board_compare(
         "sport":        sport,
         "version_tag":  DEFAULT_VERSION_TAG[sport],
         "rank_tuple_prod":   ["ranking_score DESC", "vision_score DESC",
-                              "edge_pct DESC", "canonical_key ASC"],
+                              "edge_vs_fair DESC", "canonical_key ASC"],
         "rank_tuple_shadow": ["ranking_score DESC", "vision_score_v2 DESC",
-                              "edge_pct DESC", "canonical_key ASC"],
+                              "edge_vs_fair DESC", "canonical_key ASC"],
         "buckets": [],
     }
 
@@ -427,7 +431,7 @@ async def shadow_board_compare(
                     **{k: d.get(k) for k in
                        ("player_name", "stat_type", "line", "recommendation",
                         "vision_score", "vision_score_v2",
-                        "vision_direction_alignment", "edge_pct",
+                        "vision_direction_alignment", "edge_vs_fair",
                         "p_true_active")},
                 })
             for ck in removed:
@@ -438,7 +442,7 @@ async def shadow_board_compare(
                     **{k: d.get(k) for k in
                        ("player_name", "stat_type", "line", "recommendation",
                         "vision_score", "vision_score_v2",
-                        "vision_direction_alignment", "edge_pct",
+                        "vision_direction_alignment", "edge_vs_fair",
                         "p_true_active")},
                 })
 

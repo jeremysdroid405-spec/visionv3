@@ -141,13 +141,20 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         status="locked",
         notes=(
             "2026-05-04: canonical owner = edge_vs_fair. "
-            "Aliases `edge_pct` (percentage form) and `vk_edge` "
-            "(raw unit form) remain stamped on API pick responses "
-            "for backwards compat with 20+ frontend readers; the "
-            "scorer stamps `edge_vs_fair` once and the alias values "
-            "are derived from it. `true_edge` / `edge_percentage` "
-            "legacy aliases are flagged for deletion in a follow-up "
-            "cleanup pass (see FIELD_OWNERSHIP.md Tier C)."
+            "2026-05-04 Tier F #2: alias STAMPING deleted — "
+            "`edge_pct` / `vk_edge` / `true_edge` are no longer "
+            "written onto API pick responses by any route. Frontend "
+            "has zero active readers for the aliases (verified via "
+            "grep on frontend/src/); only commented-out migration "
+            "markers remain. Sorters, filter predicates, and debug "
+            "aggregates (`/api/v3/debug/safe-haven-rejects`, "
+            "`/api/v3/debug/shadow_board/compare`, "
+            "`/api/v3/mlb/sharp/goblins`, HRR war-zone) all read "
+            "canonical `edge_vs_fair` directly. DB docs may still "
+            "carry `edge_pct` (writer purge deferred until Tier F "
+            "backfill sweep) but it never escapes to a public "
+            "response. Defensive `.pop()` calls in ferrari merge "
+            "paths strip any upstream leakage."
         ),
     ),
     "hit_rate_l5": FieldSpec(

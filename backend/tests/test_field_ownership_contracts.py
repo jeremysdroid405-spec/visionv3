@@ -993,3 +993,71 @@ class TestDirectionAliasStampingRemoved:
             f"{sport} {tier}: {len(missing_rec)} picks missing canonical "
             f"`recommendation`. Sample: {missing_rec[:5]}."
         )
+
+
+# ────────────────────────────────────────────────────────────────────
+# Tier F #2: `edge_pct` / `vk_edge` / `true_edge` alias stamping
+# removed from API responses (canonical is `edge_vs_fair`).
+# ────────────────────────────────────────────────────────────────────
+
+_EDGE_ALIAS_BLACKLIST = ("edge_pct", "vk_edge", "true_edge")
+
+
+class TestEdgeAliasStampingRemoved:
+    """SSOT Tier F #2 (2026-05-04): response-building paths MUST NOT
+    stamp the legacy edge aliases `edge_pct`, `vk_edge`, or
+    `true_edge` on public API picks. Canonical field is
+    `edge_vs_fair`. Frontend has zero active readers for the aliases;
+    any leakage is a silent SSOT regression."""
+
+    @pytest.mark.parametrize("sport,tier", [
+        ("NBA", "safe-haven"),
+        ("NBA", "front-lines"),
+        ("NBA", "war-zone"),
+        ("MLB", "safe-haven"),
+        ("MLB", "front-lines"),
+        ("MLB", "war-zone"),
+    ])
+    def test_ferrari_tier_response_does_not_stamp_edge_aliases(
+        self, api_base, sport, tier
+    ):
+        url = f"{api_base}/api/v3/ferrari/{tier}?sport={sport}&limit=15"
+        try:
+            r = requests.get(url, timeout=25)
+        except requests.RequestException as e:
+            pytest.skip(f"{sport} {tier} endpoint unreachable: {e}")
+        if r.status_code != 200:
+            pytest.skip(f"{sport} {tier} returned {r.status_code}")
+        data = r.json()
+        picks = (
+            data.get("picks")
+            or data.get("data")
+            or data.get("items")
+            or (data if isinstance(data, list) else [])
+        )
+        if not picks:
+            pytest.skip(f"{sport} {tier} returned no picks")
+        for alias in _EDGE_ALIAS_BLACKLIST:
+            offenders = [
+                f"{p.get('player_name')} {p.get('stat_type')}"
+                for p in picks
+                if alias in p
+            ]
+            assert not offenders, (
+                f"{sport} {tier}: {len(offenders)}/{len(picks)} picks "
+                f"still carry legacy `{alias}` alias. "
+                f"Sample: {offenders[:5]}. Tier F #2 writer deletion "
+                f"regressed."
+            )
+        # Canonical field must remain stamped on the response.
+        missing_canonical = [
+            f"{p.get('player_name')} {p.get('stat_type')}"
+            for p in picks
+            if "edge_vs_fair" not in p
+        ]
+        assert not missing_canonical, (
+            f"{sport} {tier}: canonical `edge_vs_fair` missing from "
+            f"{len(missing_canonical)}/{len(picks)} picks. Sample: "
+            f"{missing_canonical[:5]}."
+        )
+

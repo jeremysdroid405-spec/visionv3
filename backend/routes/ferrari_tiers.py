@@ -132,7 +132,7 @@ def _dedupe_picks_by_player(picks, keep: str = "best", sort: Optional[str] = Non
     Ranking (best-pick-wins):
         1. vision_score           DESC  (primary tier ranker)
         2. pp_utility             DESC
-        3. abs(edge_pct or vk_edge) DESC  (fallback for legacy MLB docs)
+        3. abs(edge_vs_fair)      DESC  (canonical edge tiebreaker)
 
     `picks` input is expected to be pre-sorted by the reader, but we sort
     again defensively so the invariant holds even when a caller bypasses the
@@ -151,7 +151,9 @@ def _dedupe_picks_by_player(picks, keep: str = "best", sort: Optional[str] = Non
             return (rv_r,)
         vs = p.get("vision_score")
         pu = p.get("pp_utility")
-        eg = p.get("edge_pct") if p.get("edge_pct") is not None else p.get("vk_edge")
+        # SSOT Tier F #2 (2026-05-04): rank fallback reads canonical
+        # `edge_vs_fair`; legacy `edge_pct` / `vk_edge` aliases dropped.
+        eg = p.get("edge_vs_fair")
         # Treat None as lowest rank; negative edges are still ranked by magnitude.
         vs_r = float(vs) if isinstance(vs, (int, float)) else float("-inf")
         pu_r = float(pu) if isinstance(pu, (int, float)) else float("-inf")
@@ -679,9 +681,11 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
         # floor_lock: 90%+ hit rate over L10
         if h10_rate >= 90:
             scout.append({"badge_key": "floor_lock", "id": "floor_lock"})
-        # lasso_high_edge: VK edge > 15%
-        vk_edge = prop.get("vk_edge") or prop.get("edge_pct") or 0
-        if abs(vk_edge) >= 15:
+        # lasso_high_edge: canonical `edge_vs_fair` > 15 (percent units).
+        # SSOT Tier F #2 (2026-05-04): legacy `vk_edge` / `edge_pct`
+        # fallbacks removed.
+        edge_val = prop.get("edge_vs_fair") or 0
+        if abs(edge_val) >= 15:
             scout.append({"badge_key": "lasso_high_edge", "id": "lasso_high_edge"})
         # high_fidelity_model: R² > 0.30
         r_squared = prop.get("r_squared") or prop.get("model_r2") or 0
@@ -938,6 +942,12 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         # migrated). Strip it on read so the response never exposes the
         # alias — canonical `recommendation` is stamped below.
         prop.pop("direction", None)
+        # SSOT Tier F #2 (2026-05-04): same defensive strip for legacy
+        # `edge_pct` / `vk_edge` / `true_edge` aliases — response
+        # exposes canonical `edge_vs_fair` only.
+        prop.pop("edge_pct", None)
+        prop.pop("vk_edge", None)
+        prop.pop("true_edge", None)
         # Player-level fields from parent player doc
         for fld in (
             "player_id", "nba_id", "bdl_id", "nba_com_id", "espn_id",
@@ -1092,10 +1102,6 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     vk2 = score.get("vk2_projection")
     if vk2 is not None:
         prop["vk_predicted"] = round(float(vk2), 2)
-        try:
-            prop["vk_edge"] = round(float(vk2) - float(score.get("line") or 0), 2)
-        except (TypeError, ValueError) as _swept_exc:
-            log_silent_failure("routes.ferrari_tiers._merge_score_with_board", _swept_exc)  # sweep-auto-converted
     prop["vk2_projection"] = vk2
     prop["vk2_sigma"] = score.get("vk2_sigma")
     prop["model_projection"] = score.get("model_projection")
@@ -1109,7 +1115,6 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         try:
             mp = float(score["model_projection"])
             prop["vk_predicted"] = round(mp, 2)
-            prop["vk_edge"] = round(mp - float(score.get("line") or 0), 2)
         except (TypeError, ValueError) as _swept_exc:
             log_silent_failure("routes.ferrari_tiers._merge_score_with_board", _swept_exc)  # sweep-auto-converted
     prop["p_true_active"] = score.get("p_true_active")
@@ -1130,8 +1135,9 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
 
     # Multi-book de-vig TP engine (2026-04-22) — surface tp/edge and
     # provenance so the UI can show "TP 57.3% · edge +12.1 · 3 books".
+    # SSOT Tier F #2 (2026-05-04): `edge_pct` alias stamp removed —
+    # canonical is `edge_vs_fair`, surfaced below.
     prop["tp"] = score.get("tp")
-    prop["edge_pct"] = score.get("edge_pct")
     prop["tp_books_used"] = score.get("tp_books_used")
     prop["tp_books_list"] = score.get("tp_books_list")
     prop["tp_method"] = score.get("tp_method")
@@ -1584,6 +1590,12 @@ async def _get_mlb_tier_picks_from_scores(
         # `direction` key carried over from upstream writers is
         # stripped here so the MLB response never exposes the alias.
         pick.pop("direction", None)
+        # SSOT Tier F #2 (2026-05-04): same defensive strip for legacy
+        # `edge_pct` / `vk_edge` / `true_edge` aliases — response
+        # exposes canonical `edge_vs_fair` only (already present on sc).
+        pick.pop("edge_pct", None)
+        pick.pop("vk_edge", None)
+        pick.pop("true_edge", None)
 
         # ── Universal display-shape parity with NBA (2026-04-29) ─────────
         # Pure projection. Every field below already exists upstream
@@ -1664,8 +1676,9 @@ async def _get_mlb_tier_picks_from_scores(
         pick["books_anchored"] = sc.get("books_anchored")
 
         # Multi-book de-vig TP engine (2026-04-22).
+        # SSOT Tier F #2 (2026-05-04): `edge_pct` alias stamp dropped —
+        # canonical `edge_vs_fair` is surfaced on the pick.
         pick["tp"] = sc.get("tp")
-        pick["edge_pct"] = sc.get("edge_pct")
         pick["tp_books_used"] = sc.get("tp_books_used")
         pick["tp_books_list"] = sc.get("tp_books_list")
         pick["tp_method"] = sc.get("tp_method")
@@ -1943,9 +1956,11 @@ def normalize_mlb_pick_for_ui(pick: dict) -> dict:
     if normalized.get('season_avg') is None and 'projected_value' in normalized:
         normalized['season_avg'] = normalized['projected_value']
     
-    # Map edge_pct if available (as additional context)
-    if 'edge_pct' in normalized and normalized.get('vk_edge') is None:
-        normalized['vk_edge'] = normalized['edge_pct']
+    # SSOT Tier F #2 (2026-05-04): `vk_edge` alias stamping removed.
+    # Canonical edge field is `edge_vs_fair`; legacy `edge_pct` was
+    # dropped in the same tier. The bridging `if 'edge_pct' in
+    # normalized and normalized.get('vk_edge') is None:` shim is
+    # deleted — upstream callers read `edge_vs_fair` directly.
     
     # Ensure sport is set
     normalized['sport'] = 'mlb'
@@ -2000,7 +2015,9 @@ def enrich_picks_with_vk(picks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                     recommendation = "NEUTRAL"
                 
                 pick["vk_predicted"] = float(predicted) if predicted else None
-                pick["vk_edge"] = float(edge) if edge else None
+                # SSOT Tier F #2 (2026-05-04): `vk_edge` alias stamp
+                # removed — canonical edge on response picks is
+                # `edge_vs_fair` (stamped upstream from score doc).
                 pick["vk_prob_over"] = float(prob_over)
                 pick["vk_prob_under"] = float(prob_under)
                 pick["vk_recommendation"] = recommendation
@@ -3601,11 +3618,13 @@ async def get_mlb_player_props(
                 if cached_prop.get("vk_data"):
                     vk_data = cached_prop["vk_data"]
                     prop["vk_data"] = vk_data
-                    # Also flatten VK fields for frontend compatibility
+                    # Also flatten VK fields for frontend compatibility.
+                    # SSOT Tier F #2 (2026-05-04): `vk_edge` alias stamp
+                    # removed — canonical edge on response picks is
+                    # `edge_vs_fair` (stamped upstream from score doc).
                     prop["vk_predicted"] = vk_data.get("predicted")
                     prop["vk_prob_over"] = vk_data.get("prob_over")
                     prop["vk_prob_under"] = vk_data.get("prob_under")
-                    prop["vk_edge"] = vk_data.get("edge")
                     prop["vk_recommendation"] = vk_data.get("verdict")
                     prop["projected_value"] = vk_data.get("predicted")
                 if cached_prop.get("matchup_analysis"):
@@ -4250,7 +4269,9 @@ async def get_mlb_hrr_picks(
         "version_tag": MLB_LIVE,
         "tier": "war_zone",
         "stat_type": "Hits+Runs+RBIs",
-        "edge_pct": {"$gte": min_edge},
+        # SSOT Tier F #2 (2026-05-04): canonical edge filter is
+        # `edge_vs_fair`; legacy `edge_pct` filter removed.
+        "edge_vs_fair": {"$gte": min_edge},
         # SSOT Tier F (2026-05-04): prefer canonical `hit_rate_l20`
         # filter; $or keeps pre-dual-write docs visible until next
         # full recompute sweep.
@@ -4264,7 +4285,8 @@ async def get_mlb_hrr_picks(
     
     # Calculate value score and sort
     for pick in picks:
-        edge = abs(pick.get("edge_pct", 0))
+        # SSOT Tier F #2: read canonical `edge_vs_fair`.
+        edge = abs(pick.get("edge_vs_fair") or 0)
         hr = pick.get("hit_rate_l10", 0) or 0
         # Score: edge weighted by hit rate
         pick["value_score"] = round(edge * hr, 1)
@@ -4363,7 +4385,9 @@ async def run_mlb_sharp_sorting_endpoint(
                 "recommendation": g.get("recommendation"),
                 "sharp_odds": g.get("all_odds", {}).get("pinnacle"),
                 "sharp_fair_value": g.get("sharp_fair_value"),
-                "edge_pct": g.get("edge_pct"),
+                # SSOT Tier F #2: canonical `edge_vs_fair` (was legacy
+                # `edge_pct`).
+                "edge_vs_fair": g.get("edge_vs_fair"),
                 "hit_rate_l10": g.get("hit_rate_l10")
             }
             for g in results.get("goblins", [])[:5]
