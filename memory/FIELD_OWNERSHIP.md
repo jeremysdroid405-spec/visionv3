@@ -1,11 +1,12 @@
 # FIELD OWNERSHIP — PropVision
 
-**Status:** Phase 2.6 (Tier C) complete. **16 of 23 fields migrated end-to-end.**
-**Last updated:** 2026-05-04 (Tier C)
-**Enforcement mode:** Log-warn (Phase 1). Pydantic-raise (Phase 3, planned).
+**Status:** Phase 2.7 (Tier D) complete. **16 of 23 fields locked or enforced + Pydantic write contract live.**
+**Last updated:** 2026-05-04 (Tier D)
+**Enforcement mode:** Pydantic validate-and-log (default). Strict-mode available via `SSOT_PYDANTIC_STRICT=true` env var.
 **Diagnostics:**
-  - `GET /api/health/active-transitions?sport=nba&hours=24` — active lifecycle audit replay
-  - `GET /api/health/sync` — now surfaces `sports.{sport}.pp_projection_ids` with staleness flag
+  - `GET /api/health/active-transitions?sport=nba&hours=24` — active lifecycle audit
+  - `GET /api/health/sync` — surfaces `sports.{sport}.pp_projection_ids` with stale/source_available flags; probe logs WARN@6h / CRITICAL@24h on every read
+  - `services.scoring.score_document_schema.ScoreDocument` — write-boundary Pydantic contract
 
 ---
 

@@ -218,6 +218,15 @@ async def _probe_pp_projection_ids(db, sport: str) -> Dict[str, Any]:
     inside each `pp_multiplier_lab` doc (indexed at
     `ix_proj_odds_type`), so we surface its top-level distribution
     from there.
+
+    Staleness logging (2026-05-04 Tier D): every invocation of this
+    probe checks `last_refresh_age_sec` against two thresholds and
+    emits a single log line at the appropriate level. No scheduler,
+    no separate cron — the log fires whenever anything reads
+    `/api/health/sync`, which is already polled by the ops tooling.
+    Emission is per-probe-call: each `sport` logs independently.
+      - WARN  at 6h+  (cache getting stale; scraper may be lagging)
+      - CRITICAL at 24h+  (cache effectively dead)
     """
     try:
         _LEAGUE_ID = {"nba": "7", "mlb": "2"}  # PrizePicks internal IDs
@@ -232,6 +241,14 @@ async def _probe_pp_projection_ids(db, sport: str) -> Dict[str, Any]:
              "raw_count": 1, "source": 1},
         )
         if not doc:
+            # No cache doc at all — log once at CRITICAL so ops sees it.
+            logger.critical(
+                "[PP_STALENESS:%s] no pp_projection_id_cache row for "
+                "league_id=%s — PP scraper has never successfully "
+                "seeded this sport. All multipliers falling back to "
+                "'standard' odds_type.",
+                sport.upper(), league_id,
+            )
             return {
                 "league_id":           league_id,
                 "cached":              False,
@@ -244,9 +261,37 @@ async def _probe_pp_projection_ids(db, sport: str) -> Dict[str, Any]:
         pids   = doc.get("projection_ids") or []
         fetched = _coerce_dt(doc.get("fetched_at"))
         age_s   = _age_seconds(fetched)
-        # 60 minutes = scraper cron is 15 min → anything older than
-        # 4 ticks means the scraper has stopped.
-        stale   = (age_s is not None and age_s > 60 * 60)
+
+        # Thresholds (FIELD_OWNERSHIP.md:pp_projection_id).
+        WARN_S     = 6 * 3600
+        CRITICAL_S = 24 * 3600
+
+        stale = (age_s is not None and age_s > 3600)  # > 60 min: not fresh
+
+        if age_s is not None:
+            hrs = age_s / 3600.0
+            if age_s >= CRITICAL_S:
+                logger.critical(
+                    "[PP_STALENESS:%s] pp_projection_id_cache age="
+                    "%.1fh (CRITICAL ≥ 24h). league_id=%s, "
+                    "projection_ids=%d, last_refresh=%s, source=%r. "
+                    "Scraper effectively dead; downstream "
+                    "demon/goblin lookups will return standard only.",
+                    sport.upper(), hrs, league_id, len(pids),
+                    fetched.isoformat() if fetched else "?",
+                    doc.get("source"),
+                )
+            elif age_s >= WARN_S:
+                logger.warning(
+                    "[PP_STALENESS:%s] pp_projection_id_cache age="
+                    "%.1fh (WARN ≥ 6h). league_id=%s, "
+                    "projection_ids=%d, last_refresh=%s, source=%r. "
+                    "Scraper is lagging; investigate before 24h "
+                    "CRITICAL threshold.",
+                    sport.upper(), hrs, league_id, len(pids),
+                    fetched.isoformat() if fetched else "?",
+                    doc.get("source"),
+                )
 
         # odds_type mix lives on pp_multiplier_lab.selected_projections.
         odds_mix: Dict[str, int] = {}
@@ -276,6 +321,7 @@ async def _probe_pp_projection_ids(db, sport: str) -> Dict[str, Any]:
             "stale":                stale,
             "source_available":     (not stale) and len(pids) > 0,
             "odds_type_mix":        odds_mix,
+            "staleness_threshold_hours": {"warn": 6, "critical": 24},
         }
     except Exception as exc:  # noqa: BLE001
         return {"error": repr(exc)}

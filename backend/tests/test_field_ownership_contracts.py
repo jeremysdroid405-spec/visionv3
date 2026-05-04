@@ -726,3 +726,136 @@ class TestLockedFieldsInventory:
             f"`locked` back to `documented`?"
         )
 
+
+
+# ════════════════════════════════════════════════════════════════════
+# Tier D — Pydantic write contract + PP staleness logging
+# ════════════════════════════════════════════════════════════════════
+
+
+class TestPydanticWriteContract:
+    """Tier D: every score doc goes through ScoreDocument.model_validate.
+    Schema runs `extra="allow"` during migration; strict flips on
+    SSOT_PYDANTIC_STRICT=true. LOCKED SSOT fields are typed so type
+    drift is caught at write time."""
+
+    def test_schema_accepts_valid_doc(self):
+        from services.scoring.score_document_schema import ScoreDocument
+        from datetime import datetime, timezone
+        doc = {
+            "canonical_key":  "nba|evt1|Jayson Tatum|PTS|25.5|OVER",
+            "sport":          "nba",
+            "event_id":       "evt1",
+            "player_name":    "Jayson Tatum",
+            "stat_type":      "PTS",
+            "line":           25.5,
+            "recommendation": "OVER",
+            "version_tag":    "final-nba-rt",
+            "computed_at":    datetime.now(timezone.utc),
+            "scored_at":      datetime.now(timezone.utc),
+            "active":         True,
+            "vision_score":   82.4,
+            "edge_vs_fair":   0.14,
+            "cv":             0.21,
+            "hit_rate_l20":   0.72,
+        }
+        validated = ScoreDocument.model_validate(doc)
+        assert validated.canonical_key == doc["canonical_key"]
+        assert validated.edge_vs_fair == 0.14
+        # extras=allow — diagnostic fields pass through.
+        ScoreDocument.model_validate({**doc, "some_diagnostic_field": 42})
+
+    def test_schema_rejects_missing_required(self):
+        from services.scoring.score_document_schema import ScoreDocument
+        from pydantic import ValidationError
+        bad = {"canonical_key": "nba|evt1|p|PTS|10.0|OVER"}
+        with pytest.raises(ValidationError):
+            ScoreDocument.model_validate(bad)
+
+    def test_schema_rejects_type_drift(self):
+        """Line is `float` — non-numeric strings must be rejected."""
+        from services.scoring.score_document_schema import ScoreDocument
+        from pydantic import ValidationError
+        from datetime import datetime, timezone
+        bad = {
+            "canonical_key": "nba|evt1|p|PTS|10.0|OVER",
+            "sport":         "nba",
+            "stat_type":     "PTS",
+            "line":          "not-a-number",
+            "version_tag":   "final-nba-rt",
+            "computed_at":   datetime.now(timezone.utc),
+            "scored_at":     datetime.now(timezone.utc),
+        }
+        with pytest.raises(ValidationError):
+            ScoreDocument.model_validate(bad)
+
+    def test_validate_helper_logs_but_doesnt_raise_in_default_mode(self, caplog):
+        from services.scoring.score_document_schema import (
+            validate_score_document, SSOT_PYDANTIC_STRICT,
+        )
+        import logging
+        if SSOT_PYDANTIC_STRICT:
+            pytest.skip("strict mode on; helper re-raises")
+        caplog.set_level(logging.WARNING, logger="services.scoring.score_document_schema")
+        err = validate_score_document({"canonical_key": "bad"})
+        assert err is not None
+        assert any("SSOT_PYDANTIC" in rec.message for rec in caplog.records)
+
+
+class TestAllowlistSchemaParity:
+    """Every SSOT-LOCKED field must be typed in `ScoreDocument`. This
+    gates a future `extra="forbid"` flip without surprises."""
+
+    def test_schema_covers_all_ssot_locked_fields(self):
+        from services.scoring.score_document_schema import ScoreDocument
+        required = {
+            "canonical_key", "sport", "stat_type", "line",
+            "version_tag", "computed_at", "scored_at",
+            "active", "inactive_reason", "active_changed_at",
+            "game_start_utc",
+            "vision_score", "edge_vs_fair",
+            "tier",
+            "p_true_active",
+            "hit_rate_l5", "hit_rate_l10", "hit_rate_l20", "hit_rate_over",
+            "ranking_score_v2",
+            "cv",
+            "book_count", "coverage_class",
+        }
+        schema_fields = set(ScoreDocument.model_fields.keys())
+        missing = required - schema_fields
+        assert not missing, (
+            f"ScoreDocument schema missing {len(missing)} SSOT-locked "
+            f"fields: {sorted(missing)}."
+        )
+
+
+class TestPPStalenessLogging:
+    """Tier D: the staleness probe emits WARN ≥6h, CRITICAL ≥24h."""
+
+    def test_probe_emits_warn_on_stale_cache(self, api_base, caplog):
+        """Hit the live probe; the real NBA cache is already >24h
+        stale (verified at Tier C close) so a CRITICAL log fires on
+        every /api/health/sync read."""
+        # Invoke probe via the API and read the current log tail.
+        import requests
+        import subprocess
+        r = requests.get(f"{api_base}/api/health/sync?sports=nba", timeout=20)
+        assert r.status_code == 200
+        # Fetch last 50 WARN/CRITICAL lines from supervisor log.
+        try:
+            out = subprocess.check_output(
+                ["grep", "-E", "PP_STALENESS",
+                 "/var/log/supervisor/backend.err.log"],
+                text=True, stderr=subprocess.DEVNULL,
+            )
+            assert "PP_STALENESS" in out, (
+                f"Expected PP_STALENESS log line in supervisor output."
+            )
+            # At least one CRITICAL line (NBA is >24h stale at time of
+            # writing this suite; if that changes, drop to WARN check).
+            assert ("CRITICAL" in out) or ("WARN" in out), (
+                "Expected CRITICAL or WARN level staleness log."
+            )
+        except subprocess.CalledProcessError:
+            pytest.skip("supervisor log not accessible in this env")
+

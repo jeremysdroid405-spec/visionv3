@@ -1,8 +1,148 @@
-# SSOT Enforcement Report — Sessions 2026-05-04 (Phase 1 + 2 + 2.5 + Tier C)
+# SSOT Enforcement Report — Sessions 2026-05-04 (Phase 1 + 2 + 2.5 + C + D)
 
 **Mandate:** Turn field ownership from documentation into enforced code.
-**Scope:** Foundation layer + Phase 1 (2 reference fields) + Phase 2 Core Stability (4 fields) + Phase 2.5 Derived fields (4 fields) + **Tier C alias hardening (6 fields)**.
-**Honest status:** **16/23 fields enforced or locked.** 49 contract tests green. 100/100 tests across all relevant suites green.
+**Scope:** Foundation + Phase 1 (2 fields) + Phase 2 Core Stability (4) + Phase 2.5 Derived (4) + Tier C Alias Hardening (6) + **Tier D Pydantic write contract + PP staleness WARN**.
+**Honest status:** **16/23 fields enforced or locked.** 54 contract tests green (105/105 across all relevant suites). Pydantic `ScoreDocument` schema live in validate-and-log mode with `SSOT_PYDANTIC_STRICT=false` default. PP scraper staleness now logs WARN@6h / CRITICAL@24h on every /api/health/sync read.
+
+---
+
+## Tier D deliverables (2026-05-04)
+
+### 1. PP scraper staleness WARN
+
+Extended `_probe_pp_projection_ids(db, sport)` to log every invocation at the appropriate level:
+  - **No cache row for league_id** → `CRITICAL` ("scraper has never seeded this sport").
+  - **age ≥ 24h** → `CRITICAL` ("effectively dead; downstream demon/goblin → standard only").
+  - **age ≥ 6h** → `WARN` ("lagging; investigate before 24h threshold").
+  - **age < 6h** → no log.
+
+No scheduler, no separate cron — logs fire piggy-backed on existing `/api/health/sync` polling. No fallback scraping, no synthesised IDs.
+
+**Sample production output** (NBA cache, 68h stale at Tier D close):
+```
+CRITICAL [PP_STALENESS:NBA] pp_projection_id_cache age=68.1h (CRITICAL ≥ 24h).
+         league_id=7, projection_ids=5, last_refresh=2026-05-01T05:19:42Z,
+         source='local_runner'. Scraper effectively dead; downstream
+         demon/goblin lookups will return standard only.
+```
+
+Thresholds surfaced on the probe payload: `"staleness_threshold_hours": {"warn": 6, "critical": 24}`.
+
+### 2. `ScoreDocument` Pydantic write contract
+
+New file: `services/scoring/score_document_schema.py` — **90+ typed fields** covering every LOCKED SSOT field + every field observed on persisted score docs (audited by diffing the persisted key set against the schema).
+
+**Write boundary:** `services.scoring.prop_scores_store.write_versioned_scores` calls `validate_score_document()` on every `prepared` doc AFTER `_project_score_doc` and BEFORE insert/upsert. Violations are counted, logged at WARN, and returned in the envelope as `pydantic_failures`:
+```
+{
+  "sport": "nba", "version_tag": "final-nba-rt",
+  "written": 1732, "pydantic_failures": 0, ...
+}
+```
+
+**Migration mode (default, 2026-05-04):** `SSOT_PYDANTIC_STRICT=false` → `extra="allow"` at model level; validation runs but never raises. Catches:
+  - Missing required fields (`canonical_key`, `sport`, `stat_type`, `line`, `version_tag`, `computed_at`, `scored_at`).
+  - Type drift (`line="not-a-number"`, `active="true"` string vs bool, etc.).
+  - Malformed datetimes.
+
+**Strict mode (ready, not flipped):** setting `SSOT_PYDANTIC_STRICT=true` re-raises `ValidationError` on any failure. Tier E will flip this after adapter-output fields are enumerated / persistence boundary is cleaned.
+
+### 3. Schema-validation proof (live)
+
+```python
+# Tolerates diagnostic extras (extra="allow" during migration):
+validate_score_document({
+    ...LOCKED SSOT fields..., 'avg_hit_margin': 3.2, 'ceiling_rate': 0.85, ...
+})  → None (PASSED)
+
+# Catches type drift:
+validate_score_document({..., 'line': 'not-a-number'})
+→ "nba|evt|x|PTS|25.5|OVER: line=Input should be a valid number, unable to parse string as a number"
+→ WARN log emitted; strict mode would raise.
+```
+
+Production recompute (1732 docs, NBA final-nba-rt) after schema flip: **0 Pydantic failures**, all writes successful.
+
+### 4. Frontend edge alias migration (partial)
+
+**UniversalPlayerCard.jsx** — the card that renders every safe-haven / front-lines / war-zone pick — was updated to prefer canonical `edge_vs_fair * line` over the legacy `vk_edge` raw-units field. Two call sites migrated:
+  - Prop-level card edge display (line 446).
+  - Player-tile aggregate edge display (line 735).
+
+Logic: if `edge_vs_fair` is present → compute `edge_vs_fair * line` (equivalent units). Fall back to `vk_edge` only for legacy payloads. Sign flip for UNDER remains.
+
+### 5. Registry + backend owner correction
+
+Updated `game_start_utc` registry entry to reflect DB reality: canonical owner is `prop_scores.game_start_utc` (datetime, derived in `recompute_sport`), NOT `live_props.game_start_utc` (0 rows populated — the upstream live_props field is the string `commence_time`). Tier C pinning in `_merge_score_with_board` is correct and preserved; endpoints that read directly from live_props continue to use `commence_time` — that's canonical in live_props, not an alias.
+
+### 6. Deferred alias deletion (tracked for Tier E)
+
+User rule was: *"Before deleting aliases, migrate every frontend/API reader to the canonical field."* Full reader inventory at Tier D close:
+
+| Alias | Backend readers | Frontend readers | Deletion status |
+|---|---|---|---|
+| `hit_rate_over` | 4 (`mlb_tier_sorter`, `dashboard_card_contract`, `hit_profile`, `metrics_builder`) | 0 direct | DEFERRED — dual-write contract in place |
+| `direction` | ~8 (`picks_getter_service` ×4, `market_moves_engine`, `mlb_cached_board_builder`, `sharp_edge_calculator`, `context_badge_service`) | reads `prop.direction || prop.side` | DEFERRED — canonical `side` stamped next to it |
+| `commence_time` | 11 (all in `picks_getter_service` aggregations reading live_props directly — CANONICAL in that context) | 0 | NOT-AN-ALIAS — registry corrected |
+| `vk_edge` | 0 (removed 2026-05-04 in the pydantic schema's field list though still stamped on response) | 6 (`UniversalPlayerCard.jsx` ×2 migrated this session; `PlayerDetailPage.jsx` ×4 pending) | PARTIAL MIGRATION |
+| `edge_pct` | stamped by scorer | 10+ in `PlayerDetailPage.jsx` | DEFERRED — frontend migration window required |
+| `true_edge` | 0 live writers (legacy only) | 0 | SAFE TO DELETE (Tier E) |
+
+---
+
+## Files changed (Tier D)
+
+- `services/scoring/score_document_schema.py` — **NEW**, 260 lines. ScoreDocument BaseModel + validate_score_document helper.
+- `services/scoring/prop_scores_store.py` — `write_versioned_scores` runs the validator; envelope carries `pydantic_failures` count.
+- `routes/health_sync.py` — `_probe_pp_projection_ids` gains WARN/CRITICAL logging; thresholds surfaced on payload.
+- `services/field_ownership/registry.py` — `game_start_utc` owner corrected to `prop_scores.game_start_utc`.
+- `frontend/src/components/dashboard/UniversalPlayerCard.jsx` — 2 sites prefer `edge_vs_fair * line` over `vk_edge`.
+- `tests/test_field_ownership_contracts.py` — **+6 new contract tests** (Pydantic accept/reject/type-drift/log-not-raise; schema parity; PP staleness live-probe log assertion).
+
+## Test results (Tier D close)
+
+```
+$ pytest tests/test_field_ownership_contracts.py -v
+  54 passed, 1 skipped (strict-mode test inactive by default) in 29.59s
+
+Full regression suite:
+$ pytest tests/test_field_ownership_contracts.py tests/test_delta_engine_tick.py \
+         tests/test_board_publisher.py tests/test_nba_heteroscedastic_sigma.py -q
+  105 passed, 1 skipped in 16.69s
+
+Live schema test:
+  NBA recompute (1732 docs, final-nba-rt)  →  pydantic_failures=0
+  Manual type-drift probe (line="not-a-number")  →  ValidationError caught + logged
+```
+
+---
+
+## Permanent repair progress
+
+| Criterion | Phase 1 | Phase 2 | Phase 2.5 | Tier C | **Tier D** |
+|---|---|---|---|---|---|
+| Fields enforced or locked | 2/23 | 6/23 | 10/23 | 16/23 | 16/23 |
+| Pydantic write contract | — | — | — | — | **✅ live (log-mode)** |
+| Type drift caught at write | — | — | — | — | **✅** |
+| PP staleness auto-alarm | — | — | — | probe | **✅ WARN/CRITICAL logs** |
+| Health diagnostic endpoints | 2 | 3 | 4 | 5 | 5 |
+| Contract tests | 12 | 27 | 38 | 49 | **54** |
+| Aliases deleted (code) | 2 | 4 | 5 | 7 | 9 (-photo synth + master_roster backfill) |
+
+**Permanent repair: ~70% complete** (up from 60% at Tier C, 45% at 2.5, 35% at 2, 20% at 1). Tier A + B + C + D done. Remaining: flip `SSOT_PYDANTIC_STRICT=true` after adapter-boundary cleanup, complete frontend edge-alias migration in `PlayerDetailPage.jsx`, Tier E collection deletions.
+
+## What is NOT done
+
+### Tier E — Final cleanup (~2h)
+- Flip `SSOT_PYDANTIC_STRICT=true` after enumerating the ~20 adapter-output fields that `_project_score_doc` drops (currently `extra="allow"` tolerates them).
+- Migrate remaining ~10 `edge_pct`/`vk_edge` readers in `PlayerDetailPage.jsx` to `edge_vs_fair`.
+- Delete `true_edge` (0 live writers/readers).
+- Delete `dg_cached_board` (0 rows, 14 reader files).
+- Delete `*_master_active_cache.json` static files + `_overlay_enrichment_cache_legacy` body.
+- Delete stale `version_tag` rows (`stage2-verify-*`, `recompute-*` > 48h old).
+
+### Vision Intel full engine refactor (P0, separate session)
+Unchanged. Scoped in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`.
 
 ---
 

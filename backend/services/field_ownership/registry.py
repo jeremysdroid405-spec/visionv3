@@ -230,9 +230,9 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
     ),
     "game_start_utc": FieldSpec(
         name="game_start_utc",
-        owner_collection="live_props",
+        owner_collection="prop_scores",
         owner_field="game_start_utc",
-        writers=["services/universal_odds_sync.py:_persist_prop"],
+        writers=["services/scoring/recompute.py:recompute_sport"],
         readers_allowed=[
             "services/scoring/recompute.py:_coerce_score_ctx_from_live",
             "services/board/scanner.py:*",
@@ -243,18 +243,18 @@ FIELD_REGISTRY: Dict[str, FieldSpec] = {
         frontend_display="hidden when missing",
         status="locked",
         notes=(
-            "2026-05-04 Tier C: `commence_time` alias is now pinned "
-            "to the canonical `game_start_utc` in "
-            "routes/ferrari_tiers._merge_score_with_board so any "
-            "backend reader still reaching for `commence_time` gets "
-            "the canonical value. Frontend already reads "
-            "`game_start_utc` exclusively. Pre-Tier-C, picks could "
-            "carry a 10-day-stale `commence_time` next to a fresh "
-            "`game_start_utc` (Tyrese Maxey case, 2026-05-04). "
-            "Adapter-level reads of raw-prop "
-            "`commence_time || event_start_utc || game_time` are "
-            "ingest-boundary shims (3rd-party odds scraper compat), "
-            "not score-doc fallbacks — allowed."
+            "2026-05-04 Tier C/D revision: canonical owner is "
+            "`prop_scores.game_start_utc` (datetime, derived). Upstream "
+            "scraper writes string `live_props.commence_time` which "
+            "is the ingest-boundary raw — NOT an alias for the "
+            "canonical (different collection, different type, "
+            "different lifetime). Per Tier C: the ferrari endpoint "
+            "path pins `prop['commence_time'] = prop['game_start_utc']` "
+            "in _merge_score_with_board so picks surfaced through "
+            "/api/v3/ferrari/* see consistent values. Endpoints that "
+            "read directly from live_props (legacy picks_getter_service "
+            "aggregations) continue to use `commence_time` — that's "
+            "the canonical name IN live_props, not a fallback."
         ),
     ),
     "line": FieldSpec(

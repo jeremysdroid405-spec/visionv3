@@ -497,6 +497,27 @@ async def write_versioned_scores(
         for d in score_docs
     ]
 
+    # ── Tier D Pydantic write contract (2026-05-04) ────────────────
+    # Validate every doc against `ScoreDocument`. Default mode is
+    # log-and-count (SSOT_PYDANTIC_STRICT=false) so we bake the
+    # contract against real slates without blocking writes. Set the
+    # env var to true to flip strict and raise on any violation.
+    from services.scoring.score_document_schema import (
+        validate_score_document, SSOT_PYDANTIC_STRICT,
+    )
+    pydantic_failures: List[str] = []
+    for p in prepared:
+        err = validate_score_document(p)
+        if err is not None:
+            pydantic_failures.append(err)
+    if pydantic_failures:
+        logger.warning(
+            "[SCORES_STORE:%s] Pydantic validation: %d/%d docs failed "
+            "schema (strict=%s). First 3: %s",
+            sport, len(pydantic_failures), len(prepared),
+            SSOT_PYDANTIC_STRICT, pydantic_failures[:3],
+        )
+
     if dry_run:
         return {
             "sport": sport,
@@ -507,6 +528,7 @@ async def write_versioned_scores(
             "written": 0,
             "mode": mode,
             "dry_run": True,
+            "pydantic_failures": len(pydantic_failures),
         }
 
     await ensure_indexes(db, sport)
@@ -543,6 +565,7 @@ async def write_versioned_scores(
             "modified": modified,
             "mode": "upsert",
             "dry_run": False,
+            "pydantic_failures": len(pydantic_failures),
         }
 
     # Default: replace
@@ -639,6 +662,7 @@ async def write_versioned_scores(
         "replaced": stale_deleted,  # legacy key name, preserved for callers
         "mode": "replace",
         "dry_run": False,
+        "pydantic_failures": len(pydantic_failures),
     }
 
 

@@ -18,13 +18,12 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
 - **Watcher bug fix (P0):** `services/delta/detector.py` — `new_keys` set-diff now subtracts only `active=True` rt keys. Stale `active=False` rows no longer mask scorable canonical_keys. Verified: MLB rescored 195 silently-blocked picks immediately after fix.
 - **Variance tile (frontend):** `PlayerDetailPage.jsx` Variance now reads `volatility_score`/`cv` instead of broken `intel_suite.stability_index` (which returned std_dev=0 for composite MLB stat types).
 - **SSOT Enforcement Phase 1 (2026-05-04):** shipped `services/field_ownership/` (registry+accessors+validators). Migrated `scored_at` (100% populated both sports) + `opponent` (0 team==opp violations). 12 contract tests green.
-- **SSOT Enforcement Tier C (2026-05-04):** 6 more fields locked (→ **16/23 enforced-or-locked**).
-  - `game_start_utc`: `commence_time` alias pinned to canonical in `_merge_score_with_board` (kills 10-day stale drift).
-  - `photo_url`: `_load_photo_cache` no longer synthesises `/static/player-headshots/{nba_id}.png` and no longer backfills from `master_roster` — master_hub.photo_url (or same-owner headshot_url) only.
-  - `stat_type`: canonical/display separation confirmed; composite splitter scoped to variance calc only.
-  - `side`: canonical `OVER`/`UNDER` enum now stamped on card contract next to legacy `direction` alias.
-  - `pp_projection_id` + `odds_type`: honest health surface at `/api/health/sync.sports.{sport}.pp_projection_ids` (stale/source_available flags; never fakes IDs).
-  - **49 contract tests green, 100/100 across all relevant suites.** Permanent repair ~60% complete.
+- **SSOT Enforcement Tier D (2026-05-04):** Pydantic write contract + PP scraper staleness WARN.
+  - `services/scoring/score_document_schema.py` — NEW. `ScoreDocument` BaseModel with 90+ typed fields covering every LOCKED SSOT field + persisted extras. `validate_score_document()` runs at the write boundary in `prop_scores_store.write_versioned_scores`; envelope carries `pydantic_failures` count.
+  - Migration mode (`extra="allow"` + `SSOT_PYDANTIC_STRICT=false`): validates types on known fields, tolerates diagnostic extras. Catches missing-required + type-drift. Strict-mode flip ready via env var.
+  - PP scraper staleness auto-alarm: `_probe_pp_projection_ids` logs WARN@6h and CRITICAL@24h on every /api/health/sync read. No scheduler, no cron, no fallback scraping, no synthesised IDs. Live sample: NBA cache 68h stale → `CRITICAL [PP_STALENESS:NBA]`.
+  - Frontend: `UniversalPlayerCard.jsx` prefers canonical `edge_vs_fair * line` over legacy `vk_edge` (2 sites migrated).
+  - **54 contract tests green, 105/105 across all relevant suites.** Permanent repair ~70% complete.
 
 ## Open issues (priority)
 - **P0** Vision Intel universal refactor — full scope in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`. Nullification phase shipped (Phase 2); engine refactor remains.
