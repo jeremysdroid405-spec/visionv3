@@ -7,10 +7,12 @@ the props / player docs affected by that injury event:
 
     - `nba_prop_scores`  (version_tag='final-nba-rt')  — re-scored via the
       full VK2/gate/PP stack, but scoped to the impacted player set only.
-    - `dg_cached_board`                           — refresh injury_status +
+    - `nba_cached_board`                          — refresh injury_status +
       injured_teammates + synced_at for each impacted player doc so the
       Dashboard's Live Injury Advantage / Usage Ripple surfaces react in
       seconds rather than waiting for the next hourly full sync.
+      (Legacy name `dg_cached_board` was dropped 2026-04-30; writes
+      resolve through `COLL("board_cache", "nba")`.)
 
 Upstream canonical sources:
     injuries_normalized  (written by InjurySensor; merges BDL + ESPN + NBA
@@ -175,7 +177,7 @@ class InjuryTriggeredRescore:
 
         2026-04-29: extended to MLB. The collection name is parameterized
         by `event.sport` so MLB events pull from `mlb_cached_board` and
-        NBA events pull from `dg_cached_board` (== `nba_cached_board`).
+        NBA events pull from `nba_cached_board`.
         """
         impacted: Set[str] = set(event.affected_players)
         if not impacted or self._db is None:
@@ -224,7 +226,7 @@ class InjuryTriggeredRescore:
         Sequence:
             1. resolve impacted set (player + same-team teammates)
             2. scoped recompute → nba_prop_scores rows rewritten
-            3. targeted dg_cached_board patch → injury_status,
+            3. targeted nba_cached_board patch → injury_status,
                injured_teammates, synced_at
         """
         t0 = datetime.now(timezone.utc).timestamp()
@@ -322,7 +324,7 @@ class InjuryTriggeredRescore:
         event_players: List[str],
     ) -> int:
         """Refresh `injury_status`, `injured_teammates`, and `synced_at`
-        on each impacted player doc in `dg_cached_board`.
+        on each impacted player doc in `nba_cached_board`.
 
         Source of truth: `injuries_normalized` (written by InjurySensor).
         We DO NOT recompute usage_bump here — that stays with the hourly
@@ -339,7 +341,7 @@ class InjuryTriggeredRescore:
 
         # 1) Resolve the team(s) we need injury rows for. Start from the
         #    event's team hint; supplement with teams found for impacted
-        #    players in dg_cached_board (handles multi-team edge cases).
+        #    players in nba_cached_board (handles multi-team edge cases).
         teams: Set[str] = set()
         if team_hint:
             teams.add(team_hint)

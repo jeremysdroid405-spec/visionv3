@@ -1,5 +1,92 @@
 # Changelog
 
+## 2026-05-04 — SSOT Tier F #3 (Option C): legacy `dg_cached_board*` cleanup
+
+**Decision (per user)**: a full migration off `nba_cached_board` /
+`mlb_cached_board` requires a 3-phase Option-D plan touching
+~18 reader files and 8 writer files (because those collections hold
+unique enrichment data — `intel_suite`, `scout_badges`,
+`context_badges`, `vision_intel`, `hit_rates`, photo/team/opponent
+metadata — that is NOT in `prop_scores` / `live_props` /
+`master_hub`). It cannot be done in one session without either
+introducing new caches (forbidden) or recomputing per request
+(production unsafe).
+
+**Option C scope (this session)** — purge the truly legacy
+`dg_cached_board*` naming, drop the orphaned `_temp` shadow table,
+and document the architecture going forward.
+
+**Mongo state proven**:
+- Pre: `dg_cached_board=absent · dg_cached_board_temp=122 · nba_cached_board=122 · mlb_cached_board=68`
+- Post: `dg_cached_board=absent · dg_cached_board_temp=absent · nba_cached_board=122 · mlb_cached_board=68`
+- `dg_cached_board` itself was already dropped 2026-04-30 in the
+  Orphan Collection Sweep; this session only removes the leftover
+  `_temp` shadow.
+
+**Code changes**:
+- `backend/server.py` — removed startup `create_index` call on
+  `COLL("board_cache_temp", "nba")` so the collection is not
+  recreated on next boot.
+- `backend/services/config/collection_names.py` — removed the
+  `"board_cache_temp"` mapping entry and the unused
+  `BOARD_CACHE_TEMP_NBA` module constant. Updated the Wave-2 audit
+  comment to reflect that Phase-2 atomic rename was completed in
+  the 2026-04-30 Orphan Sweep.
+- `backend/repositories/board_repo.py` — flipped the `cached_board`
+  shadow-write comment to reflect that the legacy primary is gone
+  and the handle resolves to `nba_cached_board`.
+- `backend/services/engines/board_intelligence_engine.py` — renamed
+  the `self.dg_cached_board` instance attribute to
+  `self.cached_board` (5 sites: 1 declaration + 4 readers). Plain
+  rename, no logic changed.
+- `backend/services/injury_triggered_rescore.py` — module docstring,
+  inline comments at lines 180/229/327/344 migrated to the canonical
+  `nba_cached_board` name.
+- `backend/services/picks_getter_service.py` — module docstring +
+  class docstring updated.
+- `backend/services/vegas_regression_model.py`,
+  `backend/services/ssot_data_layer.py`,
+  `backend/services/engines/adaptive_sync_engine.py`,
+  `backend/services/board/adapters/base.py`,
+  `backend/services/picks/board_formatter.py`,
+  `backend/services/bdl_comprehensive_sync.py`,
+  `backend/services/market_moves_engine.py`,
+  `backend/routes/command.py`,
+  `backend/routes/ferrari_tiers.py`,
+  `backend/config/collections.py`,
+  `backend/models/board.py`, `backend/models/prop.py`,
+  `backend/server.py` — comments and docstrings updated to remove
+  every misleading "live data source" reference to `dg_cached_board`.
+
+**Architectural status (codified for the next agent)**:
+- `dg_cached_board*` is GONE — collection level and (live)
+  documentation level. Any historical reference is explicitly
+  flagged as legacy/audit-only.
+- `nba_cached_board` and `mlb_cached_board` ARE the canonical
+  display-enrichment collections today. They hold ~40 fields not
+  available elsewhere and serve ~40 read sites.
+- A future Option-D phased migration is required to retire them:
+  Phase 1 dual-write enrichment into `prop_scores`/`master_hub`,
+  Phase 2 reader migration, Phase 3 collection drop. That is
+  scoped as a multi-session effort, NOT a Tier F deliverable.
+
+**Regression test** (`tests/test_field_ownership_contracts.py::TestDgCachedBoardRetired`):
+- `test_dropped_collection_does_not_exist[dg_cached_board]` ✅
+- `test_dropped_collection_does_not_exist[dg_cached_board_temp]` ✅
+- `test_live_display_collection_still_exists[nba_cached_board]` ✅
+- `test_live_display_collection_still_exists[mlb_cached_board]` ✅
+- `test_no_active_query_on_dropped_collections` ✅ (static AST-style
+  scan over `backend/` excluding archive/tests/scripts: zero
+  `db["dg_cached_board(_temp)?"].find/.update/.insert/.aggregate/...`
+  patterns).
+
+**Verified**:
+- 119/119 tests green across the SSOT suite.
+- Live smoke (6 tier endpoints): all returning picks; backend healthy.
+- Mongo confirmed: legacy collections absent, live collections intact.
+
+
+
 ## 2026-05-04 — SSOT Tier F #2: `edge_pct` / `vk_edge` / `true_edge` alias stamping deletion
 
 **Problem**: Backend response paths were stamping three legacy edge

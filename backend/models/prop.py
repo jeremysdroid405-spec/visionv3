@@ -1,7 +1,10 @@
 """
 Prop Models
 ===========
-Pydantic models for betting props in dg_live_props and dg_cached_board.
+Pydantic models for betting props in nba_live_props /
+nba_cached_board (and MLB equivalents).
+(Legacy NBA names `dg_live_props` / `dg_cached_board` were dropped
+2026-04-30.)
 """
 
 from datetime import datetime

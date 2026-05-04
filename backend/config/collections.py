@@ -13,7 +13,7 @@ Principle (per Phase 6.5 naming audit, 2026-04-18):
     name `{sport}_{concept}` for every registered sport.
 
 For Phase A, we accept that some legacy collections don't yet carry the
-canonical name (e.g. NBA's `dg_live_props`, `dg_cached_board`).
+canonical name (e.g. NBA's `nba_live_props`, `nba_cached_board`).
 `resolve(sport, concept)` is the read-through resolver: it returns the
 collection name that is CURRENTLY the authoritative store for that
 concept, so every caller goes through one function and can be migrated

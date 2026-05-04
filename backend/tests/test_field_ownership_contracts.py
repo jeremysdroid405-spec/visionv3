@@ -1061,3 +1061,84 @@ class TestEdgeAliasStampingRemoved:
             f"{missing_canonical[:5]}."
         )
 
+
+
+# ────────────────────────────────────────────────────────────────────
+# Tier F #3 (Option C): legacy `dg_cached_board*` collections must
+# never reappear. The live display-enrichment collections
+# `nba_cached_board` and `mlb_cached_board` MUST still exist —
+# their full migration is a phased Option-D follow-up, not a Tier F
+# deliverable.
+# ────────────────────────────────────────────────────────────────────
+
+
+_DROPPED_LEGACY_COLLECTIONS = (
+    "dg_cached_board",
+    "dg_cached_board_temp",
+)
+_LIVE_DISPLAY_COLLECTIONS = (
+    "nba_cached_board",
+    "mlb_cached_board",
+)
+
+
+class TestDgCachedBoardRetired:
+    """SSOT Tier F #3 (2026-05-04, Option C): the legacy
+    `dg_cached_board*` collections were retired 2026-04-30 (the main
+    table) and 2026-05-04 (the `_temp` shadow). They MUST NOT
+    reappear in Mongo. The canonical NBA/MLB cached_board collections
+    remain live until the Option-D phased migration retires them."""
+
+    @pytest.mark.parametrize("name", _DROPPED_LEGACY_COLLECTIONS)
+    def test_dropped_collection_does_not_exist(self, db, name):
+        names = set(db.list_collection_names())
+        assert name not in names, (
+            f"Legacy collection `{name}` reappeared. "
+            f"Tier F #3 (Option C) deletion regressed."
+        )
+
+    @pytest.mark.parametrize("name", _LIVE_DISPLAY_COLLECTIONS)
+    def test_live_display_collection_still_exists(self, db, name):
+        names = set(db.list_collection_names())
+        assert name in names, (
+            f"Live display-enrichment collection `{name}` is missing. "
+            f"Option-D phased migration was not run in this session — "
+            f"this collection should still exist."
+        )
+
+    def test_no_active_query_on_dropped_collections(self):
+        """Static guard: no source file may issue an active Mongo
+        query (.find / .update / .insert / .bulk_write / .aggregate /
+        .distinct / .count) against the dropped collection names.
+        Comments and historical audit notes are allowed."""
+        import os
+        import re
+        backend_root = "/app/backend"
+        # Patterns that indicate an active query on the literal
+        # dropped name (NOT via COLL("board_cache", ...) which
+        # resolves to nba_cached_board).
+        active_query_re = re.compile(
+            r'\["dg_cached_board(?:_temp)?"\]\s*\.\s*'
+            r'(find|find_one|aggregate|distinct|count|count_documents|'
+            r'update|update_one|update_many|insert|insert_one|'
+            r'insert_many|replace_one|bulk_write|delete|delete_many|'
+            r'delete_one|drop)'
+        )
+        offenders = []
+        for root, _dirs, files in os.walk(backend_root):
+            if "_archive" in root or "/tests/" in root or "/scripts/" in root:
+                continue
+            for f in files:
+                if not f.endswith(".py"):
+                    continue
+                path = os.path.join(root, f)
+                with open(path, encoding="utf-8") as fh:
+                    src = fh.read()
+                for m in active_query_re.finditer(src):
+                    offenders.append(f"{path}: {m.group(0)}")
+        assert not offenders, (
+            f"Active query on dropped `dg_cached_board*` collection "
+            f"detected ({len(offenders)} site(s)):\n"
+            + "\n".join(offenders[:10])
+        )
+

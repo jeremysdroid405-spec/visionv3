@@ -42,6 +42,16 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
   - New regression test `TestEdgeAliasStampingRemoved` — 6 live-API parametrized cases assert zero alias leakage and 100% canonical field presence.
   - Live smoke (6 endpoints × 41 picks): `edge_pct=0 vk_edge=0 true_edge=0 edge_vs_fair=41/41`.
   - **115/115 tests green.**
+- **SSOT Tier F #3 (2026-05-04, Option C) — legacy `dg_cached_board*` cleanup:**
+  - Full migration off `nba_cached_board` / `mlb_cached_board` is a multi-session Option-D plan (18 readers + 8 writers; collections hold unique enrichment data not present elsewhere). Out-of-scope for Tier F.
+  - This session: dropped orphaned `dg_cached_board_temp` (122 docs, last write 2026-04-23, zero active readers/writers), removed the `board_cache_temp` mapping + `BOARD_CACHE_TEMP_NBA` constant + `server.py` startup index-creation call so it cannot be recreated, renamed `self.dg_cached_board` → `self.cached_board` in `board_intelligence_engine.py`, and migrated every misleading "live data source" docstring/comment to the canonical `nba_cached_board` name.
+  - New regression test `TestDgCachedBoardRetired` (4 cases): asserts both legacy collections are absent in Mongo, live cached_board collections still exist, and a static AST-style scan finds zero `db["dg_cached_board*"].find/.update/...` patterns in non-archive/non-test code.
+  - **119/119 tests green.** Architecture clearly documented: `dg_cached_board*` is gone forever; `nba_cached_board` / `mlb_cached_board` remain live until Option-D phased migration.
+- **SSOT Tier F #4 (2026-05-04) — `ScoreDocument` `extra="forbid"` readiness check (NO FLIP YET):**
+  - Schema currently `extra="allow"`; `SSOT_PYDANTIC_STRICT=true` env is a no-op against extras-rejection.
+  - Inventory: 127 fields declared / 226 fields projected by `_project_score_doc` / **108 projected-but-undeclared** / **0 live-DB undeclared** fields. The projection allowlist filters before Pydantic, so the live DB has zero pollution.
+  - Risk: flipping `extra="forbid"` today would fail every NBA+MLB write batch with 108 ValidationErrors per doc until declarations are added. **Not safe to flip without preparation.**
+  - Detailed report saved to `/app/memory/SSOT_TIER_F4_READINESS.md` with field-by-field domain grouping, recommended 5-step prep flow (declarations → parity test → flip → dry-run smoke → env cleanup), and ~1-hour effort estimate.
 
 ## Open issues (priority)
 - **P0** Vision Intel universal refactor — full scope in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`. Nullification phase shipped (Phase 2); engine refactor remains.

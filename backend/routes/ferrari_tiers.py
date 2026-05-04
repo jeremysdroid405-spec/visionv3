@@ -753,7 +753,7 @@ def get_vegas_killer():
 # Wiring:
 #   1. Pull top N scored rows for the target tier, sorted by vision_score DESC.
 #   2. Overlay full UI enrichment (intel_suite, hit rates, headshots, team,
-#      opponent, price, etc.) from `dg_cached_board` via the natural key
+#      opponent, price, etc.) from `nba_cached_board` via the natural key
 #      (event_id, player_name, stat_type, line, direction).
 #   3. Preserve the legacy UI payload contract so UniversalPlayerCard.jsx
 #      renders unchanged.
@@ -844,7 +844,7 @@ from services.scoring.stat_family import canonical_stat_family as _canonical_sta
 
 
 async def _build_nba_board_lookup() -> Dict[tuple, Dict[str, Any]]:
-    """Flatten `dg_cached_board` (player-grain) into multiple lookup
+    """Flatten `nba_cached_board` (player-grain) into multiple lookup
     indices, progressively more tolerant to key drift:
 
       * 5-tuple exact:   (event_id, player_l, STAT_U, line_f, DIR_U)
@@ -911,7 +911,7 @@ async def _build_nba_board_lookup() -> Dict[tuple, Dict[str, Any]]:
 
 def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] | None) -> Dict[str, Any]:
     """Produce a UI-ready pick dict from a `nba_prop_scores` row plus an
-    optional matching board entry (from `dg_cached_board`).
+    optional matching board entry (from `nba_cached_board`).
 
     The output shape matches the legacy `elite_*` contract consumed by
     UniversalPlayerCard.jsx / Dashboard.jsx. Score-layer fields (tier,
@@ -1517,7 +1517,7 @@ async def _get_mlb_tier_picks_from_scores(
     board reader (services/board/reader.py) and returns UI-ready picks.
 
     Differences from the NBA helper (by necessity, not design):
-      * NBA has `dg_cached_board` (player-grain) as a display-enrichment
+      * NBA has `nba_cached_board` (player-grain) as a display-enrichment
         source. MLB has no equivalent -- MLB's display enrichment is applied
         downstream as pure-function transforms (enrich_mlb_prop_with_tempo,
         enrich_mlb_intel_suite, overlay_enrichment_cache). We therefore skip
@@ -1547,7 +1547,7 @@ async def _get_mlb_tier_picks_from_scores(
 
     # ── Universal display-shape: batch hub lookup for headshot/photo/team
     # parity with NBA (2026-04-29). One query keyed by bdl_player_id
-    # OR bdl_id (MLB hub uses both); mirrors NBA's `dg_cached_board`
+    # OR bdl_id (MLB hub uses both); mirrors NBA's `nba_cached_board`
     # player-doc hydration in `_merge_score_with_board`.
     hub_by_id: Dict[int, Dict[str, Any]] = {}
     bdl_ids: set = set()
@@ -1798,7 +1798,7 @@ async def _enrich_under_picks_with_gemini(
     that re-running this function on unchanged picks is a no-op.
 
     OVER picks already carry `vision_intel` from the legacy pipeline that
-    wrote into `dg_cached_board`. UNDER picks never went through Gemini, so
+    wrote into `nba_cached_board`. UNDER picks never went through Gemini, so
     this method picks them up after the tier-scoring pass and runs the
     direction-aware batch prompt using the same `GOOGLE_API_KEY` +
     `gemini-flash-lite-latest` path used for OVERs.
@@ -1913,7 +1913,7 @@ def _finalize_nba_picks_side_aware(picks: List[Dict[str, Any]]) -> None:
         if direction_upper == "UNDER":
             _apply_under_badge_rewire(pick, score)
             # Clear any OVER-biased vision_intel inherited from the enrichment
-            # cache or dg_cached_board. UNDER Gemini enrichment fills this
+            # cache or nba_cached_board. UNDER Gemini enrichment fills this
             # back in via `_enrich_under_picks_with_gemini` below.
             pick["vision_intel"] = None
             pick["vision_summary"] = None

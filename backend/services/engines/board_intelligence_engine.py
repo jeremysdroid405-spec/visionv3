@@ -80,7 +80,11 @@ class BoardIntelligenceEngine:
         # Collections
         self.sync_status = self.db["board_sync_status"]
         self.player_vision_log = self.db["player_vision_log"]  # Track who has Vision
-        self.dg_cached_board = self.db[COLL("board_cache", "nba")]
+        # SSOT Tier F #3 (2026-05-04, Option C): attribute kept as
+        # `cached_board` (was legacy `dg_cached_board`) because the
+        # `dg_cached_board` collection was dropped 2026-04-30. The
+        # handle now resolves to the canonical `nba_cached_board`.
+        self.cached_board = self.db[COLL("board_cache", "nba")]
         self.live_ticker = self.db["live_ticker"]
         self.scouting_projections = self.db["scouting_projections"]  # Projection cards
         
@@ -207,7 +211,7 @@ class BoardIntelligenceEngine:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             
             # Get all players from today's games
-            async for board in self.dg_cached_board.find({"type": "main_board"}):
+            async for board in self.cached_board.find({"type": "main_board"}):
                 players = board.get("board", {}).get("players", [])
                 
                 for player in players:
@@ -435,7 +439,7 @@ class BoardIntelligenceEngine:
             players_with_vision = []
             
             # Get all players from cached board
-            async for player in self.dg_cached_board.find({"board.players": {"$exists": True}}):
+            async for player in self.cached_board.find({"board.players": {"$exists": True}}):
                 board = player.get("board", {})
                 for p in board.get("players", []):
                     player_name = p.get("player_name")
@@ -503,7 +507,7 @@ class BoardIntelligenceEngine:
         try:
             # Get current player set before refresh
             current_players = set()
-            async for player in self.dg_cached_board.find({"board.players": {"$exists": True}}):
+            async for player in self.cached_board.find({"board.players": {"$exists": True}}):
                 board = player.get("board", {})
                 for p in board.get("players", []):
                     player_name = p.get("player_name")
@@ -515,7 +519,7 @@ class BoardIntelligenceEngine:
             
             # Get new player set after refresh
             new_players = set()
-            async for player in self.dg_cached_board.find({"board.players": {"$exists": True}}):
+            async for player in self.cached_board.find({"board.players": {"$exists": True}}):
                 board = player.get("board", {})
                 for p in board.get("players", []):
                     player_name = p.get("player_name")

@@ -21,7 +21,7 @@ class BoardFormatter:
     """
     Formats board data for frontend consumption.
     
-    Reads from dg_cached_board and formats responses
+    Reads from nba_cached_board and formats responses
     for the /v3/board and related endpoints.
     """
     

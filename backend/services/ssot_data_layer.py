@@ -16,7 +16,8 @@ ARCHITECTURE:
 │  ├─ Contains: baseline_stats, game_logs                                    │
 │  └─ Read by: This module ONLY                                              │
 │                                                                             │
-│  PIPE 2: Live Wire (dg_cached_board / Active_Lines)                        │
+│  PIPE 2: Live Wire (nba_cached_board / Active_Lines; legacy        │
+│          `dg_cached_board` was dropped 2026-04-30)                 │
 │  ├─ Source: The Odds API (intraday polling)                                │
 │  ├─ Contains: Live lines, odds, game times                                 │
 │  └─ Read by: This module ONLY                                              │

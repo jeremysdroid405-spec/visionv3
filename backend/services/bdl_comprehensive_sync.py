@@ -1411,7 +1411,7 @@ class BDLComprehensiveSyncService:
         Batch enrich players with l10_values from BDL game logs.
         
         Prioritizes players who:
-        1. Have props in dg_cached_board
+        1. Have props in nba_cached_board
         2. Are missing l10_values in baseline_stats
         """
         # Get players with active props

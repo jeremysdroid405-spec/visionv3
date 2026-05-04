@@ -119,14 +119,14 @@ _SHADOW_WRITES: Dict[Tuple[str, str], str] = {
 
     # Wave 2 complete (Phase 1 — code cutover): board_cache · NBA has
     # been flipped to `nba_cached_board`. Phase 2 (atomic DB rename
-    # `dg_cached_board` → `dg_cached_board_backup`) is pending operator
-    # greenlight after the Phase-1 observation cycle confirms writes
-    # land on the new primary only. Wave 1 convergence was verified
-    # across 6 writer-flip batches (main builder, inter-build engines,
-    # secondary writers, optimized_sync persist, and adaptive_sync_engine
-    # handle-cache refactor) with 65 consecutive clean ledger ticks under
-    # stable_key=`player_name` (delta_pct=0.0, hash_match_rate=1.0,
-    # spanning three natural churns 121/107/114 players).
+    # `dg_cached_board` → `dg_cached_board_backup`) was completed
+    # 2026-04-30 via the Orphan Collection Sweep: the legacy
+    # `dg_cached_board` collection is gone from Mongo. SSOT Tier F #3
+    # (2026-05-04, Option C) additionally dropped the orphaned
+    # `dg_cached_board_temp` shadow-sync table. The canonical
+    # display-enrichment collections are `nba_cached_board` and
+    # `mlb_cached_board` (Option D migration to retire them is
+    # phased across multiple sessions — not done here).
     # Additional Wave 2 housekeeping flipped the split registries:
     #   - config/db_config.py::NBA_LEGACY_NAMES["cached_board"]
     #   - services/optimized_sync_engine.py::SPORT_COLLECTION_MAP
@@ -188,8 +188,14 @@ _SPORT_COLLECTIONS: Dict[str, Dict[str, str]] = {
     # ---- Board caches (UI-facing) ------------------------------------------
     "board_cache":          {"nba": "nba_cached_board",
                              "mlb": "mlb_cached_board"},
-    "board_cache_temp":     {"nba": "dg_cached_board_temp",
-                             "mlb": "mlb_cached_board_temp"},
+    # SSOT Tier F #3 (2026-05-04, Option C): `board_cache_temp` entry
+    # removed. The `dg_cached_board_temp` shadow-sync table had been
+    # orphaned (last write 2026-04-23) with zero active readers/
+    # writers; it was dropped in Mongo and the startup `create_index`
+    # call in server.py was removed. The `BOARD_CACHE_TEMP_NBA` module
+    # constant below was also deleted. Any future dereference of
+    # `COLL("board_cache_temp", ...)` will raise KeyError — the
+    # correct replacement is the live `board_cache` entry.
 
     # ---- Board read-models (new in rebuild; placeholders for now) ----------
     # These are introduced in Wave 5. Today they do not exist; dereferencing
@@ -321,7 +327,9 @@ CONTEXT_FLAGS_NBA           = COLL("context_flags", "nba")
 CAREER_BACKSTOP_NBA         = COLL("career_backstop", "nba")
 PROP_SCORES_NBA             = COLL("prop_scores", "nba")
 BOARD_CACHE_NBA             = COLL("board_cache", "nba")
-BOARD_CACHE_TEMP_NBA        = COLL("board_cache_temp", "nba")
+# BOARD_CACHE_TEMP_NBA removed in SSOT Tier F #3 (2026-05-04) —
+# the underlying `dg_cached_board_temp` collection was dropped from
+# Mongo; no code imported this constant.
 DEFENSIVE_MOMENTUM_NBA      = COLL("defensive_momentum_cache", "nba")
 STAR_USAGE_NBA              = COLL("star_usage_cache", "nba")
 ODDS_MAPPING_NBA            = COLL("odds_mapping", "nba")

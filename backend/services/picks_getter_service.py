@@ -5,7 +5,11 @@ SSOT ARCHITECTURE: This service reads from MongoDB ONLY.
 
 NO external API calls are made here. All stats come from:
 - PIPE 1: nba_master_hub_2026 (stats vault, populated by 0400 CRON)
-- PIPE 2: dg_cached_board (live lines, populated by Odds API polling)
+- PIPE 2: nba_cached_board (live lines + display enrichment,
+          populated by Odds API polling + enrichment pipelines).
+          Legacy name `dg_cached_board` was dropped 2026-04-30;
+          this service resolves through `COLL("board_cache", "nba")`
+          which maps to the canonical name.
 
 ANCHOR-BASED TIER CLASSIFICATION (from cached_board):
 Tier classification is done during sync using PrizePicks' own structure:
@@ -228,7 +232,9 @@ class PicksGetterService:
     
     CRITICAL: This service reads from MongoDB ONLY.
     - Stats from nba_master_hub_2026 (PIPE 1)
-    - Lines from dg_cached_board (PIPE 2)
+    - Lines from nba_cached_board (PIPE 2; legacy alias `dg_cached_board`
+      was dropped 2026-04-30, canonical collection is resolved via
+      `COLL("board_cache", "nba")`).
     
     NO external API calls. NO secondary internal APIs.
     """

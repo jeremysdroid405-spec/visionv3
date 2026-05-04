@@ -1275,7 +1275,7 @@ async def startup_event():
     logger.info("[INDEXES] Creating MongoDB indexes for performance...")
     
     try:
-        # dg_cached_board - Main board with player props
+        # nba_cached_board - Main board with player props
         await db[COLL("board_cache", "nba")].create_index([("player_name", ASCENDING)], background=True)
         await db[COLL("board_cache", "nba")].create_index([("team", ASCENDING)], background=True)
         await db[COLL("board_cache", "nba")].create_index([("synced_at", DESCENDING)], background=True)
@@ -1318,8 +1318,11 @@ async def startup_event():
             ("props.is_goblin", ASCENDING)
         ], background=True)
         
-        # dg_cached_board_temp - Shadow table for zero-downtime sync
-        await db[COLL("board_cache_temp", "nba")].create_index([("player_name", ASCENDING)], background=True)
+        # SSOT Tier F #3 (2026-05-04, Option C): dg_cached_board_temp
+        # shadow-sync collection dropped. It was orphaned (last write
+        # 2026-04-23) and had zero active readers/writers in the
+        # codebase. Index creation removed below; collection dropped
+        # manually via Mongo.
         
         # ticker_headlines - Per-headline lifecycle tracking
         await db[COLL.shared("ticker_headlines")].create_index([("fingerprint", ASCENDING)], unique=True, background=True)

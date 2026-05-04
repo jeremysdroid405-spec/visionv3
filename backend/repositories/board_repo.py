@@ -17,11 +17,13 @@ class BoardRepository:
     
     def __init__(self, db):
         self.db = db
-        # Wave 1 shadow-writes (board_cache · NBA): COLL.handle returns a
-        # ShadowWriter that fans mutations out to `nba_cached_board`
-        # while delegating reads to the current primary
-        # (`dg_cached_board`). The live_props handle below is already
-        # post-Wave-2 (writes/reads direct to `nba_live_props`).
+        # SSOT Tier F #3 (2026-05-04, Option C): `dg_cached_board`
+        # was dropped 2026-04-30. The handle now resolves directly to
+        # `nba_cached_board` (canonical display-enrichment collection).
+        # Wave 1 shadow-write fanout is a no-op today since both legs
+        # of the writer map to the same collection. The live_props
+        # handle below is already post-Wave-2 (direct reads/writes
+        # to `nba_live_props`).
         self.cached_board = BaseRepository(COLL.handle(db, "board_cache", "nba"))
         self.live_props = BaseRepository(COLL.handle(db, "live_props", "nba"))
     

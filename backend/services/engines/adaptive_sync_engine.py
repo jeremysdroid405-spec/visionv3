@@ -713,7 +713,10 @@ class AdaptiveSyncEngine:
     
     async def _update_cached_board(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Update the dg_cached_board collection with PrizePicks odds data.
+        Update the nba_cached_board collection with PrizePicks odds data.
+        (Legacy name `dg_cached_board` was dropped 2026-04-30; this
+        writer targets the canonical `nba_cached_board` via
+        `COLL("board_cache", "nba")`.)
         
         TIER CLASSIFICATION v3 - ANCHOR-BASED:
         For each player + stat_type combination:
@@ -1247,7 +1250,9 @@ class AdaptiveSyncEngine:
                 # =================================================================
                 # BOARD INTELLIGENCE ENRICHMENT — DELETED 2026-04-22
                 # The legacy board_intelligence_service wrote vision/intel
-                # into dg_cached_board. The canonical scoring path
+                # into nba_cached_board (previously aliased
+                # `dg_cached_board`; the alias collection was dropped
+                # 2026-04-30). The canonical scoring path
                 # (recompute_sport → {sport}_prop_scores) is the only
                 # board source now.
                 # =================================================================

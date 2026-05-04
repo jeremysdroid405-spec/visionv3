@@ -212,7 +212,7 @@ async def _classify_exits(
             except (ValueError, TypeError):
                 continue
 
-    # 3. Raw book board: player_name (lower) -> list of prop dicts from dg_cached_board
+    # 3. Raw book board: player_name (lower) -> list of prop dicts from nba_cached_board
     #    This is the EXACT source — per-book, per-market, per-line
     book_props_by_player: Dict[str, List[dict]] = {}
     exited_names = list({old_snapshot[pid]["player_name"] for pid in exited_pids})

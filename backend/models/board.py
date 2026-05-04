@@ -1,7 +1,9 @@
 """
 Board Models
 ============
-Pydantic models for dg_cached_board - the frontend-ready player data.
+Pydantic models for nba_cached_board / mlb_cached_board — the
+frontend-ready player data.
+(Legacy NBA name `dg_cached_board` was dropped 2026-04-30.)
 """
 
 from datetime import datetime
@@ -15,7 +17,7 @@ from .prop import Prop
 class BoardPlayer(BaseModel):
     """
     Player data optimized for frontend display.
-    This is the main model stored in dg_cached_board.
+    This is the main model stored in nba_cached_board / mlb_cached_board.
     """
     # Identity
     player_name: str
@@ -69,7 +71,7 @@ class BoardPlayer(BaseModel):
 class CachedBoard(BaseModel):
     """
     The full cached board response model.
-    Represents the complete dg_cached_board collection state.
+    Represents the complete nba_cached_board / mlb_cached_board collection state.
     """
     success: bool = True
     synced_at: Optional[datetime] = None

@@ -7,10 +7,11 @@ The engine never branches on `if sport == "nba"`; it calls
 
 Collection names are resolved through `config.collections` so the
 universal engine uses the canonical `{sport}_<concept>` name everywhere
-it's available, and seamlessly falls back to legacy names (e.g. NBA's
-`dg_live_props` / `dg_cached_board`) until Phase B/C/D migrations
-complete. Each adapter only sets `self.sport` + `self.version_tag`; all
-collection properties are derived.
+(e.g. `nba_live_props`, `nba_cached_board`). The historical NBA
+fallback names (`dg_live_props` / `dg_cached_board`) were dropped
+2026-04-30; only the `{sport}_*` form is live now. Each adapter only
+sets `self.sport` + `self.version_tag`; all collection properties are
+derived.
 """
 from __future__ import annotations
 

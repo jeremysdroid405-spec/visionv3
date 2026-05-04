@@ -229,7 +229,7 @@ async def get_tactical_profile(
         db = _db
         player_name_regex = {"$regex": player_name, "$options": "i"}
         
-        # ===== STEP 1: Fetch ALL available props from dg_cached_board =====
+        # ===== STEP 1: Fetch ALL available props from nba_cached_board =====
         # Props include provider-based tier classification (is_demon, is_goblin, tier_label)
         all_props = await db[COLL("board_cache", "nba")].find(
             {"player_name": player_name_regex},

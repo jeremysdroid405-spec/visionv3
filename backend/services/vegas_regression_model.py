@@ -25,7 +25,8 @@ DATA SOURCES:
 -------------
 - nba_master_hub_2026.bdl_game_logs: Historical game-by-game stats
 - defensive_momentum_cache: Opponent defensive rankings
-- dg_cached_board: Current props with lines
+- nba_cached_board: Current props with lines (canonical; legacy
+  `dg_cached_board` name dropped 2026-04-30).
 
 SUPPORTED STATS:
 ----------------
