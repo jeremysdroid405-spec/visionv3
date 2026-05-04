@@ -175,8 +175,29 @@ def _compute_ranking_score_v2(
 
 
 def _apply_vision_score_normalization(score_docs: List[Dict[str, Any]]) -> None:
-    """Populate `vision_score` (0-100) via percentile rank of vision_score_raw.
-    Props with quality_source='insufficient_market' keep vision_score=None."""
+    """Populate `vision_score` (0-100).
+
+    SSOT 2026-05-04 (Path B promotion): `vision_score_v2` (the
+    directional MLR-driven score from 2026-04-29) is now the
+    PRIMARY driver of `vision_score`. The legacy v1 percentile pass
+    runs first as a fallback for any doc where v2 didn't compute.
+
+    Why: v1's `pos_edge = max(0.0, edge)` clamp in
+    `scoring_stack.compute_vision_score` collapses every prop where
+    the model sees fractionally less value than the market consensus
+    to vision_score=0, even when hit-rate and direction-alignment
+    are strong. v2 grades directional alignment instead of the
+    magnitude-of-positive-edge, so legitimate slight-negative-edge
+    picks (e.g. Tyrese Maxey 3PM OVER, edge_vs_fair=-0.09 but
+    p_true=0.75 hit_rate_l20=75) get a non-zero score.
+
+    Field semantics (preserved):
+      • `vision_score_raw` = v1 raw (positive-edge magnitude). Audit only.
+      • `vision_score_v2`  = v2 directional alignment score. Audit + primary driver.
+      • `vision_score`     = v2 if available else v1 percentile.
+
+    Props with quality_source='insufficient_market' keep
+    vision_score=None (unchanged)."""
     raw = sorted([
         d["vision_score_raw"] for d in score_docs
         if d.get("vision_score_raw") is not None and d["vision_score_raw"] > 0
@@ -186,18 +207,28 @@ def _apply_vision_score_normalization(score_docs: List[Dict[str, Any]]) -> None:
             d["vision_score"] = (
                 None if d.get("quality_source") == "insufficient_market" else 0.0
             )
-        return
+    else:
+        for d in score_docs:
+            if d.get("quality_source") == "insufficient_market":
+                d["vision_score"] = None
+                continue
+            vr = d.get("vision_score_raw")
+            if vr is None or vr <= 0:
+                d["vision_score"] = 0.0
+            else:
+                rank = sum(1 for s in raw if s <= vr)
+                d["vision_score"] = round((rank / len(raw)) * 100.0, 1)
 
+    # ── Path B promotion: prefer v2 directional score when available ──
+    # This runs AFTER the v1 percentile pass so that v1 stays available
+    # as a fallback. Only override when v2 is a non-null, > 0 number;
+    # leave `insufficient_market` (vision_score=None) untouched.
     for d in score_docs:
         if d.get("quality_source") == "insufficient_market":
-            d["vision_score"] = None
             continue
-        vr = d.get("vision_score_raw")
-        if vr is None or vr <= 0:
-            d["vision_score"] = 0.0
-        else:
-            rank = sum(1 for s in raw if s <= vr)
-            d["vision_score"] = round((rank / len(raw)) * 100.0, 1)
+        v2 = d.get("vision_score_v2")
+        if isinstance(v2, (int, float)) and v2 > 0:
+            d["vision_score"] = round(float(v2), 1)
 
 
 def _reevaluate_tiers_post_vision(score_docs: List[Dict[str, Any]]) -> None:
