@@ -99,7 +99,7 @@ def build_metrics_from_context(
         is_alt="alternate" in (stat_raw or "").lower(),
         vision_score=prop.get("vision_score"),
         hit_rate=hit_rate,
-        hit_rate_l20=prop.get("hit_rate_over") or prop.get("hit_rate_l20"),
+        hit_rate_l20=prop.get("hit_rate_l20") or prop.get("hit_rate_over"),
         hit_rate_l10=prop.get("hit_rate_l10"),
         hit_rate_l5=prop.get("hit_rate_l5"),
         # Sample size (2026-04-25, HR v3) — read from prop/doc; gate
@@ -147,7 +147,14 @@ def build_metrics_from_score_doc(
 
     # Side-aware hit rate with sport-agnostic fallback for adapters
     # that don't persist hit_rate_over / hit_rate_under (currently MLB).
-    hr = doc.get("hit_rate_over") if side == "OVER" else doc.get("hit_rate_under")
+    # SSOT Tier F (2026-05-04): prefer canonical `hit_rate_l20` for
+    # the OVER side; fall back to legacy `hit_rate_over` for pre-
+    # dual-write docs. UNDER side keeps `hit_rate_under` (no canonical
+    # migration for under-rate in this phase).
+    if side == "OVER":
+        hr = doc.get("hit_rate_l20") or doc.get("hit_rate_over")
+    else:
+        hr = doc.get("hit_rate_under")
     if hr is None:
         p_true_hr = doc.get("p_true_hit_rate")
         hr = (p_true_hr * 100.0) if p_true_hr is not None else None

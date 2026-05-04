@@ -84,7 +84,7 @@ class SportBoardAdapter(ABC):
             player = prop.get("player_name") or ""
             stat_type = prop.get("stat_type") or ""
             line = prop.get("line")
-            side = (prop.get("recommendation") or prop.get("direction") or "").upper()
+            side = (prop.get("recommendation") or prop.get("side") or prop.get("direction") or "").upper()
             if not (event_id and player and stat_type and line is not None and side):
                 return None
             return f"{self.sport}|{event_id}|{player}|{stat_type}|{line}|{side}"

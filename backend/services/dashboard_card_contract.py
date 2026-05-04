@@ -122,18 +122,15 @@ def to_card_contract(pick: Dict[str, Any]) -> Dict[str, Any]:
     # ── helpers ──────────────────────────────────────────────────────
     stat_type = pick.get("stat_type") or ""
     line = pick.get("line")
-    # SSOT (FIELD_OWNERSHIP.md:side, 2026-05-04 Tier C): `side` is the
-    # canonical OVER/UNDER selector, owned by live_props.recommendation.
-    # Legacy aliases `direction` / `pick_side` / `selection` /
-    # `over_under` may still be stamped on response picks by upstream
-    # code paths, but the card contract (and anything downstream of
-    # it) must read ONE normalised value. We preserve reading
-    # `direction` here ONLY as a temporary upstream-tolerance fallback
-    # (some adapters still write lowercase `direction` before the
-    # canonical `recommendation` is stamped) — this will go away in
-    # Tier D Pydantic. Default to OVER ONLY on unparseable input, and
-    # log the violation so regressions stay visible.
-    side = (pick.get("recommendation") or pick.get("direction") or "").upper().strip()
+    # SSOT (FIELD_OWNERSHIP.md:side, Tier F #1 2026-05-04): `side` is
+    # the canonical OVER/UNDER selector, owned by
+    # live_props.recommendation. The legacy `direction` alias is no
+    # longer stamped by backend response paths; this reader keeps a
+    # last-resort `direction` tolerance ONLY for any third-party
+    # ingester that has not yet migrated. Default to OVER ONLY on
+    # unparseable input, and log the violation so regressions stay
+    # visible.
+    side = (pick.get("recommendation") or pick.get("side") or pick.get("direction") or "").upper().strip()
     if side not in ("OVER", "UNDER"):
         side = "OVER"
     stat_short = _stat_short(stat_type)
@@ -161,7 +158,13 @@ def to_card_contract(pick: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     # ── 6. hit_rate — side-correct percentage ────────────────────────
-    hr_over  = _f(pick.get("hit_rate_over"))
+    # SSOT Tier F (2026-05-04): canonical L20 OVER-side is
+    # `hit_rate_l20` (dual-written in recompute_sport). We read it as
+    # primary and only fall back to the legacy `hit_rate_over` for
+    # docs written before the dual-write landed (~97% of active docs
+    # now carry hit_rate_l20; full coverage reached after next
+    # sweeping recompute).
+    hr_over  = _f(pick.get("hit_rate_l20")) or _f(pick.get("hit_rate_over"))
     hr_under = _f(pick.get("hit_rate_under"))
     if side == "UNDER" and hr_under is not None:
         hit_rate = hr_under
@@ -175,8 +178,7 @@ def to_card_contract(pick: Dict[str, Any]) -> Dict[str, Any]:
     # Card displays L20 (gate input) / L10 (graph parity) / L5 (recent
     # form sub-gate input) so the operator can see EVERY window the
     # gate evaluated. Side-awareness:
-    #   - L20: use hit_rate_under for UNDER, hit_rate_over for OVER
-    #     (these fields ARE explicitly OVER/UNDER on the score doc)
+    #   - L20: use hit_rate_under for UNDER, canonical hr_over (L20) for OVER.
     #   - L10 / L5: hit_rate_l5 / hit_rate_l10 are ALREADY side-aware
     #     on the score doc — adapters compute them with the prop's
     #     direction. Pass through verbatim, no complement.

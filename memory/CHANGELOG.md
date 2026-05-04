@@ -1,5 +1,79 @@
 # Changelog
 
+## 2026-05-04 — SSOT Tier F #1: `direction` alias stamping deletion
+
+**Problem**: Response-building writers were duplicating the canonical
+`recommendation` value into a legacy lowercase `direction` key on
+every user-facing pick dict. Per FIELD_OWNERSHIP.md:side the
+canonical OVER/UNDER selector is `recommendation` (owned by
+`live_props.recommendation`) with display-layer `side`. The extra
+`direction` key was a back-compat shim for ~8 call sites that
+pre-dated the Tier C side migration. Keeping it alive let upstream
+regressions silently rewrite canonical state.
+
+**Writer deletions (response never carries `direction` again)**:
+- `routes/ferrari_tiers.py::_merge_score_with_board` — dropped
+  `prop["direction"] = direction_title` stamp. Also added a
+  defensive `prop.pop("direction", None)` right after the
+  `board_entry["prop"]` clone, because `nba_cached_board.props[]`
+  still carries a legacy `direction` from the pre-Tier-C writer.
+- `routes/ferrari_tiers.py` MLB prop-merge block — dropped
+  `pick["direction"] = direction_title` + added defensive
+  `pick.pop("direction", None)` on the `dict(sc)` base shape.
+- `routes/ferrari_tiers.py` MLB detail-page backfill — removed the
+  `if not prop.get("direction"): prop["direction"] = prop.get("recommendation", "Over")`
+  block (upstream must provide `recommendation`; fail loud if missing).
+- `routes/ferrari_tiers.py` top-5 goblins response — renamed
+  `"direction": g.get("recommendation")` to
+  `"recommendation": g.get("recommendation")`.
+- `services/picks_getter_service.py` — `get_goblin_vault`,
+  `get_front_lines`, `get_cached_player` now stamp
+  `"recommendation"` (Title-cased) instead of the `"direction"`
+  alias.
+- `services/mlb_cached_board_builder.py::_enrich_prop` — dropped
+  the `"direction": prop.get("direction") or rec_title` stamp;
+  canonical `recommendation` + `side` stay.
+
+**Reader migrations (canonical-first, `direction` only as
+last-resort tolerance)**:
+- `routes/ferrari_tiers.py::_resolve_prop_direction`, 4-tuple
+  player-stat lookup, vision-intel content hash, UNDER filter,
+  UNDER-rewire loop, MLB score-doc merge.
+- `services/dashboard_card_contract.py::to_card_contract` — side
+  extractor now reads `recommendation → side → direction`.
+- `services/board/adapters/base.py::canonical_key` — same order.
+- `services/market_moves_engine.py::_snapshot_from_tiers` —
+  canonical-first when composing the internal snapshot state.
+
+**Contract enforcement**:
+- `services/contract_enforcer.py::PICK_CARD_REQUIRED_KEYS` —
+  removed `"direction"`; kept `"recommendation"` as the sole
+  canonical side field. Lockdown test updated accordingly.
+- New regression test in
+  `tests/test_field_ownership_contracts.py::TestDirectionAliasStampingRemoved`
+  — asserts against live API that NO pick from
+  `/api/v3/ferrari/{safe-haven,front-lines}` for either sport
+  carries a `direction` key, and that every pick has a non-null
+  `recommendation`.
+
+**Registry note** (`services/field_ownership/registry.py::side`)
+updated: alias stamping deleted; fallback reads retained as a
+transitional upstream-ingester tolerance only, slated for deletion
+in Tier G once the frontend purges its own `pick.direction` reads.
+
+**Verified**:
+- 109 passed / 0 failed across hit_rate_canonical,
+  field_ownership_contracts, card_contract_hr_trio,
+  player_detail_hr_trio, hit_profile, contract_enforcer suites.
+- Live smoke on 6 tier endpoints × 40 picks:
+  `direction_key_present=0`, `recommendation` populated on 100%,
+  `side` populated on 100%.
+- Contract enforcer no longer emits
+  `[CONTRACT:invalid_pick_card] missing_or_null=['direction']`
+  (log check post-restart).
+
+
+
 
 ## 2026-04-30 — Orphan Collection Sweep (P0 #6)
 **Problem**: 9 archive/backup collections in Mongo totaling **861,813

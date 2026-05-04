@@ -45,11 +45,14 @@ EVT_LOGO_LOOKUP_NOT_SPORT_KEYED   = "logo_lookup_not_sport_keyed"
 
 # Required keys for every dashboard pick card.
 # These mirror the public Universal Card Contract (services/dashboard_card_contract.py).
+# SSOT Tier F #1 (2026-05-04): `direction` legacy alias removed from
+# response picks. Canonical side field is `recommendation` (owned by
+# live_props.recommendation); `direction` is no longer a required key.
 PICK_CARD_REQUIRED_KEYS: Tuple[str, ...] = (
     # Identity
     "player_name", "team", "sport",
     # Pick details
-    "stat_type", "line", "recommendation", "direction",
+    "stat_type", "line", "recommendation",
     "tier_label", "prop_type",
     # Card-shape (8-field universal display)
     "stat_line", "big_pick_text",

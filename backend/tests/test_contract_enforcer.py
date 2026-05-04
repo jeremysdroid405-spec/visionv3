@@ -238,10 +238,14 @@ async def test_pick_card_contract_allows_nullable_display_fields():
 async def test_pick_card_contract_required_keys_locked():
     """Lockdown: this set must NOT be loosened without a CHANGELOG entry.
     Loosening this list is what got us the Vucevic / null-team
-    regressions."""
+    regressions.
+
+    SSOT Tier F #1 (2026-05-04): `direction` legacy alias removed from
+    response picks — canonical side field is now `recommendation` only.
+    The drop is intentional and logged in the changelog."""
     expected = {
         "player_name", "team", "sport",
-        "stat_type", "line", "recommendation", "direction",
+        "stat_type", "line", "recommendation",
         "tier_label", "prop_type",
         "stat_line", "big_pick_text",
         "projection", "hit_rate", "avg", "short_sentence",

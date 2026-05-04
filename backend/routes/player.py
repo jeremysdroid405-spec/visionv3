@@ -79,17 +79,20 @@ def _score_to_prop(doc: Dict[str, Any]) -> Dict[str, Any]:
         "mgm_odds": doc.get("mgm_odds"),
         "book_count": doc.get("book_count"),
         "coverage_class": doc.get("coverage_class"),
-        "hit_rate_over": doc.get("hit_rate_over"),
+        "hit_rate_over": doc.get("hit_rate_over"),     # legacy alias surfaced for back-compat
         "hit_rate_under": doc.get("hit_rate_under"),
         # 2026-05-01 — Universal hit-rate window trio so the
         # player-detail page is byte-equivalent to the pick card
         # on L20 (gate input) / L10 / L5 / sample size.
+        # SSOT Tier F (2026-05-04): OVER-side L20 reads canonical
+        # `hit_rate_l20` first with legacy `hit_rate_over` fallback
+        # for pre-dual-write docs.
         "hit_rate_l5":     doc.get("hit_rate_l5"),
         "hit_rate_l10":    doc.get("hit_rate_l10"),
         "hit_rate_l20":    (
             doc.get("hit_rate_under")
             if (doc.get("recommendation") or "OVER").upper() == "UNDER"
-            else doc.get("hit_rate_over")
+            else (doc.get("hit_rate_l20") or doc.get("hit_rate_over"))
         ),
         "hit_rate_sample_size": doc.get("hit_rate_sample_size"),
         "edge_pct": doc.get("edge_pct"),

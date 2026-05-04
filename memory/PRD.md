@@ -24,6 +24,16 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
   - Rollback one-liner: `db.{sport}_prop_scores.dropIndex("ttl_at_7d_nonlive_ix")`. No scheduler, no new cleanup service — Mongo handles it.
   - 5 remaining Tier F deletions (`edge_pct`/`vk_edge` stamping, `hit_rate_over` migration, `direction` deletion, `master_active_cache.json`, `dg_cached_board`) explicitly blocked — each has 7-34 reader sites requiring dedicated migration sessions.
   - **117/117 tests green, permanent repair ~85% complete. Six-tier SSOT campaign complete.**
+- **SSOT Tier F #2 (2026-05-04) — `hit_rate_over` → `hit_rate_l20` reader migration:**
+  - 11 canonical-first reader sites (routes/debug_snapshots, routes/player, routes/ferrari_tiers, services/dashboard_card_contract, services/scoring/metrics_builder) now read `hit_rate_l20` first, `hit_rate_over` only as fallback for pre-dual-write docs.
+  - DB parity verified: 4,815 dual-written docs checked, 0 mismatches; 105 contract tests green.
+  - Deletion deferred: 41,000 legacy-only docs (`6,727 NBA + 34,272 MLB`) must age out via 7-day TTL before readers can drop the fallback. Re-check parity in ~8 days.
+- **SSOT Tier F #1 (2026-05-04) — `direction` alias stamping deleted:**
+  - Dropped `"direction"` writes from all response-building paths: `_merge_score_with_board` (+ defensive `prop.pop("direction")` after board-entry clone because `nba_cached_board.props[]` still carries legacy alias), MLB prop-merge block, MLB detail-page backfill, top-5 goblins response, `picks_getter_service.{goblin_vault, front_lines, cached_player}`, `mlb_cached_board_builder._enrich_prop`.
+  - Migrated 8 backend readers to `recommendation → side → direction` canonical-first order (ferrari_tiers resolver + 4-tuple lookup + content-hash + UNDER filter + UNDER-rewire, dashboard_card_contract, board/adapters/base, market_moves_engine).
+  - Removed `"direction"` from `PICK_CARD_REQUIRED_KEYS` contract lockdown; new regression test `TestDirectionAliasStampingRemoved` asserts live API never returns `direction` key (6 endpoints × 40 picks confirmed 0).
+  - Contract-enforcer `missing_or_null=['direction']` errors eliminated from backend logs.
+  - **109/109 hit-rate + field-ownership tests green. Tier F remaining: `direction` reader-fallback deletion (Tier G once frontend purges `pick.direction`); `edge_pct`/`vk_edge` API stamping removal; `dg_cached_board` drop; `ScoreDocument` `extra="forbid"` flip.**
 
 ## Open issues (priority)
 - **P0** Vision Intel universal refactor — full scope in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`. Nullification phase shipped (Phase 2); engine refactor remains.

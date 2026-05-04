@@ -77,7 +77,12 @@ def _num(v: Any) -> float:
 def _normalize_reject(doc: Dict[str, Any]) -> Dict[str, Any]:
     """Project to the analysis fields. Same shape the script produces."""
     side = (doc.get("recommendation") or "").upper()
-    hit = doc.get("hit_rate_over") if side == "OVER" else doc.get("hit_rate_under")
+    # SSOT Tier F (2026-05-04): canonical L20 OVER read is `hit_rate_l20`;
+    # legacy `hit_rate_over` retained as fallback for pre-dual-write docs.
+    if side == "OVER":
+        hit = doc.get("hit_rate_l20") or doc.get("hit_rate_over")
+    else:
+        hit = doc.get("hit_rate_under")
     proj = doc.get("vk2_projection") or doc.get("model_projection")
     gates = doc.get("tier_gate_results") or {}
 
@@ -108,7 +113,8 @@ def _normalize_reject(doc: Dict[str, Any]) -> Dict[str, Any]:
         "projection":          proj,
         "p_true_active":       doc.get("p_true_active"),
         "fair_prob":           doc.get("fair_prob"),
-        "hit_rate_over":       doc.get("hit_rate_over"),
+        "hit_rate_over":       doc.get("hit_rate_over"),       # legacy alias surfaced for back-compat
+        "hit_rate_l20":        doc.get("hit_rate_l20") or doc.get("hit_rate_over"),  # canonical
         "hit_rate_under":      doc.get("hit_rate_under"),
         "hit_rate":            hit,
         "cv":                  doc.get("cv"),

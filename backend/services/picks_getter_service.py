@@ -1261,7 +1261,8 @@ class PicksGetterService:
                 "line": line,
                 "anchor_line": anchor_line,
                 "odds": prop.get("price", -110),
-                "direction": prop.get("direction", "over"),
+                # SSOT Tier F #1: canonical `recommendation` (was legacy `direction`).
+                "recommendation": (prop.get("recommendation") or prop.get("side") or "Over").title() if (prop.get("recommendation") or prop.get("side")) else "Over",
                 "is_demon": is_demon,
                 "is_goblin": is_goblin,
                 "tier_label": "DEMON" if is_demon else "GOBLIN",
@@ -1705,7 +1706,8 @@ class PicksGetterService:
                     "line": line,
                     "anchor_line": prop.get("anchor_line"),
                     "odds": prop.get("price"),
-                    "direction": prop.get("direction", "over"),
+                    # SSOT Tier F #1: canonical `recommendation` (was legacy `direction`).
+                    "recommendation": (prop.get("recommendation") or prop.get("side") or "Over").title() if (prop.get("recommendation") or prop.get("side")) else "Over",
                     "is_demon": is_demon,
                     "is_goblin": is_goblin,
                     "tier_label": "FRONT_LINE",
@@ -2375,7 +2377,8 @@ class PicksGetterService:
                 "is_demon": prop.get("is_demon"),
                 "is_goblin": prop.get("is_goblin"),
                 "tier_label": prop.get("tier_label"),
-                "direction": prop.get("direction"),
+                # SSOT Tier F #1: canonical `recommendation` (was legacy `direction`).
+                "recommendation": prop.get("recommendation") or prop.get("side"),
                 "price": prop.get("price"),
                 "h10_hit_rate": h10_rate,
                 "h10_rate": h10_rate,

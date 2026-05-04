@@ -108,7 +108,10 @@ def _snapshot_from_tiers(tiers: Dict[str, List[Dict]], sport: str) -> Dict[str, 
                 "line": pick.get("line"),
                 "market": pick.get("market", ""),
                 "price": pick.get("price"),
-                "direction": pick.get("direction", "Over"),
+                # SSOT Tier F #1: read canonical `recommendation`; keep
+                # legacy `direction` tolerance only for in-memory
+                # snapshots built before this migration.
+                "direction": (pick.get("recommendation") or pick.get("side") or pick.get("direction") or "Over"),
                 "tier": tier_name,
                 "sport": sport,
             }

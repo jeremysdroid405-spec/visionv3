@@ -411,8 +411,12 @@ class MLBCachedBoardBuilder:
                 prop.get("player_name") or player.get("display_name"),
                 canon_stat or raw_stat, line, rec_u,
             ),
-            # Side fields — fill from recommendation when missing
-            "direction": prop.get("direction") or rec_title,
+            # Side fields — canonical is `recommendation`+`side`; the
+            # `direction` alias was dropped in SSOT Tier F #1
+            # (2026-05-04). If upstream writes arrive with `direction`
+            # but no `recommendation`, we rehydrate `recommendation`
+            # from `direction` here (transitional) — but we no longer
+            # stamp a new `direction` alias on the enriched row.
             "side":      prop.get("side") or rec_u,
             "recommendation": prop.get("recommendation") or rec_u,
             # Player info

@@ -190,9 +190,11 @@ def _dedupe_picks_by_player(picks, keep: str = "best", sort: Optional[str] = Non
 
 def _resolve_prop_direction(pick: dict) -> str:
     """Universal, sport-agnostic side extractor for Vision Intel wording.
-    Reads `direction` first (PP ships per-side prop rows), falls back to
-    `recommendation`. Returns 'OVER' or 'UNDER'."""
-    raw = (pick.get("direction") or pick.get("recommendation") or "").upper()
+    SSOT Tier F #1 (2026-05-04): reads canonical `recommendation` /
+    `side` only. The legacy `direction` alias stamp was removed in the
+    same tier; transitional upstream tolerance for a `direction` key is
+    preserved as a LAST fallback only. Returns 'OVER' or 'UNDER'."""
+    raw = (pick.get("recommendation") or pick.get("side") or pick.get("direction") or "").upper()
     if "UNDER" in raw:
         return "UNDER"
     return "OVER"
@@ -875,7 +877,7 @@ async def _build_nba_board_lookup() -> Dict[tuple, Dict[str, Any]]:
             player_l = (p.get("player_name") or player_doc.get("player_name") or "").strip().lower()
             raw_stat = (p.get("stat_type") or "").strip().upper()
             stat_u = _canonical_stat_family(raw_stat)
-            dir_u = (p.get("direction") or "").strip().upper()
+            dir_u = (p.get("recommendation") or p.get("side") or p.get("direction") or "").strip().upper()
             if not (player_l and stat_u):
                 continue
             lbl = (p.get("pp_multiplier_label") or "").lower()
@@ -931,6 +933,11 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
 
         prop = _strip_objectids(board_entry["prop"])  # deep-clean enrichment
         player_doc = _strip_objectids(board_entry["player"])
+        # SSOT Tier F #1 (2026-05-04): `nba_cached_board.props` still
+        # carries a legacy `direction` key (upstream writer hasn't
+        # migrated). Strip it on read so the response never exposes the
+        # alias — canonical `recommendation` is stamped below.
+        prop.pop("direction", None)
         # Player-level fields from parent player doc
         for fld in (
             "player_id", "nba_id", "bdl_id", "nba_com_id", "espn_id",
@@ -964,7 +971,9 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     if raw_stat and raw_stat != prop["stat_type"]:
         prop["stat_type_raw"] = raw_stat
     prop["line"] = score.get("line")
-    prop["direction"] = direction_title
+    # SSOT Tier F #1 (2026-05-04): `direction` alias stamping removed.
+    # Canonical side lives on `recommendation` (and `side`); downstream
+    # readers and the frontend already fall back to `recommendation`.
     prop["recommendation"] = direction_title
     prop["sport"] = "nba"
 
@@ -1155,14 +1164,20 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     # in their own namespace: model_hit_rate_{over,under,active}.
     # Regression: /app/backend/tests/test_hit_rate_canonical.py
     # ============================================================
-    ho = score.get("hit_rate_over")
+    # SSOT Tier F (2026-05-04): canonical L20 OVER read is
+    # `hit_rate_l20`; legacy `hit_rate_over` retained only as a
+    # fallback for pre-dual-write docs and is ALSO re-stamped onto
+    # the response for back-compat with downstream readers not yet
+    # migrated.
+    ho = score.get("hit_rate_l20") or score.get("hit_rate_over")
     hu = score.get("hit_rate_under")
     # Diagnostic fields: model/scorer-derived L20 side-aware hit rates.
     # These are NOT the chart's L10 hit rate. They are fed into VK /
     # p_true / tier_gate calculations and rendered only where a
     # frontend explicitly opts in to model_hit_rate_*.
     if ho is not None:
-        prop["hit_rate_over"] = ho
+        prop["hit_rate_l20"] = ho                       # canonical
+        prop["hit_rate_over"] = ho                      # legacy alias for back-compat
         prop["model_hit_rate_over"] = round(float(ho), 1)
     if hu is not None:
         prop["hit_rate_under"] = hu
@@ -1242,7 +1257,8 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         prop["h10_rate"] = prop["h5_rate"]
     if prop.get("h10_rate") in (None, ""):
         side = (prop.get("recommendation") or "").upper()
-        hr = score.get("hit_rate_over") if side == "OVER" else score.get("hit_rate_under")
+        # SSOT Tier F: canonical L20 OVER is hit_rate_l20.
+        hr = (score.get("hit_rate_l20") or score.get("hit_rate_over")) if side == "OVER" else score.get("hit_rate_under")
         if hr is not None:
             try:
                 prop["h10_rate"] = int(round(float(hr)))
@@ -1376,7 +1392,8 @@ async def _get_nba_tier_picks_from_scores(
             merged["h10_rate"] = merged["h5_rate"]
         if merged.get("h10_rate") in (None, ""):
             side = (merged.get("recommendation") or "").upper()
-            hr = sc.get("hit_rate_over") if side == "OVER" else sc.get("hit_rate_under")
+            # SSOT Tier F: canonical L20 OVER is hit_rate_l20.
+            hr = (sc.get("hit_rate_l20") or sc.get("hit_rate_over")) if side == "OVER" else sc.get("hit_rate_under")
             if hr is not None:
                 try:
                     merged["h10_rate"] = int(round(float(hr)))
@@ -1563,6 +1580,10 @@ async def _get_mlb_tier_picks_from_scores(
         # (overlay_enrichment_cache, enrich_mlb_prop_with_tempo,
         # enrich_mlb_intel_suite) mutate this dict in place.
         pick: Dict[str, Any] = dict(sc)
+        # SSOT Tier F #1 (2026-05-04): defensive pop — any legacy
+        # `direction` key carried over from upstream writers is
+        # stripped here so the MLB response never exposes the alias.
+        pick.pop("direction", None)
 
         # ── Universal display-shape parity with NBA (2026-04-29) ─────────
         # Pure projection. Every field below already exists upstream
@@ -1576,7 +1597,9 @@ async def _get_mlb_tier_picks_from_scores(
 
         direction_upper = (sc.get("recommendation") or "OVER").strip().upper()
         direction_title = "Under" if direction_upper == "UNDER" else "Over"
-        pick["direction"] = direction_title
+        # SSOT Tier F #1 (2026-05-04): `direction` alias stamping removed.
+        # Canonical side is `recommendation`; downstream readers
+        # migrate below.
         pick["recommendation"] = direction_title
 
         tier_label_map = {
@@ -1720,7 +1743,7 @@ def _vision_intel_content_hash(pick: Dict[str, Any]) -> str:
         pick.get("sport") or "",
         pick.get("canonical_key") or "",
         str(pick.get("line") or ""),
-        (pick.get("direction") or "").upper(),
+        (pick.get("recommendation") or pick.get("side") or pick.get("direction") or "").upper(),
         str(opponent),
         _edge_bucket(pick),
     ]
@@ -1779,7 +1802,7 @@ async def _enrich_under_picks_with_gemini(
     from datetime import datetime, timezone
     from services.vision_intel_service import get_vision_intel_service
 
-    under_picks = [p for p in picks if (p.get("direction") or "").strip().upper() == "UNDER"]
+    under_picks = [p for p in picks if (p.get("recommendation") or p.get("side") or p.get("direction") or "").strip().upper() == "UNDER"]
     if not under_picks:
         return
 
@@ -1873,7 +1896,7 @@ def _finalize_nba_picks_side_aware(picks: List[Dict[str, Any]]) -> None:
         score = pick.pop("_nba_score_doc", None)
         if score is None:
             continue
-        direction_upper = (pick.get("direction") or pick.get("recommendation") or "OVER").strip().upper()
+        direction_upper = (pick.get("recommendation") or pick.get("side") or pick.get("direction") or "OVER").strip().upper()
         if direction_upper == "UNDER":
             _apply_under_badge_rewire(pick, score)
             # Clear any OVER-biased vision_intel inherited from the enrichment
@@ -2267,7 +2290,7 @@ async def _serve_ferrari_tier(
         "picks_with_vision_intel": sum(1 for p in picks if _has(p, "intel_suite") or _has(p, "vision_intel")),
         "picks_with_glow_fields": sum(1 for p in picks if _has(p, "vision_score") and _has(p, "tier") and (_has(p, "is_vision_enriched") or _has(p, "intel_suite"))),
         "picks_with_context_badges": sum(1 for p in picks if _has(p, "context_badges")),
-        "picks_with_hit_rate":    sum(1 for p in picks if _has(p, "hit_rate_over") or _has(p, "hit_rate_under")),
+        "picks_with_hit_rate":    sum(1 for p in picks if _has(p, "hit_rate_l20") or _has(p, "hit_rate_over") or _has(p, "hit_rate_under")),
         "picks_with_bdl_id":      sum(1 for p in picks if _has(p, "bdl_player_id")),
     }
     coverage["enrichment_healthy"] = bool(
@@ -3454,7 +3477,7 @@ async def get_mlb_player_props(
                 {"player_name": {"$regex": f"^{player_name}$", "$options": "i"},
                  "version_tag": MLB_LIVE},
                 {"_id": 0, "stat_type": 1, "line": 1, "recommendation": 1,
-                 "hit_rate_over": 1, "hit_rate_under": 1,
+                 "hit_rate_over": 1, "hit_rate_l20": 1, "hit_rate_under": 1,
                  "hit_rate_l5": 1, "hit_rate_l10": 1,
                  "hit_rate_sample_size": 1,
                  "tier": 1, "version_tag": 1},
@@ -3478,10 +3501,12 @@ async def get_mlb_player_props(
             # Add stat_type_extracted for frontend
             prop["stat_type_extracted"] = stat_type
             
-            # Add direction field
-            if not prop.get("direction"):
-                prop["direction"] = prop.get("recommendation", "Over")
-            
+            # SSOT Tier F #1 (2026-05-04): removed `prop["direction"] =
+            # recommendation` backfill — canonical field is
+            # `recommendation`, and every downstream reader now reads it
+            # directly. If recommendation is missing upstream the
+            # upstream scraper must be fixed (fail-loud), not aliased.
+
             # Add market field
             if not prop.get("market"):
                 prop["market"] = prop.get("market_key") or stat_type
@@ -3516,14 +3541,18 @@ async def get_mlb_player_props(
             try:
                 k = (str(stat_type), float(line or 0),
                      str(prop.get("recommendation") or
+                         prop.get("side") or
                          prop.get("direction") or "OVER").upper())
                 sc = score_match.get(k)
                 if sc:
                     side = k[2]
-                    hr_o = sc.get("hit_rate_over")
+                    # SSOT Tier F (2026-05-04): canonical OVER-side
+                    # L20 is `hit_rate_l20`; legacy `hit_rate_over`
+                    # retained as fallback for pre-dual-write docs.
+                    hr_o = sc.get("hit_rate_l20") or sc.get("hit_rate_over")
                     hr_u = sc.get("hit_rate_under")
                     if hr_o is not None:
-                        prop["hit_rate_over"] = hr_o
+                        prop["hit_rate_over"] = hr_o      # legacy alias
                     if hr_u is not None:
                         prop["hit_rate_under"] = hr_u
                     # L20 = side-aware hit_rate_{over,under}
@@ -4222,7 +4251,13 @@ async def get_mlb_hrr_picks(
         "tier": "war_zone",
         "stat_type": "Hits+Runs+RBIs",
         "edge_pct": {"$gte": min_edge},
-        "hit_rate_over": {"$gte": min_hit_rate},
+        # SSOT Tier F (2026-05-04): prefer canonical `hit_rate_l20`
+        # filter; $or keeps pre-dual-write docs visible until next
+        # full recompute sweep.
+        "$or": [
+            {"hit_rate_l20": {"$gte": min_hit_rate}},
+            {"hit_rate_l20": {"$exists": False}, "hit_rate_over": {"$gte": min_hit_rate}},
+        ],
     }
     
     picks = await collection.find(query, {"_id": 0}).to_list(length=None)
@@ -4323,7 +4358,9 @@ async def run_mlb_sharp_sorting_endpoint(
                 "stat_type": g.get("stat_type"),
                 "line": g.get("line"),
                 "projected_value": g.get("projected_value"),
-                "direction": g.get("recommendation"),
+                # SSOT Tier F #1: response uses canonical `recommendation`
+                # (was legacy `direction` alias).
+                "recommendation": g.get("recommendation"),
                 "sharp_odds": g.get("all_odds", {}).get("pinnacle"),
                 "sharp_fair_value": g.get("sharp_fair_value"),
                 "edge_pct": g.get("edge_pct"),

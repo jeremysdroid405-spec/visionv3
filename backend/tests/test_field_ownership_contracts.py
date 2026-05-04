@@ -859,3 +859,137 @@ class TestPPStalenessLogging:
         except subprocess.CalledProcessError:
             pytest.skip("supervisor log not accessible in this env")
 
+
+
+# ════════════════════════════════════════════════════════════════════
+# Tier F.2 — hit_rate_over → hit_rate_l20 reader migration
+# ════════════════════════════════════════════════════════════════════
+
+
+class TestHitRateL20PrimaryReadContract:
+    """Tier F.2 (2026-05-04): every backend consumer of the L20
+    OVER-side hit rate now reads `hit_rate_l20` as the PRIMARY source,
+    with legacy `hit_rate_over` retained only as a fallback for pre-
+    dual-write docs. This contract asserts the read-order preference."""
+
+    def test_card_contract_prefers_hit_rate_l20(self):
+        """When both fields are present with DIFFERENT values the
+        card contract must surface the canonical `hit_rate_l20` —
+        proves the read-order is canonical-first, not legacy-first.
+        (In production the dual-write guarantees they're equal, but
+        this test diverges them intentionally to verify preference.)"""
+        from services.dashboard_card_contract import to_card_contract
+        pick = {
+            "player_name":    "TEST",
+            "stat_type":      "PTS",
+            "line":           25.5,
+            "recommendation": "OVER",
+            "hit_rate_l20":   71.0,   # canonical
+            "hit_rate_over":  55.0,   # legacy — MUST be ignored
+            "hit_rate_under": 29.0,
+        }
+        out = to_card_contract(pick)
+        assert out["hit_rate"] == 71.0, (
+            f"Card contract read legacy hit_rate_over={55.0} "
+            f"instead of canonical hit_rate_l20={71.0}. Got "
+            f"hit_rate={out['hit_rate']}"
+        )
+        assert out["hit_rate_l20"] == 71.0
+
+    def test_card_contract_falls_back_to_legacy_when_canonical_missing(self):
+        """Pre-dual-write docs lack `hit_rate_l20` — the card
+        contract MUST still surface the value from legacy
+        `hit_rate_over` (zero data-loss fallback)."""
+        from services.dashboard_card_contract import to_card_contract
+        pick = {
+            "player_name":    "TEST",
+            "stat_type":      "PTS",
+            "line":           25.5,
+            "recommendation": "OVER",
+            "hit_rate_over":  68.0,   # legacy only
+            "hit_rate_under": 32.0,
+        }
+        out = to_card_contract(pick)
+        assert out["hit_rate"] == 68.0
+
+    def test_metrics_builder_prefers_hit_rate_l20(self):
+        """metrics_builder.build_metrics_from_score_doc: same contract."""
+        from services.scoring.metrics_builder import build_metrics_from_score_doc
+        doc = {
+            "sport":            "nba",
+            "stat_type":        "PTS",
+            "line":             25.5,
+            "recommendation":   "OVER",
+            "hit_rate_l20":     71.0,
+            "hit_rate_over":    55.0,
+            "hit_rate_under":   29.0,
+            "cv":               0.2,
+            "edge_vs_fair":     0.1,
+            "p_true_active":    0.6,
+            "model_projection": 26.0,
+        }
+        m = build_metrics_from_score_doc(doc)
+        assert m.hit_rate == 71.0, (
+            f"metrics_builder pulled legacy hit_rate_over=55.0 "
+            f"over canonical hit_rate_l20=71.0. Got: {m.hit_rate}"
+        )
+
+
+
+# ────────────────────────────────────────────────────────────────────
+# Tier F #1: `direction` alias stamping removed from response picks
+# ────────────────────────────────────────────────────────────────────
+
+
+class TestDirectionAliasStampingRemoved:
+    """SSOT Tier F #1 (2026-05-04): response-building writers MUST NOT
+    duplicate the canonical `recommendation` value into a legacy
+    `direction` key. Frontend and backend readers migrated to
+    `recommendation` / `side` as canonical. A lingering `direction`
+    stamp is a silent SSOT violation."""
+
+    @pytest.mark.parametrize("sport,tier", [
+        ("NBA", "safe-haven"),
+        ("NBA", "front-lines"),
+        ("MLB", "safe-haven"),
+        ("MLB", "front-lines"),
+    ])
+    def test_ferrari_tier_response_does_not_stamp_direction_alias(
+        self, api_base, sport, tier
+    ):
+        url = f"{api_base}/api/v3/ferrari/{tier}?sport={sport}&limit=10"
+        try:
+            r = requests.get(url, timeout=20)
+        except requests.RequestException as e:
+            pytest.skip(f"{sport} {tier} endpoint unreachable: {e}")
+        if r.status_code != 200:
+            pytest.skip(f"{sport} {tier} returned {r.status_code}")
+        data = r.json()
+        picks = (
+            data.get("picks")
+            or data.get("data")
+            or data.get("items")
+            or (data if isinstance(data, list) else [])
+        )
+        if not picks:
+            pytest.skip(f"{sport} {tier} returned no picks")
+        offenders = [
+            f"{p.get('player_name')} {p.get('stat_type')}"
+            for p in picks
+            if "direction" in p
+        ]
+        assert not offenders, (
+            f"{sport} {tier}: {len(offenders)}/{len(picks)} picks still "
+            f"carry legacy `direction` alias. Sample: {offenders[:5]}. "
+            f"Tier F #1 writer deletion regressed."
+        )
+        # Positive check — canonical field MUST be present.
+        missing_rec = [
+            f"{p.get('player_name')} {p.get('stat_type')}"
+            for p in picks
+            if not p.get("recommendation")
+        ]
+        assert not missing_rec, (
+            f"{sport} {tier}: {len(missing_rec)} picks missing canonical "
+            f"`recommendation`. Sample: {missing_rec[:5]}."
+        )
