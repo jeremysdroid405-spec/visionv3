@@ -594,12 +594,16 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     line = prop.get("line", 0)
     team = prop.get("team", "")
     position = (prop.get("position") or "").lower()
-    
-    # Get opponent from various fields
-    opponent = (prop.get("opposing_team") or prop.get("opponent") or 
-                prop.get("away_team") if prop.get("team") == prop.get("home_team") 
-                else prop.get("home_team") or "OPP")
-    
+
+    # SSOT 2026-05-03: opponent read goes through canonical accessor.
+    # Pre-migration this was a 4-way fallback chain that silently used
+    # stale cached_board values. The earlier fix in
+    # _get_nba_tier_picks_from_scores now populates `opponent` from
+    # live_props.opponent_team before this function runs, so the
+    # canonical read returns the fresh value. Fallback string removed.
+    from services.field_ownership import get_owned_field
+    opponent = get_owned_field(prop, "opponent") or "OPP"
+
     # Get hit rates and averages
     h5_rate = prop.get("h5_rate") or prop.get("hit_rate_l5") or 0
     h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10") or 0

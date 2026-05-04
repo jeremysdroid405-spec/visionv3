@@ -370,6 +370,35 @@ SCORES_COLLECTION = "mlb_prop_scores"  # legacy default; now sport-specific
 def _project_score_doc(
     context_out: Dict[str, Any], version_tag: str, computed_at: str
 ) -> Dict[str, Any]:
+    # SSOT enforcement (2026-05-03): before projecting, flag any keys
+    # produced by the adapter that are NOT in our allowlists. These
+    # would be silently dropped below — which has burned us multiple
+    # times (hetero_sigma_*, etc.). Log at WARNING so they're visible
+    # in supervisor logs and can be added to the allowlist or the
+    # Pydantic schema once that lands.
+    _known_keys = (
+        set(_IDENTITY_FIELDS)
+        | set(_SCORE_OUTPUT_FIELDS)
+        | set(_UNIVERSAL_POOL_FIELDS)
+        | {"version_tag", "computed_at", "scored_at"}
+    )
+    _dropped = [k for k in context_out.keys() if k not in _known_keys]
+    if _dropped:
+        # Sample log: one entry per unique adapter-output field that's
+        # being dropped. Prevents log spam while still alerting dev.
+        try:
+            _seen = _project_score_doc.__dict__.setdefault("_dropped_keys_seen", set())
+            new_drops = [k for k in _dropped if k not in _seen]
+            if new_drops:
+                _seen.update(new_drops)
+                logger.warning(
+                    f"[SSOT_DROP] score doc fields being silently dropped "
+                    f"by allowlist (first occurrence): {new_drops}. "
+                    f"Add to _SCORE_OUTPUT_FIELDS or remove from adapter."
+                )
+        except Exception:  # pragma: no cover — logging must never break writes
+            pass
+
     doc = {k: context_out.get(k) for k in _IDENTITY_FIELDS if k in context_out}
     for k in _SCORE_OUTPUT_FIELDS:
         if k in context_out:
@@ -387,6 +416,14 @@ def _project_score_doc(
     doc.setdefault("game_start_utc", None)
     doc["version_tag"] = version_tag
     doc["computed_at"] = computed_at
+    # SSOT: `scored_at` is the ownership-declared freshness timestamp
+    # consumed by /api/health/sync. Pre-2026-05-03 this field was NEVER
+    # written, silently dead-ending the entire staleness monitoring
+    # system. Per FIELD_OWNERSHIP.md:scored_at, write here and only
+    # here. Kept equal to computed_at for this migration phase; future
+    # work may distinguish them (e.g. scored_at = when we finished the
+    # probability pass, computed_at = when we persisted).
+    doc["scored_at"] = computed_at
     return doc
 
 
