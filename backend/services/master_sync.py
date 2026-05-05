@@ -1209,6 +1209,16 @@ PICKS_PER_TIER_CAP = {
     "safe_haven": 50,
 }
 
+# Vision Intel enrichment universe (2026-05-05 hot-fix).
+# Pulls visible tier picks via the SAME universal board reader the
+# `/api/v3/(mlb/)?ferrari/{tier}` endpoints use — NOT a bulk query
+# against the active master pool. Without this, MLB FL alone admits
+# ~9,000 active score docs, none of which are visible cards. The
+# limit per tier matches the route's `Query(le=50)` ceiling so any
+# UI request fits inside the enriched set.
+VISION_INTEL_TIERS = ("safe_haven", "front_lines", "war_zone")
+VISION_INTEL_FETCH_LIMIT_PER_TIER = 50
+
 
 async def _attach_badges_in_memory(
     picks: list, sport: str, db
@@ -1288,19 +1298,26 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
     from services.vision_intel_service import get_vision_intel_service
 
     metrics = {
-        "board_picks_total": 0,
-        "cache_hits": 0,
-        "cache_miss_to_call": 0,
-        "capped_at": MAX_BOARD_VISION_INTEL_PICKS,
-        "per_tier_caps": PICKS_PER_TIER_CAP,
-        "after_cap_to_call": 0,
-        "tiers_called": {},
-        "gemini_returned": 0,
+        "safe_haven_count":       0,
+        "front_lines_count":      0,
+        "war_zone_count":         0,
+        "total_visible_picks":    0,
+        "board_picks_total":      0,   # alias of total_visible_picks (legacy)
+        "cache_hits":             0,
+        "cache_miss_to_call":     0,
+        "capped_at":              MAX_BOARD_VISION_INTEL_PICKS,
+        "per_tier_caps":          PICKS_PER_TIER_CAP,
+        "fetch_limit_per_tier":   VISION_INTEL_FETCH_LIMIT_PER_TIER,
+        "after_cap_to_call":      0,
+        "to_call":                0,
+        "gemini_calls":           0,
+        "tiers_called":           {},
+        "gemini_returned":        0,
         "gemini_empty_or_failed": 0,
-        "score_docs_written": 0,
-        "cached_board_writes": 0,
-        "skip_reasons": {},
-        "fallback_in_db_after": 0,
+        "score_docs_written":     0,
+        "cached_board_writes":    0,
+        "skip_reasons":           {},
+        "fallback_in_db_after":   0,
     }
     skip = metrics["skip_reasons"]
 
@@ -1313,21 +1330,34 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
         return metrics
 
     # ------------------------------------------------------------------
-    # Step A: Pull every active board pick's full score doc. Tiers are
-    # the canonical strings written by the scoring/tier-assignment pass
-    # ('safe_haven' | 'front_lines' | 'war_zone' — confirmed live).
+    # Step A: Pull VISIBLE tier picks via the universal board reader —
+    # the SAME path `/api/v3/ferrari/{tier}` serves to the dashboard.
+    # `get_board()` applies the published board reconcile + per-player
+    # dedup, so a tier returns at most one pick per player ordered by
+    # the adapter's tier sort key. Limit per tier mirrors the route's
+    # `Query(le=50)` ceiling so any UI request fits inside the enriched
+    # set. Replaces the old bulk
+    # `nba_prop_scores.find({tier ∈ BOARD_TIERS, active=True})` query
+    # which admitted hundreds of non-visible active props and starved
+    # the per-tier cap (CHANGELOG 2026-05-05 enrichment-universe fix).
     # ------------------------------------------------------------------
-    BOARD_TIERS = ["safe_haven", "front_lines", "war_zone"]
+    from services.board.reader import get_board
+
     board_picks: list = []
-    async for d in db["nba_prop_scores"].find(
-        {
-            "version_tag": NBA_LIVE,
-            "tier": {"$in": BOARD_TIERS},
-            "active": True,
-        }
-    ):
-        board_picks.append(d)
-    metrics["board_picks_total"] = len(board_picks)
+    per_tier_visible: dict = {}
+    for tier_name in VISION_INTEL_TIERS:
+        tier_picks = await get_board(
+            db, sport="nba", tier=tier_name,
+            limit=VISION_INTEL_FETCH_LIMIT_PER_TIER,
+        )
+        per_tier_visible[tier_name] = len(tier_picks)
+        board_picks.extend(tier_picks)
+
+    metrics["safe_haven_count"]    = per_tier_visible.get("safe_haven", 0)
+    metrics["front_lines_count"]   = per_tier_visible.get("front_lines", 0)
+    metrics["war_zone_count"]      = per_tier_visible.get("war_zone", 0)
+    metrics["total_visible_picks"] = len(board_picks)
+    metrics["board_picks_total"]   = len(board_picks)  # legacy alias
 
     if not board_picks:
         return metrics
@@ -1348,12 +1378,15 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
             continue
         to_call.append(p)
     metrics["cache_miss_to_call"] = len(to_call)
+    metrics["to_call"]            = len(to_call)  # canonical name (2026-05-05)
 
     # Cap. Apply a per-tier cap first (so a populous tier like
     # `front_lines` cannot starve the smaller `safe_haven`/`war_zone`
     # board), then enforce the global cap. Within each tier, sort by
     # descending `vision_score` so the most actionable picks always win
-    # the cap fight.
+    # the cap fight. With `get_board()` upstream, the visible universe
+    # is small enough that this cap rarely fires — kept as a safety
+    # net only.
     if to_call:
         by_tier_cap: dict = defaultdict(list)
         for p in to_call:
@@ -1369,6 +1402,7 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
             capped = capped[:MAX_BOARD_VISION_INTEL_PICKS]
         to_call = capped
     metrics["after_cap_to_call"] = len(to_call)
+    metrics["to_call"]           = len(to_call)  # canonical name (2026-05-05)
 
     if not to_call:
         return metrics
@@ -1407,6 +1441,7 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
         chunk_failed = False
         for i in range(0, len(tier_picks), CHUNK):
             chunk = tier_picks[i : i + CHUNK]
+            metrics["gemini_calls"] += 1
             try:
                 chunk_results = await vis.analyze_tier_batch(
                     chunk, tier_name, strict=True
@@ -1526,7 +1561,7 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
     metrics["fallback_in_db_after"] = await db["nba_prop_scores"].count_documents(
         {
             "version_tag": NBA_LIVE,
-            "tier": {"$in": BOARD_TIERS},
+            "tier": {"$in": list(VISION_INTEL_TIERS)},
             "$or": [
                 {"vision_intel": None},
                 {"vision_intel": ""},
@@ -1536,9 +1571,14 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
     )
 
     logger.info(
-        f"[MASTER_SYNC:nba] vision_intel_enrichment: board_total="
-        f"{metrics['board_picks_total']} cache_hits={metrics['cache_hits']} "
-        f"to_call={metrics['after_cap_to_call']} "
+        f"[MASTER_SYNC:nba] vision_intel_enrichment: "
+        f"safe_haven={metrics['safe_haven_count']} "
+        f"front_lines={metrics['front_lines_count']} "
+        f"war_zone={metrics['war_zone_count']} "
+        f"total_visible={metrics['total_visible_picks']} "
+        f"cache_hits={metrics['cache_hits']} "
+        f"to_call={metrics['to_call']} "
+        f"gemini_calls={metrics['gemini_calls']} "
         f"gemini_returned={metrics['gemini_returned']} "
         f"empty={metrics['gemini_empty_or_failed']} "
         f"score_writes={metrics['score_docs_written']} "
@@ -1575,12 +1615,19 @@ async def _enrich_mlb_board_vision_intel(db) -> dict:
     from services.mlb_vision_intel import get_mlb_vision_intel
 
     metrics = {
-        "board_picks_total":      0,
+        "safe_haven_count":       0,
+        "front_lines_count":      0,
+        "war_zone_count":         0,
+        "total_visible_picks":    0,
+        "board_picks_total":      0,   # alias of total_visible_picks (legacy)
         "cache_hits":             0,
         "cache_miss_to_call":     0,
         "capped_at":              MAX_BOARD_VISION_INTEL_PICKS,
         "per_tier_caps":          PICKS_PER_TIER_CAP,
+        "fetch_limit_per_tier":   VISION_INTEL_FETCH_LIMIT_PER_TIER,
         "after_cap_to_call":      0,
+        "to_call":                0,
+        "gemini_calls":           0,
         "tiers_called":           {},
         "gemini_returned":        0,
         "gemini_empty_or_failed": 0,
@@ -1598,18 +1645,32 @@ async def _enrich_mlb_board_vision_intel(db) -> dict:
         )
         return metrics
 
-    # ── Step A: Pull active-board MLB picks ───────────────────────────
-    BOARD_TIERS = ["safe_haven", "front_lines", "war_zone"]
+    # ── Step A: Pull VISIBLE tier picks via the universal board reader ─
+    # SAME path `/api/v3/mlb/ferrari/{tier}` serves to the dashboard.
+    # `get_board()` applies the published board reconcile + per-player
+    # dedup so each tier returns at most one pick per player ordered by
+    # the adapter's tier sort key. Replaces the old bulk
+    # `mlb_prop_scores.find({tier ∈ BOARD_TIERS, active=True})` query
+    # which admitted ~9,000 active FL props (none visible) and starved
+    # the cap (CHANGELOG 2026-05-05 enrichment-universe fix). MLB and
+    # NBA paths now match.
+    from services.board.reader import get_board
+
     board_picks: list = []
-    async for d in db["mlb_prop_scores"].find(
-        {
-            "version_tag": MLB_LIVE,
-            "tier":        {"$in": BOARD_TIERS},
-            "active":      True,
-        }
-    ):
-        board_picks.append(d)
-    metrics["board_picks_total"] = len(board_picks)
+    per_tier_visible: dict = {}
+    for tier_name in VISION_INTEL_TIERS:
+        tier_picks = await get_board(
+            db, sport="mlb", tier=tier_name,
+            limit=VISION_INTEL_FETCH_LIMIT_PER_TIER,
+        )
+        per_tier_visible[tier_name] = len(tier_picks)
+        board_picks.extend(tier_picks)
+
+    metrics["safe_haven_count"]    = per_tier_visible.get("safe_haven", 0)
+    metrics["front_lines_count"]   = per_tier_visible.get("front_lines", 0)
+    metrics["war_zone_count"]      = per_tier_visible.get("war_zone", 0)
+    metrics["total_visible_picks"] = len(board_picks)
+    metrics["board_picks_total"]   = len(board_picks)  # legacy alias
 
     if not board_picks:
         return metrics
@@ -1626,8 +1687,11 @@ async def _enrich_mlb_board_vision_intel(db) -> dict:
             continue
         to_call.append(p)
     metrics["cache_miss_to_call"] = len(to_call)
+    metrics["to_call"]            = len(to_call)  # canonical name (2026-05-05)
 
-    # ── Cap (per-tier first, then global) ─────────────────────────────
+    # ── Cap (per-tier first, then global). Visible universe is small
+    # enough post-`get_board()` that this cap rarely fires — kept as a
+    # safety net only. ────────────────────────────────────────────────
     if to_call:
         by_tier_cap: dict = defaultdict(list)
         for p in to_call:
@@ -1643,6 +1707,7 @@ async def _enrich_mlb_board_vision_intel(db) -> dict:
             capped = capped[:MAX_BOARD_VISION_INTEL_PICKS]
         to_call = capped
     metrics["after_cap_to_call"] = len(to_call)
+    metrics["to_call"]           = len(to_call)  # canonical name (2026-05-05)
 
     if not to_call:
         return metrics
@@ -1669,6 +1734,7 @@ async def _enrich_mlb_board_vision_intel(db) -> dict:
         chunk_failed = False
         for i in range(0, len(tier_picks), CHUNK):
             chunk = tier_picks[i: i + CHUNK]
+            metrics["gemini_calls"] += 1
             try:
                 chunk_results = await vis.analyze_tier_batch(
                     chunk, tier_name, strict=True
@@ -1772,7 +1838,7 @@ async def _enrich_mlb_board_vision_intel(db) -> dict:
     metrics["fallback_in_db_after"] = await db["mlb_prop_scores"].count_documents(
         {
             "version_tag": MLB_LIVE,
-            "tier":        {"$in": BOARD_TIERS},
+            "tier":        {"$in": list(VISION_INTEL_TIERS)},
             "$or": [
                 {"vision_intel": None},
                 {"vision_intel": ""},
@@ -1782,9 +1848,14 @@ async def _enrich_mlb_board_vision_intel(db) -> dict:
     )
 
     logger.info(
-        f"[MASTER_SYNC:mlb] vision_intel_enrichment: board_total="
-        f"{metrics['board_picks_total']} cache_hits={metrics['cache_hits']} "
-        f"to_call={metrics['after_cap_to_call']} "
+        f"[MASTER_SYNC:mlb] vision_intel_enrichment: "
+        f"safe_haven={metrics['safe_haven_count']} "
+        f"front_lines={metrics['front_lines_count']} "
+        f"war_zone={metrics['war_zone_count']} "
+        f"total_visible={metrics['total_visible_picks']} "
+        f"cache_hits={metrics['cache_hits']} "
+        f"to_call={metrics['to_call']} "
+        f"gemini_calls={metrics['gemini_calls']} "
         f"gemini_returned={metrics['gemini_returned']} "
         f"empty={metrics['gemini_empty_or_failed']} "
         f"score_writes={metrics['score_docs_written']} "
