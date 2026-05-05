@@ -491,11 +491,18 @@ async def recompute_sport(
             "hit_rate_over": ctx.hit_rate_over,
             "hit_rate_under": ctx.hit_rate_under,
             # SSOT (FIELD_OWNERSHIP.md:hit_rate_l20, 2026-05-04): the
-            # window-explicit canonical name for the L20 OVER hit rate.
-            # `hit_rate_over` is retained in parallel as a legacy alias
-            # until all readers migrate. `hit_rate_l20` is the one
-            # readers should reach for going forward.
-            "hit_rate_l20": ctx.hit_rate_over,
+            # window-explicit canonical name for the L20 hit rate.
+            # Side-aware to match `hit_rate_l5` / `hit_rate_l10`
+            # (which are also side-aware on the score doc). For OVER
+            # picks `ctx.hit_rate == ctx.hit_rate_over`; for UNDER
+            # picks it is the UNDER-side rate. Fix 2026-05-05:
+            # previously stamped `ctx.hit_rate_over` here, which made
+            # `hit_rate_l20` an OVER-only alias and contradicted the
+            # side-aware contract documented in
+            # `routes/ferrari_tiers.py:1166-1171`. Side-specific
+            # diagnostics still live in `hit_rate_over` /
+            # `hit_rate_under` directly above.
+            "hit_rate_l20": ctx.hit_rate,
             # HR sample-size telemetry (2026-04-25, HR v3). Sample
             # size in [10, 20] when HR is computed; None when HR is
             # None (insufficient sample / missing identity / etc).

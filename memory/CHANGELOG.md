@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-05-05 — Hit-rate L20 side-awareness fix (P0)
+
+`hit_rate_l20` was stamped with `ctx.hit_rate_over` regardless of the prop's direction, so UNDER picks displayed the OVER L20 rate next to side-aware L5 / L10 — producing contradictory tiles like Bryce Harper Hits 2.5 UNDER showing L5=100, L10=100, L20=5. Bug confirmed via DB invariant scan: `hit_rate_l20 == hit_rate_over` for both OVER and UNDER docs.
+
+**Files changed (2 production, 1 test)**
+- `backend/services/scoring/recompute.py:498` — `"hit_rate_l20": ctx.hit_rate` (was `ctx.hit_rate_over`). `ctx.hit_rate` is already side-aware in both NBA (`nba_scoring.py:2462`) and MLB (`mlb_scoring.py:213-217`) adapters.
+- `backend/routes/ferrari_tiers.py:1148-1165` — `_merge_score_with_board` now reads `hit_rate_over`, `hit_rate_under`, and `hit_rate_l20` independently. The `hit_rate_l20 or hit_rate_over` fallback chain was deleted because it would have leaked the UNDER-side value into `hit_rate_over` after the writer fix.
+- `backend/tests/test_field_ownership_contracts.py::TestHitRateL20Contract` — rewrote `test_hit_rate_l20_matches_legacy` → `test_hit_rate_l20_is_side_aware`. Asserts the new contract: OVER picks → `l20 == hit_rate_over`, UNDER picks → `l20 == hit_rate_under`.
+
+**Live verification (`final-nba-rt` + `final-mlb-rt`, full recompute 1989 + 2403 docs)**
+
+| Pick | Side | l5 | l10 | l20 (before) | l20 (after) | hit_rate_over | hit_rate_under |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Bryce Harper Hits 2.5 | UNDER | 100 | 100 | **5** ❌ | **95** ✓ | 5 | 95 |
+| Ajay Mitchell PTS 15.5 | UNDER | 80 | 90 | **20** ❌ | **80** ✓ | 20 | 80 |
+| Jalen Brunson AST 5.5 | OVER | 40 | 60 | 70 | **70** ✓ | 70 | 30 |
+| Willson Contreras Hits 0.5 | OVER | 80 | 80 | 70 | **70** ✓ | 70 | 30 |
+
+**Invariant scan post-fix (final-{sport}-rt, active=True, both fields present):**
+- 3947 OVER picks: `hit_rate_l20 == hit_rate_over`, **0 mismatches**.
+- 347 UNDER picks: `hit_rate_l20 == hit_rate_under`, **0 mismatches**.
+
+**API smoke (`/api/v3/ferrari/front-lines?sport=nba`)** — all 12 picks (10 OVER + 2 UNDER) have `hit_rate_l20` matching the active-side rate. UNDER picks (Ajay Mitchell, Mike Conley) now display L5=80 / L10=90 / L20=80 instead of the contradictory L20=20.
+
+**Constraints honored**: no threshold changes, no badge changes, no gate changes, no fallbacks added, no frontend touched. Tests: 103 passed, 3 skipped (pre-existing).
+
+
+
 ## 2026-05-04 — Universal Performance Badge Generator (SSOT)
 
 Consolidated three duplicate `scout_badges` generators into a single SSOT module. Eliminates the `lasso_high_edge` unit-mismatch bug (decimal `edge_vs_fair` compared to integer `15`) that hid the badge on every real pick.

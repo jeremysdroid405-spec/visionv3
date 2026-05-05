@@ -1140,24 +1140,29 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     # in their own namespace: model_hit_rate_{over,under,active}.
     # Regression: /app/backend/tests/test_hit_rate_canonical.py
     # ============================================================
-    # SSOT Tier F (2026-05-04): canonical L20 OVER read is
-    # `hit_rate_l20`; legacy `hit_rate_over` retained only as a
-    # fallback for pre-dual-write docs and is ALSO re-stamped onto
-    # the response for back-compat with downstream readers not yet
-    # migrated.
-    ho = score.get("hit_rate_l20") or score.get("hit_rate_over")
+    # ============================================================
+    # SSOT Tier F (2026-05-05 fix): `hit_rate_l20` is side-aware on
+    # the score doc (matches `hit_rate_l5` / `hit_rate_l10`).
+    # `hit_rate_over` and `hit_rate_under` are independent OVER/UNDER
+    # diagnostics. Read each canonically — DO NOT use `hit_rate_l20`
+    # as a fallback for `hit_rate_over`, because on UNDER picks
+    # `hit_rate_l20` carries the UNDER-side rate and would corrupt the
+    # OVER alias if substituted.
+    ho = score.get("hit_rate_over")
     hu = score.get("hit_rate_under")
+    side_l20 = score.get("hit_rate_l20")
     # Diagnostic fields: model/scorer-derived L20 side-aware hit rates.
     # These are NOT the chart's L10 hit rate. They are fed into VK /
     # p_true / tier_gate calculations and rendered only where a
     # frontend explicitly opts in to model_hit_rate_*.
     if ho is not None:
-        prop["hit_rate_l20"] = ho                       # canonical
-        prop["hit_rate_over"] = ho                      # legacy alias for back-compat
+        prop["hit_rate_over"] = ho                      # OVER L20
         prop["model_hit_rate_over"] = round(float(ho), 1)
     if hu is not None:
-        prop["hit_rate_under"] = hu
+        prop["hit_rate_under"] = hu                     # UNDER L20
         prop["model_hit_rate_under"] = round(float(hu), 1)
+    if side_l20 is not None:
+        prop["hit_rate_l20"] = side_l20                 # side-aware (canonical)
     # Active-side model hit rate convenience (mirrors score.hit_rate)
     if is_under and hu is not None:
         prop["model_hit_rate_active"] = round(float(hu), 1)

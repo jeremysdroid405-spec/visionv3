@@ -447,36 +447,62 @@ class TestRankingScoreV2Contract:
 
 
 class TestHitRateL20Contract:
-    """SSOT (FIELD_OWNERSHIP.md:hit_rate_l20): dual-write invariant —
-    after Phase 2, recompute_sport stamps `hit_rate_l20` alongside the
-    legacy `hit_rate_over`. Both must be numerically identical."""
+    """SSOT (FIELD_OWNERSHIP.md:hit_rate_l20, 2026-05-05 fix): side-aware
+    invariant. `hit_rate_l20` is now side-aware on the score doc to
+    match `hit_rate_l5` / `hit_rate_l10`:
+        OVER  picks  →  hit_rate_l20 == hit_rate_over
+        UNDER picks  →  hit_rate_l20 == hit_rate_under
+    Previously the writer stamped `ctx.hit_rate_over` regardless of
+    direction, which made the field an OVER-only alias and produced
+    contradictory L5/L10/L20 tiles on UNDER cards (e.g. Bryce Harper
+    Hits 2.5 UNDER showed L5=100, L10=100, L20=5)."""
 
     @pytest.mark.parametrize("sport,tag", [
         ("nba", "final-nba-rt"),
         ("mlb", "final-mlb-rt"),
     ])
-    def test_hit_rate_l20_matches_legacy(self, db, sport, tag):
+    def test_hit_rate_l20_is_side_aware(self, db, sport, tag):
         coll = db[f"{sport}_prop_scores"]
-        # Only validate docs that have BOTH fields present (post-dual-write).
-        # Pre-2026-05-04 docs won't have `hit_rate_l20` — next recompute
-        # wave will backfill.
-        total = coll.count_documents({
+        # OVER side: hit_rate_l20 must equal hit_rate_over
+        over_total = coll.count_documents({
             "version_tag": tag, "active": True,
+            "recommendation": "OVER",
             "hit_rate_l20": {"$exists": True, "$ne": None},
             "hit_rate_over": {"$exists": True, "$ne": None},
         })
-        if total == 0:
-            pytest.skip(f"no {sport} docs with both hit_rate_l20 + "
-                        f"hit_rate_over yet (pre-rescore)")
-        mismatched = coll.count_documents({
+        if over_total == 0:
+            pytest.skip(f"no {sport} OVER docs with both fields yet")
+        over_mismatched = coll.count_documents({
             "version_tag": tag, "active": True,
+            "recommendation": "OVER",
             "hit_rate_l20": {"$exists": True, "$ne": None},
             "hit_rate_over": {"$exists": True, "$ne": None},
             "$expr": {"$ne": ["$hit_rate_l20", "$hit_rate_over"]},
         })
-        assert mismatched == 0, (
-            f"{sport}: {mismatched}/{total} docs have hit_rate_l20 != "
-            f"hit_rate_over. Dual-write in recompute_sport regressed."
+        assert over_mismatched == 0, (
+            f"{sport} OVER: {over_mismatched}/{over_total} docs have "
+            f"hit_rate_l20 != hit_rate_over. Side-aware writer regressed."
+        )
+
+        # UNDER side: hit_rate_l20 must equal hit_rate_under
+        under_total = coll.count_documents({
+            "version_tag": tag, "active": True,
+            "recommendation": "UNDER",
+            "hit_rate_l20": {"$exists": True, "$ne": None},
+            "hit_rate_under": {"$exists": True, "$ne": None},
+        })
+        if under_total == 0:
+            pytest.skip(f"no {sport} UNDER docs with both fields yet")
+        under_mismatched = coll.count_documents({
+            "version_tag": tag, "active": True,
+            "recommendation": "UNDER",
+            "hit_rate_l20": {"$exists": True, "$ne": None},
+            "hit_rate_under": {"$exists": True, "$ne": None},
+            "$expr": {"$ne": ["$hit_rate_l20", "$hit_rate_under"]},
+        })
+        assert under_mismatched == 0, (
+            f"{sport} UNDER: {under_mismatched}/{under_total} docs have "
+            f"hit_rate_l20 != hit_rate_under. Side-aware writer regressed."
         )
 
 
