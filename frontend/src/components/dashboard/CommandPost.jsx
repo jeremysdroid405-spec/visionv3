@@ -266,8 +266,12 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
         team: pendingLeg.team || '',
         opponent: pendingLeg.opponent || pendingLeg.opponent_abbr || '',
         is_home: pendingLeg.is_home ?? true,
-        h10_rate: pendingLeg.h10_rate || 50,
-        h5_rate: pendingLeg.h5_rate || 50,
+        // 2026-05-05 SSOT: prefer canonical hit_rate_l*/score-doc values
+        // over legacy aliases. Default 50 only if both are missing.
+        h10_rate: pendingLeg.hit_rate_l10 ?? pendingLeg.h10_rate ?? 50,
+        h5_rate: pendingLeg.hit_rate_l5 ?? pendingLeg.h5_rate ?? 50,
+        hit_rate_l5: pendingLeg.hit_rate_l5,
+        hit_rate_l10: pendingLeg.hit_rate_l10,
         season_avg: pendingLeg.season_avg,
         l5_avg: pendingLeg.l5_avg,
         l10_avg: pendingLeg.l10_avg,
@@ -353,8 +357,12 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
       team: selectedProfile.team,
       opponent: selectedProfile.opponent,
       is_home: true,
-      h10_rate: line.h10_rate || line.hit_rates?.h10 || 50,
-      h5_rate: line.h5_rate || line.hit_rates?.h5 || 50,
+      // 2026-05-05 SSOT: canonical hit_rate_l5/l10 win over legacy
+      // h*_rate and the cross-line cached `hit_rates` bag.
+      h10_rate: line.hit_rate_l10 ?? line.h10_rate ?? line.hit_rates?.h10 ?? 50,
+      h5_rate: line.hit_rate_l5 ?? line.h5_rate ?? line.hit_rates?.h5 ?? 50,
+      hit_rate_l5: line.hit_rate_l5,
+      hit_rate_l10: line.hit_rate_l10,
       season_avg: line.season_avg,
       l5_avg: line.l5_avg,
       l10_avg: line.l10_avg,
@@ -529,8 +537,11 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
                   l5_avg: line.l5_avg || line.hit_rates?.l5?.avg,
                   l10_avg: line.l10_avg || line.hit_rates?.l10?.avg,
                   season_avg: line.season_avg || line.hit_rates?.season?.avg,
-                  h5_rate: line.h5_rate || (line.hit_rates?.l5?.hit_rate ? line.hit_rates.l5.hit_rate * 100 : null),
-                  h10_rate: line.h10_rate || (line.hit_rates?.l10?.hit_rate ? line.hit_rates.l10.hit_rate * 100 : null),
+                  // 2026-05-05 SSOT: canonical hit_rate_l5/l10 first.
+                  h5_rate: line.hit_rate_l5 ?? line.h5_rate ?? (line.hit_rates?.l5?.hit_rate ? line.hit_rates.l5.hit_rate * 100 : null),
+                  h10_rate: line.hit_rate_l10 ?? line.h10_rate ?? (line.hit_rates?.l10?.hit_rate ? line.hit_rates.l10.hit_rate * 100 : null),
+                  hit_rate_l5: line.hit_rate_l5,
+                  hit_rate_l10: line.hit_rate_l10,
                   is_demon: line.is_demon,
                   is_goblin: line.is_goblin,
                   tier_label: line.tier_label

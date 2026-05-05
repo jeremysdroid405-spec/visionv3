@@ -200,18 +200,28 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
     return Math.round(rate * 100);
   };
   
-  const h10Rate = prop.hit_rate != null
-    ? normalizeHitRate(prop.hit_rate)
+  // 2026-05-05 SSOT: L5/L10/L20 cells must consult the canonical
+  // side-aware score-doc fields FIRST (`hit_rate_l5/l10/l20`). The
+  // legacy chain below previously started with `prop.hit_rate`
+  // (active-side L20 aggregate — NOT a 10-game window), which
+  // could stamp a 20-game value onto the cell labeled "L10"
+  // (e.g. Maxey PTS 19.5 OVER: prop.hit_rate=90 was rendered as
+  // "L10: 90%" even when canonical hit_rate_l10 happened to match).
+  // L5 likewise can never come from a 10/20-game source.
+  const h10Rate = prop.hit_rate_l10 != null
+    ? normalizeHitRate(prop.hit_rate_l10)
     : (prop.h10_rate != null
         ? normalizeHitRate(prop.h10_rate)
         : (prop.l10_hit_rate != null
             ? normalizeHitRate(prop.l10_hit_rate)
             : (hitRates.l10?.hit_rate != null ? normalizeHitRate(hitRates.l10.hit_rate) : (hitRates.l10_rate ?? 0))));
-  const h5Rate = prop.h5_rate != null 
-    ? normalizeHitRate(prop.h5_rate)
-    : (prop.l5_hit_rate != null 
-        ? normalizeHitRate(prop.l5_hit_rate) 
-        : (hitRates.l5?.hit_rate != null ? normalizeHitRate(hitRates.l5.hit_rate) : (hitRates.l5_rate ?? 0)));
+  const h5Rate = prop.hit_rate_l5 != null
+    ? normalizeHitRate(prop.hit_rate_l5)
+    : (prop.h5_rate != null
+        ? normalizeHitRate(prop.h5_rate)
+        : (prop.l5_hit_rate != null
+            ? normalizeHitRate(prop.l5_hit_rate)
+            : (hitRates.l5?.hit_rate != null ? normalizeHitRate(hitRates.l5.hit_rate) : (hitRates.l5_rate ?? 0))));
   
   const getHitRateColor = (rate) => {
     if (rate >= 80) return 'text-green-400';

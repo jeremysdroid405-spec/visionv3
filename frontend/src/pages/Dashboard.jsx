@@ -1059,20 +1059,32 @@ const PopularBetCard = memo(({ bet, onClick }) => {
         </div>
       )}
       
-      {/* L5 Hit Rate / L10 Hit Rate / Season Avg */}
+      {/* L5 Hit Rate / L10 Hit Rate / Season Avg
+          2026-05-05 SSOT: prefer canonical `hit_rate_l5/l10` from the
+          score doc over legacy aliases `h5_rate/h10_rate`. */}
       <div className="flex items-center justify-between bg-zinc-800/50 rounded px-2 py-1.5 text-[9px] sm:text-[10px]">
         <div className="text-center flex-1">
           <div className="text-zinc-500">L5</div>
-          <div className={`font-bold ${getHitRateColor(bet.h5_rate || 0)}`}>
-            {bet.h5_rate != null ? `${bet.h5_rate}%` : '---'}
-          </div>
+          {(() => {
+            const v = bet.hit_rate_l5 ?? bet.h5_rate;
+            return (
+              <div className={`font-bold ${getHitRateColor(v ?? 0)}`} data-testid={`slip-l5-${bet.player_name || ''}`}>
+                {v != null ? `${Math.round(v)}%` : '---'}
+              </div>
+            );
+          })()}
         </div>
         <div className="h-4 w-px bg-zinc-700" />
         <div className="text-center flex-1">
           <div className="text-zinc-500">L10</div>
-          <div className={`font-bold ${getHitRateColor(bet.h10_rate || 0)}`}>
-            {bet.h10_rate != null ? `${bet.h10_rate}%` : '---'}
-          </div>
+          {(() => {
+            const v = bet.hit_rate_l10 ?? bet.h10_rate;
+            return (
+              <div className={`font-bold ${getHitRateColor(v ?? 0)}`} data-testid={`slip-l10-${bet.player_name || ''}`}>
+                {v != null ? `${Math.round(v)}%` : '---'}
+              </div>
+            );
+          })()}
         </div>
         <div className="h-4 w-px bg-zinc-700" />
         <div className="text-center flex-1">
