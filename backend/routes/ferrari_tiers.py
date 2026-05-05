@@ -503,11 +503,8 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     opponent = get_owned_field(prop, "opponent") or "OPP"
 
     # Get hit rates and averages
-    h5_rate = prop.get("h5_rate") or prop.get("hit_rate_l5") or 0
     h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10") or 0
-    l5_avg = prop.get("l5_avg") or 0
     l10_avg = prop.get("l10_avg") or 0
-    season_avg = prop.get("season_avg") or prop.get("season_average") or l10_avg
     cv = prop.get("cv") or 0
     # Normalize CV through shared volatility profile
     from services.volatility_profile import get_volatility_profile
@@ -670,44 +667,13 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     prop["intel_suite"] = intel_suite
     
     # =========================================================================
-    # BUILD SCOUT BADGES (Model-driven, cross-sport)
-    # Only set if not already populated from cache
+    # BUILD SCOUT BADGES — delegates to the universal generator
+    # (services/performance_badges.py). Single SSOT for tier endpoints,
+    # player-detail endpoints, and the UNDER rewire path.
     # =========================================================================
     if not prop.get("scout_badges"):
-        scout = []
-        # hot_streak: L5 avg significantly above season baseline
-        if l5_avg and season_avg and l5_avg > season_avg * 1.15:
-            scout.append({"badge_key": "hot_streak", "id": "hot_streak"})
-        # floor_lock: 90%+ hit rate over L10
-        if h10_rate >= 90:
-            scout.append({"badge_key": "floor_lock", "id": "floor_lock"})
-        # lasso_high_edge: canonical `edge_vs_fair` > 15 (percent units).
-        # SSOT Tier F #2 (2026-05-04): legacy `vk_edge` / `edge_pct`
-        # fallbacks removed.
-        edge_val = prop.get("edge_vs_fair") or 0
-        if abs(edge_val) >= 15:
-            scout.append({"badge_key": "lasso_high_edge", "id": "lasso_high_edge"})
-        # high_fidelity_model: R² > 0.30
-        r_squared = prop.get("r_squared") or prop.get("model_r2") or 0
-        if r_squared > 0.30:
-            scout.append({"badge_key": "high_fidelity_model", "id": "high_fidelity_model"})
-        # soft_matchup: Already handled by context badges, but check for general soft indicator
-        if h10_rate >= 70 and l10_avg and line and l10_avg > line * 1.1:
-            scout.append({"badge_key": "soft_matchup", "id": "soft_matchup"})
-        # usage_spike: Vacuum modifier present
-        if prop.get("has_vacuum_modifier") or prop.get("vacuum_modifier"):
-            scout.append({"badge_key": "usage_spike", "id": "usage_spike"})
-        # volatility_extreme: From shared volatility profile (prop-family-aware)
-        if vol_profile.is_extreme:
-            scout.append({"badge_key": "volatility_extreme", "id": "volatility_extreme"})
-        
-        # SAFETY OVERRIDE: Block soft_matchup if SP is a buzzsaw (Top 15 rank)
-        matchup = prop.get("matchup_analysis") or {}
-        sp_rank = (matchup.get("sp_matchup") or {}).get("rank")
-        if sp_rank and sp_rank <= 15:
-            scout = [b for b in scout if b.get("badge_key") != "soft_matchup"]
-        
-        prop["scout_badges"] = scout
+        from services.performance_badges import generate_performance_badges
+        prop["scout_badges"] = generate_performance_badges(prop)
 
     # Attach volatility profile to prop for consistent downstream use
     prop["volatility_score"] = vol_profile.score
@@ -810,19 +776,23 @@ def _apply_under_badge_rewire(prop: Dict[str, Any], score: Dict[str, Any]) -> No
                 b for b in ctx if _badge_key(b) not in _OVER_ONLY_BADGES
             ]
 
-    # Re-derive side-correct scouts from authoritative score fields
+    # Re-derive side-correct scouts via the universal generator. The
+    # rewire path only re-adds badges that are either side-agnostic
+    # (`lasso_high_edge` reads `abs(edge_vs_fair)`) or genuinely
+    # side-aware on the score doc (`floor_lock` reads
+    # `hit_rate_l10`/`hit_rate_under`). All other generator outputs
+    # carry an OVER-bias narrative (hot_streak, usage_spike,
+    # soft_matchup) and stay stripped on UNDER picks.
+    from services.performance_badges import generate_performance_badges
+    _UNDER_SAFE_REDERIVED = {"floor_lock", "lasso_high_edge"}
+    rederived = generate_performance_badges(score)
     scout: List[Dict[str, Any]] = list(prop.get("scout_badges") or [])
     present = {_badge_key(b) for b in scout}
-
-    hu = score.get("hit_rate_under")
-    if hu is not None and float(hu) >= 90 and "floor_lock" not in present:
-        scout.append({"badge_key": "floor_lock", "id": "floor_lock"})
-        present.add("floor_lock")
-
-    ev = score.get("edge_vs_fair")
-    if ev is not None and float(ev) >= 0.15 and "lasso_high_edge" not in present:
-        scout.append({"badge_key": "lasso_high_edge", "id": "lasso_high_edge"})
-        present.add("lasso_high_edge")
+    for b in rederived:
+        key = b.get("badge_key")
+        if key in _UNDER_SAFE_REDERIVED and key not in present:
+            scout.append(b)
+            present.add(key)
 
     prop["scout_badges"] = scout
 
@@ -2098,10 +2068,39 @@ async def _apply_jit_injury_filter(
     return picks
 
 
+def _apply_universal_scout_badges(pick: Dict[str, Any]) -> None:
+    """Stamp the canonical scout_badges via the universal SSOT generator.
+
+    Runs at the end of post-processing (after `enrich_*`,
+    `overlay_enrichment_cache`, and the UNDER badge rewire). Merges
+    deterministic, side-aware badges into whatever is already present so
+    cached/legacy badges aren't dropped. Skipped on UNDER picks because
+    `_apply_under_badge_rewire` (called from `_finalize_nba_picks_side_aware`)
+    already invokes the universal generator with the OVER-only strip
+    rules applied.
+    """
+    direction_upper = (
+        pick.get("recommendation") or pick.get("side") or pick.get("direction") or "OVER"
+    ).strip().upper()
+    if "UNDER" in direction_upper:
+        return  # UNDER handled by _apply_under_badge_rewire
+
+    from services.performance_badges import generate_performance_badges
+    rederived = generate_performance_badges(pick)
+    existing = list(pick.get("scout_badges") or [])
+    present = {_badge_key(b) for b in existing}
+    for b in rederived:
+        key = b.get("badge_key")
+        if key and key not in present:
+            existing.append(b)
+            present.add(key)
+    pick["scout_badges"] = existing
+
+
 async def _post_process_nba_picks(
     picks: List[Dict[str, Any]], tier_name: str
 ) -> None:
-    """NBA post-process: side-aware finalization only.
+    """NBA post-process: side-aware finalization + universal scout-badge stamp.
     Mutates picks in place. No-op when picks is empty.
 
     P1.3 (2026-04-21, Gemini cost audit): UNDER-pick Gemini enrichment
@@ -2114,14 +2113,19 @@ async def _post_process_nba_picks(
     if not picks:
         return
     _finalize_nba_picks_side_aware(picks)
+    for pick in picks:
+        _apply_universal_scout_badges(pick)
 
 
 async def _post_process_mlb_picks(
     picks: List[Dict[str, Any]], tier_name: str
 ) -> None:
-    """MLB post-process: defensive tempo + intel_suite. Both enrichers
-    are idempotent no-ops when fields were persisted at scoring-write
-    time (Stage 4). Mutates picks in place. No-op when picks is empty."""
+    """MLB post-process: defensive tempo + intel_suite + universal
+    scout-badge stamp. Tempo + intel_suite enrichers are idempotent
+    no-ops when fields were persisted at scoring-write time (Stage 4).
+    The universal scout-badge pass runs unconditionally so the badge set
+    is consistent with the player-detail endpoints. Mutates picks in
+    place. No-op when picks is empty."""
     if not picks:
         return
     for pick in picks:
@@ -2130,6 +2134,7 @@ async def _post_process_mlb_picks(
         except Exception as _swept_exc:
             log_silent_failure("routes.ferrari_tiers._post_process_mlb_picks", _swept_exc)  # sweep-auto-converted
         enrich_mlb_intel_suite(pick)
+        _apply_universal_scout_badges(pick)
 
 
 SPORT_TIER_HELPERS: Dict[str, SportTierHelpers] = {

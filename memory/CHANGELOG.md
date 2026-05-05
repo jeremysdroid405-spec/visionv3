@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-05-04 — Universal Performance Badge Generator (SSOT)
+
+Consolidated three duplicate `scout_badges` generators into a single SSOT module. Eliminates the `lasso_high_edge` unit-mismatch bug (decimal `edge_vs_fair` compared to integer `15`) that hid the badge on every real pick.
+
+**Files changed**
+- `backend/services/performance_badges.py` — **new**. `generate_performance_badges(doc)` consumes a SSOT-shaped dict (score doc OR enriched prop) and emits `[{"badge_key", "id"}, …]`. Side-aware via `recommendation`/`direction`. Reads only canonical fields: `hit_rate_l5/l10/l20`, `hit_rate_under`, `edge_vs_fair` (DECIMAL), `p_true_active`, `vision_score`, `cv`, `usage_bump_percent`, `dvp_rank`, `matchup_analysis.sp_matchup.rank`. Delegates volatility extreme detection to `services.volatility_profile`.
+- `backend/routes/ferrari_tiers.py`
+  - MLB inline badge block in `enrich_mlb_intel_suite` (≈676–710): replaced ~35 lines of derivation with a single `generate_performance_badges(prop)` call.
+  - `_apply_under_badge_rewire` (≈813–827): now delegates to the universal generator with an UNDER-safe allowlist (`floor_lock`, `lasso_high_edge`) so OVER-bias badges (`hot_streak`, `usage_spike`, `soft_matchup`) stay stripped on UNDER picks.
+  - **New** `_apply_universal_scout_badges(pick)` helper called from `_post_process_nba_picks` and `_post_process_mlb_picks` so tier endpoints get the same badge set as player-detail endpoints (closes the cached-intel_suite short-circuit gap that was leaving MLB picks with empty `scout_badges`).
+  - Removed dead local variables (`h5_rate`, `l5_avg`, `season_avg`) left over from the inline block.
+- `backend/services/intel_suite_calculator.py::_generate_scout_badges` — refactored to construct a canonical doc from active logs + board pick and delegate to the universal generator. Now returns dict-form badges (consumers already accept both shapes).
+- `backend/tests/test_performance_badges.py` — **new**. 23 tests locking thresholds and side-aware behavior. Includes the `lasso_high_edge` decimal-vs-percent regression (`0.14` no, `0.15` yes, `-0.15` yes) and the SP buzzsaw guard.
+
+**Live verification**
+- NBA Safe Haven (`/api/v3/ferrari/safe-haven?sport=nba`): James Harden (edge=0.2007, hr_l10=100%) now correctly carries `lasso_high_edge` + `floor_lock`; Naz Reid (edge=0.1307) correctly does NOT carry `lasso_high_edge`.
+- MLB Safe Haven (`?sport=mlb`): Mike Trout / Ramon Laureano / Cam Smith / Kyle Tucker (hr_l10 ≥ 90) now stamp `floor_lock` + `hot_streak` + `high_fidelity_model` — previously empty (`scout_badges: []`).
+- All 23 new tests + 81 regression tests across `test_field_ownership_contracts`, `test_score_document_parity`, `test_hit_rate_canonical` pass (104 total).
+
+**Constraints honored**
+- No frontend changes.
+- No `context_badges` / `active_badges` changes.
+- No new fallbacks; all reads via canonical SSOT fields.
+- `extra="forbid"` Pydantic contract unchanged (badges live on board layer, not on `ScoreDocument`).
+
+
+
 ## 2026-05-04 — `momentum_data` SSOT registration (NBA only)
 
 Bounded SSOT patch following the Defensive Momentum coverage audit. Three files changed; no writer math, no fallbacks, no gates touched.

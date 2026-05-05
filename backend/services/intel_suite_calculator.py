@@ -212,8 +212,8 @@ class IntelSuiteCalculator:
             board_pick, lasso_result, mode=mode,
         )
 
-        # Scout badges from live data
-        scout_badges = self._generate_scout_badges(active_logs, stat_type, line, board_pick, lasso_result)
+        # Scout badges from live data — delegates to universal SSOT
+        scout_badges = self._generate_scout_badges(active_logs, stat_type, line, board_pick, lasso_result, direction=direction)
 
         return {
             "usage_ripple": usage_ripple,
@@ -474,56 +474,69 @@ class IntelSuiteCalculator:
             "tactical_note": self._get_tactical_note_from_data(usage_ripple, matchup_dvp, pace_delta, lasso_result),
         }
 
-    def _generate_scout_badges(self, active_logs, stat_type, line, board_pick, lasso_result):
-        """Generate scout badges from live data + Lasso.
+    def _generate_scout_badges(self, active_logs, stat_type, line, board_pick, lasso_result, direction: str = "OVER"):
+        """Delegate to the universal SSOT badge generator.
 
-        NEWEST-L10 CONTRACT (2026-04-19):
-        `active_logs` is sorted DESC (newest first) by `_get_active_logs`.
-        Use values[:10] — the most recent 10 games — so the badge window
-        matches the `L10 Hit` tile the user sees on the card.
-
-        FLOOR_LOCK HONESTY:
-        The frontend tooltip advertises "90%+ hit rate over L10 games".
-        Require exactly that — `hit_rate >= 90` — before firing the badge.
-        Stability-only firing (std<=2.0 AND avg>line) produced badges at
-        70% hit rates, contradicting the tooltip and the visible tile.
+        Builds a canonical-shaped doc from the locally-derived L5/L10
+        windows, the cv stamped onto the board pick, and any
+        score-doc fields already merged onto `board_pick` (edge_vs_fair,
+        p_true_active, vision_score, recommendation), then calls
+        `services.performance_badges.generate_performance_badges` so
+        this path emits the SAME badges as the tier endpoints.
         """
-        badges = []
+        from services.performance_badges import generate_performance_badges
+
         values = _extract_stat_values(active_logs, stat_type)
-        if not values:
-            return badges
+        if not values and not board_pick:
+            return []
 
+        # Side-aware hit-rate windows from the active logs (newest-first).
+        side = (direction or "OVER").strip().upper()
+        side = "UNDER" if "UNDER" in side else "OVER"
+
+        def _hit_rate(window_vals: List[float]) -> Optional[float]:
+            if not window_vals or line is None:
+                return None
+            if side == "UNDER":
+                hits = sum(1 for v in window_vals if v < line)
+            else:
+                hits = sum(1 for v in window_vals if v > line)
+            return hits / len(window_vals) * 100.0
+
+        l5 = values[:5] if len(values) >= 5 else values
         l10 = values[:10] if len(values) >= 10 else values
-        l10_avg = float(np.mean(l10))
-        l10_std = float(np.std(l10, ddof=1)) if len(l10) > 1 else 0.0
-        hit_rate = (
-            sum(1 for v in l10 if v > line) / len(l10) * 100 if l10 else 0
-        )
+        hit_rate_l5 = _hit_rate(l5)
+        hit_rate_l10 = _hit_rate(l10)
 
-        if hit_rate >= 80:
-            badges.append("hot_streak")
-        # Floor Lock: matches its public tooltip — newest-L10 hit rate >= 90.
-        if hit_rate >= 90:
-            badges.append("floor_lock")
-        if l10_std >= 6.0:
-            badges.append("volatility_extreme")
-        if lasso_result:
-            edge = lasso_result.get("projection", 0) - line if line else 0
-            if edge > line * 0.15:
-                badges.append("lasso_high_edge")
-            tier = lasso_result.get("confidence_tier", "")
-            if tier == "HIGH_FIDELITY":
-                badges.append("high_fidelity_model")
+        # CV from live logs as a fallback when board_pick lacks one.
+        cv = None
+        if board_pick is not None:
+            cv = board_pick.get("cv")
+        if cv is None and len(values) >= 2:
+            mean = float(np.mean(values))
+            if mean > 0:
+                cv = float(np.std(values, ddof=1)) / mean
 
-        # Matchup from board
-        if board_pick:
-            dvp = board_pick.get("dvp_rank") or 15
-            if dvp >= 25:
-                badges.append("soft_matchup")
-            if board_pick.get("usage_bump_percent", 0) >= 3:
-                badges.append("usage_spike")
-
-        return badges
+        bp = board_pick or {}
+        doc: Dict[str, Any] = {
+            "recommendation": side,
+            "stat_type": stat_type,
+            "line": line,
+            "hit_rate_l5": hit_rate_l5,
+            "hit_rate_l10": hit_rate_l10,
+            "hit_rate_l20": bp.get("hit_rate_l20") or bp.get("hit_rate_over"),
+            "hit_rate_under": bp.get("hit_rate_under"),
+            "edge_vs_fair": bp.get("edge_vs_fair"),
+            "p_true_active": bp.get("p_true_active"),
+            "vision_score": bp.get("vision_score"),
+            "cv": cv,
+            "usage_bump_percent": bp.get("usage_bump_percent"),
+            "has_vacuum_modifier": bp.get("has_vacuum_modifier"),
+            "vacuum_modifier": bp.get("vacuum_modifier"),
+            "dvp_rank": bp.get("dvp_rank"),
+            "matchup_analysis": bp.get("matchup_analysis"),
+        }
+        return generate_performance_badges(doc)
 
     def _get_tactical_note_from_data(self, usage_ripple, matchup_dvp, pace_delta, lasso_result):
         bump = usage_ripple.get("bump_percent", 0)
