@@ -1353,17 +1353,33 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
         if chunk_failed:
             skip[f"chunk_failed_{tier_name}"] = True
 
+        # Pair Gemini results with source picks via EXACT canonical_key
+        # lookup — NOT positional zip. `analyze_tier_batch` re-sorts the
+        # output by `composite_score`, which breaks order alignment with
+        # `tier_picks` (sorted earlier by `vision_score` from the cap
+        # step). Positional zip would stamp the wrong narrative on the
+        # wrong canonical_key. CHANGELOG 2026-05-05 prop_id mis-mapping
+        # fix. `_merge_intel_to_prop` does `enriched = {**prop}` so
+        # `canonical_key` round-trips. Results without a canonical_key
+        # in the source batch are silently discarded.
+        out_by_ck = {
+            o.get("canonical_key"): o
+            for o in results
+            if o and o.get("canonical_key")
+        }
         tier_returned = 0
         tier_empty = 0
-        for src, out in zip(tier_picks, results):
+        for src in tier_picks:
+            ck = src.get("canonical_key")
+            if not ck:
+                tier_empty += 1
+                continue
+            out = out_by_ck.get(ck)
             vi = ((out or {}).get("vision_intel") or "").strip() if out else ""
             if not vi:
                 tier_empty += 1
                 continue
             tier_returned += 1
-            ck = src.get("canonical_key")
-            if not ck:
-                continue
             content_hash = _vision_intel_content_hash(src)
             score_bulk.append(
                 UpdateMany(
@@ -1593,17 +1609,29 @@ async def _enrich_mlb_board_vision_intel(db) -> dict:
         if chunk_failed:
             skip[f"chunk_failed_{tier_name}"] = True
 
+        # Pair Gemini results with source picks via EXACT canonical_key
+        # lookup — NOT positional zip. See NBA path comment above.
+        # MLB mirror of the same fix; positional zip was stamping
+        # narratives on the wrong canonical_keys (e.g. "Witt" content
+        # landing on Josh Jung's row).
+        out_by_ck = {
+            o.get("canonical_key"): o
+            for o in results
+            if o and o.get("canonical_key")
+        }
         tier_returned = 0
         tier_empty = 0
-        for src, out in zip(tier_picks, results):
+        for src in tier_picks:
+            ck = src.get("canonical_key")
+            if not ck:
+                tier_empty += 1
+                continue
+            out = out_by_ck.get(ck)
             vi = ((out or {}).get("vision_intel") or "").strip() if out else ""
             if not vi:
                 tier_empty += 1
                 continue
             tier_returned += 1
-            ck = src.get("canonical_key")
-            if not ck:
-                continue
             content_hash = _vision_intel_content_hash(src)
             score_bulk.append(
                 UpdateMany(

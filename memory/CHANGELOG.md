@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-05-05 — Vision Intel canonical_key pairing fix (P1)
+
+**Bug**: `master_sync._enrich_{nba,mlb}_board_vision_intel` paired Gemini results to source picks via positional `zip(tier_picks, results)`. But `analyze_tier_batch` (both NBA + MLB versions) internally `enriched_props.sort(key=composite_score)` before returning. The two orderings drifted apart, stamping the wrong narrative on the wrong canonical_key — Josh Jung getting a "Witt" narrative, Ozzie Albies getting "Judge", etc. (9/10 mis-mapped on a recent live MLB run.) Same bug existed silently on the NBA path.
+
+**Fix**: replaced positional zip with EXACT canonical_key dict-lookup pairing. `_merge_intel_to_prop` does `enriched = {**prop}` so canonical_key round-trips. Unmatched results are silently discarded — no fuzzy match, no order-based fallback, no hallucinated-key leakage.
+
+**Files changed (1 production + 1 test, within 3-file budget)**
+- `backend/services/master_sync.py` — both `_enrich_nba_board_vision_intel` and `_enrich_mlb_board_vision_intel` now do:
+  ```python
+  out_by_ck = {o.get("canonical_key"): o for o in results if o and o.get("canonical_key")}
+  for src in tier_picks:
+      out = out_by_ck.get(src["canonical_key"])
+      ...
+  ```
+- `backend/tests/test_vision_intel_pairing.py` — 2 regression tests:
+  1. `test_reversed_results_do_not_misroute_narratives`: mock `analyze_tier_batch` to return REVERSED order; assert each persisted narrative matches its own canonical_key.
+  2. `test_unmatched_canonical_key_is_discarded`: mock returns a hallucinated canonical_key not in the source batch; assert nothing is written and source pick stays untouched.
+
+**Live verification** (after clearing the corrupted DB state and re-running enrichment):
+- Josh Jung → "**Jung** is slotted into a spot where he can feast…" ✓ (was "Witt is arguably…")
+- Ivan Herrera → "**Herrera** is in a prime position…" ✓
+- Ozzie Albies → "**Albies** is the engine of this lineup today…" ✓ (was "Judge…")
+- Bobby Witt Jr. → "**Witt** is elite, and you do not overthink…" ✓ (was "Tucker…")
+- Masyn Winn → "**Winn** is riding the hot hand…" ✓
+- Jose Caballero → "**Caballero** finds himself in a favorable spot…" ✓
+- Trevor Story → "**Story** needs the situation to hit…" ✓
+- Matt Olson → "**Olson** is the centerpiece of this attack…" ✓
+
+68/79 narratives mapped end-to-end on this run (chunk-failures on safe_haven contributed 11 empties — that's a Gemini-side flake unrelated to pairing).
+
+**Tests**: 120 passed, 2 skipped. Both health probes still `status=ok`.
+
+**Constraints honored**: no prompt rewrite, no parser rewrite, no fuzzy matching, no frontend changes, no fallback summaries, no route changes. Both NBA + MLB paths fixed in lockstep.
+
+
+
 ## 2026-05-05 — MLB Vision Intel master_sync step 6 wire-up (P1)
 
 `MLBVisionIntel` (`services/mlb_vision_intel.py`) was fully implemented but had **zero callers** in production code. `master_sync.py:272` hard-gated Vision Intel enrichment to `if sport == "nba":`, so MLB tier picks always returned `vision_intel: None`. Two admin-trigger endpoints in `routes/ferrari_tiers.py` (`/v3/mlb/vk-regression`, `/v3/mlb/vk-projection/{player_name}`) imported non-existent modules and would 500 on any call.
