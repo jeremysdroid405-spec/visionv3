@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-05-05 — NBA push-handling fix (P1)
+
+`hit_rate_over` and `hit_rate_under` were derived via complement (`100 - hit_rate_active`) in `NBAScoringAdapter._compute_cv_and_hit_rate`. Pushes (`stat == line`) break the `OVER + UNDER = 100` identity, so the inactive side was overstated by the push percentage on whole-number lines. Audit found Julius Randle AST 4.0 with 40% pushes: OVER pick had stored `hit_rate_under=65` (correct: 25). Live exposure on `final-nba-rt` is 0 today (all .5 lines), but `nba_live_props` carries 250 whole-number lines from upstream books and `final-nba-rt-shadow` historically held 302.
+
+**Files changed (1 production, 1 new test)**
+- `backend/services/scoring/adapters/nba_scoring.py:2430-2475` — `_hr_for_window` now accepts `force_side` to compute either side independently. `hit_rate_over` and `hit_rate_under` are calculated via two direct calls; the `100 - hit_rate` complement was removed. Strict `>` / `<` semantics preserved (pushes still count as miss for both sides). `hit_rate`, `hit_rate_l5`, `hit_rate_l10` remain side-aware.
+- `backend/tests/test_nba_push_handling.py` — 5 new regression tests covering: 40% push OVER/UNDER pair, no-push invariant `O+U==100`, active-side preservation, L5/L10 side-awareness.
+
+**Live verification (in-process call against real `bdl_game_logs`)**
+
+| Pick | Pushes | Manual O / U / P | Patched HR_O / HR_U | active | Match |
+|---|---:|---|---|---:|---|
+| Julius Randle AST 4 OVER | 8/20 | 35 / 25 / 40 | 35 / 25 | 35 | ✓ |
+| Julius Randle AST 4 UNDER | 8/20 | 35 / 25 / 40 | 35 / 25 | 25 | ✓ |
+| Victor Wembanyama AST 3 OVER | 6/20 | 35 / 35 / 30 | 35 / 35 | 35 | ✓ |
+| Victor Wembanyama AST 3 UNDER | 6/20 | 35 / 35 / 30 | 35 / 35 | 35 | ✓ |
+| James Harden PTS 19 OVER | 2/20 | 50 / 40 / 10 | 50 / 40 | 50 | ✓ |
+| James Harden PTS 19 UNDER | 2/20 | 50 / 40 / 10 | 50 / 40 | 40 | ✓ |
+| Rudy Gobert REB 11 (no push) | 0/20 | 55 / 45 / 0 | 55 / 45 | 55 / 45 | ✓ |
+
+All inactive-side values now correct. Active-side `hit_rate` (which feeds gates and `hit_rate_l20`) unchanged in every case — gate behavior preserved on .5 lines and corrected only where pushes exist.
+
+**Health probe** `/api/health/hit-rate-side-parity` post-recompute: NBA 1677 OVER + 199 UNDER → 0 mismatches; MLB 2741 OVER + 43 UNDER → 0 mismatches; status=ok.
+
+**Tests**: 108 passed, 3 skipped.
+
+**Out of scope (flagged)**: identical pattern in `services/mlb_tier_sorter.py:549`. MLB lines are all .5 today so the bug doesn't fire, but the latent risk is the same.
+
+
+
 ## 2026-05-05 — Hit-rate L20 side-awareness fix (P0)
 
 `hit_rate_l20` was stamped with `ctx.hit_rate_over` regardless of the prop's direction, so UNDER picks displayed the OVER L20 rate next to side-aware L5 / L10 — producing contradictory tiles like Bryce Harper Hits 2.5 UNDER showing L5=100, L10=100, L20=5. Bug confirmed via DB invariant scan: `hit_rate_l20 == hit_rate_over` for both OVER and UNDER docs.

@@ -2429,10 +2429,19 @@ class NBAScoringAdapter(ScoringAdapter):
 
         side = (direction or "OVER").upper()
 
-        def _hr_for_window(win: int) -> Optional[float]:
-            """Hit rate (% on `side`) over the most-recent `win` logs.
-            Denominator is FIXED at `win`. Missing component fields
-            count as MISS for OVER (HIT for UNDER)."""
+        def _hr_for_window(win: int, force_side: Optional[str] = None) -> Optional[float]:
+            """Hit rate (% on the requested side) over the most-recent
+            `win` logs. Denominator is FIXED at `win`. Missing component
+            fields count as MISS for OVER (HIT for UNDER). Strict `>` /
+            `<` semantics — pushes (`v == line`) count as miss for both
+            sides, which is why OVER and UNDER are calculated
+            independently rather than via complement (the
+            complement-derivation bug was overstating the inactive
+            side by the push percentage on whole-number lines —
+            see CHANGELOG 2026-05-05).
+            """
+            resolved = (force_side or side).upper()
+            is_under = "UNDER" in resolved
             if len(logs_sorted) < win:
                 return None
             block = logs_sorted[:win]
@@ -2441,16 +2450,16 @@ class NBAScoringAdapter(ScoringAdapter):
                 per = [g.get(f) for f in fields]
                 if any(v is None for v in per):
                     # Missing → MISS for OVER, HIT for UNDER.
-                    if "UNDER" in side:
+                    if is_under:
                         hits += 1
                     continue
                 try:
                     v = float(sum(per))
                 except (TypeError, ValueError):
-                    if "UNDER" in side:
+                    if is_under:
                         hits += 1
                     continue
-                if "UNDER" in side:
+                if is_under:
                     if v < line:
                         hits += 1
                 else:
@@ -2458,15 +2467,14 @@ class NBAScoringAdapter(ScoringAdapter):
                         hits += 1
             return round(hits / float(win) * 100.0, 1)
 
-        # Side-aware HR using the chosen window (20 or 10).
-        hit_rate = _hr_for_window(chosen_window)
-        # OVER / UNDER complementary fields (same window, same denom).
-        hit_rate_over = hit_rate if "UNDER" not in side else round(
-            100.0 - hit_rate, 1
-        ) if hit_rate is not None else None
-        hit_rate_under = hit_rate if "UNDER" in side else round(
-            100.0 - hit_rate, 1
-        ) if hit_rate is not None else None
+        # Side-aware active HR plus INDEPENDENT OVER/UNDER pair. Do NOT
+        # derive the inactive side via `100 - active`; pushes break the
+        # `OVER + UNDER = 100` identity and inflate the inactive side.
+        hit_rate_over  = _hr_for_window(chosen_window, force_side="OVER")
+        hit_rate_under = _hr_for_window(chosen_window, force_side="UNDER")
+        hit_rate = hit_rate_under if "UNDER" in side else hit_rate_over
+        # L5 / L10 stay side-aware (active-side only — the universal L5
+        # sub-gate reads them as the prop's own-side recent-form rate).
         hit_rate_l5 = _hr_for_window(5) if len(logs_sorted) >= 5 else None
         hit_rate_l10 = _hr_for_window(10) if len(logs_sorted) >= 10 else None
         hit_rate_status = "computed" if hit_rate is not None else \
