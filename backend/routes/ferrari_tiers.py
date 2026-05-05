@@ -1238,8 +1238,17 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         prop["h10_rate"] = prop["h5_rate"]
     if prop.get("h10_rate") in (None, ""):
         side = (prop.get("recommendation") or "").upper()
-        # SSOT Tier F: canonical L20 OVER is hit_rate_l20.
-        hr = (score.get("hit_rate_l20") or score.get("hit_rate_over")) if side == "OVER" else score.get("hit_rate_under")
+        # SSOT Tier F (2026-05-05 hit-rate-window fix): `h10_rate` is the
+        # 10-game window field. Fall back to the side-aware
+        # `hit_rate_l10` from the score doc — NOT `hit_rate_l20`. Using
+        # the L20 value here labels a 20-game rate as a 10-game rate
+        # (Daniss Jenkins WZ P+A 14.5 OVER: L20=60%, L10=20%; the
+        # broken fallback rendered `L10: 60%`).
+        hr = (
+            score.get("hit_rate_l10")
+            or (score.get("hit_rate_over") if side == "OVER"
+                else score.get("hit_rate_under"))
+        )
         if hr is not None:
             try:
                 prop["h10_rate"] = int(round(float(hr)))
@@ -1373,8 +1382,16 @@ async def _get_nba_tier_picks_from_scores(
             merged["h10_rate"] = merged["h5_rate"]
         if merged.get("h10_rate") in (None, ""):
             side = (merged.get("recommendation") or "").upper()
-            # SSOT Tier F: canonical L20 OVER is hit_rate_l20.
-            hr = (sc.get("hit_rate_l20") or sc.get("hit_rate_over")) if side == "OVER" else sc.get("hit_rate_under")
+            # SSOT Tier F (2026-05-05 hit-rate-window fix): mirror of the
+            # `_merge_score_with_board` fallback — pull the 10-game value
+            # from `hit_rate_l10`, NOT `hit_rate_l20`. Two-site fix
+            # because the stat-level overlay above can fill `h5_rate`
+            # without filling `h10_rate`, re-triggering this branch.
+            hr = (
+                sc.get("hit_rate_l10")
+                or (sc.get("hit_rate_over") if side == "OVER"
+                    else sc.get("hit_rate_under"))
+            )
             if hr is not None:
                 try:
                     merged["h10_rate"] = int(round(float(hr)))
