@@ -25,7 +25,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from config.version_tags import NBA_LIVE, for_sport
+from config.version_tags import MLB_LIVE, NBA_LIVE, for_sport
 from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
@@ -269,14 +269,22 @@ async def run_master_sync(db, sport: str) -> Dict[str, Any]:
     # narratives ON BOARD PICKS ONLY. NOT scoring. Does not affect
     # projections, gates, ECDF, tiers, recompute math, or thresholds.
     # -----------------------------------------------------------------
-    if sport == "nba":
+    if sport in ("nba", "mlb"):
+        # Sport-aware enricher dispatch (2026-05-05): MLB now has a
+        # dedicated `_enrich_mlb_board_vision_intel` that mirrors the
+        # NBA path so MLB tier endpoints surface real Gemini narratives
+        # instead of `vision_intel: None`.
+        enricher = (
+            _enrich_nba_board_vision_intel if sport == "nba"
+            else _enrich_mlb_board_vision_intel
+        )
         try:
             ts = datetime.now(timezone.utc)
-            vi_metrics = await _enrich_nba_board_vision_intel(db)
+            vi_metrics = await enricher(db)
             vi_metrics["duration_seconds"] = (
                 datetime.now(timezone.utc) - ts
             ).total_seconds()
-            metrics["steps"]["6_vision_intel_enrichment_nba"] = vi_metrics
+            metrics["steps"][f"6_vision_intel_enrichment_{sport}"] = vi_metrics
         except Exception as exc:
             logger.exception(
                 f"[MASTER_SYNC:{sport}] vision_intel enrichment failed"
@@ -1452,3 +1460,230 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
     )
     return metrics
 
+
+async def _enrich_mlb_board_vision_intel(db) -> dict:
+    """Generate Gemini Vision Intel narratives for active-board MLB picks
+    (Safe Haven + Front Lines + War Zone only). MLB mirror of
+    `_enrich_nba_board_vision_intel` (2026-05-05 wire-up). Read-only with
+    respect to scoring — only writes the post-recompute fields
+    `vision_intel`, `vision_intel_content_hash`, `vision_intel_generated_at`
+    to `mlb_prop_scores` and mirrors `vision_intel` onto
+    `mlb_cached_board.props[]`. Caps + per-tier ceilings + content-hash
+    cache mirror NBA so cost envelope is bounded the same way.
+
+    Differences from the NBA function:
+      * Reads `mlb_prop_scores` at `MLB_LIVE`.
+      * Calls `MLBVisionIntel.analyze_tier_batch(strict=True)` so failed
+        / empty Gemini slots come back as empty strings (we do NOT
+        write the deterministic fallback templates to the DB).
+      * Mirrors onto `mlb_cached_board` with the same `(player_name,
+        stat_type, line, direction)` array_filter pattern.
+    """
+    from datetime import datetime, timezone
+    from collections import defaultdict
+    from pymongo import UpdateMany
+    from routes.ferrari_tiers import (
+        _vision_intel_content_hash,
+        _is_cache_fresh,
+    )
+    from services.mlb_vision_intel import get_mlb_vision_intel
+
+    metrics = {
+        "board_picks_total":      0,
+        "cache_hits":             0,
+        "cache_miss_to_call":     0,
+        "capped_at":              MAX_BOARD_VISION_INTEL_PICKS,
+        "per_tier_caps":          PICKS_PER_TIER_CAP,
+        "after_cap_to_call":      0,
+        "tiers_called":           {},
+        "gemini_returned":        0,
+        "gemini_empty_or_failed": 0,
+        "score_docs_written":     0,
+        "cached_board_writes":    0,
+        "skip_reasons":           {},
+        "fallback_in_db_after":   0,
+    }
+    skip = metrics["skip_reasons"]
+
+    vis = get_mlb_vision_intel()
+    if not getattr(vis, "enabled", False):
+        skip["service_disabled"] = (
+            "MLBVisionIntel.enabled=False (missing GOOGLE_API_KEY or SDK)"
+        )
+        return metrics
+
+    # ── Step A: Pull active-board MLB picks ───────────────────────────
+    BOARD_TIERS = ["safe_haven", "front_lines", "war_zone"]
+    board_picks: list = []
+    async for d in db["mlb_prop_scores"].find(
+        {
+            "version_tag": MLB_LIVE,
+            "tier":        {"$in": BOARD_TIERS},
+            "active":      True,
+        }
+    ):
+        board_picks.append(d)
+    metrics["board_picks_total"] = len(board_picks)
+
+    if not board_picks:
+        return metrics
+
+    # ── Step B: Content-hash cache filter ─────────────────────────────
+    to_call: list = []
+    for p in board_picks:
+        cached_view = {
+            "vision_intel":              p.get("vision_intel"),
+            "vision_intel_content_hash": p.get("vision_intel_content_hash"),
+        }
+        if _is_cache_fresh(p, cached_view):
+            metrics["cache_hits"] += 1
+            continue
+        to_call.append(p)
+    metrics["cache_miss_to_call"] = len(to_call)
+
+    # ── Cap (per-tier first, then global) ─────────────────────────────
+    if to_call:
+        by_tier_cap: dict = defaultdict(list)
+        for p in to_call:
+            by_tier_cap[p.get("tier")].append(p)
+        capped: list = []
+        for tier_name in ("war_zone", "front_lines", "safe_haven"):
+            tier_picks = by_tier_cap.get(tier_name, [])
+            tier_picks.sort(
+                key=lambda d: float(d.get("vision_score") or 0), reverse=True
+            )
+            capped.extend(tier_picks[:PICKS_PER_TIER_CAP.get(tier_name, 50)])
+        if len(capped) > MAX_BOARD_VISION_INTEL_PICKS:
+            capped = capped[:MAX_BOARD_VISION_INTEL_PICKS]
+        to_call = capped
+    metrics["after_cap_to_call"] = len(to_call)
+
+    if not to_call:
+        return metrics
+
+    # ── Step C: Group by tier ─────────────────────────────────────────
+    by_tier: dict = defaultdict(list)
+    for p in to_call:
+        by_tier[p.get("tier")].append(p)
+
+    # ── Step D: Gemini per tier (chunked + strict) ────────────────────
+    now = datetime.now(timezone.utc)
+    score_bulk: list = []
+    cb_pairs: list = []  # (player_name, stat_type, line, direction, vi_text)
+
+    for tier_name, tier_picks in by_tier.items():
+        CHUNK = 20
+        results: list = []
+        chunk_failed = False
+        for i in range(0, len(tier_picks), CHUNK):
+            chunk = tier_picks[i: i + CHUNK]
+            try:
+                chunk_results = await vis.analyze_tier_batch(
+                    chunk, tier_name, strict=True
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"[MASTER_SYNC:mlb] vision_intel chunk failed "
+                    f"for {tier_name} ({i}-{i+len(chunk)}): {exc}"
+                )
+                results.extend([None] * len(chunk))
+                chunk_failed = True
+                continue
+            results.extend(chunk_results or [None] * len(chunk))
+        if chunk_failed:
+            skip[f"chunk_failed_{tier_name}"] = True
+
+        tier_returned = 0
+        tier_empty = 0
+        for src, out in zip(tier_picks, results):
+            vi = ((out or {}).get("vision_intel") or "").strip() if out else ""
+            if not vi:
+                tier_empty += 1
+                continue
+            tier_returned += 1
+            ck = src.get("canonical_key")
+            if not ck:
+                continue
+            content_hash = _vision_intel_content_hash(src)
+            score_bulk.append(
+                UpdateMany(
+                    {
+                        "canonical_key": ck,
+                        "version_tag":   MLB_LIVE,
+                    },
+                    {
+                        "$set": {
+                            "vision_intel":              vi,
+                            "vision_intel_content_hash": content_hash,
+                            "vision_intel_generated_at": now,
+                        }
+                    },
+                )
+            )
+            cb_pairs.append((
+                src.get("player_name"),
+                src.get("stat_type"),
+                src.get("line"),
+                (src.get("direction") or src.get("recommendation") or "Over"),
+                vi,
+            ))
+
+        metrics["tiers_called"][tier_name] = {
+            "selected":        len(tier_picks),
+            "gemini_returned": tier_returned,
+            "gemini_empty":    tier_empty,
+        }
+        metrics["gemini_returned"] += tier_returned
+        metrics["gemini_empty_or_failed"] += tier_empty
+
+    if score_bulk:
+        await db["mlb_prop_scores"].bulk_write(score_bulk, ordered=False)
+        metrics["score_docs_written"] = len(score_bulk)
+
+    # ── Step E: Mirror onto mlb_cached_board.props[] ──────────────────
+    cb_bulk: list = []
+    for player_name, stat_type, line, direction, vi in cb_pairs:
+        if not (player_name and stat_type):
+            continue
+        cb_bulk.append(
+            UpdateMany(
+                {"player_name": player_name},
+                {"$set": {"props.$[el].vision_intel": vi}},
+                array_filters=[{
+                    "el.stat_type": stat_type,
+                    "el.line":      line,
+                    "el.direction": direction,
+                }],
+            )
+        )
+
+    if cb_bulk:
+        CHUNK = 500
+        for i in range(0, len(cb_bulk), CHUNK):
+            await db["mlb_cached_board"].bulk_write(
+                cb_bulk[i: i + CHUNK], ordered=False
+            )
+        metrics["cached_board_writes"] = len(cb_bulk)
+
+    metrics["fallback_in_db_after"] = await db["mlb_prop_scores"].count_documents(
+        {
+            "version_tag": MLB_LIVE,
+            "tier":        {"$in": BOARD_TIERS},
+            "$or": [
+                {"vision_intel": None},
+                {"vision_intel": ""},
+                {"vision_intel": {"$exists": False}},
+            ],
+        }
+    )
+
+    logger.info(
+        f"[MASTER_SYNC:mlb] vision_intel_enrichment: board_total="
+        f"{metrics['board_picks_total']} cache_hits={metrics['cache_hits']} "
+        f"to_call={metrics['after_cap_to_call']} "
+        f"gemini_returned={metrics['gemini_returned']} "
+        f"empty={metrics['gemini_empty_or_failed']} "
+        f"score_writes={metrics['score_docs_written']} "
+        f"cb_writes={metrics['cached_board_writes']}"
+    )
+    return metrics

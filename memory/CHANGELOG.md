@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-05-05 — MLB Vision Intel master_sync step 6 wire-up (P1)
+
+`MLBVisionIntel` (`services/mlb_vision_intel.py`) was fully implemented but had **zero callers** in production code. `master_sync.py:272` hard-gated Vision Intel enrichment to `if sport == "nba":`, so MLB tier picks always returned `vision_intel: None`. Two admin-trigger endpoints in `routes/ferrari_tiers.py` (`/v3/mlb/vk-regression`, `/v3/mlb/vk-projection/{player_name}`) imported non-existent modules and would 500 on any call.
+
+**Files changed (3, within budget)**
+- `backend/services/mlb_vision_intel.py:286-339` — added `strict: bool = False` kwarg to `MLBVisionIntel.analyze_tier_batch`. When True, empty / failed Gemini slots return `vision_intel = ""` instead of the deterministic fallback template (mirrors `VisionIntelService.analyze_tier_batch(strict=True)` so master_sync persists Gemini-only narratives).
+- `backend/services/master_sync.py` — replaced `if sport == "nba":` gate with sport-aware enricher dispatch (lines 272-291). Appended new `_enrich_mlb_board_vision_intel` function (~140 lines) that mirrors `_enrich_nba_board_vision_intel` step-for-step: pulls active board picks from `mlb_prop_scores` at `MLB_LIVE`, content-hash cache filter, per-tier + global cap (50 / 50 / 120 / global 200, identical to NBA), chunked `analyze_tier_batch(strict=True)` calls, persists `vision_intel` + `vision_intel_content_hash` + `vision_intel_generated_at` to `mlb_prop_scores`, mirrors `vision_intel` onto `mlb_cached_board.props[]` via `array_filters`.
+- `backend/routes/ferrari_tiers.py` — deleted both broken admin endpoints (`/v3/mlb/vk-regression`, `/v3/mlb/vk-projection/{player_name}`) — they imported `services.mlb_vk_regression` and `services.mlb_vision_intel_service`, neither of which exists. Live MLB scoring + Vision Intel paths are master_sync step 3 + step 6 respectively.
+- `backend/tests/test_mlb_vision_intel_pipeline.py` — new file. 3 regression tests:
+  1. Strict mode honored: empty Gemini slot → no DB write (no fallback template leakage).
+  2. `enabled=False` → early skip with `service_disabled` reason marker.
+  3. Mirror to `mlb_cached_board.props[].vision_intel` via `array_filter`.
+
+**Live verification (real Gemini call against current MLB slate)**
+
+```
+board_picks_total: 95
+cache_hits: 0  (first-run, no prior hashes)
+after_cap_to_call: 80
+tiers_called:
+  war_zone:    selected=50  gemini_returned=30  empty=20  (one chunk hit Gemini 503)
+  front_lines: selected=18  gemini_returned=18  empty=0
+  safe_haven:  selected=12  gemini_returned=12  empty=0
+score_docs_written: 60
+cached_board_writes: 60
+```
+
+API smoke `/api/v3/ferrari/safe-haven?sport=mlb`: 5 picks now serve real Gemini narratives (200-235 char each). Was returning `vision_intel: None` for every pick before this patch.
+
+**Tests**: 118 passed, 2 skipped. Both health probes still `status=ok`.
+
+**Constraints honored**: prompts unchanged, NBA path unchanged, no scoring/gate/badge/threshold/frontend changes, max 3 production files (mlb_vision_intel.py, master_sync.py, ferrari_tiers.py).
+
+**Known issue (PRE-EXISTING, NOT IN SCOPE — flagged)**: MLB Gemini responses are returning narratives keyed to the WRONG `prop_id`s on some calls. Example from live run: Josh Jung's narrative talks about "Witt"; Ozzie Albies' narrative starts with "Judge"; Vladimir Guerrero Jr.'s narrative names "Baldwin". The bug is in `MLBVisionIntel._build_batch_prompt` / `_parse_batch_response` (the prompt asks Gemini to return a JSON array keyed by player+stat+line, and Gemini occasionally cross-references prop_ids). Prompt tightening / ID validation is the fix — explicitly out of scope for this task per the user's "do not change prompts unless required" rule. Documented for separate audit.
+
+
+
 ## 2026-05-05 — Option A: post-recompute enrichment preserve allowlist (P0 data-loss fix)
 
 `write_versioned_scores(mode="replace")` was performing a full `ReplaceOne` using only `_SCORE_OUTPUT_FIELDS`, silently destroying post-recompute enrichments (`vision_intel`, `momentum_data`, `intel_suite`, `vision_intel_content_hash`, etc.) on every full recompute. Recovery depended on master_sync immediately re-running its enrichment steps end-to-end. Any uvicorn auto-reload between step 3 (replace = wipe) and step 6 (re-stamp) — which my Option C edits triggered earlier today — left the DB in the wiped state until the next clean master_sync run.

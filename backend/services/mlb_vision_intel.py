@@ -286,13 +286,20 @@ Return your analysis as a JSON array. One object per prop with all required fiel
     async def analyze_tier_batch(
         self, 
         props: List[Dict[str, Any]], 
-        tier_name: str
+        tier_name: str,
+        strict: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Analyze ALL props for a tier in ONE Gemini API call.
         
         This is the main entry point - processes entire tier at once.
         Returns props enriched with all Vision Intel fields.
+        
+        strict (2026-05-05): when True, propagate empty `vision_intel`
+        (and skip the deterministic fallback) for any prop where Gemini
+        fails or returns nothing. Mirrors `VisionIntelService.analyze_tier_batch(strict=True)`
+        so master_sync's MLB enrichment path can persist Gemini-only
+        narratives, never fallback templates.
         """
         if not props:
             return []
@@ -300,6 +307,9 @@ Return your analysis as a JSON array. One object per prop with all required fiel
         logger.info(f"[VISION INTEL] Batch analyzing {len(props)} props for {tier_name}")
         
         if not self.enabled or not self.client:
+            if strict:
+                logger.warning(f"[VISION INTEL] Service disabled (strict) - skipping enrichment for {tier_name}")
+                return [self._merge_intel_to_prop(p, {}) if False else {**p, "vision_intel": "", "vision_summary": ""} for p in props]
             logger.warning(f"[VISION INTEL] Service disabled - using fallback for {tier_name}")
             return [self._enrich_with_fallback(prop) for prop in props]
         
@@ -326,7 +336,13 @@ Return your analysis as a JSON array. One object per prop with all required fiel
             for prop in props:
                 prop_id = f"{prop.get('player_name')}_{prop.get('stat_type')}_{prop.get('line')}"
                 intel = intel_map.get(prop_id, {})
-                enriched_props.append(self._merge_intel_to_prop(prop, intel))
+                if strict and not (intel.get("vision_intel") or "").strip():
+                    # Strict mode: do NOT substitute fallback. Return the
+                    # prop with vision_intel cleared so master_sync writes
+                    # nothing for this slot.
+                    enriched_props.append({**prop, "vision_intel": "", "vision_summary": ""})
+                else:
+                    enriched_props.append(self._merge_intel_to_prop(prop, intel))
             
             # Sort by composite score
             enriched_props.sort(key=lambda x: x.get('composite_score', 0), reverse=True)
@@ -336,6 +352,8 @@ Return your analysis as a JSON array. One object per prop with all required fiel
             
         except Exception as e:
             logger.error(f"[VISION INTEL] Batch analysis failed for {tier_name}: {e}")
+            if strict:
+                return [{**p, "vision_intel": "", "vision_summary": ""} for p in props]
             return [self._enrich_with_fallback(prop) for prop in props]
     
     def _parse_batch_response(self, response: str, props: List[Dict]) -> Dict[str, Dict]:
