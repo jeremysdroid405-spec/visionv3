@@ -781,3 +781,91 @@ async def hit_rate_side_parity(
         })
     return {"results": results, "generated_at": _now().isoformat()}
 
+@router.get("/hit-rate-push-invariant")
+async def hit_rate_push_invariant(
+    sport: Optional[str] = Query(None, description="nba | mlb (omit for both)"),
+) -> Dict[str, Any]:
+    """Read-only invariant probe for the OVER+UNDER+push contract on
+    whole-number-line docs (CHANGELOG 2026-05-05 NBA push fix).
+
+    Two signals:
+      * `mismatches`        — docs where `hit_rate_over + hit_rate_under > 100`
+                              (impossible under any correct logic; flag as drift).
+      * `pushes_observed`   — docs where `O + U < 100`. Independent OVER /
+                              UNDER calculation produces this whenever pushes
+                              exist in the L20 window. The complement bug
+                              forces `O + U == 100` on every doc, so a
+                              healthy sport will report `pushes_observed > 0`.
+
+    Status:
+      * `ok`                — `mismatches == 0` and `pushes_observed > 0`.
+      * `no_pushes_observed`— `mismatches == 0` but no whole-number doc
+                              shows `O + U < 100`. Could be legitimate
+                              (rare for large samples) or a complement-
+                              regression. Worth a manual look.
+      * `drift`             — `mismatches > 0`. Hard data corruption."""
+    sports = [sport.lower()] if sport else ["nba", "mlb"]
+    out: List[Dict[str, Any]] = []
+    for sp in sports:
+        if sp not in ("nba", "mlb"):
+            out.append({"sport": sp, "status": "unsupported"})
+            continue
+        coll = _db[f"{sp}_prop_scores"]
+        tag = f"final-{sp}-rt"
+        base = {
+            "version_tag": tag, "active": True,
+            "$expr": {"$eq": [{"$mod": ["$line", 1]}, 0]},
+            "hit_rate_over": {"$exists": True, "$ne": None},
+            "hit_rate_under": {"$exists": True, "$ne": None},
+        }
+        checked = await coll.count_documents(base)
+        mismatches = await coll.count_documents({
+            **base,
+            "$expr": {
+                "$and": [
+                    {"$eq": [{"$mod": ["$line", 1]}, 0]},
+                    {"$gt": [{"$add": ["$hit_rate_over", "$hit_rate_under"]}, 100]},
+                ]
+            },
+        })
+        pushes_observed = await coll.count_documents({
+            **base,
+            "$expr": {
+                "$and": [
+                    {"$eq": [{"$mod": ["$line", 1]}, 0]},
+                    {"$lt": [{"$add": ["$hit_rate_over", "$hit_rate_under"]}, 100]},
+                ]
+            },
+        })
+        sample_mismatches: List[Dict[str, Any]] = []
+        if mismatches > 0:
+            cur = coll.find(
+                {**base,
+                 "$expr": {
+                     "$and": [
+                         {"$eq": [{"$mod": ["$line", 1]}, 0]},
+                         {"$gt": [{"$add": ["$hit_rate_over", "$hit_rate_under"]}, 100]},
+                     ]
+                 }},
+                {"_id": 0, "player_name": 1, "stat_type": 1, "line": 1,
+                 "recommendation": 1, "hit_rate_over": 1, "hit_rate_under": 1},
+            ).limit(5)
+            async for d in cur:
+                sample_mismatches.append(d)
+        if mismatches > 0:
+            status = "drift"
+        elif pushes_observed == 0 and checked > 0:
+            status = "no_pushes_observed"
+        else:
+            status = "ok"
+        out.append({
+            "sport":                    sp,
+            "whole_number_docs_checked": checked,
+            "mismatches":               mismatches,
+            "pushes_observed":          pushes_observed,
+            "status":                   status,
+            "sample_mismatches":        sample_mismatches,
+        })
+    return {"results": out, "generated_at": _now().isoformat()}
+
+
