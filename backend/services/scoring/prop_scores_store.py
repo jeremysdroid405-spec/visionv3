@@ -73,6 +73,46 @@ async def ensure_ttl_index(db, sport: str) -> Dict[str, Any]:
         return {"sport": sport, "error": repr(exc)}
 
 
+
+# ──────────────────────────────────────────────────────────────────────
+# Post-recompute enrichment preserve allowlist (2026-05-05, Option A).
+#
+# These fields are written by master_sync steps that run AFTER the
+# scoring/recompute pass — they are never produced by the adapter
+# (`_project_score_doc`) and therefore are absent from
+# `_SCORE_OUTPUT_FIELDS`. Without explicit preservation, every full
+# recompute (`mode="replace"`) wipes them via `ReplaceOne`, leaving the
+# DB in a state where Vision Intel narratives, momentum trackers, etc.
+# are silently lost until the next clean master_sync re-runs all
+# enrichment steps end-to-end. A worker reload between step 3 (replace
+# = wipe) and step 6 (re-stamp = recover) makes the loss permanent.
+#
+# Solution: before each `bulk_write([ReplaceOne…])`, batch-fetch these
+# fields from the existing docs by `(canonical_key, version_tag)` and
+# carry them forward onto the prepared replacement docs IF the new doc
+# does not already set them. The new doc always wins when both are
+# present — recompute output is authoritative for fields the adapter
+# produces; preserve-only fields fill the gap left by the adapter.
+#
+# Field membership rule: include ONLY fields that are
+#   1. written post-recompute (master_sync step >= 4), AND
+#   2. either declared on `ScoreDocument` (`momentum_data`,
+#      `intel_suite`) or live on the persisted doc as a tolerated
+#      out-of-schema enrichment (`vision_intel`,
+#      `vision_intel_generated_at`, `vision_intel_content_hash`).
+#
+# Do NOT include request-time-only fields (`scout_badges`,
+# `active_badges`, `context_badges`, `pace_delta`) — confirmed 0
+# coverage on persisted docs (see live DB scan 2026-05-05).
+_PRESERVE_ON_REPLACE = (
+    "vision_intel",
+    "vision_summary",
+    "vision_intel_generated_at",
+    "vision_intel_content_hash",
+    "momentum_data",
+    "intel_suite",
+)
+
 # Exactly the fields a score doc may contain (plus canonical identity + versioning).
 _SCORE_OUTPUT_FIELDS = (
     # vision_score dimension
@@ -679,6 +719,52 @@ async def write_versioned_scores(
             if ck:
                 seen[ck] = d
         deduped = list(seen.values())
+
+        # ── Option A preserve pass (2026-05-05) ─────────────────────────
+        # Carry post-recompute enrichments (vision_intel, momentum_data,
+        # intel_suite, …) forward across the destructive ReplaceOne so a
+        # full recompute does NOT wipe them. The new doc always wins
+        # when both are present — only fields ABSENT on the new doc are
+        # filled from the existing record. See `_PRESERVE_ON_REPLACE`.
+        if deduped:
+            cks = [d["canonical_key"] for d in deduped if d.get("canonical_key")]
+            existing_map: Dict[str, Dict[str, Any]] = {}
+            try:
+                projection = {"_id": 0, "canonical_key": 1}
+                projection.update({f: 1 for f in _PRESERVE_ON_REPLACE})
+                cursor = coll.find(
+                    {"canonical_key": {"$in": cks}, "version_tag": version_tag},
+                    projection,
+                )
+                async for ex in cursor:
+                    eck = ex.get("canonical_key")
+                    if eck:
+                        existing_map[eck] = ex
+            except Exception as preserve_exc:
+                # Best-effort: if the read fails, log and proceed with
+                # unmodified replace (preserves existing failure mode,
+                # never blocks a write).
+                logger.warning(
+                    f"[SCORES_STORE:{sport}] preserve-pass read failed: "
+                    f"{preserve_exc}. Falling back to non-preserving replace."
+                )
+                existing_map = {}
+            preserved_fields = 0
+            for d in deduped:
+                ex = existing_map.get(d.get("canonical_key"))
+                if not ex:
+                    continue
+                for f in _PRESERVE_ON_REPLACE:
+                    if d.get(f) is None and ex.get(f) is not None:
+                        d[f] = ex[f]
+                        preserved_fields += 1
+            if preserved_fields:
+                logger.info(
+                    f"[SCORES_STORE:{sport}] mode=replace preserve_pass "
+                    f"version='{version_tag}' carried_forward={preserved_fields} "
+                    f"fields across {len(deduped)} docs"
+                )
+
         ops = [
             ReplaceOne(
                 {"canonical_key": d["canonical_key"], "version_tag": version_tag},

@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-05-05 — Option A: post-recompute enrichment preserve allowlist (P0 data-loss fix)
+
+`write_versioned_scores(mode="replace")` was performing a full `ReplaceOne` using only `_SCORE_OUTPUT_FIELDS`, silently destroying post-recompute enrichments (`vision_intel`, `momentum_data`, `intel_suite`, `vision_intel_content_hash`, etc.) on every full recompute. Recovery depended on master_sync immediately re-running its enrichment steps end-to-end. Any uvicorn auto-reload between step 3 (replace = wipe) and step 6 (re-stamp) — which my Option C edits triggered earlier today — left the DB in the wiped state until the next clean master_sync run.
+
+**File changed (1 production + 1 test)**
+- `backend/services/scoring/prop_scores_store.py` — added `_PRESERVE_ON_REPLACE` constant (vision_intel, vision_summary, vision_intel_generated_at, vision_intel_content_hash, momentum_data, intel_suite). Inserted a preserve pass in the replace branch (lines 731-770): batch-fetches existing values for these fields by `(canonical_key, version_tag)` via a single `find({canonical_key:{$in:[...]}})` and fills them onto the prepared replacement docs **only when the new doc has the field as None**. New doc always wins on overlap.
+- `backend/tests/test_preserve_on_replace.py` — 6 regression tests:
+  1. `_PRESERVE_ON_REPLACE` membership lock.
+  2. All 6 listed fields survive when new doc lacks them.
+  3. Unlisted fields (`scout_badges`, `active_badges`, `context_badges`, `random_legacy`) are still wiped.
+  4. No-op when no existing doc.
+  5. Per-doc preservation across batched ReplaceOne ($in fan-out).
+  6. New-value-wins semantics when both new and existing have a preserve field.
+
+**Live verification — full replace recompute on populated state**
+
+| Sport | Snapshot | total | vision_intel | momentum_data | intel_suite |
+|---|---|---:|---:|---:|---:|
+| NBA | before | 1175 | 18 | 1175 | 1175 |
+| NBA | **after replace** | 1319 | **30** ✓ | **1316** ✓ | **1316** ✓ |
+| MLB | before | 1623 | 0 (n/a) | 0 (n/a) | 1623 |
+| MLB | **after replace** | 2072 | 0 (n/a) | 0 (n/a) | **2072** ✓ |
+
+Increase in totals reflects fresh slate ingest between snapshots; the preserve numbers grew with totals (no count regression).
+
+**API smoke**: `/api/v3/ferrari/safe-haven?sport=nba` first pick now returns 248-char Gemini-authored `vision_intel` narrative. Previously `None`.
+
+**Tests**: 113 passed, 4 skipped. Health probes `/api/health/hit-rate-side-parity` + `/api/health/hit-rate-push-invariant` both `status=ok`.
+
+**Constraints honored**: only `prop_scores_store.py` modified in production; no scoring/gate/badge/threshold/frontend changes; no full-recompute mode switch (still `replace`); MLB step 6 NOT added — separate audit per the user's directive.
+
+**Out of scope (next blockers)**:
+- MLB master_sync step 6 (`_enrich_mlb_board_vision_intel`) does not exist — MLB picks will continue to ship without Gemini narratives until that wire-up lands.
+- Race window remains for any newly-introduced post-recompute enrichment that isn't added to the allowlist. New enrichments must be registered in `_PRESERVE_ON_REPLACE`.
+
+
+
 ## 2026-05-05 — Vision Intel badge-bucket SSOT (Option C, Step 1)
 
 `vision_intel_service.py:275` and `mlb_vision_intel.py:194` previously read `prop.get('active_badges') or prop.get('scout_badges')`. The fallback silently switched semantic buckets between routes (player-vision routes populate `active_badges` with NARRATIVE badges via `BadgeResolver`; tier endpoints leave `active_badges` empty so the fallback resolved to `scout_badges` — model PERFORMANCE signals). Any future presentation-layer alias on tier endpoints would have flipped the prompt input from performance to narrative without warning.
