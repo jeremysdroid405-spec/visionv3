@@ -14,6 +14,12 @@ See `/app/memory/FIELD_OWNERSHIP.md` for the declarative contract and
 `/app/memory/SSOT_ENFORCEMENT_REPORT.md` for migration status.
 """
 from .accessors import get_owned_field, has_owned_field
+from .firewall import (
+    OwnedFieldOverwriteError,
+    assert_no_owned_overwrite,
+    protected_field_names,
+    safe_overlay,
+)
 from .registry import (
     FIELD_REGISTRY,
     FieldOwnershipError,
@@ -42,4 +48,9 @@ __all__ = [
     "validate_score_doc",
     "check_contract_opponent",
     "check_contract_scored_at",
+    # Firewall (2026-05-05)
+    "OwnedFieldOverwriteError",
+    "safe_overlay",
+    "assert_no_owned_overwrite",
+    "protected_field_names",
 ]

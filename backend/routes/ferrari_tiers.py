@@ -1365,20 +1365,27 @@ async def _get_nba_tier_picks_from_scores(
         if stat_entry:
             board_prop = stat_entry.get("prop") or {}
             player_doc = stat_entry.get("player") or {}
-            for fld in STAT_LEVEL_FIELDS:
-                if merged.get(fld) in (None, "", []):
-                    val = board_prop.get(fld)
-                    if val is not None:
-                        merged[fld] = val
+            # 2026-05-05 SSOT firewall: stat-level overlay is a
+            # non-owner source. The firewall blocks any owned field
+            # AND honours the sticky-write rule (never replace an
+            # existing non-empty value), making cross-line leakage
+            # structurally impossible.
+            from services.field_ownership.firewall import safe_overlay
+            safe_overlay(
+                merged,
+                {f: board_prop.get(f) for f in STAT_LEVEL_FIELDS
+                 if board_prop.get(f) is not None},
+            )
             # Player-level fields (team/photo/opponent) from the same entry.
-            for fld in ("headshot_url", "photo_url", "team", "team_name",
-                        "team_logo_url", "position", "jersey_number",
-                        "opponent", "opponent_abbr", "context_badges",
-                        "scout_badges", "nba_id", "nba_com_id", "espn_id"):
-                if merged.get(fld) in (None, "", []):
-                    val = player_doc.get(fld)
-                    if val is not None:
-                        merged[fld] = val
+            safe_overlay(
+                merged,
+                {f: player_doc.get(f) for f in (
+                    "headshot_url", "photo_url", "team", "team_name",
+                    "team_logo_url", "position", "jersey_number",
+                    "opponent", "opponent_abbr", "context_badges",
+                    "scout_badges", "nba_id", "nba_com_id", "espn_id",
+                ) if player_doc.get(f) is not None},
+            )
 
         # Re-run card-display fallbacks AFTER stat-level overlay. The
         # first invocation inside _merge_score_with_board saw only the

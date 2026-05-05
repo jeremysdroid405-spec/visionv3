@@ -396,29 +396,34 @@ async def get_player_with_badges(
                 opp = "UNDER" if dir_u == "OVER" else "OVER"
                 entry = by_line.get((stat_u, line_f, opp))
             # Line-level overlay (full enrichment, incl. line-specific fields)
+            # 2026-05-05 SSOT firewall: even line-exact cached_board
+            # entries are non-owner sources for `prop_scores`-owned
+            # fields. The firewall blocks owned-field overwrites and
+            # honours sticky-write semantics.
+            from services.field_ownership.firewall import safe_overlay
             if entry:
                 board_prop = entry.get("prop") or {}
-                for fld in _BOARD_ENRICHMENT_FIELDS:
-                    if p.get(fld) in (None, "", []):
-                        val = board_prop.get(fld)
-                        if val is not None:
-                            p[fld] = val
+                safe_overlay(
+                    p,
+                    {f: board_prop.get(f) for f in _BOARD_ENRICHMENT_FIELDS
+                     if board_prop.get(f) is not None},
+                )
             # Stat-level overlay (line-agnostic fields). Fires whether
             # or not the line-level match succeeded.
             stat_entry = by_stat.get((stat_u,))
             if stat_entry:
                 sp = stat_entry.get("prop") or {}
-                for fld in STAT_LEVEL_FIELDS:
-                    if p.get(fld) in (None, "", []):
-                        val = sp.get(fld)
-                        if val is not None:
-                            p[fld] = val
+                safe_overlay(
+                    p,
+                    {f: sp.get(f) for f in STAT_LEVEL_FIELDS
+                     if sp.get(f) is not None},
+                )
             # Player-level fields from cached_board parent
-            for fld in _BOARD_PLAYER_FIELDS:
-                if p.get(fld) in (None, "", []):
-                    val = cb_player.get(fld)
-                    if val not in (None, "", []):
-                        p[fld] = val
+            safe_overlay(
+                p,
+                {f: cb_player.get(f) for f in _BOARD_PLAYER_FIELDS
+                 if cb_player.get(f) not in (None, "", [])},
+            )
             # Live props: event/team
             lp = live_by_key.get(p.get("canonical_key") or "")
             if lp:
