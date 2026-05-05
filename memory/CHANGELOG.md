@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-05-05 — Vision Intel badge-bucket SSOT (Option C, Step 1)
+
+`vision_intel_service.py:275` and `mlb_vision_intel.py:194` previously read `prop.get('active_badges') or prop.get('scout_badges')`. The fallback silently switched semantic buckets between routes (player-vision routes populate `active_badges` with NARRATIVE badges via `BadgeResolver`; tier endpoints leave `active_badges` empty so the fallback resolved to `scout_badges` — model PERFORMANCE signals). Any future presentation-layer alias on tier endpoints would have flipped the prompt input from performance to narrative without warning.
+
+**Decision (Option C)**: three explicit semantic buckets, no aliasing.
+- `context_badges` — narrative/situational (jet_lag, revenge, home_cookin, locked_in, …) sourced from `master_hub.context_badges`.
+- `scout_badges`   — performance/model signals (hot_streak, floor_lock, lasso_high_edge, …) emitted by `services.performance_badges.generate_performance_badges`.
+- `active_badges`  — presentation/display only. NOT consumed by any backend logic.
+
+**Files changed (2)**
+- `backend/services/vision_intel_service.py:275-298` — replaces the ambiguous fallback with explicit `perf_list = scout_badges`, `ctx_list = context_badges`. Adds `"context": context_text` alongside the existing `"badges": badge_text` in the prompt JSON. Same JSON-dump prompt structure, additional key — Gemini receives it as supplementary instruction text without schema impact.
+- `backend/services/mlb_vision_intel.py:194-212` — same refactor for MLB. Removes the bare `prop.get('active_badges', [])` read.
+
+**Live verification — Vision Intel prompt before/after for tier picks**
+
+NBA Safe Haven (tier endpoints had `active_badges` empty, so fallback to `scout_badges` was already in effect):
+| Pick | `badges` BEFORE | `badges` AFTER | `context` AFTER (new) |
+|---|---|---|---|
+| James Harden PRA | `hot_streak, floor_lock, lasso_high_edge` | `hot_streak, floor_lock, lasso_high_edge` ✓ | `home_cookin` |
+| Ausar Thompson PRA | `hot_streak, floor_lock, high_fidelity_model` | `hot_streak, floor_lock, high_fidelity_model` ✓ | `home_cookin` |
+
+MLB Safe Haven (no `context_badges` populated for MLB master_hub — `context` slot reads `None` and stays out of the prompt narrative):
+| Pick | `badges` BEFORE | `badges` AFTER | `context` AFTER |
+|---|---|---|---|
+| Josh Jung HRR | `hot_streak, floor_lock, high_fidelity_model` | identical ✓ | `None` |
+| Ozzie Albies HRR | identical ✓ | identical ✓ | `None` |
+| Vladimir Guerrero Jr. HRR | identical ✓ | identical ✓ | `None` |
+
+**Behavior on tier picks**: identical to today (the `badges` slot still receives performance signals because tier picks never populated `active_badges`). The patch closes the latent regression that would have triggered the moment any caller stamped `active_badges`.
+
+**Behavior on player-vision routes**: unaffected by this patch (Vision Intel runs on tier-pick batches, not on `/api/player/{slug}/vision` responses).
+
+**Constraints honored**: no changes to `routes/ferrari_tiers.py`; no `context_badges` write changes; no `scout_badges` / performance generator changes; no frontend; no Vision Intel structural refactor; no aliasing of `context_badges` into `active_badges`.
+
+**Tests**: 108 passed, 3 skipped. Health probes `/api/health/hit-rate-side-parity` + `/api/health/hit-rate-push-invariant` both green.
+
+**Step 2 deferred**: response-shape contract for `active_badges` (deprecate / mirror / leave) — open for separate decision now that Vision Intel no longer depends on the field.
+
+
+
 ## 2026-05-05 — NBA push-handling fix (P1)
 
 `hit_rate_over` and `hit_rate_under` were derived via complement (`100 - hit_rate_active`) in `NBAScoringAdapter._compute_cv_and_hit_rate`. Pushes (`stat == line`) break the `OVER + UNDER = 100` identity, so the inactive side was overstated by the push percentage on whole-number lines. Audit found Julius Randle AST 4.0 with 40% pushes: OVER pick had stored `hit_rate_under=65` (correct: 25). Live exposure on `final-nba-rt` is 0 today (all .5 lines), but `nba_live_props` carries 250 whole-number lines from upstream books and `final-nba-rt-shadow` historically held 302.

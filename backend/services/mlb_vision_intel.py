@@ -190,9 +190,20 @@ class MLBVisionIntel:
             else:
                 dvp_text = f"vs {opponent} (no DvP data)"
             
-            # Badges/situational factors
-            badges = prop.get('active_badges', [])
-            badge_text = ", ".join([b.get('badge_key', b) if isinstance(b, dict) else str(b) for b in badges[:3]]) if badges else "None"
+            # Badges/situational factors — Option C SSOT (CHANGELOG
+            # 2026-05-05): explicit reads from the two semantic buckets.
+            # `active_badges` is intentionally NOT consumed here so a
+            # future presentation alias on tier endpoints cannot switch
+            # the prompt input from performance to narrative behind our
+            # back. See vision_intel_service.py for the same fix on NBA.
+            perf_list = prop.get('scout_badges') or []
+            ctx_list  = prop.get('context_badges') or []
+            badge_text = ", ".join(
+                [b.get('badge_key', b) if isinstance(b, dict) else str(b) for b in perf_list[:3]]
+            ) if perf_list else "None"
+            context_text = ", ".join(
+                [b.get('badge_key', b) if isinstance(b, dict) else str(b) for b in ctx_list[:3]]
+            ) if ctx_list else "None"
             
             # Blowout risk info
             blowout_risk = prop.get('intel_suite', {}).get('blowout_risk', {})
@@ -254,7 +265,8 @@ class MLBVisionIntel:
                 "defense": dvp_text,
                 "dk_odds": dk_odds,
                 "blowout_risk": blowout_level,
-                "badges": badge_text,
+                "badges": badge_text,           # performance/model signals (scout_badges)
+                "context": context_text,        # narrative/situational (context_badges)
                 # 2026-04-29 — injury intel surfaces in scout summary
                 "injuries": injury_summary,
             }

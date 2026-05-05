@@ -271,11 +271,29 @@ class VisionIntelService:
             else:
                 dvp_text = f"vs {opponent} (no DvP data)"
 
-            # Badges/situational factors
-            badges = prop.get('active_badges') or prop.get('scout_badges') or []
+            # Badges/situational factors — Option C SSOT (CHANGELOG
+            # 2026-05-05): read `scout_badges` and `context_badges`
+            # explicitly from their respective semantic buckets.
+            #   - scout_badges  : performance/model signals
+            #     (hot_streak, floor_lock, lasso_high_edge, …) emitted
+            #     by services/performance_badges.generate_performance_badges
+            #   - context_badges: narrative/situational tags
+            #     (home_cookin, jet_lag, revenge, locked_in, …) sourced
+            #     from master_hub.context_badges
+            # `active_badges` is now presentation-only and intentionally
+            # NOT consumed here. Previously this line read
+            # `prop.get('active_badges') or prop.get('scout_badges')`,
+            # which silently switched semantic buckets between routes
+            # and would have changed the prompt input on tier picks the
+            # moment any alias was added.
+            perf_list = prop.get('scout_badges') or []
+            ctx_list  = prop.get('context_badges') or []
             badge_text = ", ".join(
-                [b.get('badge_key', b) if isinstance(b, dict) else str(b) for b in badges[:3]]
-            ) if badges else "None"
+                [b.get('badge_key', b) if isinstance(b, dict) else str(b) for b in perf_list[:3]]
+            ) if perf_list else "None"
+            context_text = ", ".join(
+                [b.get('badge_key', b) if isinstance(b, dict) else str(b) for b in ctx_list[:3]]
+            ) if ctx_list else "None"
 
             # Blowout risk info
             blowout_risk = prop.get('intel_suite', {}).get('blowout_risk', {}) if isinstance(prop.get('intel_suite'), dict) else {}
@@ -316,7 +334,8 @@ class VisionIntelService:
                 "defense": dvp_text,
                 "dk_odds": dk_odds,
                 "blowout_risk": blowout_level,
-                "badges": badge_text,
+                "badges": badge_text,           # performance/model signals (scout_badges)
+                "context": context_text,        # narrative/situational (context_badges)
             }
             props_data.append(prop_data)
 
