@@ -730,3 +730,54 @@ async def score_document_schema_parity() -> Dict[str, Any]:
         "generated_at":            _now().isoformat(),
     }
 
+
+@router.get("/hit-rate-side-parity")
+async def hit_rate_side_parity(
+    sport: Optional[str] = Query(None, description="nba | mlb (omit for both)"),
+) -> Dict[str, Any]:
+    """Read-only invariant probe for the side-aware `hit_rate_l20` contract
+    (CHANGELOG 2026-05-05). For every active doc on `final-{sport}-rt`:
+        OVER  →  hit_rate_l20 == hit_rate_over
+        UNDER →  hit_rate_l20 == hit_rate_under
+    Returns one entry per sport. `status="ok"` iff both mismatch counts
+    are zero. Pure count_documents queries — no scheduler, no writes."""
+    sports = [sport.lower()] if sport else ["nba", "mlb"]
+    results: List[Dict[str, Any]] = []
+    for sp in sports:
+        if sp not in ("nba", "mlb"):
+            results.append({"sport": sp, "status": "unsupported"})
+            continue
+        coll = _db[f"{sp}_prop_scores"]
+        tag = f"final-{sp}-rt"
+        base = {
+            "version_tag": tag, "active": True,
+            "hit_rate_l20": {"$exists": True, "$ne": None},
+        }
+        over_checked = await coll.count_documents({
+            **base, "recommendation": "OVER",
+            "hit_rate_over": {"$exists": True, "$ne": None},
+        })
+        over_mismatches = await coll.count_documents({
+            **base, "recommendation": "OVER",
+            "hit_rate_over": {"$exists": True, "$ne": None},
+            "$expr": {"$ne": ["$hit_rate_l20", "$hit_rate_over"]},
+        })
+        under_checked = await coll.count_documents({
+            **base, "recommendation": "UNDER",
+            "hit_rate_under": {"$exists": True, "$ne": None},
+        })
+        under_mismatches = await coll.count_documents({
+            **base, "recommendation": "UNDER",
+            "hit_rate_under": {"$exists": True, "$ne": None},
+            "$expr": {"$ne": ["$hit_rate_l20", "$hit_rate_under"]},
+        })
+        results.append({
+            "sport":               sp,
+            "total_over_checked":  over_checked,
+            "total_under_checked": under_checked,
+            "over_mismatches":     over_mismatches,
+            "under_mismatches":    under_mismatches,
+            "status":              "ok" if (over_mismatches == 0 and under_mismatches == 0) else "drift",
+        })
+    return {"results": results, "generated_at": _now().isoformat()}
+
