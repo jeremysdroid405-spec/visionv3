@@ -1309,6 +1309,18 @@ async def _get_nba_tier_picks_from_scores(
     # Fields that are line-agnostic at the player-stat level (averages,
     # intel_suite, badges, history). Safe to pull from ANY cached_board
     # entry for the same (player, stat) even if the line has drifted.
+    #
+    # 2026-05-05 SSOT enforcement: `hit_rates` is INTENTIONALLY excluded.
+    # `cached_board.hit_rates` is line-DEPENDENT (it carries
+    # l*_hit_count / l*_rate computed against a specific cached line),
+    # but a stat-level fallback joins on (player, stat) only and would
+    # stamp hit_rates from cached line=9.5 onto a score doc at line=14.5
+    # (Daniss Jenkins WZ P+A 14.5 OVER pulled `hit_rates.l10_rate=60`
+    # from a 9.5-line cached entry). The score doc carries the
+    # canonical side+line-aware `hit_rate_l5/l10/l20`; those are SSOT
+    # for L5/L10/L20 display. cached_board.hit_rates remains stat-level
+    # historical context only — never used for the card's prop-line
+    # hit rate.
     STAT_LEVEL_FIELDS = (
         "l5_avg", "l10_avg", "l20_avg", "season_avg",
         "intel_suite", "scout_badges", "context_badges", "active_badges",
@@ -1316,7 +1328,7 @@ async def _get_nba_tier_picks_from_scores(
         "movement_delta", "movement_direction", "movement_strength",
         "is_anomaly", "is_goblin_anomaly", "is_demon_anomaly",
         "is_vision_enriched",
-        "season_margin", "hit_rates",
+        "season_margin",
     )
 
     picks: List[Dict[str, Any]] = []

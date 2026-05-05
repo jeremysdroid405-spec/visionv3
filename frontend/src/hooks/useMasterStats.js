@@ -91,11 +91,21 @@ const fetchMasterStats = async (playerIdentifier) => {
           line: line.line,
           direction: line.direction || 'over',
           odds: line.odds,
-          l5_avg: line.hit_rates?.l5_avg || line.l5_avg,
-          l10_avg: line.hit_rates?.l10_avg || line.l10_avg,
-          season_avg: line.season_avg || line.hit_rates?.season_avg,
-          h5_rate: line.hit_rates?.h5 || line.h5_rate,
-          h10_rate: line.hit_rates?.h10 || line.h10_rate,
+          l5_avg: line.l5_avg ?? line.hit_rates?.l5_avg,
+          l10_avg: line.l10_avg ?? line.hit_rates?.l10_avg,
+          season_avg: line.season_avg ?? line.hit_rates?.season_avg,
+          // 2026-05-05 SSOT: prefer score-doc canonical hit_rate_l*
+          // (side-aware, line-aware) over the legacy nested
+          // `hit_rates` bag, which can carry stale or
+          // line-mismatched data from cached_board.
+          h5_rate: line.hit_rate_l5 ?? line.h5_rate ?? line.hit_rates?.h5,
+          h10_rate: line.hit_rate_l10 ?? line.h10_rate ?? line.hit_rates?.h10,
+          // Pass canonical SSOT fields through verbatim so any
+          // downstream reader (PlayerDetailPage trio, etc.) can
+          // bypass `h*_rate` entirely.
+          hit_rate_l5: line.hit_rate_l5,
+          hit_rate_l10: line.hit_rate_l10,
+          hit_rate_l20: line.hit_rate_l20,
           is_demon: line.is_demon,
           is_goblin: line.is_goblin,
           tier_style: line.tier_style,

@@ -512,12 +512,16 @@ const PropRow = memo(({ prop, theme, onClick, onQuickAdd, onVKClick }) => {
           />
         )}
         
-        {/* Hit Rates */}
-        {prop.h10_rate != null && (
-          <span className={`font-medium ${getHitRateColor(prop.h10_rate)}`}>
-            L10: {prop.h10_rate}%
-          </span>
-        )}
+        {/* Hit Rates — 2026-05-05 SSOT: prefer canonical `hit_rate_l10`
+            from the score doc; fall back to legacy merge-layer alias. */}
+        {(() => {
+          const l10 = prop.hit_rate_l10 ?? prop.h10_rate;
+          return l10 != null && (
+            <span className={`font-medium ${getHitRateColor(l10)}`} data-testid={`hr-l10-list-${prop.player_name || ''}`}>
+              L10: {Math.round(l10)}%
+            </span>
+          );
+        })()}
         {prop.season_avg != null && (
           <span className="text-zinc-400">
             Avg: <span className="text-white">{prop.season_avg?.toFixed?.(1) || prop.season_avg}</span>
@@ -614,7 +618,12 @@ const UniversalPlayerCard = memo(({
     // Primary prop (for single-prop display)
     stat_type,
     line,
-    h5_rate, h10_rate, season_avg, diff_from_avg,
+    h5_rate, h10_rate: _legacy_h10_rate, season_avg, diff_from_avg,
+    // 2026-05-05 SSOT: canonical side-aware hit-rate windows from the
+    // score doc — these are the source of truth for the L5/L10/L20
+    // chip and trio. Legacy `h10_rate` (above) is preserved as a
+    // last-resort fallback only.
+    hit_rate_l5, hit_rate_l10, hit_rate_l20,
     // Tier info
     is_demon, is_goblin, tier_label,
     // Injury flag
@@ -1026,7 +1035,18 @@ const UniversalPlayerCard = memo(({
             {stat_type && !hasProps && (
               <div className="flex items-center gap-2 mt-1.5">
                 <span className={`text-sm font-bold ${theme.text}`}>{formatStatType(stat_type)} {line}</span>
-                {h10_rate != null && <span className={`text-xs ${getHitRateColor(h10_rate)}`}>L10: {h10_rate}%</span>}
+                {/* 2026-05-05 SSOT: prefer canonical `hit_rate_l10`
+                    from the score doc over the merge-layer alias
+                    `h10_rate`. Legacy `_legacy_h10_rate` retained
+                    only as a last-resort fallback. */}
+                {(() => {
+                  const l10 = hit_rate_l10 ?? _legacy_h10_rate;
+                  return l10 != null && (
+                    <span className={`text-xs ${getHitRateColor(l10)}`} data-testid={`hr-l10-chip-${player.player_name || ''}`}>
+                      L10: {Math.round(l10)}%
+                    </span>
+                  );
+                })()}
                 {season_avg != null && <span className="text-xs text-zinc-400">Avg: {season_avg?.toFixed?.(1)}</span>}
               </div>
             )}

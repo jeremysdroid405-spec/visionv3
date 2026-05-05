@@ -169,10 +169,18 @@ async def _lookup_player_hub(sport: str, name: str) -> Optional[Dict[str, Any]]:
 # Enrichment fields pulled from `nba_cached_board.props[*]` per prop.
 # Score docs don't carry these; they live in the cached_board snapshot
 # built by `cached_board_builder_service`.
+#
+# 2026-05-05 SSOT enforcement: `hit_rates` removed from this list.
+# `cached_board.hit_rates` is a line-dependent nested bag whose
+# l*_rate / l*_hit_count fields would mask the canonical, side-aware
+# `hit_rate_l5/l10/l20` carried on the score doc. Per-prop overlay
+# kept hit_rates aligned to the same line, but the stat-level
+# fallback below joins on (player, stat) only and would smear stale
+# hit_rates across lines. Score doc fields are the SSOT for the
+# user-visible L5/L10/L20 trio.
 _BOARD_ENRICHMENT_FIELDS = (
     "l5_avg", "l10_avg", "l20_avg", "season_avg",
     "h5_rate", "h10_rate", "h20_rate",
-    "hit_rates",
     "intel_suite", "scout_badges", "context_badges",
     "active_badges", "vision_intel", "vision_summary",
     "momentum_data",
@@ -356,6 +364,10 @@ async def get_player_with_badges(
     # IDENTICAL across lines for a given (player, stat), so we fall
     # back to a stat-level match when the exact (stat, line, dir)
     # triple misses.
+    #
+    # 2026-05-05 SSOT enforcement: `hit_rates` excluded — line-dependent
+    # data must NOT cross line boundaries. See `_BOARD_ENRICHMENT_FIELDS`
+    # above for the full rationale.
     STAT_LEVEL_FIELDS = {
         "l5_avg", "l10_avg", "l20_avg", "season_avg",
         "intel_suite", "scout_badges", "context_badges", "active_badges",
@@ -363,7 +375,7 @@ async def get_player_with_badges(
         "movement_delta", "movement_direction", "movement_strength",
         "is_anomaly", "is_goblin_anomaly", "is_demon_anomaly",
         "is_vision_enriched",
-        "season_margin", "hit_rates",
+        "season_margin",
     }
     if sport == "nba" and props:
         idx = await _build_nba_cached_board_index(canonical_name)
