@@ -219,27 +219,58 @@ class RebalanceTiersStep(DeltaStep):
 
 
 class AdvanceWatermarkStep(DeltaStep):
-    """Bump the per-sport cursor forward to the tick-start timestamp.
+    """Bump the per-sport cursor forward, but never past `now − SAFE_LAG`.
 
-    IMPORTANT: we advance to `context["tick_started_at"]` (set by the
-    engine BEFORE detection runs), NOT to `now()` — this guarantees
-    that any prop `updated_at` stamped DURING detection / rescore will
-    still be visible as dirty on the next tick (idempotent by design).
+    History (2026-05-05): the original implementation advanced the
+    watermark unconditionally to `context["tick_started_at"]`. That
+    races late-arriving upstream writes — when an upstream sync stamps
+    a batch with `updated_at = T0` but the bulk-write commits at
+    `T0 + Δ` (Δ can easily exceed the existing 5-second grace), the
+    detect tick that runs at `T0 + 1s` sees nothing AND advances the
+    watermark to `T0 + 1s`. The next tick then queries
+    `updated_at > T0 + 1s − 5s` and STILL misses the writes whose
+    timestamps are `T0`.  Result: the writes are lost forever, the
+    detector returns `dirty=0` every tick, and tier rebalances never
+    fire (real failure observed: MLB tiers frozen at 15:20 UTC while
+    `mlb_live_props` had been receiving fresh writes every minute).
+
+    Fix: cap the advance at `now − SAFE_LAG_SECONDS` so the watermark
+    trails real time by a window large enough to absorb upstream
+    commit latency. Rescore is idempotent — a slightly-overlapping
+    detect window costs nothing and prevents data loss.
+
+    The cap intentionally uses `now()` (NOT `tick_started_at`) so the
+    LAG is measured against the wall clock at the moment we commit,
+    not against the moment the tick began.
     """
 
     name = "5_advance_watermark"
+
+    # Maximum tolerated upstream-write commit latency. 90s comfortably
+    # absorbs typical bulk-write commit lag for 10K+ row upserts on a
+    # busy mongod, while keeping the rescore overlap window small.
+    SAFE_LAG_SECONDS = 90
 
     async def run(self, sport, db, context):
         if context.get("abort_remaining_steps"):
             return {"skipped": True, "reason": "upstream_lock_held"}
 
-        ts = context.get("tick_started_at") or datetime.now(timezone.utc)
+        tick_started_at = context.get("tick_started_at") or datetime.now(timezone.utc)
+        now_utc = datetime.now(timezone.utc)
+        from datetime import timedelta
+        safe_ceiling = now_utc - timedelta(seconds=self.SAFE_LAG_SECONDS)
+        # Advance only as far as `min(tick_started_at, now − SAFE_LAG)`.
+        ts = min(tick_started_at, safe_ceiling)
+
         t0 = datetime.now(timezone.utc)
         advanced_to = await advance_watermark(db, sport, ts)
         dur = (datetime.now(timezone.utc) - t0).total_seconds()
         return {
             "duration_seconds": dur,
             "advanced_to": advanced_to.isoformat(),
+            "tick_started_at": tick_started_at.isoformat(),
+            "safe_lag_seconds": self.SAFE_LAG_SECONDS,
+            "capped_by_safe_lag": ts is safe_ceiling,
         }
 
 
