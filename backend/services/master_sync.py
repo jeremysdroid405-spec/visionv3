@@ -1210,6 +1210,68 @@ PICKS_PER_TIER_CAP = {
 }
 
 
+async def _attach_badges_in_memory(
+    picks: list, sport: str, db
+) -> dict:
+    """Attach `scout_badges` and `context_badges` to in-memory pick dicts
+    BEFORE `analyze_tier_batch` is called (CHANGELOG 2026-05-05 Finding A).
+
+    Performance and context badges are NOT persisted to `*_prop_scores` —
+    they're stamped at API request time only. Vision Intel reads
+    directly from `*_prop_scores`, so without this step Gemini receives
+    `"badges": "None", "context": "None"` in every prompt body and the
+    Option C semantic-bucket plumbing is dead-on-arrival.
+
+    Mutates `picks` in place. Read-only with respect to the DB:
+      * `scout_badges` derived locally via the universal generator.
+      * `context_badges` looked up from `{sport}_master_hub_2026`
+        (current SSOT). If the master_hub doc is missing or the
+        `context_badges` field is empty, the pick is simply not
+        annotated — Vision Intel renders `"context": "None"` for that
+        slot.
+
+    Returns a metrics dict for observability:
+        {scout_attached, context_attached, master_hub_lookups}
+    """
+    if not picks:
+        return {"scout_attached": 0, "context_attached": 0, "master_hub_lookups": 0}
+
+    from services.performance_badges import generate_performance_badges
+    from config.db_config import get_collection_name
+
+    metrics = {"scout_attached": 0, "context_attached": 0, "master_hub_lookups": 0}
+
+    # 1. scout_badges — pure function, no DB hit per pick.
+    for p in picks:
+        sb = generate_performance_badges(p)
+        if sb:
+            p["scout_badges"] = sb
+            metrics["scout_attached"] += 1
+
+    # 2. context_badges — single batched lookup against master_hub.
+    names = sorted({p.get("player_name") for p in picks if p.get("player_name")})
+    if names:
+        master_hub = db[get_collection_name("master_hub", sport)]
+        ctx_by_name: dict = {}
+        async for hub in master_hub.find(
+            {"display_name": {"$in": list(names)}},
+            {"_id": 0, "display_name": 1, "context_badges": 1},
+        ):
+            cb = hub.get("context_badges") or []
+            if cb:
+                ctx_by_name[hub.get("display_name")] = cb
+        metrics["master_hub_lookups"] = len(names)
+        for p in picks:
+            cb = ctx_by_name.get(p.get("player_name"))
+            if cb:
+                p["context_badges"] = cb
+                metrics["context_attached"] += 1
+
+    return metrics
+
+
+
+
 async def _enrich_nba_board_vision_intel(db) -> dict:
     """
     Generate Gemini Vision Intel narratives for active-board NBA picks
@@ -1318,6 +1380,14 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
     by_tier: dict = defaultdict(list)
     for p in to_call:
         by_tier[p.get("tier")].append(p)
+
+    # ------------------------------------------------------------------
+    # Step C.5: Attach in-memory `scout_badges` + `context_badges` to
+    # each pick BEFORE analyze_tier_batch (CHANGELOG 2026-05-05 Finding
+    # A). Read-only DB lookups; nothing persisted back.
+    # ------------------------------------------------------------------
+    badge_metrics = await _attach_badges_in_memory(to_call, "nba", db)
+    metrics["badges_attached"] = badge_metrics
 
     # ------------------------------------------------------------------
     # Step D: Run Gemini per tier. `strict=True` → no fallback substitution.
@@ -1581,6 +1651,12 @@ async def _enrich_mlb_board_vision_intel(db) -> dict:
     by_tier: dict = defaultdict(list)
     for p in to_call:
         by_tier[p.get("tier")].append(p)
+
+    # ── Step C.5: in-memory badge attachment (Finding A) ─────────────
+    # Mirrors NBA. Read-only DB lookups against `mlb_master_hub_2026`;
+    # nothing persisted back to score docs.
+    badge_metrics = await _attach_badges_in_memory(to_call, "mlb", db)
+    metrics["badges_attached"] = badge_metrics
 
     # ── Step D: Gemini per tier (chunked + strict) ────────────────────
     now = datetime.now(timezone.utc)

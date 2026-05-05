@@ -437,8 +437,15 @@ Return your analysis as a JSON array. One object per prop with all required fiel
                 if strict:
                     # Return only Gemini-authored intel (non-empty
                     # vision_intel for a prop Gemini echoed back).
+                    # 2026-05-05 pairing-fix companion: stamp the
+                    # source `canonical_key` (== prop_id by construction
+                    # at line 432-434) onto the intel dict so
+                    # master_sync's canonical_key pairing dict can match
+                    # this entry. Without this, the strict path returns
+                    # bare intel dicts and `o.get("canonical_key")`
+                    # returns None for every result.
                     if intel and (intel.get("vision_intel") or "").strip():
-                        strict_results.append(intel)
+                        strict_results.append({**intel, "canonical_key": prop_id})
                     else:
                         strict_results.append(None)
                 else:
