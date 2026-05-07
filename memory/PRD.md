@@ -110,6 +110,20 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
   - **Verification harness:** `/app/backend/scripts/p0_phase4a_verify.sh` (5 sections; explicit pass/fail; documented out-of-scope items).
 
 ## Open issues (priority)
+- **P0 Phase 4B (NEXT SESSION — verbatim user spec):**
+  - **Goal:** Remove legacy hit-rate response shims and migrate all readers to canonical fields.
+  - **Canonical only:** `hit_rate_l5`, `hit_rate_l10`, `hit_rate_l20`, `hit_rate_over`, `hit_rate_under`.
+  - **Legacy fields to eliminate from user-facing API/frontend:** `h5_rate`, `h10_rate`, `h20_rate`, `hit_rate`, `hit_rates`, `model_hit_rate_over`, `model_hit_rate_under`.
+  - **Before patching:** fresh writer/reader audit for these fields ONLY. Classify each occurrence as: backend writer / API response shim / frontend reader / helper/internal object / comment/test only. Return exact files to change.
+  - **Out of scope (must not be touched):** scoring math, gates, Vision Intel, ingestion, dirty_queue, scheduler.
+  - **After patch — pass criteria:**
+    - API visible tier picks expose canonical `hit_rate_l5/l10/l20` only
+    - frontend reads canonical first/only
+    - no legacy HR aliases in visible API payloads
+    - live API L5 grid valid
+    - SLO script run; §1, §2, §4 PASS; §5 (api_correctness) now PASS
+  - **Verification harness for hit-rate cleanup (to be created in 4B):** mirror of `scripts/p0_phase4a_verify.sh` — DB legacy presence + API leakage + SLO + watchdog + heartbeat.
+- **P0 Phase 4A** — COMPLETE pending user manual verify run. Verification harness: `bash /app/backend/scripts/p0_phase4a_verify.sh`. **DO NOT** add the queue TTL index suggested in finish summary; user explicitly declined.
 - **P0** Vision Intel universal refactor — full scope in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`. Nullification phase shipped (Phase 2); engine refactor remains.
 - **P0 Phase 4A** (queued for next session): surgical `edge_pct` SSOT cleanup. DB has 81,243 docs persisting `edge_pct` via `services/board/publisher.py:181` and `services/board/shadow_publisher.py:142`. Unset migration + 2 frontend reads (`PlayerDetailPage.jsx`) + `vk_edge` API leakage cleanup. Scope nailed in audit; ~1 hour.
 - **P1** `vision_score == 0.0` data corruption for legit Safe Haven candidates (Tyrese Maxey et al.) — artificially fails `vision_score_gate`.
