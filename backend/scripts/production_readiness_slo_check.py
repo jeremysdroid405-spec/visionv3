@@ -292,14 +292,55 @@ async def check_tier_freshness(db, now: datetime) -> CheckResult:
 # enqueued by `universal_odds_sync` after every batch insert, drained
 # by `services.delta.detector`) is now the single detection source.
 #
-# What this check enforces in the new architecture:
-#   (a) Most-recent enqueue per sport is < 5 min old (live ingestion).
-#   (b) Queue depth is bounded — unbounded growth means the engine
-#       is enqueueing faster than it can drain (consumer lag).
-#       Hard cap = 5× a typical NBA/MLB ingest batch (~30k props),
-#       reported in evidence regardless.
+# What this check enforces in the new architecture (2 valid healthy
+# states; everything else is a failure):
+#
+#   STATE 1 — queue has recent activity AND bounded depth.
+#       last_enqueue_at is set, lag < DIRTY_QUEUE_MAX_LAG_S,
+#       depth < DIRTY_QUEUE_DEPTH_HARD_CAP.
+#
+#   STATE 2 — queue is empty AND ingestion + scoring are fresh.
+#       depth == 0, last_enqueue_at == None (the detector drained
+#       every queued key faster than the next enqueue arrived),
+#       BUT live_props.max(updated_at) and prop_scores.max(scored_at)
+#       are both inside the freshness threshold AND there are no
+#       watchdog FROZEN / RESTART_STORM events in supervisor logs.
+#       This is the steady-state for low-volume sports (MLB drains
+#       ~5k keys in <60s; observation windows hit empty queue often).
+#
+# Invalid states (any of these → FAIL):
+#   * queue empty but live_props stale
+#   * queue empty but scores stale
+#   * queue depth growing unbounded (depth > hard cap)
+#   * no enqueue activity AND no live updates
+#   * watchdog FROZEN / RESTART_STORM events present
+#   * stale enqueue lag exceeds threshold
 # ─────────────────────────────────────────────────────────────────────
 DIRTY_QUEUE_DEPTH_HARD_CAP = 150_000   # 5× peak batch — generous bound
+
+# Supervisor backend log path — same source the
+# `p0_phase4b_verify.sh` watchdog check reads. Override via env for
+# alternate environments (CI, test pod). Empty / missing file is
+# treated as "no events".
+WATCHDOG_LOG_PATH = os.environ.get(
+    "SLO_BACKEND_LOG_PATH",
+    "/var/log/supervisor/backend.err.log",
+)
+
+
+def _count_watchdog_events(path: str = WATCHDOG_LOG_PATH) -> int:
+    """Count `WATCHDOG.*FROZEN` / `RESTART_STORM` events in the
+    supervisor backend log. Returns 0 if the log is missing /
+    unreadable (test environments) — the check is purely additive
+    fail-safe, never the sole reason a healthy pod fails."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            return sum(
+                1 for ln in f
+                if ("WATCHDOG" in ln and "FROZEN" in ln) or "RESTART_STORM" in ln
+            )
+    except OSError:
+        return 0
 
 
 async def check_detection_source_freshness(db, now: datetime) -> CheckResult:
@@ -317,32 +358,122 @@ async def check_detection_source_freshness(db, now: datetime) -> CheckResult:
                 last_enqueue = _ensure_aware(ea)
                 last_lag_s = (now - last_enqueue).total_seconds()
         live_max = await _max_ts(db[f"{sport}_live_props"], "updated_at")
+        score_max = await _max_ts(db[f"{sport}_prop_scores"], "scored_at")
+        live_gap_s = _gap_seconds(live_max, now)
+        score_gap_s = _gap_seconds(score_max, now)
+        watchdog_events = _count_watchdog_events()
+
+        # STATE 2 candidate: empty queue + drained-clean detection.
+        # Only honored when ingestion AND scoring are both fresh AND
+        # no watchdog events.
+        empty_queue_drained_clean = (
+            depth == 0
+            and last_enqueue is None
+            and live_gap_s is not None
+            and live_gap_s <= FRESHNESS_MAX_AGE_S
+            and score_gap_s is not None
+            and score_gap_s <= FRESHNESS_MAX_AGE_S
+            and watchdog_events == 0
+        )
+
         r.evidence[sport] = {
             "detection_source": "delta_dirty_queue",
             "queue_depth": depth,
             "last_enqueue_at": last_enqueue.isoformat() if last_enqueue else None,
             "last_enqueue_lag_seconds": last_lag_s,
             "live_props_max_updated_at": live_max.isoformat() if live_max else None,
+            "live_props_gap_seconds": live_gap_s,
+            "score_max_scored_at": score_max.isoformat() if score_max else None,
+            "score_gap_seconds": score_gap_s,
+            "watchdog_events": watchdog_events,
+            "freshness_threshold_s": FRESHNESS_MAX_AGE_S,
+            "depth_hard_cap": DIRTY_QUEUE_DEPTH_HARD_CAP,
+            "healthy_state": (
+                "STATE_2_empty_queue_drained_clean"
+                if empty_queue_drained_clean
+                else ("STATE_1_active_queue" if last_enqueue is not None else "INVALID")
+            ),
         }
-        if last_enqueue is None:
-            r.fail(
-                f"{sport}: delta_dirty_queue has NO enqueue events — "
-                f"detection pipeline never received a signal. "
-                f"Either ingestion is dead or universal_odds_sync stopped "
-                f"calling enqueue_dirty()."
-            )
-            continue
-        if last_lag_s is not None and last_lag_s > DIRTY_QUEUE_MAX_LAG_S:
-            r.fail(
-                f"{sport}: delta_dirty_queue STALE — last enqueue "
-                f"{last_lag_s:.0f}s ago (threshold {DIRTY_QUEUE_MAX_LAG_S}s); "
-                f"last_enqueue_at={last_enqueue.isoformat()}"
-            )
+
+        # ── Unbounded depth is always a failure ─────────────────────
         if depth > DIRTY_QUEUE_DEPTH_HARD_CAP:
             r.fail(
                 f"{sport}: delta_dirty_queue UNBOUNDED — depth={depth} "
                 f"> cap {DIRTY_QUEUE_DEPTH_HARD_CAP}. Detector is not "
                 f"draining as fast as ingestion enqueues."
+            )
+
+        # ── Watchdog gate ───────────────────────────────────────────
+        if watchdog_events > 0:
+            r.fail(
+                f"{sport}: {watchdog_events} watchdog FROZEN / "
+                f"RESTART_STORM event(s) in supervisor log "
+                f"({WATCHDOG_LOG_PATH}); detection pipeline cannot "
+                f"be considered healthy until events are resolved."
+            )
+
+        # ── State machine ───────────────────────────────────────────
+        if last_enqueue is not None:
+            # STATE 1 — active queue. Enforce the lag threshold.
+            if last_lag_s is not None and last_lag_s > DIRTY_QUEUE_MAX_LAG_S:
+                r.fail(
+                    f"{sport}: delta_dirty_queue STALE — last enqueue "
+                    f"{last_lag_s:.0f}s ago "
+                    f"(threshold {DIRTY_QUEUE_MAX_LAG_S}s); "
+                    f"last_enqueue_at={last_enqueue.isoformat()}"
+                )
+            continue
+
+        # last_enqueue is None — STATE 2 candidate or invalid.
+        if depth > 0:
+            # Queue holds entries but the newest one has no
+            # `enqueued_at` timestamp — schema corruption / writer bug.
+            r.fail(
+                f"{sport}: delta_dirty_queue depth={depth} but newest "
+                f"row carries no `enqueued_at` timestamp — "
+                f"writer schema regression."
+            )
+            continue
+
+        if empty_queue_drained_clean:
+            # STATE 2 — healthy. Detector drained the queue faster
+            # than the next ingest cycle enqueued. Pass.
+            continue
+
+        # Empty queue + something stale → FAIL with the specific
+        # signal the operator must investigate.
+        if live_gap_s is None:
+            r.fail(
+                f"{sport}: delta_dirty_queue empty AND "
+                f"{sport}_live_props has no updated_at — ingestion "
+                f"never wrote / collection missing."
+            )
+        elif live_gap_s > FRESHNESS_MAX_AGE_S:
+            r.fail(
+                f"{sport}: delta_dirty_queue empty AND "
+                f"{sport}_live_props STALE (gap={live_gap_s:.0f}s "
+                f"> {FRESHNESS_MAX_AGE_S}s) — ingestion has stopped "
+                f"writing; detection cannot recover without it."
+            )
+        elif score_gap_s is None:
+            r.fail(
+                f"{sport}: delta_dirty_queue empty AND "
+                f"{sport}_prop_scores has no scored_at — scoring "
+                f"never ran."
+            )
+        elif score_gap_s > FRESHNESS_MAX_AGE_S:
+            r.fail(
+                f"{sport}: delta_dirty_queue empty AND "
+                f"{sport}_prop_scores STALE (gap={score_gap_s:.0f}s "
+                f"> {FRESHNESS_MAX_AGE_S}s) — scoring loop has stopped."
+            )
+        else:
+            # Defensive — should be unreachable given the gate above.
+            r.fail(
+                f"{sport}: delta_dirty_queue empty and freshness "
+                f"checks did not isolate a cause "
+                f"(live_gap={live_gap_s}, score_gap={score_gap_s}, "
+                f"watchdog={watchdog_events})."
             )
     return r
 

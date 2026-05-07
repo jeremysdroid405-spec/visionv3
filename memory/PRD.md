@@ -109,6 +109,24 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
   - **Migration script:** `/app/backend/scripts/p0_phase4a_unset_edge_pct.py` (idempotent — rerunning produces 0 modifications).
   - **Verification harness:** `/app/backend/scripts/p0_phase4a_verify.sh` (5 sections; explicit pass/fail; documented out-of-scope items).
 
+- **PROP VISION STABILIZATION — Phase 4B (2026-05-07) — hit-rate SSOT cleanup COMPLETE:**
+  - **Two backend leaks fixed (no scoring/Vision/ingestion changes):**
+    1. `routes/ferrari_tiers.py::_merge_score_with_board` — strip list expanded to also pop `l5_hits, l10_hits, l20_hits, h5_hit_rate, h10_hit_rate` from the cached_board prop. The downstream `_assert_canonical_hit_rate_invariant` guard was using these stale cached_board hits to recompute and OVERWRITE the score-doc canonical `hit_rate_l5/l10/l20` (verified bug: Julian Champagnie PTS 5.5 OVER, score=100/90/90 → API=80/90/85 from line-9.5 cached entry). Strip makes the guard a defensive no-op; canonical score-doc values now flow through unmodified.
+    2. `services/contract_enforcer.py::enforce_hit_profile_parity` — made side-aware. `compute_hit_profile` always counts OVER hits (`v >= line`); the score doc carries SIDE-AWARE `hit_rate_l10`. Comparing OVER-only count vs UNDER score doc produced false mismatches and the enforcer rewrote the canonical UNDER rate with the OVER count (verified bug: Karl-Anthony Towns PRA 37.5 UNDER, score=80% → API=20% from 2/10 OVER hits). Fix: `expected_hr = (total - cnt)/total*100` for UNDER picks.
+  - **Phase 4B verify all green:** §i 0 legacy fields (43/43 picks), §ii canonical fields 100% present, §iii Phase 4A guard holds, §v `5_api_correctness` PASS, §vi watchdog 0 events. Curl confirmed: NBA SH/FL + MLB SH/FL/WZ all canonical-only, zero legacy aliases.
+  - **SLO §4 follow-up fix (same session):** `production_readiness_slo_check.py::check_detection_source_freshness` rewritten with explicit STATE 1 / STATE 2 / INVALID state machine. Empty queue + fresh `live_props` + fresh `prop_scores` + 0 watchdog events = healthy STATE 2 (motivating case: MLB drains 5k-row queue in <60s while next ingest is 5min away). 6 new offline regression tests in `tests/test_slo_detection_source_freshness.py` lock both healthy states and 4 invalid states (stale live_props, stale scores, unbounded depth, watchdog events).
+  - **Final SLO scoreboard:** §1 PASS, §2 PASS, §3 FAIL (pre-existing — cached_board has no `updated_at`), §4 PASS, §5 PASS, §6 FAIL (pre-existing — Vision Intel coverage NBA 17.9% / MLB 0%), §7 PASS.
+  - **Files modified this session:**
+    - `routes/ferrari_tiers.py` (strip expansion in `_merge_score_with_board`)
+    - `services/contract_enforcer.py` (side-aware parity)
+    - `scripts/production_readiness_slo_check.py` (§4 state machine + watchdog gate)
+    - `scripts/p0_phase4b_verify.sh` (fixed `grep -c || echo 0` double-count bug)
+    - `tests/test_slo_detection_source_freshness.py` (NEW — 6 regression tests)
+  - **Reproduce / rerun commands:**
+    - Phase 4B harness: `bash /app/backend/scripts/p0_phase4b_verify.sh`
+    - Full SLO: `cd /app/backend && python3 scripts/production_readiness_slo_check.py`
+    - SLO §4 unit tests: `cd /app/backend && python3 -m pytest tests/test_slo_detection_source_freshness.py -v`
+
 ## Open issues (priority)
 - **P0 Phase 4B (NEXT SESSION — verbatim user spec):**
   - **Goal:** Remove legacy hit-rate response shims and migrate all readers to canonical fields.
