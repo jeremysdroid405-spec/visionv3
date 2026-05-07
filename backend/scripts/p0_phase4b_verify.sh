@@ -136,8 +136,9 @@ fi
 # ─── (vi) Watchdog / heartbeat ─────────────────────────────────────
 echo ""
 echo "[vi] Watchdog / heartbeat health"
-WD=$(grep -cE 'WATCHDOG.*FROZEN|RESTART_STORM' /var/log/supervisor/backend.err.log 2>/dev/null || echo 0)
-if [[ "$WD" == "0" ]]; then
+WD=$(grep -cE 'WATCHDOG.*FROZEN|RESTART_STORM' /var/log/supervisor/backend.err.log 2>/dev/null)
+WD=${WD:-0}
+if [[ "$WD" -eq 0 ]] 2>/dev/null; then
     echo "  [PASS] 0 watchdog FROZEN / RESTART_STORM events"
 else
     echo "  [FAIL] watchdog events present: $WD" >&2

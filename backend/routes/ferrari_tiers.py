@@ -942,9 +942,30 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         # builder still emits them. Canonical `hit_rate_l5/l10/l20/
         # over/under` is stamped below from the score doc (verified
         # 100% present pre-removal).
+        #
+        # 2026-05-07 P0 Phase 4B HOTFIX (SLO §5 fail):
+        # Also strip `l5_hits / l10_hits / l20_hits` and
+        # `h5_hit_rate / h10_hit_rate`. The cached_board records the
+        # historical OVER-side hit count for the LINE the cache was
+        # built against (often a different line than the score doc
+        # being served — e.g. cache line=9.5 vs current pick line=5.5)
+        # AND it does so against an OUTDATED game-log window
+        # (cache snapshot can lag the master_hub by hours/days).
+        # The downstream `_assert_canonical_hit_rate_invariant` guard
+        # used to recompute `hit_rate_l5/l10/l20 = l*_hits/window*100`
+        # and OVERWRITE the score-doc canonical with that stale
+        # cached value (verified bug 2026-05-07: Julian Champagnie
+        # PTS 5.5 OVER, score=100/90/90 rewritten to API=80/90/85
+        # using cache l5_hits=4, l20_hits=17 from the line-9.5
+        # cached entry). Stripping these keys upstream makes the
+        # guard a no-op and lets the score-doc canonical pass
+        # through unmodified — the actual SSOT contract Phase 4B
+        # exists to enforce.
         for _legacy_hr_key in (
             "h5_rate", "h10_rate", "h20_rate", "hit_rates",
             "hit_rate", "model_hit_rate_over", "model_hit_rate_under",
+            "l5_hits", "l10_hits", "l20_hits",
+            "h5_hit_rate", "h10_hit_rate",
         ):
             prop.pop(_legacy_hr_key, None)
         # Player-level fields from parent player doc

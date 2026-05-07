@@ -256,7 +256,25 @@ async def enforce_hit_profile_parity(
         prof_line = p.get("hit_profile_line")
         if cnt is None or not tot:
             continue   # no profile stamped; skip silently
-        expected_hr = round(100.0 * cnt / tot, 1)
+        # 2026-05-07 P0 Phase 4B HOTFIX (SLO §5 fail):
+        # `compute_hit_profile` (services/hit_profile.py) ALWAYS counts
+        # OVER hits (`v >= line`). The score-doc canonical
+        # `hit_rate_l10` is SIDE-AWARE — for UNDER picks it carries the
+        # complement (UNDER hit rate). Comparing the score-doc UNDER
+        # value against an OVER-only count produces a false mismatch
+        # and the pre-fix code would OVERWRITE the canonical UNDER
+        # rate with the OVER count (verified bug 2026-05-07: KAT
+        # PRA 37.5 UNDER, score=80% rewritten to API=20% from 2/10
+        # OVER hits). The fix is side-aware: invert `cnt` for UNDER.
+        side = (
+            p.get("recommendation")
+            or p.get("side")
+            or p.get("direction")
+            or "OVER"
+        )
+        is_under = str(side).strip().upper().startswith("UNDER")
+        side_cnt = (tot - cnt) if is_under else cnt
+        expected_hr = round(100.0 * side_cnt / tot, 1)
         # ± 0.1 tolerance for rounding.
         if hr is None or abs(float(hr) - expected_hr) > 0.11:
             mismatches += 1
