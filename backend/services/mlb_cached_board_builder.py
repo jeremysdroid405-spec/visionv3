@@ -615,6 +615,26 @@ class MLBCachedBoardBuilder:
             
             # Clear old data and insert new
             if player_props:
+                # 2026-05-07 P0 §3 fix: precompute the canonical freshness
+                # stamp ONCE so every player_doc inserted on this rebuild
+                # carries identical `updated_at / last_publish_ts /
+                # source_score_max_scored_at / sport / version_tag`. The
+                # follow-up `master_sync` Step 7 will refresh these at
+                # end-of-run, but writing them at insert-time guarantees
+                # SLO §3 has a canonical signal even between master_sync
+                # passes (e.g. a fresh rebuild that hasn't reached Step 7
+                # yet).
+                from services.board_freshness import (
+                    build_freshness_stamp,
+                    _max_scored_at,
+                )
+                _src_score_max = await _max_scored_at(self.db, self.sport)
+                _freshness_stamp = build_freshness_stamp(
+                    self.sport,
+                    now=build_start,
+                    source_score_max_scored_at=_src_score_max,
+                )
+
                 # Use bulk operations for efficiency
                 await cached_board.delete_many({})  # Clear old
                 
@@ -622,8 +642,9 @@ class MLBCachedBoardBuilder:
                 
                 # Add metadata to each player doc
                 for doc in player_docs:
-                    doc["sport"] = self.sport
-                    doc["built_at"] = build_start.isoformat()
+                    # Phase 4 freshness contract (overrides legacy `sport`).
+                    doc.update(_freshness_stamp)
+                    doc["built_at"] = build_start.isoformat()  # legacy compat
                     doc["props_count"] = len(doc["props"])
                 
                 await cached_board.insert_many(player_docs)

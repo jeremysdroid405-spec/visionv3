@@ -239,43 +239,149 @@ async def check_score_freshness(db, now: datetime) -> CheckResult:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# §3  Tier freshness — last cached_board write must be ≥ last score write
+# §3  Tier freshness — cached_board canonical Phase-4 contract
+#
+# 2026-05-07 P0 §3 fix:
+# Previous behaviour compared `cached_board.updated_at` against the
+# LIVE `prop_scores.max(scored_at)` with a 60s grace, but the actual
+# `{nba,mlb}_cached_board` writers run on the master_sync hourly
+# cadence (see `services/master_sync.py` Step 7 — the freshness
+# stamper). With score writes happening every ~30s via the delta
+# engine, `score_max - cb_max` would always grow past 60s within a
+# couple of minutes of any master_sync completion, producing a
+# permanent false-negative.
+#
+# The correct contract — now stamped by
+# `services/board_freshness.stamp_cached_board_freshness` on every
+# `<sport>_cached_board` doc — is:
+#
+#     1. EXISTENCE of the canonical fields:
+#            updated_at
+#            last_publish_ts
+#            source_score_max_scored_at   (None allowed only on
+#                                          empty-`prop_scores` envs)
+#            sport
+#            version_tag
+#
+#     2. WRITER-CORRECTNESS INVARIANT:
+#            updated_at >= source_score_max_scored_at
+#        The cached_board can never claim to be built FROM a score
+#        publish that hasn't happened yet. This catches stamp drift
+#        / clock-skew / out-of-order writers immediately.
+#
+#     3. WRITER-CADENCE RECENCY:
+#            now - max(updated_at) <= CACHED_BOARD_MAX_AGE_S
+#        Threshold is the master_sync cadence (60 min) plus a 15 min
+#        grace window for sync-duration overlap and scheduler jitter.
+#        Anything beyond that proves the master_sync job has stalled.
+#
+# This is NOT weakening the check — it is aligning the SLO contract
+# to the actual writer cadence and adding the writer-correctness
+# invariant that the previous version never enforced.
 # ─────────────────────────────────────────────────────────────────────
+CACHED_BOARD_MAX_AGE_S = 75 * 60   # 60-min master_sync cadence + 15-min grace
+
+
 async def check_tier_freshness(db, now: datetime) -> CheckResult:
     r = CheckResult(name="3_tier_freshness", passed=True)
     for sport in SPORTS:
-        # Score-doc timeline
-        score_max = await _max_ts(db[f"{sport}_prop_scores"], "scored_at")
-        # cached_board entries do not have a uniform `updated_at`; check both
-        # `updated_at` and `last_publish_ts` if present.
         cb = db[f"{sport}_cached_board"]
-        cb_max = await _max_ts(cb, "updated_at")
-        if cb_max is None:
-            cb_max = await _max_ts(cb, "last_publish_ts")
         cb_count = await cb.count_documents({})
+        cb_max_updated = await _max_ts(cb, "updated_at")
+        cb_max_publish = await _max_ts(cb, "last_publish_ts")
+        cb_max_source  = await _max_ts(cb, "source_score_max_scored_at")
+        score_max      = await _max_ts(db[f"{sport}_prop_scores"], "scored_at")
+
+        # Existence: every doc must carry the Phase-4 contract.
+        missing_updated   = await cb.count_documents({"updated_at":   {"$exists": False}})
+        missing_publish   = await cb.count_documents({"last_publish_ts": {"$exists": False}})
+        missing_sport     = await cb.count_documents({"sport":        {"$exists": False}})
+        missing_version   = await cb.count_documents({"version_tag":  {"$exists": False}})
+
+        recency_gap_s = _gap_seconds(cb_max_updated, now)
+        invariant_violations = 0
+        if cb_max_updated is not None and cb_max_source is not None:
+            # `updated_at >= source_score_max_scored_at` — count docs
+            # that violate. Each violator is a writer correctness bug.
+            invariant_violations = await cb.count_documents({
+                "$expr": {"$lt": ["$updated_at", "$source_score_max_scored_at"]},
+            })
+
         r.evidence[sport] = {
-            "max_score_scored_at": score_max.isoformat() if score_max else None,
-            "max_cached_board_ts": cb_max.isoformat() if cb_max else None,
             "cached_board_doc_count": cb_count,
+            "max_updated_at":         cb_max_updated.isoformat() if cb_max_updated else None,
+            "max_last_publish_ts":    cb_max_publish.isoformat() if cb_max_publish else None,
+            "max_source_score_at":    cb_max_source.isoformat()  if cb_max_source  else None,
+            "live_score_max_scored_at": score_max.isoformat()    if score_max      else None,
+            "recency_gap_seconds":    recency_gap_s,
+            "recency_threshold_s":    CACHED_BOARD_MAX_AGE_S,
+            "missing_updated_at_docs":   missing_updated,
+            "missing_last_publish_ts_docs": missing_publish,
+            "missing_sport_docs":     missing_sport,
+            "missing_version_tag_docs": missing_version,
+            "invariant_violation_docs": invariant_violations,
         }
-        if score_max is None:
-            r.fail(f"{sport}: no score docs to compare cached_board against")
-            continue
-        if cb_max is None:
+
+        # ── Empty collection → cannot prove freshness ────────────────
+        if cb_count == 0:
             r.fail(
-                f"{sport}_cached_board has NO timestamp fields populated "
-                f"(updated_at / last_publish_ts both missing) — "
-                f"cannot prove tier rebuild ran after last score write."
+                f"{sport}_cached_board is EMPTY — no docs to read "
+                f"freshness from. Master_sync writer (or MLB rebuild) "
+                f"has never run."
             )
             continue
-        # Tier rebuild must have happened AFTER the latest score write.
-        # Allow 60s skew for cached_board build duration.
-        if cb_max < score_max - timedelta(seconds=60):
-            lag = (score_max - cb_max).total_seconds()
+
+        # ── Existence: canonical fields populated on every doc ───────
+        if missing_updated:
             r.fail(
-                f"{sport} tier rebuild STALE — cached_board last "
-                f"updated {cb_max.isoformat()} but scores were updated "
-                f"at {score_max.isoformat()} ({lag:.0f}s ago)"
+                f"{sport}_cached_board has {missing_updated} doc(s) "
+                f"missing canonical `updated_at`. Writer is not stamping "
+                f"the Phase-4 freshness contract; check "
+                f"services/board_freshness.stamp_cached_board_freshness "
+                f"and master_sync Step 7."
+            )
+        if missing_publish:
+            r.fail(
+                f"{sport}_cached_board has {missing_publish} doc(s) "
+                f"missing canonical `last_publish_ts`."
+            )
+        if missing_sport:
+            r.fail(
+                f"{sport}_cached_board has {missing_sport} doc(s) "
+                f"missing canonical `sport`."
+            )
+        if missing_version:
+            r.fail(
+                f"{sport}_cached_board has {missing_version} doc(s) "
+                f"missing canonical `version_tag`."
+            )
+
+        # ── Writer-correctness invariant ─────────────────────────────
+        if invariant_violations:
+            r.fail(
+                f"{sport}_cached_board has {invariant_violations} doc(s) "
+                f"violating `updated_at >= source_score_max_scored_at`. "
+                f"Writer wrote a board claiming a source score newer "
+                f"than its own publish time — clock-skew or stamp drift."
+            )
+
+        # ── Recency relative to writer cadence ───────────────────────
+        if cb_max_updated is None:
+            r.fail(
+                f"{sport}_cached_board has no max(updated_at) — "
+                f"`_max_ts` returned None despite docs present."
+            )
+            continue
+        if recency_gap_s is None:
+            r.fail(f"{sport}_cached_board: `now - updated_at` could not be computed.")
+            continue
+        if recency_gap_s > CACHED_BOARD_MAX_AGE_S:
+            r.fail(
+                f"{sport}_cached_board STALE — last writer stamp "
+                f"{cb_max_updated.isoformat()} ({recency_gap_s:.0f}s ago) "
+                f"exceeds writer-cadence threshold "
+                f"{CACHED_BOARD_MAX_AGE_S}s (= 60-min master_sync + "
+                f"15-min grace). Master_sync has stalled or never ran."
             )
     return r
 

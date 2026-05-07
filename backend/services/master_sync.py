@@ -318,6 +318,30 @@ async def run_master_sync(
             )
             metrics["errors"].append(f"vision_intel_enrichment: {exc}")
 
+    # -----------------------------------------------------------------
+    # Step 7 — cached_board freshness stamp (2026-05-07 P0 §3 fix)
+    #
+    # `{nba,mlb}_cached_board` writers (mlb_cached_board_builder full
+    # rebuild + master_sync's three NBA/MLB enrichment overlays) did
+    # not previously stamp doc-level freshness. SLO §3 had no canonical
+    # signal. This stamp closes that gap by writing the Phase 4
+    # freshness contract `{updated_at, last_publish_ts,
+    # source_score_max_scored_at, sport, version_tag}` on EVERY doc in
+    # the just-built/just-enriched cached_board. Idempotent; one
+    # `update_many` per sport per master_sync run.
+    # -----------------------------------------------------------------
+    if sport in ("nba", "mlb"):
+        try:
+            ts = datetime.now(timezone.utc)
+            from services.board_freshness import stamp_cached_board_freshness
+            cb_metrics = await stamp_cached_board_freshness(db, sport, now=ts)
+            metrics["steps"]["7_cached_board_freshness_stamp"] = cb_metrics
+        except Exception as exc:
+            logger.warning(
+                f"[MASTER_SYNC:{sport}] cached_board freshness stamp failed: {exc}"
+            )
+            metrics["errors"].append(f"cached_board_freshness_stamp: {exc}")
+
     completed = datetime.now(timezone.utc)
     metrics["completed_at"] = completed.isoformat()
     metrics["total_duration_seconds"] = (completed - started).total_seconds()
