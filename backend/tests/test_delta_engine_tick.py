@@ -230,7 +230,6 @@ async def test_tick_aborts_when_upstream_lock_held():
         # Downstream steps should report skipped=True.
         assert result.steps["3_rescore_dirty"]["skipped"] is True
         assert result.steps["4_rebalance_tiers"]["skipped"] is True
-        assert result.steps["5_advance_watermark"]["skipped"] is True
     finally:
         _usl._singleton = orig
 
@@ -293,7 +292,11 @@ async def test_tick_marks_retired_keys_inactive(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_tick_advances_watermark(monkeypatch):
+async def test_tick_emits_observability_event(monkeypatch):
+    """2026-05-07 P0-A: replaces the old `test_tick_advances_watermark`.
+    The watermark step was deleted; the engine must still complete
+    successfully and emit a delta_tick observability signal via the
+    EmitDeltaTickStep at slot `5_emit`."""
     db = _FakeDB()
     now = datetime.now(timezone.utc)
     db["mlb_live_props"]._docs = [
@@ -312,12 +315,12 @@ async def test_tick_advances_watermark(monkeypatch):
     monkeypatch.setattr(ds_mod, "recompute_sport", _stub_recompute)
 
     engine = DeltaEngine(db)
-    before = datetime.now(timezone.utc)
     result = await engine.tick("mlb")
-    after = datetime.now(timezone.utc)
 
-    wm_docs = db["delta_watermarks"]._docs
-    assert len(wm_docs) == 1
-    wm_ts = wm_docs[0]["last_tick_utc"]
-    assert before - timedelta(seconds=1) <= wm_ts <= after + timedelta(seconds=1)
-    assert result.steps["5_advance_watermark"]["advanced_to"] is not None
+    # The engine must NOT touch a (now-deleted) delta_watermarks
+    # collection — emit step is now slot 6.
+    assert "delta_watermarks" not in db._colls, (
+        "DeltaEngine must not write to delta_watermarks anymore"
+    )
+    assert "5_advance_watermark" not in result.steps
+    assert "6_emit" in result.steps

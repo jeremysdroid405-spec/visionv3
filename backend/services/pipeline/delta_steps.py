@@ -22,8 +22,17 @@ Steps defined here:
                               `recompute_sport(..., only_canonical_keys=...)`.
   - RebalanceTiersStep      — marks RT docs inactive for retired keys
                               (opens tier slots for the next query).
-  - AdvanceWatermarkStep    — bumps the persistent cursor.
   - EmitDeltaTickStep       — publishes a BoardEvent for observability.
+
+2026-05-07 P0-A SSOT cleanup — `AdvanceWatermarkStep` and the
+`delta_watermarks` collection have been removed. They were a vestige
+of the timestamp-watermark detection approach that Step 3 (2026-05-07)
+replaced with `services.delta.dirty_queue`. The watermark step had
+been demoted to "observability only" but kept writing every tick,
+which created the architectural mismatch the production SLO check
+flagged ("watermark ahead of live_props.max(updated_at)"). Per
+stabilization-plan rule "one detection system only", every reference
+to delta_watermarks has been deleted, not shimmed.
 """
 from __future__ import annotations
 
@@ -33,7 +42,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 from services.delta.detector import detect_changed_props
-from services.delta_watermarks import advance_watermark
 from services.scoring.recompute import recompute_sport
 from services.scoring.tiering import mark_retired_inactive, get_tier_distribution
 from services.upstream_sync_lock import get_upstream_sync_lock
@@ -66,15 +74,13 @@ class DetectChangedPropsStep(DeltaStep):
         context["detection"] = result
         return {
             "duration_seconds": (datetime.now(timezone.utc) - t0).total_seconds(),
-            "watermark_utc": (
-                result.watermark_utc.isoformat() if result.watermark_utc else None
-            ),
             "updated_count": len(result.updated_keys),
             "new_count": len(result.new_keys),
             "retired_count": len(result.retired_keys),
             "dirty_count": len(result.dirty_keys),
             "live_props_count": result.live_props_count,
             "scored_rt_count": result.scored_rt_count,
+            "queue_depth_remaining": result.queue_depth_remaining,
         }
 
 
@@ -257,45 +263,6 @@ class RebalanceTiersStep(DeltaStep):
         }
 
 
-class AdvanceWatermarkStep(DeltaStep):
-    """DEPRECATED as a detection mechanism. Records the last tick time
-    for observability only.
-
-    History (2026-05-07): replaced by `services.delta.dirty_queue` —
-    the watermark used to filter `live_props.find({updated_at > wm})`,
-    which raced upstream commits. Now the dirty queue is the single
-    source of truth for "what changed since last tick". This step is
-    kept only because external dashboards and admin endpoints read
-    `delta_watermarks.last_tick_utc` for "when did the engine last
-    run" diagnostics.
-
-    NO detection logic depends on this value anymore. The 90-second
-    SAFE_LAG cap is removed (was a bandage on the watermark race the
-    queue eliminated).
-    """
-
-    name = "5_advance_watermark"
-
-    async def run(self, sport, db, context):
-        if context.get("abort_remaining_steps"):
-            return {"skipped": True, "reason": "upstream_lock_held"}
-
-        # Pure observability: stamp `last_tick_utc = now()` so
-        # dashboards can report "engine last ran X seconds ago".
-        # No detection consumer reads this value anymore.
-        from datetime import datetime, timezone
-        ts = datetime.now(timezone.utc)
-        t0 = ts
-        advanced_to = await advance_watermark(db, sport, ts)
-        dur = (datetime.now(timezone.utc) - t0).total_seconds()
-        return {
-            "duration_seconds": dur,
-            "advanced_to": advanced_to.isoformat(),
-            "deprecated_for_detection": True,
-            "detection_source": "delta_dirty_queue",
-        }
-
-
 class EmitDeltaTickStep(DeltaStep):
     """Publish a `delta_tick_complete` BoardEvent for observability."""
 
@@ -331,7 +298,6 @@ DEFAULT_DELTA_STEPS = (
     UpstreamLockGateStep(),
     RescoreDirtyPropsStep(),
     RebalanceTiersStep(),
-    AdvanceWatermarkStep(),
     EmitDeltaTickStep(),
 )
 
@@ -342,7 +308,6 @@ __all__ = [
     "UpstreamLockGateStep",
     "RescoreDirtyPropsStep",
     "RebalanceTiersStep",
-    "AdvanceWatermarkStep",
     "EmitDeltaTickStep",
     "DEFAULT_DELTA_STEPS",
 ]

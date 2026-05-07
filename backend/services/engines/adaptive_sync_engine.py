@@ -1160,48 +1160,33 @@ class AdaptiveSyncEngine:
         # Track last sync times
         last_injury_sync = None
         last_ticker_sync = None
-        last_nba_game_logs_sync = None
-        last_mlb_game_logs_sync = None
         last_mlb_lineup_check = None
         
         # Sync intervals
         INJURY_SYNC_INTERVAL = 1800      # 30 minutes
         TICKER_SYNC_INTERVAL = 1800      # 30 minutes
-        GAME_LOGS_SYNC_INTERVAL = 14400  # 4 hours - refresh game logs for accurate hit rates
         MLB_LINEUP_CHECK_INTERVAL = 900  # 15 minutes - MLB Lineup Gate check
-        
+
+        # 2026-05-07 P0-A FIX — BDL game-logs refreshes (NBA + MLB) used
+        # to be inlined here on a 4-hour cadence. Each one paginates
+        # hundreds of api.balldontlie.io calls and routinely takes
+        # >900s, which exceeds the watchdog stale_threshold (3 ×
+        # next_poll_in_seconds, floor 600s = 900s). That blocked the
+        # heartbeat write at the bottom of this loop, triggered watchdog
+        # restarts, which canceled the in-flight BDL sync, which started
+        # over from scratch on the next poll, which froze again — six
+        # restarts in 30 min → RESTART_STORM_DETECTED → engine permanently
+        # paused. The same refreshes are already scheduled as standalone
+        # APScheduler daily cron jobs in server.py (`bdl_game_logs_sync`
+        # at 04:15 EST, `mlb_bdl_game_logs_sync` at 04:18 EST), so the
+        # inline copies were redundant duplicates whose only effect was
+        # to break the engine. Keeping them here would also fight the
+        # SSOT lock acquired around _sync_odds_callback below.
+
         while self.is_running:
             try:
                 now = datetime.now(timezone.utc)
-                
-                # =================================================================
-                # NBA GAME LOGS SYNC (Every 4 hours) - BATCHED
-                # =================================================================
-                if last_nba_game_logs_sync is None or (now - last_nba_game_logs_sync).total_seconds() >= GAME_LOGS_SYNC_INTERVAL:
-                    try:
-                        from services.bdl_game_logs_sync_batched import run_bdl_game_logs_sync_batched
-                        logger.info("[ADAPTIVE_SYNC] Refreshing NBA BDL game logs (BATCHED)...")
-                        result = await run_bdl_game_logs_sync_batched(self.db)
-                        logger.info(f"[ADAPTIVE_SYNC] NBA game logs: {result.get('players_synced', 0)} players, {result.get('total_games', 0)} games")
-                        last_nba_game_logs_sync = now
-                    except Exception as e:
-                        logger.error(f"[ADAPTIVE_SYNC] NBA game logs refresh failed: {e}")
-                        last_nba_game_logs_sync = now
-                
-                # =================================================================
-                # MLB GAME LOGS SYNC (Every 4 hours) - BATCHED
-                # =================================================================
-                if last_mlb_game_logs_sync is None or (now - last_mlb_game_logs_sync).total_seconds() >= GAME_LOGS_SYNC_INTERVAL:
-                    try:
-                        from services.bdl_universal_sync import run_bdl_universal_sync
-                        logger.info("[ADAPTIVE_SYNC] Refreshing MLB BDL game logs (BATCHED)...")
-                        result = await run_bdl_universal_sync(self.db, sport="mlb", include_players=False, include_stats=True)
-                        logger.info(f"[ADAPTIVE_SYNC] MLB game logs: {result.get('game_logs_synced', 0)} games synced")
-                        last_mlb_game_logs_sync = now
-                    except Exception as e:
-                        logger.error(f"[ADAPTIVE_SYNC] MLB game logs refresh failed: {e}")
-                        last_mlb_game_logs_sync = now
-                
+
                 # =================================================================
                 # MAIN SYNC: NBA + MLB via callback or legacy
                 # =================================================================

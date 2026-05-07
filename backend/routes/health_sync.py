@@ -336,11 +336,33 @@ async def _probe_locks(db) -> Dict[str, Any]:
 
 
 async def _probe_delta_engine(db, sport: str) -> Dict[str, Any]:
+    """Delta-engine health probe.
+
+    2026-05-07 P0-A: was reading `delta_watermarks.last_tick_utc`. The
+    watermark collection was removed on the same day in favour of
+    `delta_dirty_queue` as the single detection source. This probe now
+    reports queue depth and the most-recent enqueue time per sport, which
+    is what dashboards actually need ("how far behind is detection?").
+    """
     try:
-        wm = await db["delta_watermarks"].find_one(
-            {"sport": sport}, {"_id": 0},
-        )
-        return wm or {"sport": sport, "watermark": None}
+        from services.delta.dirty_queue import queue_depth
+        depth = await queue_depth(db, sport=sport)
+        # Most-recent enqueue (monotonic via ObjectId) — gives a real
+        # "engine last received signal at" timestamp.
+        latest = await db["delta_dirty_queue"].find(
+            {"sport": sport}, {"_id": 1, "enqueued_at": 1},
+        ).sort([("_id", -1)]).limit(1).to_list(1)
+        last_enqueue = None
+        if latest:
+            ea = latest[0].get("enqueued_at")
+            if ea is not None:
+                last_enqueue = ea.isoformat() if hasattr(ea, "isoformat") else str(ea)
+        return {
+            "sport": sport,
+            "detection_source": "delta_dirty_queue",
+            "queue_depth": depth,
+            "last_enqueue_at": last_enqueue,
+        }
     except Exception as exc:  # noqa: BLE001
         return {"error": repr(exc)}
 

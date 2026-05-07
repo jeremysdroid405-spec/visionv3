@@ -12,9 +12,12 @@ via a sibling service.
 
 Scope under test:
   - services/delta/**
-  - services/delta_watermarks.py
   - routes/delta_admin.py
   - (future) services/delta_engine.py, services/upstream_sync_lock.py
+
+  Note (2026-05-07 P0-A): `services/delta_watermarks.py` was removed
+  during the SSOT cleanup that elevated `delta_dirty_queue` to be the
+  sole detection source. It is no longer in scope.
 """
 import os
 import re
@@ -27,7 +30,6 @@ BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 # Delta-path files that must NOT import upstream fetchers.
 DELTA_PATH_GLOBS = [
     "services/delta/**/*.py",
-    "services/delta_watermarks.py",
     "services/delta_engine.py",            # future D4
     "services/upstream_sync_lock.py",      # future D4
     "services/pipeline/delta_steps.py",    # future D3
@@ -74,9 +76,8 @@ def _expand_globs(globs):
 
 def test_delta_path_has_no_upstream_imports():
     delta_files = _expand_globs(DELTA_PATH_GLOBS)
-    # D1 scope — at least these two must exist.
+    # D1 scope — at least these must exist.
     required = {
-        BACKEND_ROOT / "services" / "delta_watermarks.py",
         BACKEND_ROOT / "services" / "delta" / "detector.py",
         BACKEND_ROOT / "routes" / "delta_admin.py",
     }

@@ -192,30 +192,41 @@ async def test_burst_ingestion_no_loss_across_capped_ticks(db_with_isolated_queu
     )
 
 
-# ── Contract 4: AdvanceWatermarkStep no longer drives detection ─────
-def test_advance_watermark_step_is_diagnostic_only():
-    """The watermark step's metrics MUST advertise `deprecated_for_detection`
-    so any external observer treats `last_tick_utc` as informational."""
-    from services.pipeline.delta_steps import AdvanceWatermarkStep
-    step = AdvanceWatermarkStep()
-    # The class no longer carries SAFE_LAG_SECONDS; tick_started_at is
-    # not consulted; the metric is a deprecation flag.
-    assert not hasattr(step, "SAFE_LAG_SECONDS"), (
-        "AdvanceWatermarkStep still has SAFE_LAG_SECONDS — that was a "
-        "watermark-era bandage; the queue eliminates the race so the "
-        "cap should be gone."
+# ── Contract 4: AdvanceWatermarkStep is removed entirely ────────────
+def test_advance_watermark_step_is_removed():
+    """2026-05-07 P0-A SSOT cleanup: `AdvanceWatermarkStep` and the
+    `delta_watermarks` collection have been deleted. The dirty queue
+    is the single detection source — no observability shim remains.
+    """
+    from services.pipeline import delta_steps
+    assert not hasattr(delta_steps, "AdvanceWatermarkStep"), (
+        "AdvanceWatermarkStep was removed — re-introducing it would "
+        "restore a second 'when did engine last tick' source and "
+        "violate the 'one detection system only' rule."
     )
+    # `__all__` must not advertise it either.
+    assert "AdvanceWatermarkStep" not in delta_steps.__all__
+    # And the default chain must not contain a watermark-named step.
+    step_names = [s.name for s in delta_steps.DEFAULT_DELTA_STEPS]
+    assert not any("watermark" in n for n in step_names), step_names
 
-    # Inspect the source of the run() method to confirm it does not
-    # consult `tick_started_at` or any timestamp filter for detection.
-    import inspect
-    src = inspect.getsource(step.run)
-    assert "context.get(\"tick_started_at\")" not in src, (
-        "AdvanceWatermarkStep still reads tick_started_at — must be "
-        "purely informational stamping `now()`."
-    )
-    assert "deprecated_for_detection" in src
-    assert "delta_dirty_queue" in src
+
+def test_delta_watermarks_module_is_deleted():
+    """The `services/delta_watermarks.py` module has been removed.
+    No production code may import from it."""
+    from pathlib import Path
+    assert not Path(
+        "/app/backend/services/delta_watermarks.py"
+    ).exists(), "delta_watermarks module must remain deleted"
+    import importlib
+    try:
+        importlib.import_module("services.delta_watermarks")
+    except ModuleNotFoundError:
+        pass
+    else:
+        raise AssertionError(
+            "services.delta_watermarks unexpectedly importable"
+        )
 
 
 # ── Contract 5: universal_odds_sync enqueues on every batch ─────────

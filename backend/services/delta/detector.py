@@ -2,17 +2,23 @@
 Delta Engine — Sport-Agnostic Change Detector
 =============================================
 Phase D1 (2026-04-21): read-only detection of prop-level changes since the
-last watermark. No writes. No upstream API calls.
+last tick. No writes. No upstream API calls.
 
 Three detection signals, per the architecture plan §5:
 
-  1. UPDATED  — rows in `{sport}_live_props` with `updated_at > watermark`
-                (primary signal: line moves, odds moves, new listings by
-                the odds-sync).
+  1. UPDATED  — canonical_keys drained from `delta_dirty_queue`
+                (primary signal: line moves, odds moves, new listings
+                enqueued by universal_odds_sync after every batch).
+                2026-05-07 Step 3: replaced timestamp-watermark
+                detection (which raced upstream commits) with this
+                monotonic-ObjectId queue. SSOT cleanup on the same
+                day removed `delta_watermarks` entirely — there is no
+                fallback / dual-source path. The queue is the only
+                source of truth for "what changed since last tick".
   2. NEW      — canonical_keys present in live_props but absent from
-                `{sport}_prop_scores@final-{sport}-rt` (secondary signal:
-                props that upstream just surfaced and have never been
-                scored at the RT tag).
+                `{sport}_prop_scores@final-{sport}-rt` (secondary
+                signal: props that upstream just surfaced and have
+                never been scored at the RT tag).
   3. RETIRED  — canonical_keys present in the RT score set but whose
                 live_props row is now `active=False` (tertiary signal:
                 game-start scanner flipped the prop; tier ladder drops
@@ -31,7 +37,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
 from services.config.collection_names import COLL
-from services.delta_watermarks import get_watermark_with_grace
 from services.scoring.adapters import get_scoring_adapter
 
 logger = logging.getLogger(__name__)
@@ -49,7 +54,6 @@ def _rt_version_tag(sport: str) -> str:
 class DeltaDetectionResult:
     """Result of a single detection pass. Read-only — no writes performed."""
     sport: str
-    watermark_utc: Optional[datetime]
     # Canonical-key sets
     dirty_keys: Set[str] = field(default_factory=set)   # union of updated + new + retired
     updated_keys: Set[str] = field(default_factory=set) # §5.1 primary signal
@@ -76,9 +80,6 @@ class DeltaDetectionResult:
     def to_summary(self) -> Dict[str, Any]:
         return {
             "sport": self.sport,
-            "watermark_utc": (
-                self.watermark_utc.isoformat() if self.watermark_utc else None
-            ),
             "dirty_count": len(self.dirty_keys),
             "updated_count": len(self.updated_keys),
             "new_count": len(self.new_keys),
@@ -87,6 +88,7 @@ class DeltaDetectionResult:
             "active_live_props_count": self.active_live_props_count,
             "scored_rt_count": self.scored_rt_count,
             "missing_updated_at": self.missing_updated_at,
+            "queue_depth_remaining": self.queue_depth_remaining,
             "sample_updated_keys": self.sample_updated,
             "sample_new_keys": self.sample_new,
             "sample_retired_keys": self.sample_retired,
@@ -100,10 +102,7 @@ async def detect_changed_props(db, sport: str) -> DeltaDetectionResult:
     to `live_props`, `prop_scores`, or any other collection.
     """
     sport = (sport or "").lower()
-    result = DeltaDetectionResult(
-        sport=sport,
-        watermark_utc=await get_watermark_with_grace(db, sport),
-    )
+    result = DeltaDetectionResult(sport=sport)
 
     live_coll = db[COLL("live_props", sport)]
     scored_coll = db[COLL("prop_scores", sport)]
@@ -259,8 +258,9 @@ async def detect_changed_props(db, sport: str) -> DeltaDetectionResult:
     result.sample_retired = sorted(retired_keys)[:MAX_SAMPLE_KEYS]
 
     logger.info(
-        f"[DELTA:{sport}] detect: watermark={result.watermark_utc} "
+        f"[DELTA:{sport}] detect (dirty-queue): "
         f"updated={len(updated_keys)} new={len(new_keys)} "
-        f"retired={len(retired_keys)} dirty={len(result.dirty_keys)}"
+        f"retired={len(retired_keys)} dirty={len(result.dirty_keys)} "
+        f"queue_remaining={result.queue_depth_remaining}"
     )
     return result

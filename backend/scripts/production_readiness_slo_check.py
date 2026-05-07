@@ -19,7 +19,15 @@ Checks (mirrors the stabilization-plan Phase 5 spec verbatim):
   1. Ingestion freshness   — {nba,mlb}_live_props.max(updated_at) < 5 min
   2. Score freshness       — {nba,mlb}_prop_scores.max(scored_at) < 5 min
   3. Tier freshness        — last cached_board write > last score write
-  4. Watermark sanity      — watermark NOT ahead of live_props.max(updated_at)
+  4. Detection-source freshness — `delta_dirty_queue` last enqueue per
+                             sport < 5 min AND queue depth bounded.
+                             (2026-05-07 P0-A: replaced the legacy
+                             `delta_watermarks` check entirely. The
+                             watermark collection has been deleted from
+                             the architecture; the dirty queue is the
+                             single source of truth for "what changed
+                             since last tick". One detection system,
+                             no shims.)
   5. API/UI correctness    — 10 visible picks per sport: API == score_doc;
                              L5 ∈ {0,20,40,60,80,100}; L10 % 10 == 0;
                              L20 % 5 == 0; no `hit_rates`; no legacy aliases
@@ -76,7 +84,7 @@ SPORTS = ("nba", "mlb")
 TIERS = ("safe_haven", "front_lines", "war_zone")
 
 FRESHNESS_MAX_AGE_S = 5 * 60          # §1, §2  (5 minutes)
-WATERMARK_MAX_LAG_S = 5 * 60          # §4 sanity
+DIRTY_QUEUE_MAX_LAG_S = 5 * 60        # §4 detection-source freshness
 VISION_COVERAGE_MIN_PCT = 80.0        # §6
 SAMPLE_SIZE_PER_SPORT = 10            # §5
 
@@ -273,43 +281,68 @@ async def check_tier_freshness(db, now: datetime) -> CheckResult:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# §4  Watermark sanity
+# §4  Detection-source freshness — `delta_dirty_queue` per sport
+#
+# 2026-05-07 P0-A architecture note:
+# The previous §4 ("watermark NOT ahead of live_props.max(updated_at)")
+# was a sanity check on the timestamp-watermark detection that Step 3
+# replaced. SSOT cleanup deleted the `delta_watermarks` collection AND
+# the AdvanceWatermarkStep that wrote it — there is no fallback path
+# and no compatibility shim. The dirty queue (`delta_dirty_queue`,
+# enqueued by `universal_odds_sync` after every batch insert, drained
+# by `services.delta.detector`) is now the single detection source.
+#
+# What this check enforces in the new architecture:
+#   (a) Most-recent enqueue per sport is < 5 min old (live ingestion).
+#   (b) Queue depth is bounded — unbounded growth means the engine
+#       is enqueueing faster than it can drain (consumer lag).
+#       Hard cap = 5× a typical NBA/MLB ingest batch (~30k props),
+#       reported in evidence regardless.
 # ─────────────────────────────────────────────────────────────────────
-async def check_watermark_sanity(db, now: datetime) -> CheckResult:
-    r = CheckResult(name="4_watermark_sanity", passed=True)
+DIRTY_QUEUE_DEPTH_HARD_CAP = 150_000   # 5× peak batch — generous bound
+
+
+async def check_detection_source_freshness(db, now: datetime) -> CheckResult:
+    r = CheckResult(name="4_detection_source_freshness", passed=True)
     for sport in SPORTS:
-        wm_doc = await db["delta_watermarks"].find_one(
-            {"_id": sport}, {"_id": 0, "last_tick_utc": 1}
-        )
-        wm_ts = _ensure_aware(wm_doc.get("last_tick_utc")) if wm_doc else None
+        depth = await db["delta_dirty_queue"].count_documents({"sport": sport})
+        latest = await db["delta_dirty_queue"].find(
+            {"sport": sport}, {"_id": 1, "enqueued_at": 1},
+        ).sort([("_id", -1)]).limit(1).to_list(1)
+        last_enqueue = None
+        last_lag_s: float | None = None
+        if latest:
+            ea = latest[0].get("enqueued_at")
+            if isinstance(ea, datetime):
+                last_enqueue = _ensure_aware(ea)
+                last_lag_s = (now - last_enqueue).total_seconds()
         live_max = await _max_ts(db[f"{sport}_live_props"], "updated_at")
-        wm_lag = _gap_seconds(wm_ts, now)
-        ahead = (
-            wm_ts is not None
-            and live_max is not None
-            and wm_ts > live_max
-        )
         r.evidence[sport] = {
-            "watermark": wm_ts.isoformat() if wm_ts else None,
+            "detection_source": "delta_dirty_queue",
+            "queue_depth": depth,
+            "last_enqueue_at": last_enqueue.isoformat() if last_enqueue else None,
+            "last_enqueue_lag_seconds": last_lag_s,
             "live_props_max_updated_at": live_max.isoformat() if live_max else None,
-            "watermark_lag_seconds": wm_lag,
-            "watermark_ahead_of_data": ahead,
         }
-        if wm_ts is None:
-            r.fail(f"{sport}: delta_watermark missing — pipeline never ticked")
-            continue
-        if ahead:
-            overshoot = (wm_ts - live_max).total_seconds()
+        if last_enqueue is None:
             r.fail(
-                f"{sport}: WATERMARK AHEAD OF DATA by {overshoot:.0f}s — "
-                f"watermark={wm_ts.isoformat()} > "
-                f"live_max={live_max.isoformat()}. Late-arriving writes "
-                f"will be skipped."
+                f"{sport}: delta_dirty_queue has NO enqueue events — "
+                f"detection pipeline never received a signal. "
+                f"Either ingestion is dead or universal_odds_sync stopped "
+                f"calling enqueue_dirty()."
             )
-        if wm_lag is not None and wm_lag > WATERMARK_MAX_LAG_S:
+            continue
+        if last_lag_s is not None and last_lag_s > DIRTY_QUEUE_MAX_LAG_S:
             r.fail(
-                f"{sport}: WATERMARK STALLED — last tick {wm_lag:.0f}s ago "
-                f"(threshold {WATERMARK_MAX_LAG_S}s)"
+                f"{sport}: delta_dirty_queue STALE — last enqueue "
+                f"{last_lag_s:.0f}s ago (threshold {DIRTY_QUEUE_MAX_LAG_S}s); "
+                f"last_enqueue_at={last_enqueue.isoformat()}"
+            )
+        if depth > DIRTY_QUEUE_DEPTH_HARD_CAP:
+            r.fail(
+                f"{sport}: delta_dirty_queue UNBOUNDED — depth={depth} "
+                f"> cap {DIRTY_QUEUE_DEPTH_HARD_CAP}. Detector is not "
+                f"draining as fast as ingestion enqueues."
             )
     return r
 
@@ -525,7 +558,7 @@ async def run_all() -> tuple[bool, list[CheckResult], dict]:
         check_ingestion_freshness,
         check_score_freshness,
         check_tier_freshness,
-        check_watermark_sanity,
+        check_detection_source_freshness,
         check_api_correctness,
         check_vision_intel_coverage,
         check_tier_counts,
