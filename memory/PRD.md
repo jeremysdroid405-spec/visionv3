@@ -88,6 +88,26 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
   - 9 SSOT/queue tests green: `test_step3_dirty_queue.py` (incl. 2 new leak-fix regressions). Tier-counts active, score freshness <200s for both sports.
   - **Out of P0-A scope (acknowledged, not silently fixed):**
     - 60s-interval APScheduler jobs (Universal Game-Start Scanner, Wave 1 Shadow-Write Divergence Monitor) miss their slot by 1-55s during hourly `master_sync` enrichment (event-loop saturation). Pre-existing, unrelated to P0-A. Jobs catch up afterward.
+- **PROP VISION STABILIZATION — Phase 4A (2026-05-07) — `edge_pct` SSOT cleanup COMPLETE:**
+  - **DB-persisted legacy field eliminated.** `$unset edge_pct` migration ran twice (once before the writer fix exposed regression, again after the writer fix verified clean). Combined: 23,562 + 60,033 = 83,595 docs cleaned in pass 1; 363 + 487 = 850 regressed docs cleaned in pass 2; **0 docs remaining across all 4 score/board collections post-fix-and-restart-and-recompute.**
+  - **5 persistence-layer writers fixed** (deepest layer was the score-doc allowlist):
+    1. `services/scoring/prop_scores_store.py:_SCORE_OUTPUT_FIELDS` — removed `"edge_pct"` from the strict allowlist (the actual gate for what gets persisted).
+    2. `services/scoring/recompute.py:690` — removed `doc["edge_pct"] = ctx.edge_pct` write.
+    3. `services/scoring/score_document_schema.py:220` — removed `edge_pct: Optional[float]` declaration so `extra="forbid"` strict-mode validates correctly without it.
+    4. `services/board/publisher.py` — `_snapshot()` no longer emits `edge_pct`; sort-tuple in `rank_tuple()` and merged-tier sort now use canonical `edge_vs_fair`.
+    5. `services/board/shadow_publisher.py` — same two changes for shadow path (`rank_tuple_v2`, `_shadow_persist`'s snapshot, `get_shadow_board` merged sort).
+  - **Re-eval reader migrated to canonical** (`services/scoring/metrics_builder.py:179`): `build_metrics_from_score_doc` derives `edge_pct = doc["edge_vs_fair"] * 100.0` instead of reading the legacy field. Same numeric value, sourced from SSOT.
+  - **Response-layer `vk_edge` API leakage removed** from `services/vision_intel_service.py:325` and `services/mlb_vision_intel.py:256` (response stamps that exposed legacy field on prop dicts; companion `edge_pct` response stamp on `vision_intel_service` removed in same edit). Local variables that fed only the dropped stamps were also removed (linter F841 clean).
+  - **Frontend already canonical:** `PlayerDetailPage.jsx` had only documentation comments referencing `edge_pct`, no live reads. No other frontend file references the legacy field.
+  - **Scoring math untouched.** `scoring_stack.py`, NBA/MLB adapters, `vision_v2.py` continue to compute and pass `edge_pct` as an in-memory intermediate for tier evaluation — the scoring component score/edge_component math is byte-identical to before. Only persistence and response layers changed.
+  - **Verification (live, post-fix, post-restart, post-recompute):**
+    - `db.{nba,mlb}_prop_scores.count({edge_pct:{$exists:true}})` = 0 / 0
+    - `db.{nba,mlb}_cached_board.count({edge_pct:{$exists:true}})` = 0 / 0
+    - API tier endpoints `/api/v3/ferrari/all?sport={nba,mlb}`: 47 visible picks, 0 `edge_pct` leaks, 0 `vk_edge` leaks, 47/47 `edge_vs_fair` present
+    - `production_readiness_slo_check.py`: §1 PASS (NBA 71s, MLB 57s), §2 PASS (NBA 11s, MLB 5s), §4 PASS (queue-based detection lag <70s both sports), §3 FAIL (pre-existing — cached_board timestamps), §5 FAIL (Phase 4B scope — `h5_rate`/`h10_rate`/`hit_rate`/`hit_rates`/`model_hit_rate_*` response shims), §7 tier-counts PASS.
+    - Adaptive engine heartbeat 10s old, 0 watchdog events.
+  - **Migration script:** `/app/backend/scripts/p0_phase4a_unset_edge_pct.py` (idempotent — rerunning produces 0 modifications).
+  - **Verification harness:** `/app/backend/scripts/p0_phase4a_verify.sh` (5 sections; explicit pass/fail; documented out-of-scope items).
 
 ## Open issues (priority)
 - **P0** Vision Intel universal refactor — full scope in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`. Nullification phase shipped (Phase 2); engine refactor remains.

@@ -176,7 +176,15 @@ def build_metrics_from_score_doc(
         book_count=doc.get("book_count"),
         cv=doc.get("cv"),
         hit_rate=hr,
-        edge_pct=doc.get("edge_pct"),
+        # 2026-05-07 P0 Phase 4A: re-eval can no longer read the
+        # legacy `edge_pct` field directly (no longer persisted).
+        # Reconstruct from canonical `edge_vs_fair` (decimal, 0..1)
+        # — same semantic value × 100, gates accept either form.
+        edge_pct=(
+            doc["edge_vs_fair"] * 100.0
+            if doc.get("edge_vs_fair") is not None
+            else None
+        ),
         tp=doc.get("tp"),
         ceiling_rate=doc.get("ceiling_rate"),
         p_model_pct=p_model_pct,

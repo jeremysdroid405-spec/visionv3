@@ -196,16 +196,12 @@ class VisionIntelService:
             vk_edge_raw = prop.get('vk_edge', 0) or 0
             # vk_edge is computed as (model - line) which is OVER-semantic —
             # flip sign for UNDER so "positive edge" always means the picked
-            # side has room to run.
+            # side has room to run. Used downstream for cushion calc.
             vk_edge = -float(vk_edge_raw) if is_under else float(vk_edge_raw)
 
-            # Side-aware ratio-to-line percent edge. Same formula the cards
-            # use (`(proj-line)/line * 100`) so the paragraph and the UI
-            # can never show different percent numbers on the same prop.
-            try:
-                edge_pct = round((vk_edge / float(line)) * 100.0, 1) if line else 0.0
-            except (TypeError, ValueError, ZeroDivisionError):
-                edge_pct = 0.0
+            # 2026-05-07 P0 Phase 4A: legacy `edge_pct` local removed
+            # (was a derived ratio for the response stamp; the stamp is
+            # gone, so the local has no consumer).
 
             # Side-aware probability
             if is_under:
@@ -322,8 +318,11 @@ class VisionIntelService:
                 "type": pick_type,
                 "vk_proj": round(vk_predicted, 1) if vk_predicted else 0,
                 "vk_prob": round(float(vk_prob), 0) if vk_prob is not None else 50,
-                "vk_edge": round(vk_edge, 1),
-                "edge_pct": edge_pct,
+                # 2026-05-07 P0 Phase 4A: legacy `vk_edge` and `edge_pct`
+                # response stamps removed. Frontend reads `edge_vs_fair`
+                # (canonical, decimal). The local `vk_edge` variable
+                # above is kept in scope only because it feeds the
+                # cushion calculation; nothing downstream stamps it.
                 "cushion": cushion,  # side-aware: positive = picked side has room
                 "h20_rate": round(float(h20_rate), 0) if h20_rate else 0,
                 "h10_rate": round(float(h10_rate), 0) if h10_rate else 0,

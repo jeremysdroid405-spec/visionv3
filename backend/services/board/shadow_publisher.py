@@ -79,13 +79,16 @@ def rank_tuple_v2(p: Dict[str, Any]) -> Tuple[float, float, float, str]:
 
     Slot 1: `ranking_score_v2` (or `vision_score_v2` fallback)  DESC
     Slot 2: `vision_score_v2`                                   DESC
-    Slot 3: `edge_pct`                                          DESC
+    Slot 3: `edge_vs_fair`                                      DESC
     Slot 4: `canonical_key`                                     ASC
+
+    2026-05-07 P0 Phase 4A: legacy `edge_pct` replaced with canonical
+    `edge_vs_fair` (matching primary publisher rank tuple).
     """
     return (
         -_rank_score_v2(p),
         -primary._num(p.get("vision_score_v2")),
-        -primary._num(p.get("edge_pct")),
+        -primary._num(p.get("edge_vs_fair")),
         p.get("canonical_key") or "",
     )
 
@@ -139,7 +142,7 @@ async def _shadow_persist(db, sport, tier, side, ordered, evicted_keys,
             "ranking_score":   primary._rank_score(entry),
             "vision_score_v2": entry.get("vision_score_v2"),
             "vision_score":    entry.get("vision_score"),
-            "edge_pct":        entry.get("edge_pct"),
+            "edge_vs_fair":    entry.get("edge_vs_fair"),
             "p_true_active":   entry.get("p_true_active"),
             "vision_direction_alignment":
                               entry.get("vision_direction_alignment"),
@@ -238,7 +241,7 @@ async def get_shadow_board(db, sport: str, tier: str,
         merged.sort(key=lambda e: (
             -primary._num((e.get("score_snapshot") or {}).get("ranking_score")),
             -primary._num((e.get("score_snapshot") or {}).get("vision_score_v2")),
-            -primary._num((e.get("score_snapshot") or {}).get("edge_pct")),
+            -primary._num((e.get("score_snapshot") or {}).get("edge_vs_fair")),
             e.get("canonical_key") or "",
         ))
         rows = merged

@@ -150,7 +150,8 @@ class MLBVisionIntel:
             # Core stats
             vk_predicted = prop.get('vk_predicted', 0)
             vk_prob = prop.get('vk_prob_over', 50)
-            vk_edge = prop.get('vk_edge', 0)
+            # 2026-05-07 P0 Phase 4A: legacy `vk_edge` local removed
+            # (was used only by the response stamp, which is gone).
             h20_rate = prop.get('h20_rate', 0)
             h10_rate = prop.get('h10_rate', 0)
             cv = prop.get('cv', 0)
@@ -253,7 +254,9 @@ class MLBVisionIntel:
                 "type": pick_type,
                 "vk_proj": round(vk_predicted, 1) if vk_predicted else 0,
                 "vk_prob": round(vk_prob, 0) if vk_prob else 50,
-                "vk_edge": round(vk_edge, 1) if vk_edge else 0,
+                # 2026-05-07 P0 Phase 4A: legacy `vk_edge` response
+                # stamp removed. Frontend reads `edge_vs_fair`
+                # (canonical, decimal).
                 "cushion": cushion,  # How far L5 avg is above/below line
                 "l3_rate": round(l3_rate, 0) if l3_rate else 0,  # Most recent form
                 "h20_rate": round(h20_rate, 0) if h20_rate else 0,

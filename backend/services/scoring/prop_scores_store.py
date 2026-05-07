@@ -215,12 +215,21 @@ _SCORE_OUTPUT_FIELDS = (
     # Multi-book de-vig TP engine (2026-04-22). Replaces the legacy
     # avg(DK,FD) / avg(DK,MGM) implied-prob TP. Fields:
     #   tp               — final de-vigged true probability (0..100) or None
-    #   edge_pct         — p_model*100 − tp; None if tp is None
     #   tp_books_used    — count of books with BOTH sides available
     #   tp_books_list    — ["DK","FD","MGM","BOL"]
     #   tp_method        — "multi_book_devig_v1"
     #   tp_unavailable   — True when no book had both sides (hard-fails gate_tp)
-    "tp", "edge_pct", "tp_books_used", "tp_books_list", "tp_method",
+    #
+    # 2026-05-07 P0 Phase 4A: legacy `edge_pct` removed from this
+    # allowlist. The value is a stale alias of canonical `edge_vs_fair`
+    # (which is `edge_pct / 100`). Score docs continue to carry
+    # `edge_vs_fair`; downstream readers (re-eval, debug snapshots,
+    # publishers) have all been migrated to the canonical field.
+    # Scoring math (`scoring_stack`, NBA/MLB adapters, `vision_v2`) is
+    # unchanged — those modules continue to compute `edge_pct` as an
+    # intermediate value, but it never leaves the in-process scoring
+    # context now.
+    "tp", "tp_books_used", "tp_books_list", "tp_method",
     "tp_unavailable",
     # Typed reason for tp=None (2026-04-24). One of:
     #   None                      – tp was successfully computed

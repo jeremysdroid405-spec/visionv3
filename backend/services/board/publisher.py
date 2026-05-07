@@ -157,11 +157,17 @@ def _rank_score(p: Dict[str, Any]) -> float:
 
 def rank_tuple(p: Dict[str, Any]) -> Tuple[float, float, float, str]:
     """Deterministic ordering tuple — the one rule. Lower is BETTER
-    (we negate DESC fields)."""
+    (we negate DESC fields).
+
+    2026-05-07 P0 Phase 4A: legacy `edge_pct` replaced with canonical
+    `edge_vs_fair`. The two fields carried the same value (modulo a
+    rounding pass); the rename eliminates the SSOT violation that
+    leaked `edge_pct` into 81,243 persisted score docs.
+    """
     return (
         -_rank_score(p),
         -_num(p.get("vision_score")),
-        -_num(p.get("edge_pct")),
+        -_num(p.get("edge_vs_fair")),
         p.get("canonical_key") or "",
     )
 
@@ -174,11 +180,18 @@ def _side_of(p: Dict[str, Any]) -> str:
 def _snapshot(p: Dict[str, Any]) -> Dict[str, Any]:
     """The minimal score fingerprint we persist. NEVER includes the
     full pick — that lives in `{sport}_prop_scores`. We just keep
-    enough to compare ranks deterministically."""
+    enough to compare ranks deterministically.
+
+    2026-05-07 P0 Phase 4A: `edge_pct` removed from the snapshot.
+    Replaced with canonical `edge_vs_fair`. The score_snapshot is
+    embedded in published board docs (`{sport}_cached_board.entries`)
+    and was the on-disk source of the legacy alias for downstream
+    sort tiebreaks.
+    """
     return {
         "ranking_score": _rank_score(p),
         "vision_score":  p.get("vision_score"),
-        "edge_pct":      p.get("edge_pct"),
+        "edge_vs_fair":  p.get("edge_vs_fair"),
         "tp":            p.get("tp"),
         "p_true_active": p.get("p_true_active"),
     }
@@ -477,7 +490,7 @@ async def get_published_board(
         merged.sort(key=lambda e: (
             -_num((e.get("score_snapshot") or {}).get("ranking_score")),
             -_num((e.get("score_snapshot") or {}).get("vision_score")),
-            -_num((e.get("score_snapshot") or {}).get("edge_pct")),
+            -_num((e.get("score_snapshot") or {}).get("edge_vs_fair")),
             e.get("canonical_key") or "",
         ))
         rows = merged

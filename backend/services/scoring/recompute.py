@@ -681,13 +681,16 @@ async def recompute_sport(
         if "war_zone_cv_modifier" in raw:
             doc["war_zone_cv_modifier"] = raw["war_zone_cv_modifier"]
 
-        # Multi-book de-vig TP engine (2026-04-22). `tp`/`edge_pct` come
-        # from `ctx` (authoritative); the meta fields are stamped on the
-        # raw prop by the adapter. Persisting these on the score doc is
-        # what makes TP/edge visible to the API + UI (previously
-        # computed-but-not-saved).
+        # Multi-book de-vig TP engine (2026-04-22). `tp` comes from
+        # `ctx` (authoritative); the meta fields are stamped on the
+        # raw prop by the adapter. Persisting `tp` on the score doc
+        # is what makes TP/edge visible to the API + UI.
+        #
+        # 2026-05-07 P0 Phase 4A: removed `doc["edge_pct"] = ctx.edge_pct`.
+        # The legacy alias is no longer persisted — canonical
+        # `edge_vs_fair` (which equals `edge_pct / 100`) is the SSOT
+        # field stamped elsewhere in this projector.
         doc["tp"] = ctx.tp
-        doc["edge_pct"] = ctx.edge_pct
         # Universal CV (2026-04-23): line-independent, derived from the
         # player's stat-family distribution. See
         # NBAScoringAdapter._compute_cv_and_hit_rate.

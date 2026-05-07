@@ -217,7 +217,11 @@ class ScoreDocument(BaseModel):
     bdl_player_id:                            Optional[int]   = None
     cv:                                       Optional[float] = None
     cv_status:                                Optional[str]   = None
-    edge_pct:                                 Optional[float] = None
+    # 2026-05-07 P0 Phase 4A: legacy `edge_pct` removed. Canonical
+    # SSOT field is `edge_vs_fair` (decimal, 0.20 = 20%); previous
+    # `edge_pct` was the same value × 100. Score docs no longer
+    # persist the alias; this declaration was the strict-mode lock
+    # that allowed the alias to live in `extra="forbid"` schemas.
     gate_eval:                                Optional[Dict[str, Any]] = None
     hit_rate_status:                          Optional[str]   = None
     identity_status:                          Optional[str]   = None
