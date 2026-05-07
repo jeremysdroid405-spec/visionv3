@@ -512,10 +512,10 @@ const PropRow = memo(({ prop, theme, onClick, onQuickAdd, onVKClick }) => {
           />
         )}
         
-        {/* Hit Rates — 2026-05-05 SSOT: prefer canonical `hit_rate_l10`
-            from the score doc; fall back to legacy merge-layer alias. */}
+        {/* Hit Rate — 2026-05-07 P0 Phase 4B: canonical-only read.
+            Backend no longer ships `h10_rate` on tier picks. */}
         {(() => {
-          const l10 = prop.hit_rate_l10 ?? prop.h10_rate;
+          const l10 = prop.hit_rate_l10;
           return l10 != null && (
             <span className={`font-medium ${getHitRateColor(l10)}`} data-testid={`hr-l10-list-${prop.player_name || ''}`}>
               L10: {Math.round(l10)}%
@@ -618,11 +618,11 @@ const UniversalPlayerCard = memo(({
     // Primary prop (for single-prop display)
     stat_type,
     line,
-    h5_rate, h10_rate: _legacy_h10_rate, season_avg, diff_from_avg,
-    // 2026-05-05 SSOT: canonical side-aware hit-rate windows from the
-    // score doc — these are the source of truth for the L5/L10/L20
-    // chip and trio. Legacy `h10_rate` (above) is preserved as a
-    // last-resort fallback only.
+    season_avg, diff_from_avg,
+    // 2026-05-07 P0 Phase 4B: canonical-only side-aware hit-rate
+    // windows from the score doc. Backend no longer ships legacy
+    // `h5_rate` / `h10_rate` aliases on tier picks; reads consume
+    // these canonical fields directly with no fallback.
     hit_rate_l5, hit_rate_l10, hit_rate_l20,
     // Tier info
     is_demon, is_goblin, tier_label,
@@ -905,13 +905,20 @@ const UniversalPlayerCard = memo(({
 
         {/* FLAT STAT STRIP — Projection / Hit Rate / Avg (terminal label style)
             UNIVERSAL DASHBOARD CARD CONTRACT (2026-04-28): card prefers
-            backend-stamped `projection` / `hit_rate` / `avg` (8-field
-            contract) and falls back to legacy field names so existing
-            consumers stay unbroken. */}
+            backend-stamped `projection` / `avg` (8-field contract).
+            2026-05-07 P0 Phase 4B: legacy active-side `hit_rate` field
+            removed from the contract — the card now derives the
+            displayed hit rate from canonical `hit_rate_over` /
+            `hit_rate_under` (gated by `side`/`recommendation`),
+            falling back to the windowed L20 if those are missing. */}
         <div className="flex items-stretch gap-3 pt-1.5 border-t border-zinc-800/70 text-left">
           {(() => {
             const projection = player.projection ?? player.vk_predicted ?? null;
-            const hitRate    = player.hit_rate   ?? h10_rate ?? null;
+            const _side = String(player.side || player.recommendation || 'OVER').toUpperCase();
+            const hitRate =
+              (_side === 'UNDER'
+                ? player.hit_rate_under ?? player.hit_rate_l20
+                : player.hit_rate_over  ?? player.hit_rate_l20) ?? null;
             const avg        = player.avg        ?? season_avg ?? null;
             return (
               <>
@@ -1035,18 +1042,14 @@ const UniversalPlayerCard = memo(({
             {stat_type && !hasProps && (
               <div className="flex items-center gap-2 mt-1.5">
                 <span className={`text-sm font-bold ${theme.text}`}>{formatStatType(stat_type)} {line}</span>
-                {/* 2026-05-05 SSOT: prefer canonical `hit_rate_l10`
-                    from the score doc over the merge-layer alias
-                    `h10_rate`. Legacy `_legacy_h10_rate` retained
-                    only as a last-resort fallback. */}
-                {(() => {
-                  const l10 = hit_rate_l10 ?? _legacy_h10_rate;
-                  return l10 != null && (
-                    <span className={`text-xs ${getHitRateColor(l10)}`} data-testid={`hr-l10-chip-${player.player_name || ''}`}>
-                      L10: {Math.round(l10)}%
-                    </span>
-                  );
-                })()}
+                {/* 2026-05-07 P0 Phase 4B: canonical-only L10 read.
+                    Backend no longer ships legacy `h10_rate` on tier
+                    picks. */}
+                {hit_rate_l10 != null && (
+                  <span className={`text-xs ${getHitRateColor(hit_rate_l10)}`} data-testid={`hr-l10-chip-${player.player_name || ''}`}>
+                    L10: {Math.round(hit_rate_l10)}%
+                  </span>
+                )}
                 {season_avg != null && <span className="text-xs text-zinc-400">Avg: {season_avg?.toFixed?.(1)}</span>}
               </div>
             )}

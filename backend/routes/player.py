@@ -178,9 +178,16 @@ async def _lookup_player_hub(sport: str, name: str) -> Optional[Dict[str, Any]]:
 # fallback below joins on (player, stat) only and would smear stale
 # hit_rates across lines. Score doc fields are the SSOT for the
 # user-visible L5/L10/L20 trio.
+#
+# 2026-05-07 P0 Phase 4B: `h5_rate`, `h10_rate`, `h20_rate` removed
+# from this overlay list. Same SSOT logic as the `hit_rates` removal:
+# canonical `hit_rate_l5/l10/l20` is the score-doc SSOT (verified
+# 100% present on all visible picks pre-removal). Bringing the
+# legacy aliases over from cached_board duplicated and routinely
+# diverged from the canonical (audit found 9/20 NBA picks where
+# `h5_rate` ≠ `hit_rate_l5` by 5-20 percentage points).
 _BOARD_ENRICHMENT_FIELDS = (
     "l5_avg", "l10_avg", "l20_avg", "season_avg",
-    "h5_rate", "h10_rate", "h20_rate",
     "intel_suite", "scout_badges", "context_badges",
     "active_badges", "vision_intel", "vision_summary",
     "momentum_data",

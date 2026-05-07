@@ -119,13 +119,24 @@ class BoardRepository:
         return {r["game_key"]: r["props"] for r in results if r.get("game_key")}
     
     async def get_stats_summary(self) -> Dict[str, Any]:
-        """Get statistics summary for board"""
+        """Get statistics summary for board.
+
+        2026-05-07 P0 Phase 4B (3a): canonical-only aggregation. Was
+        averaging the legacy `props.h10_rate` alias which `cached_board_builder`
+        still emits today (untouched per "no scoring/Vision Intel" rule),
+        so we coalesce to canonical first then fall back to legacy for
+        any analytics row written before the canonical field landed.
+        Internal admin/analytics dashboard only — NOT a user-facing
+        tier endpoint.
+        """
         pipeline = [
             {"$unwind": "$props"},
             {"$group": {
                 "_id": None,
                 "total_props": {"$sum": 1},
-                "avg_hit_rate": {"$avg": "$props.h10_rate"},
+                "avg_hit_rate": {"$avg": {"$ifNull": [
+                    "$props.hit_rate_l10", "$props.h10_rate"
+                ]}},
                 "players": {"$addToSet": "$player_name"}
             }},
             {"$project": {

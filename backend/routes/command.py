@@ -53,6 +53,12 @@ class SimulationLeg(BaseModel):
     opponent: str = ""
     game_id: Optional[str] = None
     is_home: bool = True
+    # 2026-05-07 P0 Phase 4B: canonical-first input fields. Legacy
+    # `h10_rate` / `h5_rate` retained for one migration cycle so
+    # in-flight CommandPost requests don't 422 while the frontend
+    # cuts over to canonical key names.
+    hit_rate_l10: Optional[float] = None
+    hit_rate_l5: Optional[float] = None
     h10_rate: float = 50.0
     h5_rate: float = 50.0
     season_avg: float = 0.0
@@ -407,10 +413,18 @@ async def get_tactical_profile(
                 "l10_avg": l10_data["avg"],
                 "season_avg": season_data["avg"],
                 # COUPLED hit rates (from SAME array as averages - GUARANTEED)
-                "h5_rate": round(l5_data["hit_rate"] * 100, 1),
+                # 2026-05-07 P0 Phase 4B: canonical fields added first
+                # so frontend can read them; legacy `h5_rate`/`h10_rate`
+                # / `hit_rates` retained for one cycle then removed in
+                # a follow-up cleanup pass once frontend is verified
+                # canonical-clean.
+                "hit_rate_l5":  round(l5_data["hit_rate"] * 100, 1),
+                "hit_rate_l10": round(l10_data["hit_rate"] * 100, 1),
+                "h5_rate":  round(l5_data["hit_rate"] * 100, 1),
                 "h10_rate": round(l10_data["hit_rate"] * 100, 1),
                 "season_hit_rate": round(season_data["hit_rate"] * 100, 1),
-                # Detailed hit_rates object for frontend
+                # Detailed hit_rates object for frontend (LEGACY — to be
+                # removed once frontend reads flat canonical fields).
                 "hit_rates": {
                     "l5": {
                         "avg": l5_data["avg"],

@@ -180,16 +180,15 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
   const vacuumModifier = prop.vacuum_modifier;
   const vacuumData = prop.vacuum_data;
   
-  // Stats from baseline or hit_rates (different API formats)
-  // Format 1: prop.l5_avg, prop.l10_avg, prop.season_avg
-  // Format 2: prop.hit_rates.l5.avg, prop.hit_rates.l10.avg, prop.hit_rates.season.avg
-  const hitRates = prop.hit_rates || {};
-  const l5Avg = prop.l5_avg ?? hitRates.l5?.avg ?? hitRates.l5_avg;
-  const l10Avg = prop.l10_avg ?? hitRates.l10?.avg ?? hitRates.l10_avg;
-  const seasonAvg = prop.season_avg ?? hitRates.season?.avg ?? hitRates.season_avg;
-  
+  // Stats from baseline (canonical-only after Phase 4B).
+  // Backend ships `prop.l5_avg / prop.l10_avg / prop.season_avg`
+  // directly; the legacy nested `prop.hit_rates.{l5,l10,season}.avg`
+  // bag is no longer emitted on tier picks.
+  const l5Avg = prop.l5_avg;
+  const l10Avg = prop.l10_avg;
+  const seasonAvg = prop.season_avg;
+
   // Hit rates (percentage) - Handle both decimal (0-1) and percentage (0-100) formats
-  // h10_rate and h5_rate are already percentages, l10_hit_rate/l5_hit_rate could be either
   const normalizeHitRate = (rate) => {
     if (rate == null) return 0;
     // If rate is > 1 and <= 100, it's already a percentage
@@ -199,29 +198,14 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
     // If rate is <= 1, it's a decimal, multiply by 100
     return Math.round(rate * 100);
   };
-  
-  // 2026-05-05 SSOT: L5/L10/L20 cells must consult the canonical
-  // side-aware score-doc fields FIRST (`hit_rate_l5/l10/l20`). The
-  // legacy chain below previously started with `prop.hit_rate`
-  // (active-side L20 aggregate — NOT a 10-game window), which
-  // could stamp a 20-game value onto the cell labeled "L10"
-  // (e.g. Maxey PTS 19.5 OVER: prop.hit_rate=90 was rendered as
-  // "L10: 90%" even when canonical hit_rate_l10 happened to match).
-  // L5 likewise can never come from a 10/20-game source.
-  const h10Rate = prop.hit_rate_l10 != null
-    ? normalizeHitRate(prop.hit_rate_l10)
-    : (prop.h10_rate != null
-        ? normalizeHitRate(prop.h10_rate)
-        : (prop.l10_hit_rate != null
-            ? normalizeHitRate(prop.l10_hit_rate)
-            : (hitRates.l10?.hit_rate != null ? normalizeHitRate(hitRates.l10.hit_rate) : (hitRates.l10_rate ?? 0))));
-  const h5Rate = prop.hit_rate_l5 != null
-    ? normalizeHitRate(prop.hit_rate_l5)
-    : (prop.h5_rate != null
-        ? normalizeHitRate(prop.h5_rate)
-        : (prop.l5_hit_rate != null
-            ? normalizeHitRate(prop.l5_hit_rate)
-            : (hitRates.l5?.hit_rate != null ? normalizeHitRate(hitRates.l5.hit_rate) : (hitRates.l5_rate ?? 0))));
+
+  // 2026-05-07 P0 Phase 4B: canonical-only L5/L10 reads. Legacy
+  // `prop.h10_rate`/`prop.h5_rate`/`prop.hit_rates` and
+  // `prop.l10_hit_rate`/`prop.l5_hit_rate` aliases are no longer
+  // shipped on tier picks; the L5/L10 cells consume the score-doc
+  // SSOT fields directly.
+  const h10Rate = prop.hit_rate_l10 != null ? normalizeHitRate(prop.hit_rate_l10) : 0;
+  const h5Rate  = prop.hit_rate_l5  != null ? normalizeHitRate(prop.hit_rate_l5)  : 0;
   
   const getHitRateColor = (rate) => {
     if (rate >= 80) return 'text-green-400';
@@ -557,11 +541,16 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     dk_tier: clickedProp.dk_tier || prop.dk_tier,
                     ferrari_tier: clickedProp.ferrari_tier || prop.ferrari_tier,
                     // Hit rate fields
-                    h5_rate: clickedProp.h5_rate ?? prop.h5_rate,
-                    h10_rate: clickedProp.h10_rate ?? prop.h10_rate,
-                    h20_rate: clickedProp.h20_rate ?? prop.h20_rate,
-                    hit_rate_l10: clickedProp.hit_rate_l10 ?? prop.hit_rate_l10,
+                    // 2026-05-07 P0 Phase 4B: canonical-only carry.
+                    // Legacy `h5_rate` / `h10_rate` / `h20_rate` no
+                    // longer present on tier picks; the trio below
+                    // is sufficient for the L5/L10/L20 chips and
+                    // the side-aware over/under tiles.
                     hit_rate_l5: clickedProp.hit_rate_l5 ?? prop.hit_rate_l5,
+                    hit_rate_l10: clickedProp.hit_rate_l10 ?? prop.hit_rate_l10,
+                    hit_rate_l20: clickedProp.hit_rate_l20 ?? prop.hit_rate_l20,
+                    hit_rate_over: clickedProp.hit_rate_over ?? prop.hit_rate_over,
+                    hit_rate_under: clickedProp.hit_rate_under ?? prop.hit_rate_under,
                     // Average fields
                     l5_avg: clickedProp.l5_avg ?? prop.l5_avg,
                     l10_avg: clickedProp.l10_avg ?? prop.l10_avg,
@@ -1605,15 +1594,14 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                       : r >= 70 ? 'text-green-400'
                       : r >= 50 ? 'text-yellow-400'
                       : 'text-red-400';
+                  // 2026-05-07 P0 Phase 4B: canonical-only reads.
+                  // Backend no longer ships legacy `h10_rate`/
+                  // `h5_rate`/`hit_rates.{l10,l5}.hit_rate` on tier
+                  // picks; the L20/L10/L5 cells consume the
+                  // score-doc SSOT directly.
                   const l20 = selectedVisionProp.hit_rate_l20 ?? null;
-                  const l10 =
-                    selectedVisionProp.hit_rate_l10 ??
-                    selectedVisionProp.h10_rate ??
-                    selectedVisionProp.hit_rates?.l10?.hit_rate ?? null;
-                  const l5 =
-                    selectedVisionProp.hit_rate_l5 ??
-                    selectedVisionProp.h5_rate ??
-                    selectedVisionProp.hit_rates?.l5?.hit_rate ?? null;
+                  const l10 = selectedVisionProp.hit_rate_l10 ?? null;
+                  const l5  = selectedVisionProp.hit_rate_l5  ?? null;
                   const Cell = ({ label, sub, rate, testid }) => (
                     <div className="bg-zinc-900/50 rounded-lg p-3" data-testid={testid}>
                       <div className="text-xs text-zinc-500">{label}</div>
@@ -1640,9 +1628,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                         rate={l10}
                         sub={selectedVisionProp.l10_avg != null
                           ? `Avg: ${selectedVisionProp.l10_avg}`
-                          : selectedVisionProp.hit_rates?.l10
-                            ? `${selectedVisionProp.hit_rates.l10.games_over || 0}/${selectedVisionProp.hit_rates.l10.total_games || 0} games over`
-                            : ''}
+                          : ''}
                         testid="player-detail-hr-l10"
                       />
                       <Cell
@@ -1650,9 +1636,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                         rate={l5}
                         sub={selectedVisionProp.l5_avg != null
                           ? `Avg: ${selectedVisionProp.l5_avg}`
-                          : selectedVisionProp.hit_rates?.l5
-                            ? `${selectedVisionProp.hit_rates.l5.games_over || 0}/${selectedVisionProp.hit_rates.l5.total_games || 0} games over`
-                            : ''}
+                          : ''}
                         testid="player-detail-hr-l5"
                       />
                     </div>

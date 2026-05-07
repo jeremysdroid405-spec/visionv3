@@ -55,8 +55,14 @@ PICK_CARD_REQUIRED_KEYS: Tuple[str, ...] = (
     "stat_type", "line", "recommendation",
     "tier_label", "prop_type",
     # Card-shape (8-field universal display)
+    # 2026-05-07 P0 Phase 4B: legacy `hit_rate` (active-side alias)
+    # removed from the contract. Canonical window trio
+    # (`hit_rate_l5/l10/l20`) lives on the score doc and is stamped
+    # by `dashboard_card_contract`. Active-side display value is
+    # computed in the frontend from `hit_rate_over` / `hit_rate_under`
+    # gated by `side`.
     "stat_line", "big_pick_text",
-    "projection", "hit_rate", "avg", "short_sentence",
+    "projection", "avg", "short_sentence",
 )
 
 # Lineup-opportunity row required keys + numeric requirements.
@@ -119,7 +125,7 @@ async def enforce_pick_card_contract(
     if not picks:
         return picks
     nullable_ok = {"stat_line", "big_pick_text", "projection",
-                   "hit_rate", "avg", "short_sentence"}
+                   "avg", "short_sentence"}
     kept: List[Dict[str, Any]] = []
     for p in picks:
         missing: List[str] = []
@@ -226,13 +232,18 @@ async def enforce_hit_profile_parity(
 ) -> int:
     """Verify per-pick that:
 
-        pick.hit_rate ≈ pick.l10_hit_count / pick.l10_total × 100
-        pick.avg      ≈ mean(pick.l10_values)
-        pick.line     == pick.hit_profile_line
+        pick.hit_rate_l10 ≈ pick.l10_hit_count / pick.l10_total × 100
+        pick.avg          ≈ mean(pick.l10_values)
+        pick.line         == pick.hit_profile_line
 
-    On mismatch, OVERWRITE the displayed `hit_rate` with the empirical
-    value derived from `l10_hit_count` / `l10_total` (the same value
-    the graph uses), log + count the violation, and continue.
+    On mismatch, OVERWRITE the displayed `hit_rate_l10` with the
+    empirical value derived from `l10_hit_count` / `l10_total` (the
+    same value the graph uses), log + count the violation, and
+    continue.
+
+    2026-05-07 P0 Phase 4B: enforces against canonical `hit_rate_l10`
+    (was the legacy active-side `hit_rate` alias). Same arithmetic;
+    SSOT-compliant target field.
 
     Returns the number of mismatches detected.
     """
@@ -240,7 +251,7 @@ async def enforce_hit_profile_parity(
     for p in picks or []:
         cnt = p.get("l10_hit_count")
         tot = p.get("l10_total")
-        hr  = p.get("hit_rate")
+        hr  = p.get("hit_rate_l10")
         line = p.get("line")
         prof_line = p.get("hit_profile_line")
         if cnt is None or not tot:
@@ -252,7 +263,7 @@ async def enforce_hit_profile_parity(
             logger.error(
                 "[CONTRACT:%s] hit_profile_mismatch sport=%s tier=%s "
                 "player=%s stat=%s line=%s "
-                "displayed_hit_rate=%s expected=%s "
+                "displayed_hit_rate_l10=%s expected=%s "
                 "(l10=%s/%s)",
                 EVT_HIT_PROFILE_MISMATCH, sport, tier,
                 p.get("player_name"), p.get("stat_type"), line,
@@ -268,8 +279,8 @@ async def enforce_hit_profile_parity(
                 "l10_hit_count": cnt,
                 "l10_total": tot,
             })
-            # PERMANENT: rewrite to the empirical value.
-            p["hit_rate"] = expected_hr
+            # PERMANENT: rewrite to the empirical value (canonical field).
+            p["hit_rate_l10"] = expected_hr
         # Line drift is also a serious bug — never silently mismatched.
         if (
             prof_line is not None

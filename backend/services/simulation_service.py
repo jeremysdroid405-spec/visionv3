@@ -249,8 +249,12 @@ class SimulationEngine:
             leg.volatility_index = std_dev / season_avg
         else:
             # Estimate from hit rate variance
-            h10 = leg_data.get("h10_rate", 50) / 100
-            h5 = leg_data.get("h5_rate", 50) / 100
+            # 2026-05-07 P0 Phase 4B: canonical-first read with
+            # legacy fallback (per stabilization spec — keep
+            # CommandPost from hard-failing while upstream payloads
+            # cut over to canonical key names).
+            h10 = (leg_data.get("hit_rate_l10") or leg_data.get("h10_rate") or 50) / 100
+            h5  = (leg_data.get("hit_rate_l5")  or leg_data.get("h5_rate")  or 50) / 100
             leg.volatility_index = abs(h10 - h5)
         
         # Volatility label
@@ -269,9 +273,10 @@ class SimulationEngine:
             cv = (std_dev / season_avg) * 100  # Coefficient of variation
             leg.stability_index = max(0, min(100, int(100 - (cv * 2))))
         else:
-            # Estimate from hit rate consistency
-            h10 = leg_data.get("h10_rate", 50)
-            h5 = leg_data.get("h5_rate", 50)
+            # Estimate from hit rate consistency (canonical-first
+            # with legacy fallback per Phase 4B migration spec).
+            h10 = leg_data.get("hit_rate_l10") or leg_data.get("h10_rate") or 50
+            h5  = leg_data.get("hit_rate_l5")  or leg_data.get("h5_rate")  or 50
             consistency = 100 - abs(h10 - h5) * 2
             leg.stability_index = max(0, min(100, int(consistency)))
         

@@ -171,7 +171,8 @@ const LegCard = memo(({ leg, index, onRemove, hasConflict, conflictMessage }) =>
       <div className="text-right">
         <div className="text-xs text-zinc-400">
           <span className={leg.volatility_label === 'High Volatility' ? 'text-red-400' : ''}>
-            {leg.tactical_probability?.toFixed(1) || leg.h10_rate?.toFixed(1) || '--'}%
+            {/* 2026-05-07 P0 Phase 4B: canonical `hit_rate_l10`. */}
+            {leg.tactical_probability?.toFixed(1) || leg.hit_rate_l10?.toFixed(1) || '--'}%
           </span>
         </div>
         <div className="text-[10px] text-zinc-500">
@@ -266,12 +267,12 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
         team: pendingLeg.team || '',
         opponent: pendingLeg.opponent || pendingLeg.opponent_abbr || '',
         is_home: pendingLeg.is_home ?? true,
-        // 2026-05-05 SSOT: prefer canonical hit_rate_l*/score-doc values
-        // over legacy aliases. Default 50 only if both are missing.
-        h10_rate: pendingLeg.hit_rate_l10 ?? pendingLeg.h10_rate ?? 50,
-        h5_rate: pendingLeg.hit_rate_l5 ?? pendingLeg.h5_rate ?? 50,
-        hit_rate_l5: pendingLeg.hit_rate_l5,
-        hit_rate_l10: pendingLeg.hit_rate_l10,
+        // 2026-05-07 P0 Phase 4B: canonical-only leg payload. The
+        // backend SimulationLeg model accepts both canonical
+        // (`hit_rate_l5/l10`) and legacy keys for one migration
+        // cycle; we send canonical exclusively.
+        hit_rate_l5: pendingLeg.hit_rate_l5 ?? 50,
+        hit_rate_l10: pendingLeg.hit_rate_l10 ?? 50,
         season_avg: pendingLeg.season_avg,
         l5_avg: pendingLeg.l5_avg,
         l10_avg: pendingLeg.l10_avg,
@@ -357,12 +358,9 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
       team: selectedProfile.team,
       opponent: selectedProfile.opponent,
       is_home: true,
-      // 2026-05-05 SSOT: canonical hit_rate_l5/l10 win over legacy
-      // h*_rate and the cross-line cached `hit_rates` bag.
-      h10_rate: line.hit_rate_l10 ?? line.h10_rate ?? line.hit_rates?.h10 ?? 50,
-      h5_rate: line.hit_rate_l5 ?? line.h5_rate ?? line.hit_rates?.h5 ?? 50,
-      hit_rate_l5: line.hit_rate_l5,
-      hit_rate_l10: line.hit_rate_l10,
+      // 2026-05-07 P0 Phase 4B: canonical-only.
+      hit_rate_l5: line.hit_rate_l5 ?? 50,
+      hit_rate_l10: line.hit_rate_l10 ?? 50,
       season_avg: line.season_avg,
       l5_avg: line.l5_avg,
       l10_avg: line.l10_avg,
@@ -534,12 +532,10 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
                   line: line.line,
                   direction: line.direction || 'over',
                   odds: line.odds,
-                  l5_avg: line.l5_avg || line.hit_rates?.l5?.avg,
-                  l10_avg: line.l10_avg || line.hit_rates?.l10?.avg,
-                  season_avg: line.season_avg || line.hit_rates?.season?.avg,
-                  // 2026-05-05 SSOT: canonical hit_rate_l5/l10 first.
-                  h5_rate: line.hit_rate_l5 ?? line.h5_rate ?? (line.hit_rates?.l5?.hit_rate ? line.hit_rates.l5.hit_rate * 100 : null),
-                  h10_rate: line.hit_rate_l10 ?? line.h10_rate ?? (line.hit_rates?.l10?.hit_rate ? line.hit_rates.l10.hit_rate * 100 : null),
+                  l5_avg: line.l5_avg,
+                  l10_avg: line.l10_avg,
+                  season_avg: line.season_avg,
+                  // 2026-05-07 P0 Phase 4B: canonical-only.
                   hit_rate_l5: line.hit_rate_l5,
                   hit_rate_l10: line.hit_rate_l10,
                   is_demon: line.is_demon,
@@ -568,8 +564,9 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
                       team: selectedProfile.team,
                       opponent: selectedProfile.opponent,
                       is_home: true,
-                      h10_rate: playerOrProp.h10_rate || 50,
-                      h5_rate: playerOrProp.h5_rate || 50,
+                      // 2026-05-07 P0 Phase 4B: canonical-only.
+                      hit_rate_l5: playerOrProp.hit_rate_l5 ?? 50,
+                      hit_rate_l10: playerOrProp.hit_rate_l10 ?? 50,
                       season_avg: playerOrProp.season_avg,
                       l5_avg: playerOrProp.l5_avg,
                       l10_avg: playerOrProp.l10_avg

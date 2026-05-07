@@ -34,20 +34,28 @@ _enrichment_cache_mtime = {}
 # ---------------------------------------------------------------------------
 # Canonical stat-window invariant guard
 # ---------------------------------------------------------------------------
-# The windowed hit-rate fields (h5_rate / h10_rate / h20_rate) are the single
-# source of truth for the UI's "L5 Hit / L10 Hit / L20 Hit" tiles and must
-# always match the literal chart math derived from game_logs[:N].
+# The windowed hit-rate fields (hit_rate_l5 / hit_rate_l10 / hit_rate_l20)
+# are the single source of truth for the UI's "L5 Hit / L10 Hit / L20 Hit"
+# tiles and must always match the literal chart math derived from
+# game_logs[:N].
 #
-# This guard is called immediately before any Ferrari board endpoint serializes
-# its response. On a divergence it logs (never raises) and auto-corrects the
-# stored hit_rate back to the canonical count-based value. The guard is the
-# last line of defense in case a new overlay/merge layer forgets the contract.
+# This guard is called immediately before any Ferrari board endpoint
+# serializes its response. On a divergence it logs (never raises) and
+# auto-corrects the stored hit_rate back to the canonical count-based
+# value. The guard is the last line of defense in case a new
+# overlay/merge layer forgets the contract.
+#
+# 2026-05-07 P0 Phase 4B: rate_key targets switched legacy
+# `h5_rate`/`h10_rate`/`h20_rate` → canonical `hit_rate_l5`/
+# `hit_rate_l10`/`hit_rate_l20`. The guard now enforces SSOT on the
+# canonical fields directly; legacy aliases are no longer stamped on
+# visible picks.
 # ---------------------------------------------------------------------------
 def _assert_canonical_hit_rate_invariant(prop: dict) -> None:
     for hits_key, rate_key, window in (
-        ("l5_hits",  "h5_rate",  5),
-        ("l10_hits", "h10_rate", 10),
-        ("l20_hits", "h20_rate", 20),
+        ("l5_hits",  "hit_rate_l5",  5),
+        ("l10_hits", "hit_rate_l10", 10),
+        ("l20_hits", "hit_rate_l20", 20),
     ):
         hits = prop.get(hits_key)
         rate = prop.get(rate_key)
@@ -503,7 +511,13 @@ def enrich_mlb_intel_suite(prop: Dict) -> Dict:
     opponent = get_owned_field(prop, "opponent") or "OPP"
 
     # Get hit rates and averages
-    h10_rate = prop.get("h10_rate") or prop.get("hit_rate_l10") or 0
+    # 2026-05-07 P0 Phase 4B (1c): canonical-only read. Legacy
+    # `h10_rate` is no longer stamped on visible picks; this
+    # function runs against picks coming out of `_merge_score_with_board`
+    # which guarantees canonical `hit_rate_l10`. The narrative output
+    # (badges, context paragraphs, tier reasoning) consumes this
+    # value but does NOT mutate it.
+    h10_rate = prop.get("hit_rate_l10") or 0
     l10_avg = prop.get("l10_avg") or 0
     cv = prop.get("cv") or 0
     # Normalize CV through shared volatility profile
@@ -918,6 +932,21 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         prop.pop("edge_pct", None)
         prop.pop("vk_edge", None)
         prop.pop("true_edge", None)
+        # 2026-05-07 P0 Phase 4B: defensive strip for legacy hit-rate
+        # aliases. `nba_cached_board.props` still carries
+        # `h5_rate` / `h10_rate` / `h20_rate` / `hit_rates` /
+        # `hit_rate` baked in by `cached_board_builder_service`
+        # (writer untouched per Phase 4B "no scoring/Vision Intel
+        # changes" guardrail). Stripping here prevents the legacy
+        # values from reaching the API even when the upstream
+        # builder still emits them. Canonical `hit_rate_l5/l10/l20/
+        # over/under` is stamped below from the score doc (verified
+        # 100% present pre-removal).
+        for _legacy_hr_key in (
+            "h5_rate", "h10_rate", "h20_rate", "hit_rates",
+            "hit_rate", "model_hit_rate_over", "model_hit_rate_under",
+        ):
+            prop.pop(_legacy_hr_key, None)
         # Player-level fields from parent player doc
         for fld in (
             "player_id", "nba_id", "bdl_id", "nba_com_id", "espn_id",
@@ -1148,19 +1177,22 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     # as a fallback for `hit_rate_over`, because on UNDER picks
     # `hit_rate_l20` carries the UNDER-side rate and would corrupt the
     # OVER alias if substituted.
+    #
+    # 2026-05-07 P0 Phase 4B: legacy `model_hit_rate_over` /
+    # `model_hit_rate_under` response shims removed. Canonical
+    # `hit_rate_over` / `hit_rate_under` remain (audit confirmed
+    # 100% presence on visible picks). The `model_*` aliases
+    # carried IDENTICAL values but tempted readers to think there
+    # were two distinct sources of truth — exactly the SSOT
+    # violation Phase 4B exists to retire.
+    # ============================================================
     ho = score.get("hit_rate_over")
     hu = score.get("hit_rate_under")
     side_l20 = score.get("hit_rate_l20")
-    # Diagnostic fields: model/scorer-derived L20 side-aware hit rates.
-    # These are NOT the chart's L10 hit rate. They are fed into VK /
-    # p_true / tier_gate calculations and rendered only where a
-    # frontend explicitly opts in to model_hit_rate_*.
     if ho is not None:
         prop["hit_rate_over"] = ho                      # OVER L20
-        prop["model_hit_rate_over"] = round(float(ho), 1)
     if hu is not None:
         prop["hit_rate_under"] = hu                     # UNDER L20
-        prop["model_hit_rate_under"] = round(float(hu), 1)
     if side_l20 is not None:
         prop["hit_rate_l20"] = side_l20                 # side-aware (canonical)
     # Active-side model hit rate convenience (mirrors score.hit_rate)
@@ -1214,9 +1246,12 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         _apply_under_badge_rewire(prop, score)
 
     # Validation flag — data completeness
+    # 2026-05-07 P0 Phase 4B: `has_hit_rates` now checks the canonical
+    # `hit_rate_l10` field. Legacy `h10_rate` is no longer stamped on
+    # picks, so a legacy-keyed check would always return False.
     prop["validation"] = {
         "has_market_data": bool(board_entry and prop.get("draftkings_price")),
-        "has_hit_rates": prop.get("h10_rate") is not None,
+        "has_hit_rates": prop.get("hit_rate_l10") is not None,
         "has_context": bool(prop.get("intel_suite")),
         "has_mlr": vk2 is not None,
         "has_gemini": bool(prop.get("vision_intel")),
@@ -1225,35 +1260,17 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
         ),
     }
 
-    # Card-display fallbacks (2026-04-24). The frontend card reads
-    # `h10_rate` and `season_avg` directly; cached_board's combo-market
-    # props sometimes carry only l5/l10 aggregates (no l20/season).
-    # Promote equivalent values to the expected field so cards render
-    # numbers instead of dashes — pure alias, no new data invented.
+    # Card-display fallbacks (2026-04-24).
+    # 2026-05-07 P0 Phase 4B: legacy `h5_rate`/`h10_rate`/`h20_rate`
+    # fallback writers removed. The frontend now reads canonical
+    # `hit_rate_l5`/`hit_rate_l10`/`hit_rate_l20` (verified 100%
+    # present on visible picks during Phase 4B audit). The
+    # legacy-named fields are no longer stamped at all on tier
+    # responses.
     if prop.get("season_avg") in (None, "") and prop.get("l20_avg") is not None:
         prop["season_avg"] = prop["l20_avg"]
     if prop.get("season_avg") in (None, "") and prop.get("l10_avg") is not None:
         prop["season_avg"] = prop["l10_avg"]
-    if prop.get("h10_rate") in (None, "") and prop.get("h5_rate") is not None:
-        prop["h10_rate"] = prop["h5_rate"]
-    if prop.get("h10_rate") in (None, ""):
-        side = (prop.get("recommendation") or "").upper()
-        # SSOT Tier F (2026-05-05 hit-rate-window fix): `h10_rate` is the
-        # 10-game window field. Fall back to the side-aware
-        # `hit_rate_l10` from the score doc — NOT `hit_rate_l20`. Using
-        # the L20 value here labels a 20-game rate as a 10-game rate
-        # (Daniss Jenkins WZ P+A 14.5 OVER: L20=60%, L10=20%; the
-        # broken fallback rendered `L10: 60%`).
-        hr = (
-            score.get("hit_rate_l10")
-            or (score.get("hit_rate_over") if side == "OVER"
-                else score.get("hit_rate_under"))
-        )
-        if hr is not None:
-            try:
-                prop["h10_rate"] = int(round(float(hr)))
-            except (TypeError, ValueError) as _swept_exc:
-                log_silent_failure("routes.ferrari_tiers._merge_score_with_board", _swept_exc)  # sweep-auto-converted
 
     # Headshot URL path rewrite (2026-04-24). Master_hub stores
     # headshots as `/static/player-headshots/{id}.png`. The k8s
@@ -1393,29 +1410,16 @@ async def _get_nba_tier_picks_from_scores(
         # alt-combo markets); the stat-level overlay may have just
         # filled those in. Run the promotion once more so the card
         # actually sees the filled value.
+        #
+        # 2026-05-07 P0 Phase 4B: legacy `h5_rate`/`h10_rate` fallback
+        # writes deleted (canonical `hit_rate_l5/l10` come straight
+        # off the score doc and were verified 100% present pre-removal).
+        # The remaining `season_avg` / `l*_avg` promotions are NOT in
+        # Phase 4B scope.
         if merged.get("season_avg") in (None, "") and merged.get("l20_avg") is not None:
             merged["season_avg"] = merged["l20_avg"]
         if merged.get("season_avg") in (None, "") and merged.get("l10_avg") is not None:
             merged["season_avg"] = merged["l10_avg"]
-        if merged.get("h10_rate") in (None, "") and merged.get("h5_rate") is not None:
-            merged["h10_rate"] = merged["h5_rate"]
-        if merged.get("h10_rate") in (None, ""):
-            side = (merged.get("recommendation") or "").upper()
-            # SSOT Tier F (2026-05-05 hit-rate-window fix): mirror of the
-            # `_merge_score_with_board` fallback — pull the 10-game value
-            # from `hit_rate_l10`, NOT `hit_rate_l20`. Two-site fix
-            # because the stat-level overlay above can fill `h5_rate`
-            # without filling `h10_rate`, re-triggering this branch.
-            hr = (
-                sc.get("hit_rate_l10")
-                or (sc.get("hit_rate_over") if side == "OVER"
-                    else sc.get("hit_rate_under"))
-            )
-            if hr is not None:
-                try:
-                    merged["h10_rate"] = int(round(float(hr)))
-                except (TypeError, ValueError) as _swept_exc:
-                    log_silent_failure("routes.ferrari_tiers._get_nba_tier_picks_from_scores", _swept_exc)  # sweep-auto-converted
         # Stash the score doc so downstream post-overlay passes can rewire
         # side-aware fields (UNDER badges, UNDER vision_intel) after the
         # enrichment cache overlay injects OVER-side data.
@@ -1936,46 +1940,37 @@ def _finalize_nba_picks_side_aware(picks: List[Dict[str, Any]]) -> None:
 def normalize_mlb_pick_for_ui(pick: dict) -> dict:
     """
     Normalize MLB pick fields to match the UI expected format.
-    
-    MLB data uses:
-    - hit_rate_l10 -> maps to h10_rate
-    - l10_avg -> maps to season_avg
-    
-    The UI (UniversalPlayerCard) expects:
-    - h5_rate, h10_rate, season_avg
+
+    The UI (UniversalPlayerCard) reads canonical `hit_rate_l5/l10/l20`
+    directly (Phase 4B). This helper now only maps MLB-specific
+    averages.
+
+    2026-05-07 P0 Phase 4B: legacy `h10_rate` mapping removed. The
+    score-doc `hit_rate_l10` is the SSOT and is already stamped on
+    the pick by `_merge_score_with_board` / its MLB equivalent.
     """
     if not pick:
         return pick
-    
+
     normalized = dict(pick)
-    
-    # Map MLB hit rate fields to UI expected format
-    # h10_rate = hit_rate_l10 (already a percentage like 0.7 = 70%)
-    if 'hit_rate_l10' in normalized and normalized.get('h10_rate') is None:
-        hit_rate = normalized['hit_rate_l10']
-        # Convert decimal (0.7) to percentage (70) if needed
-        if hit_rate is not None and hit_rate <= 1:
-            normalized['h10_rate'] = round(hit_rate * 100)
-        else:
-            normalized['h10_rate'] = hit_rate
-    
+
     # Map l10_avg to season_avg for display purposes
     if 'l10_avg' in normalized and normalized.get('season_avg') is None:
         normalized['season_avg'] = normalized['l10_avg']
-    
+
     # Also map projected_value as season_avg fallback
     if normalized.get('season_avg') is None and 'projected_value' in normalized:
         normalized['season_avg'] = normalized['projected_value']
-    
+
     # SSOT Tier F #2 (2026-05-04): `vk_edge` alias stamping removed.
     # Canonical edge field is `edge_vs_fair`; legacy `edge_pct` was
     # dropped in the same tier. The bridging `if 'edge_pct' in
     # normalized and normalized.get('vk_edge') is None:` shim is
     # deleted — upstream callers read `edge_vs_fair` directly.
-    
+
     # Ensure sport is set
     normalized['sport'] = 'mlb'
-    
+
     return normalized
 
 
@@ -2346,10 +2341,11 @@ async def _serve_ferrari_tier(
         "picks_with_team":        sum(1 for p in picks if _has(p, "team")),
         "picks_with_opponent":    sum(1 for p in picks if _has(p, "opponent")),
         # Card-ready: projection + hit_rate + season_avg all populated
-        "card_ready_chart_data":  sum(1 for p in picks if _has(p, "vk_predicted") and _has(p, "h10_rate") and _has(p, "season_avg")),
+        # 2026-05-07 P0 Phase 4B: legacy `h10_rate` → canonical `hit_rate_l10`.
+        "card_ready_chart_data":  sum(1 for p in picks if _has(p, "vk_predicted") and _has(p, "hit_rate_l10") and _has(p, "season_avg")),
         # Source-side: full l5+l10+l20 window from cached_board
         "source_chart_window":    sum(1 for p in picks if _has(p, "l5_avg") and _has(p, "l10_avg") and _has(p, "l20_avg")),
-        "picks_with_recent_logs": sum(1 for p in picks if _has(p, "h5_rate") or _has(p, "h10_rate") or _has(p, "h20_rate")),
+        "picks_with_recent_logs": sum(1 for p in picks if _has(p, "hit_rate_l5") or _has(p, "hit_rate_l10") or _has(p, "hit_rate_l20")),
         "picks_with_vision_intel": sum(1 for p in picks if _has(p, "intel_suite") or _has(p, "vision_intel")),
         "picks_with_glow_fields": sum(1 for p in picks if _has(p, "vision_score") and _has(p, "tier") and (_has(p, "is_vision_enriched") or _has(p, "intel_suite"))),
         "picks_with_context_badges": sum(1 for p in picks if _has(p, "context_badges")),
@@ -3586,14 +3582,20 @@ async def get_mlb_player_props(
             if game_logs and (stat_field or is_combo):
                 l5_games = game_logs[:5]
                 l10_games = game_logs[:10]
-                
-                prop["h5_rate"] = calculate_hit_rate(l5_games, stat_field, line, is_combo)
-                prop["h10_rate"] = calculate_hit_rate(l10_games, stat_field, line, is_combo)
+
+                # 2026-05-07 P0 Phase 4B: writes canonical
+                # `hit_rate_l5/l10` directly. Legacy `h5_rate`/
+                # `h10_rate` writes deleted; the score-doc merge below
+                # also writes canonical. This is the
+                # `/api/mlb/player/{id}/props` detail-page endpoint —
+                # frontend reads canonical only after Phase 4B.
+                prop["hit_rate_l5"] = calculate_hit_rate(l5_games, stat_field, line, is_combo)
+                prop["hit_rate_l10"] = calculate_hit_rate(l10_games, stat_field, line, is_combo)
                 prop["l5_avg"] = calculate_avg(l5_games, stat_field, is_combo)
                 prop["l10_avg"] = calculate_avg(l10_games, stat_field, is_combo)
                 # Season average = L10 average (or use full game_logs if more available)
                 prop["season_avg"] = prop["l10_avg"]
-                
+
                 # Add game_logs to prop for bar chart
                 prop["game_logs"] = game_logs
 

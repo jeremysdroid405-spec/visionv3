@@ -4,23 +4,31 @@
  * Ferrari tier endpoints (`/api/v3/ferrari/{safe-haven,front-lines,war-zone}`)
  * and the player-detail endpoint (`/api/v3/player-with-badges/{name}`) both
  * return the SAME canonical per-pick shape. The React cards and detail page
- * read a handful of legacy field aliases (L5 hit rate, season average, chart
- * data, stat_type_extracted) which are NOT always populated on every pick —
- * the backend's source-of-truth is cached_board + score docs, and some combo /
- * alt markets carry only partial window aggregates.
+ * read a handful of canonical fields (L5/L10/L20 hit rate, season average,
+ * chart data, stat_type_extracted) which are populated on every visible
+ * tier pick by the backend (verified by the Phase 4B canonical-presence
+ * audit prior to this rewrite).
+ *
+ * 2026-05-07 P0 Phase 4B: this adapter no longer emits the legacy
+ * `h5_rate` / `h10_rate` / `h20_rate` aliases. Backend stopped writing
+ * them on tier picks; we now expose canonical `hit_rate_l5` /
+ * `hit_rate_l10` / `hit_rate_l20` directly, and ALL frontend readers
+ * have been migrated to those names. The cascade chain below pulls
+ * from canonical first; legacy fields are not consulted.
  *
  * This adapter does NOT invent data. It only:
- *   - cascades existing values (h5 → h10 → hit_rate_over/under; l20 → season)
- *   - constructs a `chart_data` array from already-present averages + hit rates
+ *   - cascades existing values across windows when one is missing
+ *     (l5 → l10 → over/under fallback at the appropriate window)
+ *   - constructs a `chart_data` array from already-present averages +
+ *     hit rates
  *   - sets `stat_type_extracted` from `stat_type` for grouping
  *   - normalizes `market` (strips `_alternate` suffix) so the existing
  *     constants.getCategoryKey keeps working
  *
- * Applied at every fetch boundary that returns Ferrari picks, so every React
- * component receives a consistent shape without any component change.
+ * Applied at every fetch boundary that returns Ferrari picks, so every
+ * React component receives a consistent shape without any component
+ * change.
  */
-
-const SIDE_FIELD_MAP = { OVER: "hit_rate_over", UNDER: "hit_rate_under" };
 
 const _n = (v) => (v === null || v === undefined || v === "" ? null : v);
 
@@ -62,10 +70,14 @@ export function normalizeFerrariPick(pick) {
     return null;
   };
 
-  // Window-fallback cascades — do NOT overwrite populated values.
-  const h10 = _hrOrFallback(pick.h10_rate, sideHitRate);
-  const h5 = _hrOrFallback(pick.h5_rate, pick.h10_rate, sideHitRate);
-  const h20 = _hrOrFallback(pick.h20_rate, pick.h10_rate, sideHitRate);
+  // 2026-05-07 P0 Phase 4B: canonical-only window cascades.
+  // hit_rate_l10 is the SSOT 10-game window; hit_rate_l5 / hit_rate_l20
+  // similarly. If the score doc was missing one of the granular
+  // windows for a particular pick, fall back to the active-side
+  // window-aware over/under value (still SSOT, just a different lens).
+  const hitRateL10 = _hrOrFallback(pick.hit_rate_l10, sideHitRate);
+  const hitRateL5  = _hrOrFallback(pick.hit_rate_l5,  pick.hit_rate_l10, sideHitRate);
+  const hitRateL20 = _hrOrFallback(pick.hit_rate_l20, pick.hit_rate_l10, sideHitRate);
 
   const l10 = _firstNumber(pick.l10_avg, pick.season_avg, pick.eb_player_career_mean);
   const l5 = _firstNumber(pick.l5_avg, pick.l10_avg, pick.season_avg, pick.eb_player_career_mean);
@@ -93,9 +105,9 @@ export function normalizeFerrariPick(pick) {
       delta: line !== null && avg !== null ? +(avg - line).toFixed(2) : null,
     });
     chartData = [
-      build("L5", l5, h5),
-      build("L10", l10, h10),
-      build("L20", l20, h20),
+      build("L5", l5, hitRateL5),
+      build("L10", l10, hitRateL10),
+      build("L20", l20, hitRateL20),
       build("SEASON", seasonAvg, null),
     ].filter((d) => d.avg !== null);
   }
@@ -179,9 +191,13 @@ export function normalizeFerrariPick(pick) {
 
   return {
     ...pick,
-    h5_rate: h5,
-    h10_rate: h10,
-    h20_rate: h20,
+    // 2026-05-07 P0 Phase 4B: canonical-only window outputs. Legacy
+    // `h5_rate` / `h10_rate` / `h20_rate` no longer emitted; readers
+    // must consume `hit_rate_l5/l10/l20` (which the backend now
+    // ships unconditionally on every visible pick).
+    hit_rate_l5: hitRateL5,
+    hit_rate_l10: hitRateL10,
+    hit_rate_l20: hitRateL20,
     l5_avg: l5,
     l10_avg: l10,
     l20_avg: l20,

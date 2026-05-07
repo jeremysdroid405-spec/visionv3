@@ -131,8 +131,13 @@ class ForwardTestingService:
                     "vk_predicted": prop.get("vk_predicted") or prop.get("adjusted_vk_projected"),
                     "vk_edge": prop.get("vk_edge") or prop.get("edge"),
                     "vk_prob": prop.get("vk_prob_over") or prop.get("pinnacle_tp"),
-                    "hit_rate_l20": prop.get("h20_rate") or prop.get("hit_rate_l20"),
-                    "hit_rate_l10": prop.get("h10_rate") or prop.get("hit_rate_l10"),
+                    # 2026-05-07 P0 Phase 4B: canonical-first reads.
+                    # Audit confirmed `hit_rate_l20` / `hit_rate_l10`
+                    # present on 47/47 visible picks; legacy fallback
+                    # retained for one cycle in case a non-tier capture
+                    # source predates the SSOT migration.
+                    "hit_rate_l20": prop.get("hit_rate_l20") or prop.get("h20_rate"),
+                    "hit_rate_l10": prop.get("hit_rate_l10") or prop.get("h10_rate"),
                     "cv": prop.get("cv"),
                     
                     # Classification

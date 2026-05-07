@@ -157,24 +157,7 @@ def to_card_contract(pick: Dict[str, Any]) -> Dict[str, Any]:
         or _f(pick.get("projection"))
     )
 
-    # ── 6. hit_rate — side-correct percentage ────────────────────────
-    # SSOT Tier F (2026-05-04): canonical L20 OVER-side is
-    # `hit_rate_l20` (dual-written in recompute_sport). We read it as
-    # primary and only fall back to the legacy `hit_rate_over` for
-    # docs written before the dual-write landed (~97% of active docs
-    # now carry hit_rate_l20; full coverage reached after next
-    # sweeping recompute).
-    hr_over  = _f(pick.get("hit_rate_l20")) or _f(pick.get("hit_rate_over"))
-    hr_under = _f(pick.get("hit_rate_under"))
-    if side == "UNDER" and hr_under is not None:
-        hit_rate = hr_under
-    elif hr_over is not None:
-        hit_rate = hr_over
-    else:
-        # NBA cards already populate `h10_rate` upstream of this point.
-        hit_rate = _f(pick.get("h10_rate")) or _f(pick.get("hit_rate"))
-
-    # ── 6b. hit_rate WINDOW TRIO (2026-05-01) ────────────────────────
+    # ── 6. hit_rate WINDOW TRIO (2026-05-01) ────────────────────────
     # Card displays L20 (gate input) / L10 (graph parity) / L5 (recent
     # form sub-gate input) so the operator can see EVERY window the
     # gate evaluated. Side-awareness:
@@ -182,6 +165,14 @@ def to_card_contract(pick: Dict[str, Any]) -> Dict[str, Any]:
     #   - L10 / L5: hit_rate_l5 / hit_rate_l10 are ALREADY side-aware
     #     on the score doc — adapters compute them with the prop's
     #     direction. Pass through verbatim, no complement.
+    #
+    # 2026-05-07 P0 Phase 4B: legacy active-side `hit_rate` field
+    # removed from the contract. Frontend now derives active-side from
+    # canonical (`side === "UNDER" ? hit_rate_under : hit_rate_over`)
+    # — eliminates the SSOT violation where `hit_rate` was a separate
+    # alias readers could grab thinking it was a distinct value.
+    hr_over  = _f(pick.get("hit_rate_l20")) or _f(pick.get("hit_rate_over"))
+    hr_under = _f(pick.get("hit_rate_under"))
     hit_rate_l20 = hr_under if side == "UNDER" else hr_over
     hit_rate_l10 = _f(pick.get("hit_rate_l10"))
     hit_rate_l5  = _f(pick.get("hit_rate_l5"))
@@ -211,11 +202,10 @@ def to_card_contract(pick: Dict[str, Any]) -> Dict[str, Any]:
         "stat_line":      stat_line,
         "big_pick_text":  big_pick_text,
         "projection":     projection,
-        "hit_rate":       hit_rate,
-        # 2026-05-01 — full hit-rate window trio (gate L20, graph L10,
-        # recent-form L5). All three are side-correct. Frontend renders
-        # them stacked under the "Hit Rate" cell so the gate decision
-        # is auditable straight from the card.
+        # 2026-05-07 P0 Phase 4B: legacy `hit_rate` (active-side alias)
+        # removed from the contract. Frontend computes active-side
+        # from canonical fields (hit_rate_over / hit_rate_under) at
+        # render time, gated by `side`.
         "hit_rate_l20":   hit_rate_l20,
         "hit_rate_l10":   hit_rate_l10,
         "hit_rate_l5":    hit_rate_l5,
@@ -246,6 +236,17 @@ async def stamp_dashboard_card_contract(
 
     # ── Stamp the 8 contract fields onto every pick ───────────────────
     for p in picks:
+        # 2026-05-07 P0 Phase 4B: defensive strip for legacy hit-rate
+        # aliases that may have ridden in from upstream pick dicts
+        # (cached_board overlay, MLB normalizer, debug snapshots, etc).
+        # The contract emits canonical hit_rate_l5/l10/l20 and the
+        # active-side computation is the frontend's responsibility.
+        for _legacy_hr in (
+            "hit_rate", "h5_rate", "h10_rate", "h20_rate", "hit_rates",
+            "model_hit_rate_over", "model_hit_rate_under",
+        ):
+            p.pop(_legacy_hr, None)
+
         contract = to_card_contract(p)
         for k, v in contract.items():
             # Additive: only set when key absent OR currently null/empty.

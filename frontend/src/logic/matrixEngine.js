@@ -226,7 +226,10 @@ export const buildMasterParlayTickets = (fullPool, options = {}) => {
     if (validatedPicks.length < size) continue;
     
     const combinedProb = validatedPicks.reduce((acc, pick) => {
-      const rate = (pick.h10_rate || pick.reliability || 50) / 100;
+      // 2026-05-07 P0 Phase 4B: canonical `hit_rate_l10` (was legacy
+      // `h10_rate`). Reliability is a percentage 0-100; divide by 100
+      // for the matrix-engine probability product.
+      const rate = (pick.hit_rate_l10 || pick.reliability || 50) / 100;
       return acc * rate;
     }, 1) * 100;
     

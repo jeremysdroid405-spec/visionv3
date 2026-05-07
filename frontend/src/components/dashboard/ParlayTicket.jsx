@@ -65,7 +65,10 @@ export const ParlayTicket = memo(({ ticket, onClick, sectionType = 'war_zone' })
   if (size < 2) return null;
   
   const rawProb = ticket.combined_probability || 
-    (picks.reduce((acc, p) => acc * ((p.h10_rate || 50) / 100), 1) * 100);
+    // 2026-05-07 P0 Phase 4B: canonical `hit_rate_l10` (was legacy
+    // `h10_rate`). Combined probability fallback when the backend
+    // didn't ship `combined_probability` for the parlay.
+    (picks.reduce((acc, p) => acc * ((p.hit_rate_l10 || 50) / 100), 1) * 100);
   const combinedProb = Math.min(rawProb, 99); // Cap at 99%
   
   return (

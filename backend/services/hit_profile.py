@@ -163,7 +163,12 @@ def stamp_hit_profile_on_pick(
     )
 
     if profile["hit_rate_pct"] is not None:
-        pick["hit_rate"] = profile["hit_rate_pct"]
+        # 2026-05-07 P0 Phase 4B: writes canonical `hit_rate_l10` (the
+        # 10-game window the profile actually computes — `WINDOW=10`).
+        # Legacy `hit_rate` (active-side alias) is no longer stamped;
+        # frontend computes active-side from `hit_rate_over` /
+        # `hit_rate_under` per Phase 4B SSOT spec.
+        pick["hit_rate_l10"] = profile["hit_rate_pct"]
     if profile["avg"] is not None:
         pick["avg"] = profile["avg"]
 
