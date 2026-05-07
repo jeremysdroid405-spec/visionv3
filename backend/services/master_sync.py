@@ -34,31 +34,58 @@ logger = logging.getLogger(__name__)
 SUPPORTED_SPORTS = ("nba", "mlb")
 
 
-async def run_master_sync(db, sport: str) -> Dict[str, Any]:
-    """Run the universal master sync for a single sport."""
+class MasterSyncBypassError(RuntimeError):
+    """Raised when `run_master_sync()` is called without holding
+    `UpstreamSyncLock.exclusive(sport)`. The lock is the only signal
+    the delta detector has that a full sync is in flight; bypassing
+    it produces partial-write races that have caused production
+    tier-freeze incidents (see /app/memory/CHANGELOG.md 2026-05-07)."""
+
+
+async def run_master_sync(
+    db,
+    sport: str,
+    *,
+    _admin_override: bool = False,
+) -> Dict[str, Any]:
+    """Run the universal master sync for a single sport.
+
+    Concurrency contract (HARD ENFORCED 2026-05-07):
+      All callers MUST hold `UpstreamSyncLock.exclusive(sport)` for
+      the duration of this call. The lock is acquired by
+      `RebuildCoordinator.dispatch_master_sync()` and
+      `_execute_rebuild()`. A bare call here without the lock used to
+      log CRITICAL only (toothless); it now raises
+      `MasterSyncBypassError` so the bypass cannot reach production.
+
+      `_admin_override=True` is the ONLY escape hatch and exists for
+      one-time bootstrap scripts (`scripts/init_database.py`). It MUST
+      NOT be used by route handlers, scheduled jobs, callbacks, or
+      runtime code paths.
+    """
     sport = (sport or "").lower()
     if sport not in SUPPORTED_SPORTS:
         raise ValueError(f"Unsupported sport for master_sync: {sport!r}")
 
-    # Concurrency safety: callers SHOULD route through
-    # `RebuildCoordinator.dispatch_master_sync`, which holds
-    # `UpstreamSyncLock.exclusive(sport)` for the duration of this call.
-    # When invoked directly (legacy admin endpoints, ad-hoc scripts) the
-    # delta engine cannot tell a full sync is in flight and may rescore
-    # against partially-written collections. We log a CRITICAL warning so
-    # this is loud in observability and easy to grep.
-    try:
-        from services.upstream_sync_lock import get_upstream_sync_lock
-        if not get_upstream_sync_lock().is_held(sport):
-            logger.critical(
-                "[MASTER_SYNC:%s] run_master_sync called without "
-                "UpstreamSyncLock — caller bypassed RebuildCoordinator. "
-                "Delta engine cannot detect this sync; race possible.",
-                sport,
+    # Hard concurrency gate. The detector relies on the lock to know a
+    # full sync is in flight; without it, the delta engine can rescore
+    # against partially-written collections (the production race).
+    if not _admin_override:
+        try:
+            from services.upstream_sync_lock import get_upstream_sync_lock
+            lock = get_upstream_sync_lock()
+        except Exception as _swept_exc:
+            log_silent_failure("services.master_sync.run_master_sync.lock_import", _swept_exc)
+            lock = None
+        if lock is None or not lock.is_held(sport):
+            raise MasterSyncBypassError(
+                f"[MASTER_SYNC:{sport}] run_master_sync called without "
+                f"UpstreamSyncLock. All callers MUST go through "
+                f"`RebuildCoordinator.dispatch_master_sync(sport)` or "
+                f"acquire `lock.exclusive(sport)` themselves. "
+                f"`_admin_override=True` is reserved for one-time "
+                f"bootstrap scripts only."
             )
-    except Exception as _swept_exc:
-        # Never fail the sync over the warning check.
-        log_silent_failure("services.master_sync.run_master_sync", _swept_exc)  # sweep-auto-converted
 
     started = datetime.now(timezone.utc)
     metrics: Dict[str, Any] = {

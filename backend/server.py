@@ -442,20 +442,18 @@ async def run_mlb_startup_health_check():
                 "[MLB_HEALTH] MLB canonical board is empty — running universal master sync…"
             )
             try:
+                # 2026-05-07 SSOT: acquire UpstreamSyncLock so master_sync
+                # does not raise MasterSyncBypassError. (Was direct call.)
                 from services.master_sync import run_master_sync
-                result = await run_master_sync(db, "mlb")
+                from services.upstream_sync_lock import get_upstream_sync_lock
+                lock = get_upstream_sync_lock()
+                async with lock.exclusive("mlb", holder="mlb_startup_health"):
+                    result = await run_master_sync(db, "mlb")
                 logger.info(
                     f"[MLB_HEALTH] Universal master sync complete: success={result.get('success')}"
                 )
             except Exception as e:
                 logger.error(f"[MLB_HEALTH] Master sync failed: {e}")
-
-            try:
-                from services.master_sync import run_master_sync
-                result = await run_master_sync(db, "mlb")
-                logger.info(f"[MLB_HEALTH] Universal master sync complete: success={result.get('success')}")
-            except Exception as e:
-                logger.error(f"[MLB_HEALTH] Tier rebuild failed: {e}")
         else:
             logger.info("[MLB_HEALTH] MLB canonical collections populated — no action needed")
 
@@ -1386,8 +1384,16 @@ async def startup_event():
     
     # Wire adaptive sync callback to the universal master sync path.
     async def _adaptive_sync_callback():
+        # 2026-05-07 SSOT: acquire UpstreamSyncLock so master_sync does
+        # not raise MasterSyncBypassError. The adaptive engine fires
+        # this callback when it detects upstream odds movement; without
+        # the lock, the delta detector cannot tell a sync is in flight
+        # and a race against partially-written collections is possible.
         from services.master_sync import run_master_sync
-        return await run_master_sync(db, "nba")
+        from services.upstream_sync_lock import get_upstream_sync_lock
+        lock = get_upstream_sync_lock()
+        async with lock.exclusive("nba", holder="adaptive_sync_callback"):
+            return await run_master_sync(db, "nba")
     adaptive_sync.set_sync_callback(_adaptive_sync_callback)
     logger.info("[ADAPTIVE_SYNC] Callback wired to universal master_sync(nba)")
     

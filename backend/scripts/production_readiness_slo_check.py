@@ -415,6 +415,15 @@ async def check_api_correctness(db, now: datetime) -> CheckResult:
                     )
     r.evidence["samples"] = samples_per_sport
     r.evidence["sample_counts"] = {s: len(v) for s, v in samples_per_sport.items()}
+    # Empty sample MUST fail — without samples this check is vacuous and
+    # would mask broken tiers / dead ingestion behind a green PASS.
+    for sport in SPORTS:
+        if not samples_per_sport.get(sport):
+            r.fail(
+                f"{sport}: API returned 0 picks across SH/FL/WZ — "
+                f"correctness loop had no samples to validate "
+                f"(empty-sample is treated as FAIL by SLO §5)."
+            )
     return r
 
 

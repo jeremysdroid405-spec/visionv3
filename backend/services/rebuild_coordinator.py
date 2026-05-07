@@ -227,11 +227,19 @@ class RebuildCoordinator:
 
             try:
                 from services.master_sync import run_master_sync
+                from services.upstream_sync_lock import get_upstream_sync_lock
 
                 if sport not in ("nba", "mlb"):
                     raise ValueError(f"Unknown sport: {sport}")
 
-                result = await run_master_sync(self._db, sport)
+                # 2026-05-07 SSOT: hold the upstream lock for the whole
+                # master_sync. Without this, run_master_sync raises
+                # MasterSyncBypassError. The lock is what signals the
+                # delta detector that a full sync is in flight.
+                lock = get_upstream_sync_lock()
+                run_id = f"coordinator:{sport}:{int(time.time())}"
+                async with lock.exclusive(sport, holder=run_id):
+                    result = await run_master_sync(self._db, sport)
                 duration = time.monotonic() - start_time
 
                 # Universal path writes to {sport}_prop_scores (not the

@@ -90,7 +90,10 @@ async def sync_master_roster(db):
     logger.info("="*60)
     try:
         from services.master_sync import run_master_sync
-        result = await run_master_sync(db, "nba")
+        # One-time bootstrap script — explicit admin override per the
+        # 2026-05-07 SSOT lock contract. Runtime code paths must NOT
+        # use this kwarg; they must hold UpstreamSyncLock instead.
+        result = await run_master_sync(db, "nba", _admin_override=True)
         logger.info(f"✓ Master sync success={result.get('success')}")
         return True
     except Exception as e:
