@@ -162,10 +162,48 @@ class RescoreDirtyPropsStep(DeltaStep):
             only_canonical_keys=rescore_keys,
         )
         dur = (datetime.now(timezone.utc) - t0).total_seconds()
+
+        # 2026-05-07 Step 3: confirm-and-delete drained queue rows ONLY
+        # after the rescore succeeded. Crash-safe: if recompute_sport
+        # raised, this code never runs and the rows remain queued for
+        # the next tick (rescore is idempotent so re-runs are
+        # harmless). When the cap kicks in, only delete the queue ids
+        # that correspond to keys we actually rescored — leftovers
+        # remain queued for next tick.
+        confirmed = 0
+        try:
+            from services.delta.dirty_queue import confirm_processed
+            drained_ids = list(getattr(detection, "drained_queue_ids", []) or [])
+            if drained_ids:
+                if batch_capped:
+                    # Best-effort partial confirm: trim by the
+                    # proportion of selected keys to total requested.
+                    # Over-deleting is unsafe (we'd lose a queued
+                    # event); under-deleting is harmless (re-rescored
+                    # next tick). Err under by floor-dividing.
+                    selected_count = len(rescore_keys)
+                    keep_n = max(
+                        0,
+                        int(
+                            len(drained_ids)
+                            * selected_count
+                            // max(total_requested, 1)
+                        ),
+                    )
+                    drained_ids = drained_ids[:keep_n]
+                confirmed = await confirm_processed(db, drained_ids)
+        except Exception as _dq_err:
+            logger.warning(
+                f"[DELTA_STEP:{sport}] dirty_queue confirm failed "
+                f"(non-fatal — rows will be re-rescored next tick): "
+                f"{_dq_err}"
+            )
+
         logger.info(
             f"[DELTA_STEP:{sport}] rescored {result.get('written', 0)} / "
             f"{len(rescore_keys)} requested in {dur:.2f}s "
-            f"(batch_capped={batch_capped} skipped_due_to_cap={keys_skipped_due_to_cap})"
+            f"(batch_capped={batch_capped} skipped_due_to_cap={keys_skipped_due_to_cap}) "
+            f"queue_confirmed={confirmed}"
         )
         context["rescore_result"] = result
         return {
@@ -179,6 +217,7 @@ class RescoreDirtyPropsStep(DeltaStep):
             "batch_capped": batch_capped,
             "keys_skipped_due_to_cap": keys_skipped_due_to_cap,
             "total_dirty_requested": total_requested,
+            "queue_ids_confirmed": confirmed,
         }
 
 
@@ -219,58 +258,41 @@ class RebalanceTiersStep(DeltaStep):
 
 
 class AdvanceWatermarkStep(DeltaStep):
-    """Bump the per-sport cursor forward, but never past `now − SAFE_LAG`.
+    """DEPRECATED as a detection mechanism. Records the last tick time
+    for observability only.
 
-    History (2026-05-05): the original implementation advanced the
-    watermark unconditionally to `context["tick_started_at"]`. That
-    races late-arriving upstream writes — when an upstream sync stamps
-    a batch with `updated_at = T0` but the bulk-write commits at
-    `T0 + Δ` (Δ can easily exceed the existing 5-second grace), the
-    detect tick that runs at `T0 + 1s` sees nothing AND advances the
-    watermark to `T0 + 1s`. The next tick then queries
-    `updated_at > T0 + 1s − 5s` and STILL misses the writes whose
-    timestamps are `T0`.  Result: the writes are lost forever, the
-    detector returns `dirty=0` every tick, and tier rebalances never
-    fire (real failure observed: MLB tiers frozen at 15:20 UTC while
-    `mlb_live_props` had been receiving fresh writes every minute).
+    History (2026-05-07): replaced by `services.delta.dirty_queue` —
+    the watermark used to filter `live_props.find({updated_at > wm})`,
+    which raced upstream commits. Now the dirty queue is the single
+    source of truth for "what changed since last tick". This step is
+    kept only because external dashboards and admin endpoints read
+    `delta_watermarks.last_tick_utc` for "when did the engine last
+    run" diagnostics.
 
-    Fix: cap the advance at `now − SAFE_LAG_SECONDS` so the watermark
-    trails real time by a window large enough to absorb upstream
-    commit latency. Rescore is idempotent — a slightly-overlapping
-    detect window costs nothing and prevents data loss.
-
-    The cap intentionally uses `now()` (NOT `tick_started_at`) so the
-    LAG is measured against the wall clock at the moment we commit,
-    not against the moment the tick began.
+    NO detection logic depends on this value anymore. The 90-second
+    SAFE_LAG cap is removed (was a bandage on the watermark race the
+    queue eliminated).
     """
 
     name = "5_advance_watermark"
-
-    # Maximum tolerated upstream-write commit latency. 90s comfortably
-    # absorbs typical bulk-write commit lag for 10K+ row upserts on a
-    # busy mongod, while keeping the rescore overlap window small.
-    SAFE_LAG_SECONDS = 90
 
     async def run(self, sport, db, context):
         if context.get("abort_remaining_steps"):
             return {"skipped": True, "reason": "upstream_lock_held"}
 
-        tick_started_at = context.get("tick_started_at") or datetime.now(timezone.utc)
-        now_utc = datetime.now(timezone.utc)
-        from datetime import timedelta
-        safe_ceiling = now_utc - timedelta(seconds=self.SAFE_LAG_SECONDS)
-        # Advance only as far as `min(tick_started_at, now − SAFE_LAG)`.
-        ts = min(tick_started_at, safe_ceiling)
-
-        t0 = datetime.now(timezone.utc)
+        # Pure observability: stamp `last_tick_utc = now()` so
+        # dashboards can report "engine last ran X seconds ago".
+        # No detection consumer reads this value anymore.
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc)
+        t0 = ts
         advanced_to = await advance_watermark(db, sport, ts)
         dur = (datetime.now(timezone.utc) - t0).total_seconds()
         return {
             "duration_seconds": dur,
             "advanced_to": advanced_to.isoformat(),
-            "tick_started_at": tick_started_at.isoformat(),
-            "safe_lag_seconds": self.SAFE_LAG_SECONDS,
-            "capped_by_safe_lag": ts is safe_ceiling,
+            "deprecated_for_detection": True,
+            "detection_source": "delta_dirty_queue",
         }
 
 

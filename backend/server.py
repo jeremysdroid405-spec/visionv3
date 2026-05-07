@@ -1325,7 +1325,17 @@ async def startup_event():
         # ticker_headlines - Per-headline lifecycle tracking
         await db[COLL.shared("ticker_headlines")].create_index([("fingerprint", ASCENDING)], unique=True, background=True)
         await db[COLL.shared("ticker_headlines")].create_index([("first_seen_at", DESCENDING)], background=True)
-        
+
+        # 2026-05-07 Step 3: dirty-queue compound index (sport + _id) so
+        # the drain query `find({sport}).sort(_id).limit(N)` is index-
+        # backed even as the queue accumulates millions of rows
+        # historically.
+        try:
+            from services.delta.dirty_queue import ensure_indexes as _dq_ensure
+            await _dq_ensure(db)
+        except Exception as _dq_idx_err:
+            logger.warning(f"[INDEXES] dirty_queue index create failed: {_dq_idx_err}")
+
         logger.info("[INDEXES] MongoDB indexes created successfully (including compound indexes)")
     except Exception as e:
         logger.error(f"[INDEXES] Error creating indexes: {e}")

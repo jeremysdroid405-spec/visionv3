@@ -55,6 +55,11 @@ class DeltaDetectionResult:
     updated_keys: Set[str] = field(default_factory=set) # §5.1 primary signal
     new_keys: Set[str] = field(default_factory=set)     # §5.2 secondary signal
     retired_keys: Set[str] = field(default_factory=set) # §5.3 tertiary signal
+    # 2026-05-07 Step 3: queue ids that produced `updated_keys`. The
+    # rescore step deletes these AFTER successful score-doc write so
+    # crash-mid-batch is safe (rows remain queued for next tick).
+    drained_queue_ids: List[Any] = field(default_factory=list)
+    queue_depth_remaining: int = 0
     # Totals for quick display
     live_props_count: int = 0
     active_live_props_count: int = 0
@@ -127,16 +132,30 @@ async def detect_changed_props(db, sport: str) -> DeltaDetectionResult:
     )
     result.scored_rt_count = await scored_coll.count_documents({"version_tag": rt_tag})
 
-    # --- signal 1: updated_at > watermark (primary) ---
-    updated_keys: Set[str] = set()
-    if result.watermark_utc is not None:
-        query = {"updated_at": {"$gt": result.watermark_utc}}
-        async for doc in live_coll.find(query, _KEY_PROJECTION):
-            ck = resolve_key(doc)
-            if ck:
-                updated_keys.add(ck)
-    # Count rows missing the updated_at stamp (observability for the
-    # odds-sync instrumentation rollout).
+    # --- signal 1: dirty-queue drain (primary) ---
+    # 2026-05-07 Step 3: replaces the timestamp-based watermark
+    # detector. The watermark raced upstream commits — when ingestion
+    # stamped rows with `updated_at = T0` but the bulk-write committed
+    # at `T0 + 90s+`, the watermark advanced past T0 before the rows
+    # became visible, masking them from every subsequent query. The
+    # dirty queue exploits monotonic ObjectId ordering: late commits
+    # get a NEW `_id` greater than `last_processed_id`, so they are
+    # guaranteed to be picked up on a later tick regardless of when
+    # `updated_at` was stamped.
+    from services.delta.dirty_queue import drain_dirty, queue_depth
+
+    DIRTY_QUEUE_BATCH = 5000
+    drained_keys, drained_queue_ids = await drain_dirty(
+        db, sport=sport, batch_limit=DIRTY_QUEUE_BATCH,
+    )
+    result.drained_queue_ids = drained_queue_ids
+    updated_keys: Set[str] = set(drained_keys)
+    # Diagnostic: how many rows remain queued AFTER this drain.
+    result.queue_depth_remaining = await queue_depth(db, sport=sport)
+
+    # Backstop: count rows in live_props missing the canonical
+    # `updated_at` stamp — kept for the odds-sync instrumentation
+    # rollout observability dashboard. NOT a detection signal anymore.
     result.missing_updated_at = await live_coll.count_documents(
         {"updated_at": {"$exists": False}}
     )

@@ -1578,6 +1578,36 @@ class UniversalOddsSyncService:
                         f"batch_id={new_batch_id[:8]}"
                     )
 
+                    # 2026-05-07 dirty-queue ingestion hook (Step 3).
+                    # Replaces the watermark-based detector. Every prop
+                    # we just wrote is enqueued for the delta engine
+                    # to rescore. Idempotent — failures here are
+                    # logged but never block the sync.
+                    try:
+                        from services.delta.dirty_queue import enqueue_dirty
+                        keys = [
+                            p["canonical_key"]
+                            for p in clean_props
+                            if p.get("canonical_key")
+                        ]
+                        n_enq = await enqueue_dirty(
+                            self.db, keys,
+                            sport=sport,
+                            reason="ingestion",
+                            ingestion_batch=new_batch_id,
+                        )
+                        logger.info(
+                            f"[ODDS_SYNC:{sport}] dirty_queue: "
+                            f"enqueued {n_enq} canonical_keys "
+                            f"(batch={new_batch_id[:8]})"
+                        )
+                        results["dirty_queue_enqueued"] = n_enq
+                    except Exception as _dq_err:
+                        logger.warning(
+                            f"[ODDS_SYNC:{sport}] dirty_queue enqueue "
+                            f"failed (non-fatal): {_dq_err}"
+                        )
+
                 # 2026-05 NBA feature-engine (Tier-1/2/3 context features
                 # for upcoming VK retrain). Runs as an OPTIONAL,
                 # non-breaking step after props are persisted. Failures
