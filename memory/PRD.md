@@ -71,9 +71,27 @@ Restructure React/FastAPI betting app into a 100% Local-First, ID-based multi-sp
   - **Bug fixed:** `lasso_high_edge` unit-mismatch — old MLB block compared decimal `edge_vs_fair` (e.g. 0.20) against the integer `15`, so the badge never fired on real picks. New threshold is `abs(edge_vs_fair) >= 0.15`. Verified live: James Harden (NBA, edge 0.2007) now stamps `lasso_high_edge`; Naz Reid (edge 0.1307) correctly does NOT.
   - **Bug fixed:** MLB tier endpoints were returning `scout_badges: []` because `enrich_mlb_intel_suite` short-circuits when intel_suite is cached — added `_apply_universal_scout_badges(pick)` to both `_post_process_nba_picks` and `_post_process_mlb_picks` so badges are stamped unconditionally and tier endpoints match player-detail endpoints. Verified live: Mike Trout / Ramon Laureano / Cam Smith / Kyle Tucker now stamp `floor_lock` + `hot_streak` + `high_fidelity_model`.
   - 23 new regression tests in `tests/test_performance_badges.py` lock the decimal-vs-percent threshold (`0.14` no, `0.15` yes, `-0.15` yes), side-aware `floor_lock` / `hot_streak`, SP buzzsaw guard, and dict-form output shape. **104/104 SSOT-related tests green.**
+- **PROP VISION STABILIZATION — Step 4 + 5 (2026-05-07) — P0-A complete:**
+  - **Watermark fully retired (one detection system only).** Deleted `services/delta_watermarks.py`, `AdvanceWatermarkStep`, all readers (detector, health_sync, SLO check), and dropped the `delta_watermarks` Mongo collection. The dirty queue (`delta_dirty_queue`) is now the sole detection source.
+  - **Adaptive sync engine recovered from restart-storm.** Removed inline 4h BDL game-logs refresh blocks from `_adaptive_poll_loop` (each took >900s, freezing the watchdog → 6 restarts → `RESTART_STORM_DETECTED`). The same refreshes already exist as standalone APScheduler daily cron jobs, so the inline copies were redundant.
+  - **Multi-sport ingestion via callback split.** `_adaptive_sync_callback` now drives BOTH NBA → MLB sequentially under per-sport `UpstreamSyncLock`. Calls `sync_sport_props(enrich_features=False)` (the live_props writer, ~10-30s/sport) NOT `master_sync` (the full 7-10 min pipeline). Heavy recompute + Vision Intel enrichment stays on the existing APScheduler hourly cron + delta engine per-tick rescore. Intra-cycle heartbeat between sports keeps the watchdog alive.
+  - **`STANDBY` 300s → 240s** in `PollInterval` so total cycle period (240s sleep + ~25-30s sync) stays comfortably under the <300s production-readiness ingestion SLO with margin for transient slowdowns.
+  - **Dirty-queue drain leak FIXED.** `RescoreDirtyPropsStep` now confirms (deletes) ALL drained queue_ids regardless of `coverage_filter` match outcome or batch cap. Previous proportional-trim logic deleted only ~6% of drained ids, causing perpetual re-drain of the same low-`_id` rows and unbounded queue growth (~+4,500/tick). Verified by 2 new regression tests that exercise the worst case (0% match, with cap, without cap).
+  - **30-minute observation window verifies all success criteria:**
+    - NBA `live_props` freshness peak = 255.6s ✅ < 300s SLO
+    - MLB `live_props` freshness peak = 198.0s ✅ < 300s SLO
+    - 0 watchdog FROZEN events, 0 RESTART_STORM events, 0 process restarts
+    - dirty_queue depth cycled 0 → ~9,500 → 0 cleanly between cycles (NO accumulation)
+    - heartbeat_age_s range 47.7s → 236.5s (never exceeded threshold)
+    - 7 consecutive cycles, all sub-30s for both sports combined
+    - VmRSS flat at 26.5 MB (no leak)
+  - 9 SSOT/queue tests green: `test_step3_dirty_queue.py` (incl. 2 new leak-fix regressions). Tier-counts active, score freshness <200s for both sports.
+  - **Out of P0-A scope (acknowledged, not silently fixed):**
+    - 60s-interval APScheduler jobs (Universal Game-Start Scanner, Wave 1 Shadow-Write Divergence Monitor) miss their slot by 1-55s during hourly `master_sync` enrichment (event-loop saturation). Pre-existing, unrelated to P0-A. Jobs catch up afterward.
 
 ## Open issues (priority)
 - **P0** Vision Intel universal refactor — full scope in `/app/memory/VISION_INTEL_REFACTOR_SCOPE.md`. Nullification phase shipped (Phase 2); engine refactor remains.
+- **P0 Phase 4A** (queued for next session): surgical `edge_pct` SSOT cleanup. DB has 81,243 docs persisting `edge_pct` via `services/board/publisher.py:181` and `services/board/shadow_publisher.py:142`. Unset migration + 2 frontend reads (`PlayerDetailPage.jsx`) + `vk_edge` API leakage cleanup. Scope nailed in audit; ~1 hour.
 - **P1** `vision_score == 0.0` data corruption for legit Safe Haven candidates (Tyrese Maxey et al.) — artificially fails `vision_score_gate`.
 - **P1** Pitcher Strikeouts L20 fallback missing.
 - **P1** PP-Only alt-line TP calculation (DK ladder fair-odds) — blocks Sunday-morning MLB slates from appearing.

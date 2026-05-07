@@ -1392,74 +1392,81 @@ async def startup_event():
     adaptive_sync = init_adaptive_sync_engine(db, ODDS_API_KEY)
     logger.info("Adaptive Sync Engine initialized (Mission-Critical Polling)")
     
-    # Wire adaptive sync callback to the universal master sync path.
+    # Wire adaptive sync callback to the live_props writer.
     async def _adaptive_sync_callback():
-        # 2026-05-07 SSOT: acquire UpstreamSyncLock so master_sync does
-        # not raise MasterSyncBypassError. The adaptive engine fires
-        # this callback when it detects upstream odds movement; without
-        # the lock, the delta detector cannot tell a sync is in flight
-        # and a race against partially-written collections is possible.
+        # 2026-05-07 P0-A (callback split): the adaptive sync engine
+        # is responsible for keeping `{sport}_live_props` fresh on the
+        # 5-min STANDBY cadence — and only that. Previously it called
+        # `run_master_sync(sport)`, which is a 7-10 min full pipeline
+        # (odds_sync + recompute + Vision Intel enrichment + board
+        # build). Doing all that work inline blew the <300s ingestion
+        # SLO every cycle, because each sport's live_props row was
+        # only fresh for ~5 min out of every ~17-min combined cycle.
         #
-        # 2026-05-07 P0-A (multi-sport restore): the callback must run
-        # both NBA and MLB so MLB live_props refresh on the 5-min
-        # STANDBY cadence too — previously MLB was orphaned to the
-        # 30-min APScheduler cron and breached the <300s SLO every
-        # cycle. Sports run SEQUENTIALLY (not in parallel) so each
-        # sport's UpstreamSyncLock is held independently and log
-        # ordering is unambiguous. Each sport's failure is isolated:
-        # an MLB exception does not block NBA's result from
-        # propagating and vice versa.
+        # The split sends the heavy work to its proper owners:
+        #   - Real-time scoring   → delta engine (per 30s tick, driven
+        #                            by `delta_dirty_queue` enqueues
+        #                            this callback produces).
+        #   - Hourly board build  → existing APScheduler crons
+        #                            (`hourly_nba_master_sync`,
+        #                            `hourly_mlb_master_sync`).
+        #   - Vision Intel        → master_sync's enrichment phase,
+        #                            which now runs only inside the
+        #                            hourly cron, NOT every 5 min.
         #
-        # 2026-05-07 P0-A (intra-cycle heartbeat): the engine's poll
-        # loop writes `adaptive_sync_heartbeat.last_heartbeat_at` only
-        # AFTER both sports finish. Each master_sync takes ~7 min, so
-        # the combined cycle is ~14 min. Watchdog stale_threshold is
-        # 900s (15 min) — a watchdog tick that lands during the second
-        # cycle of the SECOND poll iteration would see an alive_ts gap
-        # > 15 min and force-restart the engine, masking the real
-        # slow-master_sync issue as a "frozen poll loop". Bumping
-        # heartbeat between sports keeps the gap at ~7 min, well below
-        # threshold, while the slow-sync work is its own observable
-        # finding (logged at INFO via BEGIN/END markers above).
-        from services.master_sync import run_master_sync
+        # Sports run sequentially under per-sport UpstreamSyncLock so
+        # each acquisition is local and either sport's failure is
+        # isolated. Intra-cycle heartbeat write between sports keeps
+        # the watchdog alive across the combined ~2-3 min cycle.
+        from services.universal_odds_sync import get_universal_odds_service
         from services.upstream_sync_lock import get_upstream_sync_lock
         lock = get_upstream_sync_lock()
+        service = get_universal_odds_service(db)
         results: Dict[str, Any] = {}
         for _idx, _sport in enumerate(("nba", "mlb")):
             sport_t0 = datetime.now(timezone.utc)
             logger.info(
-                f"[ADAPTIVE_SYNC] BEGIN master_sync({_sport})"
+                f"[ADAPTIVE_SYNC] BEGIN sync_sport_props({_sport})"
             )
             try:
                 async with lock.exclusive(
                     _sport, holder="adaptive_sync_callback",
                 ):
-                    sport_result = await run_master_sync(db, _sport)
+                    sport_result = await service.sync_sport_props(
+                        sport=_sport,
+                        enrich_features=False,
+                    )
                 results[_sport] = sport_result
                 dur = (
                     datetime.now(timezone.utc) - sport_t0
                 ).total_seconds()
+                inserted = (
+                    sport_result.get("props_synced", 0)
+                    if isinstance(sport_result, dict) else 0
+                )
+                events = (
+                    sport_result.get("events_synced", 0)
+                    if isinstance(sport_result, dict) else 0
+                )
                 logger.info(
-                    f"[ADAPTIVE_SYNC] END   master_sync({_sport}) "
-                    f"dur={dur:.1f}s "
-                    f"demons={sport_result.get('demons_count', 0) if isinstance(sport_result, dict) else 0} "
-                    f"goblins={sport_result.get('goblins_count', 0) if isinstance(sport_result, dict) else 0}"
+                    f"[ADAPTIVE_SYNC] END   sync_sport_props({_sport}) "
+                    f"dur={dur:.1f}s events={events} props={inserted}"
                 )
             except Exception as _ms_err:  # noqa: BLE001
                 dur = (
                     datetime.now(timezone.utc) - sport_t0
                 ).total_seconds()
                 logger.error(
-                    f"[ADAPTIVE_SYNC] FAIL  master_sync({_sport}) "
+                    f"[ADAPTIVE_SYNC] FAIL  sync_sport_props({_sport}) "
                     f"dur={dur:.1f}s err={_ms_err!r}"
                 )
                 results[_sport] = {"error": repr(_ms_err)}
 
-            # Intra-cycle heartbeat — keeps watchdog happy across the
-            # combined ~14-min sequential cycle. Mirrors the field set
-            # written by the engine's own end-of-loop heartbeat. Marked
-            # `inter_sport_marker=True` so log scanners can distinguish
-            # them from full-cycle heartbeats.
+            # Intra-cycle heartbeat — keeps the watchdog alive across
+            # the sequential sport cycle. The split callback is fast
+            # (~30-90s per sport) so this is mostly defensive, but it
+            # also distinguishes a hung NBA call from a hung MLB call
+            # in the heartbeat doc (`after_sport` field).
             try:
                 await db["adaptive_sync_heartbeat"].update_one(
                     {"_id": "adaptive_sync"},
@@ -1470,32 +1477,28 @@ async def startup_event():
                     }},
                     upsert=True,
                 )
-                logger.info(
-                    f"[ADAPTIVE_SYNC] heartbeat written after "
-                    f"{_sport} (idx={_idx})"
-                )
             except Exception as _hb_err:
                 logger.warning(
                     f"[ADAPTIVE_SYNC] inter-sport heartbeat write "
                     f"failed after {_sport}: {_hb_err}"
                 )
 
-        # Engine logs `Sync complete` using the returned dict — keep the
-        # same shape as before (NBA-only) so existing log parsers don't
-        # break. Surface MLB result alongside.
-        nba = results.get("nba") or {}
-        mlb = results.get("mlb") or {}
+        # The engine logs `Sync complete` using `demons_count` and
+        # `goblins_count` for backwards-compat. The split callback
+        # doesn't compute those (that's a master_sync-side concern),
+        # so report 0 — the hourly master_sync run still produces them.
         return {
-            "demons_count": (nba.get("demons_count", 0) if isinstance(nba, dict) else 0),
-            "goblins_count": (nba.get("goblins_count", 0) if isinstance(nba, dict) else 0),
-            "nba": nba,
-            "mlb": mlb,
+            "demons_count": 0,
+            "goblins_count": 0,
+            "nba": results.get("nba") or {},
+            "mlb": results.get("mlb") or {},
         }
     adaptive_sync.set_sync_callback(_adaptive_sync_callback)
     logger.info(
-        "[ADAPTIVE_SYNC] Callback wired to universal master_sync "
-        "(NBA → MLB sequential under per-sport UpstreamSyncLock; "
-        "intra-cycle heartbeat between sports)"
+        "[ADAPTIVE_SYNC] Callback wired to live_props writer "
+        "(sync_sport_props NBA → MLB sequential under per-sport "
+        "UpstreamSyncLock; intra-cycle heartbeat). Master sync stays "
+        "on APScheduler/RebuildCoordinator."
     )
     
     # Initialize Intel Briefing Engine - Gemini 3 Flash

@@ -169,34 +169,37 @@ class RescoreDirtyPropsStep(DeltaStep):
         )
         dur = (datetime.now(timezone.utc) - t0).total_seconds()
 
-        # 2026-05-07 Step 3: confirm-and-delete drained queue rows ONLY
-        # after the rescore succeeded. Crash-safe: if recompute_sport
-        # raised, this code never runs and the rows remain queued for
-        # the next tick (rescore is idempotent so re-runs are
-        # harmless). When the cap kicks in, only delete the queue ids
-        # that correspond to keys we actually rescored — leftovers
-        # remain queued for next tick.
+        # 2026-05-07 P0-A leak fix: confirm-and-delete ALL drained
+        # queue rows regardless of match outcome or batch cap. The
+        # previous proportional-confirm logic (delete only `keep_n =
+        # drained * selected / requested`) was broken for two reasons:
+        #
+        #   (1) Drained rows that the cap left out had the LOWEST
+        #       `_id`s. They were re-drained every subsequent tick
+        #       (sort by `_id` ascending) instead of NEW enqueues,
+        #       so the queue never converged.
+        #   (2) `recompute_sport(only_canonical_keys=...)` filters
+        #       requested keys through `coverage_filter` (priceable +
+        #       pp_playable). Keys that fail the filter (alt-only,
+        #       not on PrizePicks, etc.) are silently dropped — we
+        #       received their queue events but never deleted them,
+        #       so they accumulated forever.
+        #
+        # Confirm-all is safe:
+        #   - It runs AFTER `recompute_sport` returned successfully,
+        #     so a mid-rescore crash still leaves rows queued for
+        #     next tick (the existing crash-safety guarantee).
+        #   - Keys that legitimately change again will be re-enqueued
+        #     by the next ingestion batch under FRESH `_id`s, so
+        #     they will be picked up on the very next tick.
+        #   - Keys that retired (filter-dropped, slate change) get
+        #     dropped from the queue forever — which is correct;
+        #     they will never need rescoring again.
         confirmed = 0
         try:
             from services.delta.dirty_queue import confirm_processed
             drained_ids = list(getattr(detection, "drained_queue_ids", []) or [])
             if drained_ids:
-                if batch_capped:
-                    # Best-effort partial confirm: trim by the
-                    # proportion of selected keys to total requested.
-                    # Over-deleting is unsafe (we'd lose a queued
-                    # event); under-deleting is harmless (re-rescored
-                    # next tick). Err under by floor-dividing.
-                    selected_count = len(rescore_keys)
-                    keep_n = max(
-                        0,
-                        int(
-                            len(drained_ids)
-                            * selected_count
-                            // max(total_requested, 1)
-                        ),
-                    )
-                    drained_ids = drained_ids[:keep_n]
                 confirmed = await confirm_processed(db, drained_ids)
         except Exception as _dq_err:
             logger.warning(

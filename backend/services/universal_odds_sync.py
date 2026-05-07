@@ -1282,7 +1282,8 @@ class UniversalOddsSyncService:
         self, 
         sport: str = "nba",
         bookmakers: List[str] = None,
-        include_sharp: bool = True
+        include_sharp: bool = True,
+        enrich_features: bool = True,
     ) -> Dict[str, Any]:
         """
         Full sync of props for a sport from multiple bookmakers.
@@ -1296,6 +1297,16 @@ class UniversalOddsSyncService:
             sport: Sport to sync ('nba' or 'mlb')
             bookmakers: List of bookmakers (default: prizepicks, draftkings, fanduel, pinnacle)
             include_sharp: Include sharp books for edge calculation
+            enrich_features: When True (default), run the NBA Tier-1/2/3
+                context-feature enrichment (`enrich_slate`) after the
+                STAGE-THEN-PRUNE write. The hourly APScheduler master_sync
+                cron uses the default. The adaptive 5-min STANDBY callback
+                passes `enrich_features=False` because enrichment takes
+                ~6 min for NBA — running it every 5 min would push live_props
+                freshness over the <300s SLO. Enrichment is idempotent and
+                its outputs (Tier-1/2/3 context-feature docs) are read by
+                downstream scoring, not by the adaptive ingestion path,
+                so skipping it in the fast cadence is safe.
             
         Returns:
             Sync results summary
@@ -1612,7 +1623,13 @@ class UniversalOddsSyncService:
                 # for upcoming VK retrain). Runs as an OPTIONAL,
                 # non-breaking step after props are persisted. Failures
                 # here never block the sync.
-                if sport == "nba":
+                #
+                # 2026-05-07 P0-A callback split: the adaptive 5-min
+                # STANDBY callback passes `enrich_features=False` so
+                # the ~6-min enrich_slate work doesn't block the live
+                # SLO. The hourly APScheduler master_sync still runs
+                # this on its full cadence.
+                if sport == "nba" and enrich_features:
                     try:
                         from services.features.nba_feature_engine import (
                             enrich_slate,

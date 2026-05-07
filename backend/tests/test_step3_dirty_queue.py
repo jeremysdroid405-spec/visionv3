@@ -277,3 +277,125 @@ async def test_drain_dedupes_keys_but_returns_all_queue_ids(db_with_isolated_que
     deleted = await confirm_processed(db, ids)
     assert deleted == 4
     assert await queue_depth(db, sport=sport) == 0
+
+
+# ── Contract 7: RescoreDirtyPropsStep deletes ALL drained ids ────────
+@pytest.mark.asyncio
+async def test_rescore_step_confirms_all_drained_regardless_of_match(
+    db_with_isolated_queue, monkeypatch,
+):
+    """2026-05-07 P0-A leak fix.
+
+    Pre-fix bug: `RescoreDirtyPropsStep` proportionally trimmed the
+    confirm list when `batch_capped=True`, AND silently retained queue
+    rows for keys that `coverage_filter` dropped. Both modes leaked
+    ~94% of queued rows, causing the queue to grow unbounded and the
+    same low-`_id` rows to be re-drained every tick.
+
+    Contract: after the rescore step runs, ALL drained queue_ids are
+    deleted regardless of (a) whether the cap kicked in or
+    (b) whether `recompute_sport` matched the keys.
+    """
+    from services.pipeline.delta_steps import RescoreDirtyPropsStep
+    from services.delta.dirty_queue import (
+        enqueue_dirty, queue_depth, DIRTY_QUEUE_COLLECTION,
+    )
+    from services.delta.detector import DeltaDetectionResult
+    import services.pipeline.delta_steps as ds_mod
+
+    db, sport = db_with_isolated_queue
+
+    # Seed the queue with 100 keys.
+    seeded_keys = [f"sport|evt|player_{i}|PTS|10.5|OVER" for i in range(100)]
+    await enqueue_dirty(db, seeded_keys, sport=sport, reason="ingestion")
+    assert await queue_depth(db, sport=sport) == 100
+
+    # Hand-fetch the queue_ids in stable order so the test mirrors what
+    # `drain_dirty` returns on production.
+    raw = await db[DIRTY_QUEUE_COLLECTION].find(
+        {"sport": sport}, {"_id": 1, "canonical_key": 1},
+    ).sort([("_id", 1)]).to_list(None)
+    drained_ids = [d["_id"] for d in raw]
+    assert len(drained_ids) == 100
+
+    # Stub `recompute_sport` to simulate the worst case: ZERO keys
+    # match the live_props post-filter (all the queued keys are
+    # retired / not playable). Pre-fix, this caused 100 rows to leak.
+    async def _stub_recompute(db, sport, version_tag, **kw):
+        return {
+            "processed": 0, "written": 0, "skipped": 0, "replaced": 0,
+            "collection": f"{sport}_prop_scores",
+            "version_tag": version_tag,
+            "only_canonical_keys_matched": 0,
+        }
+    monkeypatch.setattr(ds_mod, "recompute_sport", _stub_recompute)
+
+    # Build a detection result the step expects.
+    det = DeltaDetectionResult(sport=sport)
+    det.updated_keys = set(seeded_keys[:60])
+    det.new_keys = set(seeded_keys[60:])
+    det.dirty_keys = det.updated_keys | det.new_keys
+    det.drained_queue_ids = drained_ids
+    context: dict = {"detection": det, "rescore_batch_cap": 10}
+
+    step = RescoreDirtyPropsStep()
+    result = await step.run(sport, db, context)
+
+    # Cap kicked in: keys_requested=10, but ALL 100 drained_ids must
+    # have been confirmed.
+    assert result["batch_capped"] is True, result
+    assert result["queue_ids_confirmed"] == 100, (
+        f"leak fix regression: confirmed {result['queue_ids_confirmed']} / "
+        f"100 drained_ids. Pre-fix value was ~10 due to proportional "
+        f"trim. The contract is: confirm-all once rescore returns."
+    )
+    final_depth = await queue_depth(db, sport=sport)
+    assert final_depth == 0, (
+        f"queue still has {final_depth} rows after confirm-all. The "
+        f"step is leaking rows again."
+    )
+
+
+@pytest.mark.asyncio
+async def test_rescore_step_confirms_all_when_zero_match(
+    db_with_isolated_queue, monkeypatch,
+):
+    """A more direct restatement: when `coverage_filter` rejects 100% of
+    the drained keys (matched=0), ALL drained_ids are still deleted.
+    Pre-fix, this scenario silently retained every row forever."""
+    from services.pipeline.delta_steps import RescoreDirtyPropsStep
+    from services.delta.dirty_queue import (
+        enqueue_dirty, queue_depth, DIRTY_QUEUE_COLLECTION,
+    )
+    from services.delta.detector import DeltaDetectionResult
+    import services.pipeline.delta_steps as ds_mod
+
+    db, sport = db_with_isolated_queue
+
+    keys = [f"sport|stale|p_{i}|PTS|0.5|OVER" for i in range(50)]
+    await enqueue_dirty(db, keys, sport=sport, reason="ingestion")
+    raw = await db[DIRTY_QUEUE_COLLECTION].find(
+        {"sport": sport}, {"_id": 1},
+    ).sort([("_id", 1)]).to_list(None)
+    drained_ids = [d["_id"] for d in raw]
+
+    async def _stub_zero_match(db, sport, version_tag, **kw):
+        return {
+            "processed": 0, "written": 0, "skipped": 0,
+            "only_canonical_keys_matched": 0,
+        }
+    monkeypatch.setattr(ds_mod, "recompute_sport", _stub_zero_match)
+
+    det = DeltaDetectionResult(sport=sport)
+    det.updated_keys = set(keys)
+    det.dirty_keys = set(keys)
+    det.drained_queue_ids = drained_ids
+    context: dict = {"detection": det}  # no batch cap → all 50 requested
+
+    step = RescoreDirtyPropsStep()
+    result = await step.run(sport, db, context)
+
+    assert result["batch_capped"] is False
+    assert result["written"] == 0
+    assert result["queue_ids_confirmed"] == 50
+    assert await queue_depth(db, sport=sport) == 0

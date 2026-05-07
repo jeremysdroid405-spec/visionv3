@@ -63,8 +63,16 @@ logger = logging.getLogger(__name__)
 # silent task death during one of those 4h sleeps caused a 17h dead
 # pipeline. Heartbeat doc + 5min STANDBY makes that failure mode
 # impossible to hide for more than ~15 min (3× heartbeat interval).
+#
+# 2026-05-07 P0-A — STANDBY reduced 300 → 240 to bring the worst-case
+# `{sport}_live_props.max(updated_at)` age strictly under the <300s
+# production-readiness ingestion SLO. The full callback-split cycle
+# (sync_sport_props NBA + MLB, enrich_features=False) takes ~25-35s,
+# so 270s sleep produced a 295-305s period that occasionally ticked
+# over 300s. 240s sleep + ~30s cycle = ~270s period, comfortable
+# margin under 300s with headroom for transient slowdowns.
 class PollInterval(Enum):
-    STANDBY = 300        # 5 minutes - 24/7 watcher for early prop releases
+    STANDBY = 240        # 4 minutes - 24/7 watcher; below 300s SLO
     ACTIVE = 3600        # 60 minutes (2-8h to tip) - Catching line moves
     LOCK_IN = 900        # 15 minutes (30m-2h to tip) - Lineup Gate phase
     FINAL_CALL = 600     # 10 minutes (< 30m to tip) - Sharp moves verification
