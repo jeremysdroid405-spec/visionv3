@@ -27,6 +27,7 @@ import asyncio
 
 from services.config.collection_names import COLL
 from services.observability import log_silent_failure
+from services.scheduled_sports import SCHEDULED_SPORTS
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ class ForwardTestingService:
             Capture results with counts per tier
         """
         sport = sport.lower()
-        if sport not in TIER_COLLECTIONS:
+        if sport not in SCHEDULED_SPORTS:
             return {"error": f"Unknown sport: {sport}"}
         
         now = datetime.now(timezone.utc)
@@ -221,7 +222,7 @@ class ForwardTestingService:
             "sports": {}
         }
         
-        for sport in TIER_COLLECTIONS.keys():
+        for sport in SCHEDULED_SPORTS.keys():
             results["sports"][sport] = await self.capture_daily_snapshot(sport, capture_reason)
         
         return results
