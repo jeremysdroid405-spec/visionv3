@@ -41,19 +41,41 @@ GRADE_THRESHOLDS = {
     "F": 0,   # High-Friction / Volatile - Maximum Risk
 }
 
-# Volatility Index Thresholds
-VOLATILITY_HIGH = 0.25      # >25% std deviation = High Volatility
-VOLATILITY_MEDIUM = 0.15    # 15-25% = Medium Volatility
-VOLATILITY_LOW = 0.15       # <15% = Low Volatility
+# Volatility Index Thresholds — re-tuned to canonical `cv` scale (2026-05-08).
+# Per-leg volatility now reads canonical `cv` directly from the score
+# doc, which lives in roughly [0.0, 2.0]. The previous thresholds
+# (0.15 / 0.25) were calibrated to `std_dev / season_avg` and are not
+# meaningful on the canonical CV. The new buckets line up with how
+# the scoring engine itself classifies dispersion:
+#   LOW    : cv < 0.20
+#   MEDIUM : 0.20 ≤ cv < 0.45
+#   HIGH   : cv ≥ 0.45
+VOLATILITY_HIGH = 0.45
+VOLATILITY_MEDIUM = 0.20
+VOLATILITY_LOW = 0.20
+
+# Hard ceiling for any per-leg volatility (canonical or fallback). CVs
+# above 2.0 are nearly always upstream-noise / sample artefacts.
+VOLATILITY_CEILING = 2.0
 
 # Environmental Delta Factors
 HOME_ADVANTAGE = 1.03       # +3% boost for home games
 AWAY_PENALTY = 0.97         # -3% penalty for away games
 
-# Correlation penalties
-SAME_PLAYER_CORRELATION = 0.85  # 15% penalty for same player props
-SAME_TEAM_CORRELATION = 0.95    # 5% penalty for same team props
-SAME_GAME_CORRELATION = 0.90    # 10% penalty for same game props
+# ---------------------------------------------------------------------------
+# Correlation rule constants — universal / sport-agnostic.
+# ---------------------------------------------------------------------------
+# Pairwise correlation between two legs is one of the values below,
+# evaluated in priority order (first match wins per pair). The aggregate
+# ρ for the parlay is the mean across all unordered leg pairs. The
+# back-compat percentage penalty rendered in the UI is `ρ * CORR_ALPHA`
+# capped at `CORR_MAX_PENALTY`.
+CORR_SAME_PLAYER = 0.85   # same `player_name` (any stat) — strong positive
+CORR_SAME_GAME   = 0.40   # same `event_id` / `game_id`, different player — moderate
+CORR_SAME_TEAM   = 0.20   # same `team` + same `sport`, different game — light
+CORR_INDEPENDENT = 0.0    # cross-sport OR no overlap — independent
+CORR_ALPHA = 0.50         # convert ρ to penalty multiplier
+CORR_MAX_PENALTY = 0.50   # never penalize convergence by more than 50%
 
 
 # ==================== DATA STRUCTURES ====================
@@ -71,6 +93,8 @@ class SimulationLeg:
     game_id: Optional[str]
     is_home: bool
     sport: Optional[str] = None  # 2026-05-08 — multi-sport echo (NBA / MLB)
+    event_id: Optional[str] = None  # 2026-05-08 — canonical same-game key
+    cv: Optional[float] = None      # 2026-05-08 — canonical coefficient-of-variation
     
     # Calculated fields
     base_hit_rate: float = 0.0
@@ -80,6 +104,7 @@ class SimulationLeg:
     dvp_rank: int = 15
     dvp_rank_color: str = "yellow"
     volatility_index: float = 0.0
+    volatility_source: str = "fallback"   # "cv" | "hit_rate_spread" | "none"
     stability_index: int = 50  # NEW: 1-100 based on std deviation
     
     # Statistical fields for stability calculation
@@ -148,8 +173,9 @@ class SimulationEngine:
             processed = await self._process_leg(leg_data)
             processed_legs.append(processed)
         
-        # 3. Calculate correlation penalties
-        correlation_penalty = self._calculate_correlation_penalty(processed_legs)
+        # 3. Calculate correlation analytics (universal pairwise)
+        corr = self._calculate_correlation(processed_legs)
+        correlation_penalty = corr["penalty_multiplier"]
         
         # 4. Calculate combined convergence rate
         convergence_rate = self._calculate_convergence_rate(processed_legs, correlation_penalty)
@@ -182,7 +208,13 @@ class SimulationEngine:
                 "volatility_label": self._get_volatility_label(volatility_index),
                 "stability_index": combined_stability,
                 "stability_label": stability_label,
+                # Back-compat: percent rendered in the legacy UI field.
                 "correlation_penalty": round((1 - correlation_penalty) * 100, 1),
+                # New universal analytics — UI surfaces `correlation_kind`
+                # text alongside the percent (Independent · 0%, Same Game
+                # · -X%, Same Team · -X%, Same Player · -X%).
+                "correlation_score": corr["correlation_score"],
+                "correlation_kind": corr["correlation_kind"],
                 "conflicts_detected": conflicts,
                 "risk_flags": risk_flags,
                 "environmental_summary": env_summary,
@@ -216,11 +248,31 @@ class SimulationEngine:
         direction = _str(leg_data.get("direction"), "over").lower() or "over"
         team = _str(leg_data.get("team"))
         opponent = _str(leg_data.get("opponent"))
-        game_id = leg_data.get("game_id") if isinstance(leg_data.get("game_id"), (str, int)) else None
+        # 2026-05-08 — canonical same-game key. Prefer `event_id`
+        # (universal canonical name); fall back to legacy `game_id`
+        # for backwards-compatibility. Either may be int or str on
+        # the wire — coerce to a comparable str.
+        raw_event_id = leg_data.get("event_id") or leg_data.get("game_id")
+        event_id = (
+            str(raw_event_id) if raw_event_id not in (None, "") else None
+        )
+        game_id = event_id  # legacy field name kept on the dataclass
         is_home = bool(leg_data.get("is_home")) if leg_data.get("is_home") is not None else True
         sport = _str(leg_data.get("sport")).lower() or None
         player_id_raw = leg_data.get("player_id")
         player_id = str(player_id_raw) if player_id_raw not in (None, "") else None
+
+        # Canonical coefficient-of-variation from the score doc — SSOT
+        # for per-leg dispersion. May be None when absent (e.g. an
+        # alt-line market that hasn't been scored).
+        cv_raw = leg_data.get("cv")
+        try:
+            cv_val: Optional[float] = float(cv_raw) if cv_raw is not None else None
+            if cv_val is not None and (cv_val != cv_val or cv_val < 0):
+                # NaN or negative — treat as missing.
+                cv_val = None
+        except (TypeError, ValueError):
+            cv_val = None
 
         # Create leg object
         leg = SimulationLeg(
@@ -234,6 +286,8 @@ class SimulationEngine:
             opponent=opponent,
             game_id=game_id,
             is_home=is_home,
+            event_id=event_id,
+            cv=cv_val,
         )
 
         # Base hit rate — canonical-first; numeric-coerced.
@@ -270,22 +324,34 @@ class SimulationEngine:
         else:
             leg.friction_label = "Standard Friction"
         
-        # Calculate Volatility Index
-        std_dev = leg_data.get("std_dev", 0)
-        season_avg = leg_data.get("season_avg") or 1
-        if season_avg > 0 and std_dev > 0:
-            leg.volatility_index = std_dev / season_avg
+        # ---- Volatility Index ------------------------------------------------
+        # 2026-05-08 — canonical-first. SSOT for per-leg dispersion is
+        # `cv` from the score doc. Fall back to side-aware hit-rate
+        # disagreement (`|hit_rate_over − hit_rate_l10|`, normalized to
+        # 0-1) only when `cv` is missing. The previous fallback
+        # (`|h10 − h5|`) was sample-window noise and produced near-zero
+        # volatility for war-zone props with cv ≥ 1.0.
+        if leg.cv is not None:
+            leg.volatility_index = max(0.0, min(VOLATILITY_CEILING, leg.cv))
+            leg.volatility_source = "cv"
         else:
-            # Estimate from hit rate variance
-            # 2026-05-07 P0 Phase 4B: canonical-first read with
-            # legacy fallback (per stabilization spec — keep
-            # CommandPost from hard-failing while upstream payloads
-            # cut over to canonical key names).
-            h10 = (leg_data.get("hit_rate_l10") or leg_data.get("h10_rate") or 50) / 100
-            h5  = (leg_data.get("hit_rate_l5")  or leg_data.get("h5_rate")  or 50) / 100
-            leg.volatility_index = abs(h10 - h5)
+            hr_over = leg_data.get("hit_rate_over")
+            hr_l10 = leg_data.get("hit_rate_l10")
+            if hr_over is not None and hr_l10 is not None:
+                try:
+                    spread = abs(float(hr_over) - float(hr_l10)) / 100.0
+                    leg.volatility_index = max(
+                        0.0, min(VOLATILITY_CEILING, spread)
+                    )
+                    leg.volatility_source = "hit_rate_spread"
+                except (TypeError, ValueError):
+                    leg.volatility_index = 0.0
+                    leg.volatility_source = "none"
+            else:
+                leg.volatility_index = 0.0
+                leg.volatility_source = "none"
         
-        # Volatility label
+        # Volatility label (CV-scaled buckets)
         if leg.volatility_index >= VOLATILITY_HIGH:
             leg.volatility_label = "High Volatility"
         elif leg.volatility_index >= VOLATILITY_MEDIUM:
@@ -293,20 +359,11 @@ class SimulationEngine:
         else:
             leg.volatility_label = "Low Volatility"
         
-        # Calculate Stability Index (1-100, inverse of volatility)
-        # High Stability (80-100): Low variance, consistent
-        # Moderate (50-79): Average variance
-        # Volatile (0-49): High variance, boom-or-bust
-        if season_avg > 0 and std_dev > 0:
-            cv = (std_dev / season_avg) * 100  # Coefficient of variation
-            leg.stability_index = max(0, min(100, int(100 - (cv * 2))))
-        else:
-            # Estimate from hit rate consistency (canonical-first
-            # with legacy fallback per Phase 4B migration spec).
-            h10 = leg_data.get("hit_rate_l10") or leg_data.get("h10_rate") or 50
-            h5  = leg_data.get("hit_rate_l5")  or leg_data.get("h5_rate")  or 50
-            consistency = 100 - abs(h10 - h5) * 2
-            leg.stability_index = max(0, min(100, int(consistency)))
+        # Stability Index (1-100) — derived from the same canonical
+        # CV ladder so the two metrics never disagree. cv=0 → 100,
+        # cv=1.0 → 50, cv≥2.0 → 0. Linear; bounded.
+        cv_for_stab = leg.volatility_index
+        leg.stability_index = max(0, min(100, int(round(100 - cv_for_stab * 50))))
         
         # Stability label
         if leg.stability_index >= 80:
@@ -370,35 +427,94 @@ class SimulationEngine:
         
         return conflicts
     
-    def _calculate_correlation_penalty(self, legs: List[SimulationLeg]) -> float:
-        """Calculate correlation penalty for correlated legs."""
+    def _calculate_correlation(self, legs: List[SimulationLeg]) -> Dict[str, Any]:
+        """Universal pairwise leg-correlation calculation.
+
+        Sport-agnostic. Uses canonical leg fields ONLY (`player_name`,
+        `event_id`, `team`, `sport`). Pairwise rules, evaluated in
+        priority order (first match wins per pair):
+
+            1. same `player_name`                          → CORR_SAME_PLAYER
+            2. same `event_id` (game), different player    → CORR_SAME_GAME
+            3. same `team` AND same `sport`, different game → CORR_SAME_TEAM
+            4. otherwise (cross-sport / no overlap)        → CORR_INDEPENDENT
+
+        Aggregate ρ = mean across all unordered pairs. Penalty
+        multiplier = `1 - clamp(ρ * CORR_ALPHA, 0, CORR_MAX_PENALTY)`.
+        Returns the multiplier plus `correlation_score` (raw ρ) and
+        `correlation_kind` (the strongest single rule that fired
+        across the parlay) so the UI can render real text instead of
+        `-0%`.
+        """
         if len(legs) <= 1:
-            return 1.0
-        
-        penalty = 1.0
-        
-        # Check for same-player correlation
-        players = [leg.player_name for leg in legs]
-        for player in set(players):
-            count = players.count(player)
-            if count > 1:
-                penalty *= SAME_PLAYER_CORRELATION ** (count - 1)
-        
-        # Check for same-team correlation
-        teams = [leg.team for leg in legs]
-        for team in set(teams):
-            count = teams.count(team)
-            if count > 2:  # Allow up to 2 from same team
-                penalty *= SAME_TEAM_CORRELATION ** (count - 2)
-        
-        # Check for same-game correlation
-        games = [leg.game_id for leg in legs if leg.game_id]
-        for game in set(games):
-            count = games.count(game)
-            if count > 2:  # Allow up to 2 from same game
-                penalty *= SAME_GAME_CORRELATION ** (count - 2)
-        
-        return penalty
+            return {
+                "penalty_multiplier": 1.0,
+                "correlation_score": 0.0,
+                "correlation_kind": "none",
+                "pair_count": 0,
+            }
+
+        rho_values: List[float] = []
+        kinds_seen: List[str] = []
+        for i in range(len(legs)):
+            for j in range(i + 1, len(legs)):
+                a, b = legs[i], legs[j]
+                a_player = (a.player_name or "").strip().lower()
+                b_player = (b.player_name or "").strip().lower()
+                a_event = (a.event_id or "").strip()
+                b_event = (b.event_id or "").strip()
+                a_team = (a.team or "").strip().upper()
+                b_team = (b.team or "").strip().upper()
+                a_sport = (a.sport or "").strip().lower()
+                b_sport = (b.sport or "").strip().lower()
+
+                if a_player and a_player == b_player:
+                    rho = CORR_SAME_PLAYER
+                    kind = "same_player"
+                elif a_event and a_event == b_event:
+                    rho = CORR_SAME_GAME
+                    kind = "same_game"
+                elif (
+                    a_team and a_team == b_team and a_sport == b_sport and a_sport
+                ):
+                    rho = CORR_SAME_TEAM
+                    kind = "same_team"
+                else:
+                    rho = CORR_INDEPENDENT
+                    kind = "none"
+
+                rho_values.append(rho)
+                kinds_seen.append(kind)
+
+        score = sum(rho_values) / len(rho_values) if rho_values else 0.0
+
+        # Pick the strongest pair-kind seen (priority order matches the
+        # rule order above) — this is the headline kind shown in the UI.
+        priority = ("same_player", "same_game", "same_team", "none")
+        headline_kind = "none"
+        for k in priority:
+            if k in kinds_seen and k != "none":
+                headline_kind = k
+                break
+        if headline_kind == "none" and any(k == "none" for k in kinds_seen):
+            headline_kind = "none"
+
+        # Penalty multiplier (back-compat with the legacy field).
+        raw_pen = max(0.0, min(CORR_MAX_PENALTY, score * CORR_ALPHA))
+        multiplier = 1.0 - raw_pen
+
+        return {
+            "penalty_multiplier": multiplier,
+            "correlation_score": round(score, 3),
+            "correlation_kind": headline_kind,
+            "pair_count": len(rho_values),
+        }
+
+    # 2026-05-08 — kept as a thin shim so existing callers (e.g.
+    # internal tests) that expected the old single-float API don't
+    # break. New code should call `_calculate_correlation` directly.
+    def _calculate_correlation_penalty(self, legs: List[SimulationLeg]) -> float:
+        return self._calculate_correlation(legs)["penalty_multiplier"]
     
     def _calculate_convergence_rate(
         self, 
@@ -548,6 +664,8 @@ class SimulationEngine:
             "team": leg.team,
             "opponent": leg.opponent,
             "is_home": leg.is_home,
+            "event_id": leg.event_id,
+            "cv": round(leg.cv, 3) if leg.cv is not None else None,
             "base_hit_rate": round(leg.base_hit_rate * 100, 1),
             "usage_ripple": round(leg.usage_ripple, 1),
             "environmental_delta": round(leg.environmental_delta, 3),
@@ -556,6 +674,7 @@ class SimulationEngine:
             "dvp_rank_color": leg.dvp_rank_color,
             "volatility_index": round(leg.volatility_index, 3),
             "volatility_label": leg.volatility_label,
+            "volatility_source": leg.volatility_source,
             "friction_label": leg.friction_label,
             "tactical_probability": round(leg.tactical_probability * 100, 1),
             # New stability fields
@@ -579,6 +698,8 @@ class SimulationEngine:
                 "volatility_index": 0,
                 "volatility_label": "N/A",
                 "correlation_penalty": 0,
+                "correlation_score": 0,
+                "correlation_kind": "none",
                 "conflicts_detected": [],
                 "risk_flags": [],
                 "environmental_summary": "Add legs to begin simulation",

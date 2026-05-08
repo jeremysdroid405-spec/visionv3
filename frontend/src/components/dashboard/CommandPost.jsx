@@ -703,15 +703,40 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
               index={effectiveSimulation?.volatility_index}
               label={effectiveSimulation?.volatility_label}
             />
-            <div className="flex items-center gap-2 p-2 rounded bg-zinc-800/50 border border-zinc-700">
-              <TrendingUp className="w-4 h-4 text-cyan-400" />
-              <div>
-                <span className="text-[10px] uppercase text-zinc-500">Correlation</span>
-                <div className="text-sm font-medium text-cyan-400">
-                  -{effectiveSimulation?.correlation_penalty || 0}%
+            {/* 2026-05-08 — universal correlation card. Backend ships
+                `correlation_kind` ("none" | "same_player" | "same_game"
+                | "same_team") so we can render an explicit, never-blank
+                summary. The percent number remains `correlation_penalty`
+                (back-compat). */}
+            {(() => {
+              const kind = effectiveSimulation?.correlation_kind || 'none';
+              const pct = Math.max(0, Math.round(effectiveSimulation?.correlation_penalty || 0));
+              const KIND_LABEL = {
+                same_player: 'Same Player',
+                same_game: 'Same Game',
+                same_team: 'Same Team',
+                none: 'Independent',
+              };
+              const label = KIND_LABEL[kind] || 'Independent';
+              const pctText = kind === 'none' ? '0%' : `-${pct}%`;
+              return (
+                <div
+                  className="flex items-center gap-2 p-2 rounded bg-zinc-800/50 border border-zinc-700"
+                  data-testid="correlation-card"
+                >
+                  <TrendingUp className="w-4 h-4 text-cyan-400" />
+                  <div>
+                    <span className="text-[10px] uppercase text-zinc-500">Correlation</span>
+                    <div
+                      className="text-sm font-medium text-cyan-400"
+                      data-testid="correlation-value"
+                    >
+                      {label} · {pctText}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              );
+            })()}
           </div>
 
           {/* Risk Flags */}
