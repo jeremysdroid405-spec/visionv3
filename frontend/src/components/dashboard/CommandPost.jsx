@@ -401,24 +401,41 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
   
   const runSimulationHandler = useCallback(() => {
     if (legs.length === 0) return;
-    
+
     setLoading(true);
+    // 2026-05-08 — full diagnostic trace so any future render-side
+    // miss is self-describing in the browser console without needing
+    // a code change. Logs the payload, the response, and confirms
+    // setSimulation actually fired.
+    console.log('[CC] mutate → POST /api/command/simulate  legs=', legs);
     simulationMutation.mutate(legs, {
       onSuccess: (data) => {
-        if (data.success) {
+        console.log('[CC] onSuccess data=', data);
+        if (data && data.success) {
+          console.log('[CC] setSimulation(', data.simulation, ')');
           setSimulation(data.simulation);
-          if (data.simulation.legs) {
+          if (data.simulation && data.simulation.legs) {
             setLegs(data.simulation.legs);
           }
+        } else {
+          console.warn('[CC] response.success falsy — panel will fall back to mutation cache');
         }
         setLoading(false);
       },
       onError: (error) => {
-        console.error('Simulation error:', error);
+        console.error('[CC] simulation error:', error);
         setLoading(false);
       }
     });
   }, [legs, simulationMutation]);
+
+  // 2026-05-08 — defensive panel source: prefer local state, but fall
+  // back to the mutation's own data cache so the result panel always
+  // renders the most-recent successful simulation even if the local
+  // setState path is interrupted (closure / unmount race / stale
+  // bundle). The mutation cache is owned by React Query and survives
+  // re-renders.
+  const effectiveSimulation = simulation || simulationMutation.data?.simulation || null;
 
   // ==================== CONFLICT DETECTION ENGINE ====================
   // Detect mutually exclusive parameters (Over/Under on same player+stat)
@@ -600,38 +617,38 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
         {/* Simulation Results */}
         <div className="p-4 border-b border-zinc-800">
           <InfiltrationGrade 
-            grade={simulation?.infiltration_grade || '-'}
-            label={simulation?.grade_label}
-            convergenceRate={simulation?.convergence_rate}
+            grade={effectiveSimulation?.infiltration_grade || '-'}
+            label={effectiveSimulation?.grade_label}
+            convergenceRate={effectiveSimulation?.convergence_rate}
           />
           
           <div className="grid grid-cols-2 gap-2 mt-3">
             <VolatilityDisplay 
-              index={simulation?.volatility_index}
-              label={simulation?.volatility_label}
+              index={effectiveSimulation?.volatility_index}
+              label={effectiveSimulation?.volatility_label}
             />
             <div className="flex items-center gap-2 p-2 rounded bg-zinc-800/50 border border-zinc-700">
               <TrendingUp className="w-4 h-4 text-cyan-400" />
               <div>
                 <span className="text-[10px] uppercase text-zinc-500">Correlation</span>
                 <div className="text-sm font-medium text-cyan-400">
-                  -{simulation?.correlation_penalty || 0}%
+                  -{effectiveSimulation?.correlation_penalty || 0}%
                 </div>
               </div>
             </div>
           </div>
 
           {/* Risk Flags */}
-          {simulation?.risk_flags?.length > 0 && (
+          {effectiveSimulation?.risk_flags?.length > 0 && (
             <div className="mt-3">
-              <RiskFlags flags={simulation.risk_flags} />
+              <RiskFlags flags={effectiveSimulation.risk_flags} />
             </div>
           )}
 
           {/* Environmental Summary */}
-          {simulation?.environmental_summary && (
+          {effectiveSimulation?.environmental_summary && (
             <p className="text-[11px] text-zinc-500 mt-2 text-center">
-              {simulation.environmental_summary}
+              {effectiveSimulation.environmental_summary}
             </p>
           )}
         </div>
