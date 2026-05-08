@@ -112,58 +112,13 @@ const getHitRateColor = (rate) => {
 };
 
 /**
- * Convert internal stat_type names to display-friendly abbreviations
+ * Convert internal stat_type names to display-friendly abbreviations.
+ *
+ * 2026-05-08 — universal stat-label adapter. The implementation lives
+ * in `utils/statLabel.js`; this re-export keeps existing imports
+ * working without modification.
  */
-const formatStatType = (statType) => {
-  if (!statType) return '';
-  
-  const statMap = {
-    // Points variations
-    'points': 'PTS',
-    'points_alternate': 'PTS',
-    'pts': 'PTS',
-    // Rebounds variations  
-    'rebounds': 'REB',
-    'rebounds_alternate': 'REB',
-    'reb': 'REB',
-    // Assists variations
-    'assists': 'AST',
-    'assists_alternate': 'AST',
-    'ast': 'AST',
-    // Threes variations
-    'threes': '3PM',
-    'threes_alternate': '3PM',
-    '3pm': '3PM',
-    'three_pointers_made': '3PM',
-    // Steals
-    'steals': 'STL',
-    'steals_alternate': 'STL',
-    'stl': 'STL',
-    // Blocks
-    'blocks': 'BLK',
-    'blocks_alternate': 'BLK',
-    'blk': 'BLK',
-    // Turnovers
-    'turnovers': 'TO',
-    'turnovers_alternate': 'TO',
-    'tov': 'TO',
-    // Combos
-    'pts_rebs': 'PTS+REB',
-    'pts_asts': 'PTS+AST',
-    'rebs_asts': 'REB+AST',
-    'pts_rebs_asts': 'PRA',
-    'pra': 'PRA',
-    'fantasy_score': 'FPTS',
-    'double_double': 'DD',
-    'triple_double': 'TD',
-    // Minutes
-    'minutes': 'MIN',
-    'min': 'MIN',
-  };
-  
-  const lower = statType.toLowerCase();
-  return statMap[lower] || statType.toUpperCase().replace(/_/g, ' ');
-};
+import { getStatLabel as formatStatType } from '../../utils/statLabel';
 
 /**
  * Locked Overlay for games in progress

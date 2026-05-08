@@ -29,6 +29,7 @@ import UniversalPlayerCard from './UniversalPlayerCard';
 // SSOT Global State Hooks - TanStack Query
 import { usePlayerProfile, useSimulation, useCommandCenterProps } from '../../hooks/useLiveOdds';
 import { useSport } from '../../context/SportContext';
+import { getStatLabel } from '../../utils/statLabel';
 
 // Grade colors and styles
 const GRADE_STYLES = {
@@ -123,7 +124,7 @@ const LegCard = memo(({ leg, index, onRemove, hasConflict, conflictMessage }) =>
           </div>
           <div className="flex items-center gap-2 mt-0.5">
             <span className="text-[10px] text-red-400 font-medium line-through opacity-60">
-              {leg.stat_type} {leg.direction?.toUpperCase()} {leg.line}
+              {getStatLabel(leg.stat_type)} {leg.direction?.toUpperCase()} {leg.line}
             </span>
           </div>
           <div className="mt-1 text-[10px] text-red-400 flex items-center gap-1">
@@ -158,7 +159,7 @@ const LegCard = memo(({ leg, index, onRemove, hasConflict, conflictMessage }) =>
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-[11px] text-cyan-400 font-medium">
-            {leg.stat_type} {leg.direction?.toUpperCase()} {leg.line}
+            {getStatLabel(leg.stat_type)} {leg.direction?.toUpperCase()} {leg.line}
           </span>
           {leg.dvp_rank && (
             <div className={`flex items-center gap-0.5 ${dvpColor}`}>
@@ -315,7 +316,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
       };
 
       setLegs(prev => [...prev, newLeg]);
-      toast.success(`Added: ${newLeg.player_name} ${newLeg.stat_type} ${newLeg.direction} ${newLeg.line}`, {
+      toast.success(`Added: ${newLeg.player_name} ${getStatLabel(newLeg.stat_type)} ${newLeg.direction} ${newLeg.line}`, {
         duration: 2000,
       });
 
@@ -455,7 +456,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     const newLeg = buildCanonicalLeg(selectedProfile, line);
     if (!newLeg) return;
     setLegs(prev => [...prev, newLeg]);
-    toast.success(`Added: ${newLeg.player_name} ${newLeg.stat_type} ${newLeg.direction} ${newLeg.line}`, {
+    toast.success(`Added: ${newLeg.player_name} ${getStatLabel(newLeg.stat_type)} ${newLeg.direction} ${newLeg.line}`, {
       duration: 2000,
     });
     setSelectedProfile(null);
@@ -530,7 +531,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
         if (existingLeg.direction?.toLowerCase() !== leg.direction?.toLowerCase()) {
           return { 
             indices: [existingIdx, idx], 
-            message: `Tactical Conflict: Cannot have OVER and UNDER on ${leg.player_name} ${leg.stat_type}`
+            message: `Tactical Conflict: Cannot have OVER and UNDER on ${leg.player_name} ${getStatLabel(leg.stat_type)}`
           };
         }
         
@@ -538,7 +539,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
         if (existingLeg.line !== leg.line) {
           return {
             indices: [existingIdx, idx],
-            message: `Tactical Conflict: Duplicate objective on ${leg.player_name} ${leg.stat_type}`
+            message: `Tactical Conflict: Duplicate objective on ${leg.player_name} ${getStatLabel(leg.stat_type)}`
           };
         }
       }
@@ -557,7 +558,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
         if (otherLeg.direction?.toLowerCase() !== leg.direction?.toLowerCase()) {
           result[idx] = `Tactical Conflict: ${leg.direction?.toUpperCase()} conflicts with ${otherLeg.direction?.toUpperCase()}`;
         } else if (otherLeg.line !== leg.line) {
-          result[idx] = `Tactical Conflict: Duplicate ${leg.stat_type} objective at different lines`;
+          result[idx] = `Tactical Conflict: Duplicate ${getStatLabel(leg.stat_type)} objective at different lines`;
         }
       }
     });
@@ -648,7 +649,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
                     const newLeg = buildCanonicalLeg(selectedProfile, playerOrProp);
                     if (!newLeg) return;
                     setLegs(prev => [...prev, newLeg]);
-                    toast.success(`Added: ${newLeg.player_name} ${newLeg.stat_type} ${newLeg.direction} ${newLeg.line}`, {
+                    toast.success(`Added: ${newLeg.player_name} ${getStatLabel(newLeg.stat_type)} ${newLeg.direction} ${newLeg.line}`, {
                       duration: 2000,
                     });
                   }

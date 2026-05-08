@@ -38,71 +38,25 @@ import { useSport } from '../../context/SportContext';
 import { normalizeFerrariPicks } from '../../utils/normalizeFerrariPick';
 
 // ==================== PROP CATEGORY CONFIG ====================
-const PROP_LABELS = {
-  // NBA Stats - Full names
-  'PTS': 'Points',
-  'REB': 'Rebounds',
-  'AST': 'Assists',
-  '3PM': '3-Pointers',
-  'STL': 'Steals',
-  'BLK': 'Blocks',
-  'TO': 'Turnovers',
-  'PRA': 'Pts+Reb+Ast',
-  'PR': 'Pts+Reb',
-  'P+R': 'Pts+Reb',
-  'PA': 'Pts+Ast',
-  'P+A': 'Pts+Ast',
-  'RA': 'Reb+Ast',
-  'R+A': 'Reb+Ast',
-  'BLST': 'Blk+Stl',
-  'FGM': 'Field Goals',
-  'FTM': 'Free Throws',
-  'MIN': 'Minutes',
-  'DD': 'Double-Double',
-  'TD': 'Triple-Double',
-  // MLB Stats - Full names
-  'Hits': 'Hits',
-  'Total Bases': 'Total Bases',
-  'RBIs': 'RBIs',
-  'Runs': 'Runs',
-  'Stolen Bases': 'Stolen Bases',
-  'Home Runs': 'Home Runs',
-  'Singles': 'Singles',
-  'Doubles': 'Doubles',
-  'Triples': 'Triples',
-  'Walks': 'Walks',
-  'Batter Walks': 'Walks',
-  'Strikeouts': 'Strikeouts',
-  'Batter Strikeouts': 'Strikeouts',
-  'Hits Allowed': 'Hits Allowed',
-  'Earned Runs': 'Earned Runs',
-  'Pitcher Strikeouts': 'Strikeouts',
-  'Pitcher Walks': 'Walks',
-  'Walks Allowed': 'Walks Allowed',
-  'Pitcher Outs': 'Outs',
-  'Hits+Runs+RBIs': 'Hits+Runs+RBIs',
-  'batter_hits_runs_rbis': 'Hits+Runs+RBIs',
-};
+// 2026-05-08 — universal stat-label adapter. PROP_LABELS / normalizeStatType /
+// getPropLabel previously lived here as a sport-specific table. They've been
+// migrated to `utils/statLabel.js::getStatLongLabel`. The CATEGORY_ORDER
+// list below is kept as the canonical sort order for the detail page;
+// every entry MUST be a value `getStatLabel(...)` can produce.
+import { getStatLabel, getStatLongLabel } from '../../utils/statLabel';
+
+const getPropLabel = getStatLongLabel;
+const normalizeStatType = getStatLabel;
 
 const CATEGORY_ORDER = [
   // NBA
-  'PTS', 'REB', 'AST', 'PRA', 'PR', 'PA', 'RA', '3PM', 'STL', 'BLK', 'BLST', 'TO', 'FGM', 'FTM', 'MIN',
+  'PTS', 'REB', 'AST', 'PRA', 'P+R', 'P+A', 'R+A', '3PM', 'STL', 'BLK', 'BLST', 'TO', 'FGM', 'FTM', 'MIN',
   // MLB Batter
-  'Hits', 'Total Bases', 'Singles', 'Doubles', 'Triples', 'RBIs', 'Runs', 'Stolen Bases', 'Home Runs', 
-  'Batter Walks', 'Walks', 'Batter Strikeouts', 'Strikeouts', 'Hits+Runs+RBIs',
+  'Hits', 'Total Bases', 'Singles', 'Doubles', 'Triples', 'RBIs', 'Runs', 'SB', 'HR',
+  'Walks', 'Ks', 'H+R+RBI',
   // MLB Pitcher
-  'Pitcher Strikeouts', 'Pitcher Outs', 'Hits Allowed', 'Earned Runs', 'Walks Allowed'
+  'Outs', 'Hits Allowed', 'ER', 'BB Allowed',
 ];
-
-const normalizeStatType = (statType) => {
-  const normMap = { 'P+R': 'PR', 'P+A': 'PA', 'R+A': 'RA' };
-  return normMap[statType] || statType;
-};
-
-const getPropLabel = (statType) => {
-  const normalized = normalizeStatType(statType);
-  return PROP_LABELS[normalized] || PROP_LABELS[statType] || statType;
-};
 
 // ==================== PLAYER HEADSHOT ====================
 const PlayerHeadshot = memo(({ playerName, team, photoUrl, sport, teamLogoUrl: explicitLogoUrl, size = 'md', className = '' }) => {
@@ -1008,7 +962,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   <Crosshair className="w-8 h-8 text-amber-400 animate-pulse" />
                   <div>
                     <h2 className="text-xl font-black text-amber-300">VISION INTEL SUITE</h2>
-                    <p className="text-xs text-amber-400/70">{playerName} • {selectedVisionProp.stat_type || getPropLabel(selectedVisionProp.stat_type_extracted)}</p>
+                    <p className="text-xs text-amber-400/70">{playerName} • {getPropLabel(selectedVisionProp.stat_type_extracted || selectedVisionProp.stat_type)}</p>
                   </div>
                 </div>
                 <button 

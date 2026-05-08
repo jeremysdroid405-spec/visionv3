@@ -58,6 +58,7 @@ import {
   useMarketMoves
 } from '../hooks/useLiveOdds';
 import { useMasterStats } from '../hooks/useMasterStats';
+import { getStatLabel } from '../utils/statLabel';
 
 // ==================== HELPER COMPONENTS ====================
 
@@ -1038,7 +1039,7 @@ const PopularBetCard = memo(({ bet, onClick }) => {
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-xs sm:text-sm font-medium text-white truncate">{bet.player_name}</div>
-          <div className="text-[10px] sm:text-xs text-zinc-500">{bet.stat_type} {bet.line || bet.current_line}</div>
+          <div className="text-[10px] sm:text-xs text-zinc-500">{getStatLabel(bet.stat_type)} {bet.line || bet.current_line}</div>
         </div>
       </div>
       

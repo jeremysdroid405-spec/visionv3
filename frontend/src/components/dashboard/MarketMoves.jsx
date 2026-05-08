@@ -5,6 +5,7 @@
  */
 import React, { memo } from 'react';
 import { Activity, ArrowRight, Clock, Lock, TrendingDown, XCircle, AlertTriangle, ShieldOff, ArrowDownRight, Ban } from 'lucide-react';
+import { getStatLabel } from '../../utils/statLabel';
 
 // Maps exit_reason from backend to visual config
 const EXIT_REASON_CONFIG = {
@@ -143,7 +144,7 @@ const MarketMoveItem = memo(({ event }) => {
           <span className="text-white font-semibold truncate">{event.player_name}</span>
           <span className="text-zinc-500">·</span>
           <span className="text-zinc-400 font-mono">
-            {event.stat_type}
+            {getStatLabel(event.stat_type)}
             {event.old_line != null && ` ${event.old_line}`}
           </span>
           {showLineShift && (

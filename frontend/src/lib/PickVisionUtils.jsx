@@ -7,37 +7,19 @@
 
 import React, { memo } from 'react';
 import { Flame, Lock, User } from 'lucide-react';
+import { getStatLabel } from '../utils/statLabel';
 
 // ============================================
 // FORMATTING UTILITIES
 // ============================================
 
 /**
- * Format stat type for display
+ * Format stat type for display.
+ *
+ * 2026-05-08 — universal stat-label adapter. Re-exports from the
+ * canonical helper so PickVision / legacy imports stay working.
  */
-export const formatStatType = (stat) => {
-  if (!stat) return '';
-  const statMap = {
-    'points': 'PTS',
-    'rebounds': 'REB',
-    'assists': 'AST',
-    'threes': '3PT',
-    'steals': 'STL',
-    'blocks': 'BLK',
-    'pts': 'PTS',
-    'reb': 'REB',
-    'ast': 'AST',
-    '3pm': '3PT',
-    'stl': 'STL',
-    'blk': 'BLK',
-    'pts+reb': 'PTS+REB',
-    'pts+ast': 'PTS+AST',
-    'pts+reb+ast': 'PRA',
-    'reb+ast': 'REB+AST',
-    'stl+blk': 'STL+BLK'
-  };
-  return statMap[stat?.toLowerCase()] || stat?.toUpperCase?.() || stat;
-};
+export const formatStatType = getStatLabel;
 
 /**
  * Get team color for styling
