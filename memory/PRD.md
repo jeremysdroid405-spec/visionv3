@@ -63,6 +63,19 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Added default `User-Agent` + `Accept` headers via `TICKER_HTTP_HEADERS` to both ticker httpx clients
 - Files: `backend/routes/live.py`, `backend/server.py`
 
+### 2026-05-08 — Cached_board materialization (architecture fix)
+- **New SSOT**: `{sport}_cached_board` is now a materialized view of `{sport}_prop_scores[version_tag=final-{sport}-rt]`. No independent tier logic; tier assignments carried verbatim from -rt.
+- **New service**: `services/board_snapshot_publisher.py::publish_board_snapshot(db, sport)` — single writer. Upsert-only (never deletes), preserves doc-level enrichment (photo_url, injury_status, context_badges, etc.), empties stale players' `props[]` without removing the doc, bails on empty source (zero-wipe guarantee).
+- **Delta Engine integration**: added `PublishBoardSnapshotStep` (pos 5 in `DEFAULT_DELTA_STEPS`). Runs only when `written>0` or `retired_modified>0`; skips when upstream lock is held; failure-isolated.
+- **master_sync integration**: step 7 replaced (`stamp_cached_board_freshness` → `publish_board_snapshot`). Single build path; metrics key renamed `7_cached_board_snapshot_publish`.
+- **Verified (natural delta ticks, no manual triggers)**:
+  - NBA tick rescored 153 props → publisher rebuilt 64 players, emptied 76 stale, from 3,074 active -rt props in 1.18s.
+  - MLB tick rescored 212 props → publisher rebuilt 318 players, emptied 0 stale, from 6,603 active -rt props in 4.29s.
+  - SLO §3 Tier Freshness now PASSES naturally (was FAIL 12.5-hour staleness before patch).
+  - API tier endpoints (`/api/v3/ferrari/all`) continue to serve enriched picks unchanged.
+- **Tests**: `tests/test_board_snapshot_publisher.py` — 7 passing: source=final-{sport}-rt, rebuild-on-written, skip-on-zero-writes, empty-source-preserves, master_sync-uses-same-path, freshness-matches-rt-timestamps, no-independent-tier-assignment; plus stale-player-emptied-not-deleted, ingestion-fields-preserved-via-canonical-key-merge.
+- **Files**: `backend/services/board_snapshot_publisher.py` (new), `backend/services/pipeline/delta_steps.py`, `backend/services/master_sync.py`, `backend/tests/test_board_snapshot_publisher.py` (new).
+
 ### 2026-05-08 — Ticker 15-min cadence + source-protection patch
 - NBA `ticker_sync` cadence: `CronTrigger(minute='0,15,30,45')` (was daily 9:26 UTC)
 - MLB `mlb_ticker_sync` cadence: `CronTrigger(minute='5,20,35,50')` (was hourly :32) — offset 5 min from NBA so fetches never overlap

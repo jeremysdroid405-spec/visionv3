@@ -266,6 +266,63 @@ class RebalanceTiersStep(DeltaStep):
         }
 
 
+class PublishBoardSnapshotStep(DeltaStep):
+    """Rebuild `{sport}_cached_board` as a materialized snapshot of
+    `prop_scores[final-{sport}-rt]` after a delta tick that wrote to
+    the -rt surface.
+
+    Contract (2026-05-08 architecture fix — §3 no longer depends on
+    master_sync cadence):
+      * SKIPPED when upstream lock is held (master_sync is in flight —
+        master_sync will publish its own snapshot at end-of-run).
+      * SKIPPED when the rescore step wrote 0 docs (no content change;
+        previous snapshot is still the correct materialized view).
+      * SKIPPED when retired_result.modified is 0 AND written is 0
+        (redundant with above, but explicit).
+      * On publish failure, logs a warning and returns the error — the
+        delta tick as a whole still completes (failure isolation).
+    """
+
+    name = "5_publish_board_snapshot"
+
+    async def run(self, sport, db, context):
+        if context.get("abort_remaining_steps"):
+            return {"skipped": True, "reason": "upstream_lock_held"}
+
+        rescore = context.get("rescore_result") or {}
+        rebalance = context.get("rebalance_result") or {}
+        written = int(rescore.get("written", 0) or 0)
+        retired_modified = int(
+            (rebalance.get("retired") or {}).get("modified", 0) or 0
+        )
+
+        if written == 0 and retired_modified == 0:
+            return {
+                "skipped": True,
+                "reason": "no_rt_writes_this_tick",
+                "written": 0,
+                "retired_modified": 0,
+            }
+
+        try:
+            from services.board_snapshot_publisher import publish_board_snapshot
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"[DELTA_STEP:{sport}] PublishBoardSnapshotStep import failed: {exc}"
+            )
+            return {"skipped": True, "reason": "publisher_import_failed", "error": str(exc)}
+
+        t0 = datetime.now(timezone.utc)
+        result = await publish_board_snapshot(db, sport)
+        dur = (datetime.now(timezone.utc) - t0).total_seconds()
+        return {
+            "duration_seconds": dur,
+            "trigger_written": written,
+            "trigger_retired_modified": retired_modified,
+            "publisher": result,
+        }
+
+
 class EmitDeltaTickStep(DeltaStep):
     """Publish a `delta_tick_complete` BoardEvent for observability."""
 
@@ -301,6 +358,7 @@ DEFAULT_DELTA_STEPS = (
     UpstreamLockGateStep(),
     RescoreDirtyPropsStep(),
     RebalanceTiersStep(),
+    PublishBoardSnapshotStep(),
     EmitDeltaTickStep(),
 )
 
@@ -311,6 +369,7 @@ __all__ = [
     "UpstreamLockGateStep",
     "RescoreDirtyPropsStep",
     "RebalanceTiersStep",
+    "PublishBoardSnapshotStep",
     "EmitDeltaTickStep",
     "DEFAULT_DELTA_STEPS",
 ]

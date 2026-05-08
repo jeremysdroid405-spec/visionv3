@@ -319,28 +319,38 @@ async def run_master_sync(
             metrics["errors"].append(f"vision_intel_enrichment: {exc}")
 
     # -----------------------------------------------------------------
-    # Step 7 — cached_board freshness stamp (2026-05-07 P0 §3 fix)
+    # Step 7 — publish cached_board as a materialized snapshot of
+    # prop_scores[final-{sport}-rt] (2026-05-08 architecture fix).
     #
-    # `{nba,mlb}_cached_board` writers (mlb_cached_board_builder full
-    # rebuild + master_sync's three NBA/MLB enrichment overlays) did
-    # not previously stamp doc-level freshness. SLO §3 had no canonical
-    # signal. This stamp closes that gap by writing the Phase 4
-    # freshness contract `{updated_at, last_publish_ts,
-    # source_score_max_scored_at, sport, version_tag}` on EVERY doc in
-    # the just-built/just-enriched cached_board. Idempotent; one
-    # `update_many` per sport per master_sync run.
+    # `{sport}_cached_board` is now a materialized view over the live
+    # -rt score surface. The same publisher is invoked by
+    # `services/pipeline/delta_steps.py::PublishBoardSnapshotStep`
+    # after every successful delta tick with written > 0, so
+    # cached_board freshness no longer depends on master_sync cadence.
+    # Keeping a master_sync-side call here preserves a full rebuild
+    # after the heavier enrichment overlays (momentum mirror, refs,
+    # badges, vision-intel enrichment) have run — the publisher's
+    # upsert-only semantics correctly merge those overlays into the
+    # rebuilt props[] arrays without wiping any doc-level enrichment.
+    #
+    # Failure-isolated: a publish failure logs a warning and is
+    # appended to `metrics["errors"]`, but does not raise.
     # -----------------------------------------------------------------
     if sport in ("nba", "mlb"):
         try:
             ts = datetime.now(timezone.utc)
-            from services.board_freshness import stamp_cached_board_freshness
-            cb_metrics = await stamp_cached_board_freshness(db, sport, now=ts)
-            metrics["steps"]["7_cached_board_freshness_stamp"] = cb_metrics
+            from services.board_snapshot_publisher import publish_board_snapshot
+            cb_metrics = await publish_board_snapshot(db, sport, now=ts)
+            metrics["steps"]["7_cached_board_snapshot_publish"] = cb_metrics
+            if cb_metrics.get("error"):
+                metrics["errors"].append(
+                    f"cached_board_snapshot_publish: {cb_metrics['error']}"
+                )
         except Exception as exc:
             logger.warning(
-                f"[MASTER_SYNC:{sport}] cached_board freshness stamp failed: {exc}"
+                f"[MASTER_SYNC:{sport}] cached_board snapshot publish failed: {exc}"
             )
-            metrics["errors"].append(f"cached_board_freshness_stamp: {exc}")
+            metrics["errors"].append(f"cached_board_snapshot_publish: {exc}")
 
     completed = datetime.now(timezone.utc)
     metrics["completed_at"] = completed.isoformat()
