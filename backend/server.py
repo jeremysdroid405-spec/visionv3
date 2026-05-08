@@ -1838,6 +1838,31 @@ async def startup_event():
         job_id='hourly_badge_sync',
         name='Hourly Badge Sync (60 min interval)',
     )
+
+    # 2b. JIT VISION INTEL REAPER (closes the 0-60 min cold-pick window)
+    # Every 5 minutes the reaper inspects ONLY the visible board for
+    # canonical_keys whose LIVE-tag score doc carries no `vision_intel`.
+    # If 0 are uncovered → cheap no-op (no Gemini calls). Otherwise the
+    # existing `_enrich_*_board_vision_intel` is invoked, which content-
+    # hash-filters and writes via the LIVE+BASELINE mirror (writer fix-D).
+    # See services/jit_vision_intel_reaper.py for the full audit + caps.
+    from services.jit_vision_intel_reaper import (
+        scheduled_jit_vision_intel_reaper,
+        JIT_REAPER_INTERVAL_MINUTES,
+    )
+    _register_interval_job(
+        scheduled_jit_vision_intel_reaper,
+        IntervalTrigger(
+            minutes=JIT_REAPER_INTERVAL_MINUTES,
+            timezone=SCHEDULER_TIMEZONE,
+        ),
+        job_id='jit_vision_intel_reaper',
+        name=(
+            f'JIT Vision Intel Reaper '
+            f'({JIT_REAPER_INTERVAL_MINUTES} min interval, '
+            f'visible-board-only)'
+        ),
+    )
     
     # 3. HOURLY INJURY SYNC (The Roster) - Every 60 minutes
     # Catches injury report updates for Usage Ripple
