@@ -1,0 +1,43 @@
+==============================================================================
+STEP 6 STABILIZATION — SLO PASS #1 vs PASS #2 (30 min apart)
+==============================================================================
+PASS #1 start: 2026-05-08T01:44:36Z
+PASS #1 end:   2026-05-08T01:44:39Z
+PASS #2 start: 2026-05-08T02:15:08Z
+PASS #2 end:   2026-05-08T02:15:16Z
+PASS #1 overall: FAIL
+PASS #2 overall: FAIL
+
+Section                                   #1      #2      Δ           
+------------------------------------------------------------------------------
+  1_ingestion_freshness                   FAIL    FAIL    unchanged
+  2_score_freshness                       FAIL    FAIL    unchanged
+  3_tier_freshness                        PASS    PASS    unchanged
+  4_detection_source_freshness            FAIL    FAIL    unchanged
+  5_api_correctness                       FAIL    FAIL    unchanged
+  6_vision_intel_coverage                 FAIL    FAIL    unchanged
+  7_tier_counts                           FAIL    FAIL    unchanged
+
+Architectural sections (Step 1-6 stabilization):
+  3_tier_freshness: #1=PASS, #2=PASS
+  5_api_correctness: #1=FAIL, #2=FAIL
+  6_vision_intel_coverage: #1=FAIL, #2=FAIL
+  7_tier_counts: #1=FAIL, #2=FAIL
+
+Ingestion-dependent (downstream of upstream odds API):
+  1_ingestion_freshness nba: gap #1=4044.945239s → #2=5877.060093s
+  1_ingestion_freshness mlb: gap #1=4289.415239s → #2=6121.530093s
+  2_score_freshness nba: gap #1=4748.53978s → #2=6580.654634s
+  2_score_freshness mlb: gap #1=-0.150548s → #2=8.136281s
+
+Watchdog events:
+  nba: #1=0, #2=0
+  mlb: #1=0, #2=0
+
+§3 cached_board canonical contract:
+  nba: #1 invariant_violations=0, recency_gap=1720.747239s, docs=122
+  nba: #2 invariant_violations=0, recency_gap=3552.862093s, docs=122
+  mlb: #1 invariant_violations=0, recency_gap=1779.005239s, docs=161
+  mlb: #2 invariant_violations=0, recency_gap=3.514093s, docs=161
+
+==============================================================================
