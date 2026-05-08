@@ -191,51 +191,67 @@ class SimulationEngine:
         }
     
     async def _process_leg(self, leg_data: Dict) -> SimulationLeg:
-        """Process a single leg and calculate all metrics."""
-        player_name = leg_data.get("player_name", "")
-        stat_type = leg_data.get("stat_type", "")
-        line = leg_data.get("line", 0)
-        direction = (leg_data.get("direction") or "over").lower()
-        team = leg_data.get("team") or ""
-        opponent = leg_data.get("opponent") or ""
-        game_id = leg_data.get("game_id")
-        is_home = leg_data.get("is_home", True)
-        
+        """Process a single leg and calculate all metrics.
+
+        2026-05-08 — universal null-coalescing. Every input is
+        defensively coerced so any combination of null / missing
+        fields from the frontend is safely handled. The simulation
+        engine should never 422 / 500 due to a benign data-availability
+        gap on a player profile.
+        """
+        def _str(v, default=""):
+            return v if isinstance(v, str) else default
+
+        def _num(v, default=0.0):
+            try:
+                if v is None:
+                    return default
+                return float(v)
+            except (TypeError, ValueError):
+                return default
+
+        player_name = _str(leg_data.get("player_name"))
+        stat_type = _str(leg_data.get("stat_type"))
+        line = _num(leg_data.get("line"))
+        direction = _str(leg_data.get("direction"), "over").lower() or "over"
+        team = _str(leg_data.get("team"))
+        opponent = _str(leg_data.get("opponent"))
+        game_id = leg_data.get("game_id") if isinstance(leg_data.get("game_id"), (str, int)) else None
+        is_home = bool(leg_data.get("is_home")) if leg_data.get("is_home") is not None else True
+        sport = _str(leg_data.get("sport")).lower() or None
+        player_id_raw = leg_data.get("player_id")
+        player_id = str(player_id_raw) if player_id_raw not in (None, "") else None
+
         # Create leg object
         leg = SimulationLeg(
             player_name=player_name,
-            player_id=leg_data.get("player_id"),
-            sport=(leg_data.get("sport") or "").lower() or None,
+            player_id=player_id,
+            sport=sport,
             stat_type=stat_type,
             line=line,
             direction=direction,
             team=team,
             opponent=opponent,
             game_id=game_id,
-            is_home=is_home
+            is_home=is_home,
         )
-        
-        # Get base hit rate from leg data or calculate.
-        # 2026-05-08 — canonical-first read of `hit_rate_l10`. Legacy
-        # `h10_rate` retained one cycle for in-flight CommandPost
-        # requests (Pydantic model defaults it to 50.0); remove on
-        # the next cleanup pass once the frontend is verified
-        # canonical-clean across all leg-add paths.
+
+        # Base hit rate — canonical-first; numeric-coerced.
         leg.base_hit_rate = (
-            leg_data.get("hit_rate_l10")
-            or leg_data.get("h10_rate")
-            or leg_data.get("hit_probability")
-            or 50
-        ) / 100
-        
-        # Store statistical data for stability calculation
-        leg.season_avg = leg_data.get("season_avg") or 0
-        leg.std_dev = leg_data.get("std_dev") or 0
-        leg.l5_avg = leg_data.get("l5_avg") or 0
-        leg.l10_avg = leg_data.get("l10_avg") or 0
-        
+            _num(leg_data.get("hit_rate_l10"))
+            or _num(leg_data.get("h10_rate"))
+            or _num(leg_data.get("hit_probability"))
+            or 50.0
+        ) / 100.0
+
+        # Statistical data for stability calculation — null/numeric-safe.
+        leg.season_avg = _num(leg_data.get("season_avg"))
+        leg.std_dev = _num(leg_data.get("std_dev"))
+        leg.l5_avg = _num(leg_data.get("l5_avg"))
+        leg.l10_avg = _num(leg_data.get("l10_avg"))
+
         # Calculate Usage Ripple effect
-        leg.usage_ripple = leg_data.get("usage_bump_percent", 0)
+        leg.usage_ripple = _num(leg_data.get("usage_bump_percent"))
         usage_multiplier = 1.0 + (leg.usage_ripple * 0.005)  # +0.5% per 1% usage bump
         
         # Calculate Environmental Delta (Home/Away)
@@ -316,9 +332,9 @@ class SimulationEngine:
         # Group by player
         player_legs = {}
         for i, leg in enumerate(legs):
-            player = leg.get("player_name", "")
-            stat = leg.get("stat_type", "")
-            direction = leg.get("direction", "").lower()
+            player = leg.get("player_name") or ""
+            stat = leg.get("stat_type") or ""
+            direction = (leg.get("direction") or "").lower()
             key = f"{player}_{stat}"
             
             if key not in player_legs:

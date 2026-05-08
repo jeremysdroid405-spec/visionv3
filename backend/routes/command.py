@@ -13,7 +13,7 @@ Endpoints:
 """
 import logging
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
@@ -81,17 +81,34 @@ class SimulationLeg(BaseModel):
 
 
 class SimulationRequest(BaseModel):
-    """Request body for simulation endpoint."""
-    legs: List[SimulationLeg] = Field(..., min_length=1, max_length=10)
+    """Request body for simulation endpoint.
+
+    2026-05-08 — Universal null-tolerance fix.
+    Each leg is accepted as a free-form dict (`Dict[str, Any]`) instead
+    of a strict `SimulationLeg` model. The frontend forwards profile
+    data verbatim — fields like team, opponent, season_avg, l5_avg etc.
+    can legitimately be null for new players, off-board props, or
+    cross-sport legs. Strict typing here was producing 422
+    `string_type` rejections for every nullable mismatch — a
+    whack-a-mole pattern that has cost real cycles. Validating only
+    what the math actually needs is the universal cure.
+
+    The route enforces only the minimum required to run the
+    simulation: every leg must have a non-empty `player_name`, a
+    non-empty `stat_type`, and a numeric `line`. Everything else is
+    coerced or defaulted inside `simulation_service.add_leg`.
+    """
+    legs: List[Dict[str, Any]] = Field(..., min_length=1, max_length=10)
 
 
 # ==================== ENDPOINTS ====================
+
 
 @router.post("/simulate")
 async def simulate_configuration(request: SimulationRequest):
     """
     Simulate a parlay configuration.
-    
+
     Returns:
     - Convergence Rate (combined tactical probability)
     - Infiltration Grade (S/A/B/C/D)
@@ -99,7 +116,7 @@ async def simulate_configuration(request: SimulationRequest):
     - Correlation penalties
     - Risk flags
     - Conflict detection
-    
+
     Grades:
     - S-Tier: High-Alpha / Optimal Alignment (75%+)
     - A-Tier: Strong Tactical Position (65-74%)
@@ -108,10 +125,33 @@ async def simulate_configuration(request: SimulationRequest):
     - D-Tier: High-Friction / Volatile Environment (<45%)
     """
     try:
+        # Minimum-viable validation. Anything missing → HTTP 400 with
+        # a precise, human-readable detail (no Pydantic noise).
+        cleaned: List[Dict[str, Any]] = []
+        for idx, leg in enumerate(request.legs):
+            if not isinstance(leg, dict):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"leg[{idx}] is not an object",
+                )
+            pn = (leg.get("player_name") or "").strip()
+            st = (leg.get("stat_type") or "").strip()
+            ln = leg.get("line")
+            if not pn:
+                raise HTTPException(status_code=400, detail=f"leg[{idx}].player_name is required")
+            if not st:
+                raise HTTPException(status_code=400, detail=f"leg[{idx}].stat_type is required")
+            try:
+                ln_f = float(ln) if ln is not None else None
+            except (TypeError, ValueError):
+                ln_f = None
+            if ln_f is None:
+                raise HTTPException(status_code=400, detail=f"leg[{idx}].line must be numeric")
+            # Pass the leg through as-is; service handles all other fields.
+            cleaned.append(leg)
+
         engine = get_simulation_engine()
-        
-        # Convert Pydantic models to dicts
-        legs_data = [leg.model_dump() for leg in request.legs]
+        legs_data = cleaned
         
         result = await engine.simulate_configuration(legs_data)
         
