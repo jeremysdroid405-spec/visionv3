@@ -27,7 +27,7 @@ import CommandSearch from './CommandSearch';
 import UniversalPlayerCard from './UniversalPlayerCard';
 
 // SSOT Global State Hooks - TanStack Query
-import { usePlayerProfile, useSimulation } from '../../hooks/useLiveOdds';
+import { usePlayerProfile, useSimulation, useCommandCenterProps } from '../../hooks/useLiveOdds';
 import { useSport } from '../../context/SportContext';
 
 // Grade colors and styles
@@ -265,60 +265,104 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
         onPendingLegProcessed();
         return;
       }
-      
+
+      // 2026-05-08 — Universal canonical leg from Quick-Add.
+      // Pick-card / PlayerDetail pendingLeg payloads already carry
+      // canonical fields (`/api/v3/ferrari/all` and friends ship the
+      // full prop_scores row). We forward canonical fields ONLY —
+      // never legacy aliases (`h5_rate / h10_rate / hit_rate /
+      // hit_rates`).
+      const recommendation = (pendingLeg.recommendation || pendingLeg.direction || 'OVER')
+        .toString()
+        .toUpperCase();
       const newLeg = {
+        canonical_key: pendingLeg.canonical_key || null,
+        sport: pendingLeg.sport || currentSport,
         player_name: pendingLeg.player_name,
         player_id: pendingLeg.player_id,
         stat_type: pendingLeg.stat_type,
         line: pendingLeg.demon_line || pendingLeg.goblin_line || pendingLeg.line || 0,
-        direction: pendingLeg.direction || 'over',
+        recommendation,
+        direction: recommendation.toLowerCase(),
+        // Hit rates (canonical only)
+        hit_rate_l5: pendingLeg.hit_rate_l5,
+        hit_rate_l10: pendingLeg.hit_rate_l10,
+        hit_rate_l20: pendingLeg.hit_rate_l20,
+        hit_rate_over: pendingLeg.hit_rate_over,
+        hit_rate_under: pendingLeg.hit_rate_under,
+        // Probability + edge
+        p_true_active: pendingLeg.p_true_active,
+        edge_vs_fair: pendingLeg.edge_vs_fair,
+        vision_score: pendingLeg.vision_score,
+        cv: pendingLeg.cv,
+        // Tier context
+        tier: pendingLeg.tier,
+        tier_reason: pendingLeg.tier_reason,
+        tier_reference_book: pendingLeg.tier_reference_book,
+        tier_reference_odds: pendingLeg.tier_reference_odds,
+        // Odds
+        pp_odds: pendingLeg.pp_odds,
+        dk_odds: pendingLeg.dk_odds,
+        fd_odds: pendingLeg.fd_odds,
+        bol_odds: pendingLeg.bol_odds,
+        mgm_odds: pendingLeg.mgm_odds,
+        // Game context
         team: pendingLeg.team || '',
         opponent: pendingLeg.opponent || pendingLeg.opponent_abbr || '',
         is_home: pendingLeg.is_home ?? true,
-        // 2026-05-07 P0 Phase 4B: canonical-only leg payload. The
-        // backend SimulationLeg model accepts both canonical
-        // (`hit_rate_l5/l10`) and legacy keys for one migration
-        // cycle; we send canonical exclusively.
-        hit_rate_l5: pendingLeg.hit_rate_l5 ?? 50,
-        hit_rate_l10: pendingLeg.hit_rate_l10 ?? 50,
-        season_avg: pendingLeg.season_avg,
-        l5_avg: pendingLeg.l5_avg,
-        l10_avg: pendingLeg.l10_avg,
-        usage_bump_percent: pendingLeg.usage_bump_percent || 0,
-        dvp_rank: pendingLeg.dvp_rank,
-        dvp_rank_color: pendingLeg.dvp_rank_color
+        event_id: pendingLeg.event_id || null,
+        game_start_utc: pendingLeg.game_start_utc || null,
       };
-      
+
       setLegs(prev => [...prev, newLeg]);
       toast.success(`Added: ${newLeg.player_name} ${newLeg.stat_type} ${newLeg.direction} ${newLeg.line}`, {
         duration: 2000,
       });
-      
+
       onPendingLegProcessed();
     }
   }, [pendingLeg, onPendingLegProcessed, isPlayerInLegs, currentSport]);
 
-  // State for profile fetching via hook
+  // State for profile fetching via the universal Command Center hook.
+  // 2026-05-08 — Command Center is system-level. The universal route
+  // (`/api/command/props`) reads canonical rows from
+  // `{sport}_prop_scores[final-{sport}-rt]` only. No cached_board, no
+  // sport-specific player-detail builder, no `.map()` reshape, no
+  // legacy aliases (`h5_rate / h10_rate / hit_rate / hit_rates`).
   const [profilePlayerName, setProfilePlayerName] = useState(null);
-  // 2026-05-08 — pass currentSport so MLB Command Center fetches the
-  // right collection. Falls back to 'nba' inside the hook when null.
-  const { data: profileData, isLoading: profileQueryLoading, error: profileError } = usePlayerProfile(profilePlayerName, currentSport);
-  
+  const {
+    data: profileData,
+    isLoading: profileQueryLoading,
+    error: profileError,
+  } = useCommandCenterProps(profilePlayerName, currentSport);
+
   // Sync profile data from TanStack Query
   useEffect(() => {
-    if (profileData) {
-      if (profileData.success) {
-        setSelectedProfile(profileData);
-      } else {
-        // Profile fetch returned but player not in cache
-        setSelectedProfile(null);
-        toast.error(`Player not found: ${profilePlayerName}`, {
-          description: profileData.message || 'Player data not available',
-          duration: 3000,
-        });
-      }
-      setProfileLoading(false);
+    if (!profileData) return;
+    if (profileData.success === false) {
+      setSelectedProfile(null);
+      toast.error(`Player not found: ${profilePlayerName}`, {
+        description: profileData.message || 'No active props for this player',
+        duration: 3000,
+      });
+    } else if (Array.isArray(profileData.props) && profileData.props.length > 0) {
+      const meta = profileData.meta || {};
+      const first = profileData.props[0] || {};
+      setSelectedProfile({
+        sport: profileData.sport,
+        player_name: profileData.player_name,
+        player_id: meta.bdl_player_id || first.bdl_player_id || null,
+        team: meta.team || first.team || '',
+        opponent: first.opponent || '',
+        position: meta.position || null,
+        photo_url: meta.photo_url || null,
+        // Canonical rows pass through verbatim — no reshape.
+        props: profileData.props,
+      });
+    } else {
+      setSelectedProfile(null);
     }
+    setProfileLoading(false);
   }, [profileData, profilePlayerName]);
   
   // Handle profile fetch errors
@@ -333,7 +377,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     }
   }, [profileError]);
 
-  // PIPE 2: Fetch player profile via usePlayerProfile hook
+  // PIPE 2: Fetch player profile via universal Command Center hook.
   const fetchProfile = useCallback((player) => {
     // Clear previous profile to avoid stale data conflicts
     setSelectedProfile(null);
@@ -341,14 +385,63 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     setProfilePlayerName(player.player_name);
   }, []);
 
+  // Universal canonical leg builder — Command Center is sport-agnostic.
+  // Forwards ONLY canonical fields from the score doc; never emits
+  // legacy aliases.
+  const buildCanonicalLeg = useCallback((profile, prop) => {
+    if (!profile || !prop) return null;
+    const recommendation = (prop.recommendation || prop.direction || 'OVER')
+      .toString()
+      .toUpperCase();
+    return {
+      // Identity
+      canonical_key: prop.canonical_key || null,
+      sport: prop.sport || profile.sport || currentSport,
+      player_name: profile.player_name,
+      player_id: profile.player_id,
+      // Prop
+      stat_type: prop.stat_type,
+      line: prop.line,
+      recommendation,
+      direction: recommendation.toLowerCase(),
+      // Hit rates (canonical trio + side-aware)
+      hit_rate_l5: prop.hit_rate_l5,
+      hit_rate_l10: prop.hit_rate_l10,
+      hit_rate_l20: prop.hit_rate_l20,
+      hit_rate_over: prop.hit_rate_over,
+      hit_rate_under: prop.hit_rate_under,
+      // Probability + edge
+      p_true_active: prop.p_true_active,
+      edge_vs_fair: prop.edge_vs_fair,
+      vision_score: prop.vision_score,
+      cv: prop.cv,
+      // Tier context
+      tier: prop.tier,
+      tier_reason: prop.tier_reason,
+      tier_reference_book: prop.tier_reference_book,
+      tier_reference_odds: prop.tier_reference_odds,
+      // Odds
+      pp_odds: prop.pp_odds,
+      dk_odds: prop.dk_odds,
+      fd_odds: prop.fd_odds,
+      bol_odds: prop.bol_odds,
+      mgm_odds: prop.mgm_odds,
+      // Game context
+      team: profile.team || prop.team || '',
+      opponent: profile.opponent || prop.opponent || '',
+      is_home: prop.is_home ?? true,
+      event_id: prop.event_id || null,
+      game_start_utc: prop.game_start_utc || null,
+    };
+  }, [currentSport]);
+
   // Add leg from profile line selection (with STRICT conflict check)
   const addLegFromLine = useCallback((line) => {
     if (!selectedProfile || !line) return;
-    
-    // Use the player info from selectedProfile for this specific add
+
     const playerName = selectedProfile.player_name;
     const playerId = selectedProfile.player_id;
-    
+
     // STRICT CONFLICT CHECK: Block if player already exists
     if (isPlayerInLegs(playerId, playerName)) {
       toast.error(`Conflict: ${playerName} is already in your Command Hub`, {
@@ -358,37 +451,16 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
       });
       return;
     }
-    
-    const newLeg = {
-      player_name: playerName,
-      player_id: playerId,
-      // 2026-05-08 — stamp sport so legs survive multi-sport simulations
-      // and the backend can sport-route per-leg adjustments later.
-      sport: selectedProfile.sport || currentSport,
-      stat_type: line.stat_type,
-      line: line.line,
-      direction: line.direction || 'over',
-      team: selectedProfile.team,
-      opponent: selectedProfile.opponent,
-      is_home: true,
-      // 2026-05-07 P0 Phase 4B: canonical-only.
-      hit_rate_l5: line.hit_rate_l5 ?? 50,
-      hit_rate_l10: line.hit_rate_l10 ?? 50,
-      season_avg: line.season_avg,
-      l5_avg: line.l5_avg,
-      l10_avg: line.l10_avg,
-      usage_bump_percent: selectedProfile.usage_ripple?.bump_percent || 0,
-      dvp_rank: line.dvp_rank,
-      dvp_rank_color: line.dvp_rank_color
-    };
-    
+
+    const newLeg = buildCanonicalLeg(selectedProfile, line);
+    if (!newLeg) return;
     setLegs(prev => [...prev, newLeg]);
     toast.success(`Added: ${newLeg.player_name} ${newLeg.stat_type} ${newLeg.direction} ${newLeg.line}`, {
       duration: 2000,
     });
     setSelectedProfile(null);
     setProfilePlayerName(null);  // Clear to allow re-fetching
-  }, [selectedProfile, isPlayerInLegs, currentSport]);
+  }, [selectedProfile, isPlayerInLegs, buildCanonicalLeg]);
 
   // Remove leg
   const removeLeg = useCallback((index) => {
@@ -548,29 +620,19 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
           {selectedProfile && !profileLoading && (
             <div className="mt-3">
               <UniversalPlayerCard 
-                player={selectedProfile.playerData || {
+                player={{
                   player_name: selectedProfile.player_name,
                   player_id: selectedProfile.player_id,
                   team: selectedProfile.team,
                   position: selectedProfile.position,
                   photo_url: selectedProfile.photo_url,
                   opponent: selectedProfile.opponent,
+                  sport: selectedProfile.sport,
                 }}
-                props={selectedProfile.lines?.map(line => ({
-                  stat_type: line.stat_type,
-                  line: line.line,
-                  direction: line.direction || 'over',
-                  odds: line.odds,
-                  l5_avg: line.l5_avg,
-                  l10_avg: line.l10_avg,
-                  season_avg: line.season_avg,
-                  // 2026-05-07 P0 Phase 4B: canonical-only.
-                  hit_rate_l5: line.hit_rate_l5,
-                  hit_rate_l10: line.hit_rate_l10,
-                  is_demon: line.is_demon,
-                  is_goblin: line.is_goblin,
-                  tier_label: line.tier_label
-                })) || []}
+                // 2026-05-08 — Universal Command Center: canonical rows
+                // pass through verbatim from `/api/command/props`.
+                // No `.map(...)` reshape, no legacy aliases.
+                props={selectedProfile.props}
                 onClick={(playerOrProp) => {
                   // When clicking a prop in the player card
                   if (isPlayerInLegs(selectedProfile.player_id, selectedProfile.player_name)) {
@@ -581,26 +643,10 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
                     });
                     return;
                   }
-                  
-                  // Check if it's a prop click (has stat_type) or player click
+                  // PropRow click → playerOrProp is a canonical row.
                   if (playerOrProp.stat_type) {
-                    const newLeg = {
-                      player_name: selectedProfile.player_name,
-                      player_id: selectedProfile.player_id,
-                      stat_type: playerOrProp.stat_type,
-                      line: playerOrProp.line,
-                      direction: playerOrProp.direction || 'over',
-                      team: selectedProfile.team,
-                      opponent: selectedProfile.opponent,
-                      is_home: true,
-                      // 2026-05-07 P0 Phase 4B: canonical-only.
-                      hit_rate_l5: playerOrProp.hit_rate_l5 ?? 50,
-                      hit_rate_l10: playerOrProp.hit_rate_l10 ?? 50,
-                      season_avg: playerOrProp.season_avg,
-                      l5_avg: playerOrProp.l5_avg,
-                      l10_avg: playerOrProp.l10_avg
-                    };
-                    
+                    const newLeg = buildCanonicalLeg(selectedProfile, playerOrProp);
+                    if (!newLeg) return;
                     setLegs(prev => [...prev, newLeg]);
                     toast.success(`Added: ${newLeg.player_name} ${newLeg.stat_type} ${newLeg.direction} ${newLeg.line}`, {
                       duration: 2000,

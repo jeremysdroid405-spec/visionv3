@@ -1,0 +1,148 @@
+{
+  "summary": "Universal Command Center props route testing complete. All 8 backend pytest tests pass. Frontend smoke test confirms Command Center uses /api/command/props (NOT /api/v3/player-with-badges). Jalen Brunson AST alt-lines show VARYING L10 hit rates (0%, 10%, 30%, 40%, 50%, 60%, 70%, 90% - 8 distinct values across 20 AST rows). MLB Willson Contreras returns canonical rows with mlb| prefix. No legacy aliases (h5_rate, h10_rate, hit_rate, hit_rates) found in any response.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "notes": [
+      "HTTP2 protocol errors observed in console (net::ERR_HTTP2_PROTOCOL_ERROR) - appears to be related to headshot image loading, not affecting core functionality"
+    ]
+  },
+  "test_results": {
+    "pytest": {
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "test_file": "test_command_center_props.py",
+      "tests": [
+        "test_nba_alt_lines_have_varying_hit_rate_l10 - PASSED (Brunson AST: 20 rows, 8 distinct L10 values)",
+        "test_no_legacy_aliases_anywhere_in_response - PASSED (no h5_rate/h10_rate/hit_rate/hit_rates)",
+        "test_canonical_field_set_present - PASSED (all 27 canonical fields present)",
+        "test_mlb_player_returns_canonical_rows - PASSED (Contreras: mlb| prefix, final-mlb-rt)",
+        "test_invalid_sport_rejected_400 - PASSED (xfl returns 400)",
+        "test_missing_both_params_rejected_400 - PASSED (missing player_name AND canonical_key returns 400)",
+        "test_unknown_player_404 - PASSED (unknown player returns 404)",
+        "test_canonical_key_lookup_returns_single_row - PASSED (canonical_key query returns exactly 1 row)"
+      ]
+    },
+    "api_verification": {
+      "GET /api/command/props?sport=nba&player_name=Jalen%20Brunson": {
+        "status": 200,
+        "success": true,
+        "sport": "nba",
+        "version_tag": "final-nba-rt",
+        "props_count": 299,
+        "ast_rows": 20,
+        "distinct_l10_values": 8,
+        "l10_values": [0.0, 10.0, 30.0, 40.0, 50.0, 60.0, 70.0, 90.0],
+        "meta_keys": ["player_name", "team", "position", "jersey_number", "photo_url", "bdl_player_id", "sport"]
+      },
+      "GET /api/command/props?sport=mlb&player_name=Willson%20Contreras": {
+        "status": 200,
+        "success": true,
+        "sport": "mlb",
+        "version_tag": "final-mlb-rt",
+        "props_count": 25,
+        "canonical_key_prefix": "mlb|"
+      },
+      "GET /api/command/props?sport=xfl&player_name=anyone": {
+        "status": 400,
+        "detail": "Unsupported sport 'xfl'. Registered sports: ['nba', 'mlb']"
+      },
+      "GET /api/command/props?sport=nba": {
+        "status": 400,
+        "detail": "Provide one of player_name or canonical_key"
+      },
+      "GET /api/command/props?sport=nba&player_name=Definitely%20Not%20A%20Player": {
+        "status": 404,
+        "detail": "No active props for player_name='Definitely Not A Player'"
+      },
+      "GET /api/command/props?sport=nba&canonical_key=<encoded>": {
+        "status": 200,
+        "props_count": 1,
+        "note": "Returns exactly one row matching the canonical_key"
+      },
+      "POST /api/command/simulate (canonical fields only)": {
+        "status": 200,
+        "success": true,
+        "grade": "B",
+        "convergence_rate": 66.4,
+        "note": "Accepts legs with canonical fields only (no h10_rate/h5_rate/hit_rate/hit_rates)"
+      },
+      "POST /api/command/simulate (mixed-sport parlay)": {
+        "status": 200,
+        "success": true,
+        "leg_count": 2,
+        "leg_sports": ["nba", "mlb"],
+        "grade": "C",
+        "convergence_rate": 64.0,
+        "note": "Successfully processes NBA + MLB legs in same parlay"
+      }
+    },
+    "frontend_smoke_test": {
+      "command_hub_opens": true,
+      "search_works": true,
+      "player_profile_loads": true,
+      "props_displayed": true,
+      "varying_l10_visible": true,
+      "leg_addition_works": true,
+      "api_endpoint_used": "/api/command/props (NOT /api/v3/player-with-badges)",
+      "network_requests_captured": [
+        "GET /api/command/search?query=Jalen%20Brunson&sport=nba&limit=15",
+        "GET /api/command/props?sport=nba&player_name=Jalen%20Brunson"
+      ]
+    },
+    "canonical_fields_verification": {
+      "all_27_required_fields_present": true,
+      "required_fields": [
+        "canonical_key", "sport", "player_name", "stat_type", "line",
+        "recommendation", "direction",
+        "hit_rate_l5", "hit_rate_l10", "hit_rate_l20",
+        "hit_rate_over", "hit_rate_under",
+        "p_true_active", "edge_vs_fair", "vision_score", "cv",
+        "team", "opponent", "tier", "tier_reason",
+        "pp_odds", "dk_odds", "fd_odds", "bol_odds", "mgm_odds",
+        "tier_reference_book", "tier_reference_odds"
+      ],
+      "legacy_aliases_absent": true,
+      "legacy_aliases_checked": ["h5_rate", "h10_rate", "hit_rate", "hit_rates"]
+    }
+  },
+  "test_report_links": [
+    "/app/test_reports/pytest/pytest_command_center_props.xml",
+    "/app/backend/tests/test_command_center_props.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Command Center architecture is correctly implemented - reads from {sport}_prop_scores[final-{sport}-rt] only",
+    "No cached_board reads in the /api/command/props code path (verified in command_center_props.py)",
+    "Frontend CommandPost.jsx correctly uses useCommandCenterProps hook which calls /api/command/props",
+    "Legacy aliases (h5_rate, h10_rate, hit_rate, hit_rates) are NOT present in any response"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "100%"
+  },
+  "test_credentials": "Demo Mode button used for frontend access",
+  "seed_data_creation": "N/A - uses live data from nba_prop_scores and mlb_prop_scores collections",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Universal Command Center props route is fully functional. All 8 pytest tests pass. Frontend correctly uses /api/command/props endpoint. AST alt-line bug is FIXED - Brunson shows 8 distinct L10 values across 20 AST rows. MLB support works with mlb| canonical_key prefix. Mixed-sport parlays (NBA+MLB) work correctly. No legacy aliases in any response.",
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  },
+  "architecture_compliance": {
+    "reads_from_prop_scores_only": true,
+    "no_cached_board_reads": true,
+    "version_tag_correct": "final-{sport}-rt",
+    "sport_agnostic": true,
+    "canonical_fields_only": true
+  }
+}

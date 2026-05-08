@@ -598,6 +598,44 @@ export const usePlayerProfile = (playerName, sport = 'nba') => {
 };
 
 /**
+ * Universal Command Center prop source.
+ *
+ * 2026-05-08 — Command Center is system-level / sport-agnostic. This
+ * hook hits `/api/command/props`, which reads canonical rows from
+ * `{sport}_prop_scores[final-{sport}-rt]` ONLY. No cached_board, no
+ * stat-level fallbacks, no legacy aliases. Adding a new sport (NFL)
+ * is one entry in `SCHEDULED_SPORTS` — zero changes here.
+ *
+ * Returns the raw response shape from the route:
+ *   { success, sport, version_tag, player_name, meta, props[] }
+ *
+ * Components consume `props[]` directly — no `.map(...)` reshape.
+ */
+const fetchCommandCenterProps = async (playerName, sport) => {
+  if (!playerName || !sport) return null;
+  const url = `${API}/api/command/props?sport=${encodeURIComponent(sport)}&player_name=${encodeURIComponent(playerName)}`;
+  const res = await fetch(url);
+  if (res.status === 404) {
+    return { success: false, message: 'Player not in cache', sport, player_name: playerName, meta: {}, props: [] };
+  }
+  if (!res.ok) {
+    let detail = '';
+    try { detail = (await res.json()).detail || ''; } catch { /* keep blank */ }
+    throw new Error(`command/props ${res.status}${detail ? `: ${detail}` : ''}`);
+  }
+  return res.json();
+};
+
+export const useCommandCenterProps = (playerName, sport) => {
+  return useQuery({
+    queryKey: ['commandCenterProps', sport, playerName],
+    queryFn: () => fetchCommandCenterProps(playerName, sport),
+    enabled: Boolean(playerName && sport),
+    staleTime: 30 * 1000,
+  });
+};
+
+/**
  * useSimulation - Parlay simulation using useMutation pattern
  * This is the proper pattern for POST operations
  */

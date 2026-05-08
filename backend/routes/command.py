@@ -26,6 +26,12 @@ from services.stats_service import calculate_coupled_stats  # CRITICAL: For hit 
 from utils.player_lookup import build_player_lookup, get_player_by_name
 
 from services.config.collection_names import COLL
+from services.command_center_props import (
+    get_command_center_props,
+    get_player_meta,
+    is_supported_sport,
+    supported_sports,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +166,88 @@ async def simulate_configuration(request: SimulationRequest):
     except Exception as e:
         logger.error(f"[COMMAND] Simulation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/props")
+async def get_universal_command_props(
+    sport: str = Query(..., description="Sport (must be registered in SCHEDULED_SPORTS)"),
+    player_name: Optional[str] = Query(None, description="Player display name (case-insensitive exact match)"),
+    canonical_key: Optional[str] = Query(None, description="Exact canonical_key for a single prop row"),
+    limit: int = Query(500, ge=1, le=1000),
+):
+    """Universal Command Center prop source.
+
+    Sport-agnostic SSOT reader. Reads canonical rows from
+    `{sport}_prop_scores` filtered to `version_tag=final-{sport}-rt`
+    and `active=True`. No cached_board, no stat-level joins, no
+    legacy aliases (`h5_rate / h10_rate / hit_rate / hit_rates` are
+    never read or emitted on this path), no sport-specific branching
+    beyond the collection name. Adding a new sport (e.g. NFL) is one
+    entry in `SCHEDULED_SPORTS` — zero changes required here.
+
+    Provide one of `player_name` or `canonical_key`. Returns:
+        {
+            "success": True,
+            "sport": "nba",
+            "version_tag": "final-nba-rt",
+            "player_name": "...",
+            "meta": { team, position, photo_url, jersey_number, ... },
+            "props": [ <canonical row>, ... ]
+        }
+    """
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    sport_norm = (sport or "").lower()
+    if not is_supported_sport(sport_norm):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported sport '{sport}'. Registered sports: {supported_sports()}"
+            ),
+        )
+
+    if not player_name and not canonical_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide one of player_name or canonical_key",
+        )
+
+    try:
+        props = await get_command_center_props(
+            _db,
+            sport_norm,
+            player_name=player_name,
+            canonical_key=canonical_key,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if not props:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No active props for player_name='{player_name}' / "
+                f"canonical_key='{canonical_key}' in {sport_norm}_prop_scores"
+            ),
+        )
+
+    # Resolve canonical name from the row data so the response always
+    # echoes the SSOT spelling (master_hub display_name) — even when
+    # the caller passed a canonical_key.
+    canonical_name = props[0].get("player_name") or player_name
+    meta = await get_player_meta(_db, sport_norm, canonical_name)
+
+    return {
+        "success": True,
+        "sport": sport_norm,
+        "version_tag": f"final-{sport_norm}-rt",
+        "player_name": canonical_name,
+        "meta": meta,
+        "props": props,
+    }
+
 
 
 @router.get("/search")
