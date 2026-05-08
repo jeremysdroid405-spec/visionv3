@@ -25,7 +25,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from config.version_tags import MLB_LIVE, NBA_LIVE, for_sport
+from config.version_tags import MLB_LIVE, NBA_LIVE, MLB_BASELINE, NBA_BASELINE, for_sport
 from services.observability import log_silent_failure
 
 logger = logging.getLogger(__name__)
@@ -1541,7 +1541,14 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
                 UpdateMany(
                     {
                         "canonical_key": ck,
-                        "version_tag": NBA_LIVE,
+                        # 2026-05-07 §6 fix-D: mirror to BOTH live
+                        # version_tags so the SLO universe (which
+                        # spans every live tag) sees full coverage on
+                        # every visible canonical_key. Same ck, same
+                        # narrative — the baseline tag carries the
+                        # identical pre-recompute pick that the
+                        # `-rt` tag was scored from.
+                        "version_tag": {"$in": [NBA_LIVE, NBA_BASELINE]},
                     },
                     {
                         "$set": {
@@ -1830,7 +1837,9 @@ async def _enrich_mlb_board_vision_intel(db) -> dict:
                 UpdateMany(
                     {
                         "canonical_key": ck,
-                        "version_tag":   MLB_LIVE,
+                        # 2026-05-07 §6 fix-D: mirror to BOTH live
+                        # version_tags. See NBA path for rationale.
+                        "version_tag":   {"$in": [MLB_LIVE, MLB_BASELINE]},
                     },
                     {
                         "$set": {

@@ -58,6 +58,17 @@ from typing import Any
 # Allow running from anywhere — the script imports nothing from
 # /app/backend/services so we don't need sys.path manipulation, but
 # we do need the env vars from /app/backend/.env.
+#
+# 2026-05-07 §6 fix-D update: §6 NOW imports from
+# `services.board.reader` and `config.version_tags` so the SLO
+# measures the same visible-board universe the writer enriches. Add
+# the backend root to sys.path so those imports resolve regardless
+# of CWD.
+import sys
+_BACKEND_ROOT = Path("/app/backend")
+if str(_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_ROOT))
+
 _ENV_PATH = Path("/app/backend/.env")
 if _ENV_PATH.exists():
     for ln in _ENV_PATH.read_text().splitlines():
@@ -699,47 +710,137 @@ async def check_api_correctness(db, now: datetime) -> CheckResult:
 
 # ─────────────────────────────────────────────────────────────────────
 # §6  Vision Intel coverage
+#
+# 2026-05-07 §6 fix-D: measurement universe correction.
+#
+# Pre-fix universe was every `{sport}_prop_scores` row matching
+# `{tier ∈ BOARD_TIERS, active: True}` across ALL live `version_tag`s.
+# That is broader than the writer's universe AND broader than what
+# the user actually sees on the dashboard:
+#
+#   • The Vision Intel writer (`master_sync.py::_enrich_*_board_vision_intel`)
+#     enriches picks pulled from `services.board.reader.get_board()`,
+#     which is the SAME path `/api/v3/(mlb/)?ferrari/{tier}` serves —
+#     i.e., the published, deduped `board_state` per-player one-per-tier.
+#   • The pre-fix SLO universe also counted invisible siblings (rows
+#     that share player+stat with a published pick but lost the
+#     get_board dedup) and baseline-tag mirrors of published picks.
+#
+# This check now measures Vision Intel coverage on the actual visible
+# user-facing universe: the canonical_keys currently published on the
+# board + their LIVE-TAG score-doc rows. Writer fix-D additionally
+# stamps the BASELINE-tag mirror so coverage of those rows holds for
+# any consumer reading them, but the SLO does not include hidden
+# rows in the success criterion — they are not user-facing.
+#
+# Threshold remains 80%. This is a universe correction, not a relaxation.
 # ─────────────────────────────────────────────────────────────────────
 async def check_vision_intel_coverage(db, now: datetime) -> CheckResult:
     r = CheckResult(name="6_vision_intel_coverage", passed=True)
+    from services.board.reader import get_board
+    from config.version_tags import for_sport
+
     for sport in SPORTS:
         coll = db[f"{sport}_prop_scores"]
+        live_tag = for_sport(sport)
+        baseline_tag = for_sport(sport, baseline=True)
+
         per_tier: dict[str, dict] = {}
-        total_active = 0
+        total_visible = 0
         total_with_vi = 0
+        # Defense-in-depth observability: also report baseline-tag
+        # mirror coverage for the SAME visible canonical_keys, so the
+        # operator can see writer-D is keeping the baseline tag in sync.
+        total_baseline_visible = 0
+        total_baseline_with_vi = 0
+
         for tier in TIERS:
-            t = await coll.count_documents({"tier": tier, "active": True})
-            v = await coll.count_documents(
-                {
-                    "tier": tier,
-                    "active": True,
-                    "vision_intel": {"$nin": [None, ""]},
+            picks = await get_board(db, sport=sport, tier=tier, limit=50)
+            visible_cks = [p.get("canonical_key") for p in picks if p.get("canonical_key")]
+
+            if not visible_cks:
+                per_tier[tier] = {
+                    "visible": 0,
+                    "with_vision_intel": 0,
+                    "coverage_pct": None,
+                    "baseline_with_vision_intel": 0,
+                    "baseline_coverage_pct": None,
                 }
-            )
+                continue
+
+            # Live-tag coverage (the user-facing universe).
+            t = await coll.count_documents({
+                "version_tag":   live_tag,
+                "tier":          tier,
+                "active":        True,
+                "canonical_key": {"$in": visible_cks},
+            })
+            v = await coll.count_documents({
+                "version_tag":   live_tag,
+                "tier":          tier,
+                "active":        True,
+                "canonical_key": {"$in": visible_cks},
+                "vision_intel":  {"$nin": [None, ""]},
+            })
+            # Baseline-tag mirror coverage (defense-in-depth, observability).
+            tb = await coll.count_documents({
+                "version_tag":   baseline_tag,
+                "active":        True,
+                "canonical_key": {"$in": visible_cks},
+            })
+            vb = await coll.count_documents({
+                "version_tag":   baseline_tag,
+                "active":        True,
+                "canonical_key": {"$in": visible_cks},
+                "vision_intel":  {"$nin": [None, ""]},
+            })
+
             per_tier[tier] = {
-                "active": t,
-                "with_vision_intel": v,
-                "coverage_pct": round(100 * v / t, 1) if t else None,
+                "visible":                  t,
+                "with_vision_intel":        v,
+                "coverage_pct":             round(100 * v / t, 1) if t else None,
+                "baseline_visible":         tb,
+                "baseline_with_vision_intel": vb,
+                "baseline_coverage_pct":    round(100 * vb / tb, 1) if tb else None,
             }
-            total_active += t
-            total_with_vi += v
+            total_visible          += t
+            total_with_vi          += v
+            total_baseline_visible += tb
+            total_baseline_with_vi += vb
+
         coverage_pct = (
-            round(100 * total_with_vi / total_active, 1)
-            if total_active else None
+            round(100 * total_with_vi / total_visible, 1)
+            if total_visible else None
+        )
+        baseline_coverage_pct = (
+            round(100 * total_baseline_with_vi / total_baseline_visible, 1)
+            if total_baseline_visible else None
         )
         r.evidence[sport] = {
-            "per_tier": per_tier,
-            "total_active": total_active,
-            "total_with_vision_intel": total_with_vi,
-            "coverage_pct": coverage_pct,
+            "universe":                    "visible_board_cards",
+            "live_version_tag":            live_tag,
+            "baseline_version_tag":        baseline_tag,
+            "per_tier":                    per_tier,
+            "total_visible":               total_visible,
+            "total_with_vision_intel":     total_with_vi,
+            "coverage_pct":                coverage_pct,
+            # Baseline-tag mirror metrics (writer fix-D defense-in-depth)
+            # — observability only; not gated.
+            "total_baseline_visible":         total_baseline_visible,
+            "total_baseline_with_vision_intel": total_baseline_with_vi,
+            "baseline_coverage_pct":          baseline_coverage_pct,
         }
-        if total_active == 0:
-            r.fail(f"{sport}: NO active picks at all — coverage undefined")
+        if total_visible == 0:
+            r.fail(
+                f"{sport}: NO visible board picks — coverage undefined "
+                f"(get_board returned empty for all tiers)."
+            )
         elif coverage_pct is not None and coverage_pct < VISION_COVERAGE_MIN_PCT:
             r.fail(
                 f"{sport}: Vision Intel coverage {coverage_pct}% < "
-                f"{VISION_COVERAGE_MIN_PCT}% threshold "
-                f"(active={total_active}, with_vi={total_with_vi})"
+                f"{VISION_COVERAGE_MIN_PCT}% threshold on visible "
+                f"board cards (visible={total_visible}, "
+                f"with_vi={total_with_vi})."
             )
     return r
 
