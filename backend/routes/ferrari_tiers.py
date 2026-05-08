@@ -2157,8 +2157,8 @@ def _apply_universal_scout_badges(pick: Dict[str, Any]) -> None:
 async def _post_process_nba_picks(
     picks: List[Dict[str, Any]], tier_name: str
 ) -> None:
-    """NBA post-process: side-aware finalization + universal scout-badge stamp.
-    Mutates picks in place. No-op when picks is empty.
+    """NBA post-process: side-aware finalization + universal badge
+    enrichment. Mutates picks in place. No-op when picks is empty.
 
     P1.3 (2026-04-21, Gemini cost audit): UNDER-pick Gemini enrichment
     used to run HERE on every tier request. It has been removed from the
@@ -2166,32 +2166,51 @@ async def _post_process_nba_picks(
     (UnifiedPipeline._run_nba_under_enrichment). UNDER picks that have
     not yet been enriched fall back to `_generate_vision_fallback` via
     the sport-agnostic guard in `_serve_ferrari_tier`.
+
+    2026-05-08 universal-badge architecture: `_apply_universal_scout_badges`
+    is replaced here by `services.badge_enrichment.enrich_pick_badges`,
+    a sport-routing dispatcher that owns the canonical badge fields
+    (`scout_badges`, `context_badges`, `active_badges`,
+    `intel_suite.context_badges`). NBA path runs the universal scout
+    step only — player-level `context_badges` continue to be overlaid
+    by the cached_board reader earlier in the pipeline.
+    The route-level `_apply_universal_scout_badges` helper is left in
+    place untouched for callers like `_apply_under_badge_rewire`.
     """
     if not picks:
         return
     _finalize_nba_picks_side_aware(picks)
+    from services.badge_enrichment import enrich_pick_badges
     for pick in picks:
-        _apply_universal_scout_badges(pick)
+        await enrich_pick_badges(pick, sport="nba", db=_db)
 
 
 async def _post_process_mlb_picks(
     picks: List[Dict[str, Any]], tier_name: str
 ) -> None:
     """MLB post-process: defensive tempo + intel_suite + universal
-    scout-badge stamp. Tempo + intel_suite enrichers are idempotent
+    badge enrichment. Tempo + intel_suite enrichers are idempotent
     no-ops when fields were persisted at scoring-write time (Stage 4).
-    The universal scout-badge pass runs unconditionally so the badge set
-    is consistent with the player-detail endpoints. Mutates picks in
-    place. No-op when picks is empty."""
+    The universal badge enrichment dispatcher runs unconditionally so
+    the badge set is consistent with the player-detail endpoints,
+    AND adds MLB environmental badges (`wind_boost`, `cold_zone`,
+    `bvp_dominator`, `high_heat_trap`, `hitters_haven`, `pure_contact`,
+    `barrel_master`, `whiff_wizard`, `volatility_extreme`) via the
+    existing `MLBBadgeService` invoked with populated weather / park /
+    umpire / opponent_pitcher context (vs. the previous `None` inputs
+    that silently no-op'd every environmental gate).
+
+    Mutates picks in place. No-op when picks is empty."""
     if not picks:
         return
+    from services.badge_enrichment import enrich_pick_badges
     for pick in picks:
         try:
             enrich_mlb_prop_with_tempo(pick)
         except Exception as _swept_exc:
             log_silent_failure("routes.ferrari_tiers._post_process_mlb_picks", _swept_exc)  # sweep-auto-converted
         enrich_mlb_intel_suite(pick)
-        _apply_universal_scout_badges(pick)
+        await enrich_pick_badges(pick, sport="mlb", db=_db)
 
 
 SPORT_TIER_HELPERS: Dict[str, SportTierHelpers] = {
