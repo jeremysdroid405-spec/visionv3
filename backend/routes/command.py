@@ -50,8 +50,13 @@ class SimulationLeg(BaseModel):
     stat_type: str
     line: float
     direction: str = "over"
-    team: str = ""
-    opponent: str = ""
+    # 2026-05-08 — same null-tolerance reasoning as season_avg below.
+    # Profile data legitimately has team/opponent unset for brand-new
+    # players or off-board props; frontend forwards as JSON null.
+    # Accept null at the schema boundary; downstream readers coerce
+    # to "".
+    team: Optional[str] = ""
+    opponent: Optional[str] = ""
     game_id: Optional[str] = None
     is_home: bool = True
     # 2026-05-07 P0 Phase 4B: canonical-first input fields. Legacy

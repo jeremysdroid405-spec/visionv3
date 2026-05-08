@@ -195,9 +195,9 @@ class SimulationEngine:
         player_name = leg_data.get("player_name", "")
         stat_type = leg_data.get("stat_type", "")
         line = leg_data.get("line", 0)
-        direction = leg_data.get("direction", "over").lower()
-        team = leg_data.get("team", "")
-        opponent = leg_data.get("opponent", "")
+        direction = (leg_data.get("direction") or "over").lower()
+        team = leg_data.get("team") or ""
+        opponent = leg_data.get("opponent") or ""
         game_id = leg_data.get("game_id")
         is_home = leg_data.get("is_home", True)
         
