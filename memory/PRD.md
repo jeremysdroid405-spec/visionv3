@@ -57,6 +57,18 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-08 — Universal Command Center prop source
+- **New helper**: `services/command_center_props.py::get_command_center_props(db, sport, *, player_name=None, canonical_key=None)` — sport-agnostic SSOT reader. Reads canonical rows from `{sport}_prop_scores` filtered to `version_tag=final-{sport}-rt` AND `active=True`. ONE adapter (`_to_canonical_prop`). No cached_board, no stat-level joins, no sport-specific branching beyond the collection name. Adding NFL = one entry in `SCHEDULED_SPORTS`.
+- **New route**: `GET /api/command/props?sport={sport}&player_name={name}` (also accepts `canonical_key=...`). Validates sport via `SCHEDULED_SPORTS`. Returns `{success, sport, version_tag, player_name, meta, props[]}`. 400 on unknown sport / missing params, 404 on unknown player.
+- **Canonical row contract** (no legacy aliases): `canonical_key, sport, player_name, stat_type, line, recommendation, direction, hit_rate_l5, hit_rate_l10, hit_rate_l20, hit_rate_over, hit_rate_under, p_true_active, edge_vs_fair, vision_score, cv, team, opponent, tier, tier_reason, pp_odds, dk_odds, fd_odds, bol_odds, mgm_odds, tier_reference_book, tier_reference_odds, event_id, game_start_utc, bdl_player_id, is_home`. `h5_rate / h10_rate / hit_rate / hit_rates` are NEVER read or emitted on this path.
+- **Frontend**: `useCommandCenterProps` hook in `useLiveOdds.js`. CommandPost replaces the legacy `usePlayerProfile` → `.map(line => ({...}))` reshape with verbatim canonical rows from the new endpoint. New `buildCanonicalLeg` helper forwards canonical fields ONLY to `/api/command/simulate` for both inline-add and Quick-Add (`pendingLeg`) paths.
+- **Verified (testing agent + 8 pytest cases)**:
+  - Brunson NBA AST: 20 alt rows, 8 distinct `hit_rate_l10` values (0/10/30/40/50/60/70/90) — original "all 90%" smearing bug eliminated.
+  - Contreras MLB: 25 canonical rows, all `mlb|`-prefixed `canonical_key`, `version_tag=final-mlb-rt`.
+  - Mixed NBA+MLB simulation: convergence rate 64.0%, grade C — works.
+  - Frontend CommandPost smoke: search → profile shows varying L10 chips → click adds canonical leg. Network tab confirms `/api/command/props` (not `/api/v3/player-with-badges`).
+- **Files**: `backend/services/command_center_props.py` (new), `backend/routes/command.py`, `backend/tests/test_command_center_props.py` (new), `frontend/src/hooks/useLiveOdds.js`, `frontend/src/components/dashboard/CommandPost.jsx`.
+
 ### 2026-05-08 — Breaking News Ticker stabilization patch
 - Swapped ESPN RSS (HTTP 202, bot-fenced) for ESPN public JSON news API (`site.api.espn.com/apis/site/v2/sports/{basketball/nba|baseball/mlb}/news`)
 - Fixed CBS Sports regex to tolerate both `<![CDATA[...]]>` and plain `<title>` wrappers (was capturing 0/36 headlines)
