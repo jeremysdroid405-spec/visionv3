@@ -44,8 +44,14 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Dynamic Star Identification Thresholds (from BDL Advanced Stats)
+# 2026-05-08 — freshness fix: lowered SECONDARY threshold from 22 → 18
+# and added minutes-based admission so rotation regulars whose injury
+# is genuine breaking news (e.g. OG Anunoby OUT for Game 3 vs PHI,
+# usage=19.4%, mpg=33) still surface as Live Injury Advantage cards.
+# Cards are recomputed on every request — no caches downstream.
 PRIMARY_ALPHA_THRESHOLD = 28.0    # Primary Alpha: usg_pct >= 28%
-SECONDARY_ALPHA_THRESHOLD = 22.0  # Secondary Alpha: usg_pct 22-28%
+SECONDARY_ALPHA_THRESHOLD = 18.0  # Secondary Alpha: usg_pct >= 18%
+ROTATION_MINUTES_THRESHOLD = 24.0 # Volume admission: mpg >= 24
 
 # Legacy compatibility (kept for fallback only)
 STAR_USAGE_THRESHOLD = 20.0
@@ -205,12 +211,15 @@ class InjuryVacuumService:
             
             if db_star:
                 usage_pct = db_star.get('usage_percentage', 0) or db_star.get('usage_pct', 0)
+                mpg = db_star.get('minutes_per_game', 0) or db_star.get('min_per_game', 0) or 0
                 
                 # Determine alpha tier
                 if usage_pct >= PRIMARY_ALPHA_THRESHOLD:
                     alpha_tier = 'primary'
                 elif usage_pct >= SECONDARY_ALPHA_THRESHOLD:
                     alpha_tier = 'secondary'
+                elif mpg >= ROTATION_MINUTES_THRESHOLD:
+                    alpha_tier = 'rotation'
                 else:
                     alpha_tier = None
                 
@@ -221,6 +230,7 @@ class InjuryVacuumService:
                     "position": db_star.get('position'),
                     "usage_rate": usage_pct,
                     "usage_percentage": usage_pct,
+                    "minutes_per_game": mpg,
                     "pie": db_star.get('pie', 0),
                     "net_rating": db_star.get('net_rating', 0),
                     "alpha_tier": alpha_tier,
@@ -230,9 +240,18 @@ class InjuryVacuumService:
                 }
                 self.star_profiles_cache[normalized] = profile
                 
-                is_star = usage_pct >= SECONDARY_ALPHA_THRESHOLD
+                # 2026-05-08 — freshness fix: admit on usage OR minutes
+                # so genuine rotation regulars (e.g. OG Anunoby) surface
+                # as cards regardless of slightly-below-threshold usage.
+                is_star = (
+                    usage_pct >= SECONDARY_ALPHA_THRESHOLD
+                    or mpg >= ROTATION_MINUTES_THRESHOLD
+                )
                 if is_star:
-                    logger.info(f"[VacuumService] Dynamic Star: {player_name} (Usage: {usage_pct:.1f}%, Tier: {alpha_tier})")
+                    logger.info(
+                        f"[VacuumService] Dynamic Star: {player_name} "
+                        f"(Usage: {usage_pct:.1f}%, MPG: {mpg:.1f}, Tier: {alpha_tier})"
+                    )
                 return is_star, profile
                 
         except Exception as e:
@@ -257,18 +276,32 @@ class InjuryVacuumService:
             if hub_player and hub_player.get('advanced_stats'):
                 adv = hub_player['advanced_stats']
                 usage_pct = adv.get('usage_percentage', 0) or adv.get('usg_pct', 0)
+                mpg = adv.get('minutes_per_game', 0) or adv.get('min_per_game', 0) or 0
                 
-                if usage_pct >= SECONDARY_ALPHA_THRESHOLD:
-                    alpha_tier = 'primary' if usage_pct >= PRIMARY_ALPHA_THRESHOLD else 'secondary'
+                # 2026-05-08 — admit on usage OR minutes (rotation regular)
+                if (
+                    usage_pct >= SECONDARY_ALPHA_THRESHOLD
+                    or mpg >= ROTATION_MINUTES_THRESHOLD
+                ):
+                    if usage_pct >= PRIMARY_ALPHA_THRESHOLD:
+                        alpha_tier = 'primary'
+                    elif usage_pct >= SECONDARY_ALPHA_THRESHOLD:
+                        alpha_tier = 'secondary'
+                    else:
+                        alpha_tier = 'rotation'
                     profile = {
                         "name": hub_player.get('display_name'),
                         "team": hub_player.get('team'),
                         "usage_rate": usage_pct,
+                        "minutes_per_game": mpg,
                         "alpha_tier": alpha_tier,
                         "source": "nba_master_hub_2026"
                     }
                     self.star_profiles_cache[normalized] = profile
-                    logger.info(f"[VacuumService] Hub Star: {player_name} (Usage: {usage_pct:.1f}%)")
+                    logger.info(
+                        f"[VacuumService] Hub Star: {player_name} "
+                        f"(Usage: {usage_pct:.1f}%, MPG: {mpg:.1f}, Tier: {alpha_tier})"
+                    )
                     return True, profile
                     
         except Exception as e:

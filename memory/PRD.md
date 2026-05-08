@@ -57,6 +57,16 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-08 — Live Injury Advantage star-qualifier widening
+**Audit-only finding** (no caches involved): cards aren't stale — they're being **filtered out** by an overly-strict 22% usage gate in `InjuryVacuumService._is_star_player`. The recompute path is correct; it just rejects rotation regulars whose injury is genuine breaking news. Smoking gun: OG Anunoby (NYK, OUT, usage=19.4%, mpg=33+) was being silently dropped while Luka Doncic (36.8%) and Jalen Williams (25.2%) passed.
+- **Single change** in `services/injury_vacuum_service.py`:
+  - Lowered `SECONDARY_ALPHA_THRESHOLD` from 22.0 → 18.0.
+  - Added `ROTATION_MINUTES_THRESHOLD = 24.0` — admit on `usage_percentage >= 18` OR `minutes_per_game >= 24`.
+  - Both `nba_star_usage_cache` and `nba_master_hub_2026.advanced_stats` lookup paths use the same dual-axis admission. New `alpha_tier="rotation"` for the minutes-only path so downstream code can distinguish.
+- **Verified live**: card count went from 6 alerts (2 distinct injured) → 15 alerts (5 distinct injured) within a single restart. NEW visible: **OG Anunoby (NYK)**, **Kevin Huerter (DET)**, **David Jones (SAS)**. Luka Doncic + Jalen Williams retained. No noise flood (DiVincenzo / Sorber correctly filtered as expected).
+- **Acceptance**: 6 of 6 user criteria pass (OG visible, existing cards retained, no flood, API live, freshness badge still 7s, no duplicates).
+- 5 unit tests (`tests/test_injury_advantage_qualifier.py`) lock down the new admission rules.
+
 ### 2026-05-08 — Live Injury Advantage freshness pipeline (5 fixes)
 Audit identified 6 stale stages; user approved 5 (deferred legacy-writer cleanup #5 to 48h post-rollout).
 - **#1 Cadence fallback** (`services/injury_sensor.py::_get_cadence`). When `live_scores_cache.games` is stale, fall back to a `{sport}_cached_board` activity probe — return `CADENCE_ACTIVE (120s)` when any sport has live cached_board props. Sport-agnostic. NBA was stuck at IDLE=300s mid-season pre-fix.
