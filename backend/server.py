@@ -866,45 +866,44 @@ async def scheduled_roster_sync():
         logger.error("[SCHEDULER] Demon & Goblin Engine not initialized")
 
 
-async def scheduled_forward_test_capture():
+async def scheduled_forward_test_capture(sport: str, capture_phase: str):
     """
-    Scheduled job that runs at 6:30 PM ET (22:30 UTC) daily.
-    
-    Captures all tier props (Safe Haven, Front Lines, War Zone) for both
-    NBA and MLB to enable historical performance tracking.
-    
-    This builds the dataset for:
-    - Model calibration validation (predicted vs actual hit rates)
-    - Tier performance analysis
-    - A/B testing of threshold changes
+    Scheduled job firing per (sport, capture_phase) combination.
+
+    NBA phases: morning (11 AM ET), afternoon (2 PM ET), pre_lock (5 PM ET)
+    MLB phases: morning (12 PM ET), lineup_window (3 PM ET), pre_lock (6 PM ET)
+
+    Snapshots all tier-qualified props from `{sport}_prop_scores`
+    (`final-{sport}-rt`) into `forward_test_snapshots` keyed on
+    (sport, capture_date, capture_phase, player, stat, line) so the three
+    daily windows do not overwrite each other.
     """
     logger.info("=" * 70)
-    logger.info("[SCHEDULER] FORWARD-TEST: DAILY PROP CAPTURE (6:30 PM ET)")
+    logger.info(f"[SCHEDULER] FORWARD-TEST: {sport.upper()} CAPTURE phase={capture_phase}")
     logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
     logger.info("=" * 70)
-    
+
     try:
         from services.forward_testing_service import get_forward_testing_service
-        
+
         service = get_forward_testing_service(db)
-        result = await service.capture_all_sports(capture_reason="scheduled_1830_et")
-        
-        # Log results
-        total_props = 0
-        for sport, data in result.get("sports", {}).items():
-            sport_total = data.get("total_props", 0)
-            total_props += sport_total
-            tiers = data.get("tiers", {})
-            logger.info(f"[SCHEDULER] {sport.upper()}: {sport_total} props captured")
-            for tier, count in tiers.items():
-                logger.info(f"[SCHEDULER]   - {tier}: {count}")
-        
-        logger.info("=" * 70)
-        logger.info(f"[SCHEDULER] FORWARD-TEST COMPLETE: {total_props} total props captured")
-        logger.info("=" * 70)
-        
+        result = await service.capture_daily_snapshot(
+            sport=sport,
+            capture_reason=f"scheduled_{capture_phase}",
+            capture_phase=capture_phase,
+        )
+
+        total = result.get("total_props", 0)
+        tiers = result.get("tiers", {})
+        logger.info(f"[SCHEDULER] {sport.upper()}/{capture_phase}: {total} props captured")
+        for tier, count in tiers.items():
+            logger.info(f"[SCHEDULER]   - {tier}: {count}")
+
     except Exception as e:
-        logger.error(f"[SCHEDULER] Forward-test capture failed: {e}")
+        logger.error(
+            f"[SCHEDULER] Forward-test capture failed for "
+            f"{sport}/{capture_phase}: {e}"
+        )
         import traceback
         logger.error(traceback.format_exc())
 
@@ -2084,15 +2083,31 @@ async def startup_event():
         replace_existing=True
     )
     
-    # Forward-Testing: Daily prop capture at 6:30 PM ET (22:30 UTC summer / 23:30 UTC winter)
-    # Captures all tier props for historical performance tracking
-    scheduler.add_job(
-        scheduled_forward_test_capture,
-        CronTrigger(hour=22, minute=30, timezone=SCHEDULER_TIMEZONE),
-        id='forward_test_capture',
-        name='Forward-Test: Daily Prop Capture (6:30 PM ET)',
-        replace_existing=True
+    # Forward-Testing: multi-phase daily prop captures (2026-05-08 upgrade).
+    # Replaces the single 22:30 UTC / 6:30 PM ET legacy capture with three
+    # market-state snapshots per sport so we can measure edge decay and
+    # calibration drift across the day. Uniqueness key on the snapshot
+    # collection now includes `capture_phase`.
+    #
+    # NBA  : 11 AM ET → morning      | 2 PM ET → afternoon     | 5 PM ET → pre_lock
+    # MLB  : 12 PM ET → morning      | 3 PM ET → lineup_window | 6 PM ET → pre_lock
+    _FORWARD_TEST_PHASES = (
+        ("nba", "morning",       11),
+        ("nba", "afternoon",     14),
+        ("nba", "pre_lock",      17),
+        ("mlb", "morning",       12),
+        ("mlb", "lineup_window", 15),
+        ("mlb", "pre_lock",      18),
     )
+    for _sport, _phase, _hour_et in _FORWARD_TEST_PHASES:
+        scheduler.add_job(
+            scheduled_forward_test_capture,
+            CronTrigger(hour=_hour_et, minute=0, timezone=SCHEDULER_TIMEZONE),
+            id=f"forward_test_capture_{_sport}_{_phase}",
+            name=f"Forward-Test: {_sport.upper()} {_phase} capture",
+            kwargs={"sport": _sport, "capture_phase": _phase},
+            replace_existing=True,
+        )
 
     # PRA Dual-Projection Audit settle (2026-04-23).
     # Runs 4:30 AM EST, right after 4:15 AM BDL Game Logs sync has
@@ -2189,6 +2204,17 @@ async def startup_event():
     )
 
     scheduler.start()
+
+    # Retire the legacy single-shot forward-test capture job (2026-05-08).
+    # Replaced by the six per-(sport, phase) jobs above. The MongoDBJobStore
+    # persists job IDs across restarts, so we explicitly drop the old ID
+    # if it still lives in `scheduler_jobs`. Must run AFTER scheduler.start()
+    # because MongoDBJobStore lazy-loads job state on start.
+    try:
+        scheduler.remove_job("forward_test_capture")
+        logger.info("[SCHEDULER] Removed legacy forward_test_capture job from store")
+    except Exception:
+        pass
     logger.info(f"[SCHEDULER] APScheduler started - WEEKEND-READY MODE")
     logger.info(f"[SCHEDULER] === INTERVAL JOBS (High-Performance) ===")
     logger.info(f"[SCHEDULER] Hourly Full Sync: Every 60 min (id: hourly_full_sync)")
@@ -2203,7 +2229,7 @@ async def startup_event():
     logger.info(f"[SCHEDULER] 4:15 AM EST - NBA BDL Game Logs   | 4:18 AM - MLB")
     logger.info(f"[SCHEDULER] 4:20 AM EST - NBA Daily Pipeline  | 4:23 AM - MLB (recalc HR)")
     logger.info(f"[SCHEDULER] 4:26 AM EST - Ticker Sync")
-    logger.info(f"[SCHEDULER] 6:30 PM ET - Forward-Test Capture (NBA + MLB)")
+    logger.info(f"[SCHEDULER] Forward-Test Captures: NBA 11/14/17 ET, MLB 12/15/18 ET (6 jobs)")
     logger.info(f"[SCHEDULER] 4:30 AM EST - PRA Dual-Projection Audit Settle")
     logger.info(f"[SCHEDULER] Sunday 00:00 UTC - Weekly Roster Sync")
     

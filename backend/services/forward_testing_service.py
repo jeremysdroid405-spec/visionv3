@@ -66,7 +66,8 @@ class ForwardTestingService:
     async def capture_daily_snapshot(
         self,
         sport: str,
-        capture_reason: str = "scheduled"
+        capture_reason: str = "scheduled",
+        capture_phase: str = "manual",
     ) -> Dict[str, Any]:
         """
         Capture all current tier props for forward-testing.
@@ -74,6 +75,13 @@ class ForwardTestingService:
         Args:
             sport: 'nba' or 'mlb'
             capture_reason: 'scheduled', 'manual', 'pre_game', etc.
+            capture_phase: market-state phase tag for multi-snapshot tracking.
+                NBA allowed: 'morning' | 'afternoon' | 'pre_lock'
+                MLB allowed: 'morning' | 'lineup_window' | 'pre_lock'
+                Manual/ad-hoc captures default to 'manual'.
+                Existing pre-2026-05-08 rows have no field; new rows always
+                stamp it. The (sport, capture_date, capture_phase, player,
+                stat, line) tuple is the new uniqueness key.
             
         Returns:
             Capture results with counts per tier
@@ -85,13 +93,17 @@ class ForwardTestingService:
         now = datetime.now(timezone.utc)
         today_str = now.strftime("%Y-%m-%d")
         
-        logger.info(f"[FORWARD_TEST] Capturing {sport.upper()} props for {today_str}")
+        logger.info(
+            f"[FORWARD_TEST] Capturing {sport.upper()} props for {today_str} "
+            f"(phase={capture_phase}, reason={capture_reason})"
+        )
         
         results = {
             "sport": sport,
             "capture_date": today_str,
             "captured_at": now.isoformat(),
             "capture_reason": capture_reason,
+            "capture_phase": capture_phase,
             "tiers": {},
             "total_props": 0
         }
@@ -120,6 +132,7 @@ class ForwardTestingService:
                     "capture_date": today_str,
                     "captured_at": now,
                     "capture_reason": capture_reason,
+                    "capture_phase": capture_phase,
                     
                     # Core prop data
                     "player_name": prop.get("player_name"),
@@ -195,11 +208,18 @@ class ForwardTestingService:
                     "full_prop_data": prop
                 }
                 
-                # Upsert to avoid duplicates
+                # Upsert keyed on (sport, date, phase, player, stat, line)
+                # so multiple captures per day (morning/afternoon/pre_lock)
+                # write distinct rows. Pre-2026-05-08 rows had no
+                # `capture_phase` field; the legacy uniqueness was
+                # (sport, date, player, stat, line), which the new key
+                # is a strict superset of — historical rows are not
+                # affected by this change.
                 await self.snapshots.update_one(
                     {
                         "sport": sport,
                         "capture_date": today_str,
+                        "capture_phase": capture_phase,
                         "player_name": snapshot["player_name"],
                         "stat_type": snapshot["stat_type"],
                         "line": snapshot["line"]
@@ -214,16 +234,27 @@ class ForwardTestingService:
         
         return results
     
-    async def capture_all_sports(self, capture_reason: str = "scheduled") -> Dict[str, Any]:
-        """Capture props for all sports."""
+    async def capture_all_sports(
+        self,
+        capture_reason: str = "scheduled",
+        capture_phase: str = "manual",
+    ) -> Dict[str, Any]:
+        """Capture props for all sports.
+
+        capture_phase is forwarded to every per-sport call so multi-window
+        snapshots stay consistent across NBA + MLB when invoked together.
+        """
         results = {
             "captured_at": datetime.now(timezone.utc).isoformat(),
             "capture_reason": capture_reason,
+            "capture_phase": capture_phase,
             "sports": {}
         }
         
         for sport in SCHEDULED_SPORTS.keys():
-            results["sports"][sport] = await self.capture_daily_snapshot(sport, capture_reason)
+            results["sports"][sport] = await self.capture_daily_snapshot(
+                sport, capture_reason, capture_phase
+            )
         
         return results
     
