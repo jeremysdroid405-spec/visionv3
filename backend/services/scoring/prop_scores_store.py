@@ -715,10 +715,51 @@ async def write_versioned_scores(
     stale_deleted = 0
 
     if not prepared:
-        # Preserve old contract: empty batch wipes the whole tag.
-        # No race to avoid because there are no new writes coming in.
-        sweep = await coll.delete_many({"version_tag": version_tag})
-        stale_deleted = sweep.deleted_count or 0
+        # ── 2026-05-08 P0 0-write guard ────────────────────────────────
+        # Pre-fix this branch wiped the whole tag whenever the score
+        # batch was empty. Verified blackout incident on 2026-05-08
+        # 01:15:55Z: master_sync ran during an upstream odds outage,
+        # the scoring loop produced 0 docs, and `delete_many({"version_tag":
+        # version_tag})` swept 2,154 `final-nba` + 2,277 `final-nba-rt`
+        # rows. The next master_sync at 02:15 confirmed the empty
+        # state (`stale_swept=0`). This left the entire NBA board
+        # invisible until ingestion recovered.
+        #
+        # Replace mode now treats `prepared==0` as a NO-OP (preserve
+        # existing state). Rationale: an empty batch from the scoring
+        # loop is structurally indistinguishable from "upstream odds
+        # provider is silent right now"; in either case the safer
+        # action is to keep what we have, since stale data still has
+        # `active=False/inactive_reason="game_started"` lifecycle
+        # gates downstream that prevent it from being shown to users
+        # past tip-off. A truly empty slate (e.g. off-season) would
+        # let the existing TTL / age-based cleanup paths drain the
+        # collection naturally — no need for the catastrophic sweep.
+        #
+        # If the historic wipe-on-empty contract is ever needed again
+        # (e.g. for a manual full-collection reset), call
+        # `coll.delete_many({"version_tag": version_tag})` explicitly
+        # from the caller — do not re-introduce it here.
+        logger.warning(
+            f"[SCORES_STORE:{sport}] mode=replace version='{version_tag}' "
+            f"replace skipped stale_sweep because written=0 — preserving "
+            f"existing docs to survive upstream blackouts. "
+            f"(0-write guard, services/scoring/prop_scores_store.py)"
+        )
+        return {
+            "sport":                sport,
+            "collection":           coll_name,
+            "version_tag":          version_tag,
+            "computed_at":          computed_at,
+            "prepared":             0,
+            "written":              0,
+            "stale_swept":          0,
+            "mode":                 "replace",
+            "dry_run":              False,
+            "skipped_stale_sweep":  True,
+            "skipped_reason":       "empty_batch_zero_write_guard",
+            "pydantic_failures":    len(pydantic_failures),
+        }
     else:
         from pymongo import ReplaceOne
         clean = [{k: v for k, v in d.items() if k != "_id"} for d in prepared]
