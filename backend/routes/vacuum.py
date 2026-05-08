@@ -11,7 +11,7 @@ Endpoints:
 - POST /api/v3/vacuum/clear/{injured_player} - Clear a vacuum when player returns
 """
 from fastapi import APIRouter, HTTPException, Response, Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import logging
 
@@ -188,8 +188,55 @@ async def get_live_injury_advantage(response: Response, sport: str = "nba"):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
 
     if _db is None:
-        return {"has_alerts": False, "alert_count": 0, "alerts": [],
-                "timestamp": datetime.now(timezone.utc).isoformat()}
+        now_iso = datetime.now(timezone.utc).isoformat()
+        return {
+            "has_alerts": False,
+            "alert_count": 0,
+            "alerts": [],
+            "served_at": now_iso,
+            "oldest_source_synced_at": None,
+            "newest_source_synced_at": None,
+            "source_age_seconds": None,
+            "timestamp": now_iso,
+        }
+
+    # 2026-05-08 — freshness fix #6. Compute the canonical SSOT
+    # freshness signal (`oldest_source_synced_at` / `newest_source_synced_at`
+    # in `injuries_normalized`) so the UI can render an explicit
+    # "Updated X seconds ago" badge instead of guessing. This is a
+    # universal probe — sport-routed only by the `sport` filter on
+    # `injuries_normalized`. Available regardless of whether any
+    # vacuums fired in this cycle.
+    served_now = datetime.now(timezone.utc)
+    served_iso = served_now.isoformat()
+    oldest_src = None
+    newest_src = None
+    try:
+        async for d in _db["injuries_normalized"].aggregate([
+            {"$match": {"sport": sport.lower()}},
+            {"$group": {
+                "_id": None,
+                "oldest": {"$min": "$synced_at"},
+                "newest": {"$max": "$synced_at"},
+            }},
+        ]):
+            oldest_src = d.get("oldest")
+            newest_src = d.get("newest")
+    except Exception:
+        pass
+
+    def _age_seconds(iso: Optional[str]) -> Optional[int]:
+        if not iso:
+            return None
+        try:
+            dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+            if not dt.tzinfo:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return int((served_now - dt).total_seconds())
+        except (ValueError, TypeError):
+            return None
+
+    source_age_seconds = _age_seconds(newest_src)
 
     try:
         # 1. Pull active vacuums (board-agnostic engine).
@@ -240,7 +287,11 @@ async def get_live_injury_advantage(response: Response, sport: str = "nba"):
                 "alerts": alerts,
                 "sport": sport,
                 "recency_window_hours": window_hours,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "served_at": served_iso,
+                "oldest_source_synced_at": oldest_src,
+                "newest_source_synced_at": newest_src,
+                "source_age_seconds": source_age_seconds,
+                "timestamp": served_iso,
             }
 
         # 3. NBA path: one alert per vacuum×beneficiary pair.
@@ -327,10 +378,23 @@ async def get_live_injury_advantage(response: Response, sport: str = "nba"):
             "alerts": alerts,
             "sport": sport,
             "recency_window_hours": None,   # N/A for NBA vacuum path
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "served_at": served_iso,
+            "oldest_source_synced_at": oldest_src,
+            "newest_source_synced_at": newest_src,
+            "source_age_seconds": source_age_seconds,
+            "timestamp": served_iso,
         }
 
     except Exception as e:
         logger.error(f"[INJURY_ADV] Error: {e}")
-        return {"has_alerts": False, "alert_count": 0, "alerts": [], "error": str(e)}
+        return {
+            "has_alerts": False,
+            "alert_count": 0,
+            "alerts": [],
+            "served_at": served_iso,
+            "oldest_source_synced_at": oldest_src,
+            "newest_source_synced_at": newest_src,
+            "source_age_seconds": source_age_seconds,
+            "error": str(e),
+        }
 

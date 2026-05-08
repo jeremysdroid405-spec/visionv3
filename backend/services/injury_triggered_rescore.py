@@ -113,16 +113,24 @@ class InjuryTriggeredRescore:
         recompute path uses `_VERSION_TAG_BY_SPORT[event.sport]` and
         the matching adapter (`MLBScoringAdapter` for sport='mlb',
         `NBAScoringAdapter` for sport='nba').
+
+        2026-05-08 — freshness fix #2. The previous implementation
+        filtered `severity == "high"` which silently rejected every
+        Q→OUT (`status_escalated` with tier_delta=1), every
+        de-escalation, and every `return_date_shifted` event — the
+        most common breaking-news patterns. The new policy lets every
+        meaningful tier-bearing change through (`new_injury`,
+        `status_escalated`, `status_de-escalated`, `return_date_shifted`,
+        `cleared`) regardless of severity bucket. Aggressive coalescing
+        downstream (per-player 10-second window) still protects the
+        rescore worker from event storms.
         """
         if event.sport not in _VERSION_TAG_BY_SPORT:
             return
         self._stats["events_received"] += 1
-        # Only act on high-severity events (tier_delta >= 2 OR new_injury).
-        # InjurySensor classifies return_shift/status ladder moves as medium;
-        # these don't move usage distributions enough to justify a re-score.
-        if event.severity != "high":
+        if event.severity not in ("high", "medium"):
             logger.debug(
-                f"[INJURY-RESCORE] ignoring medium-severity event: "
+                f"[INJURY-RESCORE] ignoring non-actionable severity={event.severity}: "
                 f"players={event.affected_players[:3]}"
             )
             return
@@ -324,12 +332,24 @@ class InjuryTriggeredRescore:
         event_players: List[str],
     ) -> int:
         """Refresh `injury_status`, `injured_teammates`, and `synced_at`
-        on each impacted player doc in `nba_cached_board`.
+        on each impacted player doc in `{sport}_cached_board`.
 
-        Source of truth: `injuries_normalized` (written by InjurySensor).
-        We DO NOT recompute usage_bump here — that stays with the hourly
-        insights pipeline. The goal is narrow: make the Dashboard reflect
-        the new injury context for the affected players immediately.
+        2026-05-08 — freshness fix #3. Two hardening moves:
+          1. We now fan out the team-load with `team_hint` PLUS any
+             team(s) discovered from `injuries_normalized` for the
+             impacted players. Previously, if no impacted player was
+             on the cached_board AND `team_hint` was unset, the
+             entire patch became a no-op.
+          2. The patch matcher accepts both `player_name` and
+             `bdl_id` to defend against name-format drift between
+             the injuries feed and master_hub-rooted cached_board
+             names (e.g. "Jr." suffix mismatches).
+
+        Source of truth: `injuries_normalized` (written by
+        InjurySensor). We DO NOT recompute usage_bump here — that
+        stays with the hourly insights pipeline. The goal is narrow:
+        make the Dashboard reflect the new injury context for the
+        affected players immediately.
 
         Returns the number of player docs updated.
         """
@@ -339,9 +359,10 @@ class InjuryTriggeredRescore:
         now_iso = datetime.now(timezone.utc).isoformat()
         event_players_lc = {(p or "").strip().lower() for p in event_players}
 
-        # 1) Resolve the team(s) we need injury rows for. Start from the
-        #    event's team hint; supplement with teams found for impacted
-        #    players in nba_cached_board (handles multi-team edge cases).
+        # 1) Resolve teams. Start with the event hint; supplement with
+        #    teams found for impacted players in cached_board AND in
+        #    injuries_normalized (latter covers off-board injured
+        #    players).
         teams: Set[str] = set()
         if team_hint:
             teams.add(team_hint)
@@ -349,13 +370,23 @@ class InjuryTriggeredRescore:
         player_docs: Dict[str, Dict[str, Any]] = {}
         async for doc in self._db[COLL("board_cache", sport)].find(
             {"player_name": {"$in": impacted_players}},
-            {"_id": 0, "player_name": 1, "team": 1},
+            {"_id": 0, "player_name": 1, "team": 1, "bdl_id": 1},
         ):
             pn = doc.get("player_name")
             if pn:
                 player_docs[pn] = doc
                 if doc.get("team"):
                     teams.add(doc["team"])
+
+        # Off-board safety net: pull team from the canonical injury
+        # feed for any impacted player who isn't on the board today.
+        async for inj in self._db[COLL.shared("injuries")].find(
+            {"sport": sport, "player_name": {"$in": impacted_players}},
+            {"_id": 0, "player_name": 1, "team": 1, "bdl_id": 1},
+        ):
+            t = inj.get("team")
+            if t:
+                teams.add(t)
 
         # 2) Load current sport-specific injury rows for those teams,
         #    keyed by (team, player_name_lower).
@@ -371,6 +402,7 @@ class InjuryTriggeredRescore:
                     "status": 1,
                     "tier_level": 1,
                     "return_date": 1,
+                    "bdl_id": 1,
                 },
             ):
                 t = rec.get("team") or ""
@@ -393,9 +425,9 @@ class InjuryTriggeredRescore:
             self_rec = injury_by_key.get((team, pn_lc))
             self_status = None
             if self_rec:
-                # Quarantine: we only use the structural `status` tier
-                # (not raw display text), per the structural/display
-                # firewall. tier_level >=2 means Questionable+.
+                # Quarantine: structural `status` tier only (not raw
+                # display text), per the structural/display firewall.
+                # tier_level >=2 means Questionable+.
                 if int(self_rec.get("tier_level", 0) or 0) >= 2:
                     self_status = self_rec.get("status")
 
@@ -412,19 +444,24 @@ class InjuryTriggeredRescore:
 
             # Trigger player goes to the FRONT of the list for UI clarity.
             if pn_lc in event_players_lc:
-                # nothing extra — this is the player themselves
-                pass
+                pass  # this is the player themselves
             else:
-                # If the trigger was a teammate's injury, make sure that
-                # teammate is at the top of the list.
+                # If the trigger was a teammate's injury, hoist them.
                 for ep in event_players:
                     if ep in teammates:
                         teammates.remove(ep)
                         teammates.insert(0, ep)
                         break
 
+            # Match by player_name first; fall back to bdl_id when
+            # available so name-format drift can't silently no-op.
+            target_filter: Dict[str, Any] = {"player_name": pn}
+            bdl_id = (pdoc or {}).get("bdl_id") or (self_rec or {}).get("bdl_id")
+            if bdl_id is not None:
+                target_filter = {"$or": [{"player_name": pn}, {"bdl_id": bdl_id}]}
+
             result = await self._db[COLL("board_cache", sport)].update_one(
-                {"player_name": pn},
+                target_filter,
                 {
                     "$set": {
                         "injury_status": self_status,

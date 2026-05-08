@@ -57,6 +57,27 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-08 — Live Injury Advantage freshness pipeline (5 fixes)
+Audit identified 6 stale stages; user approved 5 (deferred legacy-writer cleanup #5 to 48h post-rollout).
+- **#1 Cadence fallback** (`services/injury_sensor.py::_get_cadence`). When `live_scores_cache.games` is stale, fall back to a `{sport}_cached_board` activity probe — return `CADENCE_ACTIVE (120s)` when any sport has live cached_board props. Sport-agnostic. NBA was stuck at IDLE=300s mid-season pre-fix.
+- **#2 Severity gate lowered** (`services/injury_triggered_rescore.py::_on_event`). Accept `high` AND `medium`. Q→OUT (`status_escalated`, tier_delta=1), `return_date_shifted`, de-escalations now trigger live rescore + cached_board patch. Pre-fix, all medium events were dropped.
+- **#3 _patch_cached_board hardening** (same file). Off-board injured players contribute their `team` from `injuries_normalized` (so teammates still patch). Update filter accepts `bdl_id` fallback so name-format drift can't silently no-op.
+- **#4 Per-player dedup** (`services/injury_sensor.py::_emit_changes`). Dedup key changed from `sport|team` to `sport|player_key`. Sibling injuries within the 5-min recency window are no longer suppressed.
+- **#6 Wire-level freshness signal** (`routes/vacuum.py`, `routes/mlb_vacuum.py`). Live-alerts response ships `served_at`, `oldest_source_synced_at`, `newest_source_synced_at`, `source_age_seconds`. Frontend `LiveInjuryAdvantageSection` renders an "Updated Xs ago" badge with green/amber/red banding (<2min / <5min / older).
+- **Verified live**: NBA cached_board patches firing within seconds of ESPN sensor poll (116/150 docs with `last_injury_rescore_at`). NBA + MLB endpoints both ship `source_age_seconds=17`. 6 regression pytest cases pass (`tests/test_injury_freshness.py`).
+- **Files**: `backend/services/injury_sensor.py`, `backend/services/injury_triggered_rescore.py`, `backend/routes/vacuum.py`, `backend/routes/mlb_vacuum.py`, `frontend/src/pages/Dashboard.jsx`, `backend/tests/test_injury_freshness.py` (new).
+- **Deferred**: #5 (kill `live_injury_micro_sync`, `scheduled_hourly_injury_sync`, `scheduled_live_injury_check`) — review window ≥48h.
+
+### 2026-05-08 — Universal stat-label adapter
+- New `frontend/src/utils/statLabel.js`. `getStatLabel('player_points_rebounds_assists')` → `'PRA'`, `getStatLabel('batter_hits_runs_rbis')` → `'H+R+RBI'`, etc. Strips alternate suffixes, humanizes unknowns. ONE helper used by Command Center, Player Detail, board cards, MarketMoves, simulation toasts.
+- Migrated `UniversalPlayerCard.jsx`, `lib/PickVisionUtils.jsx`, `PlayerDetailPage.jsx`, `CommandPost.jsx`, `Dashboard.jsx`, `MarketMoves.jsx`. 12 frontend Jest tests pass.
+
+### 2026-05-08 — Universal Command Center analytics (volatility + correlation)
+- **Per-leg volatility** now derives from canonical `cv` (clamp 0..2.0). Side-aware hit-rate spread fallback when `cv` is null. CV-scaled label thresholds (LOW <0.20, MED 0.20–0.45, HIGH ≥0.45). Pre-fix metric was bounded ~0.5 from `|h10-h5|` noise — war-zone vs safe-haven indistinguishable.
+- **Correlation** rewritten as pairwise rules over canonical leg fields (`player_name`, `event_id`, `team`, `sport`): `same_player → 0.85`, `same_game → 0.40`, `same_team(+sport) → 0.20`, else `0`. Aggregate ρ = mean. Penalty = 1 − clamp(ρ × 0.5, 0, 0.5). Response ships `correlation_score`, `correlation_kind`, per-leg `cv`, `volatility_source`.
+- **Frontend** Correlation card shows `correlation_kind` text (Independent · 0% / Same Game · -X% / Same Team · -X% / Same Player · -X%). Never blank.
+- **Verified (5 new pytest)**: Brunson+Edwards low-CV→high-CV: vol 0.43 → 1.13. Brunson AST 2.5+9.5: kind=`same_player` score 0.85 pen 42.5%. Brunson+Embiid same event: kind=`same_game` score 0.40 pen 20%. Mixed NBA+MLB: kind=`none` score 0 pen 0%.
+
 ### 2026-05-08 — Universal Command Center prop source
 - **New helper**: `services/command_center_props.py::get_command_center_props(db, sport, *, player_name=None, canonical_key=None)` — sport-agnostic SSOT reader. Reads canonical rows from `{sport}_prop_scores` filtered to `version_tag=final-{sport}-rt` AND `active=True`. ONE adapter (`_to_canonical_prop`). No cached_board, no stat-level joins, no sport-specific branching beyond the collection name. Adding NFL = one entry in `SCHEDULED_SPORTS`.
 - **New route**: `GET /api/command/props?sport={sport}&player_name={name}` (also accepts `canonical_key=...`). Validates sport via `SCHEDULED_SPORTS`. Returns `{success, sport, version_tag, player_name, meta, props[]}`. 400 on unknown sport / missing params, 404 on unknown player.

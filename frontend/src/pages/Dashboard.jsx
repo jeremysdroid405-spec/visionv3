@@ -152,7 +152,7 @@ const PlayerRow = memo(({ player, onClick, linesLoaded }) => (
 // ==================== SECTION COMPONENTS ====================
 
 // Section Header
-const SectionHeader = memo(({ icon, title, subtitle, badgeText, badgeColor = 'red' }) => {
+const SectionHeader = memo(({ icon, title, subtitle, badgeText, badgeColor = 'red', rightSlot = null }) => {
   // Terminal module header — matches landing's mono+tracking aesthetic.
   // Tier color remains semantic (badge/left accent), typography is unified.
   const badgeColors = {
@@ -194,6 +194,7 @@ const SectionHeader = memo(({ icon, title, subtitle, badgeText, badgeColor = 're
             {badgeText}
           </div>
         )}
+        {rightSlot}
       </div>
       <div className="mt-2 h-px bg-gradient-to-r from-zinc-800/80 via-zinc-900/50 to-transparent" />
     </div>
@@ -1101,7 +1102,22 @@ const PopularBetCard = memo(({ bet, onClick }) => {
 
 // ==================== LIVE INJURY ADVANTAGE SECTION (USAGE VACUUM) ====================
 
-const LiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
+const LiveInjuryAdvantageSection = memo(({ alerts, isLoading, sourceAgeSeconds }) => {
+  // 2026-05-08 — freshness fix #6 surfacing. Renders an explicit
+  // "Updated Xs ago" badge from the canonical SSOT. Sport-agnostic
+  // because the field lives on the wire, not in component logic.
+  const freshnessLabel = (() => {
+    if (sourceAgeSeconds == null) return null;
+    if (sourceAgeSeconds < 60) return `Updated ${sourceAgeSeconds}s ago`;
+    if (sourceAgeSeconds < 3600) return `Updated ${Math.floor(sourceAgeSeconds / 60)}m ago`;
+    return `Updated ${Math.floor(sourceAgeSeconds / 3600)}h ago`;
+  })();
+  const freshnessClass = (() => {
+    if (sourceAgeSeconds == null) return 'bg-zinc-700 text-zinc-400';
+    if (sourceAgeSeconds < 120) return 'bg-emerald-900/60 text-emerald-300';
+    if (sourceAgeSeconds < 300) return 'bg-amber-900/60 text-amber-300';
+    return 'bg-red-900/60 text-red-300';
+  })();
   if (isLoading) {
     return (
       <div className="mb-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
@@ -1122,6 +1138,14 @@ const LiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
           <Activity className="w-4 h-4 text-zinc-500 animate-pulse" />
           <span className="text-sm font-bold text-zinc-400">LIVE INJURY ADVANTAGE</span>
           <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-700 text-zinc-400">MONITORING</span>
+          {freshnessLabel && (
+            <span
+              data-testid="injury-freshness-badge"
+              className={`text-[10px] px-2 py-0.5 rounded ml-auto ${freshnessClass}`}
+            >
+              {freshnessLabel}
+            </span>
+          )}
         </div>
         <p className="text-xs text-zinc-500">
           Monitoring for late-breaking injury scratches... No active usage spikes detected.
@@ -1158,6 +1182,14 @@ const LiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
         subtitle="Late-breaking injury news creating usage opportunities"
         badgeText={`${injuredPlayers.length} OUT`}
         badgeColor="red"
+        rightSlot={freshnessLabel ? (
+          <span
+            data-testid="injury-freshness-badge"
+            className={`text-[10px] px-2 py-0.5 rounded ${freshnessClass}`}
+          >
+            {freshnessLabel}
+          </span>
+        ) : null}
       />
       
       {/* Horizontal scrollable container */}
@@ -1231,7 +1263,20 @@ const LiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
 
 // ==================== MLB LIVE INJURY ADVANTAGE ====================
 
-const MLBLiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
+const MLBLiveInjuryAdvantageSection = memo(({ alerts, isLoading, sourceAgeSeconds }) => {
+  // 2026-05-08 — freshness fix #6 surfacing (MLB mirror).
+  const freshnessLabel = (() => {
+    if (sourceAgeSeconds == null) return null;
+    if (sourceAgeSeconds < 60) return `Updated ${sourceAgeSeconds}s ago`;
+    if (sourceAgeSeconds < 3600) return `Updated ${Math.floor(sourceAgeSeconds / 60)}m ago`;
+    return `Updated ${Math.floor(sourceAgeSeconds / 3600)}h ago`;
+  })();
+  const freshnessClass = (() => {
+    if (sourceAgeSeconds == null) return 'bg-zinc-700 text-zinc-400';
+    if (sourceAgeSeconds < 120) return 'bg-emerald-900/60 text-emerald-300';
+    if (sourceAgeSeconds < 300) return 'bg-amber-900/60 text-amber-300';
+    return 'bg-red-900/60 text-red-300';
+  })();
   if (isLoading) {
     return (
       <div className="mb-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
@@ -1252,6 +1297,14 @@ const MLBLiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
           <Activity className="w-4 h-4 text-zinc-500 animate-pulse" />
           <span className="text-sm font-bold text-zinc-400">MLB LIVE INJURY ADVANTAGE</span>
           <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-700 text-zinc-400">MONITORING</span>
+          {freshnessLabel && (
+            <span
+              data-testid="mlb-injury-freshness-badge"
+              className={`text-[10px] px-2 py-0.5 rounded ml-auto ${freshnessClass}`}
+            >
+              {freshnessLabel}
+            </span>
+          )}
         </div>
         <p className="text-xs text-zinc-500">
           Monitoring for late-breaking MLB injury scratches... No active lineup changes detected.
@@ -1324,6 +1377,14 @@ const MLBLiveInjuryAdvantageSection = memo(({ alerts, isLoading }) => {
         subtitle="Late-breaking injury news creating lineup opportunities"
         badgeText={`${injuredPlayers.length} IL/OUT`}
         badgeColor="red"
+        rightSlot={freshnessLabel ? (
+          <span
+            data-testid="mlb-injury-freshness-badge"
+            className={`text-[10px] px-2 py-0.5 rounded ${freshnessClass}`}
+          >
+            {freshnessLabel}
+          </span>
+        ) : null}
       />
       
       {/* Horizontal scrollable container */}
@@ -1456,6 +1517,11 @@ const Dashboard = () => {
   // Live Vacuum Alerts (Usage Vacuum)
   const vacuumAlerts = useMemo(() => vacuumAlertsData?.alerts || [], [vacuumAlertsData]);
   const mlbVacuumAlerts = useMemo(() => mlbVacuumAlertsData?.alerts || [], [mlbVacuumAlertsData]);
+  // 2026-05-08 — freshness fix #6 surfacing: pull canonical source age
+  // from the wire so the badge can render without component-side
+  // computation.
+  const vacuumAlertsSourceAge = vacuumAlertsData?.source_age_seconds;
+  const mlbVacuumAlertsSourceAge = mlbVacuumAlertsData?.source_age_seconds;
   
   // Status flags derived from query state
   const linesLoaded = !boardLoading && players.length > 0;
@@ -1878,7 +1944,8 @@ const Dashboard = () => {
           {currentSport === 'nba' && (
             <LiveInjuryAdvantageSection 
               alerts={vacuumAlerts} 
-              isLoading={vacuumAlertsLoading} 
+              isLoading={vacuumAlertsLoading}
+              sourceAgeSeconds={vacuumAlertsSourceAge}
             />
           )}
           
@@ -1888,7 +1955,8 @@ const Dashboard = () => {
               {/* MLB Live Injury Advantage (Usage Vacuum) */}
               <MLBLiveInjuryAdvantageSection 
                 alerts={mlbVacuumAlerts} 
-                isLoading={mlbVacuumAlertsLoading} 
+                isLoading={mlbVacuumAlertsLoading}
+                sourceAgeSeconds={mlbVacuumAlertsSourceAge}
               />
               
               {/* MLB Safe Haven (3-Gate Qualified) */}

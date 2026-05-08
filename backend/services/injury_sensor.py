@@ -133,32 +133,69 @@ class InjurySensor:
                 await asyncio.sleep(60)
 
     async def _get_cadence(self, sport: str) -> int:
-        """Determine polling interval based on game proximity."""
+        """Determine polling interval based on game proximity.
+
+        2026-05-08 — freshness fix #1. The previous implementation read
+        `live_scores_cache` exclusively. When that cache went stale
+        (every game `commence_time` in the past) the calculator
+        returned IDLE=300s mid-season, which forced a 5-minute poll
+        cadence even when live games were active. We now layer a
+        cached-board activity probe under the live-scores read so the
+        sensor cannot fall back to IDLE while the sport is clearly
+        in-play. Sport-agnostic: same logic for every registered sport.
+        """
         try:
             now = datetime.now(timezone.utc)
             cached = await self.db[COLL.shared("live_scores_cache")].find_one({})
-            if not cached:
-                return CADENCE_IDLE
+            cache_says_active = False
+            if cached:
+                games = cached.get("games", [])
+                cache_has_future_game = False
+                for game in games:
+                    ct = game.get("commence_time")
+                    if not ct:
+                        continue
+                    try:
+                        if isinstance(ct, str):
+                            ct = datetime.fromisoformat(ct.replace("Z", "+00:00"))
+                        if not ct.tzinfo:
+                            ct = ct.replace(tzinfo=timezone.utc)
+                    except (ValueError, TypeError):
+                        continue
 
-            games = cached.get("games", [])
+                    delta = (ct - now).total_seconds()
+                    if -3600 < delta < 7200:  # Game within -1h to +2h
+                        return CADENCE_PEAK
+                    if 0 < delta < 43200:     # Game within 12h
+                        cache_says_active = True
+                    if delta > -3600:
+                        cache_has_future_game = True
 
-            for game in games:
-                ct = game.get("commence_time")
-                if not ct:
-                    continue
-                try:
-                    if isinstance(ct, str):
-                        ct = datetime.fromisoformat(ct.replace("Z", "+00:00"))
-                    if not ct.tzinfo:
-                        ct = ct.replace(tzinfo=timezone.utc)
-                except (ValueError, TypeError):
-                    continue
-
-                delta = (ct - now).total_seconds()
-                if -3600 < delta < 7200:  # Game within -1h to +2h
-                    return CADENCE_PEAK
-                if 0 < delta < 43200:     # Game within 12h
+                if cache_says_active:
                     return CADENCE_ACTIVE
+                # If the cache has any future-or-recent game we trust
+                # its IDLE verdict. Otherwise fall through to the
+                # cached-board probe below.
+                if cache_has_future_game:
+                    return CADENCE_IDLE
+
+            # Cached-board fallback — universal across sports. If the
+            # sport currently has at least one live cached_board doc
+            # with non-empty props, we know the sport is mid-cycle
+            # regardless of how stale the live-scores cache is. ACTIVE
+            # cadence is safe (slightly conservative vs PEAK).
+            try:
+                board_coll = COLL("board_cache", sport)
+            except Exception:
+                board_coll = f"{sport}_cached_board"
+            try:
+                active_count = await self.db[board_coll].count_documents(
+                    {"props_count": {"$gt": 0}}, limit=1
+                )
+                if active_count > 0:
+                    return CADENCE_ACTIVE
+            except Exception:
+                pass
 
             return CADENCE_IDLE
         except Exception:
@@ -413,25 +450,36 @@ class InjurySensor:
     # =========================================================================
 
     async def _emit_changes(self, sport: str, changes: List[dict]):
-        """Emit meaningful changes as BoardEvents to the coordinator."""
+        """Emit meaningful changes as BoardEvents to the coordinator.
+
+        2026-05-08 — freshness fix #4. Dedup key is now per-player
+        (`sport|player_key`) instead of per-team. Previously, two
+        injuries on the same team within the 5-minute recency window
+        suppressed the second event entirely, hiding sibling Q→OUT
+        late-scratches that arrive in bursts.
+        """
         bus = get_event_bus()
         now = datetime.now(timezone.utc)
 
-        # Group by team for efficient event batching
+        # Group by team for efficient event batching (one BoardEvent
+        # per team summarizes the team's churn for the coordinator).
+        # Dedup, however, is per-player so sibling injuries don't
+        # silently suppress one another.
         by_team: Dict[str, List[dict]] = {}
         for c in changes:
+            # Skip per-player duplicates inside this batch first.
+            player_key = c.get("player_key") or c.get("player_name", "")
+            dedup_key = f"{sport}|{player_key}"
+            last_emit = self._recent_emissions.get(dedup_key)
+            if last_emit and (now - last_emit).total_seconds() < CHANGE_RECENCY_MINUTES * 60:
+                self._metrics["changes_suppressed"] += 1
+                continue
+            self._recent_emissions[dedup_key] = now
             team = c.get("team", "unknown")
             by_team.setdefault(team, []).append(c)
 
         emitted = 0
         for team, team_changes in by_team.items():
-            # Dedup: skip if we emitted for this team+sport recently
-            dedup_key = f"{sport}|{team}"
-            last_emit = self._recent_emissions.get(dedup_key)
-            if last_emit and (now - last_emit).total_seconds() < CHANGE_RECENCY_MINUTES * 60:
-                self._metrics["changes_suppressed"] += len(team_changes)
-                continue
-
             players = [c["player_name"] for c in team_changes]
             max_tier_delta = max(abs(c.get("tier_delta", 0)) for c in team_changes)
             severity = "high" if max_tier_delta >= 2 or any(c["change_type"] == "new_injury" for c in team_changes) else "medium"
@@ -450,8 +498,6 @@ class InjurySensor:
                     "max_tier_delta": max_tier_delta,
                 },
             ))
-
-            self._recent_emissions[dedup_key] = now
             emitted += len(team_changes)
 
         self._metrics["changes_emitted"] += emitted

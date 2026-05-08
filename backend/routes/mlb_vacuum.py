@@ -330,6 +330,34 @@ async def get_mlb_live_alerts(
                 exc_info=True,
             )
 
+        # 2026-05-08 — freshness fix #6 (MLB mirror). Surface canonical
+        # SSOT freshness so the UI can render "Updated X seconds ago".
+        oldest_src = None
+        newest_src = None
+        try:
+            async for d in _db["injuries_normalized"].aggregate([
+                {"$match": {"sport": "mlb"}},
+                {"$group": {
+                    "_id": None,
+                    "oldest": {"$min": "$synced_at"},
+                    "newest": {"$max": "$synced_at"},
+                }},
+            ]):
+                oldest_src = d.get("oldest")
+                newest_src = d.get("newest")
+        except Exception:
+            pass
+
+        source_age_seconds = None
+        if newest_src:
+            try:
+                _ns = datetime.fromisoformat(str(newest_src).replace("Z", "+00:00"))
+                if not _ns.tzinfo:
+                    _ns = _ns.replace(tzinfo=timezone.utc)
+                source_age_seconds = int((now - _ns).total_seconds())
+            except (ValueError, TypeError):
+                pass
+
         return {
             "success": True,
             "alerts": capped,
@@ -339,6 +367,10 @@ async def get_mlb_live_alerts(
             "last_check": now.isoformat(),
             "recency_window_hours": window_hours,
             "engine": "universal_injury_advantage",  # provenance flag
+            "served_at": now.isoformat(),
+            "oldest_source_synced_at": oldest_src,
+            "newest_source_synced_at": newest_src,
+            "source_age_seconds": source_age_seconds,
             "timestamp": now.isoformat(),
         }
 
