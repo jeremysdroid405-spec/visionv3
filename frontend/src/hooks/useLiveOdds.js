@@ -263,11 +263,15 @@ const fetchPlayerSearch = async (query, sport = 'nba') => {
 /**
  * Fetch player profile for Command Post
  */
-const fetchPlayerProfile = async (playerName) => {
+const fetchPlayerProfile = async (playerName, sport = 'nba') => {
   if (!playerName) return null;
   try {
-    // Use player-with-badges endpoint which returns data in UniversalPlayerCard format
-    const response = await fetch(`${API}/api/v3/player-with-badges/${encodeURIComponent(playerName)}`);
+    // Use player-with-badges endpoint which returns data in UniversalPlayerCard format.
+    // 2026-05-08 — sport-aware so MLB Command Center returns props.
+    const sp = (sport || 'nba').toLowerCase();
+    const response = await fetch(
+      `${API}/api/v3/player-with-badges/${encodeURIComponent(playerName)}?sport=${sp}`
+    );
     if (!response.ok) {
       // Return structured error instead of throwing
       return { success: false, message: `Player not found (${response.status})`, player: null };
@@ -574,11 +578,12 @@ export const usePlayerSearch = (query, sport = 'nba') => {
 
 /**
  * usePlayerProfile - Command Post player profile
+ * 2026-05-08 — sport-aware so MLB players resolve their own board.
  */
-export const usePlayerProfile = (playerName) => {
+export const usePlayerProfile = (playerName, sport = 'nba') => {
   return useQuery({
-    queryKey: ['playerProfile', playerName],
-    queryFn: () => fetchPlayerProfile(playerName),
+    queryKey: ['playerProfile', playerName, sport],
+    queryFn: () => fetchPlayerProfile(playerName, sport),
     enabled: Boolean(playerName),
     staleTime: 60 * 1000,  // 1 minute
   });

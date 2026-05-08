@@ -28,6 +28,7 @@ import UniversalPlayerCard from './UniversalPlayerCard';
 
 // SSOT Global State Hooks - TanStack Query
 import { usePlayerProfile, useSimulation } from '../../hooks/useLiveOdds';
+import { useSport } from '../../context/SportContext';
 
 // Grade colors and styles
 const GRADE_STYLES = {
@@ -217,6 +218,8 @@ const RiskFlags = memo(({ flags }) => {
 
 // Main Command Post Component
 const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }) => {
+  // 2026-05-08 — multi-sport awareness: source sport from SportContext.
+  const { currentSport } = useSport();
   const [legs, setLegs] = useState([]);
   const [simulation, setSimulation] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -288,11 +291,13 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
       
       onPendingLegProcessed();
     }
-  }, [pendingLeg, onPendingLegProcessed, isPlayerInLegs]);
+  }, [pendingLeg, onPendingLegProcessed, isPlayerInLegs, currentSport]);
 
   // State for profile fetching via hook
   const [profilePlayerName, setProfilePlayerName] = useState(null);
-  const { data: profileData, isLoading: profileQueryLoading, error: profileError } = usePlayerProfile(profilePlayerName);
+  // 2026-05-08 — pass currentSport so MLB Command Center fetches the
+  // right collection. Falls back to 'nba' inside the hook when null.
+  const { data: profileData, isLoading: profileQueryLoading, error: profileError } = usePlayerProfile(profilePlayerName, currentSport);
   
   // Sync profile data from TanStack Query
   useEffect(() => {
@@ -352,6 +357,9 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     const newLeg = {
       player_name: playerName,
       player_id: playerId,
+      // 2026-05-08 — stamp sport so legs survive multi-sport simulations
+      // and the backend can sport-route per-leg adjustments later.
+      sport: selectedProfile.sport || currentSport,
       stat_type: line.stat_type,
       line: line.line,
       direction: line.direction || 'over',
@@ -375,7 +383,7 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
     });
     setSelectedProfile(null);
     setProfilePlayerName(null);  // Clear to allow re-fetching
-  }, [selectedProfile, isPlayerInLegs]);
+  }, [selectedProfile, isPlayerInLegs, currentSport]);
 
   // Remove leg
   const removeLeg = useCallback((index) => {

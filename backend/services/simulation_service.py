@@ -70,6 +70,7 @@ class SimulationLeg:
     opponent: str
     game_id: Optional[str]
     is_home: bool
+    sport: Optional[str] = None  # 2026-05-08 — multi-sport echo (NBA / MLB)
     
     # Calculated fields
     base_hit_rate: float = 0.0
@@ -204,6 +205,7 @@ class SimulationEngine:
         leg = SimulationLeg(
             player_name=player_name,
             player_id=leg_data.get("player_id"),
+            sport=(leg_data.get("sport") or "").lower() or None,
             stat_type=stat_type,
             line=line,
             direction=direction,
@@ -213,8 +215,18 @@ class SimulationEngine:
             is_home=is_home
         )
         
-        # Get base hit rate from leg data or calculate
-        leg.base_hit_rate = leg_data.get("h10_rate", leg_data.get("hit_probability", 50)) / 100
+        # Get base hit rate from leg data or calculate.
+        # 2026-05-08 — canonical-first read of `hit_rate_l10`. Legacy
+        # `h10_rate` retained one cycle for in-flight CommandPost
+        # requests (Pydantic model defaults it to 50.0); remove on
+        # the next cleanup pass once the frontend is verified
+        # canonical-clean across all leg-add paths.
+        leg.base_hit_rate = (
+            leg_data.get("hit_rate_l10")
+            or leg_data.get("h10_rate")
+            or leg_data.get("hit_probability")
+            or 50
+        ) / 100
         
         # Store statistical data for stability calculation
         leg.season_avg = leg_data.get("season_avg", 0)
@@ -513,6 +525,7 @@ class SimulationEngine:
         return {
             "player_name": leg.player_name,
             "player_id": leg.player_id,
+            "sport": leg.sport,
             "stat_type": leg.stat_type,
             "line": leg.line,
             "direction": leg.direction,

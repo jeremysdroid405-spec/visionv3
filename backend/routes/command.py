@@ -46,6 +46,7 @@ class SimulationLeg(BaseModel):
     """A single leg for simulation."""
     player_name: str
     player_id: Optional[str] = None
+    sport: Optional[str] = None  # 2026-05-08 — multi-sport awareness (NBA / MLB). Echoed in response; simulation math not yet sport-aware.
     stat_type: str
     line: float
     direction: str = "over"
@@ -213,17 +214,22 @@ async def search_players(
 @router.get("/profile/{player_name}")
 async def get_tactical_profile(
     player_name: str,
-    opponent: str = Query("", description="Opponent team abbreviation for DvP calc")
+    opponent: str = Query("", description="Opponent team abbreviation for DvP calc"),
+    sport: str = Query("nba", description="Sport to profile (nba or mlb)"),
 ):
     """
     Get tactical profile for a player with ALL available props.
     
     CONDITIONAL STATE HIGHLIGHTING:
-    - Fetches ALL available props from dg_live_props
+    - Fetches ALL available props from `{sport}_cached_board`
     - Cross-references with PropVision recommendations (radar_picks, goblin_vault, front_lines)
     - Target-Lock props (is_radar=true) get Full Intel Suite on click
     - Standard props (is_radar=false) get basic L5/L10/Season stats on click
-    
+
+    2026-05-08 — `sport` query param added so MLB players resolve their
+    own cached_board collection. NBA remains the default for backwards
+    compatibility.
+
     Returns:
     - lines: ALL prop lines with is_radar flag for Target-Lock identification
     - radar_picks: List of {stat_type, line, direction} that are PropVision objectives
@@ -233,14 +239,40 @@ async def get_tactical_profile(
             raise HTTPException(status_code=503, detail="Database not configured")
         
         db = _db
+        sport_lower = (sport or "nba").lower()
+        if sport_lower not in ("nba", "mlb"):
+            raise HTTPException(status_code=400, detail=f"Unsupported sport: {sport}")
         player_name_regex = {"$regex": player_name, "$options": "i"}
         
-        # ===== STEP 1: Fetch ALL available props from nba_cached_board =====
-        # Props include provider-based tier classification (is_demon, is_goblin, tier_label)
-        all_props = await db[COLL("board_cache", "nba")].find(
+        # ===== STEP 1: Fetch ALL available props from {sport}_cached_board =====
+        # 2026-05-08 — cached_board is now a materialized view from
+        # prop_scores[final-{sport}-rt] — schema is ONE DOC PER PLAYER
+        # with `props: [...]`. Legacy schema was one doc per prop. We
+        # flatten the embedded array here so the rest of the route
+        # (which was authored against the legacy shape) keeps working.
+        # Player-level fields (team, opponent, photo_url, etc.) are
+        # promoted onto each prop entry so downstream lookups still
+        # see them at top level.
+        player_docs = await db[COLL("board_cache", sport_lower)].find(
             {"player_name": player_name_regex},
             {"_id": 0}
         ).to_list(200)
+
+        all_props = []
+        for pdoc in player_docs:
+            promoted = {
+                k: pdoc.get(k)
+                for k in (
+                    "team", "opponent", "opponent_abbr",
+                    "home_team", "away_team",
+                    "position", "photo_url", "headshot_url",
+                    "player_id",
+                )
+                if pdoc.get(k) is not None
+            }
+            for p in (pdoc.get("props") or []):
+                # prop-level fields win; player-level fields fill gaps.
+                all_props.append({**promoted, **p})
         
         # ===== STEP 2: Fetch PropVision recommendations (Target-Lock props) =====
         radar_picks = await db.dg_radar_picks.find(
@@ -287,8 +319,19 @@ async def get_tactical_profile(
         baseline_stats = {}
         detected_opponent = opponent
         
-        # Get player data from master roster using shared lookup utility
-        master_player = await get_player_by_name(db, player_name)
+        # Get player data from master roster using shared lookup utility.
+        # 2026-05-08 — `get_player_by_name` is NBA-only (hardcoded to
+        # nba_master_hub_2026); for MLB we read mlb_master_hub_2026 directly.
+        if sport_lower == "mlb":
+            master_player = await db[COLL("master_hub", "mlb")].find_one(
+                {"$or": [
+                    {"display_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+                    {"player_name": {"$regex": f"^{player_name}$", "$options": "i"}},
+                ]},
+                {"_id": 0},
+            )
+        else:
+            master_player = await get_player_by_name(db, player_name)
         
         if master_player:
             # ALWAYS use photo_url from master hub (has correct NBA CDN ID)
@@ -329,9 +372,22 @@ async def get_tactical_profile(
         standard_lines = {}  # {stat_type: standard_line_value}
         
         for prop in all_props:
-            stat = prop.get("stat_type_extracted") or prop.get("market", "").replace("player_", "").replace("_alternate", "").upper()
+            # 2026-05-08 — canonical-first reads (cached_board materialized
+            # from prop_scores[-rt] uses `stat_type` + `recommendation`).
+            # Legacy `stat_type_extracted` / `market` / `direction` / `name`
+            # retained as fallbacks for any pre-materialization rows.
+            stat = (
+                prop.get("stat_type")
+                or prop.get("stat_type_extracted")
+                or prop.get("market", "").replace("player_", "").replace("_alternate", "").upper()
+            )
             line = prop.get("line", 0)
-            direction = (prop.get("direction") or prop.get("name", "over")).lower()
+            direction = (
+                prop.get("direction")
+                or prop.get("recommendation")
+                or prop.get("name")
+                or "over"
+            ).lower()
             odds = prop.get("price", -110)
             
             # Normalize stat type
@@ -583,6 +639,7 @@ async def get_tactical_profile(
         
         return {
             "success": True,
+            "sport": sport_lower,
             "player_name": master_player.get("display_name") if master_player else (board_picks[0].get("player_name", player_name) if board_picks else player_name),
             "player_id": player_id,
             "nba_id": nba_id,
