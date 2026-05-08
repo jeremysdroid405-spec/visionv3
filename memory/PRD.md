@@ -59,9 +59,17 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Swapped ESPN RSS (HTTP 202, bot-fenced) for ESPN public JSON news API (`site.api.espn.com/apis/site/v2/sports/{basketball/nba|baseball/mlb}/news`)
 - Fixed CBS Sports regex to tolerate both `<![CDATA[...]]>` and plain `<title>` wrappers (was capturing 0/36 headlines)
 - Removed dead Bleacher Report feed block (HTTP 404)
-- Added hourly `mlb_ticker_sync` scheduler job (CronTrigger minute=32) — MLB news was frozen at 2026-04-11 because no MLB ticker job was registered
+- Added `mlb_ticker_sync` scheduler job — MLB news was frozen at 2026-04-11 because no MLB ticker job was registered
 - Added default `User-Agent` + `Accept` headers via `TICKER_HTTP_HEADERS` to both ticker httpx clients
-- Verified: NBA 15 headlines (5 ESPN + 5 CBS + 5 injuries_db), MLB 11 headlines (6 ESPN_MLB + 5 CBS_MLB), both tickers `synced_age=31s` post-patch
+- Files: `backend/routes/live.py`, `backend/server.py`
+
+### 2026-05-08 — Ticker 15-min cadence + source-protection patch
+- NBA `ticker_sync` cadence: `CronTrigger(minute='0,15,30,45')` (was daily 9:26 UTC)
+- MLB `mlb_ticker_sync` cadence: `CronTrigger(minute='5,20,35,50')` (was hourly :32) — offset 5 min from NBA so fetches never overlap
+- Added `TICKER_PROTECTED_STATUS = {202, 403, 429}`; both sync functions log `WARNING` per source on protected/empty responses
+- Both sync functions now track `external_count` and **skip the upsert** when `external_count == 0` and a last-good cache exists — preserves cache through transient blackouts
+- `get_breaking_news` is now cache-only: removed `_fetch_news_fallback` helper; cold cache returns empty list instead of triggering request-path HTTP. Scheduler is the sole writer of `ticker_cache`.
+- Verified: healthy cycle = 15 NBA / 11 MLB headlines; simulated blackout (ESPN→202, CBS→403) preserved baseline cache untouched (`preserved_cache:True`).
 - Files: `backend/routes/live.py`, `backend/server.py`
 
 ## Files of Reference

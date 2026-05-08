@@ -41,6 +41,13 @@ TICKER_HTTP_HEADERS = {
 ESPN_NBA_NEWS_JSON = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news"
 ESPN_MLB_NEWS_JSON = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/news"
 
+# Upstream-protection codes: ticker treats these as "upstream protected"
+# (bot-fence/rate-limit/forbidden). On these codes — and on empty-body 200s —
+# we DO NOT overwrite the existing ticker_cache, so the last-good payload
+# survives the cycle. Empty-body detection is per-source and only triggers
+# the cache-preserve guard when *all* external sources fail in a cycle.
+TICKER_PROTECTED_STATUS = {202, 403, 429}
+
 # NBA Team name to abbreviation mapping
 TEAM_ABBREV_MAP = {
     "Atlanta Hawks": "ATL",
@@ -271,6 +278,8 @@ async def sync_mlb_news_headlines():
     
     try:
         headlines = []
+        external_count = 0  # Items pulled from external feeds (ESPN+CBS).
+                            # Used to decide whether to overwrite cache.
         import re
         
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=TICKER_HTTP_HEADERS) as client:
@@ -279,8 +288,9 @@ async def sync_mlb_news_headlines():
             # The public site JSON API is open and returns structured articles.
             try:
                 espn_response = await client.get(ESPN_MLB_NEWS_JSON)
-                if espn_response.status_code == 200:
+                if espn_response.status_code == 200 and espn_response.content:
                     articles = (espn_response.json() or {}).get("articles", [])[:8]
+                    added = 0
                     for art in articles:
                         clean_title = (art.get("headline") or "").strip()
                         if clean_title and len(clean_title) > 10:
@@ -291,20 +301,35 @@ async def sync_mlb_news_headlines():
                                 "priority": 1,
                                 "published": art.get("published"),
                             })
+                            added += 1
+                    external_count += added
+                    if added == 0:
+                        logger.warning("[MLB TICKER] ESPN MLB returned 200 but 0 usable articles")
+                elif espn_response.status_code in TICKER_PROTECTED_STATUS:
+                    logger.warning(
+                        f"[MLB TICKER] ESPN MLB upstream protected (HTTP {espn_response.status_code}); skipping source"
+                    )
+                elif not espn_response.content:
+                    logger.warning(
+                        f"[MLB TICKER] ESPN MLB returned empty body (HTTP {espn_response.status_code}); skipping source"
+                    )
+                else:
+                    logger.warning(f"[MLB TICKER] ESPN MLB non-200 HTTP {espn_response.status_code}")
             except Exception as e:
-                logger.debug(f"ESPN MLB fetch failed: {e}")
+                logger.warning(f"[MLB TICKER] ESPN MLB fetch failed: {e}")
             
             # ===== CBS Sports MLB RSS =====
             # CBS uses plain <title> inside <item> (no CDATA wrapper). The
             # tolerant pattern below handles both CDATA and plain forms.
             try:
                 cbs_response = await client.get("https://www.cbssports.com/rss/headlines/mlb/")
-                if cbs_response.status_code == 200:
+                if cbs_response.status_code == 200 and cbs_response.content:
                     items = re.findall(
                         r'<item>.*?<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>',
                         cbs_response.text,
                         re.DOTALL,
                     )[:5]
+                    added = 0
                     for item in items:
                         clean_title = item.strip()
                         if clean_title and len(clean_title) > 10:
@@ -314,8 +339,22 @@ async def sync_mlb_news_headlines():
                                 "source": "cbs_mlb",
                                 "priority": 2
                             })
+                            added += 1
+                    external_count += added
+                    if added == 0:
+                        logger.warning("[MLB TICKER] CBS MLB returned 200 but 0 usable items (parse mismatch)")
+                elif cbs_response.status_code in TICKER_PROTECTED_STATUS:
+                    logger.warning(
+                        f"[MLB TICKER] CBS MLB upstream protected (HTTP {cbs_response.status_code}); skipping source"
+                    )
+                elif not cbs_response.content:
+                    logger.warning(
+                        f"[MLB TICKER] CBS MLB returned empty body (HTTP {cbs_response.status_code}); skipping source"
+                    )
+                else:
+                    logger.warning(f"[MLB TICKER] CBS MLB non-200 HTTP {cbs_response.status_code}")
             except Exception as e:
-                logger.debug(f"CBS MLB fetch failed: {e}")
+                logger.warning(f"[MLB TICKER] CBS MLB fetch failed: {e}")
             
             # Bleacher Report feed (https://bleacherreport.com/articles/feed)
             # returns HTTP 404 — endpoint is dead. Block intentionally removed
@@ -325,21 +364,41 @@ async def sync_mlb_news_headlines():
         headlines.sort(key=lambda x: x.get("priority", 99))
         headlines = headlines[:15]
         
-        # Store in database
+        # Store in database — with source-protection guard.
+        # If all external feeds returned protected/empty/0-items this cycle,
+        # do NOT overwrite the existing cache.
         if _db is not None:
+            if external_count == 0:
+                existing = await _db[COLL.shared("ticker_cache")].find_one(
+                    {"type": "mlb_news"}, {"_id": 0, "headlines": 1, "synced_at": 1}
+                )
+                if existing and existing.get("headlines"):
+                    logger.warning(
+                        "[MLB TICKER] All external MLB sources empty — preserving last good cache "
+                        f"(synced_at={existing.get('synced_at')})"
+                    )
+                    return {
+                        "success": False,
+                        "preserved_cache": True,
+                        "external_count": 0,
+                        "headlines_count": len(existing.get("headlines", [])),
+                    }
             await _db[COLL.shared("ticker_cache")].update_one(
                 {"type": "mlb_news"},
                 {"$set": {
                     "type": "mlb_news",
                     "headlines": headlines,
                     "headlines_count": len(headlines),
+                    "external_count": external_count,
                     "synced_at": datetime.now(timezone.utc).isoformat()
                 }},
                 upsert=True
             )
-            logger.info(f"[MLB TICKER] Synced {len(headlines)} MLB news headlines")
+            logger.info(
+                f"[MLB TICKER] Synced {len(headlines)} MLB news headlines (external={external_count})"
+            )
         
-        return {"success": True, "headlines_count": len(headlines)}
+        return {"success": True, "headlines_count": len(headlines), "external_count": external_count}
         
     except Exception as e:
         logger.error(f"[MLB TICKER] News sync error: {e}")
@@ -460,6 +519,8 @@ async def sync_news_headlines():
     
     try:
         headlines = []
+        external_count = 0  # Items pulled from external feeds (ESPN+CBS).
+                            # Used to decide whether to overwrite cache.
         import re
         
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=TICKER_HTTP_HEADERS) as client:
@@ -468,8 +529,9 @@ async def sync_news_headlines():
             # The public site JSON API is open and returns structured articles.
             try:
                 espn_response = await client.get(ESPN_NBA_NEWS_JSON)
-                if espn_response.status_code == 200:
+                if espn_response.status_code == 200 and espn_response.content:
                     articles = (espn_response.json() or {}).get("articles", [])[:5]
+                    added = 0
                     for art in articles:
                         clean_title = (art.get("headline") or "").strip()
                         if clean_title and len(clean_title) > 10:
@@ -480,20 +542,35 @@ async def sync_news_headlines():
                                 "priority": 1,
                                 "published": art.get("published"),
                             })
+                            added += 1
+                    external_count += added
+                    if added == 0:
+                        logger.warning("[TICKER] ESPN NBA returned 200 but 0 usable articles")
+                elif espn_response.status_code in TICKER_PROTECTED_STATUS:
+                    logger.warning(
+                        f"[TICKER] ESPN NBA upstream protected (HTTP {espn_response.status_code}); skipping source"
+                    )
+                elif not espn_response.content:
+                    logger.warning(
+                        f"[TICKER] ESPN NBA returned empty body (HTTP {espn_response.status_code}); skipping source"
+                    )
+                else:
+                    logger.warning(f"[TICKER] ESPN NBA non-200 HTTP {espn_response.status_code}")
             except Exception as e:
-                logger.debug(f"ESPN NBA fetch failed: {e}")
+                logger.warning(f"[TICKER] ESPN NBA fetch failed: {e}")
             
             # ===== CBS Sports NBA RSS =====
             # CBS uses plain <title> inside <item> (no CDATA wrapper). The
             # tolerant pattern below handles both CDATA and plain forms.
             try:
                 cbs_response = await client.get("https://www.cbssports.com/rss/headlines/nba/")
-                if cbs_response.status_code == 200:
+                if cbs_response.status_code == 200 and cbs_response.content:
                     items = re.findall(
                         r'<item>.*?<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>',
                         cbs_response.text,
                         re.DOTALL,
                     )[:5]
+                    added = 0
                     for item in items:
                         clean_title = item.strip()
                         if clean_title and len(clean_title) > 10:
@@ -503,8 +580,22 @@ async def sync_news_headlines():
                                 "source": "cbs",
                                 "priority": 2
                             })
+                            added += 1
+                    external_count += added
+                    if added == 0:
+                        logger.warning("[TICKER] CBS NBA returned 200 but 0 usable items (parse mismatch)")
+                elif cbs_response.status_code in TICKER_PROTECTED_STATUS:
+                    logger.warning(
+                        f"[TICKER] CBS NBA upstream protected (HTTP {cbs_response.status_code}); skipping source"
+                    )
+                elif not cbs_response.content:
+                    logger.warning(
+                        f"[TICKER] CBS NBA returned empty body (HTTP {cbs_response.status_code}); skipping source"
+                    )
+                else:
+                    logger.warning(f"[TICKER] CBS NBA non-200 HTTP {cbs_response.status_code}")
             except Exception as e:
-                logger.debug(f"CBS fetch failed: {e}")
+                logger.warning(f"[TICKER] CBS NBA fetch failed: {e}")
             
             # Bleacher Report feed (https://bleacherreport.com/articles/feed)
             # returns HTTP 404 — endpoint is dead. Block intentionally removed
@@ -529,21 +620,42 @@ async def sync_news_headlines():
         headlines.sort(key=lambda x: x.get("priority", 99))
         headlines = headlines[:15]
         
-        # Store in database
+        # Store in database — with source-protection guard.
+        # If all external feeds returned protected/empty/0-items this cycle,
+        # do NOT overwrite the existing cache. This prevents transient
+        # bot-fence/rate-limit windows from wiping a healthy ticker.
         if _db is not None:
+            if external_count == 0:
+                existing = await _db[COLL.shared("ticker_cache")].find_one(
+                    {"type": "news"}, {"_id": 0, "headlines": 1, "synced_at": 1}
+                )
+                if existing and existing.get("headlines"):
+                    logger.warning(
+                        "[TICKER] All external NBA sources empty — preserving last good cache "
+                        f"(synced_at={existing.get('synced_at')})"
+                    )
+                    return {
+                        "success": False,
+                        "preserved_cache": True,
+                        "external_count": 0,
+                        "headlines_count": len(existing.get("headlines", [])),
+                    }
             await _db[COLL.shared("ticker_cache")].update_one(
                 {"type": "news"},
                 {"$set": {
                     "type": "news",
                     "headlines": headlines,
                     "headlines_count": len(headlines),
+                    "external_count": external_count,
                     "synced_at": datetime.now(timezone.utc).isoformat()
                 }},
                 upsert=True
             )
-            logger.info(f"[TICKER] Synced {len(headlines)} news headlines")
+            logger.info(
+                f"[TICKER] Synced {len(headlines)} news headlines (external={external_count})"
+            )
         
-        return {"success": True, "headlines_count": len(headlines)}
+        return {"success": True, "headlines_count": len(headlines), "external_count": external_count}
         
     except Exception as e:
         logger.error(f"[TICKER] News sync error: {e}")
@@ -805,6 +917,11 @@ async def get_breaking_news(sport: str = Query("nba", description="Sport: nba or
     Get breaking news from cached data.
     
     Sport-aware: Returns NBA or MLB news based on query param.
+    Cache-only: this endpoint does NOT trigger upstream HTTP. The ticker
+    is refreshed exclusively by the scheduler (`ticker_sync` /
+    `mlb_ticker_sync`). If the cache is empty (cold start or all upstreams
+    protected and no last-good payload), this returns an empty list rather
+    than syncing on the request path.
     """
     try:
         # Determine cache key based on sport
@@ -826,44 +943,25 @@ async def get_breaking_news(sport: str = Query("nba", description="Sport: nba or
                     "sport": sport
                 }
         
-        # Fallback: fetch live if no cache
-        return await _fetch_news_fallback(sport)
+        # Cache miss → return empty (no on-demand sync; scheduler-only policy).
+        logger.warning(f"[LIVE] News cache miss for sport={sport}; returning empty (no on-demand sync)")
+        return {
+            "success": True,
+            "headlines": [],
+            "synced_at": None,
+            "cached": False,
+            "sport": sport,
+        }
         
     except Exception as e:
         logger.error(f"[LIVE] News error: {e}")
         return {"success": False, "headlines": [], "error": str(e)}
 
 
-async def _fetch_news_fallback(sport: str = "nba"):
-    """Fallback to fetch news directly from RSS feeds."""
-    try:
-        headlines = []
-        import re
-        
-        # Select RSS feed based on sport
-        rss_url = "https://www.espn.com/espn/rss/mlb/news" if sport == "mlb" else "https://www.espn.com/espn/rss/nba/news"
-        
-        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
-            try:
-                espn_response = await client.get(rss_url)
-                if espn_response.status_code == 200:
-                    items = re.findall(r'<item>.*?<title><!\[CDATA\[(.*?)\]\]></title>.*?</item>', 
-                                      espn_response.text, re.DOTALL)[:5]
-                    for item in items:
-                        clean_title = item.strip()
-                        if clean_title and len(clean_title) > 10:
-                            headlines.append({
-                                "text": f"ESPN: {clean_title}",
-                                "type": "breaking",
-                                "source": f"espn_{sport}"
-                            })
-            except Exception as _swept_exc:
-                log_silent_failure("routes.live._fetch_news_fallback", _swept_exc)  # sweep-auto-converted
-        
-        return {"success": True, "headlines": headlines, "cached": False, "sport": sport}
-        
-    except Exception as e:
-        return {"success": False, "headlines": [], "error": str(e)}
+# NOTE: legacy `_fetch_news_fallback` was removed as part of the
+# scheduler-only ticker policy — request-path HTTP fetches are no longer
+# permitted. The scheduler (`ticker_sync` / `mlb_ticker_sync`) is the
+# single writer for `ticker_cache`.
 
 
 async def get_mlb_live_scores():

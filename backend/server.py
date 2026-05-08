@@ -2054,23 +2054,24 @@ async def startup_event():
         replace_existing=True
     )
     
-    # Ticker Sync at 4:26 AM EST (9:26 AM UTC) - Games and News
+    # Ticker Sync — every 15 minutes (NBA games + news).
+    # Ticker stabilization patch: previously daily; now :00, :15, :30, :45.
     scheduler.add_job(
         scheduled_ticker_sync,
-        CronTrigger(hour=9, minute=26, timezone=SCHEDULER_TIMEZONE),
+        CronTrigger(minute='0,15,30,45', timezone=SCHEDULER_TIMEZONE),
         id='ticker_sync',
-        name='4:26 AM EST Ticker Games/News Sync',
+        name='Every 15 min — NBA Ticker Games/News Sync',
         replace_existing=True
     )
 
-    # MLB Ticker Sync — hourly at :32 (ticker stabilization patch).
-    # NBA ticker is daily; MLB needs hourly cadence so mlb_news cannot
-    # freeze if a single sync fails.
+    # MLB Ticker Sync — every 15 minutes (MLB games + news).
+    # Offset by 5 min from NBA cadence (:05, :20, :35, :50) so the two
+    # ticker jobs never overlap their HTTP fetches.
     scheduler.add_job(
         scheduled_mlb_ticker_sync,
-        CronTrigger(minute=32, timezone=SCHEDULER_TIMEZONE),
+        CronTrigger(minute='5,20,35,50', timezone=SCHEDULER_TIMEZONE),
         id='mlb_ticker_sync',
-        name='Hourly MLB Ticker Games/News Sync',
+        name='Every 15 min — MLB Ticker Games/News Sync',
         replace_existing=True
     )
     
