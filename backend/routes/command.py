@@ -62,7 +62,15 @@ class SimulationLeg(BaseModel):
     hit_rate_l5: Optional[float] = None
     h10_rate: float = 50.0
     h5_rate: float = 50.0
-    season_avg: float = 0.0
+    # 2026-05-08 — these three are populated from the profile's game-log
+    # rollup. New / off-board players legitimately have no log history
+    # and the frontend forwards the missing values as JSON null. Accept
+    # null at the schema boundary so the simulation isn't 422'd by a
+    # benign data-availability gap; downstream readers already coalesce
+    # to 0.0 / None.
+    season_avg: Optional[float] = None
+    l5_avg: Optional[float] = None
+    l10_avg: Optional[float] = None
     std_dev: float = 0.0
     usage_bump_percent: float = 0.0
 

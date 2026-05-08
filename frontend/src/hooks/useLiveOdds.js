@@ -312,7 +312,15 @@ const runSimulation = async (legs) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ legs })
   });
-  if (!response.ok) throw new Error('Simulation failed');
+  if (!response.ok) {
+    // 2026-05-08 — surface validation detail so 422s don't disappear
+    // into the React-Query onError silently. Field-name / null-input
+    // mismatches at the Pydantic boundary are now self-describing in
+    // the browser console.
+    let detail = '';
+    try { detail = await response.text(); } catch (_) { /* ignore */ }
+    throw new Error(`Simulation failed: HTTP ${response.status}${detail ? ' — ' + detail.slice(0, 500) : ''}`);
+  }
   return response.json();
 };
 

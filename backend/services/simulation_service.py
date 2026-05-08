@@ -229,10 +229,10 @@ class SimulationEngine:
         ) / 100
         
         # Store statistical data for stability calculation
-        leg.season_avg = leg_data.get("season_avg", 0)
-        leg.std_dev = leg_data.get("std_dev", 0)
-        leg.l5_avg = leg_data.get("l5_avg", 0)
-        leg.l10_avg = leg_data.get("l10_avg", 0)
+        leg.season_avg = leg_data.get("season_avg") or 0
+        leg.std_dev = leg_data.get("std_dev") or 0
+        leg.l5_avg = leg_data.get("l5_avg") or 0
+        leg.l10_avg = leg_data.get("l10_avg") or 0
         
         # Calculate Usage Ripple effect
         leg.usage_ripple = leg_data.get("usage_bump_percent", 0)
@@ -256,7 +256,7 @@ class SimulationEngine:
         
         # Calculate Volatility Index
         std_dev = leg_data.get("std_dev", 0)
-        season_avg = leg_data.get("season_avg", 1)
+        season_avg = leg_data.get("season_avg") or 1
         if season_avg > 0 and std_dev > 0:
             leg.volatility_index = std_dev / season_avg
         else:
