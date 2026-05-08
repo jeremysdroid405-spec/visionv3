@@ -43,12 +43,14 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 ### P0 — Environmental
 - Wait for upstream odds API to exit blackout, then run final 30-min double-pass SLO
 
-### P1
-- Decompose `Dashboard.jsx` (2,000+ lines)
-- Decompose `picks_getter_service.py` (3,200+ lines)
-- NFL-ready config scaffold
-- STL/BLK/Double-Double model training for NBA
-- MLB `ContextBadgeService` fix (deferred)
+### P1 — After stabilization sign-off (gated by `ARCHITECTURE.md` directive)
+- **Consolidation #1**: Retire `services/mlb_cached_board_builder.py` + duplicate MLB board-rebuild path. Replace call sites with `publish_board_snapshot(db, "mlb")`. Verify NBA + MLB run identical publisher.
+- **Consolidation #2**: Audit + document/retire remaining duplicate writers, builders, legacy collections, multi-source truths, route-specific board logic, hidden overlay writers.
+- **Consolidation #3**: Produce `/app/memory/SYSTEM_OWNERSHIP.md` per the template in `ARCHITECTURE.md` — canonical source / single writer / allowed readers / enrichment layers / freshness owner / scheduler owner / cache owner for every major entity.
+- Decompose `Dashboard.jsx` (2,000+ lines) and `picks_getter_service.py` (3,200+ lines).
+- NFL config scaffold (must follow universalization rule — config-first, not a new pipeline).
+- STL/BLK/Double-Double model training for NBA.
+- MLB `ContextBadgeService` fix (deferred).
 
 ### P2
 - Forward-test resolver dashboard
