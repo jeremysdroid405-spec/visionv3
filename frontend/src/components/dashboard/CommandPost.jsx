@@ -222,7 +222,12 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
   const { currentSport } = useSport();
   const [legs, setLegs] = useState([]);
   const [simulation, setSimulation] = useState(null);
-  const [loading, setLoading] = useState(false);
+  // 2026-05-08 — `loading` is derived from the mutation's own pending
+  // state below (`simulationMutation.isPending`). Local setLoading was
+  // removed because if the local onSuccess/onError closure ever failed
+  // to fire (closure capture / unmount race / mobile bundle stale),
+  // the button stayed disabled forever. The mutation cache is the
+  // single source of truth.
   const [selectedProfile, setSelectedProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [expanded, setExpanded] = useState(true);
@@ -402,11 +407,9 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
   const runSimulationHandler = useCallback(() => {
     if (legs.length === 0) return;
 
-    setLoading(true);
-    // 2026-05-08 — full diagnostic trace so any future render-side
-    // miss is self-describing in the browser console without needing
-    // a code change. Logs the payload, the response, and confirms
-    // setSimulation actually fired.
+    // 2026-05-08 — diagnostic + defensive: rely on React Query's
+    // mutation cache instead of local loading state so the button
+    // can never get stuck disabled.
     console.log('[CC] mutate → POST /api/command/simulate  legs=', legs);
     simulationMutation.mutate(legs, {
       onSuccess: (data) => {
@@ -420,14 +423,15 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
         } else {
           console.warn('[CC] response.success falsy — panel will fall back to mutation cache');
         }
-        setLoading(false);
       },
       onError: (error) => {
         console.error('[CC] simulation error:', error);
-        setLoading(false);
       }
     });
   }, [legs, simulationMutation]);
+
+  // Mutation pending state drives the button + spinner directly.
+  const loading = simulationMutation.isPending;
 
   // 2026-05-08 — defensive panel source: prefer local state, but fall
   // back to the mutation's own data cache so the result panel always
@@ -616,6 +620,32 @@ const CommandPost = memo(({ isOpen, onClose, pendingLeg, onPendingLegProcessed }
 
         {/* Simulation Results */}
         <div className="p-4 border-b border-zinc-800">
+          {/* 2026-05-08 — visible mobile-friendly status row so we can
+              diagnose without DevTools. Renders the mutation state
+              and HTTP-level signal. Will be removed once Command
+              Center is verified stable. */}
+          <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-wider"
+               data-testid="cc-status-row">
+            <span className="text-zinc-500">Status</span>
+            <span className={
+              simulationMutation.isError
+                ? 'text-red-400'
+                : simulationMutation.isPending
+                  ? 'text-amber-400'
+                  : effectiveSimulation
+                    ? 'text-emerald-400'
+                    : 'text-zinc-500'
+            }>
+              {simulationMutation.isError
+                ? `error: ${(simulationMutation.error && simulationMutation.error.message) || 'unknown'}`.slice(0, 80)
+                : simulationMutation.isPending
+                  ? 'simulating...'
+                  : effectiveSimulation
+                    ? `ready • grade ${effectiveSimulation.infiltration_grade || '-'} • ${(effectiveSimulation.convergence_rate || 0).toFixed?.(1) ?? 0}%`
+                    : 'idle'}
+            </span>
+          </div>
+
           <InfiltrationGrade 
             grade={effectiveSimulation?.infiltration_grade || '-'}
             label={effectiveSimulation?.grade_label}
