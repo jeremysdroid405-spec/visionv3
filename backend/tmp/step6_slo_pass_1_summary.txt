@@ -1,0 +1,76 @@
+========================================================================
+STEP 6 STABILIZATION — SLO PASS #1 SUMMARY
+========================================================================
+Snapshot timestamp (UTC): 2026-05-08T01:02:28Z
+Meta:                     {'started_at': '2026-05-08T01:01:29.765849+00:00', 'completed_at': '2026-05-08T01:01:42.860777+00:00', 'duration_seconds': 13.094928, 'preview_url': 'https://local-first-hub-2.preview.emergentagent.com', 'mongo_db': 'pick_vision'}
+OVERALL VERDICT:          FAIL
+
+Section results (§1–§7):
+------------------------------------------------------------------------
+  ✗ FAIL  1_ingestion_freshness
+          ↳ nba_live_props STALE — gap=1458s (threshold 300s); max_updated_at=2026-05-08T00:37:11.564000+00:00
+          ↳ mlb_live_props STALE — gap=1703s (threshold 300s); max_updated_at=2026-05-08T00:33:07.094000+00:00
+  ✗ FAIL  2_score_freshness
+          ↳ nba_prop_scores STALE — gap=1459s (threshold 300s); max_scored_at=2026-05-08T00:37:10.853479+00:00
+  ✓ PASS  3_tier_freshness
+  ✗ FAIL  4_detection_source_freshness
+          ↳ nba: delta_dirty_queue empty AND nba_live_props STALE (gap=1458s > 300s) — ingestion has stopped writing; detection cannot recover without it.
+          ↳ mlb: delta_dirty_queue empty AND mlb_live_props STALE (gap=1703s > 300s) — ingestion has stopped writing; detection cannot recover without it.
+  ✓ PASS  5_api_correctness
+  ✓ PASS  6_vision_intel_coverage
+  ✓ PASS  7_tier_counts
+
+Heartbeat / watchdog:
+------------------------------------------------------------------------
+  nba: watchdog_events = 0
+  mlb: watchdog_events = 0
+
+Dirty queue:
+------------------------------------------------------------------------
+  nba: depth = 0, last_enqueue_at = None, last_enqueue_lag_seconds = None, healthy_state = INVALID
+  mlb: depth = 0, last_enqueue_at = None, last_enqueue_lag_seconds = None, healthy_state = INVALID
+
+Ingestion freshness (§1):
+------------------------------------------------------------------------
+  nba: max_updated_at=2026-05-08T00:37:11.564000+00:00, gap_seconds=1458.203557, writes_last_5m=0, writes_last_30m=948
+  mlb: max_updated_at=2026-05-08T00:33:07.094000+00:00, gap_seconds=1702.673557, writes_last_5m=0, writes_last_30m=3866
+
+Score freshness (§2):
+------------------------------------------------------------------------
+  nba: max_scored_at=2026-05-08T00:37:10.853479+00:00, gap_seconds=1458.914078, active_board_total=106
+  mlb: max_scored_at=2026-05-08T01:00:28.591624+00:00, gap_seconds=61.175933, active_board_total=60
+
+Tier freshness (§3 — cached_board canonical contract):
+------------------------------------------------------------------------
+  nba: doc_count=122, max_updated_at=2026-05-08T00:25:17.682000+00:00, recency_gap_s=2172.085557, invariant_violations=0, missing_updated_at=0
+  mlb: doc_count=161, max_updated_at=2026-05-08T00:23:56.462000+00:00, recency_gap_s=2253.305557, invariant_violations=0, missing_updated_at=0
+
+Vision Intel coverage (§6 — visible-board universe):
+------------------------------------------------------------------------
+  nba: visible=20, with_vi=20, coverage=100.0%, baseline_coverage=10.0%
+      safe_haven: visible=7, with_vi=7, coverage=100.0%
+      front_lines: visible=12, with_vi=12, coverage=100.0%
+      war_zone: visible=1, with_vi=1, coverage=100.0%
+  mlb: visible=20, with_vi=20, coverage=100.0%, baseline_coverage=40.0%
+      safe_haven: visible=1, with_vi=1, coverage=100.0%
+      front_lines: visible=12, with_vi=12, coverage=100.0%
+      war_zone: visible=7, with_vi=7, coverage=100.0%
+
+Tier counts (§7):
+------------------------------------------------------------------------
+  nba safe_haven: api_count=6, db_count=None, status=partial
+  nba front_lines: api_count=11, db_count=None, status=partial
+  nba war_zone: api_count=1, db_count=None, status=partial
+  mlb safe_haven: api_count=1, db_count=None, status=None
+  mlb front_lines: api_count=12, db_count=None, status=None
+  mlb war_zone: api_count=7, db_count=None, status=None
+
+JIT Vision Intel reaper:
+------------------------------------------------------------------------
+  scheduled job: jit_vision_intel_reaper (5 min interval, persistent)
+  visible coverage: see §6 above
+
+========================================================================
+Saved JSON:    /app/backend/tmp/step6_slo_pass_1.json
+Saved summary: /app/backend/tmp/step6_slo_pass_1_summary.txt
+========================================================================

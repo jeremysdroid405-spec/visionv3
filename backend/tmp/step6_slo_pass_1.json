@@ -1,0 +1,585 @@
+{
+  "overall_pass": false,
+  "meta": {
+    "started_at": "2026-05-08T01:01:29.765849+00:00",
+    "completed_at": "2026-05-08T01:01:42.860777+00:00",
+    "duration_seconds": 13.094928,
+    "preview_url": "https://local-first-hub-2.preview.emergentagent.com",
+    "mongo_db": "pick_vision"
+  },
+  "results": [
+    {
+      "name": "1_ingestion_freshness",
+      "passed": false,
+      "evidence": {
+        "nba": {
+          "max_updated_at": "2026-05-08T00:37:11.564000+00:00",
+          "gap_seconds": 1458.203557,
+          "writes_last_5m": 0,
+          "writes_last_30m": 948
+        },
+        "mlb": {
+          "max_updated_at": "2026-05-08T00:33:07.094000+00:00",
+          "gap_seconds": 1702.673557,
+          "writes_last_5m": 0,
+          "writes_last_30m": 3866
+        }
+      },
+      "failures": [
+        "nba_live_props STALE \u2014 gap=1458s (threshold 300s); max_updated_at=2026-05-08T00:37:11.564000+00:00",
+        "mlb_live_props STALE \u2014 gap=1703s (threshold 300s); max_updated_at=2026-05-08T00:33:07.094000+00:00"
+      ]
+    },
+    {
+      "name": "2_score_freshness",
+      "passed": false,
+      "evidence": {
+        "nba": {
+          "max_scored_at": "2026-05-08T00:37:10.853479+00:00",
+          "gap_seconds": 1458.914078,
+          "active_board_total": 106
+        },
+        "mlb": {
+          "max_scored_at": "2026-05-08T01:00:28.591624+00:00",
+          "gap_seconds": 61.175933,
+          "active_board_total": 60
+        }
+      },
+      "failures": [
+        "nba_prop_scores STALE \u2014 gap=1459s (threshold 300s); max_scored_at=2026-05-08T00:37:10.853479+00:00"
+      ]
+    },
+    {
+      "name": "3_tier_freshness",
+      "passed": true,
+      "evidence": {
+        "nba": {
+          "cached_board_doc_count": 122,
+          "max_updated_at": "2026-05-08T00:25:17.682000+00:00",
+          "max_last_publish_ts": "2026-05-08T00:25:17.682000+00:00",
+          "max_source_score_at": "2026-05-08T00:25:11.291000+00:00",
+          "live_score_max_scored_at": "2026-05-08T00:37:10.853479+00:00",
+          "recency_gap_seconds": 2172.085557,
+          "recency_threshold_s": 4500,
+          "missing_updated_at_docs": 0,
+          "missing_last_publish_ts_docs": 0,
+          "missing_sport_docs": 0,
+          "missing_version_tag_docs": 0,
+          "invariant_violation_docs": 0
+        },
+        "mlb": {
+          "cached_board_doc_count": 161,
+          "max_updated_at": "2026-05-08T00:23:56.462000+00:00",
+          "max_last_publish_ts": "2026-05-08T00:23:56.462000+00:00",
+          "max_source_score_at": "2026-05-08T00:23:55.257000+00:00",
+          "live_score_max_scored_at": "2026-05-08T01:00:28.591624+00:00",
+          "recency_gap_seconds": 2253.305557,
+          "recency_threshold_s": 4500,
+          "missing_updated_at_docs": 0,
+          "missing_last_publish_ts_docs": 0,
+          "missing_sport_docs": 0,
+          "missing_version_tag_docs": 0,
+          "invariant_violation_docs": 0
+        }
+      },
+      "failures": []
+    },
+    {
+      "name": "4_detection_source_freshness",
+      "passed": false,
+      "evidence": {
+        "nba": {
+          "detection_source": "delta_dirty_queue",
+          "queue_depth": 0,
+          "last_enqueue_at": null,
+          "last_enqueue_lag_seconds": null,
+          "live_props_max_updated_at": "2026-05-08T00:37:11.564000+00:00",
+          "live_props_gap_seconds": 1458.203557,
+          "score_max_scored_at": "2026-05-08T00:37:10.853479+00:00",
+          "score_gap_seconds": 1458.914078,
+          "watchdog_events": 0,
+          "freshness_threshold_s": 300,
+          "depth_hard_cap": 150000,
+          "healthy_state": "INVALID"
+        },
+        "mlb": {
+          "detection_source": "delta_dirty_queue",
+          "queue_depth": 0,
+          "last_enqueue_at": null,
+          "last_enqueue_lag_seconds": null,
+          "live_props_max_updated_at": "2026-05-08T00:33:07.094000+00:00",
+          "live_props_gap_seconds": 1702.673557,
+          "score_max_scored_at": "2026-05-08T01:00:28.591624+00:00",
+          "score_gap_seconds": 61.175933,
+          "watchdog_events": 0,
+          "freshness_threshold_s": 300,
+          "depth_hard_cap": 150000,
+          "healthy_state": "INVALID"
+        }
+      },
+      "failures": [
+        "nba: delta_dirty_queue empty AND nba_live_props STALE (gap=1458s > 300s) \u2014 ingestion has stopped writing; detection cannot recover without it.",
+        "mlb: delta_dirty_queue empty AND mlb_live_props STALE (gap=1703s > 300s) \u2014 ingestion has stopped writing; detection cannot recover without it."
+      ]
+    },
+    {
+      "name": "5_api_correctness",
+      "passed": true,
+      "evidence": {
+        "samples": {
+          "nba": [
+            {
+              "canonical_key": "nba|1b5c084f510006e8f30cd6cac40e231d|Naz Reid|PTS|7.5|OVER",
+              "player": "Naz Reid",
+              "tier": "safe_haven",
+              "api_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 80.0,
+                "hit_rate_l20": 80.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 80.0,
+                "hit_rate_l20": 80.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "nba|1b5c084f510006e8f30cd6cac40e231d|Julian Champagnie|PTS|5.5|OVER",
+              "player": "Julian Champagnie",
+              "tier": "safe_haven",
+              "api_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 90.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 90.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "nba|30d614c5d781b768faf9cf885e890851|Paul George|PTS|11.5|OVER",
+              "player": "Paul George",
+              "tier": "safe_haven",
+              "api_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 100.0,
+                "hit_rate_l20": 90.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 100.0,
+                "hit_rate_l20": 90.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "nba|a306b74e13d87d2f8d64b1e01c2cf958|Chet Holmgren|PTS|11.5|OVER",
+              "player": "Chet Holmgren",
+              "tier": "safe_haven",
+              "api_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 80.0,
+                "hit_rate_l20": 80.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 80.0,
+                "hit_rate_l20": 80.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "nba|30d614c5d781b768faf9cf885e890851|Tyrese Maxey|PTS|19.5|OVER",
+              "player": "Tyrese Maxey",
+              "tier": "safe_haven",
+              "api_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 90.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 90.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "nba|1b5c084f510006e8f30cd6cac40e231d|Stephon Castle|AST|4.5|OVER",
+              "player": "Stephon Castle",
+              "tier": "safe_haven",
+              "api_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 95.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 95.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "nba|30d614c5d781b768faf9cf885e890851|Karl-Anthony Towns|PRA|37.5|UNDER",
+              "player": "Karl-Anthony Towns",
+              "tier": "front_lines",
+              "api_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 80.0,
+                "hit_rate_l20": 70.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 80.0,
+                "hit_rate_l20": 70.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "nba|a306b74e13d87d2f8d64b1e01c2cf958|LeBron James|PTS|17.5|OVER",
+              "player": "LeBron James",
+              "tier": "front_lines",
+              "api_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 70.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 70.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "nba|1b5c084f510006e8f30cd6cac40e231d|Keldon Johnson|AST|0.5|OVER",
+              "player": "Keldon Johnson",
+              "tier": "front_lines",
+              "api_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 100.0,
+                "hit_rate_l20": 95.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 100.0,
+                "hit_rate_l20": 95.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "nba|30d614c5d781b768faf9cf885e890851|Josh Hart|PRA|27.5|UNDER",
+              "player": "Josh Hart",
+              "tier": "front_lines",
+              "api_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 70.0,
+                "hit_rate_l20": 80.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 70.0,
+                "hit_rate_l20": 80.0
+              },
+              "api_legacy_present": {}
+            }
+          ],
+          "mlb": [
+            {
+              "canonical_key": "mlb|6aa50c59681975bb7beff37ab4f46bb5|Bobby Witt Jr.|Hits|0.5|OVER",
+              "player": "Bobby Witt Jr.",
+              "tier": "safe_haven",
+              "api_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 80.0,
+                "hit_rate_l20": 80.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 80.0,
+                "hit_rate_l20": 80.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "mlb|6aa50c59681975bb7beff37ab4f46bb5|Riley Greene|Hits+Runs+RBIs|0.5|OVER",
+              "player": "Riley Greene",
+              "tier": "front_lines",
+              "api_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 85.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 85.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "mlb|92c3e303601373eee3d37fbb858409af|Mike Trout|Hits+Runs+RBIs|0.5|OVER",
+              "player": "Mike Trout",
+              "tier": "front_lines",
+              "api_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 90.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 90.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "mlb|fb98c375df55f7f70d2f35b2209bdd61|Nathan Church|Hits+Runs+RBIs|0.5|OVER",
+              "player": "Nathan Church",
+              "tier": "front_lines",
+              "api_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 70.0,
+                "hit_rate_l20": 80.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 70.0,
+                "hit_rate_l20": 80.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "mlb|fb98c375df55f7f70d2f35b2209bdd61|Ivan Herrera|Total Bases|0.5|OVER",
+              "player": "Ivan Herrera",
+              "tier": "front_lines",
+              "api_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 80.0,
+                "hit_rate_l20": 85.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 80.0,
+                "hit_rate_l20": 85.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "mlb|fb98c375df55f7f70d2f35b2209bdd61|Jordan Walker|Hits+Runs+RBIs|0.5|OVER",
+              "player": "Jordan Walker",
+              "tier": "front_lines",
+              "api_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 80.0,
+                "hit_rate_l20": 85.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 80.0,
+                "hit_rate_l20": 85.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "mlb|fb98c375df55f7f70d2f35b2209bdd61|Masyn Winn|Total Bases|0.5|OVER",
+              "player": "Masyn Winn",
+              "tier": "front_lines",
+              "api_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 60.0,
+                "hit_rate_l20": 80.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 60.0,
+                "hit_rate_l20": 80.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "mlb|92c3e303601373eee3d37fbb858409af|Jorge Soler|Hits+Runs+RBIs|0.5|OVER",
+              "player": "Jorge Soler",
+              "tier": "front_lines",
+              "api_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 80.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 80.0,
+                "hit_rate_l10": 90.0,
+                "hit_rate_l20": 80.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "mlb|d0f880a5482c5178286681a63048600f|Chase DeLauter|Hits+Runs+RBIs|0.5|OVER",
+              "player": "Chase DeLauter",
+              "tier": "front_lines",
+              "api_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 100.0,
+                "hit_rate_l20": 80.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 100.0,
+                "hit_rate_l20": 80.0
+              },
+              "api_legacy_present": {}
+            },
+            {
+              "canonical_key": "mlb|fb98c375df55f7f70d2f35b2209bdd61|Ramon Laureano|Batter Strikeouts|0.5|OVER",
+              "player": "Ramon Laureano",
+              "tier": "front_lines",
+              "api_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 100.0,
+                "hit_rate_l20": 95.0
+              },
+              "score_doc_canonical": {
+                "hit_rate_l5": 100.0,
+                "hit_rate_l10": 100.0,
+                "hit_rate_l20": 95.0
+              },
+              "api_legacy_present": {}
+            }
+          ]
+        },
+        "sample_counts": {
+          "nba": 10,
+          "mlb": 10
+        }
+      },
+      "failures": []
+    },
+    {
+      "name": "6_vision_intel_coverage",
+      "passed": true,
+      "evidence": {
+        "nba": {
+          "universe": "visible_board_cards",
+          "live_version_tag": "final-nba-rt",
+          "baseline_version_tag": "final-nba",
+          "per_tier": {
+            "safe_haven": {
+              "visible": 7,
+              "with_vision_intel": 7,
+              "coverage_pct": 100.0,
+              "baseline_visible": 7,
+              "baseline_with_vision_intel": 0,
+              "baseline_coverage_pct": 0.0
+            },
+            "front_lines": {
+              "visible": 12,
+              "with_vision_intel": 12,
+              "coverage_pct": 100.0,
+              "baseline_visible": 12,
+              "baseline_with_vision_intel": 2,
+              "baseline_coverage_pct": 16.7
+            },
+            "war_zone": {
+              "visible": 1,
+              "with_vision_intel": 1,
+              "coverage_pct": 100.0,
+              "baseline_visible": 1,
+              "baseline_with_vision_intel": 0,
+              "baseline_coverage_pct": 0.0
+            }
+          },
+          "total_visible": 20,
+          "total_with_vision_intel": 20,
+          "coverage_pct": 100.0,
+          "total_baseline_visible": 20,
+          "total_baseline_with_vision_intel": 2,
+          "baseline_coverage_pct": 10.0
+        },
+        "mlb": {
+          "universe": "visible_board_cards",
+          "live_version_tag": "final-mlb-rt",
+          "baseline_version_tag": "final-mlb",
+          "per_tier": {
+            "safe_haven": {
+              "visible": 1,
+              "with_vision_intel": 1,
+              "coverage_pct": 100.0,
+              "baseline_visible": 1,
+              "baseline_with_vision_intel": 0,
+              "baseline_coverage_pct": 0.0
+            },
+            "front_lines": {
+              "visible": 12,
+              "with_vision_intel": 12,
+              "coverage_pct": 100.0,
+              "baseline_visible": 12,
+              "baseline_with_vision_intel": 5,
+              "baseline_coverage_pct": 41.7
+            },
+            "war_zone": {
+              "visible": 7,
+              "with_vision_intel": 7,
+              "coverage_pct": 100.0,
+              "baseline_visible": 7,
+              "baseline_with_vision_intel": 3,
+              "baseline_coverage_pct": 42.9
+            }
+          },
+          "total_visible": 20,
+          "total_with_vision_intel": 20,
+          "coverage_pct": 100.0,
+          "total_baseline_visible": 20,
+          "total_baseline_with_vision_intel": 8,
+          "baseline_coverage_pct": 40.0
+        }
+      },
+      "failures": []
+    },
+    {
+      "name": "7_tier_counts",
+      "passed": true,
+      "evidence": {
+        "nba": {
+          "safe_haven": {
+            "api_count": 6,
+            "api_total_before_filter": null,
+            "api_status": "partial"
+          },
+          "front_lines": {
+            "api_count": 11,
+            "api_total_before_filter": null,
+            "api_status": "partial"
+          },
+          "war_zone": {
+            "api_count": 1,
+            "api_total_before_filter": null,
+            "api_status": "partial"
+          }
+        },
+        "mlb": {
+          "safe_haven": {
+            "api_count": 1,
+            "api_total_before_filter": 1,
+            "api_status": null
+          },
+          "front_lines": {
+            "api_count": 12,
+            "api_total_before_filter": null,
+            "api_status": null
+          },
+          "war_zone": {
+            "api_count": 7,
+            "api_total_before_filter": null,
+            "api_status": null
+          }
+        }
+      },
+      "failures": []
+    }
+  ]
+}
