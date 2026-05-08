@@ -789,6 +789,34 @@ async def scheduled_ticker_sync():
         logger.error(f"[SCHEDULER] Ticker sync failed: {e}")
 
 
+async def scheduled_mlb_ticker_sync():
+    """
+    Scheduled job that syncs MLB ticker data (games + news).
+
+    Mirrors scheduled_ticker_sync() for the MLB pipeline. Wired hourly so
+    mlb_news cannot freeze the way it did when only the NBA ticker was
+    scheduled (ticker stabilization patch).
+    """
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] MLB TICKER SYNC (GAMES + NEWS)")
+    logger.info(f"[SCHEDULER] Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info("=" * 70)
+
+    try:
+        from routes.live import sync_mlb_todays_games, sync_mlb_news_headlines
+
+        games_result = await sync_mlb_todays_games()
+        logger.info(f"[SCHEDULER] MLB Games sync: {games_result}")
+
+        news_result = await sync_mlb_news_headlines()
+        logger.info(f"[SCHEDULER] MLB News sync: {news_result}")
+
+        logger.info("=" * 70)
+
+    except Exception as e:
+        logger.error(f"[SCHEDULER] MLB ticker sync failed: {e}")
+
+
 async def scheduled_badge_sync():
     """
     Scheduled job that syncs context badges at 4:20 AM EST.
@@ -2032,6 +2060,17 @@ async def startup_event():
         CronTrigger(hour=9, minute=26, timezone=SCHEDULER_TIMEZONE),
         id='ticker_sync',
         name='4:26 AM EST Ticker Games/News Sync',
+        replace_existing=True
+    )
+
+    # MLB Ticker Sync — hourly at :32 (ticker stabilization patch).
+    # NBA ticker is daily; MLB needs hourly cadence so mlb_news cannot
+    # freeze if a single sync fails.
+    scheduler.add_job(
+        scheduled_mlb_ticker_sync,
+        CronTrigger(minute=32, timezone=SCHEDULER_TIMEZONE),
+        id='mlb_ticker_sync',
+        name='Hourly MLB Ticker Games/News Sync',
         replace_existing=True
     )
     

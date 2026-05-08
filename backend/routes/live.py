@@ -27,6 +27,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/live", tags=["Live Data"])
 
+# Ticker HTTP client defaults — ticker stabilization patch (additive).
+# ESPN's RSS path is bot-fenced (HTTP 202, 0 bytes); we use ESPN's public
+# JSON news API instead. CBS uses plain <title> (no CDATA), so the parser
+# below tolerates both wrappers.
+TICKER_HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/xml, application/xml, */*;q=0.8",
+}
+ESPN_NBA_NEWS_JSON = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news"
+ESPN_MLB_NEWS_JSON = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/news"
+
 # NBA Team name to abbreviation mapping
 TEAM_ABBREV_MAP = {
     "Atlanta Hawks": "ATL",
@@ -259,31 +273,39 @@ async def sync_mlb_news_headlines():
         headlines = []
         import re
         
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            # ===== ESPN MLB News RSS =====
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=TICKER_HTTP_HEADERS) as client:
+            # ===== ESPN MLB News (JSON API) =====
+            # ESPN RSS (/espn/rss/mlb/news) is bot-fenced (HTTP 202, 0 bytes).
+            # The public site JSON API is open and returns structured articles.
             try:
-                espn_response = await client.get("https://www.espn.com/espn/rss/mlb/news")
+                espn_response = await client.get(ESPN_MLB_NEWS_JSON)
                 if espn_response.status_code == 200:
-                    items = re.findall(r'<item>.*?<title><!\[CDATA\[(.*?)\]\]></title>.*?</item>', 
-                                      espn_response.text, re.DOTALL)[:8]
-                    for item in items:
-                        clean_title = item.strip()
+                    articles = (espn_response.json() or {}).get("articles", [])[:8]
+                    for art in articles:
+                        clean_title = (art.get("headline") or "").strip()
                         if clean_title and len(clean_title) > 10:
                             headlines.append({
                                 "text": f"ESPN: {clean_title}",
                                 "type": "breaking",
                                 "source": "espn_mlb",
-                                "priority": 1
+                                "priority": 1,
+                                "published": art.get("published"),
                             })
             except Exception as e:
                 logger.debug(f"ESPN MLB fetch failed: {e}")
             
             # ===== CBS Sports MLB RSS =====
+            # CBS uses plain <title> inside <item> (no CDATA wrapper). The
+            # tolerant pattern below handles both CDATA and plain forms.
             try:
                 cbs_response = await client.get("https://www.cbssports.com/rss/headlines/mlb/")
                 if cbs_response.status_code == 200:
-                    items = re.findall(r'<title><!\[CDATA\[(.*?)\]\]></title>', cbs_response.text)[:5]
-                    for item in items[1:]:
+                    items = re.findall(
+                        r'<item>.*?<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>',
+                        cbs_response.text,
+                        re.DOTALL,
+                    )[:5]
+                    for item in items:
                         clean_title = item.strip()
                         if clean_title and len(clean_title) > 10:
                             headlines.append({
@@ -295,23 +317,9 @@ async def sync_mlb_news_headlines():
             except Exception as e:
                 logger.debug(f"CBS MLB fetch failed: {e}")
             
-            # ===== MLB.com News (via Bleacher Report) =====
-            try:
-                br_response = await client.get("https://bleacherreport.com/articles/feed")
-                if br_response.status_code == 200:
-                    items = re.findall(r'<title>(.*?)</title>', br_response.text)
-                    mlb_items = [i for i in items if any(term in i.lower() for term in ['mlb', 'yankees', 'dodgers', 'mets', 'red sox', 'cubs', 'braves', 'astros', 'phillies'])][:3]
-                    for item in mlb_items:
-                        clean_title = item.strip()
-                        if clean_title and len(clean_title) > 10:
-                            headlines.append({
-                                "text": f"BR: {clean_title}",
-                                "type": "info",
-                                "source": "bleacher_report_mlb",
-                                "priority": 3
-                            })
-            except Exception as e:
-                logger.debug(f"Bleacher Report MLB fetch failed: {e}")
+            # Bleacher Report feed (https://bleacherreport.com/articles/feed)
+            # returns HTTP 404 — endpoint is dead. Block intentionally removed
+            # as part of ticker stabilization.
         
         # Sort by priority and limit
         headlines.sort(key=lambda x: x.get("priority", 99))
@@ -454,31 +462,39 @@ async def sync_news_headlines():
         headlines = []
         import re
         
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            # ===== ESPN NBA News RSS =====
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=TICKER_HTTP_HEADERS) as client:
+            # ===== ESPN NBA News (JSON API) =====
+            # ESPN RSS (/espn/rss/nba/news) is bot-fenced (HTTP 202, 0 bytes).
+            # The public site JSON API is open and returns structured articles.
             try:
-                espn_response = await client.get("https://www.espn.com/espn/rss/nba/news")
+                espn_response = await client.get(ESPN_NBA_NEWS_JSON)
                 if espn_response.status_code == 200:
-                    items = re.findall(r'<item>.*?<title><!\[CDATA\[(.*?)\]\]></title>.*?</item>', 
-                                      espn_response.text, re.DOTALL)[:5]
-                    for item in items:
-                        clean_title = item.strip()
+                    articles = (espn_response.json() or {}).get("articles", [])[:5]
+                    for art in articles:
+                        clean_title = (art.get("headline") or "").strip()
                         if clean_title and len(clean_title) > 10:
                             headlines.append({
                                 "text": f"ESPN: {clean_title}",
                                 "type": "breaking",
                                 "source": "espn",
-                                "priority": 1
+                                "priority": 1,
+                                "published": art.get("published"),
                             })
             except Exception as e:
-                logger.debug(f"ESPN fetch failed: {e}")
+                logger.debug(f"ESPN NBA fetch failed: {e}")
             
             # ===== CBS Sports NBA RSS =====
+            # CBS uses plain <title> inside <item> (no CDATA wrapper). The
+            # tolerant pattern below handles both CDATA and plain forms.
             try:
                 cbs_response = await client.get("https://www.cbssports.com/rss/headlines/nba/")
                 if cbs_response.status_code == 200:
-                    items = re.findall(r'<title><!\[CDATA\[(.*?)\]\]></title>', cbs_response.text)[:5]
-                    for item in items[1:]:
+                    items = re.findall(
+                        r'<item>.*?<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>',
+                        cbs_response.text,
+                        re.DOTALL,
+                    )[:5]
+                    for item in items:
                         clean_title = item.strip()
                         if clean_title and len(clean_title) > 10:
                             headlines.append({
@@ -490,24 +506,9 @@ async def sync_news_headlines():
             except Exception as e:
                 logger.debug(f"CBS fetch failed: {e}")
             
-            # ===== Bleacher Report NBA =====
-            try:
-                br_response = await client.get("https://bleacherreport.com/articles/feed")
-                if br_response.status_code == 200:
-                    # Try to find NBA items
-                    items = re.findall(r'<title>(.*?)</title>', br_response.text)
-                    nba_items = [i for i in items if any(term in i.lower() for term in ['nba', 'lakers', 'celtics', 'warriors', 'knicks', 'nets', 'heat', 'bucks'])][:3]
-                    for item in nba_items:
-                        clean_title = item.strip()
-                        if clean_title and len(clean_title) > 10:
-                            headlines.append({
-                                "text": f"BR: {clean_title}",
-                                "type": "info",
-                                "source": "bleacher_report",
-                                "priority": 3
-                            })
-            except Exception as e:
-                logger.debug(f"Bleacher Report fetch failed: {e}")
+            # Bleacher Report feed (https://bleacherreport.com/articles/feed)
+            # returns HTTP 404 — endpoint is dead. Block intentionally removed
+            # as part of ticker stabilization.
         
         # Add injury updates from database
         if _db is not None:
