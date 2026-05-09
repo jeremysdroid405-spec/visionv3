@@ -1,0 +1,142 @@
+{
+  "generated_at_utc": "2026-05-09T13:43:31.347379+00:00",
+  "args": {
+    "run_id": "vk2_full_adv_1778313861",
+    "snapshot_window": null,
+    "sport": "nba",
+    "feature_completeness": "partial",
+    "include_unqualified": "true",
+    "output": "/app/audit_reports/replay_publication_vk2_adv.md"
+  },
+  "1_dataset": {
+    "replay_run_id": "vk2_full_adv_1778313861",
+    "snapshot_window": "t-30m",
+    "candidate_date_range": {
+      "min": "2024-02-02 00:30:00",
+      "max": "2024-02-29 03:10:00"
+    },
+    "candidates_total": 462410,
+    "settled_candidates": 126977,
+    "settled_outcome_breakdown": {
+      "hit": 57219,
+      "miss": 66523,
+      "push": 0,
+      "void_dnp": 3235
+    }
+  },
+  "2_publication_simulation": {
+    "thesis": "This report simulates a $1 flat bet on every prop PropVision would have published.",
+    "candidates_evaluated": 462410,
+    "candidates_qualified": 1432,
+    "qualified_pct": 0.3097,
+    "settled_qualified_total": 1100,
+    "by_tier": {
+      "safe_haven": {
+        "tier": "safe_haven",
+        "n": 0,
+        "hits": 0,
+        "miss": 0,
+        "void": 0,
+        "push": 0,
+        "hit_rate": null,
+        "roi_per_unit": null,
+        "pnl_units": 0.0,
+        "avg_odds": null,
+        "avg_tp": null,
+        "avg_edge": null
+      },
+      "front_lines": {
+        "tier": "front_lines",
+        "n": 932,
+        "hits": 786,
+        "miss": 146,
+        "void": 0,
+        "push": 0,
+        "hit_rate": 0.8433,
+        "roi_per_unit": 0.3598,
+        "pnl_units": 335.3789,
+        "avg_odds": -180.4,
+        "avg_tp": 59.19,
+        "avg_edge": 11.63
+      },
+      "war_zone": {
+        "tier": "war_zone",
+        "n": 168,
+        "hits": 115,
+        "miss": 53,
+        "void": 0,
+        "push": 0,
+        "hit_rate": 0.6845,
+        "roi_per_unit": 0.8579,
+        "pnl_units": 144.12,
+        "avg_odds": 170.6,
+        "avg_tp": 34.86,
+        "avg_edge": 21.97
+      }
+    },
+    "combined": {
+      "n": 1100,
+      "hits": 901,
+      "miss": 199,
+      "void": 0,
+      "push": 0,
+      "hit_rate": 0.8191,
+      "roi_per_unit": 0.4359,
+      "pnl_units": 479.4989,
+      "avg_odds": -126.79
+    }
+  },
+  "3_unqualified_reasons": {
+    "unqualified_total": 460978,
+    "top_reasons": {
+      "front_lines_failed: gate_hit_rate_fail": 179180,
+      "war_zone_failed: gate_direction_fail": 132548,
+      "front_lines_failed: gate_direction_fail": 59144,
+      "safe_haven_failed: gate_edge_fail": 32454,
+      "safe_haven_failed: gate_hit_rate_fail": 28822,
+      "no_reference_market": 12920,
+      "safe_haven_failed: gate_direction_fail": 6563,
+      "safe_haven_failed: gate_cv_fail": 3198,
+      "front_lines_failed: gate_edge_fail": 2857,
+      "war_zone_failed: gate_hit_rate_fail": 2143,
+      "front_lines_failed: gate_tp_fail": 470,
+      "front_lines_failed: gate_cv_fail": 348,
+      "front_lines_failed: gate_tp_unavailable": 263,
+      "war_zone_failed: gate_cv_fail": 68
+    }
+  },
+  "4_experimental_proxies": {
+    "tp_edge_gate": {
+      "n": 8163,
+      "hits": 6505,
+      "miss": 1655,
+      "void": 3,
+      "hit_rate": 0.7972,
+      "roi_per_unit": 0.093,
+      "pnl_units": 759.5445,
+      "avg_odds": -442.49
+    },
+    "ev_only_longshot": {
+      "n": 2226,
+      "hits": 749,
+      "miss": 1473,
+      "void": 4,
+      "hit_rate": 0.3371,
+      "roi_per_unit": 0.3909,
+      "pnl_units": 870.14,
+      "avg_odds": 339.76
+    },
+    "proxy_safe_haven": {
+      "n": 5102,
+      "hits": 4389,
+      "miss": 712,
+      "void": 1,
+      "hit_rate": 0.8604,
+      "roi_per_unit": 0.0388,
+      "pnl_units": 197.8927,
+      "avg_odds": -763.94
+    },
+    "_disclaimer": "Heuristic counterfactual rule sets. NOT a measurement of PropVision publication ROI. Presented only to prove the candidate pool contains usable signal \u2014 does NOT imply any of these rules should be deployed."
+  },
+  "wallclock_seconds": 26.245064
+}

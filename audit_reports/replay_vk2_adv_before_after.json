@@ -1,0 +1,118 @@
+{
+  "before": {
+    "run_id": "vk2_full_30d_1778310068",
+    "candidates": 517864,
+    "qualified_total": 2013,
+    "qualified_pct": 0.3887,
+    "tier_distribution": {
+      "front_lines": 1774,
+      "unqualified": 515851,
+      "war_zone": 239
+    },
+    "feature_completeness": {
+      "partial": 39155,
+      "minimal": 392,
+      "vk2_full": 224,
+      "vk2_partial": 478093
+    },
+    "publications": {
+      "safe_haven": {
+        "n": 0,
+        "hits": 0,
+        "miss": 0,
+        "void": 0,
+        "pnl": 0.0,
+        "hit_rate": null,
+        "roi_per_unit": null
+      },
+      "front_lines": {
+        "n": 179,
+        "hits": 149,
+        "miss": 30,
+        "void": 0,
+        "pnl": 73.5405,
+        "hit_rate": 0.8324,
+        "roi_per_unit": 0.4108
+      },
+      "war_zone": {
+        "n": 220,
+        "hits": 138,
+        "miss": 82,
+        "void": 0,
+        "pnl": 152.17,
+        "hit_rate": 0.6273,
+        "roi_per_unit": 0.6917
+      }
+    },
+    "top_fail_reasons": {
+      "front_lines_failed: gate_hit_rate_fail": 194944,
+      "war_zone_failed: gate_direction_fail": 148490,
+      "front_lines_failed: gate_direction_fail": 72593,
+      "safe_haven_failed: gate_edge_fail": 35709,
+      "safe_haven_failed: gate_hit_rate_fail": 32224,
+      "no_reference_market": 14497,
+      "safe_haven_failed: gate_direction_fail": 6623,
+      "safe_haven_failed: gate_cv_fail": 4534,
+      "front_lines_failed: gate_edge_fail": 3073,
+      "war_zone_failed: gate_hit_rate_fail": 2232
+    }
+  },
+  "after": {
+    "run_id": "vk2_full_adv_1778313861",
+    "candidates": 462410,
+    "qualified_total": 1432,
+    "qualified_pct": 0.3097,
+    "tier_distribution": {
+      "front_lines": 1250,
+      "unqualified": 460978,
+      "war_zone": 182
+    },
+    "feature_completeness": {
+      "vk2_full": 419915,
+      "vk2_partial": 7101,
+      "minimal": 377,
+      "partial": 35017
+    },
+    "publications": {
+      "safe_haven": {
+        "n": 0,
+        "hits": 0,
+        "miss": 0,
+        "void": 0,
+        "pnl": 0.0,
+        "hit_rate": null,
+        "roi_per_unit": null
+      },
+      "front_lines": {
+        "n": 932,
+        "hits": 786,
+        "miss": 146,
+        "void": 0,
+        "pnl": 335.3789,
+        "hit_rate": 0.8433,
+        "roi_per_unit": 0.3598
+      },
+      "war_zone": {
+        "n": 168,
+        "hits": 115,
+        "miss": 53,
+        "void": 0,
+        "pnl": 144.12,
+        "hit_rate": 0.6845,
+        "roi_per_unit": 0.8579
+      }
+    },
+    "top_fail_reasons": {
+      "front_lines_failed: gate_hit_rate_fail": 179180,
+      "war_zone_failed: gate_direction_fail": 132548,
+      "front_lines_failed: gate_direction_fail": 59144,
+      "safe_haven_failed: gate_edge_fail": 32454,
+      "safe_haven_failed: gate_hit_rate_fail": 28822,
+      "no_reference_market": 12920,
+      "safe_haven_failed: gate_direction_fail": 6563,
+      "safe_haven_failed: gate_cv_fail": 3198,
+      "front_lines_failed: gate_edge_fail": 2857,
+      "war_zone_failed: gate_hit_rate_fail": 2143
+    }
+  }
+}
