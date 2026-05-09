@@ -1,0 +1,157 @@
+TOTAL no_reference_market rejects: 1078
+
+=== 1. BY stat_type ===
+stat_type                                              n  avg_line min_line max_line  sample players
+  PTS                                                  232     15.81     0.50    49.50  ['Rui Hachimura', 'Deandre Ayton', 'Jaden McDaniels']
+  player_rebounds_assists_alternate                    167     10.03     0.50    21.50  ['Marcus Smart', 'Luke Kennard']
+  PRA                                                  139     27.01     7.50    59.50  ['Julius Randle', 'Josh Hart', 'Dylan Harper']
+  player_points_rebounds_alternate                      83     17.10     3.50    36.50  ['Keldon Johnson', 'Rui Hachimura', 'Deandre Ayton']
+  3PM                                                   82      2.73     0.50     7.50  ['Ayo Dosunmu', 'Tyrese Maxey', 'Julius Randle']
+  REB                                                   78      6.86     1.50    15.50  ['Paul George', 'Rudy Gobert', 'Marcus Smart']
+  AST                                                   64      4.50     0.50    11.50  ['Luke Kennard', 'Devin Vassell', 'Jaden McDaniels']
+  player_points_assists_alternate                       50     19.76     7.50    35.50  ['Julius Randle', 'Marcus Smart', "De'Aaron Fox"]
+  STL                                                   49      1.38     0.50     3.50  ['Rui Hachimura', 'Devin Vassell', 'Julian Champagnie']
+  player_points_assists                                 28     20.79     8.50    32.50  ['Tyrese Maxey', 'LeBron James', 'Dylan Harper']
+  player_points_rebounds                                26     20.50     9.50    33.50  ['Tyrese Maxey', 'VJ Edgecombe', 'Quentin Grimes']
+  player_rebounds_assists                               20      9.70     4.50    16.50  ['Kelly Oubre Jr', 'Joel Embiid', 'Mikal Bridges']
+  player_points_q1                                      18      4.72     2.50     8.50  ['Paul George', 'VJ Edgecombe', 'Joel Embiid']
+  BLK                                                   14      1.86     0.50     4.50  ['Jarrett Allen', 'Chet Holmgren', 'Rudy Gobert']
+  team_totals                                            4    106.50   106.50   106.50  ['Philadelphia 76ers', 'New York Knicks']
+  team_totals_h1                                         4     54.50    54.50    54.50  ['Philadelphia 76ers', 'New York Knicks']
+  team_totals_q1                                         4     27.50    27.50    27.50  ['Philadelphia 76ers', 'New York Knicks']
+  team_totals_q2                                         4     27.00    26.50    27.50  ['Philadelphia 76ers', 'New York Knicks']
+  team_totals_q3                                         4     26.50    26.50    26.50  ['Philadelphia 76ers', 'New York Knicks']
+  team_totals_q4                                         4     25.50    25.50    25.50  ['Philadelphia 76ers', 'New York Knicks']
+  player_twos_alternate                                  2      3.00     1.50     4.50  ['Terrence Shannon J', 'Julius Randle']
+  player_twos                                            2      1.50     1.50     1.50  ['Marcus Smart']
+
+=== 2. BY line type ===
+  standard:        776
+  alternate:       302
+  side OVER:       943
+  side UNDER:      135
+  coverage_class breakdown:
+    pp_only (book_count=0):    485
+    single_book (book_count=1):438
+    multi_book  (book_count>=2):155
+
+=== 3. BOOK ODDS availability among no_reference_market rejects ===
+stat                                          n any_dk any_fd any_mgm any_bol book_pres_n
+  PTS                                         232      0    224      0     61        232
+  player_rebounds_assists_alternate           167      0     97      0    125        167
+  PRA                                         139      0    109      0     49        139
+  player_points_rebounds_alternate             83      0     83      0      0         83
+  3PM                                          82      0     82      0      1         82
+  REB                                          78      0     78      0      2         78
+  AST                                          64      0     60      0      9         64
+  player_points_assists_alternate              50      0     50      0      0         50
+
+=== 4. PAIR-RECOVERY AUDIT ===
+  exact_match recoverable     :   17  (1.6%)
+  near_0.5 recoverable        :    0  (0.0%)
+  near_1.0 recoverable        :  702  (65.1%)
+  near_1.5 recoverable        :    0  (0.0%)
+  base_market recoverable     :  179  (16.6%)
+  unrecoverable / one-side    :  180  (16.7%)
+
+=== 5a. 10 LIKELY RECOVERABLE (pair-recovery shows market exists) ===
+  [near_1.0              ] Tyrese Maxey       player_points_assi L 24.5 OVER   → pair: player_points_assi L 25.5 books=[dk=-120]
+  [near_1.0              ] Tyrese Maxey       player_points_assi L 24.5 UNDER  → pair: player_points_assi L 25.5 books=[dk=-110]
+  [near_1.0              ] De'Aaron Fox       player_points_assi L 20.5 OVER   → pair: player_points_assi L 19.5 books=[dk=-235,fd=-250]
+  [near_1.0              ] Jaden McDaniels    PTS                L  8.5 UNDER  → pair: PTS                L  9.5 books=[fd=360]
+  [exact_match           ] Dylan Harper       player_points_assi L 13.5 OVER   → pair: player_points_assi L 13.5 books=[fd=-130]
+  [exact_match           ] Dylan Harper       player_points_assi L 13.5 UNDER  → pair: player_points_assi L 13.5 books=[fd=-102]
+  [near_1.0              ] De'Aaron Fox       player_points_assi L 30.5 OVER   → pair: player_points_assi L 29.5 books=[dk=400,fd=400]
+  [near_1.0              ] Julius Randle      player_points_assi L 15.5 UNDER  → pair: player_points_assi L 16.5 books=[fd=370]
+  [near_1.0              ] Keldon Johnson     player_points_rebo L  6.5 UNDER  → pair: player_points_rebo L  7.5 books=[fd=350]
+  [near_1.0              ] Dylan Harper       PRA                L 10.5 UNDER  → pair: PRA                L 11.5 books=[fd=390]
+
+=== 5b. 5 AMBIGUOUS ===
+  [base_market_far       ] Julius Randle      PRA                L 50.5 OVER   → pair: PRA                L 48.5 books=[bol=1200]
+  [base_market_far       ] Julius Randle      PRA                L 48.5 OVER   → pair: PRA                L 50.5 books=[bol=1700]
+  [base_market_far       ] Julius Randle      PRA                L 42.5 OVER   → pair: PRA                L 40.5 books=[bol=370]
+  [base_market_far       ] Julius Randle      PRA                L 46.5 OVER   → pair: PRA                L 48.5 books=[bol=1200]
+  [base_market_far       ] Deandre Ayton      PRA                L 22.5 OVER   → pair: PRA                L 24.5 books=[dk=410,bol=192]
+
+=== 5c. 10 CLEARLY UNRECOVERABLE ===
+  [unrecoverable         ] Josh Hart          PRA                L 29.5 OVER   → pair: —                  L None books=[—]
+  [unrecoverable         ] Julius Randle      player_twos_alt    L  4.5 OVER   → pair: —                  L None books=[—]
+  [unrecoverable         ] Terrence Shannon … player_twos_alt    L  1.5 OVER   → pair: —                  L None books=[—]
+  [unrecoverable_one_side] Jalen Brunson      AST                L  8.5 UNDER  → pair: —                  L None books=[—]
+  [unrecoverable_one_side] Karl-Anthony Towns AST                L  6.5 OVER   → pair: —                  L None books=[—]
+  [unrecoverable         ] Jaxson Hayes       AST                L  0.5 OVER   → pair: —                  L None books=[—]
+  [unrecoverable         ] Jaxson Hayes       AST                L  0.5 UNDER  → pair: —                  L None books=[—]
+  [unrecoverable         ] Isaiah Joe         player_rebounds_as L  0.5 OVER   → pair: —                  L None books=[—]
+  [unrecoverable         ] Marcus Smart       player_twos        L  1.5 OVER   → pair: —                  L None books=[—]
+  [unrecoverable         ] Marcus Smart       player_twos        L  1.5 UNDER  → pair: —                  L None books=[—]
+
+=== 6. RECOVERABILITY BREAKDOWN BY stat_type ===
+stat                                                  n exact  ≤0.5  ≤1.0  base unrec
+  PTS                                                 232     0     0   159    61    12
+  player_rebounds_assists_alternate                   167    12     0   154     0     1
+  PRA                                                 139     0     0    80    45    14
+  player_points_rebounds_alternate                     83     1     0    82     0     0
+  3PM                                                  82     0     0    72     0    10
+  REB                                                  78     0     0    19    47    12
+  AST                                                  64     0     0    23    26    15
+  player_points_assists_alternate                      50     0     0    50     0     0
+  STL                                                  49     0     0    45     0     4
+  player_points_assists                                28     4     0     4     0    20
+  player_points_rebounds                               26     0     0     2     0    24
+  player_rebounds_assists                              20     0     0     0     0    20
+  player_points_q1                                     18     0     0     0     0    18
+  BLK                                                  14     0     0    12     0     2
+  team_totals                                           4     0     0     0     0     4
+TOTAL no_reference_market rejects examined: 1153
+
+=== Recovery-bucket distribution ===
+  A_pp_alt_with_under_companion                     :   654  (56.7%)
+  A_pp_alt_with_unplayable_same_side_book           :   323  (28.0%)
+  B_no_book_at_exact_line                           :   104  (9.0%)
+  C_no_live_match_at_all                            :    72  (6.2%)
+
+=== Examples ===
+
+[A_pp_alt_with_under_companion]
+  REJECT: Tyrese Maxey PTS L17.5 UNDER
+     CAND: side=OVER playable_on_pp=False src=sportsbook_fallback books=[dk=-140,fd=102]
+  REJECT: Anthony Edwards PTS L22.5 OVER
+     CAND: side=UNDER playable_on_pp=True src=prizepicks books=[bol=-118]
+  REJECT: Anthony Edwards PTS L22.5 UNDER
+     CAND: side=OVER playable_on_pp=True src=prizepicks books=[bol=-110]
+  REJECT: Keldon Johnson PTS L8.5 OVER
+     CAND: side=UNDER playable_on_pp=True src=prizepicks books=[fd=-106,bol=105]
+  REJECT: Keldon Johnson PTS L8.5 UNDER
+     CAND: side=OVER playable_on_pp=True src=prizepicks books=[fd=-125,bol=-135]
+
+[A_pp_alt_with_unplayable_same_side_book]
+  REJECT: Devin Vassell AST L1.5 OVER
+     CAND: side=OVER playable_on_pp=False src=sportsbook_fallback books=[fd=-900,bol=-286]
+  REJECT: Jaden McDaniels AST L1.5 OVER
+     CAND: side=OVER playable_on_pp=False src=sportsbook_fallback books=[fd=-235,bol=-455]
+  REJECT: Ayo Dosunmu AST L1.5 OVER
+     CAND: side=OVER playable_on_pp=False src=sportsbook_fallback books=[fd=-320,bol=-278]
+  REJECT: Dylan Harper AST L1.5 OVER
+     CAND: side=OVER playable_on_pp=False src=sportsbook_fallback books=[fd=-490,bol=-769]
+  REJECT: Victor Wembanyama AST L1.5 OVER
+     CAND: side=OVER playable_on_pp=False src=sportsbook_fallback books=[fd=-350,bol=-714]
+
+[B_no_book_at_exact_line]
+  REJECT: Devin Vassell player_rebounds_assists_alternate L9.5 OVER
+     CAND: side=OVER playable_on_pp=True src=prizepicks books=[bol=340]
+  REJECT: Naz Reid player_rebounds_assists_alternate L9.5 OVER
+     CAND: side=OVER playable_on_pp=True src=prizepicks books=[bol=170]
+  REJECT: Mike Conley STL L0.5 OVER
+     CAND: side=OVER playable_on_pp=True src=prizepicks books=[bol=-125]
+     CAND: side=UNDER playable_on_pp=True src=prizepicks books=[]
+  REJECT: Julius Randle player_twos_alternate L4.5 OVER
+     CAND: side=OVER playable_on_pp=True src=prizepicks books=[]
+  REJECT: Terrence Shannon Jr. player_twos_alternate L1.5 OVER
+     CAND: side=OVER playable_on_pp=True src=prizepicks books=[]
+
+[C_no_live_match_at_all]
+  REJECT: Jalen Brunson AST L8.5 OVER
+  REJECT: Jalen Brunson AST L8.5 UNDER
+  REJECT: Karl-Anthony Towns AST L6.5 OVER
+  REJECT: Tyrese Maxey player_points_assists L24.5 OVER
+  REJECT: Tyrese Maxey player_points_assists L24.5 UNDER
