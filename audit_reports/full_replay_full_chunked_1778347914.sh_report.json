@@ -1,0 +1,88 @@
+{
+  "run_id": "full_chunked_1778347914",
+  "window": "2024-02-01 \u2192 2024-03-01",
+  "events_processed": 174,
+  "tier_distribution": {
+    "front_lines": 1562,
+    "unqualified": 543207,
+    "war_zone": 215,
+    "safe_haven": 796
+  },
+  "top_fail_reasons": [
+    {
+      "_id": "front_lines_failed: gate_hit_rate_fail",
+      "n": 210977
+    },
+    {
+      "_id": "war_zone_failed: gate_direction_fail",
+      "n": 156665
+    },
+    {
+      "_id": "front_lines_failed: gate_direction_fail",
+      "n": 70848
+    },
+    {
+      "_id": "safe_haven_failed: gate_edge_fail",
+      "n": 37976
+    },
+    {
+      "_id": "safe_haven_failed: gate_hit_rate_fail",
+      "n": 33584
+    },
+    {
+      "_id": "safe_haven_failed: gate_direction_fail",
+      "n": 7637
+    },
+    {
+      "_id": "front_lines_failed: gate_edge_fail",
+      "n": 3366
+    },
+    {
+      "_id": "war_zone_failed: gate_hit_rate_fail",
+      "n": 2480
+    },
+    {
+      "_id": "safe_haven_failed: gate_market_structure_fail",
+      "n": 1640
+    },
+    {
+      "_id": "safe_haven_failed: gate_cv_fail",
+      "n": 1463
+    },
+    {
+      "_id": "front_lines_failed: gate_tp_fail",
+      "n": 555
+    },
+    {
+      "_id": "front_lines_failed: gate_cv_fail",
+      "n": 333
+    },
+    {
+      "_id": "front_lines_failed: gate_tp_unavailable",
+      "n": 310
+    },
+    {
+      "_id": "war_zone_failed: gate_cv_fail",
+      "n": 56
+    }
+  ],
+  "sh_by_family": {
+    "AST": 362,
+    "REB": 137,
+    "PTS": 57,
+    "PTS_AST": 55,
+    "PTS_REB": 54,
+    "THREES": 50,
+    "REB_AST": 41,
+    "PRA": 23,
+    "BLK": 17
+  },
+  "sh_unique_picks": 216,
+  "sh_settled": 216,
+  "sh_hits": 187,
+  "sh_misses": 29,
+  "sh_voids": 0,
+  "sh_hit_rate_pct": 86.57,
+  "sh_pnl_units": 9.83,
+  "sh_roi_pct": 4.55
+}
