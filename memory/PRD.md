@@ -89,6 +89,13 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-09 — Replay Test Suite Phase 0 (scaffolding only, no DB / no API)
+- Design doc committed: `/app/audit_reports/replay_suite_design_2026-05-09.md` (664 lines, 10 deliverables + 2 appendices). Approved decisions: 8-window snapshot ladder (`t-24h, t-12h, t-6h, t-3h, t-90m, t-60m, t-30m, close`); Phase-1 books = DK/FD/BetOnline/Caesars/MGM (Pinnacle deferred); 1M-credit hard kill switch per ingest run; per-tier canonical snapshot SH=close, FL=t-60m, WZ=t-30m; result source = BallDontLie + nba_master_hub_2026 cross-validation.
+- Files added: `backend/services/replay/{__init__.py,snapshot_plan.py,markets.py,schema.py,run_header.py}`, `backend/scripts/{run_replay.py,compare_replay_runs.py}`, `backend/tests/{test_replay_snapshot_plan.py,test_replay_run_header.py,test_replay_schema.py}`.
+- Schema: 11 isolated `replay_*` collections with declared INDEX_SPECS; `dataset_lineage="historical_replay"` quarantine sentinel keeps replay outputs out of forward-test reporting.
+- Versioning: `compute_run_fingerprint()` produces `git_commit + git_dirty + scoring_config_hash + gate_config_hash` (covers 10 scoring files + 4 gate files); deterministic, order-independent, missing-file safe.
+- 38/38 new tests pass (0.50s); 68/68 prior stabilization tests still pass; `git status` confirms zero modifications to existing files. No DB writes. No API calls.
+
 ### 2026-05-09 — The Odds API HISTORICAL alt-prop audit (READ-ONLY)
 - Goal: confirm exact recipe to fetch historical NBA alternate player-prop ladders (incl. combos) for any date ≥ 2023-05-03 from The Odds API.
 - 31 credits spent (cap was 35). All three probed alt-market keys returned 200 with non-empty ladders on a 2024-03-01 NBA event.
