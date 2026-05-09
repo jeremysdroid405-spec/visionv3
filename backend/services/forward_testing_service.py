@@ -28,6 +28,11 @@ import asyncio
 from services.config.collection_names import COLL
 from services.observability import log_silent_failure
 from services.scheduled_sports import SCHEDULED_SPORTS
+from services.forward_testing_lineage import (
+    MODERN_SSOT_CUTOFF,
+    lineage_metadata,
+    merge_filter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -658,7 +663,8 @@ class ForwardTestingService:
         self,
         sport: str = None,
         days: int = 30,
-        tier: str = None
+        tier: str = None,
+        include_legacy: bool = False,
     ) -> Dict[str, Any]:
         """
         Get aggregated performance metrics.
@@ -667,9 +673,14 @@ class ForwardTestingService:
             sport: Filter by sport (optional)
             days: Number of days to analyze
             tier: Filter by specific tier (optional)
+            include_legacy: include pre-2026-04-25 `vk_*` ranker era rows
+                in the summary. Default False — official reporting is
+                modern-SSOT only. See `services/forward_testing_lineage.py`.
             
         Returns:
-            Performance summary with hit rates by tier
+            Performance summary with hit rates by tier, plus
+            `dataset_lineage` metadata (generation, cutoff, row counts,
+            warning).
         """
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         cutoff_str = cutoff.strftime("%Y-%m-%d")
@@ -680,6 +691,8 @@ class ForwardTestingService:
             match_query["sport"] = sport.lower()
         if tier:
             match_query["tier"] = tier.lower()
+        # Apply lineage cutoff (preserves the days window via merge logic)
+        match_query = merge_filter(match_query, include_legacy)
         
         # Aggregate by sport and tier
         pipeline = [
@@ -740,39 +753,108 @@ class ForwardTestingService:
         else:
             summary["overall"]["hit_rate"] = 0
         
+        # Lineage metadata — counts use the same filter set MINUS the
+        # capture_date / outcome clauses so the user sees how many rows
+        # the lineage filter excluded.
+        meta_match = {k: v for k, v in match_query.items()
+                      if k not in ("capture_date", "$and", "outcome")}
+        summary["dataset_lineage"] = await lineage_metadata(
+            self.db, OUTCOMES_COLLECTION, meta_match, include_legacy
+        )
+        
         return summary
     
     async def get_daily_breakdown(
         self,
         sport: str,
-        days: int = 14
-    ) -> List[Dict]:
-        """Get day-by-day performance breakdown."""
+        days: int = 14,
+        include_legacy: bool = False,
+    ) -> Dict[str, Any]:
+        """Get day-by-day performance breakdown.
+
+        Returns
+        -------
+        dict with `data` (list of daily metric rows) and `dataset_lineage`
+        (generation / cutoff / row counts / warning).
+        """
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         cutoff_str = cutoff.strftime("%Y-%m-%d")
-        
+
+        # `forward_test_metrics` uses `date` not `capture_date`.
+        match_query: Dict[str, Any] = {
+            "sport": sport.lower(),
+            "date": {"$gte": cutoff_str},
+        }
+        # Apply modern-SSOT cutoff to the `date` field on this collection.
+        if not include_legacy:
+            match_query["date"]["$gte"] = max(cutoff_str, MODERN_SSOT_CUTOFF)
+
         pipeline = [
-            {
-                "$match": {
-                    "sport": sport.lower(),
-                    "date": {"$gte": cutoff_str}
-                }
-            },
-            {"$sort": {"date": -1}}
+            {"$match": match_query},
+            {"$sort": {"date": -1}},
         ]
-        
-        return await self.metrics.aggregate(pipeline).to_list(length=None)
+
+        rows = await self.metrics.aggregate(pipeline).to_list(length=None)
+
+        # Lineage counts on the metrics collection (uses `date`, not
+        # `capture_date`) — compute legacy/modern split inline.
+        legacy_metrics = await self.metrics.count_documents(
+            {"sport": sport.lower(), "date": {"$lt": MODERN_SSOT_CUTOFF}}
+        )
+        modern_metrics = await self.metrics.count_documents(
+            {"sport": sport.lower(), "date": {"$gte": MODERN_SSOT_CUTOFF}}
+        )
+        from services.forward_testing_lineage import (
+            LEGACY_GENERATION,
+            MIXED_GENERATION,
+            MIXED_GENERATION_WARNING,
+            MODERN_GENERATION,
+        )
+        if include_legacy and legacy_metrics > 0 and modern_metrics > 0:
+            generation = MIXED_GENERATION
+            warning = MIXED_GENERATION_WARNING
+        elif include_legacy and legacy_metrics > 0:
+            generation = LEGACY_GENERATION
+            warning = None
+        else:
+            generation = MODERN_GENERATION
+            warning = None
+
+        return {
+            "data": rows,
+            "dataset_lineage": {
+                "dataset_generation": generation,
+                "modern_ssot_cutoff": MODERN_SSOT_CUTOFF,
+                "include_legacy_flag": bool(include_legacy),
+                "row_counts": {
+                    "legacy_vk": legacy_metrics,
+                    "modern_ssot": modern_metrics,
+                    "total": legacy_metrics + modern_metrics,
+                    "excluded_from_official_reporting":
+                        legacy_metrics if not include_legacy else 0,
+                },
+                "warning": warning,
+            },
+        }
     
-    async def get_calibration_report(self, sport: str = None) -> Dict[str, Any]:
+    async def get_calibration_report(
+        self, sport: str = None, include_legacy: bool = False
+    ) -> Dict[str, Any]:
         """
         Generate calibration report to validate model accuracy.
         
         Compares predicted hit rates vs actual hit rates across
         probability buckets to detect systematic over/under-prediction.
+
+        Modern-SSOT only by default — pre-2026-04-25 legacy `vk_*` ranker
+        rows are excluded because their `vk_prob` semantics predate the
+        SSOT pricing contract and are not statistically comparable to
+        post-cutover model output.
         """
         match_query = {"outcome": {"$ne": None}}
         if sport:
             match_query["sport"] = sport.lower()
+        match_query = merge_filter(match_query, include_legacy)
         
         # Group by VK probability buckets
         pipeline = [
@@ -811,10 +893,21 @@ class ForwardTestingService:
                 "calibration_error": round(actual - predicted, 1)
             })
         
+        meta_match = {k: v for k, v in match_query.items()
+                      if k not in ("capture_date", "$and", "outcome")}
+        calibration["dataset_lineage"] = await lineage_metadata(
+            self.db, OUTCOMES_COLLECTION, meta_match, include_legacy
+        )
         return calibration
     
     async def get_snapshot_status(self) -> Dict[str, Any]:
-        """Get current status of forward-testing system."""
+        """Get current status of forward-testing system.
+
+        Reports BOTH legacy and modern row counts so operators know the
+        full universe of stored data, while making the modern-SSOT
+        cutoff explicit. This is a status endpoint, not a metrics
+        endpoint, so legacy rows are surfaced (counts only).
+        """
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         
         # Count snapshots
@@ -824,6 +917,20 @@ class ForwardTestingService:
         
         # Count outcomes
         total_outcomes = await self.outcomes.count_documents({})
+        
+        # Generation split
+        legacy_snaps = await self.snapshots.count_documents(
+            {"capture_date": {"$lt": MODERN_SSOT_CUTOFF}}
+        )
+        modern_snaps = await self.snapshots.count_documents(
+            {"capture_date": {"$gte": MODERN_SSOT_CUTOFF}}
+        )
+        legacy_outs = await self.outcomes.count_documents(
+            {"capture_date": {"$lt": MODERN_SSOT_CUTOFF}}
+        )
+        modern_outs = await self.outcomes.count_documents(
+            {"capture_date": {"$gte": MODERN_SSOT_CUTOFF}}
+        )
         
         # Get date range
         oldest = await self.snapshots.find_one({}, sort=[("capture_date", 1)])
@@ -837,6 +944,11 @@ class ForwardTestingService:
             "date_range": {
                 "oldest": oldest.get("capture_date") if oldest else None,
                 "newest": newest.get("capture_date") if newest else None
+            },
+            "lineage_split": {
+                "modern_ssot_cutoff": MODERN_SSOT_CUTOFF,
+                "snapshots": {"legacy_vk": legacy_snaps, "modern_ssot": modern_snaps},
+                "outcomes":  {"legacy_vk": legacy_outs,  "modern_ssot": modern_outs},
             },
             "checked_at": datetime.now(timezone.utc).isoformat()
         }

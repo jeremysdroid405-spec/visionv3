@@ -90,18 +90,28 @@ async def get_performance(
     response: Response,
     sport: Optional[str] = Query(None, description="Filter by sport"),
     days: int = Query(30, description="Number of days to analyze"),
-    tier: Optional[str] = Query(None, description="Filter by tier (safe_haven/front_lines/war_zone)")
+    tier: Optional[str] = Query(None, description="Filter by tier (safe_haven/front_lines/war_zone)"),
+    include_legacy: bool = Query(
+        False,
+        description=(
+            "Include pre-2026-04-25 legacy `vk_*` ranker data. Default False "
+            "(modern-SSOT only). Combining generations is statistically "
+            "unsound — see `services/forward_testing_lineage.py`."
+        ),
+    ),
 ):
     """
     Get aggregated performance summary.
     
     Returns hit rates by sport and tier over the specified period.
+    Modern-SSOT only by default; pass `include_legacy=true` to include
+    pre-cutover rows alongside a mixed-generation warning.
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
     service = get_service()
     
-    result = await service.get_performance_summary(sport, days, tier)
+    result = await service.get_performance_summary(sport, days, tier, include_legacy=include_legacy)
     
     return result
 
@@ -110,30 +120,40 @@ async def get_performance(
 async def get_daily_breakdown(
     response: Response,
     sport: str = Query(..., description="Sport (nba/mlb)"),
-    days: int = Query(14, description="Number of days")
+    days: int = Query(14, description="Number of days"),
+    include_legacy: bool = Query(
+        False,
+        description="Include pre-2026-04-25 legacy `vk_*` ranker data.",
+    ),
 ):
     """
     Get day-by-day performance breakdown.
     
     Returns daily hit rates for tracking trends over time.
+    Modern-SSOT only by default.
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
     service = get_service()
     
-    result = await service.get_daily_breakdown(sport, days)
+    result = await service.get_daily_breakdown(sport, days, include_legacy=include_legacy)
     
     return {
         "sport": sport,
         "days": days,
-        "data": result
+        "data": result.get("data", []),
+        "dataset_lineage": result.get("dataset_lineage"),
     }
 
 
 @router.get("/v3/forward-test/calibration")
 async def get_calibration(
     response: Response,
-    sport: Optional[str] = Query(None, description="Filter by sport")
+    sport: Optional[str] = Query(None, description="Filter by sport"),
+    include_legacy: bool = Query(
+        False,
+        description="Include pre-2026-04-25 legacy `vk_*` ranker data.",
+    ),
 ):
     """
     Get model calibration report.
@@ -144,12 +164,15 @@ async def get_calibration(
     A well-calibrated model should show:
     - 70% predicted → ~70% actual
     - 80% predicted → ~80% actual
+
+    Modern-SSOT only by default — legacy `vk_prob_over` predates the
+    SSOT pricing contract and is not statistically comparable.
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     
     service = get_service()
     
-    result = await service.get_calibration_report(sport)
+    result = await service.get_calibration_report(sport, include_legacy=include_legacy)
     
     return result
 

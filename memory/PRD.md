@@ -23,6 +23,13 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
   - Post-fix sensitivity: 0 WZ rejects in vision_score_v2 [55,60) — floor move 60→55 yields zero gain. Floor stays at 60.
   - Tests: `tests/test_combo_synth_vk2_routing.py` (8 tests, all passing — incl. mutation guard).
   - Audit: `/app/audit_reports/wz_alt_line_projection_audit_2026-05-09.md`.
+- **Forward-testing lineage boundary (2026-05-09) — COMMITTED**
+  - `MODERN_SSOT_CUTOFF = 2026-04-25`. New `services/forward_testing_lineage.py` provides `lineage_filter`, `merge_filter`, `lineage_metadata`.
+  - Endpoints `/v3/forward-test/{performance,daily,calibration,status}` excludes legacy `vk_*` rows by default; `?include_legacy=true` opt-in returns mixed-generation warning.
+  - Every reporting response carries `dataset_lineage` block (generation, cutoff, row counts, excluded count, warning).
+  - 17 new tests in `tests/test_forward_testing_lineage.py` (68/68 stabilization tests passing).
+  - No raw historical data deleted, mutated, or backfilled; no scoring/gates/tiers/settlement/odds-routing changes.
+  - Audit: `/app/audit_reports/fl_goblin_lineage_findings_2026-05-09.md`.
 - **NBA reference-odds chain port (2026-05-09) — COMMITTED**
   - `_pick_reference_odds` NBA branch extended from `dk → mgm` to `dk → fd → mgm → bol`.
   - 18 new tests (`tests/test_reference_odds_chain.py`); 51/51 stabilization tests passing.
