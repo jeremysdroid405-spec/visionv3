@@ -1,25 +1,32 @@
 #!/usr/bin/env python3
 """
-PropVision Replay — Partial-Parity Test Report.
+PropVision Replay — $1-Flat-Bet Publication Simulation Report.
 
-Reads `replay_evaluations` × `replay_outcomes` for one run_id and
-produces a structured Markdown + JSON report. READ-ONLY against
-replay collections; no live mutation.
+Simulates the question:
 
-This report is explicitly labeled PARTIAL-PARITY because production
-VK2 / injury / matchup features are not yet wired into replay
-(see `audit_reports/replay_phase25_30day_FINAL.md`). Confidence
-labels are surfaced per section.
+    "If we had ingested these historical Odds-API props as live props
+     today, what would PropVision have published, and what would have
+     happened if we bet $1 on every published pick?"
+
+This is NOT a candidate-pool ROI report. The 503k+ replay_evaluations
+are CANDIDATES, not bets. Bets are the subset whose tier is exactly
+one of:
+
+    safe_haven | front_lines | war_zone
+
+ROI / hit-rate / odds breakdowns ONLY apply to that qualified subset.
+
+If zero candidates pass the production gates (the current state of
+the partial-parity replay run), the report says so loudly and refuses
+to invent a number. Proxy/counterfactual rule sets are placed in a
+clearly-separated EXPERIMENTAL section and explicitly NOT presented
+as production performance.
 
 USAGE
 -----
     python /app/backend/scripts/run_replay_report.py \\
         --run-id a1aeb71a6ef046baae4fb56deef06667 \\
-        --snapshot-window t-30m \\
-        --sport nba \\
-        --feature-completeness partial \\
-        --include-unqualified true \\
-        --output /app/audit_reports/replay_partial_report.md
+        --output /app/audit_reports/replay_publication_report.md
 """
 from __future__ import annotations
 
@@ -42,177 +49,90 @@ from motor.motor_asyncio import AsyncIOMotorClient   # noqa: E402
 EVALS = "replay_evaluations"
 OUTS  = "replay_outcomes"
 
+# Tiers we treat as PUBLISHED. Anything else (including `unqualified`,
+# `None`, gate-failed reasons) is a candidate that did NOT become a
+# bet. Mirrors `services.scoring.gates.thresholds.THRESHOLDS["nba"]`
+# tier names.
+PUBLISHED_TIERS = ("safe_haven", "front_lines", "war_zone")
+
+
 # ---------------- helpers ----------------
-def _amer_to_implied(o: Optional[int]) -> Optional[float]:
-    if o is None:
-        return None
-    if o > 0:
-        return 100.0 / (o + 100.0)
-    if o < 0:
-        return (-o) / ((-o) + 100.0)
-    return None
+def _fmt_signed(x, spec: str = "+.4f") -> str:
+    """Null-safe numeric formatter — used so `None` from empty subsets
+    never crashes the markdown render."""
+    if x is None:
+        return "n/a"
+    try:
+        return format(x, spec)
+    except (TypeError, ValueError):
+        return str(x)
 
 
-def _pct(n, d):
-    return (round(100.0 * n / d, 2) if d else 0.0)
+def _pct(n, d) -> float:
+    return (round(100.0 * n / d, 4) if d else 0.0)
 
 
-def _odds_bucket(o: Optional[int]) -> str:
-    if o is None:           return "<missing>"
-    if o < 0:               return "neg"
-    if o < 150:             return "+100..+149"
-    if o < 200:             return "+150..+199"
-    if o < 300:             return "+200..+299"
-    if o < 500:             return "+300..+499"
-    return "+500+"
-
-
-# ---------------- aggregations ----------------
+# ---------------- core sections ----------------
 async def section_dataset(db, *, run_id: str) -> Dict[str, Any]:
+    """Just describes the candidate pool — no ROI claims here."""
     n_eval = await db[EVALS].count_documents({"replay_run_id": run_id})
     n_out  = await db[OUTS].count_documents({"replay_run_id": run_id})
 
-    sample = await db[EVALS].find_one({"replay_run_id": run_id}, {
-        "_id": 0, "snapshot_label": 1, "commence_time": 1,
-    })
-    snap = sample.get("snapshot_label") if sample else None
-
-    rng_pipe = [
+    # Date range from the candidate pool.
+    rng = [d async for d in db[EVALS].aggregate([
         {"$match": {"replay_run_id": run_id}},
         {"$group": {"_id": None,
                      "min_ct": {"$min": "$commence_time"},
                      "max_ct": {"$max": "$commence_time"}}},
-    ]
-    rng = [d async for d in db[EVALS].aggregate(rng_pipe)]
+    ])]
     min_ct = rng[0]["min_ct"] if rng else None
     max_ct = rng[0]["max_ct"] if rng else None
 
-    out_dist: Dict[str, int] = {"hit": 0, "miss": 0, "push": 0,
-                                  "void_dnp": 0}
+    snap_sample = await db[EVALS].find_one(
+        {"replay_run_id": run_id}, {"_id": 0, "snapshot_label": 1},
+    )
+    snap = snap_sample.get("snapshot_label") if snap_sample else None
+
+    # Outcome breakdown over the SETTLED candidate pool (still not a
+    # bet table — this is just data-quality signal).
+    out_dist: Dict[str, int] = {"hit": 0, "miss": 0,
+                                  "push": 0, "void_dnp": 0}
     async for d in db[OUTS].aggregate([
         {"$match": {"replay_run_id": run_id}},
         {"$group": {"_id": "$outcome", "n": {"$sum": 1}}},
     ]):
         out_dist[d["_id"]] = d["n"]
 
-    fc_dist: Dict[str, int] = {}
-    async for d in db[EVALS].aggregate([
-        {"$match": {"replay_run_id": run_id}},
-        {"$group": {"_id": "$feature_completeness", "n": {"$sum": 1}}},
-    ]):
-        fc_dist[d["_id"] or "<none>"] = d["n"]
-
     return {
-        "replay_run_id":     run_id,
-        "snapshot_window":   snap,
-        "date_range":        {"min": min_ct, "max": max_ct},
-        "evaluations_total": n_eval,
-        "outcomes_total":    n_out,
-        "outcome_breakdown": out_dist,
-        "feature_completeness_distribution": fc_dist,
-        "known_parity_gaps": [
-            "VK2 historical projection not wired (PARITY-TODO P5)",
-            "Injury timeline not ingested (PARITY-TODO P4)",
-            "Matchup/pace as-of-time not wired (PARITY-TODO P3)",
-        ],
-        "confidence": {
-            "level":  "high",
-            "reason": "Counts are direct DB reads; no inference involved.",
-        },
+        "replay_run_id":       run_id,
+        "snapshot_window":     snap,
+        "candidate_date_range": {"min": min_ct, "max": max_ct},
+        "candidates_total":     n_eval,
+        "settled_candidates":   n_out,
+        "settled_outcome_breakdown": out_dist,
     }
 
 
-async def section_gate_dist(db, *, run_id: str) -> Dict[str, Any]:
-    by_reason: Dict[str, int] = {}
-    async for d in db[EVALS].aggregate([
-        {"$match": {"replay_run_id": run_id}},
-        {"$group": {"_id": "$tier_reason", "n": {"$sum": 1}}},
-        {"$sort": {"n": -1}}, {"$limit": 25},
-    ]):
-        by_reason[d["_id"] or "<none>"] = d["n"]
+async def section_publication_simulation(
+    db, *, run_id: str,
+) -> Dict[str, Any]:
+    """The publication simulation.
 
-    by_family: Dict[str, Dict[str, int]] = {}
-    async for d in db[EVALS].aggregate([
-        {"$match": {"replay_run_id": run_id}},
-        {"$group": {"_id": {"f": "$stat_family", "r": "$tier_reason"},
-                     "n": {"$sum": 1}}},
-    ]):
-        f = d["_id"]["f"] or "<none>"
-        r = d["_id"]["r"] or "<none>"
-        by_family.setdefault(f, {})[r] = d["n"]
+    For every settled outcome we look up its tier (stored on
+    `replay_outcomes.tier_at_eval`) and only count it as a bet if
+    `tier_at_eval ∈ PUBLISHED_TIERS`. Each qualifying row contributes
+    $1 stake and `pnl_units` to the bankroll.
 
-    by_book: Dict[str, int] = {}
-    async for d in db[EVALS].aggregate([
-        {"$match": {"replay_run_id": run_id}},
-        {"$group": {"_id": "$bookmaker", "n": {"$sum": 1}}},
-        {"$sort": {"n": -1}},
-    ]):
-        by_book[d["_id"] or "<none>"] = d["n"]
-
-    return {
-        "by_reason_top25":  by_reason,
-        "by_stat_family":   by_family,
-        "by_bookmaker":     by_book,
-        "confidence": {
-            "level":  "high",
-            "reason": "Direct count of production gate-engine outputs.",
-        },
-    }
-
-
-# ---------------- counterfactual rule sets ----------------
-def _rule_predicate(rule: str):
-    """Return a Mongo $match predicate for a counterfactual rule.
-
-    All rules operate on `replay_outcomes` rows so we get hit/miss/PnL
-    directly. Each rule is INTENTIONALLY simple — the goal is fast,
-    interpretable signal.
+    Per-tier rollup includes:
+        n  hits  miss  void  push  hit_rate  roi_per_unit
+        pnl_units  avg_odds  avg_tp  avg_edge
     """
-    if rule == "production_gates":
-        # Production gates currently classify all 503k as unqualified
-        # — we still report this for completeness.
-        return {}
-    if rule == "relaxed_direction":
-        # Same as production but ignoring direction match — pick OVER
-        # whenever rolling μ ≥ line × 0.95, or UNDER whenever μ ≤ line × 1.05
-        # Implemented as: tp >= 50 (TP-led).
-        return {"p_true_active": {"$gte": 50}}
-    if rule == "ev_only_longshot":
-        return {"odds_american": {"$gte": 200},
-                 "edge_vs_fair":  {"$gte": 5}}
-    if rule == "hr_cv_gate":
-        return {"feature_set.hit_rate_l20": {"$gte": 0.65},
-                 "feature_set.cv":           {"$lte": 0.35}}
-    if rule == "tp_edge_gate":
-        return {"p_true_active": {"$gte": 55},
-                 "edge_vs_fair":  {"$gte": 3}}
-    if rule == "war_zone_longshot_proposal":
-        # Lifted CV ladder + edge floor + odds band
-        return {"odds_american": {"$gte": 150, "$lte": 500},
-                 "feature_set.cv": {"$gte": 0.30, "$lte": 0.55},
-                 "edge_vs_fair":   {"$gte": 4}}
-    raise ValueError(f"unknown rule: {rule}")
-
-
-_RULES = [
-    "production_gates",
-    "relaxed_direction",
-    "ev_only_longshot",
-    "hr_cv_gate",
-    "tp_edge_gate",
-    "war_zone_longshot_proposal",
-]
-
-
-async def _ruleset_summary(db, *, run_id: str, rule: str) -> Dict[str, Any]:
-    pred = _rule_predicate(rule)
-    match = {"replay_run_id": run_id, **pred}
-
-    # Roll up
+    # --- Per-tier rollup over settled qualified picks. ---
     pipe = [
-        {"$match": match},
+        {"$match": {"replay_run_id": run_id,
+                     "tier_at_eval": {"$in": list(PUBLISHED_TIERS)}}},
         {"$group": {
-            "_id": None,
+            "_id": "$tier_at_eval",
             "n":   {"$sum": 1},
             "hits":{"$sum": {"$cond": [{"$eq": ["$outcome", "hit"]}, 1, 0]}},
             "miss":{"$sum": {"$cond": [{"$eq": ["$outcome", "miss"]}, 1, 0]}},
@@ -224,252 +144,134 @@ async def _ruleset_summary(db, *, run_id: str, rule: str) -> Dict[str, Any]:
             "avg_edge": {"$avg": "$edge_vs_fair"},
         }},
     ]
-    agg = [d async for d in db[OUTS].aggregate(pipe)]
-    if not agg:
-        return {"rule": rule, "n": 0, "hits": 0, "miss": 0, "void": 0,
-                 "push": 0, "hit_rate": None, "roi_per_unit": None,
-                 "pnl_units": 0.0, "avg_odds": None, "avg_tp": None,
-                 "avg_edge": None,
-                 "top_25": [], "worst_25": []}
-    a = agg[0]
-    decided = a["hits"] + a["miss"]
-    hr = (a["hits"] / decided) if decided else None
-    roi = (a["pnl"] / a["n"]) if a["n"] else None
-
-    top = await db[OUTS].find(
-        match, projection={"_id": 0, "scoring_payload": 0},
-    ).sort([("pnl_units", -1)]).limit(25).to_list(length=25)
-    worst = await db[OUTS].find(
-        match, projection={"_id": 0, "scoring_payload": 0},
-    ).sort([("pnl_units", 1)]).limit(25).to_list(length=25)
-
-    return {
-        "rule":          rule,
-        "n":             a["n"],
-        "hits":          a["hits"], "miss": a["miss"],
-        "void":          a["void"], "push": a["push"],
-        "hit_rate":      round(hr, 4) if hr is not None else None,
-        "roi_per_unit":  round(roi, 4) if roi is not None else None,
-        "pnl_units":     round(a["pnl"], 2),
-        "avg_odds":      round(a["avg_odds"], 2) if a["avg_odds"] else None,
-        "avg_tp":        round(a["avg_tp"], 2)   if a["avg_tp"]   else None,
-        "avg_edge":      round(a["avg_edge"], 2) if a["avg_edge"] else None,
-        "top_25":        top,
-        "worst_25":      worst,
+    by_tier: Dict[str, Dict[str, Any]] = {
+        t: {"tier": t, "n": 0, "hits": 0, "miss": 0,
+            "void": 0, "push": 0,
+            "hit_rate": None, "roi_per_unit": None,
+            "pnl_units": 0.0, "avg_odds": None,
+            "avg_tp": None, "avg_edge": None}
+        for t in PUBLISHED_TIERS
     }
+    async for d in db[OUTS].aggregate(pipe):
+        decided = d["hits"] + d["miss"]
+        by_tier[d["_id"]] = {
+            "tier":         d["_id"],
+            "n":            d["n"],
+            "hits":         d["hits"], "miss": d["miss"],
+            "void":         d["void"], "push": d["push"],
+            "hit_rate":     (round(d["hits"] / decided, 4)
+                              if decided else None),
+            "roi_per_unit": (round(d["pnl"] / d["n"], 4)
+                              if d["n"] else None),
+            "pnl_units":    round(d["pnl"], 4),
+            "avg_odds":     (round(d["avg_odds"], 2)
+                              if d["avg_odds"] is not None else None),
+            "avg_tp":       (round(d["avg_tp"], 2)
+                              if d["avg_tp"] is not None else None),
+            "avg_edge":     (round(d["avg_edge"], 2)
+                              if d["avg_edge"] is not None else None),
+        }
 
-
-async def section_counterfactuals(db, *, run_id: str) -> Dict[str, Any]:
-    rules = {}
-    for r in _RULES:
-        rules[r] = await _ruleset_summary(db, run_id=run_id, rule=r)
-    return {
-        "rules": rules,
-        "confidence": {
-            "level":  "medium",
-            "reason": "Hit/PnL math is exact; the rule predicates are "
-                      "heuristics (not VK2-aware), so 'profitable' here "
-                      "means historically profitable for THIS rule, NOT "
-                      "for current production tiers.",
-        },
-    }
-
-
-# ---------------- splits ----------------
-async def _split_summary(db, *, run_id: str,
-                          group_expr: Any, label: str) -> Dict[str, Any]:
-    pipe = [
-        {"$match": {"replay_run_id": run_id}},
+    # --- Combined qualified rollup. ---
+    combined_pipe = [
+        {"$match": {"replay_run_id": run_id,
+                     "tier_at_eval": {"$in": list(PUBLISHED_TIERS)}}},
         {"$group": {
-            "_id": group_expr,
+            "_id": None,
             "n":   {"$sum": 1},
             "hits":{"$sum": {"$cond": [{"$eq": ["$outcome", "hit"]}, 1, 0]}},
             "miss":{"$sum": {"$cond": [{"$eq": ["$outcome", "miss"]}, 1, 0]}},
             "void":{"$sum": {"$cond": [{"$eq": ["$outcome", "void_dnp"]}, 1, 0]}},
+            "push":{"$sum": {"$cond": [{"$eq": ["$outcome", "push"]}, 1, 0]}},
             "pnl": {"$sum": "$pnl_units"},
             "avg_odds": {"$avg": "$odds_american"},
         }},
-        {"$sort": {"n": -1}},
     ]
-    rows: List[Dict[str, Any]] = []
-    async for d in db[OUTS].aggregate(pipe):
-        decided = d["hits"] + d["miss"]
-        rows.append({
-            label:        d["_id"],
-            "n":          d["n"],
-            "hits":       d["hits"],
-            "miss":       d["miss"],
-            "hit_rate":   (round(d["hits"] / decided, 4)
-                           if decided else None),
-            "roi_per_unit": (round(d["pnl"] / d["n"], 4)
-                              if d["n"] else None),
-            "pnl_units":  round(d["pnl"], 2),
-            "avg_odds":   (round(d["avg_odds"], 1)
-                            if d["avg_odds"] else None),
-        })
-    return rows
+    cagg = [d async for d in db[OUTS].aggregate(combined_pipe)]
+    if cagg:
+        c = cagg[0]
+        decided = c["hits"] + c["miss"]
+        combined = {
+            "n":            c["n"],
+            "hits":         c["hits"], "miss": c["miss"],
+            "void":         c["void"], "push": c["push"],
+            "hit_rate":     (round(c["hits"] / decided, 4)
+                              if decided else None),
+            "roi_per_unit": (round(c["pnl"] / c["n"], 4)
+                              if c["n"] else None),
+            "pnl_units":    round(c["pnl"], 4),
+            "avg_odds":     (round(c["avg_odds"], 2)
+                              if c["avg_odds"] is not None else None),
+        }
+    else:
+        combined = {"n": 0, "hits": 0, "miss": 0, "void": 0, "push": 0,
+                     "hit_rate": None, "roi_per_unit": None,
+                     "pnl_units": 0.0, "avg_odds": None}
 
+    # --- Candidate-pool sizing. ---
+    candidates = await db[EVALS].count_documents({"replay_run_id": run_id})
+    qualified_candidates = await db[EVALS].count_documents(
+        {"replay_run_id": run_id,
+         "tier": {"$in": list(PUBLISHED_TIERS)}})
 
-async def section_alt_vs_standard(db, *, run_id: str) -> Dict[str, Any]:
     return {
-        "by_alternate_flag": await _split_summary(
-            db, run_id=run_id, group_expr="$is_alternate",
-            label="is_alternate"),
-        "by_combo_flag": await _split_summary(
-            db, run_id=run_id, group_expr="$is_combo",
-            label="is_combo"),
-        "by_stat_family": await _split_summary(
-            db, run_id=run_id, group_expr="$stat_family",
-            label="stat_family"),
-        "confidence": {"level": "high", "reason":
-            "Direct hit/PnL by group; no inference."},
+        "thesis":                 ("This report simulates a $1 flat bet "
+                                    "on every prop PropVision would have "
+                                    "published."),
+        "candidates_evaluated":   candidates,
+        "candidates_qualified":   qualified_candidates,
+        "qualified_pct":          _pct(qualified_candidates, candidates),
+        "settled_qualified_total": combined["n"],
+        "by_tier":                by_tier,
+        "combined":               combined,
     }
 
 
-async def section_odds_buckets(db, *, run_id: str) -> Dict[str, Any]:
-    # Manual bucket assignment in-pipeline.
-    pipe = [
-        {"$match": {"replay_run_id": run_id}},
-        {"$addFields": {
-            "bucket": {"$switch": {
-                "branches": [
-                    {"case": {"$lt":  ["$odds_american", 0]},     "then": "neg"},
-                    {"case": {"$lt":  ["$odds_american", 150]},   "then": "+100..+149"},
-                    {"case": {"$lt":  ["$odds_american", 200]},   "then": "+150..+199"},
-                    {"case": {"$lt":  ["$odds_american", 300]},   "then": "+200..+299"},
-                    {"case": {"$lt":  ["$odds_american", 500]},   "then": "+300..+499"},
-                ],
-                "default": "+500+",
-            }},
-        }},
-        {"$group": {
-            "_id": "$bucket",
-            "n":   {"$sum": 1},
-            "hits":{"$sum": {"$cond": [{"$eq": ["$outcome", "hit"]}, 1, 0]}},
-            "miss":{"$sum": {"$cond": [{"$eq": ["$outcome", "miss"]}, 1, 0]}},
-            "pnl": {"$sum": "$pnl_units"},
-            "avg_tp":   {"$avg": "$p_true_active"},
-            "avg_edge": {"$avg": "$edge_vs_fair"},
-        }},
-        {"$sort": {"_id": 1}},
-    ]
-    rows = []
-    async for d in db[OUTS].aggregate(pipe):
-        decided = d["hits"] + d["miss"]
-        rows.append({
-            "odds_bucket": d["_id"],
-            "n":           d["n"],
-            "hit_rate":    (round(d["hits"] / decided, 4)
-                            if decided else None),
-            "roi_per_unit":(round(d["pnl"] / d["n"], 4)
-                            if d["n"] else None),
-            "pnl_units":   round(d["pnl"], 2),
-            "avg_tp":      (round(d["avg_tp"], 2) if d["avg_tp"] else None),
-            "avg_edge":    (round(d["avg_edge"], 2) if d["avg_edge"] else None),
-        })
+async def section_unqualified_reasons(db, *, run_id: str) -> Dict[str, Any]:
+    """Why candidates didn't become bets — informative, not ROI."""
+    by_reason: Dict[str, int] = {}
+    async for d in db[EVALS].aggregate([
+        {"$match": {"replay_run_id": run_id,
+                     "tier": {"$nin": list(PUBLISHED_TIERS)}}},
+        {"$group": {"_id": "$tier_reason", "n": {"$sum": 1}}},
+        {"$sort": {"n": -1}}, {"$limit": 25},
+    ]):
+        by_reason[d["_id"] or "<none>"] = d["n"]
+    n_total = sum(by_reason.values())
     return {
-        "rows": rows,
-        "confidence": {"level": "medium", "reason":
-            "ROI by odds bucket is mathematically clean, BUT relies on "
-            "the partial-parity feature set; a fully-featured run could "
-            "shift bucket compositions."},
+        "unqualified_total": n_total,
+        "top_reasons":       by_reason,
     }
 
 
-async def section_timing(db, *, run_id: str) -> Dict[str, Any]:
-    rows = await _split_summary(
-        db, run_id=run_id, group_expr="$snapshot_label",
-        label="snapshot_label")
-    return {
-        "rows": rows,
-        "confidence": {"level": "medium", "reason":
-            "If the run was filtered to a single snapshot (e.g. t-30m), "
-            "this section will report 1 row — re-run engine across more "
-            "windows to populate."},
+# ---------------- experimental (clearly partitioned) ----------------
+async def section_experimental_proxies(
+    db, *, run_id: str,
+) -> Dict[str, Any]:
+    """HEURISTIC counterfactual rule sets — labeled experimental and
+    NOT production performance. Kept so we can see whether a different
+    rule set would have produced bets when the production stack
+    produced none. None of these numbers may be presented as
+    PropVision publication ROI."""
+    rules = {
+        "tp_edge_gate": {
+            "p_true_active": {"$gte": 55},
+            "edge_vs_fair":  {"$gte": 3},
+        },
+        "ev_only_longshot": {
+            "odds_american": {"$gte": 200},
+            "edge_vs_fair":  {"$gte": 5},
+        },
+        "proxy_safe_haven": {
+            "odds_american": {"$lte": -180},
+            "p_true_active": {"$gte": 65},
+            "edge_vs_fair":  {"$gte": 2},
+        },
     }
-
-
-async def section_direction_fail(db, *, run_id: str) -> Dict[str, Any]:
-    """Props where production gate said 'direction fail' but TP/edge says
-    profitable. Useful diagnostic of where μ-only-rolling fails."""
-    pipe = [
-        {"$match": {
-            "replay_run_id":     run_id,
-            "tier_reason":       {"$regex": "gate_direction_fail$"},
-            "edge_vs_fair":      {"$gte": 3},
-            "p_true_active":     {"$gte": 53},
-        }},
-        {"$lookup": {
-            "from": OUTS,
-            "let":  {"ck": "$canonical_key", "sl": "$snapshot_label",
-                     "bk": "$bookmaker", "sd": "$side", "rid": "$replay_run_id"},
-            "pipeline": [
-                {"$match": {"$expr": {"$and": [
-                    {"$eq": ["$replay_run_id", "$$rid"]},
-                    {"$eq": ["$canonical_key", "$$ck"]},
-                    {"$eq": ["$snapshot_label", "$$sl"]},
-                    {"$eq": ["$bookmaker", "$$bk"]},
-                    {"$eq": ["$side", "$$sd"]},
-                ]}}},
-                {"$limit": 1},
-            ],
-            "as": "out",
-        }},
-        {"$unwind": {"path": "$out", "preserveNullAndEmptyArrays": True}},
-        {"$group": {
-            "_id": None,
-            "n":   {"$sum": 1},
-            "hits":{"$sum": {"$cond": [{"$eq": ["$out.outcome", "hit"]}, 1, 0]}},
-            "miss":{"$sum": {"$cond": [{"$eq": ["$out.outcome", "miss"]}, 1, 0]}},
-            "pnl": {"$sum": {"$ifNull": ["$out.pnl_units", 0]}},
-            "avg_odds": {"$avg": "$odds_american"},
-            "avg_tp":   {"$avg": "$p_true_active"},
-            "avg_edge": {"$avg": "$edge_vs_fair"},
-        }},
-    ]
-    res = [d async for d in db[EVALS].aggregate(pipe, allowDiskUse=True)]
-    if not res:
-        return {"n": 0, "confidence": {"level": "low",
-            "reason": "No props matched the direction-fail-but-profitable predicate."}}
-    a = res[0]
-    decided = a["hits"] + a["miss"]
-    return {
-        "n":            a["n"],
-        "hits":         a["hits"], "miss": a["miss"],
-        "hit_rate":     (round(a["hits"] / decided, 4) if decided else None),
-        "roi_per_unit": (round(a["pnl"] / a["n"], 4) if a["n"] else None),
-        "pnl_units":    round(a["pnl"], 2),
-        "avg_odds":     (round(a["avg_odds"], 2) if a["avg_odds"] else None),
-        "avg_tp":       (round(a["avg_tp"], 2)   if a["avg_tp"]   else None),
-        "avg_edge":     (round(a["avg_edge"], 2) if a["avg_edge"] else None),
-        "confidence": {"level": "medium",
-            "reason": "Probes whether production direction gate is too "
-                      "strict for partial-feature replay; not a "
-                      "production-tier verdict."},
-    }
-
-
-async def section_proxy_tiers(db, *, run_id: str) -> Dict[str, Any]:
-    """proxy_* rules — clearly labeled, NOT official tiers."""
-    proxies = {
-        "proxy_safe_haven":  {"odds_american": {"$lte": -180},
-                                "p_true_active": {"$gte": 65},
-                                "edge_vs_fair": {"$gte": 2}},
-        "proxy_front_lines": {"odds_american": {"$gte": -149,
-                                                  "$lte": +120},
-                                "p_true_active": {"$gte": 53},
-                                "edge_vs_fair": {"$gte": 3}},
-        "proxy_war_zone":    {"odds_american": {"$gte": 121, "$lte": 400},
-                                "edge_vs_fair": {"$gte": 5},
-                                "feature_set.cv": {"$lte": 0.55}},
-        "proxy_war_zone_longshot": {"odds_american": {"$gte": 200, "$lte": 800},
-                                "edge_vs_fair": {"$gte": 8},
-                                "p_true_active": {"$gte": 25}},
-    }
-    out = {}
-    for name, pred in proxies.items():
+    out: Dict[str, Any] = {}
+    for name, pred in rules.items():
         match = {"replay_run_id": run_id, **pred}
-        pipe = [
+        agg = [d async for d in db[OUTS].aggregate([
             {"$match": match},
             {"$group": {
                 "_id": None,
@@ -480,227 +282,186 @@ async def section_proxy_tiers(db, *, run_id: str) -> Dict[str, Any]:
                 "pnl": {"$sum": "$pnl_units"},
                 "avg_odds": {"$avg": "$odds_american"},
             }},
-        ]
-        a = [d async for d in db[OUTS].aggregate(pipe)]
-        if not a:
-            out[name] = {"n": 0, "hits": 0, "miss": 0, "void": 0,
-                          "hit_rate": None, "roi_per_unit": None,
-                          "pnl_units": 0.0, "avg_odds": None}
+        ])]
+        if not agg:
+            out[name] = {"n": 0}
             continue
-        ag = a[0]
-        decided = ag["hits"] + ag["miss"]
+        a = agg[0]
+        decided = a["hits"] + a["miss"]
         out[name] = {
-            "n":          ag["n"],
-            "hits":       ag["hits"], "miss": ag["miss"], "void": ag["void"],
-            "hit_rate":   (round(ag["hits"] / decided, 4) if decided else None),
-            "roi_per_unit": (round(ag["pnl"] / ag["n"], 4) if ag["n"] else None),
-            "pnl_units":  round(ag["pnl"], 2),
-            "avg_odds":   (round(ag["avg_odds"], 2) if ag["avg_odds"] else None),
+            "n":            a["n"],
+            "hits":         a["hits"], "miss": a["miss"],
+            "void":         a["void"],
+            "hit_rate":     (round(a["hits"] / decided, 4)
+                              if decided else None),
+            "roi_per_unit": (round(a["pnl"] / a["n"], 4) if a["n"] else None),
+            "pnl_units":    round(a["pnl"], 4),
+            "avg_odds":     (round(a["avg_odds"], 2)
+                              if a["avg_odds"] is not None else None),
         }
-    out["confidence"] = {"level": "low",
-        "reason": "These are HEURISTIC proxy rules, not production tiers. "
-                  "Without VK2/injury/matchup, they cannot be claimed as "
-                  "production-faithful tier definitions."}
+    out["_disclaimer"] = (
+        "Heuristic counterfactual rule sets. NOT a measurement of "
+        "PropVision publication ROI. Presented only to prove the "
+        "candidate pool contains usable signal — does NOT imply any "
+        "of these rules should be deployed."
+    )
     return out
 
 
-# ---------------- Markdown formatting ----------------
+# ---------------- markdown ----------------
 def _fmt_table(rows: List[Dict[str, Any]], cols: List[str]) -> str:
     if not rows:
         return "_(no rows)_\n"
     lines = ["| " + " | ".join(cols) + " |",
              "|" + "|".join(["---"] * len(cols)) + "|"]
     for r in rows:
-        line = "| " + " | ".join(str(r.get(c, "")) for c in cols) + " |"
-        lines.append(line)
+        lines.append("| " + " | ".join(str(r.get(c, "")) for c in cols) + " |")
     return "\n".join(lines) + "\n"
 
 
 def render_markdown(report: Dict[str, Any]) -> str:
-    md = []
-    md.append(f"# Replay Partial-Parity Test Report\n")
+    md: List[str] = []
+    sim = report["2_publication_simulation"]
+    md.append("# PropVision Replay — $1 Flat-Bet Publication Simulation\n\n")
     md.append(f"_Generated_: {report['generated_at_utc']}\n\n")
-    md.append("> ⚠️ **PARTIAL-PARITY**. This report is a TEST REPORT, not "
-              "production sign-off. VK2 / injury / matchup features are "
-              "stubbed; see PRD changelog 2026-05-09 for full gap matrix.\n\n")
+    md.append(f"> {sim['thesis']}\n\n")
+
+    qualified_n = sim["combined"]["n"]
+    if qualified_n == 0:
+        md.append("## ⚠️ Replay tier parity is incomplete\n\n")
+        md.append(
+            "**No props reached production tiers in this run.** "
+            "Every candidate failed at least one production gate "
+            "(VK2/injury/matchup features are stubbed in the partial-"
+            "parity dataset, so the direction / hit-rate gates "
+            "over-reject). PropVision would have published **zero "
+            "picks** from this slate. We refuse to report a "
+            "publication ROI on an empty bet log.\n\n"
+        )
 
     s = report["1_dataset"]
-    md.append("## 1. Dataset summary\n")
+    md.append("## 1. Candidate pool (NOT bets)\n")
     md.append(_fmt_table([{
         "run_id":     s["replay_run_id"],
         "snapshot":   s["snapshot_window"],
-        "min_ct":     s["date_range"]["min"],
-        "max_ct":     s["date_range"]["max"],
-        "evals":      s["evaluations_total"],
-        "outcomes":   s["outcomes_total"],
-    }], ["run_id", "snapshot", "min_ct", "max_ct", "evals", "outcomes"]))
-    md.append(f"\nOutcome breakdown: {s['outcome_breakdown']}\n")
-    md.append(f"\nFeature completeness: {s['feature_completeness_distribution']}\n")
-    md.append(f"\nKnown parity gaps: {s['known_parity_gaps']}\n")
-    md.append(f"\n_Confidence_: **{s['confidence']['level']}** — "
-              f"{s['confidence']['reason']}\n\n")
+        "min_ct":     s["candidate_date_range"]["min"],
+        "max_ct":     s["candidate_date_range"]["max"],
+        "candidates": s["candidates_total"],
+        "settled":    s["settled_candidates"],
+    }], ["run_id", "snapshot", "min_ct", "max_ct",
+          "candidates", "settled"]))
+    md.append(f"\nSettled outcome breakdown: "
+              f"`{s['settled_outcome_breakdown']}` — "
+              "this is data-quality signal on the candidate pool, "
+              "NOT a P&L log.\n\n")
 
-    s = report["2_gates"]
-    md.append("## 2. Gate distribution\n")
-    md.append("### Top rejection reasons\n")
+    md.append("## 2. Publication simulation (the answer)\n")
+    md.append(_fmt_table([{
+        "candidates":              sim["candidates_evaluated"],
+        "qualified":               sim["candidates_qualified"],
+        "qualified_pct":           f"{sim['qualified_pct']}%",
+        "settled_qualified":       sim["settled_qualified_total"],
+    }], ["candidates", "qualified", "qualified_pct",
+          "settled_qualified"]))
+
+    md.append("\n### Per-tier results — $1 flat bet on each published pick\n")
+    rows = []
+    for t in PUBLISHED_TIERS:
+        v = sim["by_tier"][t]
+        rows.append({
+            "tier":         t,
+            "n":            v["n"],
+            "hits":         v["hits"],
+            "miss":         v["miss"],
+            "void":         v["void"],
+            "hit_rate":     _fmt_signed(v["hit_rate"], ".4f"),
+            "roi_per_unit": _fmt_signed(v["roi_per_unit"], "+.4f"),
+            "pnl_units":    _fmt_signed(v["pnl_units"], "+.2f"),
+            "avg_odds":     _fmt_signed(v["avg_odds"], ".1f"),
+            "avg_tp":       _fmt_signed(v["avg_tp"], ".1f"),
+            "avg_edge":     _fmt_signed(v["avg_edge"], "+.2f"),
+        })
+    md.append(_fmt_table(rows, [
+        "tier", "n", "hits", "miss", "void", "hit_rate",
+        "roi_per_unit", "pnl_units", "avg_odds", "avg_tp", "avg_edge",
+    ]))
+
+    md.append("\n### Combined qualified ROI (all three tiers)\n")
+    c = sim["combined"]
+    md.append(_fmt_table([{
+        "n":            c["n"],
+        "hits":         c["hits"],
+        "miss":         c["miss"],
+        "void":         c["void"],
+        "hit_rate":     _fmt_signed(c["hit_rate"], ".4f"),
+        "roi_per_unit": _fmt_signed(c["roi_per_unit"], "+.4f"),
+        "pnl_units":    _fmt_signed(c["pnl_units"], "+.2f"),
+        "avg_odds":     _fmt_signed(c["avg_odds"], ".1f"),
+    }], ["n", "hits", "miss", "void",
+          "hit_rate", "roi_per_unit", "pnl_units", "avg_odds"]))
+
+    u = report["3_unqualified_reasons"]
+    md.append("\n## 3. Why candidates were NOT published\n")
+    md.append(f"Unqualified candidates: **{u['unqualified_total']:,}**\n\n")
     md.append(_fmt_table(
-        [{"reason": k, "n": v} for k, v in s["by_reason_top25"].items()],
+        [{"reason": k, "n": v} for k, v in u["top_reasons"].items()],
         ["reason", "n"]))
-    md.append(f"\n_Confidence_: **{s['confidence']['level']}** — "
-              f"{s['confidence']['reason']}\n\n")
 
-    s = report["3_counterfactuals"]
-    md.append("## 3. Counterfactual rule sets\n")
-    rows = [{"rule": r, **{k: v.get(k) for k in
-            ("n", "hits", "miss", "hit_rate", "roi_per_unit", "pnl_units",
-             "avg_odds", "avg_tp", "avg_edge")}}
-            for r, v in s["rules"].items()]
-    md.append(_fmt_table(rows, ["rule", "n", "hits", "miss",
-        "hit_rate", "roi_per_unit", "pnl_units",
-        "avg_odds", "avg_tp", "avg_edge"]))
-    md.append(f"\n_Confidence_: **{s['confidence']['level']}** — "
-              f"{s['confidence']['reason']}\n\n")
+    e = report["4_experimental_proxies"]
+    md.append("\n## 4. Experimental — heuristic rule probes\n")
+    md.append(f"> {e['_disclaimer']}\n\n")
+    rows = []
+    for name in ("tp_edge_gate", "ev_only_longshot", "proxy_safe_haven"):
+        v = e.get(name) or {}
+        rows.append({
+            "rule":         name,
+            "n":            v.get("n", 0),
+            "hits":         v.get("hits", 0),
+            "miss":         v.get("miss", 0),
+            "hit_rate":     _fmt_signed(v.get("hit_rate"), ".4f"),
+            "roi_per_unit": _fmt_signed(v.get("roi_per_unit"), "+.4f"),
+            "pnl_units":    _fmt_signed(v.get("pnl_units"), "+.2f"),
+            "avg_odds":     _fmt_signed(v.get("avg_odds"), ".1f"),
+        })
+    md.append(_fmt_table(rows, [
+        "rule", "n", "hits", "miss", "hit_rate",
+        "roi_per_unit", "pnl_units", "avg_odds",
+    ]))
 
-    s = report["4_alt_vs_standard"]
-    md.append("## 4. Standard vs alternate vs combo\n")
-    md.append("### By is_alternate\n")
-    md.append(_fmt_table(s["by_alternate_flag"],
-        ["is_alternate", "n", "hits", "miss", "hit_rate",
-         "roi_per_unit", "pnl_units", "avg_odds"]))
-    md.append("\n### By is_combo\n")
-    md.append(_fmt_table(s["by_combo_flag"],
-        ["is_combo", "n", "hits", "miss", "hit_rate",
-         "roi_per_unit", "pnl_units", "avg_odds"]))
-    md.append("\n### By stat_family\n")
-    md.append(_fmt_table(s["by_stat_family"],
-        ["stat_family", "n", "hits", "miss", "hit_rate",
-         "roi_per_unit", "pnl_units", "avg_odds"]))
-    md.append(f"\n_Confidence_: **{s['confidence']['level']}** — "
-              f"{s['confidence']['reason']}\n\n")
-
-    s = report["5_odds_buckets"]
-    md.append("## 5. Odds-bucket performance\n")
-    md.append(_fmt_table(s["rows"], ["odds_bucket", "n", "hit_rate",
-        "roi_per_unit", "pnl_units", "avg_tp", "avg_edge"]))
-    md.append(f"\n_Confidence_: **{s['confidence']['level']}** — "
-              f"{s['confidence']['reason']}\n\n")
-
-    s = report["6_timing"]
-    md.append("## 6. Snapshot-timing performance\n")
-    md.append(_fmt_table(s["rows"], ["snapshot_label", "n", "hits", "miss",
-        "hit_rate", "roi_per_unit", "pnl_units", "avg_odds"]))
-    md.append(f"\n_Confidence_: **{s['confidence']['level']}** — "
-              f"{s['confidence']['reason']}\n\n")
-
-    s = report["7_direction_fail"]
-    md.append("## 7. Direction-fail-but-profitable (μ vs TP probe)\n")
-    md.append(f"`{json.dumps({k: v for k, v in s.items() if k != 'confidence'}, default=str)}`\n")
-    md.append(f"\n_Confidence_: **{s['confidence']['level']}** — "
-              f"{s['confidence']['reason']}\n\n")
-
-    s = report["8_proxy_tiers"]
-    md.append("## 8. Proxy tiers (HEURISTIC — NOT official tiers)\n")
-    rows = [{"proxy": k, **{kk: vv for kk, vv in v.items()
-                              if kk != "confidence"}}
-            for k, v in s.items() if k != "confidence"]
-    md.append(_fmt_table(rows, ["proxy", "n", "hits", "miss",
-        "hit_rate", "roi_per_unit", "pnl_units", "avg_odds"]))
-    md.append(f"\n_Confidence_: **{s['confidence']['level']}** — "
-              f"{s['confidence']['reason']}\n\n")
-
-    s = report["10_final_answer"]
-    md.append("## 10. Final answer\n")
-    for k, v in s.items():
-        md.append(f"- **{k}**: {v}\n")
+    md.append("\n## 5. Final answer\n")
+    if qualified_n == 0:
+        md.append(
+            "- **headline**: PropVision would have published **0 picks** "
+            "from this 30-day NBA candidate pool.\n"
+            "- **publication_roi**: not reportable (no bets).\n"
+            "- **why**: 100% of candidates failed at least one "
+            "production gate. Replay tier parity is incomplete because "
+            "no props reached production tiers — direction / hit-rate "
+            "gates need historical VK2 / injury / matchup features that "
+            "are not yet wired.\n"
+            "- **next**: wire historical VK2 (Phase 2.5 step 1) and "
+            "re-run; report will then carry real publication ROI.\n"
+        )
+    else:
+        md.append(
+            f"- **headline**: PropVision would have published "
+            f"**{qualified_n} picks**.\n"
+            f"- **combined_roi_per_unit**: "
+            f"{_fmt_signed(c['roi_per_unit'], '+.4f')}\n"
+            f"- **combined_pnl_units**: "
+            f"{_fmt_signed(c['pnl_units'], '+.2f')}\n"
+            f"- **combined_hit_rate**: "
+            f"{_fmt_signed(c['hit_rate'], '.4f')}\n"
+        )
 
     return "".join(md)
-
-
-def _fmt_signed(x, spec: str = "+.4f") -> str:
-    """Null-safe format helper.
-
-    Returns the literal string ``"n/a"`` when ``x`` is ``None`` so that
-    callers can interpolate freely without guarding every variable. We
-    do this because some replay-derived metrics are legitimately
-    ``None`` when the underlying subset has zero settled rows (no hits
-    + miss), and crashing the report there would force a re-run."""
-    if x is None:
-        return "n/a"
-    try:
-        return format(x, spec)
-    except (TypeError, ValueError):
-        return str(x)
-
-
-def section_final_answer(report: Dict[str, Any]) -> Dict[str, str]:
-    """Synthesize a one-line answer per category from the data above."""
-    cf = report["3_counterfactuals"]["rules"]
-    proxies = report["8_proxy_tiers"]
-    odds = report["5_odds_buckets"]["rows"]
-
-    # Best counterfactual rule
-    rule_rows = [(name, v.get("roi_per_unit"), v.get("n"))
-                  for name, v in cf.items() if (v.get("n") or 0) > 100]
-    rule_rows = [r for r in rule_rows if r[1] is not None]
-    rule_rows.sort(key=lambda x: x[1], reverse=True)
-    best_rule = rule_rows[0] if rule_rows else None
-
-    # Worst odds bucket
-    odds_sorted = sorted(
-        [r for r in odds if r["roi_per_unit"] is not None],
-        key=lambda r: r["roi_per_unit"])
-
-    # Longshot signal
-    longshot_n   = (cf.get("ev_only_longshot") or {}).get("n", 0)
-    longshot_roi = (cf.get("ev_only_longshot") or {}).get("roi_per_unit")
-    longshot_proposal_roi = (
-        cf.get("war_zone_longshot_proposal") or {}).get("roi_per_unit")
-
-    # WZ proxy
-    wz_roi = (proxies.get("proxy_war_zone") or {}).get("roi_per_unit")
-    wz_n   = (proxies.get("proxy_war_zone") or {}).get("n", 0)
-    wz_ls_roi = (proxies.get("proxy_war_zone_longshot") or {}).get("roi_per_unit")
-    wz_ls_n   = (proxies.get("proxy_war_zone_longshot") or {}).get("n", 0)
-
-    return {
-        "what_we_can_trust_today":
-            "Replay infrastructure, leakage gates, TP math, ref-odds chain, "
-            "outcome settlement (134k unique rows). Production gate "
-            "execution path is faithful.",
-        "what_we_cannot_trust_yet":
-            "Tier ROI (100% unqualified due to missing VK2/injury/matchup). "
-            "Direction signal (μ is BDL-rolling only). Production tier "
-            "claims of any kind.",
-        "best_counterfactual_rule":
-            (f"{best_rule[0]} → ROI {_fmt_signed(best_rule[1])} on n={best_rule[2]}"
-             if best_rule else "no rule had >100 picks settled"),
-        "obviously_bad_areas":
-            (f"odds buckets with worst ROI: " +
-             ", ".join(f"{r['odds_bucket']}({_fmt_signed(r['roi_per_unit'], '+.3f')}, n={r['n']})"
-                        for r in odds_sorted[:3])
-             if odds_sorted else "no odds-bucket data"),
-        "longshot_mode_signal":
-            (f"ev_only_longshot ROI={_fmt_signed(longshot_roi)} on n={longshot_n} | "
-             f"wz_longshot_proposal ROI={_fmt_signed(longshot_proposal_roi)}"
-             if (longshot_n or 0) > 0 or (longshot_roi is not None)
-             else "no longshot data"),
-        "war_zone_concept_status":
-            (f"proxy_war_zone ROI={_fmt_signed(wz_roi)} on n={wz_n} | "
-             f"proxy_war_zone_longshot ROI={_fmt_signed(wz_ls_roi)} on n={wz_ls_n} "
-             f"— DIRECTIONAL ONLY (proxy rules ≠ production tiers)"
-             if (wz_n or 0) > 0 or (wz_ls_n or 0) > 0
-             else "insufficient data; rerun with full features to verify"),
-        "headline":
-            "PARTIAL-PARITY: replay infrastructure works; ROI claims "
-            "require VK2/injury/matchup wiring before deployment.",
-    }
 
 
 # ---------------- driver ----------------
 async def amain():
     p = argparse.ArgumentParser()
     p.add_argument("--run-id", required=True)
-    p.add_argument("--snapshot-window", default=None)  # for log only
+    p.add_argument("--snapshot-window", default=None)  # log-only
     p.add_argument("--sport", default="nba")
     p.add_argument("--feature-completeness", default="partial")
     p.add_argument("--include-unqualified", default="true")
@@ -715,18 +476,17 @@ async def amain():
         "generated_at_utc": started.isoformat(),
         "args":             vars(args),
     }
-    report["1_dataset"]          = await section_dataset(db, run_id=args.run_id)
-    report["2_gates"]            = await section_gate_dist(db, run_id=args.run_id)
-    report["3_counterfactuals"]  = await section_counterfactuals(db, run_id=args.run_id)
-    report["4_alt_vs_standard"]  = await section_alt_vs_standard(db, run_id=args.run_id)
-    report["5_odds_buckets"]     = await section_odds_buckets(db, run_id=args.run_id)
-    report["6_timing"]           = await section_timing(db, run_id=args.run_id)
-    report["7_direction_fail"]   = await section_direction_fail(db, run_id=args.run_id)
-    report["8_proxy_tiers"]      = await section_proxy_tiers(db, run_id=args.run_id)
-    report["10_final_answer"]    = section_final_answer(report)
+    report["1_dataset"]                 = await section_dataset(
+        db, run_id=args.run_id)
+    report["2_publication_simulation"]  = await section_publication_simulation(
+        db, run_id=args.run_id)
+    report["3_unqualified_reasons"]     = await section_unqualified_reasons(
+        db, run_id=args.run_id)
+    report["4_experimental_proxies"]    = await section_experimental_proxies(
+        db, run_id=args.run_id)
 
     finished = datetime.now(timezone.utc)
-    report["wallclock_seconds"]  = (finished - started).total_seconds()
+    report["wallclock_seconds"] = (finished - started).total_seconds()
 
     out_path = Path(args.output)
     out_path.write_text(render_markdown(report))
