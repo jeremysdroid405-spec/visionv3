@@ -23,6 +23,13 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
   - Post-fix sensitivity: 0 WZ rejects in vision_score_v2 [55,60) — floor move 60→55 yields zero gain. Floor stays at 60.
   - Tests: `tests/test_combo_synth_vk2_routing.py` (8 tests, all passing — incl. mutation guard).
   - Audit: `/app/audit_reports/wz_alt_line_projection_audit_2026-05-09.md`.
+- **War Zone OVER gate adjustment (2026-05-09) — COMMITTED**
+  - HR floor 55 → 50 (`_NBA_WAR_ZONE_BASE.hit_rate_gate.min`)
+  - CV-cap ladder armed: tier 2 (HR≥70 + edge>0 → CV≤1.15), tier 3 (HR≥80 + edge≥5 → CV≤1.50)
+  - Direction / coverage / edge / vision_score / market_structure gates UNCHANGED
+  - Tests: `tests/test_war_zone_over_cv_ladder.py` (21 tests, all passing)
+  - First-slate impact: 0 ladder rescues (slate had no HR≥70 candidates) — patch is mathematically sound but supply-bound.
+  - **Monitoring directive active**: `/app/backend/scripts/wz_slate_monitor.py` logs every slate to `/app/audit_reports/wz_slate_monitor.jsonl`. Reassess only after **3 normal slates** if WZ qualified stays below 8–10.
 - 30-min double-pass sign-off SLO — BLOCKED on upstream odds API blackout (Props 0)
 
 ## Architecture
