@@ -369,18 +369,25 @@ _NBA_WAR_ZONE_BASE = {
     # sub-gate. L5 drawdowns ARE the high-variance shots WZ exists to
     # take; enforcing L5 >= L20 floor kills the tier's supply (1 pick
     # across 920 rejects). Safe Haven + Front Lines still enforce it.
-    "hit_rate_gate":     {"min": 55.0, "window": "default",
+    "hit_rate_gate":     {"min": 50.0, "window": "default",
                           "enforce_l5_subgate": False},
     "cv_gate":           {"max": 0.75},
     "vision_score_gate": {"min": 60.0},
     "__war_zone_overrides__": {
-        # HR-expansion rule: HR > 70 → cv cap relaxed to 1.00.
-        # Only `cv_gate` failures may be rescued by this layer.
-        "hr_expansion": {
-            "enabled":         True,
-            "min_hit_rate":    70.0,
-            "relax_cv_to":     1.00,
-        },
+        # 2026-05-09 — Controlled supply increase per user spec.
+        # CV-cap expansion ladder for WZ OVER (highest tier wins).
+        # Each tier requires (a) a hit-rate floor AND (b) an edge floor;
+        # if both are met, cv_gate failures are rescued provided the
+        # actual CV is at or below the tier's relaxed cap.
+        # Direction / coverage / edge / vision_score / market_structure
+        # gates are NEVER overridden — only `cv_gate` failures.
+        # Tiers are evaluated highest → lowest; first match wins.
+        "hr_expansion_ladder": [
+            # Tier 3 — strongest signal: HR ≥ 80 + edge ≥ 5pp → CV ≤ 1.50
+            {"min_hit_rate": 80.0, "min_edge_pct": 5.0,  "relax_cv_to": 1.50},
+            # Tier 2 — strong signal: HR ≥ 70 + positive edge → CV ≤ 1.15
+            {"min_hit_rate": 70.0, "min_edge_pct": 0.01, "relax_cv_to": 1.15},
+        ],
     },
 }
 

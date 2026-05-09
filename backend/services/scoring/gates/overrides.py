@@ -198,7 +198,16 @@ def apply_war_zone_overrides(
     failed: List[str],
     cfg: Dict[str, Any],
 ) -> Tuple[Dict[str, GateDetail], List[str], List[str], bool, Optional[str]]:
-    """NBA War Zone HR-expansion override.
+    """NBA War Zone CV-cap expansion override.
+
+    2026-05-09 — Ladder expansion (replaces the single-tier `hr_expansion`
+    rule). Each ladder entry is `{min_hit_rate, min_edge_pct, relax_cv_to}`;
+    they are evaluated highest → lowest by `min_hit_rate` and the first
+    matching tier wins. Direction / coverage / edge / vision_score / market_
+    structure gates are NEVER overridden — only `cv_gate` failures.
+
+    Legacy `hr_expansion` block is still honoured for back-compat (its
+    config maps to a single ladder entry with `min_edge_pct=0.0`).
 
     Returns possibly-rewritten details / passed / failed lists, plus
     the new overall_passed flag and the rule applied (if any).
@@ -210,19 +219,38 @@ def apply_war_zone_overrides(
     if not set(failed).issubset(_WAR_ZONE_OVERRIDABLE_GATES):
         return details, passed, failed, False, None
 
-    hr = _hr(metrics)
-    cv = metrics.cv
+    if "cv_gate" not in failed:
+        return details, passed, failed, len(failed) == 0, None
 
-    rule = cfg.get("hr_expansion") or {}
-    if rule.get("enabled", True) and "cv_gate" in failed:
-        min_hr = float(rule.get("min_hit_rate", 70.0))
-        relax_to = float(rule.get("relax_cv_to", 1.00))
-        if (hr is not None and hr > min_hr
+    hr   = _hr(metrics)
+    cv   = metrics.cv
+    edge = metrics.edge_pct
+
+    # Build the ladder (new spec preferred; fall back to legacy single rule).
+    ladder = list(cfg.get("hr_expansion_ladder") or [])
+    legacy = cfg.get("hr_expansion") or {}
+    if not ladder and legacy.get("enabled", True):
+        ladder = [{
+            "min_hit_rate": float(legacy.get("min_hit_rate", 70.0)),
+            "min_edge_pct": 0.0,
+            "relax_cv_to": float(legacy.get("relax_cv_to", 1.00)),
+        }]
+
+    # Evaluate highest HR threshold first so the strongest tier wins.
+    for tier in sorted(ladder, key=lambda t: -float(t.get("min_hit_rate", 0.0))):
+        min_hr   = float(tier.get("min_hit_rate", 70.0))
+        min_edge = float(tier.get("min_edge_pct", 0.0))
+        relax_to = float(tier.get("relax_cv_to", 1.00))
+        if (hr is not None and hr >= min_hr
+                and edge is not None and edge >= min_edge
                 and cv is not None and cv <= relax_to):
-            _mark_passed(details, passed, failed, "cv_gate",
-                         f"war_zone_override:hr_expansion "
-                         f"(hr>{min_hr},cv<={relax_to})")
-            return details, passed, failed, len(failed) == 0, "war_zone:hr_expansion"
+            _mark_passed(
+                details, passed, failed, "cv_gate",
+                f"war_zone_override:hr_expansion "
+                f"(hr>={min_hr},edge>={min_edge},cv<={relax_to})",
+            )
+            return (details, passed, failed, len(failed) == 0,
+                    f"war_zone:hr_expansion_hr{int(min_hr)}")
 
     return details, passed, failed, len(failed) == 0, None
 
