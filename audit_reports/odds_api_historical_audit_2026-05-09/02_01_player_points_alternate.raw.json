@@ -1,0 +1,3909 @@
+{
+  "timestamp": "2024-03-01T22:05:40Z",
+  "previous_timestamp": "2024-03-01T22:00:40Z",
+  "next_timestamp": "2024-03-01T22:10:39Z",
+  "data": {
+    "id": "3c6f663a318c5b8b977586ad331f3f76",
+    "sport_key": "basketball_nba",
+    "sport_title": "NBA",
+    "commence_time": "2024-03-02T00:10:00Z",
+    "home_team": "Philadelphia 76ers",
+    "away_team": "Charlotte Hornets",
+    "bookmakers": [
+      {
+        "key": "draftkings",
+        "title": "DraftKings",
+        "last_update": "2024-03-01T22:05:19Z",
+        "markets": [
+          {
+            "key": "player_points_alternate",
+            "last_update": "2024-03-01T22:05:06Z",
+            "outcomes": [
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -135,
+                "point": 18.5
+              },
+              {
+                "name": "Under",
+                "description": "Brandon Miller",
+                "price": -105,
+                "point": 18.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 115,
+                "point": 20.5
+              },
+              {
+                "name": "Under",
+                "description": "Brandon Miller",
+                "price": -155,
+                "point": 20.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 130,
+                "point": 21.5
+              },
+              {
+                "name": "Under",
+                "description": "Brandon Miller",
+                "price": -185,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -200,
+                "point": 12.5
+              },
+              {
+                "name": "Under",
+                "description": "Buddy Hield",
+                "price": 140,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -160,
+                "point": 13.5
+              },
+              {
+                "name": "Under",
+                "description": "Buddy Hield",
+                "price": 110,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 105,
+                "point": 15.5
+              },
+              {
+                "name": "Under",
+                "description": "Buddy Hield",
+                "price": -145,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 140,
+                "point": 16.5
+              },
+              {
+                "name": "Under",
+                "description": "Buddy Hield",
+                "price": -195,
+                "point": 16.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": -160,
+                "point": 6.5
+              },
+              {
+                "name": "Under",
+                "description": "Cody Martin",
+                "price": 115,
+                "point": 6.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 125,
+                "point": 8.5
+              },
+              {
+                "name": "Under",
+                "description": "Cody Martin",
+                "price": -170,
+                "point": 8.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 240,
+                "point": 10.5
+              },
+              {
+                "name": "Under",
+                "description": "Cody Martin",
+                "price": -340,
+                "point": 10.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": -150,
+                "point": 8.5
+              },
+              {
+                "name": "Under",
+                "description": "Grant Williams",
+                "price": 110,
+                "point": 8.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 120,
+                "point": 10.5
+              },
+              {
+                "name": "Under",
+                "description": "Grant Williams",
+                "price": -170,
+                "point": 10.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -135,
+                "point": 18.5
+              },
+              {
+                "name": "Under",
+                "description": "Miles Bridges",
+                "price": 100,
+                "point": 18.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 110,
+                "point": 20.5
+              },
+              {
+                "name": "Under",
+                "description": "Miles Bridges",
+                "price": -150,
+                "point": 20.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 130,
+                "point": 21.5
+              },
+              {
+                "name": "Under",
+                "description": "Miles Bridges",
+                "price": -185,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -195,
+                "point": 8.5
+              },
+              {
+                "name": "Under",
+                "description": "Nick Richards",
+                "price": 140,
+                "point": 8.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 155,
+                "point": 12.5
+              },
+              {
+                "name": "Under",
+                "description": "Nick Richards",
+                "price": -220,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -145,
+                "point": 8.5
+              },
+              {
+                "name": "Under",
+                "description": "Paul Reed",
+                "price": 105,
+                "point": 8.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 115,
+                "point": 10.5
+              },
+              {
+                "name": "Under",
+                "description": "Paul Reed",
+                "price": -165,
+                "point": 10.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": -145,
+                "point": 6.5
+              },
+              {
+                "name": "Under",
+                "description": "Seth Curry",
+                "price": 105,
+                "point": 6.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 140,
+                "point": 8.5
+              },
+              {
+                "name": "Under",
+                "description": "Seth Curry",
+                "price": -190,
+                "point": 8.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 250,
+                "point": 10.5
+              },
+              {
+                "name": "Under",
+                "description": "Seth Curry",
+                "price": -360,
+                "point": 10.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -195,
+                "point": 15.5
+              },
+              {
+                "name": "Under",
+                "description": "Tobias Harris",
+                "price": 140,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -150,
+                "point": 16.5
+              },
+              {
+                "name": "Under",
+                "description": "Tobias Harris",
+                "price": 110,
+                "point": 16.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 105,
+                "point": 18.5
+              },
+              {
+                "name": "Under",
+                "description": "Tobias Harris",
+                "price": -140,
+                "point": 18.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -155,
+                "point": 10.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": 110,
+                "point": 10.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 110,
+                "point": 12.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": -155,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 145,
+                "point": 13.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": -200,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -165,
+                "point": 25.5
+              },
+              {
+                "name": "Under",
+                "description": "Tyrese Maxey",
+                "price": 120,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -135,
+                "point": 26.5
+              },
+              {
+                "name": "Under",
+                "description": "Tyrese Maxey",
+                "price": 100,
+                "point": 26.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 105,
+                "point": 28.5
+              },
+              {
+                "name": "Under",
+                "description": "Tyrese Maxey",
+                "price": -145,
+                "point": 28.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -310,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -165,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 230,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 600,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -550,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -290,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 150,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 220,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 175,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 320,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": -210,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 160,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 360,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -340,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -170,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 230,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 600,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -275,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -145,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 120,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 275,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -225,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 175,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 450,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 180,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 340,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -600,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -245,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 130,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 380,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -400,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -205,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 185,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 380,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -575,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -200,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 120,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 275,
+                "point": 34.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 650,
+                "point": 39.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -310,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -165,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 230,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 600,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -550,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -290,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 150,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 220,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 175,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 320,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": -210,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 160,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 360,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -340,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -170,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 230,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 600,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -275,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -145,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 120,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 275,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -225,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 175,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 450,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 180,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 340,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -600,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -245,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 130,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 380,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -400,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -205,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 185,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 380,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -575,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -200,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 120,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 275,
+                "point": 34.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 650,
+                "point": 39.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "fanduel",
+        "title": "FanDuel",
+        "last_update": "2024-03-01T22:05:20Z",
+        "markets": [
+          {
+            "key": "player_points_alternate",
+            "last_update": "2024-03-01T22:02:44Z",
+            "outcomes": [
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -1450,
+                "point": 4.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -650,
+                "point": 5.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -360,
+                "point": 6.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -240,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -160,
+                "point": 8.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -112,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 124,
+                "point": 10.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 178,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 235,
+                "point": 12.5
+              },
+              {
+                "name": "Under",
+                "description": "Paul Reed",
+                "price": 250,
+                "point": 6.5
+              },
+              {
+                "name": "Under",
+                "description": "Paul Reed",
+                "price": 174,
+                "point": 7.5
+              },
+              {
+                "name": "Under",
+                "description": "Paul Reed",
+                "price": 120,
+                "point": 8.5
+              },
+              {
+                "name": "Under",
+                "description": "Paul Reed",
+                "price": -118,
+                "point": 9.5
+              },
+              {
+                "name": "Under",
+                "description": "Paul Reed",
+                "price": -166,
+                "point": 10.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -700,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -470,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -340,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -260,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -200,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -158,
+                "point": 16.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -122,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 104,
+                "point": 18.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 130,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 164,
+                "point": 20.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 198,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 240,
+                "point": 22.5
+              },
+              {
+                "name": "Under",
+                "description": "Tobias Harris",
+                "price": 235,
+                "point": 13.5
+              },
+              {
+                "name": "Under",
+                "description": "Tobias Harris",
+                "price": 188,
+                "point": 14.5
+              },
+              {
+                "name": "Under",
+                "description": "Tobias Harris",
+                "price": 148,
+                "point": 15.5
+              },
+              {
+                "name": "Under",
+                "description": "Tobias Harris",
+                "price": 118,
+                "point": 16.5
+              },
+              {
+                "name": "Under",
+                "description": "Tobias Harris",
+                "price": -108,
+                "point": 17.5
+              },
+              {
+                "name": "Under",
+                "description": "Tobias Harris",
+                "price": -136,
+                "point": 18.5
+              },
+              {
+                "name": "Under",
+                "description": "Tobias Harris",
+                "price": -174,
+                "point": 19.5
+              },
+              {
+                "name": "Under",
+                "description": "Tobias Harris",
+                "price": -225,
+                "point": 20.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 390,
+                "point": 34.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -8000,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -550,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -380,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -240,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -110,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 280,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 340,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 350,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 480,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -900,
+                "point": 8.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -550,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -360,
+                "point": 10.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -270,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -198,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -152,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -112,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 116,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 152,
+                "point": 16.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 188,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 235,
+                "point": 18.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 280,
+                "point": 19.5
+              },
+              {
+                "name": "Under",
+                "description": "Buddy Hield",
+                "price": 250,
+                "point": 10.5
+              },
+              {
+                "name": "Under",
+                "description": "Buddy Hield",
+                "price": 194,
+                "point": 11.5
+              },
+              {
+                "name": "Under",
+                "description": "Buddy Hield",
+                "price": 146,
+                "point": 12.5
+              },
+              {
+                "name": "Under",
+                "description": "Buddy Hield",
+                "price": 114,
+                "point": 13.5
+              },
+              {
+                "name": "Under",
+                "description": "Buddy Hield",
+                "price": -118,
+                "point": 14.5
+              },
+              {
+                "name": "Under",
+                "description": "Buddy Hield",
+                "price": -154,
+                "point": 15.5
+              },
+              {
+                "name": "Under",
+                "description": "Buddy Hield",
+                "price": -205,
+                "point": 16.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -1200,
+                "point": 18.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -750,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -550,
+                "point": 20.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -420,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -310,
+                "point": 22.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -250,
+                "point": 23.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -200,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -160,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -130,
+                "point": 26.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -104,
+                "point": 27.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 118,
+                "point": 28.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 142,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 174,
+                "point": 30.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 205,
+                "point": 31.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 250,
+                "point": 32.5
+              },
+              {
+                "name": "Under",
+                "description": "Tyrese Maxey",
+                "price": 280,
+                "point": 21.5
+              },
+              {
+                "name": "Under",
+                "description": "Tyrese Maxey",
+                "price": 220,
+                "point": 22.5
+              },
+              {
+                "name": "Under",
+                "description": "Tyrese Maxey",
+                "price": 182,
+                "point": 23.5
+              },
+              {
+                "name": "Under",
+                "description": "Tyrese Maxey",
+                "price": 148,
+                "point": 24.5
+              },
+              {
+                "name": "Under",
+                "description": "Tyrese Maxey",
+                "price": 120,
+                "point": 25.5
+              },
+              {
+                "name": "Under",
+                "description": "Tyrese Maxey",
+                "price": -102,
+                "point": 26.5
+              },
+              {
+                "name": "Under",
+                "description": "Tyrese Maxey",
+                "price": -128,
+                "point": 27.5
+              },
+              {
+                "name": "Under",
+                "description": "Tyrese Maxey",
+                "price": -158,
+                "point": 28.5
+              },
+              {
+                "name": "Under",
+                "description": "Tyrese Maxey",
+                "price": -192,
+                "point": 29.5
+              },
+              {
+                "name": "Under",
+                "description": "Tyrese Maxey",
+                "price": -240,
+                "point": 30.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 145,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 800,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 850,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -700,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -120,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 100,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 130,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 290,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 1000,
+                "point": 39.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -1400,
+                "point": 5.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -600,
+                "point": 6.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -350,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -230,
+                "point": 8.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -158,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -108,
+                "point": 10.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 132,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 178,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 235,
+                "point": 13.5
+              },
+              {
+                "name": "Under",
+                "description": "Nick Richards",
+                "price": 235,
+                "point": 7.5
+              },
+              {
+                "name": "Under",
+                "description": "Nick Richards",
+                "price": 168,
+                "point": 8.5
+              },
+              {
+                "name": "Under",
+                "description": "Nick Richards",
+                "price": 118,
+                "point": 9.5
+              },
+              {
+                "name": "Under",
+                "description": "Nick Richards",
+                "price": -122,
+                "point": 10.5
+              },
+              {
+                "name": "Under",
+                "description": "Nick Richards",
+                "price": -178,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -900,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -600,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -420,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -300,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -225,
+                "point": 16.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -172,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -130,
+                "point": 18.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 100,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 130,
+                "point": 20.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 164,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 205,
+                "point": 22.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 260,
+                "point": 23.5
+              },
+              {
+                "name": "Under",
+                "description": "Brandon Miller",
+                "price": 280,
+                "point": 14.5
+              },
+              {
+                "name": "Under",
+                "description": "Brandon Miller",
+                "price": 210,
+                "point": 15.5
+              },
+              {
+                "name": "Under",
+                "description": "Brandon Miller",
+                "price": 164,
+                "point": 16.5
+              },
+              {
+                "name": "Under",
+                "description": "Brandon Miller",
+                "price": 128,
+                "point": 17.5
+              },
+              {
+                "name": "Under",
+                "description": "Brandon Miller",
+                "price": -102,
+                "point": 18.5
+              },
+              {
+                "name": "Under",
+                "description": "Brandon Miller",
+                "price": -132,
+                "point": 19.5
+              },
+              {
+                "name": "Under",
+                "description": "Brandon Miller",
+                "price": -174,
+                "point": 20.5
+              },
+              {
+                "name": "Under",
+                "description": "Brandon Miller",
+                "price": -225,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -1600,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -900,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -580,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -420,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -300,
+                "point": 16.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -225,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -166,
+                "point": 18.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -125,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 102,
+                "point": 20.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 132,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 164,
+                "point": 22.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 205,
+                "point": 23.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 265,
+                "point": 24.5
+              },
+              {
+                "name": "Under",
+                "description": "Miles Bridges",
+                "price": 280,
+                "point": 15.5
+              },
+              {
+                "name": "Under",
+                "description": "Miles Bridges",
+                "price": 210,
+                "point": 16.5
+              },
+              {
+                "name": "Under",
+                "description": "Miles Bridges",
+                "price": 164,
+                "point": 17.5
+              },
+              {
+                "name": "Under",
+                "description": "Miles Bridges",
+                "price": 126,
+                "point": 18.5
+              },
+              {
+                "name": "Under",
+                "description": "Miles Bridges",
+                "price": -106,
+                "point": 19.5
+              },
+              {
+                "name": "Under",
+                "description": "Miles Bridges",
+                "price": -136,
+                "point": 20.5
+              },
+              {
+                "name": "Under",
+                "description": "Miles Bridges",
+                "price": -174,
+                "point": 21.5
+              },
+              {
+                "name": "Under",
+                "description": "Miles Bridges",
+                "price": -225,
+                "point": 22.5
+              },
+              {
+                "name": "Under",
+                "description": "Miles Bridges",
+                "price": -290,
+                "point": 23.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -750,
+                "point": 6.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -440,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -275,
+                "point": 8.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -192,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -136,
+                "point": 10.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 106,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 146,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 198,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 270,
+                "point": 14.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": 290,
+                "point": 7.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": 198,
+                "point": 8.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": 142,
+                "point": 9.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": 102,
+                "point": 10.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": -140,
+                "point": 11.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": -198,
+                "point": 12.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": -275,
+                "point": 13.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": -400,
+                "point": 14.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": -580,
+                "point": 15.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": -900,
+                "point": 16.5
+              },
+              {
+                "name": "Under",
+                "description": "Tre Mann",
+                "price": -1450,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -8000,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -1900,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -550,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -180,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -150,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": -140,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -110,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 195,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 200,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -185,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 270,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 310,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 430,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 800,
+                "point": 24.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "mybookieag",
+        "title": "MyBookie.ag",
+        "last_update": "2024-03-01T22:05:19Z",
+        "markets": [
+          {
+            "key": "player_points_alternate",
+            "last_update": "2024-03-01T22:05:02Z",
+            "outcomes": [
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -170,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -105,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 140,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 200,
+                "point": 23.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 300,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 450,
+                "point": 27.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 675,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 1050,
+                "point": 31.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 1700,
+                "point": 33.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 3000,
+                "point": 35.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -115,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 135,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 200,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 315,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 475,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 775,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 1250,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 2000,
+                "point": 23.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 3500,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -210,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -210,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -125,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 120,
+                "point": 16.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 180,
+                "point": 18.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 270,
+                "point": 20.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 425,
+                "point": 22.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 650,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 1000,
+                "point": 26.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 1700,
+                "point": 28.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 3000,
+                "point": 30.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 145,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 230,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 375,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 625,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 1050,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 1900,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 3500,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": -210,
+                "point": 5.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": -110,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -160,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -105,
+                "point": 27.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 135,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 190,
+                "point": 31.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 270,
+                "point": 33.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 400,
+                "point": 35.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 575,
+                "point": 37.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 850,
+                "point": 39.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 1300,
+                "point": 41.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 2000,
+                "point": 43.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -110,
+                "point": 10.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 140,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 215,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 325,
+                "point": 16.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 525,
+                "point": 18.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 850,
+                "point": 20.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 1400,
+                "point": 22.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 2500,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 4500,
+                "point": 26.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -190,
+                "point": 8.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -240,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -145,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 105,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 155,
+                "point": 23.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 230,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 350,
+                "point": 27.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 500,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 775,
+                "point": 31.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 1250,
+                "point": 33.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 2000,
+                "point": 35.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -180,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -115,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 125,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 175,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 250,
+                "point": 23.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 375,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 525,
+                "point": 27.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 800,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 1200,
+                "point": 31.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 1900,
+                "point": 33.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -205,
+                "point": 10.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -120,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 135,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 210,
+                "point": 16.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 325,
+                "point": 18.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 525,
+                "point": 20.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 875,
+                "point": 22.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 1500,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 2500,
+                "point": 26.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": -135,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 115,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 180,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 270,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 425,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 675,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 1100,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 1800,
+                "point": 23.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 3000,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": -240,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 240,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 375,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 650,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 1150,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 2000,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 4000,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": -110,
+                "point": 5.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 145,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 150,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 240,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 375,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 625,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 1050,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 1900,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 3500,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": -190,
+                "point": 5.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": -105,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 245,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 425,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 725,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 1300,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 2500,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": -110,
+                "point": 5.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 150,
+                "point": 7.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "pointsbetus",
+        "title": "PointsBet (US)",
+        "last_update": "2024-03-01T22:05:18Z",
+        "markets": [
+          {
+            "key": "player_points_alternate",
+            "last_update": "2024-03-01T22:05:21Z",
+            "outcomes": [
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -2500,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -400,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -110,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 270,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 800,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -475,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -120,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 270,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 850,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": -105,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 400,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": -800,
+                "point": 4.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -2500,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -425,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -120,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 260,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 700,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -150,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 320,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -1664,
+                "point": 4.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -110,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 425,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -800,
+                "point": 4.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -1499,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -300,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 130,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 400,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -800,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -230,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 125,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 340,
+                "point": 34.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 900,
+                "point": 39.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "williamhill_us",
+        "title": "Caesars",
+        "last_update": "2024-03-01T22:04:00Z",
+        "markets": [
+          {
+            "key": "player_points_alternate",
+            "last_update": "2024-03-01T22:05:54Z",
+            "outcomes": [
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": -300,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 165,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Tre Mann",
+                "price": 550,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -3000,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -335,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 114,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 330,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 800,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -140,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 370,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -800,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -130,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 250,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 650,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -5000,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -625,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -135,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 210,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 550,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 140,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 575,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -5000,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -540,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -128,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 220,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 525,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 260,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 700,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 130,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 600,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 280,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -5000,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -1100,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -235,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 118,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 280,
+                "point": 34.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 600,
+                "point": 39.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": -140,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 310,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -220,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 240,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 800,
+                "point": 19.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "betonlineag",
+        "title": "BetOnline.ag",
+        "last_update": "2024-03-01T22:05:18Z",
+        "markets": [
+          {
+            "key": "player_points_alternate",
+            "last_update": "2024-03-01T22:05:10Z",
+            "outcomes": [
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 230,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 107,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 1977,
+                "point": 35.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 157,
+                "point": 23.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -238,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 1226,
+                "point": 33.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 340,
+                "point": 27.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 511,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": -143,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Miles Bridges",
+                "price": 782,
+                "point": 31.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 252,
+                "point": 23.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 790,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -116,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 1200,
+                "point": 31.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 1867,
+                "point": 33.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 123,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 176,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 363,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": -182,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Tobias Harris",
+                "price": 531,
+                "point": 27.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 616,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 1052,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 372,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 230,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": -111,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 1871,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": -208,
+                "point": 5.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 3478,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Cody Martin",
+                "price": 144,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -109,
+                "point": 10.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 1407,
+                "point": 22.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 333,
+                "point": 16.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 215,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 140,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 524,
+                "point": 18.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 846,
+                "point": 20.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 4348,
+                "point": 26.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": 2424,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Nick Richards",
+                "price": -192,
+                "point": 8.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -125,
+                "point": 14.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 415,
+                "point": 22.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 273,
+                "point": 20.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": -213,
+                "point": 12.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 122,
+                "point": 16.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 182,
+                "point": 18.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 642,
+                "point": 24.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 1661,
+                "point": 28.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 1018,
+                "point": 26.5
+              },
+              {
+                "name": "Over",
+                "description": "Buddy Hield",
+                "price": 2801,
+                "point": 30.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 1689,
+                "point": 33.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -105,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 446,
+                "point": 27.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 2783,
+                "point": 35.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 679,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 138,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 202,
+                "point": 23.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": -172,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 1057,
+                "point": 31.5
+              },
+              {
+                "name": "Over",
+                "description": "Brandon Miller",
+                "price": 299,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 379,
+                "point": 35.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 263,
+                "point": 33.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -109,
+                "point": 27.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 552,
+                "point": 37.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 130,
+                "point": 29.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 185,
+                "point": 31.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": -167,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 819,
+                "point": 39.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 1240,
+                "point": 41.5
+              },
+              {
+                "name": "Over",
+                "description": "Tyrese Maxey",
+                "price": 1923,
+                "point": 43.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 2134,
+                "point": 23.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 312,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 772,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 204,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 3745,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -208,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": -114,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 1262,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 134,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Paul Reed",
+                "price": 485,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 674,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 1098,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": -238,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 117,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": -135,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 178,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 1850,
+                "point": 23.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 273,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 425,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Grant Williams",
+                "price": 3236,
+                "point": 25.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 146,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 236,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 3854,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": -110,
+                "point": 5.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 387,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 2035,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 649,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Vasilije Micic",
+                "price": 1126,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": -103,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 151,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 382,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 626,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": -192,
+                "point": 5.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 1056,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 238,
+                "point": 11.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 3385,
+                "point": 21.5
+              },
+              {
+                "name": "Over",
+                "description": "Seth Curry",
+                "price": 1851,
+                "point": 19.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 148,
+                "point": 7.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 2475,
+                "point": 17.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 722,
+                "point": 13.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 246,
+                "point": 9.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": -112,
+                "point": 5.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 1305,
+                "point": 15.5
+              },
+              {
+                "name": "Over",
+                "description": "Davis Bertans",
+                "price": 415,
+                "point": 11.5
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

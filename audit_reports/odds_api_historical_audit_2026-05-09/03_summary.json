@@ -1,0 +1,1251 @@
+{
+  "audit_date_utc": "2026-05-09T03:31:05.709038+00:00",
+  "api": "the-odds-api v4 historical",
+  "sport": "basketball_nba",
+  "sample_date": "2024-03-01",
+  "events_snapshot": "2024-03-01T18:00:00Z",
+  "chosen_event": {
+    "id": "3c6f663a318c5b8b977586ad331f3f76",
+    "commence_time": "2024-03-02T00:10:00Z",
+    "home_team": "Philadelphia 76ers",
+    "away_team": "Charlotte Hornets"
+  },
+  "snapshot_timestamp_used": "2024-03-01T22:10:00Z",
+  "events_returned_count": 9,
+  "credit_budget": 35,
+  "alt_markets_probed": [
+    "player_points_alternate",
+    "player_points_rebounds_assists_alternate",
+    "player_points_rebounds_alternate"
+  ],
+  "calls_log": [
+    {
+      "label": "A. historical_events",
+      "url_redacted": "https://api.the-odds-api.com/v4/historical/sports/basketball_nba/events?date=2024-03-01T18%3A00%3A00Z&apiKey=***REDACTED***",
+      "status": 200,
+      "headers": {
+        "x-requests-used": "586235",
+        "x-requests-remaining": "4413765",
+        "x-requests-last": "1",
+        "status": 200,
+        "elapsed_seconds": 0.412
+      }
+    },
+    {
+      "label": "B1. alt_market::player_points_alternate",
+      "url_redacted": "https://api.the-odds-api.com/v4/historical/sports/basketball_nba/events/3c6f663a318c5b8b977586ad331f3f76/odds?regions=us&markets=player_points_alternate&oddsFormat=american&date=2024-03-01T22%3A10%3A00Z&apiKey=***REDACTED***",
+      "status": 200,
+      "headers": {
+        "x-requests-used": "586245",
+        "x-requests-remaining": "4413755",
+        "x-requests-last": "10",
+        "status": 200,
+        "elapsed_seconds": 0.486
+      }
+    },
+    {
+      "label": "B2. alt_market::player_points_rebounds_assists_alternate",
+      "url_redacted": "https://api.the-odds-api.com/v4/historical/sports/basketball_nba/events/3c6f663a318c5b8b977586ad331f3f76/odds?regions=us&markets=player_points_rebounds_assists_alternate&oddsFormat=american&date=2024-03-01T22%3A10%3A00Z&apiKey=***REDACTED***",
+      "status": 200,
+      "headers": {
+        "x-requests-used": "586255",
+        "x-requests-remaining": "4413745",
+        "x-requests-last": "10",
+        "status": 200,
+        "elapsed_seconds": 0.409
+      }
+    },
+    {
+      "label": "B3. alt_market::player_points_rebounds_alternate",
+      "url_redacted": "https://api.the-odds-api.com/v4/historical/sports/basketball_nba/events/3c6f663a318c5b8b977586ad331f3f76/odds?regions=us&markets=player_points_rebounds_alternate&oddsFormat=american&date=2024-03-01T22%3A10%3A00Z&apiKey=***REDACTED***",
+      "status": 200,
+      "headers": {
+        "x-requests-used": "586265",
+        "x-requests-remaining": "4413735",
+        "x-requests-last": "10",
+        "status": 200,
+        "elapsed_seconds": 0.476
+      }
+    }
+  ],
+  "per_market_findings": {
+    "player_points_alternate": {
+      "market_key_requested": "player_points_alternate",
+      "status": 200,
+      "x_requests_last": "10",
+      "x_requests_used": "586245",
+      "x_requests_remaining": "4413755",
+      "snapshot_returned": "2024-03-01T22:05:40Z",
+      "previous_snapshot": "2024-03-01T22:00:40Z",
+      "next_snapshot": "2024-03-01T22:10:39Z",
+      "bookmakers": [
+        "draftkings",
+        "fanduel",
+        "mybookieag",
+        "pointsbetus",
+        "williamhill_us",
+        "betonlineag"
+      ],
+      "market_keys_returned_by_book": {
+        "draftkings": [
+          "player_points_alternate"
+        ],
+        "fanduel": [
+          "player_points_alternate"
+        ],
+        "mybookieag": [
+          "player_points_alternate"
+        ],
+        "pointsbetus": [
+          "player_points_alternate"
+        ],
+        "williamhill_us": [
+          "player_points_alternate"
+        ],
+        "betonlineag": [
+          "player_points_alternate"
+        ]
+      },
+      "outcome_count_by_book_market": {
+        "draftkings::player_points_alternate": 140,
+        "fanduel::player_points_alternate": 187,
+        "mybookieag::player_points_alternate": 122,
+        "pointsbetus::player_points_alternate": 32,
+        "williamhill_us::player_points_alternate": 42,
+        "betonlineag::player_points_alternate": 113
+      },
+      "alt_line_density_by_player": {
+        "Brandon Miller": {
+          "distinct_lines": 20,
+          "lines": [
+            9.5,
+            12.5,
+            13.5,
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            21.5,
+            22.5,
+            23.5,
+            24.5,
+            25.5,
+            27.5,
+            29.5,
+            31.5,
+            33.5,
+            35.5
+          ]
+        },
+        "Buddy Hield": {
+          "distinct_lines": 18,
+          "lines": [
+            8.5,
+            9.5,
+            10.5,
+            11.5,
+            12.5,
+            13.5,
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            22.5,
+            24.5,
+            26.5,
+            28.5,
+            30.5
+          ]
+        },
+        "Cody Martin": {
+          "distinct_lines": 13,
+          "lines": [
+            5.5,
+            6.5,
+            7.5,
+            8.5,
+            9.5,
+            10.5,
+            11.5,
+            13.5,
+            14.5,
+            15.5,
+            17.5,
+            19.5,
+            21.5
+          ]
+        },
+        "Grant Williams": {
+          "distinct_lines": 14,
+          "lines": [
+            4.5,
+            7.5,
+            8.5,
+            9.5,
+            10.5,
+            11.5,
+            13.5,
+            14.5,
+            15.5,
+            17.5,
+            19.5,
+            21.5,
+            23.5,
+            25.5
+          ]
+        },
+        "Miles Bridges": {
+          "distinct_lines": 20,
+          "lines": [
+            9.5,
+            12.5,
+            13.5,
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            21.5,
+            22.5,
+            23.5,
+            24.5,
+            25.5,
+            27.5,
+            29.5,
+            31.5,
+            33.5,
+            35.5
+          ]
+        },
+        "Nick Richards": {
+          "distinct_lines": 18,
+          "lines": [
+            4.5,
+            5.5,
+            6.5,
+            7.5,
+            8.5,
+            9.5,
+            10.5,
+            11.5,
+            12.5,
+            13.5,
+            14.5,
+            16.5,
+            18.5,
+            19.5,
+            20.5,
+            22.5,
+            24.5,
+            26.5
+          ]
+        },
+        "Paul Reed": {
+          "distinct_lines": 17,
+          "lines": [
+            4.5,
+            5.5,
+            6.5,
+            7.5,
+            8.5,
+            9.5,
+            10.5,
+            11.5,
+            12.5,
+            13.5,
+            14.5,
+            15.5,
+            17.5,
+            19.5,
+            21.5,
+            23.5,
+            25.5
+          ]
+        },
+        "Seth Curry": {
+          "distinct_lines": 13,
+          "lines": [
+            5.5,
+            6.5,
+            7.5,
+            8.5,
+            9.5,
+            10.5,
+            11.5,
+            13.5,
+            14.5,
+            15.5,
+            17.5,
+            19.5,
+            21.5
+          ]
+        },
+        "Tobias Harris": {
+          "distinct_lines": 20,
+          "lines": [
+            9.5,
+            11.5,
+            12.5,
+            13.5,
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            21.5,
+            22.5,
+            23.5,
+            24.5,
+            25.5,
+            27.5,
+            29.5,
+            31.5,
+            33.5
+          ]
+        },
+        "Tre Mann": {
+          "distinct_lines": 18,
+          "lines": [
+            6.5,
+            7.5,
+            8.5,
+            9.5,
+            10.5,
+            11.5,
+            12.5,
+            13.5,
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            22.5,
+            24.5,
+            26.5
+          ]
+        },
+        "Tyrese Maxey": {
+          "distinct_lines": 23,
+          "lines": [
+            14.5,
+            18.5,
+            19.5,
+            20.5,
+            21.5,
+            22.5,
+            23.5,
+            24.5,
+            25.5,
+            26.5,
+            27.5,
+            28.5,
+            29.5,
+            30.5,
+            31.5,
+            32.5,
+            33.5,
+            34.5,
+            35.5,
+            37.5,
+            39.5,
+            41.5,
+            43.5
+          ]
+        },
+        "Vasilije Micic": {
+          "distinct_lines": 8,
+          "lines": [
+            5.5,
+            7.5,
+            9.5,
+            11.5,
+            13.5,
+            15.5,
+            17.5,
+            19.5
+          ]
+        },
+        "Davis Bertans": {
+          "distinct_lines": 8,
+          "lines": [
+            5.5,
+            7.5,
+            9.5,
+            11.5,
+            13.5,
+            14.5,
+            15.5,
+            17.5
+          ]
+        }
+      },
+      "samples": [
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_alternate",
+          "player": "Brandon Miller",
+          "side": "Over",
+          "line": 18.5,
+          "price_american": -135,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_alternate",
+          "player": "Brandon Miller",
+          "side": "Under",
+          "line": 18.5,
+          "price_american": -105,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_alternate",
+          "player": "Brandon Miller",
+          "side": "Over",
+          "line": 20.5,
+          "price_american": 115,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_alternate",
+          "player": "Brandon Miller",
+          "side": "Under",
+          "line": 20.5,
+          "price_american": -155,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_alternate",
+          "player": "Brandon Miller",
+          "side": "Over",
+          "line": 21.5,
+          "price_american": 130,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_alternate",
+          "player": "Brandon Miller",
+          "side": "Under",
+          "line": 21.5,
+          "price_american": -185,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_alternate",
+          "player": "Buddy Hield",
+          "side": "Over",
+          "line": 12.5,
+          "price_american": -200,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_alternate",
+          "player": "Buddy Hield",
+          "side": "Under",
+          "line": 12.5,
+          "price_american": 140,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_alternate",
+          "player": "Buddy Hield",
+          "side": "Over",
+          "line": 13.5,
+          "price_american": -160,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_alternate",
+          "player": "Buddy Hield",
+          "side": "Under",
+          "line": 13.5,
+          "price_american": 110,
+          "last_update": "2024-03-01T22:05:06Z"
+        }
+      ]
+    },
+    "player_points_rebounds_assists_alternate": {
+      "market_key_requested": "player_points_rebounds_assists_alternate",
+      "status": 200,
+      "x_requests_last": "10",
+      "x_requests_used": "586255",
+      "x_requests_remaining": "4413745",
+      "snapshot_returned": "2024-03-01T22:05:40Z",
+      "previous_snapshot": "2024-03-01T22:00:40Z",
+      "next_snapshot": "2024-03-01T22:10:39Z",
+      "bookmakers": [
+        "draftkings",
+        "fanduel",
+        "williamhill_us",
+        "betonlineag"
+      ],
+      "market_keys_returned_by_book": {
+        "draftkings": [
+          "player_points_rebounds_assists_alternate"
+        ],
+        "fanduel": [
+          "player_points_rebounds_assists_alternate"
+        ],
+        "williamhill_us": [
+          "player_points_rebounds_assists_alternate"
+        ],
+        "betonlineag": [
+          "player_points_rebounds_assists_alternate"
+        ]
+      },
+      "outcome_count_by_book_market": {
+        "draftkings::player_points_rebounds_assists_alternate": 34,
+        "fanduel::player_points_rebounds_assists_alternate": 193,
+        "williamhill_us::player_points_rebounds_assists_alternate": 52,
+        "betonlineag::player_points_rebounds_assists_alternate": 132
+      },
+      "alt_line_density_by_player": {
+        "Brandon Miller": {
+          "distinct_lines": 26,
+          "lines": [
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            21.5,
+            22.5,
+            23.5,
+            24.5,
+            25.5,
+            26.5,
+            27.5,
+            28.5,
+            29.5,
+            30.5,
+            31.5,
+            32.5,
+            33.5,
+            34.5,
+            35.5,
+            36.5,
+            37.5,
+            38.5,
+            40.5,
+            42.5,
+            44.5,
+            46.5
+          ]
+        },
+        "Buddy Hield": {
+          "distinct_lines": 18,
+          "lines": [
+            13.5,
+            15.5,
+            17.5,
+            19.5,
+            20.5,
+            21.5,
+            22.5,
+            24.5,
+            26.5,
+            28.5,
+            29.5,
+            30.5,
+            32.5,
+            34.5,
+            36.5,
+            38.5,
+            40.5,
+            42.5
+          ]
+        },
+        "Cody Martin": {
+          "distinct_lines": 19,
+          "lines": [
+            9.5,
+            10.5,
+            11.5,
+            12.5,
+            13.5,
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            21.5,
+            22.5,
+            23.5,
+            24.5,
+            26.5,
+            28.5,
+            30.5
+          ]
+        },
+        "Miles Bridges": {
+          "distinct_lines": 27,
+          "lines": [
+            21.5,
+            22.5,
+            23.5,
+            24.5,
+            25.5,
+            26.5,
+            27.5,
+            28.5,
+            29.5,
+            30.5,
+            31.5,
+            32.5,
+            33.5,
+            34.5,
+            35.5,
+            36.5,
+            37.5,
+            38.5,
+            39.5,
+            40.5,
+            41.5,
+            42.5,
+            43.5,
+            45.5,
+            47.5,
+            49.5,
+            51.5
+          ]
+        },
+        "Tobias Harris": {
+          "distinct_lines": 27,
+          "lines": [
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            21.5,
+            22.5,
+            23.5,
+            24.5,
+            25.5,
+            26.5,
+            27.5,
+            28.5,
+            29.5,
+            30.5,
+            31.5,
+            32.5,
+            33.5,
+            34.5,
+            35.5,
+            36.5,
+            37.5,
+            38.5,
+            39.5,
+            41.5,
+            43.5,
+            45.5,
+            47.5
+          ]
+        },
+        "Tre Mann": {
+          "distinct_lines": 18,
+          "lines": [
+            13.5,
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            21.5,
+            22.5,
+            23.5,
+            24.5,
+            25.5,
+            26.5,
+            27.5,
+            28.5,
+            29.5,
+            30.5
+          ]
+        },
+        "Tyrese Maxey": {
+          "distinct_lines": 27,
+          "lines": [
+            28.5,
+            29.5,
+            30.5,
+            31.5,
+            32.5,
+            33.5,
+            34.5,
+            35.5,
+            36.5,
+            37.5,
+            38.5,
+            39.5,
+            40.5,
+            41.5,
+            42.5,
+            43.5,
+            44.5,
+            45.5,
+            46.5,
+            47.5,
+            48.5,
+            49.5,
+            50.5,
+            52.5,
+            54.5,
+            56.5,
+            58.5
+          ]
+        },
+        "Vasilije Micic": {
+          "distinct_lines": 11,
+          "lines": [
+            7.5,
+            9.5,
+            11.5,
+            13.5,
+            15.5,
+            17.5,
+            19.5,
+            21.5,
+            23.5,
+            25.5,
+            27.5
+          ]
+        },
+        "Davis Bertans": {
+          "distinct_lines": 15,
+          "lines": [
+            1.5,
+            3.5,
+            5.5,
+            6.5,
+            7.5,
+            8.5,
+            9.5,
+            10.5,
+            11.5,
+            12.5,
+            13.5,
+            14.5,
+            16.5,
+            18.5,
+            20.5
+          ]
+        },
+        "Grant Williams": {
+          "distinct_lines": 14,
+          "lines": [
+            9.5,
+            11.5,
+            13.5,
+            15.5,
+            17.5,
+            19.5,
+            21.5,
+            23.5,
+            25.5,
+            27.5,
+            29.5,
+            31.5,
+            33.5,
+            35.5
+          ]
+        },
+        "Seth Curry": {
+          "distinct_lines": 17,
+          "lines": [
+            5.5,
+            7.5,
+            8.5,
+            9.5,
+            10.5,
+            11.5,
+            12.5,
+            13.5,
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            18.5,
+            20.5,
+            22.5,
+            24.5,
+            26.5
+          ]
+        },
+        "Paul Reed": {
+          "distinct_lines": 15,
+          "lines": [
+            11.5,
+            13.5,
+            15.5,
+            17.5,
+            19.5,
+            21.5,
+            23.5,
+            25.5,
+            27.5,
+            29.5,
+            31.5,
+            33.5,
+            35.5,
+            37.5,
+            39.5
+          ]
+        },
+        "Nick Richards": {
+          "distinct_lines": 15,
+          "lines": [
+            13.5,
+            15.5,
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            22.5,
+            24.5,
+            26.5,
+            28.5,
+            30.5,
+            32.5,
+            34.5,
+            36.5,
+            38.5
+          ]
+        }
+      },
+      "samples": [
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_assists_alternate",
+          "player": "Brandon Miller",
+          "side": "Over",
+          "line": 19.5,
+          "price_american": -475,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_assists_alternate",
+          "player": "Brandon Miller",
+          "side": "Over",
+          "line": 21.5,
+          "price_american": -310,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_assists_alternate",
+          "player": "Brandon Miller",
+          "side": "Over",
+          "line": 24.5,
+          "price_american": -180,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_assists_alternate",
+          "player": "Brandon Miller",
+          "side": "Over",
+          "line": 29.5,
+          "price_american": 130,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_assists_alternate",
+          "player": "Brandon Miller",
+          "side": "Over",
+          "line": 34.5,
+          "price_american": 290,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_assists_alternate",
+          "player": "Buddy Hield",
+          "side": "Over",
+          "line": 17.5,
+          "price_american": -380,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_assists_alternate",
+          "player": "Buddy Hield",
+          "side": "Over",
+          "line": 19.5,
+          "price_american": -235,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_assists_alternate",
+          "player": "Buddy Hield",
+          "side": "Over",
+          "line": 21.5,
+          "price_american": -150,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_assists_alternate",
+          "player": "Buddy Hield",
+          "side": "Over",
+          "line": 24.5,
+          "price_american": 120,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_assists_alternate",
+          "player": "Buddy Hield",
+          "side": "Over",
+          "line": 29.5,
+          "price_american": 320,
+          "last_update": "2024-03-01T22:05:06Z"
+        }
+      ]
+    },
+    "player_points_rebounds_alternate": {
+      "market_key_requested": "player_points_rebounds_alternate",
+      "status": 200,
+      "x_requests_last": "10",
+      "x_requests_used": "586265",
+      "x_requests_remaining": "4413735",
+      "snapshot_returned": "2024-03-01T22:05:40Z",
+      "previous_snapshot": "2024-03-01T22:00:40Z",
+      "next_snapshot": "2024-03-01T22:10:39Z",
+      "bookmakers": [
+        "draftkings",
+        "fanduel",
+        "williamhill_us"
+      ],
+      "market_keys_returned_by_book": {
+        "draftkings": [
+          "player_points_rebounds_alternate"
+        ],
+        "fanduel": [
+          "player_points_rebounds_alternate"
+        ],
+        "williamhill_us": [
+          "player_points_rebounds_alternate"
+        ]
+      },
+      "outcome_count_by_book_market": {
+        "draftkings::player_points_rebounds_alternate": 44,
+        "fanduel::player_points_rebounds_alternate": 158,
+        "williamhill_us::player_points_rebounds_alternate": 41
+      },
+      "alt_line_density_by_player": {
+        "Brandon Miller": {
+          "distinct_lines": 22,
+          "lines": [
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            21.5,
+            22.5,
+            23.5,
+            24.5,
+            25.5,
+            26.5,
+            27.5,
+            28.5,
+            29.5,
+            30.5,
+            31.5,
+            32.5,
+            33.5,
+            34.5,
+            35.5
+          ]
+        },
+        "Buddy Hield": {
+          "distinct_lines": 5,
+          "lines": [
+            14.5,
+            15.5,
+            17.5,
+            19.5,
+            24.5
+          ]
+        },
+        "Cody Martin": {
+          "distinct_lines": 13,
+          "lines": [
+            6.5,
+            7.5,
+            8.5,
+            9.5,
+            10.5,
+            11.5,
+            12.5,
+            13.5,
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            19.5
+          ]
+        },
+        "Grant Williams": {
+          "distinct_lines": 13,
+          "lines": [
+            8.5,
+            9.5,
+            10.5,
+            11.5,
+            12.5,
+            13.5,
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            18.5,
+            19.5,
+            20.5
+          ]
+        },
+        "Miles Bridges": {
+          "distinct_lines": 24,
+          "lines": [
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            21.5,
+            22.5,
+            23.5,
+            24.5,
+            25.5,
+            26.5,
+            27.5,
+            28.5,
+            29.5,
+            30.5,
+            31.5,
+            32.5,
+            33.5,
+            34.5,
+            35.5,
+            36.5,
+            37.5,
+            38.5,
+            39.5,
+            40.5
+          ]
+        },
+        "Nick Richards": {
+          "distinct_lines": 17,
+          "lines": [
+            12.5,
+            13.5,
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            21.5,
+            22.5,
+            23.5,
+            24.5,
+            25.5,
+            26.5,
+            27.5,
+            29.5
+          ]
+        },
+        "Paul Reed": {
+          "distinct_lines": 5,
+          "lines": [
+            14.5,
+            15.5,
+            17.5,
+            19.5,
+            24.5
+          ]
+        },
+        "Tobias Harris": {
+          "distinct_lines": 5,
+          "lines": [
+            17.5,
+            19.5,
+            24.5,
+            29.5,
+            34.5
+          ]
+        },
+        "Tre Mann": {
+          "distinct_lines": 16,
+          "lines": [
+            9.5,
+            10.5,
+            11.5,
+            12.5,
+            13.5,
+            14.5,
+            15.5,
+            16.5,
+            17.5,
+            18.5,
+            19.5,
+            20.5,
+            21.5,
+            22.5,
+            23.5,
+            24.5
+          ]
+        },
+        "Tyrese Maxey": {
+          "distinct_lines": 5,
+          "lines": [
+            19.5,
+            24.5,
+            29.5,
+            34.5,
+            39.5
+          ]
+        },
+        "Vasilije Micic": {
+          "distinct_lines": 1,
+          "lines": [
+            9.5
+          ]
+        },
+        "Davis Bertans": {
+          "distinct_lines": 1,
+          "lines": [
+            9.5
+          ]
+        },
+        "Seth Curry": {
+          "distinct_lines": 2,
+          "lines": [
+            9.5,
+            14.5
+          ]
+        }
+      },
+      "samples": [
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_alternate",
+          "player": "Brandon Miller",
+          "side": "Over",
+          "line": 17.5,
+          "price_american": -475,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_alternate",
+          "player": "Brandon Miller",
+          "side": "Over",
+          "line": 19.5,
+          "price_american": -295,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_alternate",
+          "player": "Brandon Miller",
+          "side": "Over",
+          "line": 29.5,
+          "price_american": 205,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_alternate",
+          "player": "Brandon Miller",
+          "side": "Over",
+          "line": 34.5,
+          "price_american": 450,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_alternate",
+          "player": "Buddy Hield",
+          "side": "Over",
+          "line": 14.5,
+          "price_american": -330,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_alternate",
+          "player": "Buddy Hield",
+          "side": "Over",
+          "line": 15.5,
+          "price_american": -255,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_alternate",
+          "player": "Buddy Hield",
+          "side": "Over",
+          "line": 17.5,
+          "price_american": -160,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_alternate",
+          "player": "Buddy Hield",
+          "side": "Over",
+          "line": 19.5,
+          "price_american": 100,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_alternate",
+          "player": "Buddy Hield",
+          "side": "Over",
+          "line": 24.5,
+          "price_american": 275,
+          "last_update": "2024-03-01T22:05:06Z"
+        },
+        {
+          "bookmaker": "draftkings",
+          "market": "player_points_rebounds_alternate",
+          "player": "Cody Martin",
+          "side": "Over",
+          "line": 10.5,
+          "price_american": -220,
+          "last_update": "2024-03-01T22:05:06Z"
+        }
+      ]
+    }
+  }
+}

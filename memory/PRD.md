@@ -89,6 +89,16 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-09 — The Odds API HISTORICAL alt-prop audit (READ-ONLY)
+- Goal: confirm exact recipe to fetch historical NBA alternate player-prop ladders (incl. combos) for any date ≥ 2023-05-03 from The Odds API.
+- 31 credits spent (cap was 35). All three probed alt-market keys returned 200 with non-empty ladders on a 2024-03-01 NBA event.
+- Validated keys: `player_points_alternate` (6 books), `player_points_rebounds_assists_alternate` (4 books), `player_points_rebounds_alternate` (3 books). Naming rule confirmed: `<live_key>_alternate`. PA/RA combos not probed — pattern strongly implies same shape but each needs a 10-credit confirmation.
+- Recipe: `GET /v4/historical/sports/basketball_nba/events?date=…` (1 credit) → pick eventId → `GET /v4/historical/sports/basketball_nba/events/{eventId}/odds?regions=us&markets={ONE_ALT_KEY}&oddsFormat=american&date=…` (10 credits per market per region per event). 5-minute snapshot cadence; envelope ships `timestamp/previous_timestamp/next_timestamp`.
+- Gotchas documented: single-sided alt outcomes (DK PRA-alt is Over-only), per-market book coverage shrinks (PTS-alt=6, PRA-alt=4, PR-alt=3), date floor 2023-05-03, never bundle markets in a single call.
+- Cost model: ~641 credits per NBA slate × 8 alt markets, ~98k credits per full season at 4 markets ~321/slate.
+- NO production patches. NO scoring/gates touched. NO storage. Read-only script: `backend/scripts/odds_api_historical_audit.py`.
+- Deliverables: `/app/audit_reports/odds_api_historical_audit_2026-05-09.md` (consolidated) + `/app/audit_reports/odds_api_historical_audit_2026-05-09/` (raw payloads + machine summary).
+
 ### 2026-05-08 — Universal injury redistribution model (math rebuild)
 **Problem**: card outputs were unrealistic (Wemby +12% on a David Jones OUT, LeBron +15 mins, SGA +12% on JWill OUT). Root cause was `_get_beneficiaries` applying flat per-rank constants (+15 mins / +12% usage / +10 mins / +8% usage / +5 mins / +5% usage) that did not depend on injured magnitude or absorber saturation.
 - **New helper** `services/injury_vacuum_service.py::_compute_redistribution(injured, teammates)`. Sport-agnostic two-layer model:
