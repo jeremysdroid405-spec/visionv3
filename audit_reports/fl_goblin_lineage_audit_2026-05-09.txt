@@ -1,0 +1,120 @@
+Total NBA FL goblins: 95
+
+=== 1. PRICING FIELD PRESENCE — ACROSS ALL 68 GOBLIN ROWS ===
+  OUTER doc pricing fields (forward_test_outcomes):
+    dk_odds                                 : 95 / 95
+    pinnacle_tp                             : 95 / 95
+    vk_edge                                 : 95 / 95
+    vk_predicted                            : 95 / 95
+    vk_prob                                 : 95 / 95
+
+  INNER full_prop_data pricing fields:
+    dk_odds                                 : 95 / 95
+    vk_edge                                 : 95 / 95
+    vk_predicted                            : 95 / 95
+    vk_prob_over                            : 95 / 95
+    vk_prob_under                           : 95 / 95
+
+=== 2. EXPLICIT FIELD PRESENCE COUNTS (user-listed) ===
+field                                outer_n  inner_n  notes
+  dk_odds                                 27       27
+  fd_odds                                  0        0
+  mgm_odds                                 0        0
+  bol_odds                                 0        0
+  tier_reference_odds                      0        0
+  tier_reference_book                      0        0
+  fair_odds                                0        0
+  p_true_active                            0        0
+  pp_multiplier                            0        0
+  pp_payout_multiplier                     0        0
+  payout_multiplier                        0        0
+  reference_price                          0        0
+  ref_odds                                 0        0
+  implied_probability                      0        0
+  pp_payout                                0        0
+  pp_label                                 0        0
+  pp_layer                                 0        0
+  pp_odds                                  0        0
+  vk_edge                                 95       95
+  vk_predicted                            95       95
+  vk_prob_over                             0       95
+  vk_prob_under                            0       95
+  composite_score                          0       95
+  intel_score                             95       95
+  dk_tier                                  0       95
+  goblin_payout                            0        0
+  is_goblin                               95       95
+  is_demon                                95       95
+
+=== 3. DISTINCT VALUES IN KEY FIELDS (non-null) ===
+  vk_predicted                  : n_non_null=95  range=[5.8, 51.6]  avg=24.4642105263158
+  vk_edge                       : n_non_null=95  range=[1.9, 8.9]  avg=5.890526315789473
+  vk_prob_over                  : n_non_null=95  range=[64.6, 99.6]  avg=85.5905263157895
+  intel_score                   : n_non_null=95  range=[2, 10]  avg=8.56842105263158
+  composite_score               : n_non_null=95  range=[0, 99.0]  avg=88.95789473684209
+  dk_tier                       : n_non_null=95  range=[front_lines, front_lines]  avg=—
+  dk_odds                       : n_non_null=27  range=[-247, -170]  avg=-217.2962962962963
+
+=== 4. PRICING LINEAGE — 15 RANDOM GOBLIN FL ROWS ===
+
+  -------- ROW 1: Dylan Harper PTS L7.5 cap_date=2026-04-19 --------
+  OUTER pricing fields            : {'dk_odds': -195, 'pinnacle_tp': None, 'vk_edge': 4.9, 'vk_predicted': 12.4, 'vk_prob': 95.0}
+  INNER full_prop_data pricing    : {'dk_odds': -195, 'vk_edge': 4.9, 'vk_predicted': 12.4, 'vk_prob_over': 95.0, 'vk_prob_under': 5.0}
+  outcome / actual / pinnacle_tp  : miss / 6.0 / None
+  is_goblin / is_demon            : True / False
+  live_props lookup (current slate): {'commence_time': '2026-05-09T01:48:00Z', 'pp_odds': 100, 'dk_odds': 105, 'fd_odds': None, 'bol_odds': None, 'mgm_odds': None, 'pp_layer': {'book': 'prizepicks', 'line': 7.5, 'odds': 100, 'fetched_at': '2026-05-09T02:56:17.911681+00:00'}, 'is_alternate_market': True}
+  prop_scores lookup (current slate): {'edge_vs_fair': 0.1086, 'tier': 'front_lines', 'tier_reason': 'gates_passed', 'tier_reference_book': 'dk', 'tier_reference_odds': -172, 'pp_multiplier': None, 'p_true_active': 0.741, 'p_true_model': 0.741, 'model_projection': 11.25}
+
+  -------- ROW 2: James Harden PRA L28.5 cap_date=2026-04-15 --------
+  OUTER pricing fields            : {'dk_odds': None, 'pinnacle_tp': None, 'vk_edge': 3.6, 'vk_predicted': 32.1, 'vk_prob': 72.1}
+  INNER full_prop_data pricing    : {'dk_odds': None, 'vk_edge': 3.6, 'vk_predicted': 32.1, 'vk_prob_over': 72.1, 'vk_prob_under': 27.9}
+  outcome / actual / pinnacle_tp  : hit / 34.0 / None
+  is_goblin / is_demon            : True / False
+  live_props lookup (current slate): {'commence_time': '2026-05-09T19:10:00Z', 'pp_odds': -137, 'dk_odds': None, 'fd_odds': -225, 'bol_odds': None, 'mgm_odds': None, 'pp_layer': {'book': 'prizepicks', 'line': 28.5, 'odds': -137, 'fetched_at': '2026-05-09T02:56:18.527550+00:00'}, 'is_alternate_market': True}
+  prop_scores lookup (current slate): {'distribution_p_over': 0.7038, 'edge_vs_fair': 0.1689, 'model_projection': 32.7063, 'p_true_active': 0.7038, 'p_true_model': 0.7038, 'pp_multiplier': None, 'tier': 'unqualified', 'tier_reason': 'front_lines_failed: gate_coverage_fail', 'tier_reference_book': 'dk', 'tier_reference_odds': -115}
+
+  -------- ROW 3: Ausar Thompson PRA L13.5 cap_date=2026-04-18 --------
+  OUTER pricing fields            : {'dk_odds': None, 'pinnacle_tp': None, 'vk_edge': 5.7, 'vk_predicted': 19.2, 'vk_prob': 92.8}
+  INNER full_prop_data pricing    : {'dk_odds': None, 'vk_edge': 5.7, 'vk_predicted': 19.2, 'vk_prob_over': 92.8, 'vk_prob_under': 7.2}
+  outcome / actual / pinnacle_tp  : hit / 16.0 / None
+  is_goblin / is_demon            : True / False
+  live_props lookup (current slate): {'commence_time': '2026-05-09T19:10:00Z', 'pp_odds': None, 'dk_odds': None, 'fd_odds': -670, 'bol_odds': None, 'mgm_odds': None, 'pp_layer': None, 'is_alternate_market': True}
+  prop_scores lookup (current slate): {'edge_vs_fair': None, 'tier': 'unqualified', 'tier_reason': 'no_reference_market', 'tier_reference_book': 'none', 'tier_reference_odds': None, 'pp_multiplier': None, 'p_true_active': 0.7231, 'p_true_model': 0.7231, 'model_projection': 18.19}
+
+  -------- ROW 4: Naz Reid PRA L17.5 cap_date=2026-04-14 --------
+  OUTER pricing fields            : {'dk_odds': None, 'pinnacle_tp': None, 'vk_edge': 2.6, 'vk_predicted': 20.1, 'vk_prob': 69.3}
+  INNER full_prop_data pricing    : {'dk_odds': None, 'vk_edge': 2.6, 'vk_predicted': 20.1, 'vk_prob_over': 69.3, 'vk_prob_under': 30.7}
+  outcome / actual / pinnacle_tp  : miss / 10.0 / None
+  is_goblin / is_demon            : True / False
+  live_props lookup (current slate): none
+  prop_scores lookup (current slate): {'edge_vs_fair': 0.0125, 'tier': 'unqualified', 'tier_reason': 'p_model<0.55', 'tier_reference_book': 'dk', 'tier_reference_odds': -104, 'pp_multiplier': None, 'p_true_active': 0.5317, 'p_true_model': 0.5317, 'model_projection': 18.13}
+
+  -------- ROW 5: Jaylen Brown PTS L22.5 cap_date=2026-04-22 --------
+  OUTER pricing fields            : {'dk_odds': None, 'pinnacle_tp': None, 'vk_edge': 6.3, 'vk_predicted': 28.8, 'vk_prob': 85.1}
+  INNER full_prop_data pricing    : {'dk_odds': None, 'vk_edge': 6.3, 'vk_predicted': 28.8, 'vk_prob_over': 85.1, 'vk_prob_under': 14.9}
+  outcome / actual / pinnacle_tp  : hit / 36.0 / None
+  is_goblin / is_demon            : True / False
+  live_props lookup (current slate): none
+  prop_scores lookup (current slate): none
+
+  -------- ROW 6: Jaylen Brown PTS L21.5 cap_date=2026-04-18 --------
+  OUTER pricing fields            : {'dk_odds': None, 'pinnacle_tp': None, 'vk_edge': 7.4, 'vk_predicted': 28.9, 'vk_prob': 90.8}
+  INNER full_prop_data pricing    : {'dk_odds': None, 'vk_edge': 7.4, 'vk_predicted': 28.9, 'vk_prob_over': 90.8, 'vk_prob_under': 9.2}
+  outcome / actual / pinnacle_tp  : hit / 26.0 / None
+  is_goblin / is_demon            : True / False
+  live_props lookup (current slate): none
+  prop_scores lookup (current slate): none
+
+  -------- ROW 7: Jabari Smith Jr. PTS L11.5 cap_date=2026-04-15 --------
+  OUTER pricing fields            : {'dk_odds': -236, 'pinnacle_tp': None, 'vk_edge': 5.3, 'vk_predicted': 16.8, 'vk_prob': 94.9}
+  INNER full_prop_data pricing    : {'dk_odds': -236, 'vk_edge': 5.3, 'vk_predicted': 16.8, 'vk_prob_over': 94.9, 'vk_prob_under': 5.1}
+  outcome / actual / pinnacle_tp  : hit / 16.0 / None
+  is_goblin / is_demon            : True / False
+  live_props lookup (current slate): none
+  prop_scores lookup (current slate): {'edge_vs_fair': 0.096, 'tier': 'safe_haven', 'tier_reason': 'gates_passed', 'tier_reference_book': 'dk', 'tier_reference_odds': -257, 'pp_multiplier': None, 'p_true_active': 0.8159, 'p_true_model': 0.8159, 'model_projection': 16.72}
+
+  -------- ROW 8: Stephen Curry PRA L26.5 cap_date=2026-04-13 --------
+  OUTER pricing fields            : {'dk_odds': None, 'pinnacle_tp': None, 'vk_edge': 2.8, 'vk_predicted': 29.3, 'vk_prob': 64.6}
+  INNER full_prop_data pricing    : {'dk_odds': None, 'vk_edge': 2.8, 'vk_predicted': 29.3, 'vk_prob_over': 64.6, 'vk_prob_under': 35.4}
+  outcome / actual / pinnacle_tp  : hit / 33.0 / None
+  is_goblin / is_demon            : True / False
