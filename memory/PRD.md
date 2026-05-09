@@ -23,6 +23,28 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
   - `services/replay/vk2_historical.py` reuses production model pickles +
     `nba_vk2_features.build_features` (no fork). PlayerIdResolver, leakage-
     gated history & adv-stat slices, single-stat predictor, combo synth.
+- **Stage A→B→C fast-iteration architecture (2026-05-09) — DONE**
+  - Stage-A immutable, Stage-B `replay_vk2_cache` carries every expensive
+    payload, Stage-C `scoring_only.run_scoring_only` re-scores in <5min/500k rows.
+- **Historical Matchup / Pace / DvP layer (2026-05-09) — DONE**
+  - `services/replay/matchup.py`; `matchup_blob` persisted on Stage-B cache.
+- **Historical Injury / Usage layer — Part 3 of Safe Haven Fix (2026-05-09) — DONE**
+  - `services/replay/injury_history.py` reconstructs OUT lists, `usage_vacuum_factor`,
+    `usage_spike` magnitude/flag, `key_player_out_flag`, `rotation_compression`
+    strictly from `bdl_historical_game_logs` (no live injury source needed).
+  - Production formula match: `usage_vacuum_factor = 1 + Σ(out_usage_l10) / Σ(top13_usage_l10)`
+    using the production `(fga + 0.44·fta + tov)/min · 36` proxy.
+  - Stage-B cache rows now carry `injury_blob` + flat `usage_vacuum_factor` /
+    `usage_spike_flag` shortcuts; Stage-C reads them and stamps
+    `prop["usage_vacuum_factor"]` / `prop["usage_spike"]` exactly as production.
+  - `cache.injury_pipeline_hash()` now content-hashes the new module → invalidation
+    rule wired (`injury_blob` field).
+  - 12 new pytest tests; 64/64 replay tests pass.
+  - End-to-end smoke: 304/308 props `injury_full`, avg vacuum 1.065, 21
+    spike-flagged. `parity_warnings` no longer mention injury or matchup.
+  - Audit: `/app/audit_reports/replay_injury_persistence_arch.md`.
+  - **Next**: full-window replay + Safe Haven debug script to confirm
+    activation. Production scoring/gates UNTOUCHED; replay-only writes.
   - `services/replay/engine.py` accepts `enable_vk2=True`; stamps
     `vk2_projection / vk2_sigma / vk2_p_over / vk2_model_version /
     vk2_feature_hash / vk2_adv_coverage_l10`; passes `p_model = vk2_p_over`

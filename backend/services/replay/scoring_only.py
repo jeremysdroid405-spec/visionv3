@@ -118,6 +118,27 @@ def _rebuild_prop(row: Dict[str, Any], side: str) -> Dict[str, Any]:
         prop["pace_factor"]      = matchup.get("pace_factor")
         prop["dvp_rank"]         = matchup.get("dvp_rank")
         prop["opp_pace_l10"]     = matchup.get("opp_pace_l10")
+
+    # Wire injury / usage context (Stage-B cached). vision_v2 reads
+    # prop["usage_vacuum_factor"] (via injury_context) and
+    # prop["usage_spike"] directly. The blob was assembled by
+    # services/replay/injury_history.assemble_injury_blob during the
+    # full engine run and never re-aggregates BDL during Stage-C.
+    inj = row.get("injury_blob") or {}
+    if inj and inj.get("error") is None:
+        if inj.get("usage_vacuum_factor") is not None:
+            prop["usage_vacuum_factor"] = inj.get("usage_vacuum_factor")
+        if inj.get("usage_spike") is not None:
+            prop["usage_spike"] = bool(inj.get("usage_spike"))
+        prop["key_player_out_flag"]  = inj.get("key_player_out_flag")
+        prop["rotation_compression"] = inj.get("rotation_compression")
+        prop["team_injury_context"] = {
+            "out_count":           inj.get("out_count"),
+            "missing_minutes":     inj.get("missing_minutes"),
+            "missing_usage_pct":   inj.get("missing_usage_pct"),
+            "team_total_usage":    inj.get("team_total_usage"),
+            "usage_vacuum_factor": inj.get("usage_vacuum_factor"),
+        }
     return prop
 
 
@@ -310,6 +331,13 @@ async def run_scoring_only(
                 "matchup_dvp_rank":     (row.get("matchup_blob") or {}).get("dvp_rank"),
                 "matchup_feature_completeness": (
                     (row.get("matchup_blob") or {}).get("feature_completeness")),
+                "usage_vacuum_factor":  (row.get("injury_blob") or {}).get("usage_vacuum_factor"),
+                "usage_spike":          bool((row.get("injury_blob") or {}).get("usage_spike")),
+                "key_player_out_flag":  (row.get("injury_blob") or {}).get("key_player_out_flag"),
+                "rotation_compression": (row.get("injury_blob") or {}).get("rotation_compression"),
+                "injury_out_count":     (row.get("injury_blob") or {}).get("out_count"),
+                "injury_feature_completeness": (
+                    (row.get("injury_blob") or {}).get("feature_completeness")),
                 "p_model":            p_model,
                 "tier":            scored.get("tier"),
                 "tier_reason":     scored.get("tier_reason"),

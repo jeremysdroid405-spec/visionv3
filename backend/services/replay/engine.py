@@ -35,10 +35,10 @@ WHAT'S WIRED
 WHAT'S STUBBED (`feature_completeness="partial"` once TP fires)
 ---------------------------------------------------------------
 The full production feature set still requires historical reconstruction of:
-    - VK2 player projections (vk2_projection / model_sigma)            P5
-    - Injury timeline (usage_vacuum_factor / usage_spike)               P4
-    - Matchup strength / pace factor                                    P3
-    - Avg hit/miss margin
+    - VK2 player projections (vk2_projection / model_sigma)            DONE
+    - Injury timeline (usage_vacuum_factor / usage_spike)               DONE
+    - Matchup strength / pace factor                                    DONE
+    - Avg hit/miss margin                                                P5
 The minimal as-of features come from `bdl_historical_game_logs` only. Every
 emitted evaluation carries `feature_completeness` so analytics can filter.
 """
@@ -72,6 +72,10 @@ from .cache import (
 )
 from .matchup import (
     TeamIdResolver, compute_matchup_blob,
+)
+from .injury_history import (
+    compute_team_injury_blob, compute_player_usage_spike,
+    assemble_injury_blob,
 )
 
 logger = logging.getLogger(__name__)
@@ -349,6 +353,7 @@ def score_one_side(
     feature_set: Optional[AsOfFeatures],
     vk2_blob: Optional[Dict[str, Any]] = None,
     matchup_blob: Optional[Dict[str, Any]] = None,
+    injury_blob: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Score a single (canonical_key, side) using full production stack:
        _pick_reference_odds → compute_tp → compute_scoring_stack.
@@ -448,6 +453,26 @@ def score_one_side(
         prop["opp_pace_l10"]     = matchup_blob.get("opp_pace_l10")
         prop["league_pace"]      = matchup_blob.get("league_pace")
 
+    # Stamp injury / usage context the same way live production does:
+    # vision_v2 reads prop["usage_vacuum_factor"] (via injury_context)
+    # and prop["usage_spike"] directly. Missing values stay as None /
+    # False — vision_v2 treats those as neutral (0 contribution).
+    if injury_blob and injury_blob.get("error") is None:
+        if injury_blob.get("usage_vacuum_factor") is not None:
+            prop["usage_vacuum_factor"] = injury_blob.get("usage_vacuum_factor")
+        if injury_blob.get("usage_spike") is not None:
+            prop["usage_spike"]          = injury_blob.get("usage_spike")
+        # Diagnostic lineage (not consumed by scoring).
+        prop["key_player_out_flag"] = injury_blob.get("key_player_out_flag")
+        prop["rotation_compression"] = injury_blob.get("rotation_compression")
+        prop["team_injury_context"] = {
+            "out_count":             injury_blob.get("out_count"),
+            "missing_minutes":       injury_blob.get("missing_minutes"),
+            "missing_usage_pct":     injury_blob.get("missing_usage_pct"),
+            "team_total_usage":      injury_blob.get("team_total_usage"),
+            "usage_vacuum_factor":   injury_blob.get("usage_vacuum_factor"),
+        }
+
     # Production coverage classification (sets prop['book_count'],
     # 'coverage_class', 'books_anchored' in place).
     classify_coverage(prop)
@@ -527,6 +552,7 @@ def score_one_side(
         "feature_set":   feature_set.asdict() if feature_set else None,
         "vk2_blob":      vk2_blob,
         "matchup_blob":  matchup_blob,
+        "injury_blob":   injury_blob,
         "by_book":       by_book,
     }
 
@@ -636,6 +662,12 @@ async def run_replay_engine(
     # cached matchup blob. Per-run process cache so we don't re-aggregate
     # opponent's L60-day DvP for every prop in the same event.
     matchup_cache: Dict[Any, Dict[str, Any]] = {}
+
+    # (snapshot_date_iso, team_id) → team-level injury blob. One per
+    # team per snapshot date; reused across every prop on that team.
+    injury_team_cache: Dict[Tuple[str, int], Dict[str, Any]] = {}
+    # (snapshot_date_iso, bdl_player_id) → player usage spike blob.
+    injury_player_cache: Dict[Tuple[str, int], Dict[str, Any]] = {}
 
     # Process-level cache: key = (player_id, model_key, snapshot_date_iso, line)
     # Saves duplicate model.predict calls when many alternate lines
@@ -857,6 +889,78 @@ async def run_replay_engine(
                 counters.get("matchup_cache_hits", 0) + 1
             )
 
+        # ---- Injury / usage layer (Stage-B cached) ----
+        # Team-level injury blob: cache per (snapshot_date, team_id).
+        snap_date_iso = snap_ts.date().isoformat()
+        injury_team_blob: Optional[Dict[str, Any]] = None
+        if player_team_id is not None:
+            t_key = (snap_date_iso, int(player_team_id))
+            injury_team_blob = injury_team_cache.get(t_key)
+            if injury_team_blob is None:
+                try:
+                    injury_team_blob = await compute_team_injury_blob(
+                        db,
+                        team_id=int(player_team_id),
+                        snapshot_ts=snap_ts,
+                    )
+                except LeakageDetected:
+                    counters["leakage_blocks"] += 1
+                    continue
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug(f"compute_team_injury_blob failed: {exc}")
+                    injury_team_blob = {
+                        "usage_vacuum_factor": 1.0,
+                        "key_player_out_flag": 0,
+                        "feature_completeness": "team_injury_missing",
+                        "error": f"injury_team_exception:{exc}",
+                    }
+                injury_team_cache[t_key] = injury_team_blob
+                counters["injury_team_built"] = (
+                    counters.get("injury_team_built", 0) + 1
+                )
+            else:
+                counters["injury_team_cache_hits"] = (
+                    counters.get("injury_team_cache_hits", 0) + 1
+                )
+
+        # Player-level usage spike: cache per (snapshot_date, player_id).
+        injury_spike_blob: Optional[Dict[str, Any]] = None
+        if resolved_pid is not None:
+            p_key = (snap_date_iso, int(resolved_pid))
+            injury_spike_blob = injury_player_cache.get(p_key)
+            if injury_spike_blob is None:
+                try:
+                    injury_spike_blob = await compute_player_usage_spike(
+                        db,
+                        bdl_player_id=int(resolved_pid),
+                        snapshot_ts=snap_ts,
+                    )
+                except LeakageDetected:
+                    counters["leakage_blocks"] += 1
+                    continue
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug(f"compute_player_usage_spike failed: {exc}")
+                    injury_spike_blob = {
+                        "usage_spike_flag": False,
+                        "feature_completeness": "usage_spike_missing",
+                        "error": f"usage_spike_exception:{exc}",
+                    }
+                injury_player_cache[p_key] = injury_spike_blob
+                counters["injury_player_built"] = (
+                    counters.get("injury_player_built", 0) + 1
+                )
+            else:
+                counters["injury_player_cache_hits"] = (
+                    counters.get("injury_player_cache_hits", 0) + 1
+                )
+
+        injury_blob = assemble_injury_blob(
+            team_blob=injury_team_blob or {},
+            spike_blob=injury_spike_blob or {},
+        )
+        if injury_blob.get("feature_completeness") == "injury_full":
+            counters["injury_full"] = counters.get("injury_full", 0) + 1
+
         # Determine which sides are actually quoted.
         sides_in_data = {(r.get("side") or "").upper()
                          for r in grp["rows"]}
@@ -873,6 +977,7 @@ async def run_replay_engine(
                     feature_set=feats_side,
                     vk2_blob=vk2_blob,
                     matchup_blob=matchup_blob,
+                    injury_blob=injury_blob,
                 )
             except Exception as exc:  # noqa: BLE001
                 counters["scoring_failures"] += 1
@@ -948,6 +1053,16 @@ async def run_replay_engine(
                 }
                 cache_buffer[-1]["matchup_completeness"] = (
                     (matchup_blob or {}).get("feature_completeness"))
+                # Stamp injury_blob on cache row — Stage-C uses it to
+                # rebuild prop["usage_vacuum_factor"] / ["usage_spike"]
+                # without re-aggregating bdl_historical_game_logs.
+                cache_buffer[-1]["injury_blob"] = injury_blob
+                cache_buffer[-1]["usage_vacuum_factor"] = (
+                    (injury_blob or {}).get("usage_vacuum_factor"))
+                cache_buffer[-1]["usage_spike_flag"] = bool(
+                    (injury_blob or {}).get("usage_spike"))
+                cache_buffer[-1]["injury_completeness"] = (
+                    (injury_blob or {}).get("feature_completeness"))
                 if len(cache_buffer) >= chunk_size:
                     await flush()
 
@@ -990,6 +1105,13 @@ async def run_replay_engine(
                     "matchup_dvp_rank":         (matchup_blob or {}).get("dvp_rank"),
                     "matchup_feature_completeness": (
                         (matchup_blob or {}).get("feature_completeness")),
+                    "usage_vacuum_factor":      (injury_blob or {}).get("usage_vacuum_factor"),
+                    "usage_spike":              bool((injury_blob or {}).get("usage_spike")),
+                    "key_player_out_flag":      (injury_blob or {}).get("key_player_out_flag"),
+                    "rotation_compression":     (injury_blob or {}).get("rotation_compression"),
+                    "injury_out_count":         (injury_blob or {}).get("out_count"),
+                    "injury_feature_completeness": (
+                        (injury_blob or {}).get("feature_completeness")),
                     "p_model":            res.get("p_model"),
                     "tier":            scored.get("tier"),
                     "tier_reason":     scored.get("tier_reason"),
@@ -1036,8 +1158,6 @@ async def run_replay_engine(
         "feature_completeness_overall":
             "varies (vk2_full / vk2_partial / partial / minimal)",
         "parity_warnings": [
-            "Injury usage_vacuum / usage_spike not yet wired (PARITY-TODO P4).",
-            "Matchup / pace factors not yet wired (PARITY-TODO P3).",
             "Avg hit/miss margin not yet wired.",
             ("VK2 advanced-stats coverage may be 0 for the replay window — "
              "rows tagged `vk2_partial` reflect this; see "
