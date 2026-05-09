@@ -2736,9 +2736,25 @@ class NBAScoringAdapter(ScoringAdapter):
             .get("vision_score", {})
             .get("p_true_method")
         ) == "model"
+        # 2026-05-09 — Combo VK2 routing fix.
+        # Combo families (`pts_ast`, `pts_reb`, `reb_ast`) have no direct
+        # trained model, so `model_key` is None and the legacy `use_vk2_path`
+        # check below would always fall through to VK1. Their components
+        # (PTS/REB/AST) DO have VK2 primary models, and standalone props
+        # already use VK2. We force VK2 routing on combo families when at
+        # least one component is in `_VK2_PRIMARY_STATS`, so combo synth
+        # uses the same component μ that standalone scoring uses.
+        # SSOT: μ comes from VK2 component models. Combo aggregation is
+        # still `Σ μ_i` (no separate combo model).
+        combo_components = self._COMBO_COMPONENTS.get(resolved_family)
+        combo_vk2_eligible = (
+            combo_components is not None
+            and not explicit_legacy
+            and any(c in self._VK2_PRIMARY_STATS for c in combo_components)
+        )
         use_vk2_path = (active_method_early == "vk2") or (
             model_key in self._VK2_PRIMARY_STATS and not explicit_legacy
-        )
+        ) or combo_vk2_eligible
         # PRA dual-projection audit (2026-04-23): populate these when
         # both direct and synth come back with a projection so we can
         # evaluate them against actuals later. Live pipeline behaviour

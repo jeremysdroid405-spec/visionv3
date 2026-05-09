@@ -15,6 +15,14 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Badge Architecture (`badge_enrichment.py`, `mlb_environmental_badges.py`) — DONE
 - 0-write guard in `prop_scores_store.write_versioned_scores` — DONE
 - **Breaking News Ticker stabilization (2026-05-08) — DONE**
+- **Combo-family VK2 routing fix (2026-05-09) — DONE**
+  - PA / PR / RA combo synth now uses VK2 component μ instead of legacy VK1.
+  - Allen PA alt 9.5: μ 21.89 → 12.95 (verified live).
+  - Aggregate Δμ: PA −1.51, PR −0.92, RA −0.54 (n=687 combo props rescored).
+  - 60 combo props now correctly fail direction-gate; 1 was fake-passing WZ (Allen PA alt 14.5).
+  - Post-fix sensitivity: 0 WZ rejects in vision_score_v2 [55,60) — floor move 60→55 yields zero gain. Floor stays at 60.
+  - Tests: `tests/test_combo_synth_vk2_routing.py` (8 tests, all passing — incl. mutation guard).
+  - Audit: `/app/audit_reports/wz_alt_line_projection_audit_2026-05-09.md`.
 - 30-min double-pass sign-off SLO — BLOCKED on upstream odds API blackout (Props 0)
 
 ## Architecture
