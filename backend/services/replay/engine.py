@@ -62,6 +62,11 @@ from services.scoring.coverage_filter import classify_coverage
 from .leakage_checks import (
     LeakageDetected, assert_no_future_games, assert_pregame_only,
 )
+from .vk2_historical import (
+    PlayerIdResolver,
+    REPLAY_FAMILY_TO_MODEL_KEY, VK2_UNSUPPORTED_FAMILIES, COMBO_COMPONENTS,
+    predict_vk2_as_of, predict_combo_vk2_as_of,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +77,11 @@ PROPS_NORMALIZED = "replay_props_normalized"
 BDL_LOGS = "bdl_historical_game_logs"
 
 
-FEATURE_COMPLETENESS_MINIMAL = "minimal"     # μ/σ/CV/HR only
-FEATURE_COMPLETENESS_PARTIAL = "partial"     # + TP/edge wired
-FEATURE_COMPLETENESS_FULL    = "full"        # + VK2/injury/matchup (Phase 2.6)
+FEATURE_COMPLETENESS_MINIMAL     = "minimal"     # μ/σ/CV/HR only
+FEATURE_COMPLETENESS_PARTIAL     = "partial"     # + TP/edge wired
+FEATURE_COMPLETENESS_VK2_PARTIAL = "vk2_partial" # + VK2 (no historical adv stats)
+FEATURE_COMPLETENESS_VK2_FULL    = "vk2_full"    # + VK2 with adv stats >= 5/L10
+FEATURE_COMPLETENESS_FULL        = "full"        # + injury/matchup (Phase 2.6+)
 
 # Maps replay stat_family → BDL field name(s).
 _BDL_FIELDS = {
@@ -137,6 +144,7 @@ def _sum_for_family(g: Dict[str, Any], fields: Tuple[str, ...]) -> Optional[floa
 async def build_as_of_features(
     db, *, player_norm: str, stat_family: str, line: float,
     side: str, as_of_ts: datetime,
+    bdl_player_id: Optional[int] = None,
 ) -> AsOfFeatures:
     """Pull last 20 BDL game logs for `player_norm` strictly before
     `as_of_ts` and compute μ / σ / CV / hit-rate ladder.
@@ -146,6 +154,11 @@ async def build_as_of_features(
     pace_factor — none of which are implemented here. Every prop
     evaluated through this builder is stamped
     `feature_completeness="minimal"` so analytics can filter accordingly.
+
+    `bdl_player_id`, when supplied, is used as the AUTHORITATIVE
+    identity key — bypasses the slow name-strip path entirely. The
+    name-fallback below is kept ONLY so unit tests with no resolver
+    still work.
     """
     if as_of_ts.tzinfo is None:
         raise ValueError("as_of_ts must be tz-aware UTC")
@@ -156,26 +169,42 @@ async def build_as_of_features(
                              FEATURE_COMPLETENESS_MINIMAL)
 
     cutoff_date_str = as_of_ts.date().isoformat()  # YYYY-MM-DD
-    cursor = db[BDL_LOGS].find(
-        {"date": {"$lt": cutoff_date_str}},
-        projection={"_id": 0, "player_name": 1, "date": 1,
-                    "min": 1, "pts": 1, "reb": 1, "ast": 1,
-                    "fg3m": 1, "stl": 1, "blk": 1},
-    ).sort("date", -1).limit(800)
-    matched: List[Dict[str, Any]] = []
-    async for g in cursor:
-        if _norm_name(g.get("player_name")) != player_norm:
-            continue
-        # Mandatory leakage gate: every game we ingest must be < as_of_ts.
-        # We compare on date string already, but verify defensively:
-        gd = g.get("date")
-        if gd and gd >= cutoff_date_str:
-            raise LeakageDetected(
-                f"feature builder loaded game date {gd} >= cutoff "
-                f"{cutoff_date_str} for player {player_norm}")
-        matched.append(g)
-        if len(matched) >= 20:
-            break
+    if bdl_player_id is not None:
+        # Identity-keyed query — fast, exact, leakage-tight.
+        cursor = db[BDL_LOGS].find(
+            {"player_id": int(bdl_player_id),
+             "date": {"$lt": cutoff_date_str}},
+            projection={"_id": 0, "player_name": 1, "date": 1,
+                        "min": 1, "pts": 1, "reb": 1, "ast": 1,
+                        "fg3m": 1, "stl": 1, "blk": 1},
+        ).sort("date", -1).limit(20)
+        matched: List[Dict[str, Any]] = [g async for g in cursor]
+        for g in matched:
+            gd = g.get("date")
+            if gd and gd >= cutoff_date_str:
+                raise LeakageDetected(
+                    f"feature builder loaded game date {gd} >= cutoff "
+                    f"{cutoff_date_str} for player_id={bdl_player_id}")
+    else:
+        # Legacy name-strip fallback (slow, kept for unit tests).
+        cursor = db[BDL_LOGS].find(
+            {"date": {"$lt": cutoff_date_str}},
+            projection={"_id": 0, "player_name": 1, "date": 1,
+                        "min": 1, "pts": 1, "reb": 1, "ast": 1,
+                        "fg3m": 1, "stl": 1, "blk": 1},
+        ).sort("date", -1).limit(800)
+        matched = []
+        async for g in cursor:
+            if _norm_name(g.get("player_name")) != player_norm:
+                continue
+            gd = g.get("date")
+            if gd and gd >= cutoff_date_str:
+                raise LeakageDetected(
+                    f"feature builder loaded game date {gd} >= cutoff "
+                    f"{cutoff_date_str} for player {player_norm}")
+            matched.append(g)
+            if len(matched) >= 20:
+                break
 
     if not matched:
         return AsOfFeatures(0, None, None, None, None, None, None, None,
@@ -312,15 +341,46 @@ def score_one_side(
     stat_family: str,
     sport: str,
     feature_set: Optional[AsOfFeatures],
+    vk2_blob: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Score a single (canonical_key, side) using full production stack:
        _pick_reference_odds → compute_tp → compute_scoring_stack.
+
+    `vk2_blob`, if provided, is the dict returned by
+    `services.replay.vk2_historical.predict_vk2_as_of` /
+    `predict_combo_vk2_as_of`. When present and `error is None`,
+    we stamp `prop["vk2_projection"] / model_projection /
+    distribution_sigma / vk2_p_over` so production scoring picks them
+    up exactly the way live scoring does — and we pass `p_model =
+    vk2_p_over` to `compute_scoring_stack`.
+
+    When `vk2_blob` is missing or carries an error, we DO NOT silently
+    fall back to the rolling-μ feature_set as p_model. Instead the
+    prop is stamped `vk2_unavailable` and `p_model = None` is passed
+    to scoring — the production stack will then assign `unqualified`
+    via its standard gate path (no replay-specific shortcut).
     """
     by_book, _ = collect_paired_layers(rows_for_canonical)
     side_layers = _side_layer_for_pick(by_book, side=side)
 
     head = next((r for r in rows_for_canonical
                   if (r.get("side") or "").upper() == side), rows_for_canonical[0])
+
+    # Use VK2 outputs as the model anchor when present; otherwise
+    # nothing (production scoring's gate engine handles missing μ/σ).
+    vk2_ok = (vk2_blob is not None
+              and vk2_blob.get("error") is None
+              and vk2_blob.get("projection") is not None)
+    vk2_proj  = vk2_blob.get("projection") if vk2_ok else None
+    vk2_sigma = vk2_blob.get("sigma")      if vk2_ok else None
+    vk2_p_over = vk2_blob.get("p_over")    if vk2_ok else None
+    # For UNDER side, p_over needs to be flipped to p_under for use as
+    # p_model (production interprets p_model as "model probability of
+    # the chosen side hitting").
+    if vk2_ok and (side or "").upper() == "UNDER" and vk2_p_over is not None:
+        p_model_side = max(0.0, min(1.0, 1.0 - float(vk2_p_over)))
+    else:
+        p_model_side = vk2_p_over
 
     prop: Dict[str, Any] = {
         "sport":          sport,
@@ -333,12 +393,32 @@ def score_one_side(
         "is_combo":       head.get("is_combo"),
         "market_key":     head.get("market_key"),
         "canonical_key":  head.get("canonical_key"),
-        "model_projection":      feature_set.mu if feature_set else None,
-        "vk2_projection":        feature_set.mu if feature_set else None,
-        "model_sigma":           feature_set.sigma if feature_set else None,
-        "distribution_sigma":    feature_set.sigma if feature_set else None,
+        # Production-scoring contract: vision_v2 reads
+        # prop.vk2_projection (preferred) → prop.model_projection;
+        # sigma reads prop.distribution_sigma → prop.model_sigma.
+        "vk2_projection":     vk2_proj,
+        "model_projection":   vk2_proj if vk2_proj is not None
+                              else (feature_set.mu if feature_set else None),
+        "distribution_sigma": vk2_sigma if vk2_sigma is not None
+                              else (feature_set.sigma if feature_set else None),
+        "model_sigma":        vk2_sigma if vk2_sigma is not None
+                              else (feature_set.sigma if feature_set else None),
         "hit_rate_sample_size":  (feature_set.sample_size
                                    if feature_set else 0),
+        # HR ladder MUST be on the 0-100 scale (production gate engine
+        # reads `min: 70.0` etc.). feature_set ships them on 0-1.
+        "hit_rate_l5":  (feature_set.hit_rate_l5 * 100.0
+                         if feature_set and feature_set.hit_rate_l5 is not None
+                         else None),
+        "hit_rate_l10": (feature_set.hit_rate_l10 * 100.0
+                         if feature_set and feature_set.hit_rate_l10 is not None
+                         else None),
+        "hit_rate_l20": (feature_set.hit_rate_l20 * 100.0
+                         if feature_set and feature_set.hit_rate_l20 is not None
+                         else None),
+        "ceiling_rate": (feature_set.ceiling_rate * 100.0
+                         if feature_set and feature_set.ceiling_rate is not None
+                         else None),
         # Production-shaped book layers (carry both `odds` for the picked
         # side AND over_odds/under_odds so the TP engine can de-vig).
         "dk_layer":   side_layers.get("draftkings"),
@@ -375,10 +455,10 @@ def score_one_side(
     if p_true is None:
         p_true = tp_blob.get("p_true_active")
 
-    # 3) Edge in percentage points (production convention: tp is 0-100,
-    #    implied is converted from 0-1 to 0-100 to match scale).
+    # 3) Edge in percentage points (production convention: p_model is
+    #    0-1, implied is 0-1, both scaled to 0-100 for edge_pct).
     edge_pct: Optional[float] = None
-    if p_true is not None and ref_odds is not None:
+    if p_model_side is not None and ref_odds is not None:
         if ref_odds > 0:
             implied = 100.0 / (ref_odds + 100.0)
         elif ref_odds < 0:
@@ -386,7 +466,7 @@ def score_one_side(
         else:
             implied = None
         if implied is not None:
-            edge_pct = round(p_true - implied * 100.0, 6)
+            edge_pct = round(p_model_side * 100.0 - implied * 100.0, 6)
 
     # Stash TP fields on the prop dict so the scoring layer / vision_v2
     # can read them downstream.
@@ -394,12 +474,20 @@ def score_one_side(
         prop["tp_books_used"] = tp_blob.get("books_used")
         prop["tp_source"]     = tp_blob.get("tp_source")
 
-    # 4) Production score.
+    # 4) Production score. p_model = VK2's own gaussian p_side (NOT TP).
+    #    TP is supplied separately as the `tp` arg.
+    # NBA gate thresholds use HR on a 0-100 scale (min: 70.0, etc.) —
+    # our `feature_set.hit_rate_l20` is on 0-1 scale, so scale here
+    # before passing into the production stack.
+    hr_for_stack = (feature_set.hit_rate_l20 * 100.0
+                    if feature_set is not None
+                    and feature_set.hit_rate_l20 is not None
+                    else None)
     scored = compute_scoring_stack(
         prop=prop,
-        p_model=p_true,                                  # use TP as p_model
+        p_model=p_model_side,
         cv=feature_set.cv if feature_set else None,
-        hit_rate=(feature_set.hit_rate_l20 if feature_set else None),
+        hit_rate=hr_for_stack,
         edge_pct=edge_pct,
         tp=p_true,
         ceiling_rate=(feature_set.ceiling_rate if feature_set else None),
@@ -414,9 +502,11 @@ def score_one_side(
         "ref_odds":      ref_odds,
         "tp_blob":       tp_blob,
         "tp":            p_true,
+        "p_model":       p_model_side,
         "edge_pct":      edge_pct,
         "books_count":   len(by_book),
         "feature_set":   feature_set.asdict() if feature_set else None,
+        "vk2_blob":      vk2_blob,
     }
 
 
@@ -431,10 +521,18 @@ async def run_replay_engine(
     log_fn=print,
     chunk_size: int = 200,
     limit: Optional[int] = None,
+    enable_vk2: bool = False,
 ) -> Dict[str, Any]:
     """Score every (event, snapshot=label, market, player, line, side)
     offer in the range. Side-effects ONLY to `replay_evaluations` and
     `replay_engine_progress`.
+
+    `enable_vk2=True` activates the historical VK2 path (no production
+    fork): each canonical_key is projected via `predict_vk2_as_of`
+    (or `predict_combo_vk2_as_of` for PTS_REB / PTS_AST / REB_AST).
+    Unsupported families (BLK / STL / TURNOVERS) are stamped
+    `vk2_unsupported_family` and scored without a model anchor — they
+    will fail production gates exactly the way they do live.
     """
     # Index assurance + uniqueness on evaluations (idempotent reruns).
     await db[REPLAY_EVALUATIONS].create_index(
@@ -454,7 +552,74 @@ async def run_replay_engine(
         "scoring_failures": 0,
         "evaluations_inserted": 0,
         "evaluations_modified": 0,
+        "vk2_predictions": 0,
+        "vk2_cache_hits":  0,
+        "vk2_unavailable": 0,
+        "vk2_unsupported_family": 0,
+        "vk2_player_unresolved":   0,
     }
+
+    # Build VK2 player-id resolver once per run.
+    resolver: Optional[PlayerIdResolver] = None
+    if enable_vk2:
+        resolver = PlayerIdResolver(db)
+        # Force-build the index now so the first prediction doesn't
+        # block on a 200k-doc scan inside the per-canonical loop.
+        await resolver.resolve("__warmup__")
+        log_fn(f"[engine] VK2 enabled — resolver index built "
+               f"({len(resolver._index or {})} unique normalized names)")
+
+    # Process-level cache: key = (player_id, model_key, snapshot_date_iso, line)
+    # Saves duplicate model.predict calls when many alternate lines
+    # exist for the same (player, stat) at the same snapshot. The
+    # Gaussian p_over depends on `line`, so line is part of the key.
+    vk2_cache: Dict[Any, Dict[str, Any]] = {}
+
+    async def _vk2_for(player_field: str, stat_family: str, line: float,
+                        snapshot_ts: datetime) -> Optional[Dict[str, Any]]:
+        """Returns a vk2 prediction blob, or None if VK2 is disabled
+        / player can't be resolved / family unsupported. Each early
+        return increments the matching counter so the run summary
+        is auditable."""
+        if resolver is None:
+            return None
+        family_up = (stat_family or "").upper()
+        if family_up in VK2_UNSUPPORTED_FAMILIES:
+            counters["vk2_unsupported_family"] += 1
+            return {"projection": None, "sigma": None, "p_over": None,
+                     "error": f"vk2_unsupported_family:{family_up}"}
+        pid = await resolver.resolve(player_field)
+        if pid is None:
+            counters["vk2_player_unresolved"] += 1
+            return {"projection": None, "sigma": None, "p_over": None,
+                     "error": "vk2_player_unresolved"}
+        snap_date = snapshot_ts.date().isoformat()
+        cache_key = (pid, family_up, snap_date, float(line))
+        if cache_key in vk2_cache:
+            counters["vk2_cache_hits"] += 1
+            return vk2_cache[cache_key]
+        try:
+            if family_up in COMBO_COMPONENTS:
+                blob = await predict_combo_vk2_as_of(
+                    db, bdl_player_id=pid, stat_family=family_up,
+                    line=float(line), snapshot_ts=snapshot_ts,
+                )
+            else:
+                blob = await predict_vk2_as_of(
+                    db, bdl_player_id=pid, stat_family=family_up,
+                    line=float(line), snapshot_ts=snapshot_ts,
+                )
+        except LeakageDetected:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            blob = {"projection": None, "sigma": None, "p_over": None,
+                    "error": f"vk2_exception:{exc}"}
+        if blob.get("error") is not None:
+            counters["vk2_unavailable"] += 1
+        else:
+            counters["vk2_predictions"] += 1
+        vk2_cache[cache_key] = blob
+        return blob
 
     # 1. Enumerate distinct canonical_keys (BOTH sides bundled).
     pipe = [
@@ -522,11 +687,20 @@ async def run_replay_engine(
         stat_family = grp["stat_family"]
         player_norm = grp["player"]   # already lowercased
 
+        # Resolve player_id ONCE per canonical (used by both feature
+        # builder and VK2). Falls back to None when resolver disabled
+        # or player can't be matched — feature builder handles None
+        # via the legacy slow path.
+        resolved_pid: Optional[int] = None
+        if resolver is not None:
+            resolved_pid = await resolver.resolve(player_norm)
+
         # Build feature set ONCE per canonical_key (player-level).
         try:
             feats = await build_as_of_features(
                 db, player_norm=player_norm, stat_family=stat_family,
                 line=line, side="OVER", as_of_ts=snap_ts,
+                bdl_player_id=resolved_pid,
             )
         except LeakageDetected:
             counters["leakage_blocks"] += 1
@@ -536,33 +710,23 @@ async def run_replay_engine(
             logger.debug(f"feature build failed: {exc}")
             continue
 
+        # VK2 prediction (cached per (player, family, snap_date, line)).
+        try:
+            vk2_blob = await _vk2_for(
+                player_field=player_norm, stat_family=stat_family,
+                line=line, snapshot_ts=snap_ts,
+            )
+        except LeakageDetected:
+            counters["leakage_blocks"] += 1
+            continue
+
         # Determine which sides are actually quoted.
         sides_in_data = {(r.get("side") or "").upper()
                          for r in grp["rows"]}
         sides_in_data = sides_in_data & {"OVER", "UNDER"}
 
         for side in sorted(sides_in_data):
-            # Per-side: feature hit_rate uses correct side.
-            if feats.sample_size > 0:
-                # Recompute side-specific hit rates without re-querying DB.
-                # (μ/σ/CV/sample_size are side-agnostic.)
-                # Hit-rate hits already used the OVER computation above —
-                # for UNDER we need to flip. Cheapest: re-run the small
-                # in-memory calculation.
-                pass  # we accept the OVER-keyed hr from feats; tier engine
-                # will use it as a directional signal. Production also keys
-                # hr by direction-of-pick; for parity we re-key here.
-                feats_side = AsOfFeatures(
-                    sample_size=feats.sample_size, mu=feats.mu,
-                    sigma=feats.sigma, cv=feats.cv,
-                    hit_rate_l5=feats.hit_rate_l5,
-                    hit_rate_l10=feats.hit_rate_l10,
-                    hit_rate_l20=feats.hit_rate_l20,
-                    ceiling_rate=feats.ceiling_rate,
-                    feature_completeness=feats.feature_completeness,
-                )
-            else:
-                feats_side = feats
+            feats_side = feats
 
             try:
                 res = score_one_side(
@@ -570,6 +734,7 @@ async def run_replay_engine(
                     side=side, line=line,
                     stat_family=stat_family, sport=sport_short,
                     feature_set=feats_side,
+                    vk2_blob=vk2_blob,
                 )
             except Exception as exc:  # noqa: BLE001
                 counters["scoring_failures"] += 1
@@ -577,11 +742,19 @@ async def run_replay_engine(
                 continue
 
             scored = res["scored"]
-            # `feature_completeness` upgrades to "partial" once TP fired.
-            fc = (FEATURE_COMPLETENESS_PARTIAL
-                  if res.get("tp") is not None
-                  else (feats_side.feature_completeness
-                         if feats_side else "missing"))
+            vk2 = res.get("vk2_blob") or {}
+            vk2_ok = (vk2.get("error") is None
+                      and vk2.get("projection") is not None)
+
+            # `feature_completeness` resolution order:
+            #   vk2_full / vk2_partial > partial (TP fired) > minimal
+            if vk2_ok:
+                fc = vk2.get("feature_completeness") or FEATURE_COMPLETENESS_VK2_PARTIAL
+            elif res.get("tp") is not None:
+                fc = FEATURE_COMPLETENESS_PARTIAL
+            else:
+                fc = (feats_side.feature_completeness if feats_side
+                      else "missing")
 
             # Persist one row per (canonical_key, side, bookmaker) so
             # downstream analytics can group by book.
@@ -609,6 +782,19 @@ async def run_replay_engine(
                     "books_count":    res["books_count"],
                     "feature_set":    res["feature_set"],
                     "feature_completeness": fc,
+                    # VK2 lineage (always stamped — error or success).
+                    "vk2_projection":     vk2.get("projection"),
+                    "vk2_sigma":          vk2.get("sigma"),
+                    "vk2_p_over":         vk2.get("p_over"),
+                    "vk2_model_version":  vk2.get("model_version"),
+                    "vk2_feature_count":  vk2.get("feature_count"),
+                    "vk2_feature_hash":   vk2.get("feature_hash"),
+                    "vk2_adv_coverage_l10": vk2.get("adv_coverage_l10"),
+                    "vk2_history_size":   vk2.get("history_size"),
+                    "vk2_error":          vk2.get("error"),
+                    "vk2_components":     vk2.get("components"),
+                    "vk2_covariance_source": vk2.get("covariance_source"),
+                    "p_model":            res.get("p_model"),
                     "tier":            scored.get("tier"),
                     "tier_reason":     scored.get("tier_reason"),
                     "vision_score":    scored.get("vision_score"),
@@ -631,7 +817,10 @@ async def run_replay_engine(
                    f"scored={counters['offers_scored']} "
                    f"leakage={counters['leakage_blocks']} "
                    f"feat_fail={counters['feature_failures']} "
-                   f"score_fail={counters['scoring_failures']}")
+                   f"score_fail={counters['scoring_failures']} "
+                   f"vk2_ok={counters['vk2_predictions']} "
+                   f"vk2_unavail={counters['vk2_unavailable']} "
+                   f"vk2_cache={counters['vk2_cache_hits']}")
 
     await flush()
     finished = datetime.now(timezone.utc)
@@ -645,15 +834,16 @@ async def run_replay_engine(
         "finished_utc":      finished.isoformat(),
         "wallclock_seconds": (finished - started).total_seconds(),
         "counters":          counters,
+        "vk2_enabled":       enable_vk2,
         "feature_completeness_overall":
-            "varies (partial when TP fired, minimal otherwise)",
+            "varies (vk2_full / vk2_partial / partial / minimal)",
         "parity_warnings": [
-            "VK2 projection / model_sigma not yet wired (PARITY-TODO P5).",
             "Injury usage_vacuum / usage_spike not yet wired (PARITY-TODO P4).",
             "Matchup / pace factors not yet wired (PARITY-TODO P3).",
             "Avg hit/miss margin not yet wired.",
-            "Caesars (williamhill_us) not in TP path-1 dict; flows via "
-            "`sharp_layer` to scoring_stack only.",
+            ("VK2 advanced-stats coverage may be 0 for the replay window — "
+             "rows tagged `vk2_partial` reflect this; see "
+             "audit_reports/vk2_production_map.md."),
         ],
     }
 
@@ -662,6 +852,8 @@ __all__ = [
     "REPLAY_EVALUATIONS",
     "FEATURE_COMPLETENESS_MINIMAL",
     "FEATURE_COMPLETENESS_PARTIAL",
+    "FEATURE_COMPLETENESS_VK2_PARTIAL",
+    "FEATURE_COMPLETENESS_VK2_FULL",
     "FEATURE_COMPLETENESS_FULL",
     "AsOfFeatures",
     "build_as_of_features",

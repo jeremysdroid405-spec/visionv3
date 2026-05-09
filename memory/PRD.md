@@ -16,6 +16,33 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - 0-write guard in `prop_scores_store.write_versioned_scores` — DONE
 - **Breaking News Ticker stabilization (2026-05-08) — DONE**
 - **Combo-family VK2 routing fix (2026-05-09) — DONE**
+
+### Replay Test Suite
+- Phase 0-2 (snapshot plan, 30-day NBA ingest, resolver, replay engine) — DONE
+- **Phase 2.5 step 1 — Historical VK2 wired (2026-05-09) — DONE**
+  - `services/replay/vk2_historical.py` reuses production model pickles +
+    `nba_vk2_features.build_features` (no fork). PlayerIdResolver, leakage-
+    gated history & adv-stat slices, single-stat predictor, combo synth.
+  - `services/replay/engine.py` accepts `enable_vk2=True`; stamps
+    `vk2_projection / vk2_sigma / vk2_p_over / vk2_model_version /
+    vk2_feature_hash / vk2_adv_coverage_l10`; passes `p_model = vk2_p_over`
+    (NOT TP) to `compute_scoring_stack`. Unsupported families
+    (BLK / STL / TURNOVERS) marked `vk2_unsupported_family` — no VK1 fallback.
+  - First end-to-end run (run_id `vk2_full_30d_1778310068`):
+    - 517,864 candidates, 2,013 qualified (0.39%), 399 settled qualified picks.
+    - Front Lines: 179 picks, HR 83.2%, ROI **+41.1%/u**, +$73.54.
+    - War Zone:   220 picks, HR 62.7%, ROI **+69.2%/u**, +$152.17.
+    - Safe Haven: 0 picks (Feb-2024 has zero `bdl_advanced_stats` — VK2
+      vision_score gate (>= 80) compresses without adv features).
+    - Combined: 399 picks, HR 71.9%, ROI **+56.6%/u**, +$225.71.
+  - Before/after vs prior partial-parity run: qualified count 0 → 399.
+  - Tests: `tests/test_replay_vk2_historical.py` (13 tests, all passing).
+  - Reports: `/app/audit_reports/replay_publication_vk2_full.md`,
+    `/app/audit_reports/replay_vk2_before_after.md`,
+    `/app/audit_reports/vk2_production_map.md`.
+  - **NOT production sign-off** — injury / matchup / pace still stubbed;
+    SH coverage requires adv_stats backfill for the replay window.
+- **Forward-testing lineage boundary (2026-05-09) — COMMITTED**
   - PA / PR / RA combo synth now uses VK2 component μ instead of legacy VK1.
   - Allen PA alt 9.5: μ 21.89 → 12.95 (verified live).
   - Aggregate Δμ: PA −1.51, PR −0.92, RA −0.54 (n=687 combo props rescored).
