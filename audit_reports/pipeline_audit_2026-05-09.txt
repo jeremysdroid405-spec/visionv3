@@ -1,0 +1,247 @@
+AUDIT TIMESTAMP: 2026-05-09T01:39:56.471458+00:00
+WEEKEND WINDOW : NOW → 2026-05-12T01:39:56.471458+00:00
+
+========== 1. UPSTREAM PROP INGESTION ==========
+
+--- SPORT=NBA ---
+  nba_live_props total docs : 9736
+  latest doc last_updated: None  (age: —)
+  unique events          : 4
+  top 8 events by prop count:
+    event_id=1b5c084f510006e8f30cd6cac40e231d  props=3402
+    event_id=40c8a29efb894c4dd6bf6acc5025c9cb  props=2994
+    event_id=2734c350b90f332dbece882dd10b204e  props=2943
+    event_id=30d614c5d781b768faf9cf885e890851  props=397
+  top stat_types         :
+    PTS                                         n=1442
+    PRA                                         n=1427
+    player_points_rebounds_alternate            n=1228
+    player_points_assists_alternate             n=787
+    REB                                         n=739
+    player_rebounds_assists_alternate           n=617
+    AST                                         n=443
+    3PM                                         n=365
+    alternate_team_totals                       n=300
+    player_points_alternate_q1                  n=246
+    STL                                         n=201
+    player_points_rebounds                      n=192
+  book-presence counts   :
+    dk_odds       : 3670
+    fd_odds       : 5478
+    mgm_odds      : 1741
+    bol_odds      : 2518
+    sharp_odds    : 0
+    pp_odds       : 3112
+  pp_available=True      : 3112
+  playable_on_pp=True    : 3112
+
+--- SPORT=MLB ---
+  mlb_live_props total docs : 7311
+  latest doc last_updated: None  (age: —)
+  unique events          : 19
+  top 8 events by prop count:
+    event_id=41bf6d60c7067923fe9afa91c708aaa6  props=920
+    event_id=bb96582815dabc42936e794a19c74217  props=852
+    event_id=9faf187505c47b0f5009cb7d7da5200c  props=841
+    event_id=24892453777c4e3f95360ff530e09902  props=802
+    event_id=d03f5e26dab4993281752b81c816fe4b  props=482
+    event_id=4e0f5d6412cdfd2b0ade4fee11642753  props=408
+    event_id=5e7a25171efa4aba6c2670c7d93dbde3  props=407
+    event_id=177cdddf981aae461d064d643293c5f4  props=406
+  top stat_types         :
+    Total Bases                                 n=1196
+    Hits+Runs+RBIs                              n=1110
+    Hits                                        n=905
+    RBIs                                        n=821
+    Runs                                        n=625
+    Singles                                     n=452
+    Home Runs                                   n=445
+    Doubles                                     n=363
+    Batter Strikeouts                           n=332
+    Batter Walks                                n=200
+    alternate_team_totals                       n=198
+    Stolen Bases                                n=175
+  book-presence counts   :
+    dk_odds       : 4119
+    fd_odds       : 4190
+    mgm_odds      : 2564
+    bol_odds      : 1000
+    sharp_odds    : 0
+    pp_odds       : 2520
+  pp_available=True      : 2520
+  playable_on_pp=True    : 2520
+
+========== 2. EXPECTED SLATE — NBA WEEKEND-WINDOW EVENTS ==========
+
+--- NBA: events found in live_props: 4 ---
+  ·  event=30d614c5d781b768faf9cf885e890851 New York Knick@Philadelphia 7 start=2026-05-08T23:12:00Z pulled= 397 scored= 300 tiered=  8 cached=  0
+  ⏳ event=1b5c084f510006e8f30cd6cac40e231d San Antonio Sp@Minnesota Timb start=2026-05-09T01:45:00Z pulled=3402 scored= 784 tiered= 25 cached=  0
+  ⏳ event=2734c350b90f332dbece882dd10b204e Detroit Piston@Cleveland Cava start=2026-05-09T19:10:00Z pulled=2943 scored= 674 tiered= 17 cached=  0
+  ⏳ event=40c8a29efb894c4dd6bf6acc5025c9cb Oklahoma City @Los Angeles La start=2026-05-10T00:40:00Z pulled=2994 scored=1256 tiered=  7 cached=  0
+
+--- MLB: events found in live_props: 19 ---
+  ·  event=0f65cc2fecae3661933682f1525e806d Colorado Rocki@Philadelphia P start=2026-05-08T22:41:00Z pulled=   2 scored=  14 tiered=  0 cached=  0
+  ·  event=76929aa734500b152f347bbddf390165 Athletics     @Baltimore Orio start=2026-05-08T23:06:00Z pulled=   2 scored=  61 tiered= 18 cached=  0
+  ·  event=92c3e303601373eee3d37fbb858409af Los Angeles An@Toronto Blue J start=2026-05-08T23:08:00Z pulled= 108 scored=  92 tiered= 29 cached=  0
+  ·  event=ad17b69505e6a7e7c4c06dc7f6b91ac6 Washington Nat@Miami Marlins  start=2026-05-08T23:11:00Z pulled= 166 scored= 109 tiered= 30 cached=  0
+  ·  event=739421696ed76f3cffaf12c7db22c763 Tampa Bay Rays@Boston Red Sox start=2026-05-08T23:11:00Z pulled=  99 scored=  82 tiered= 40 cached=  0
+  ·  event=d0f880a5482c5178286681a63048600f Minnesota Twin@Cleveland Guar start=2026-05-08T23:16:00Z pulled= 201 scored= 134 tiered= 21 cached=  0
+  ·  event=6aa50c59681975bb7beff37ab4f46bb5 Detroit Tigers@Kansas City Ro start=2026-05-08T23:41:00Z pulled= 232 scored= 164 tiered= 37 cached=  0
+  ·  event=79db8c5227deae699a7b9c123aaf6d3f Seattle Marine@Chicago White  start=2026-05-08T23:41:00Z pulled= 275 scored= 188 tiered= 26 cached=  0
+  ·  event=3d859a4947ba1d62e82366cdebc59d78 New York Yanke@Milwaukee Brew start=2026-05-08T23:44:00Z pulled= 401 scored= 189 tiered= 39 cached=  0
+  ·  event=d03f5e26dab4993281752b81c816fe4b Chicago Cubs  @Texas Rangers  start=2026-05-09T00:06:00Z pulled= 482 scored= 266 tiered= 33 cached=  0
+  ⏳ event=bb96582815dabc42936e794a19c74217 New York Mets @Arizona Diamon start=2026-05-09T01:41:00Z pulled= 852 scored= 390 tiered=  5 cached=  0
+  ⏳ event=24892453777c4e3f95360ff530e09902 St. Louis Card@San Diego Padr start=2026-05-09T01:46:00Z pulled= 802 scored= 357 tiered= 13 cached=  0
+  ⏳ event=9faf187505c47b0f5009cb7d7da5200c Atlanta Braves@Los Angeles Do start=2026-05-09T02:11:00Z pulled= 841 scored= 360 tiered= 15 cached=  0
+  ⏳ event=41bf6d60c7067923fe9afa91c708aaa6 Pittsburgh Pir@San Francisco  start=2026-05-09T02:16:00Z pulled= 920 scored= 375 tiered=  4 cached=  0
+  ⏳ event=177cdddf981aae461d064d643293c5f4 Athletics     @Baltimore Orio start=2026-05-09T20:06:00Z pulled= 406 scored= 406 tiered=  0 cached=  0
+  ⏳ event=4cb11bc70bb01deb01ccc535f614ba59 Houston Astros@Cincinnati Red start=2026-05-09T20:11:00Z pulled= 304 scored= 158 tiered=  0 cached=  0
+  ⏳ event=bf49c6516b601ce34a25f268cb202250 New York Yanke@Milwaukee Brew start=2026-05-09T23:11:00Z pulled= 403 scored=   1 tiered=  0 cached=  0
+  ⏳ event=5e7a25171efa4aba6c2670c7d93dbde3 New York Mets @Arizona Diamon start=2026-05-09T23:16:00Z pulled= 407 scored=   1 tiered=  0 cached=  0
+  ⏳ event=4e0f5d6412cdfd2b0ade4fee11642753 Atlanta Braves@Los Angeles Do start=2026-05-10T01:11:00Z pulled= 408 scored= 242 tiered=  7 cached=  0
+
+========== 3. WATCHER / ADAPTIVE SYNC HEALTH ==========
+adaptive_sync_heartbeat: {'_id': 'adaptive_sync', 'last_heartbeat_at': datetime.datetime(2026, 5, 9, 1, 38, 3, 242000), 'next_poll_in_seconds': 240, 'games_in_registry': 0, 'status_breakdown': {}, 'after_sport': 'mlb', 'inter_sport_marker': True}
+  heartbeat age: —
+adaptive_sync_state: None
+
+scheduler_jobs (35 total):
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+  —                                          sport= None status=         — last=None (— ago)  err=-
+
+========== 4. PIPELINE COUNTS PER SPORT ==========
+
+--- NBA ---
+  live_props                       : 9736
+  prop_scores (all version tags)   : 42852
+  prop_scores final-nba-rt     : 3014
+  active=True                      : 2768
+  by tier:
+    safe_haven     : 13
+    front_lines    : 37
+    war_zone       : 7
+    unqualified    : 2957
+    null           : 0
+  cached_board total               : 150
+  cached_board active=True         : 0
+
+--- MLB ---
+  live_props                       : 7311
+  prop_scores (all version tags)   : 79394
+  prop_scores final-mlb-rt     : 3589
+  active=True                      : 2547
+  by tier:
+    safe_haven     : 3
+    front_lines    : 49
+    war_zone       : 265
+    unqualified    : 3272
+    null           : 0
+  cached_board total               : 294
+  cached_board active=True         : 0
+
+========== 5. DROP-OFF ANALYSIS PER SPORT (live → cached_board) ==========
+
+--- NBA drop-off chain ---
+  live_props                                 : 9736
+  → prop_scores final-nba-rt             : 3014    (31.0% retention)
+  → with reference_odds (tier-routable)      : 1965    (65.2%)
+  → tier ∈ (SH / FL / WZ)                    : 57    (2.9% of routable)
+  → active=True (post-publishing filter)     : 2768    (91.8%)
+  → cached_board                             : 150    (5.0%)
+  → cached_board active=True                 : 0
+
+--- MLB drop-off chain ---
+  live_props                                 : 7311
+  → prop_scores final-mlb-rt             : 3589    (49.1% retention)
+  → with reference_odds (tier-routable)      : 3444    (96.0%)
+  → tier ∈ (SH / FL / WZ)                    : 317    (9.2% of routable)
+  → active=True (post-publishing filter)     : 2547    (71.0%)
+  → cached_board                             : 294    (8.2%)
+  → cached_board active=True                 : 0
+
+========== 6. GATE DISTRIBUTION — REJECTS BY PRIMARY FAIL REASON ==========
+
+--- NBA ---
+  no_reference_market                                          n= 1049  (34.8%)
+  war_zone_failed: gate_direction_fail                         n=  656  (21.8%)
+  front_lines_failed: gate_hit_rate_fail                       n=  451  (15.0%)
+  front_lines_failed: gate_coverage_fail                       n=  285  (9.5%)
+  war_zone_failed: gate_coverage_fail                          n=  169  (5.6%)
+  front_lines_failed: gate_direction_fail                      n=  145  (4.8%)
+  safe_haven_failed: gate_edge_fail                            n=   80  (2.7%)
+  gates_passed                                                 n=   57  (1.9%)
+  safe_haven_failed: gate_direction_fail                       n=   33  (1.1%)
+  safe_haven_failed: gate_hit_rate_fail                        n=   33  (1.1%)
+  safe_haven_failed: gate_vision_score_fail                    n=   16  (0.5%)
+  safe_haven_failed: gate_cv_fail                              n=   11  (0.4%)
+  war_zone_failed: gate_hit_rate_fail                          n=    8  (0.3%)
+  front_lines_failed: gate_edge_fail                           n=    8  (0.3%)
+  front_lines_failed: gate_cv_fail                             n=    7  (0.2%)
+  safe_haven_failed: gate_market_structure_fail                n=    2  (0.1%)
+  war_zone_failed: gate_cv_fail                                n=    2  (0.1%)
+  war_zone_failed: gate_vision_score_fail                      n=    1  (0.0%)
+  war_zone_failed: gate_edge_fail                              n=    1  (0.0%)
+
+--- MLB ---
+  war_zone_failed: gate_direction_fail                         n= 1380  (38.5%)
+  war_zone_failed: gate_coverage_fail                          n=  604  (16.8%)
+  front_lines_failed: gate_hit_rate_fail                       n=  317  (8.8%)
+  gates_passed                                                 n=  317  (8.8%)
+  front_lines_failed: gate_direction_fail                      n=  215  (6.0%)
+  war_zone_failed: gate_ceiling_fail                           n=  203  (5.7%)
+  front_lines_failed: gate_coverage_fail                       n=  147  (4.1%)
+  no_reference_market                                          n=  145  (4.0%)
+  front_lines_failed: gate_edge_fail                           n=   76  (2.1%)
+  safe_haven_failed: gate_coverage_fail                        n=   70  (2.0%)
+  war_zone_failed: gate_edge_fail                              n=   63  (1.8%)
+  safe_haven_failed: gate_hit_rate_fail                        n=   36  (1.0%)
+  safe_haven_failed: gate_edge_fail                            n=    9  (0.3%)
+  safe_haven_failed: gate_cv_fail                              n=    4  (0.1%)
+  front_lines_failed: gate_cv_fail                             n=    2  (0.1%)
+  safe_haven_failed: gate_direction_fail                       n=    1  (0.0%)
+
+========== 7. FRESHNESS / EVENT FILTERING DIAGNOSTICS ==========
+
+--- NBA live-prop event windows ---
+  past >24h ago        : 0
+  next 0–6h            : 2
+  next 6–24h           : 2
+  next 24–72h (weekend): 0
+  beyond 72h           : 0
+
+--- MLB live-prop event windows ---
+  past >24h ago        : 0
+  next 0–6h            : 14
+  next 6–24h           : 5
+  next 24–72h (weekend): 0
+  beyond 72h           : 0
+
+recent admin_errors / provider failures (top 10):
