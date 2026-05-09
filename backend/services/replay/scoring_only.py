@@ -64,6 +64,11 @@ def _rebuild_prop(row: Dict[str, Any], side: str) -> Dict[str, Any]:
         "recommendation":    side,
         "direction":         side,
         "stat_family":       row.get("stat_family"),
+        # See engine.score_one_side: production gate engine reads
+        # prop["stat_type"] for family resolution + is_alt detection.
+        # market_key carries the raw odds-market name (matches live
+        # ingestion) so STAT_FAMILY_ALIASES resolves it correctly.
+        "stat_type":         row.get("market_key"),
         "market_key":        row.get("market_key"),
         "canonical_key":     row.get("canonical_key"),
         "vk2_projection":    vk2.get("projection"),

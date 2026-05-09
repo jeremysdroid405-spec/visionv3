@@ -401,6 +401,16 @@ def score_one_side(
         "recommendation": side,
         "direction":      side,
         "stat_family":    stat_family,
+        # Production gate engine resolves stat_family by reading
+        # prop["stat_type"] (NOT prop["stat_family"]) — see
+        # `scoring_stack.compute_tier:467`. Without this stamp the
+        # cv_gate caps lookup falls through to `_default` and fail-
+        # closes on stat-family-keyed SH/FL caps; market_structure_gate
+        # also misreads `is_alt`. The raw odds-market name on
+        # `replay_props_normalized.market_key` is the same value live
+        # ingestion writes (e.g. "player_rebounds_alternate"), so the
+        # production STAT_FAMILY_ALIASES map resolves it correctly.
+        "stat_type":      head.get("market_key"),
         "is_alternate":   head.get("is_alternate"),
         "is_combo":       head.get("is_combo"),
         "market_key":     head.get("market_key"),
