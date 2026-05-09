@@ -89,6 +89,18 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-09 — Replay Phase 1 NBA Canary (5 events × 8 windows × 18 markets) — PASSED
+- Built `services/replay/{odds_fetch,normalizer,canary_events,ingest_odds}.py` and `scripts/run_canary.py`. Writes ONLY to `replay_odds_snapshots` + `replay_props_normalized`. No production touch.
+- Initial run (2024-03-01 NBA slate, 5 events): 6,650 credits / 36.6s wallclock / 39 of 40 calls 200-OK / 1 t-24h SnapshotNotAvailable (events not yet listed by books) handled gracefully without retry waste / 0 errors.
+- **665 snapshot docs** (per (event, market, window)) and **100,013 normalized rows** written.
+- All 18 NBA markets returned data; bottom-3 markets: `player_rebounds_assists` (2502), `player_steals` (2574), `player_points_assists` (2597). Top-3: `player_points_alternate` (13,959), `player_points_rebounds_assists_alternate` (11,986), `player_rebounds_alternate` (10,879).
+- All 5 Phase-1 books returned data: FanDuel (33,061), BetOnline (22,612), DraftKings (20,176), Caesars/williamhill_us (16,350), MGM (7,814). MGM is sparser as expected.
+- **Duplicate groups: 0** (unique compound index `uniq_event_label_book_market_player_line_side` enforced).
+- **Idempotency verified**: rerun of identical canary produced 0 net inserts, 0 net snapshot inserts, 0 duplicate groups (still 100,013 / 665). 102,158 modifications + 665 snapshot mods (`$set` is the no-op upsert path).
+- 20-row random sample shows realistic distributions (varied lines, both Over/Under, alt + non-alt, all 5 books represented). `implied_probability` correctly computed from American odds.
+- New module file `services/replay/odds_fetch.py` defines `SnapshotNotAvailable` and bypasses the existing tenacity retry on 404 (saves ~5× wasted credits when an event isn't listed at the requested snapshot ts).
+- Outputs: `/app/audit_reports/replay_canary_initial.json`, `/app/audit_reports/replay_canary_rerun.json`.
+
 ### 2026-05-09 — Replay Test Suite Phase 0 (scaffolding only, no DB / no API)
 - Design doc committed: `/app/audit_reports/replay_suite_design_2026-05-09.md` (664 lines, 10 deliverables + 2 appendices). Approved decisions: 8-window snapshot ladder (`t-24h, t-12h, t-6h, t-3h, t-90m, t-60m, t-30m, close`); Phase-1 books = DK/FD/BetOnline/Caesars/MGM (Pinnacle deferred); 1M-credit hard kill switch per ingest run; per-tier canonical snapshot SH=close, FL=t-60m, WZ=t-30m; result source = BallDontLie + nba_master_hub_2026 cross-validation.
 - Files added: `backend/services/replay/{__init__.py,snapshot_plan.py,markets.py,schema.py,run_header.py}`, `backend/scripts/{run_replay.py,compare_replay_runs.py}`, `backend/tests/{test_replay_snapshot_plan.py,test_replay_run_header.py,test_replay_schema.py}`.
