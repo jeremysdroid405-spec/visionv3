@@ -1,0 +1,116 @@
+=== HISTORICAL NBA FRONT_LINES — RAW STATS (n=95) ===
+  count                : 95
+  with dk_odds         : 27
+  missing dk_odds      : 68
+  avg dk_odds          : -217.3
+  median dk_odds       : -222.0
+  min dk_odds          : -247.0
+  max dk_odds          : -170.0
+  outcomes             : hits=72 misses=23 pushes=0 other=0
+  HR (hits/decided)    : 75.79%
+
+=== MANUAL ROI RECALC USING dk_odds ===
+  net units (1u/pick)  : -13.7467
+  ROI %                : -14.47%
+
+=== ROI FROM forward_test_metrics (9 docs) ===
+  date=2026-04-22 by_tier={'safe_haven': {'total': 7, 'hits': 7, 'misses': 0, 'pushes': 0, 'hit_rate': 100.0}, 'front_lines': {'total': 4, 'hits': 3, 'misses': 1, 'pushes': 0, 'hit_rate': 75.0}, 'war_zone': {'total': 6, 'hits': 1, 'misses': 5, 'pushes': 0, 'hit_rate': 16.666666666666664}}
+  date=2026-04-20 by_tier={'safe_haven': {'total': 7, 'hits': 7, 'misses': 0, 'pushes': 0, 'hit_rate': 100.0}, 'front_lines': {'total': 8, 'hits': 7, 'misses': 1, 'pushes': 0, 'hit_rate': 87.5}, 'war_zone': {'total': 8, 'hits': 2, 'misses': 6, 'pushes': 0, 'hit_rate': 25.0}}
+  date=2026-04-19 by_tier={'safe_haven': {'total': 7, 'hits': 7, 'misses': 0, 'pushes': 0, 'hit_rate': 100.0}, 'front_lines': {'total': 9, 'hits': 5, 'misses': 4, 'pushes': 0, 'hit_rate': 55.55555555555556}, 'war_zone': {'total': 6, 'hits': 2, 'misses': 4, 'pushes': 0, 'hit_rate': 33.33333333333333}}
+  date=2026-04-18 by_tier={'safe_haven': {'total': 7, 'hits': 5, 'misses': 2, 'pushes': 0, 'hit_rate': 71.42857142857143}, 'front_lines': {'total': 8, 'hits': 7, 'misses': 1, 'pushes': 0, 'hit_rate': 87.5}, 'war_zone': {'total': 6, 'hits': 2, 'misses': 4, 'pushes': 0, 'hit_rate': 33.33333333333333}}
+  date=2026-04-17 by_tier={'safe_haven': {'total': 8, 'hits': 6, 'misses': 2, 'pushes': 0, 'hit_rate': 75.0}, 'front_lines': {'total': 8, 'hits': 6, 'misses': 2, 'pushes': 0, 'hit_rate': 75.0}, 'war_zone': {'total': 6, 'hits': 2, 'misses': 4, 'pushes': 0, 'hit_rate': 33.33333333333333}}
+
+=== BREAKDOWN BY ODDS BUCKET (using dk_odds) ===
+(User-stated intended FL range: -249 to +150)
+(CURRENT production FL range:   -299 to +149)
+        bucket    n  hits  miss  push    HR%  avg_odds      net     ROI%
+          < -299    0
+     [-299,-249]    0
+     [-249,-200]   23    18     5     0   78.3    -222.8    +3.11    +13.5
+     [-199,-150]    4     2     2     0   50.0    -185.5    -0.85    -21.3
+     [-149,-100]    0
+      [-99,+100]    0
+     [+101,+149]    0
+     [+150,+199]    0
+          > +199    0
+       odds=None   68    52    16     0   76.5      +0.0   -16.00    -23.5
+
+=== ROUTING SANITY: FL props OUTSIDE the user-stated -249..+150 range ===
+  Total FL outside [-249, +150] : 0
+
+  Total FL outside CURRENT prod [-299, +149] : 0
+
+=== OUTCOME-MATCH SPOT-CHECK (20 random FL LOSSES) ===
+Player                   Stat           L  Side   actual  stored   computed
+Keldon Johnson           PRA         13.5  OVER     11.0    miss       miss
+Coby White               PRA         16.5  OVER      4.0    miss       miss
+Nikola Jokic             PRA         46.5  OVER     45.0    miss       miss
+Keldon Johnson           PRA         13.5  OVER     11.0    miss       miss
+Nickeil Alexander-Walker PRA         22.5  OVER     22.0    miss       miss
+Coby White               PRA         13.5  OVER      4.0    miss       miss
+Nickeil Alexander-Walker PRA         22.5  OVER     22.0    miss       miss
+Dylan Harper             PRA         12.5  OVER     12.0    miss       miss
+Ayo Dosunmu              PTS          9.5  OVER      9.0    miss       miss
+Jaylen Brown             PRA         33.5  OVER     33.0    miss       miss
+Dylan Harper             PRA         12.5  OVER     12.0    miss       miss
+Devin Booker             PTS         22.5  OVER     22.0    miss       miss
+Nickeil Alexander-Walker PRA         22.5  OVER     22.0    miss       miss
+Jaylen Brown             PRA         33.5  OVER     33.0    miss       miss
+Jaylen Brown             PRA         33.5  OVER     33.0    miss       miss
+Keldon Johnson           PTS          9.5  OVER      3.0    miss       miss
+Cameron Johnson          PTS          9.5  OVER      6.0    miss       miss
+Devin Booker             PTS         22.5  OVER     22.0    miss       miss
+Nickeil Alexander-Walker PRA         22.5  OVER     22.0    miss       miss
+Keldon Johnson           PRA         13.5  OVER     11.0    miss       miss
+
+Outcome mismatches in 20-sample: 0
+
+=== ODDS SOURCE CONSISTENCY ===
+  outer==inner (consistent) : 27
+  outer != inner (drift)    : 0
+  both None                 : 68
+
+=== MODEL-PREDICTED HIT-RATE vs REALIZED ===
+  n with vk_prob_over     : 95
+  avg model-predicted HR  : 85.6%
+  realized HR             : 75.8%
+  calibration delta       : -9.8pp
+NBA FL settled : 95
+  with dk_odds : 27
+  without      : 68
+
+=== MODE A: drop missing-odds picks (n=27 only) ===
+  n=27  hits=20 misses=7 pushes=0  HR=74.1%  net=+2.2533u  ROI=+8.35%
+
+=== MODE B: BUGGY (current report behaviour: miss=-1, hit=0 for missing odds) ===
+  n=95  HR=75.8%  net=-13.7467u  ROI=-14.47%
+
+=== MODE C: impute missing odds as known FL avg (-217) ===
+  n=95  HR=75.8%  net=+10.1837u  ROI=+10.72%
+
+=== SAMPLING-BIAS CHECK: do missing-odds picks have a different HR? ===
+  has_odds  : n=27  HR=74.1%
+  no_odds   : n=68   HR=76.5%
+
+=== MISSING-ODDS BY CAPTURE DATE ===
+  2026-04-13: total=15  missing_odds=9  (60%)
+  2026-04-14: total=10  missing_odds=7  (70%)
+  2026-04-15: total=10  missing_odds=7  (70%)
+  2026-04-16: total=10  missing_odds=7  (70%)
+  2026-04-17: total=10  missing_odds=7  (70%)
+  2026-04-18: total=10  missing_odds=8  (80%)
+  2026-04-19: total=10  missing_odds=8  (80%)
+  2026-04-20: total=10  missing_odds=9  (90%)
+  2026-04-22: total=10  missing_odds=6  (60%)
+
+=== SOURCE OF FL props with missing dk_odds (full_prop_data inspection) ===
+  Devin Booker             PTS      L22.5 is_demon=False is_goblin=True dk_tier=front_lines apex_reason=GATE1_HIT_RATE: 15/20 < 18/20 cap_date=2026-04-14
+  Nikola Jokic             PRA      L46.5 is_demon=False is_goblin=True dk_tier=front_lines apex_reason=GATE1_HIT_RATE: 14/20 < 18/20 cap_date=2026-04-22
+  Kevin Durant             PRA      L28.5 is_demon=False is_goblin=True dk_tier=front_lines apex_reason=GATE1_HIT_RATE: 17/20 < 18/20 cap_date=2026-04-22
+  Jaylen Brown             PRA      L31.5 is_demon=False is_goblin=True dk_tier=front_lines apex_reason=GATE1_HIT_RATE: 17/20 < 18/20 cap_date=2026-04-22
+  Jaylen Brown             PTS      L22.5 is_demon=False is_goblin=True dk_tier=front_lines apex_reason=GATE1_HIT_RATE: 17/20 < 18/20 cap_date=2026-04-22
+  Kevin Durant             PRA      L28.5 is_demon=False is_goblin=True dk_tier=front_lines apex_reason=GATE1_HIT_RATE: 17/20 < 18/20 cap_date=2026-04-20
+  Devin Booker             PRA      L28.5 is_demon=False is_goblin=True dk_tier=front_lines apex_reason=GATE1_HIT_RATE: 17/20 < 18/20 cap_date=2026-04-20
+  Jaylen Brown             PTS      L21.5 is_demon=False is_goblin=True dk_tier=front_lines apex_reason=GATE1_HIT_RATE: 17/20 < 18/20 cap_date=2026-04-18
+
+  Of 68 missing-odds FL: demons=0  goblins=68  neither=0
