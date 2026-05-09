@@ -42,7 +42,11 @@ async def main():
     p.add_argument("--sport-key", default="basketball_nba")
     p.add_argument("--sport-short", default="nba")
     p.add_argument("--enable-vk2", default="true")
+    p.add_argument("--cache-outputs", default="true",
+                    help="Persist Stage-B cache for fast iteration.")
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--sample-events", type=int, default=None,
+                    help="Restrict to N random event_ids in the window.")
     p.add_argument("--summary-out", default=None,
                     help="Optional path to write run summary JSON")
     args = p.parse_args()
@@ -52,8 +56,34 @@ async def main():
 
     run_id = args.run_id or uuid.uuid4().hex
     enable_vk2 = (args.enable_vk2 or "").strip().lower() in ("1", "true", "yes")
+    cache_outputs = (args.cache_outputs or "").strip().lower() in (
+        "1", "true", "yes"
+    )
+
+    sample_event_ids = None
+    if args.sample_events:
+        # Pull a deterministic random sample of event_ids in the window.
+        pipe = [
+            {"$match": {
+                "snapshot_label": args.snapshot_label,
+                "sport_key":      args.sport_key,
+                "commence_time": {
+                    "$gte": _parse_iso(args.range_start),
+                    "$lte": _parse_iso(args.range_end),
+                },
+            }},
+            {"$group": {"_id": "$event_id"}},
+            {"$sample": {"size": int(args.sample_events)}},
+        ]
+        sample_event_ids = [
+            d["_id"] async for d in
+            db["replay_props_normalized"].aggregate(pipe)
+        ]
+        print(f"[run_replay_engine_vk2] sampling "
+              f"{len(sample_event_ids)} event_ids")
+
     print(f"[run_replay_engine_vk2] run_id={run_id} "
-          f"enable_vk2={enable_vk2} "
+          f"enable_vk2={enable_vk2} cache_outputs={cache_outputs} "
           f"range={args.range_start} → {args.range_end}")
 
     summary = await run_replay_engine(
@@ -67,6 +97,8 @@ async def main():
         log_fn=print,
         limit=args.limit,
         enable_vk2=enable_vk2,
+        cache_outputs=cache_outputs,
+        sample_event_ids=sample_event_ids,
     )
 
     print(json.dumps(summary, indent=2, default=str))

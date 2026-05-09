@@ -67,6 +67,12 @@ from .vk2_historical import (
     REPLAY_FAMILY_TO_MODEL_KEY, VK2_UNSUPPORTED_FAMILIES, COMBO_COMPONENTS,
     predict_vk2_as_of, predict_combo_vk2_as_of,
 )
+from .cache import (
+    REPLAY_VK2_CACHE, cache_row, ensure_cache_indexes, fingerprint_block,
+)
+from .matchup import (
+    TeamIdResolver, compute_matchup_blob,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -342,6 +348,7 @@ def score_one_side(
     sport: str,
     feature_set: Optional[AsOfFeatures],
     vk2_blob: Optional[Dict[str, Any]] = None,
+    matchup_blob: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Score a single (canonical_key, side) using full production stack:
        _pick_reference_odds → compute_tp → compute_scoring_stack.
@@ -429,6 +436,18 @@ def score_one_side(
     }
     populate_flat_odds(prop, by_book=by_book, side=side)
 
+    # Stamp matchup / pace context the same way live production does:
+    # vision_v2 reads prop["matchup_strength"] and prop["pace_factor"]
+    # directly. Missing values stay as None — vision_v2 treats None as
+    # "neutral" (0 contribution).
+    if matchup_blob and matchup_blob.get("error") is None:
+        prop["matchup_strength"] = matchup_blob.get("matchup_strength")
+        prop["pace_factor"]      = matchup_blob.get("pace_factor")
+        # Diagnostic lineage (not consumed by scoring; kept for audit).
+        prop["dvp_rank"]         = matchup_blob.get("dvp_rank")
+        prop["opp_pace_l10"]     = matchup_blob.get("opp_pace_l10")
+        prop["league_pace"]      = matchup_blob.get("league_pace")
+
     # Production coverage classification (sets prop['book_count'],
     # 'coverage_class', 'books_anchored' in place).
     classify_coverage(prop)
@@ -507,6 +526,8 @@ def score_one_side(
         "books_count":   len(by_book),
         "feature_set":   feature_set.asdict() if feature_set else None,
         "vk2_blob":      vk2_blob,
+        "matchup_blob":  matchup_blob,
+        "by_book":       by_book,
     }
 
 
@@ -522,17 +543,24 @@ async def run_replay_engine(
     chunk_size: int = 200,
     limit: Optional[int] = None,
     enable_vk2: bool = False,
+    cache_outputs: bool = True,
+    sample_event_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Score every (event, snapshot=label, market, player, line, side)
-    offer in the range. Side-effects ONLY to `replay_evaluations` and
-    `replay_engine_progress`.
+    offer in the range. Side-effects ONLY to `replay_evaluations`,
+    `replay_engine_progress`, and `replay_vk2_cache` (Stage B cache).
 
     `enable_vk2=True` activates the historical VK2 path (no production
     fork): each canonical_key is projected via `predict_vk2_as_of`
     (or `predict_combo_vk2_as_of` for PTS_REB / PTS_AST / REB_AST).
-    Unsupported families (BLK / STL / TURNOVERS) are stamped
-    `vk2_unsupported_family` and scored without a model anchor — they
-    will fail production gates exactly the way they do live.
+
+    `cache_outputs=True` (default) populates `replay_vk2_cache` for
+    fast-iteration incremental replays — no extra cost vs not caching
+    since we already computed the values.
+
+    `sample_event_ids` (optional) restricts the run to a subset of
+    event_ids — used by the orchestrator's `--sample-events` flag for
+    sub-minute tuning loops.
     """
     # Index assurance + uniqueness on evaluations (idempotent reruns).
     await db[REPLAY_EVALUATIONS].create_index(
@@ -542,6 +570,8 @@ async def run_replay_engine(
     )
     await db[REPLAY_EVALUATIONS].create_index(
         [("replay_run_id", 1), ("tier", 1)], name="run_tier")
+    if cache_outputs:
+        await ensure_cache_indexes(db)
 
     started = datetime.now(timezone.utc)
     counters = {
@@ -557,6 +587,7 @@ async def run_replay_engine(
         "vk2_unavailable": 0,
         "vk2_unsupported_family": 0,
         "vk2_player_unresolved":   0,
+        "cache_rows_written":      0,
     }
 
     # Build VK2 player-id resolver once per run.
@@ -568,6 +599,43 @@ async def run_replay_engine(
         await resolver.resolve("__warmup__")
         log_fn(f"[engine] VK2 enabled — resolver index built "
                f"({len(resolver._index or {})} unique normalized names)")
+
+    # Build team-name → team_id resolver (for matchup/pace).
+    team_resolver = TeamIdResolver(db)
+    await team_resolver.resolve("__warmup__")
+    log_fn(f"[engine] team resolver built "
+           f"({len(team_resolver._index or {})} aliases)")
+
+    # Build player → team_id map from `bdl_historical_game_logs`.
+    # We use the LATEST team_id seen for each normalized player name as
+    # of `range_end` — this is leak-safe because bdl_historical_game_logs
+    # is a record of past games (snapshot rolls forward only) and gives
+    # us the player's correct team for the replay window even after
+    # mid-season trades.
+    player_team_map: Dict[str, int] = {}
+    cutoff_date = range_end.date().isoformat()
+    pipe_pt = [
+        {"$match": {"date": {"$lt": cutoff_date}}},
+        {"$sort":  {"date": -1}},
+        {"$group": {
+            "_id": "$player_name",
+            "team_id": {"$first": "$team_id"},
+        }},
+    ]
+    import re as _re
+    async for d in db["bdl_historical_game_logs"].aggregate(
+        pipe_pt, allowDiskUse=True,
+    ):
+        nm = _re.sub(r"[^a-z0-9]+", "",
+                      (d.get("_id") or "").lower())
+        if nm and d.get("team_id") is not None:
+            player_team_map[nm] = int(d["team_id"])
+    log_fn(f"[engine] player→team map built ({len(player_team_map)})")
+
+    # (event_id, snapshot_date_iso, stat_family, player_team_id) →
+    # cached matchup blob. Per-run process cache so we don't re-aggregate
+    # opponent's L60-day DvP for every prop in the same event.
+    matchup_cache: Dict[Any, Dict[str, Any]] = {}
 
     # Process-level cache: key = (player_id, model_key, snapshot_date_iso, line)
     # Saves duplicate model.predict calls when many alternate lines
@@ -622,12 +690,15 @@ async def run_replay_engine(
         return blob
 
     # 1. Enumerate distinct canonical_keys (BOTH sides bundled).
+    match_stage: Dict[str, Any] = {
+        "snapshot_label": snapshot_label,
+        "sport_key":      sport_key,
+        "commence_time":  {"$gte": range_start, "$lte": range_end},
+    }
+    if sample_event_ids:
+        match_stage["event_id"] = {"$in": list(sample_event_ids)}
     pipe = [
-        {"$match": {
-            "snapshot_label": snapshot_label,
-            "sport_key":      sport_key,
-            "commence_time":  {"$gte": range_start, "$lte": range_end},
-        }},
+        {"$match": match_stage},
         {"$group": {
             "_id": {
                 "event_id":      "$event_id",
@@ -643,30 +714,49 @@ async def run_replay_engine(
             "market_key":    {"$first": "$market_key"},
             "is_alternate":  {"$first": "$is_alternate"},
             "is_combo":      {"$first": "$is_combo"},
+            "home_team":     {"$first": "$home_team"},
+            "away_team":     {"$first": "$away_team"},
         }},
     ]
     if limit:
         pipe.append({"$limit": limit})
 
     eval_buffer: List[Dict[str, Any]] = []
+    cache_buffer: List[Dict[str, Any]] = []
 
     async def flush() -> None:
-        if not eval_buffer:
-            return
-        ops = []
-        for e in eval_buffer:
-            flt = {k: e[k] for k in (
-                "replay_run_id", "event_id", "snapshot_label",
-                "canonical_key", "bookmaker", "side",
-            )}
-            ops.append(UpdateOne(
-                flt, {"$set": e,
-                       "$setOnInsert": {"_first_seen": e["evaluated_at"]}},
-                upsert=True))
-        res = await db[REPLAY_EVALUATIONS].bulk_write(ops, ordered=False)
-        counters["evaluations_inserted"] += res.upserted_count or 0
-        counters["evaluations_modified"] += res.modified_count or 0
-        eval_buffer.clear()
+        if eval_buffer:
+            ops = []
+            for e in eval_buffer:
+                flt = {k: e[k] for k in (
+                    "replay_run_id", "event_id", "snapshot_label",
+                    "canonical_key", "bookmaker", "side",
+                )}
+                ops.append(UpdateOne(
+                    flt, {"$set": e,
+                          "$setOnInsert": {"_first_seen": e["evaluated_at"]}},
+                    upsert=True))
+            res = await db[REPLAY_EVALUATIONS].bulk_write(ops, ordered=False)
+            counters["evaluations_inserted"] += res.upserted_count or 0
+            counters["evaluations_modified"] += res.modified_count or 0
+            eval_buffer.clear()
+        if cache_outputs and cache_buffer:
+            cache_ops = []
+            for c in cache_buffer:
+                flt = {k: c[k] for k in (
+                    "event_id", "snapshot_label",
+                    "canonical_key", "side",
+                )}
+                cache_ops.append(UpdateOne(
+                    flt, {"$set": c,
+                          "$setOnInsert": {"_cached_first": c["cached_at"]}},
+                    upsert=True))
+            await db[REPLAY_VK2_CACHE].bulk_write(
+                cache_ops, ordered=False)
+            counters["cache_rows_written"] = (
+                counters.get("cache_rows_written", 0) + len(cache_ops)
+            )
+            cache_buffer.clear()
 
     async for grp in db[PROPS_NORMALIZED].aggregate(pipe, allowDiskUse=True):
         counters["offers_seen"] += 1
@@ -720,6 +810,53 @@ async def run_replay_engine(
             counters["leakage_blocks"] += 1
             continue
 
+        # Matchup / pace blob — cached per (event, snap_date, family, team).
+        player_team_id = player_team_map.get(
+            _re.sub(r"[^a-z0-9]+", "", (player_norm or "").lower())
+        )
+        home_tid = await team_resolver.resolve(grp.get("home_team"))
+        away_tid = await team_resolver.resolve(grp.get("away_team"))
+        opp_team_id: Optional[int] = None
+        if player_team_id is not None:
+            if player_team_id == home_tid:
+                opp_team_id = away_tid
+            elif player_team_id == away_tid:
+                opp_team_id = home_tid
+
+        matchup_cache_key = (grp["_id"]["event_id"],
+                              snap_ts.date().isoformat(),
+                              stat_family.upper(),
+                              player_team_id, opp_team_id)
+        matchup_blob = matchup_cache.get(matchup_cache_key)
+        if matchup_blob is None:
+            try:
+                matchup_blob = await compute_matchup_blob(
+                    db,
+                    player_team_id=player_team_id,
+                    opponent_team_id=opp_team_id,
+                    stat_family=stat_family,
+                    snapshot_ts=snap_ts,
+                )
+            except LeakageDetected:
+                counters["leakage_blocks"] += 1
+                continue
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(f"compute_matchup_blob failed: {exc}")
+                matchup_blob = {"pace_factor": None,
+                                  "matchup_strength": None,
+                                  "feature_completeness": "matchup_missing",
+                                  "error": f"matchup_exception:{exc}"}
+            matchup_cache[matchup_cache_key] = matchup_blob
+            counters["matchup_blobs_built"] = (
+                counters.get("matchup_blobs_built", 0) + 1
+            )
+            if matchup_blob.get("feature_completeness") == "matchup_full":
+                counters["matchup_full"] = counters.get("matchup_full", 0) + 1
+        else:
+            counters["matchup_cache_hits"] = (
+                counters.get("matchup_cache_hits", 0) + 1
+            )
+
         # Determine which sides are actually quoted.
         sides_in_data = {(r.get("side") or "").upper()
                          for r in grp["rows"]}
@@ -735,6 +872,7 @@ async def run_replay_engine(
                     stat_family=stat_family, sport=sport_short,
                     feature_set=feats_side,
                     vk2_blob=vk2_blob,
+                    matchup_blob=matchup_blob,
                 )
             except Exception as exc:  # noqa: BLE001
                 counters["scoring_failures"] += 1
@@ -760,6 +898,59 @@ async def run_replay_engine(
             # downstream analytics can group by book.
             side_rows = [r for r in grp["rows"]
                           if (r.get("side") or "").upper() == side]
+
+            # Stage-B cache write — one row per (event, snap, canonical, side).
+            # Holds everything expensive so the incremental scorer can
+            # rebuild gates / vision_v2 without re-touching BDL data.
+            if cache_outputs:
+                # Compact by_book: only the side currently scored, since
+                # the cached row is keyed per side. (TP recomputation
+                # needs both sides — kept on `tp_blob.books_used` snapshot.)
+                cache_buffer.append(cache_row(
+                    source_run_id=replay_run_id,
+                    event_id=grp["_id"]["event_id"],
+                    snapshot_label=grp["_id"]["snapshot_label"],
+                    canonical_key=grp["_id"]["canonical_key"],
+                    market_key=grp.get("market_key"),
+                    stat_family=stat_family,
+                    player=player_norm,
+                    line=line,
+                    side=side,
+                    commence_time=commence,
+                    snapshot_ts=snap_ts,
+                    by_book_layers={
+                        # Compact, JSON-serialisable copy of per-book
+                        # paired layers: {line, over_odds, under_odds}.
+                        b: {"line":      (l or {}).get("line"),
+                              "over_odds":  (l or {}).get("over_odds"),
+                              "under_odds": (l or {}).get("under_odds")}
+                        for b, l in (res.get("by_book") or {}).items()
+                    },
+                    ref_book=res.get("ref_book"),
+                    ref_odds=res.get("ref_odds"),
+                    tp_blob=res.get("tp_blob") or {},
+                    edge_pct=res.get("edge_pct"),
+                    vk2_blob=vk2,
+                    feature_set=res.get("feature_set"),
+                ))
+                # Stamp matchup_blob on the cache row separately so the
+                # incremental scorer can pick it up. Spec: matchup
+                # enrichment must persist on Stage-B cache rows so
+                # Stage-C never re-aggregates BDL.
+                cache_buffer[-1]["matchup_blob"]   = matchup_blob
+                # Flat copies for indexing / cheap analytics.
+                cache_buffer[-1]["matchup_factor"]  = (matchup_blob or {}).get("matchup_strength")
+                cache_buffer[-1]["pace_factor"]     = (matchup_blob or {}).get("pace_factor")
+                cache_buffer[-1]["defensive_rank_context"] = {
+                    "dvp_rank":     (matchup_blob or {}).get("dvp_rank"),
+                    "dvp_allowed":  (matchup_blob or {}).get("dvp_allowed"),
+                    "lookback_days": (matchup_blob or {}).get("lookback_days_dvp"),
+                }
+                cache_buffer[-1]["matchup_completeness"] = (
+                    (matchup_blob or {}).get("feature_completeness"))
+                if len(cache_buffer) >= chunk_size:
+                    await flush()
+
             for r in side_rows:
                 doc = {
                     "replay_run_id":  replay_run_id,
@@ -794,6 +985,11 @@ async def run_replay_engine(
                     "vk2_error":          vk2.get("error"),
                     "vk2_components":     vk2.get("components"),
                     "vk2_covariance_source": vk2.get("covariance_source"),
+                    "matchup_pace_factor":      (matchup_blob or {}).get("pace_factor"),
+                    "matchup_strength":         (matchup_blob or {}).get("matchup_strength"),
+                    "matchup_dvp_rank":         (matchup_blob or {}).get("dvp_rank"),
+                    "matchup_feature_completeness": (
+                        (matchup_blob or {}).get("feature_completeness")),
                     "p_model":            res.get("p_model"),
                     "tier":            scored.get("tier"),
                     "tier_reason":     scored.get("tier_reason"),
@@ -835,6 +1031,8 @@ async def run_replay_engine(
         "wallclock_seconds": (finished - started).total_seconds(),
         "counters":          counters,
         "vk2_enabled":       enable_vk2,
+        "cache_outputs":     cache_outputs,
+        "fingerprint":       fingerprint_block(sport_short),
         "feature_completeness_overall":
             "varies (vk2_full / vk2_partial / partial / minimal)",
         "parity_warnings": [
