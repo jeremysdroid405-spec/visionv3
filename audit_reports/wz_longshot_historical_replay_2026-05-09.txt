@@ -1,0 +1,73 @@
+=== HISTORICAL CONTEXT (all NBA settled, 2026-04-13 → 2026-04-22) ===
+  overall_nba_settled_outcomes          n=272 (MEANINGFUL: 100+) hits=163 misses=109 pushes=0 HR=59.9% net=-71.78u ROI=-26.4%  avg_odds=+-118 avg_hr10=82.3% avg_edge=+4.9pp avg_cv=0.31 avg_ev=+0.345
+  tier=safe_haven                       n=78 (DIRECTIONAL: 30-100) hits=69 misses=9 pushes=0 HR=88.5% net=+7.39u ROI=+9.5%  avg_odds=+-427 avg_hr10=93.3% avg_edge=+4.5pp avg_cv=0.24 avg_ev=+0.119
+  tier=front_lines                      n=95 (DIRECTIONAL: 30-100) hits=72 misses=23 pushes=0 HR=75.8% net=-13.75u ROI=-14.5%  avg_odds=+-62 avg_hr10=89.9% avg_edge=+5.9pp avg_cv=0.21 avg_ev=+0.276
+  tier=war_zone                         n=99 (DIRECTIONAL: 30-100) hits=22 misses=77 pushes=0 HR=22.2% net=-65.42u ROI=-66.1%  avg_odds=+71 avg_hr10=66.4% avg_edge=+4.2pp avg_cv=0.45 avg_ev=+0.686
+
+=== CURRENT STRICT WZ (OVER, ref_odds>=+150, direction-PASS only) ===
+  strict_wz                             n=10 (TINY: <30) hits=2 misses=8 pushes=0 HR=20.0% net=-4.68u ROI=-46.8%  avg_odds=+194 avg_hr10=67.0% avg_edge=+3.9pp avg_cv=0.46 avg_ev=+1.169
+
+=== PROPOSED `war_zone_longshot_gate` — HISTORICAL REPLAY ===
+Criteria (v2 floor SKIPPED — not in historical schema):
+  1) recommendation = OVER
+  2) ref_odds >= +150
+  3) direction_fail = True (mu < line)  ← rescue gate audience
+  4) edge_pp >= 5
+  5) EV per $1 > +0.10
+  6) HR_l10 >= 40
+  7) CV <= 1.25
+  8) book_count >= 1 → dk_odds present
+  9) no_reference_market = False → dk_odds present (covers 8)
+  10) [SKIPPED] vision_score_v2 >= 10  (NOT AVAILABLE in historical schema)
+  start                                          : 272
+  after OVER                                     : 272
+  after ref_odds >= +150                         : 10
+  after direction_fail (mu < line)               : 0
+  after edge_pp >= 5                             : 0
+  after EV > +0.10                               : 0
+  after HR_l10 >= 40                             : 0
+  after CV <= 1.25                               : 0
+  after dk_odds present                          : 0
+
+--- SUMMARY: longshot gate over historical sample ---
+  longshot_gate_admitted                n=0
+=== HISTORICAL WAR ZONE DEEP-DIVE (only data we have: direction-pass props) ===
+
+  all_wz                                n=99 (DIRECTIONAL) HR=22.2% net=-65.42u ROI=-66.1%  avg_odds=+71 avg_ev=+0.686
+  wz odds>=+150                         n=10 (TINY) HR=20.0% net=-4.68u ROI=-46.8%  avg_odds=+194 avg_ev=+1.169
+  wz odds<+150                          n=89 (DIRECTIONAL) HR=22.5% net=-60.74u ROI=-68.2%  avg_odds=+57 avg_ev=+0.583
+
+--- WZ by ODDS bucket ---
+  wz odds=sub_+100                      n=3 (TINY) HR=33.3% net=-1.14u ROI=-37.9%  avg_odds=+-113 avg_ev=+0.556
+  wz odds=[+100,+150)                   n=44 (DIRECTIONAL) HR=13.6% net=-30.60u ROI=-69.5%  avg_odds=+123 avg_ev=+0.585
+  wz odds=[+150,+200)                   n=8 (TINY) HR=25.0% net=-2.68u ROI=-33.5%  avg_odds=+172 avg_ev=+1.013
+  wz odds=[+200,+300)                   n=1 (TINY) HR=0.0% net=-1.00u ROI=-100.0%  avg_odds=+260 avg_ev=+1.851
+  wz odds=[+300,+500)                   n=1 (TINY) HR=0.0% net=-1.00u ROI=-100.0%  avg_odds=+300 avg_ev=+1.740
+
+--- WZ by HR_l10 bucket ---
+  wz hr10=[<50)                         n=9 (TINY) HR=0.0% net=-9.00u ROI=-100.0%  avg_odds=+86 avg_ev=+0.738
+  wz hr10=[50,60)                       n=10 (TINY) HR=40.0% net=-6.00u ROI=-60.0%  avg_odds=+53 avg_ev=+0.495
+  wz hr10=[60,70)                       n=25 (TINY) HR=20.0% net=-16.28u ROI=-65.1%  avg_odds=+76 avg_ev=+0.616
+  wz hr10=[70,80)                       n=28 (TINY) HR=35.7% net=-14.32u ROI=-51.1%  avg_odds=+75 avg_ev=+0.652
+  wz hr10=[80+)                         n=27 (TINY) HR=11.1% net=-19.82u ROI=-73.4%  avg_odds=+64 avg_ev=+0.808
+
+--- WZ by EDGE bucket ---
+  wz edge=[0,5)                         n=81 (DIRECTIONAL) HR=25.9% net=-48.42u ROI=-59.8%  avg_odds=+75 avg_ev=+0.674
+  wz edge=[5,10)                        n=18 (TINY) HR=5.6% net=-17.00u ROI=-94.4%  avg_odds=+53 avg_ev=+0.737
+
+--- WZ by EV bucket (proxy for "model says +") ---
+  wz ev=[0.10,0.30)                     n=2 (TINY) HR=50.0% net=+0.10u ROI=+5.0%  avg_odds=+110 avg_ev=+0.270
+  wz ev=[0.30,0.60)                     n=22 (TINY) HR=9.1% net=-17.66u ROI=-80.3%  avg_odds=+99 avg_ev=+0.500
+  wz ev=[0.60,1.00)                     n=28 (TINY) HR=17.9% net=-16.36u ROI=-58.4%  avg_odds=+126 avg_ev=+0.710
+  wz ev=[1.00+)                         n=5 (TINY) HR=20.0% net=-2.50u ROI=-50.0%  avg_odds=+220 avg_ev=+1.531
+
+--- WZ HISTORICAL PROXY (without v2, without direction_fail filter) ---
+  wz_proxy_(longshot_minus_direction_filter)  n=1 (TINY) HR=0.0% net=-1.00u ROI=-100.0%  avg_odds=+260 avg_ev=+1.851
+  Each proxy prop + outcome:
+    Miles Bridges            PRA      L14.5 odds=+260 mu=21.6 edge=+7.1pp HR10=90 CV=0.33 EV=+1.851  outcome=miss
+
+=== DATA-AVAILABILITY VERDICT ===
+  Direction-fail props in historical sample (any tier, any odds): 0
+  → Historical dataset CANNOT validate a direction-fail rescue gate
+  → Legacy snapshot pipeline only captured published picks, which by definition passed the old direction gate
+  → The proxy "WZ direction-pass + same other criteria" is the closest available analog (n=1)
