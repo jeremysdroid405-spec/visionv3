@@ -1,0 +1,150 @@
+Total NBA WZ-routed OVER direction-fail rejects (player props): 637
+
+=== BUCKET BY REFERENCE ODDS ===
+        bucket    n avg_p_true avg_implied   avg_EV  avg_CV profit_w/o_dir
+     [+100,+150)    0
+     [+150,+200)  109      0.308       0.364   -0.156    0.58             37
+     [+200,+300)  167      0.239       0.293   -0.184    0.58             53
+     [+300,+500)  145      0.185       0.207   -0.111    0.61             53
+         [+500+)  216      0.095       0.119   -0.211    0.64             61
+
+=== BUCKET BY HR_L10 ===
+    bucket    n avg_p_true avg_implied   avg_EV  avg_CV profit_w/o_dir
+      [0,30)  422      0.142       0.196   -0.274    0.61             97
+     [30,40)  111      0.256       0.277   -0.047    0.60             49
+     [40,50)   63      0.297       0.283   +0.099    0.60             35
+     [50,60)   20      0.352       0.343   +0.051    0.58              9
+     [60,70)   12      0.394       0.326   +0.257    0.72             10
+       [70+)    3      0.378       0.332   +0.147    0.78              3
+
+=== COUNTERFACTUAL: LONGSHOT WZ ADMISSION ===
+Criteria:
+  ref_odds >= +150
+  p_true_active - implied >= 0.05
+  EV per $1 > +0.10
+  hit_rate_l10 >= 40
+  CV <= 1.25
+  vision_score_v2 >= 50
+  book_count >= 1
+  no_reference_market_flag is False
+
+Admitted by longshot rule: 0 of 637 direction-fail rejects
+Reject-cause breakdown (cumulative top reason):
+  edge<5pp                      : 504
+  hr10<40                       : 79
+  v2<50                         : 41
+  p_true/implied null           : 11
+  cv>1.25                       : 2
+Total direction-fail OVER rejects: 637
+Of which positive-EV (model says +): 204
+
+=== TOP 25 POSITIVE-EV DIRECTION-FAIL REJECTS (no admission filter) ===
+ # Player                   Stat                   L  refO refBk HR10    CV    μ-L  p_true   imp edge_pp    v2   EV/$1
+ 1 Luke Kennard             AST                  6.5 +2900    dk   15  0.98  -3.90   0.150 0.033  +11.67   0.0  +3.500
+ 2 Keldon Johnson           AST                  2.5 +1200    dk   10  0.85  -1.25   0.200 0.077  +12.31   0.0  +1.600
+ 3 Jake LaRavia             REB                  5.5 +1140    dk   20  0.68  -3.08   0.200 0.081  +11.94   0.0  +1.480
+ 4 Luke Kornet              REB                  5.5 + 390    dk   50  0.52  -2.33   0.500 0.204  +29.59   4.9  +1.450
+ 5 Jake LaRavia             REB                  4.5 + 581    dk   10  0.68  -2.08   0.350 0.147  +20.32   0.8  +1.383
+ 6 Marcus Smart             STL                  3.5 + 850    dk   30  0.77  +0.00   0.250 0.105  +14.47   0.0  +1.375
+ 7 Daniss Jenkins           AST                  6.5 + 830    dk   25  0.65  -2.00   0.250 0.108  +14.25   2.1  +1.325
+ 8 Jaylon Tyson             3PM                  2.5 + 650    dk   20  0.96  -1.24   0.300 0.133  +16.67   0.0  +1.250
+ 9 Marcus Smart             AST                  6.5 + 535    dk   60  0.66  -2.04   0.350 0.157  +19.25   2.7  +1.222
+10 Deandre Ayton            PRA                 24.5 + 410    dk   40  0.43  -0.85   0.429 0.196  +23.34  28.4  +1.190
+11 Daniss Jenkins           REB                  4.5 + 483    dk   30  0.62  -0.78   0.350 0.172  +17.85  16.7  +1.040
+12 Luke Kennard             AST                  4.5 + 880    dk   10  0.98  -1.90   0.200 0.102   +9.80   0.0  +0.960
+13 Jarrett Allen            REB                 11.5 + 840    dk   20  0.54  -2.83   0.200 0.106   +9.36   4.9  +0.880
+14 Max Strus                player_points_rebo  19.5 + 484    dk   40  0.56  -3.10   0.320 0.171  +14.88  17.5  +0.869
+15 Dean Wade                player_points_rebo  14.5 + 578    dk   10  0.47  -4.14   0.274 0.147  +12.69  14.1  +0.860
+16 Daniss Jenkins           AST                  5.5 + 430    dk   35  0.65  -1.00   0.350 0.189  +16.13  13.3  +0.855
+17 Donovan Mitchell         REB                  5.5 + 307    dk   40  0.41  -0.98   0.450 0.246  +20.43  16.8  +0.832
+18 Jared McCain             3PM                  3.5 + 800    dk   20  1.30  -2.29   0.200 0.111   +8.89   0.0  +0.800
+19 Max Strus                REB                  7.5 +1100    dk   10  0.38  -2.79   0.150 0.083   +6.67   3.3  +0.800
+20 Jaxson Hayes             BLK                  1.5 + 349    dk   20  1.12  +0.00   0.400 0.223  +17.73   0.0  +0.796
+21 LeBron James             STL                  2.5 + 600    dk   40  0.85  +0.00   0.250 0.143  +10.71   0.0  +0.750
+22 Max Strus                player_points_assi  19.5 + 890    dk   20  0.67  -5.68   0.176 0.101   +7.52   3.1  +0.744
+23 Rudy Gobert              REB                 14.5 + 750   mgm   10  0.34  -8.24   0.200 0.118   +8.24   0.1  +0.700
+24 Jaylin Williams          REB                  6.5 + 579    dk   10  0.69  -2.87   0.250 0.147  +10.27   0.0  +0.698
+25 Jaylin Williams          REB                  5.5 + 324    dk   30  0.69  -1.87   0.400 0.236  +16.42   0.6  +0.696
+
+=== SENSITIVITY: ADMITTED COUNT vs EDGE FLOOR ===
+(Other criteria fixed: ref_odds >= +150, EV > +0.10, HR_l10 >= 40, CV <= 1.25, v2 >= 50, bc >= 1, no_ref=False)
+  edge_floor  admitted   avg_EV  avg_HR  avg_odds  avg_CV
+           5.0         0
+           4.0         0
+           3.0         0
+           2.0         0
+           1.0         0
+           0.0         0
+
+=== ADMITTED AT 3pp EDGE FLOOR (rest unchanged) — top 25 by EV ===
+  (none)
+=== PER-CRITERION PASS COUNT (each evaluated alone) ===
+  total candidates: 637
+  ref_odds >= +150         :  637 / 637 (100.0%)
+  p_true non-null          :  626 / 637 (98.3%)
+  edge >= 5pp              :  122 / 637 (19.2%)
+  EV > +0.10               :  158 / 637 (24.8%)
+  HR_l10 >= 40             :   98 / 637 (15.4%)
+  CV <= 1.25               :  594 / 637 (93.2%)
+  v2 >= 50                 :    0 / 637 (0.0%)
+  book_count >= 1          :  594 / 637 (93.2%)
+  not no_reference         :  637 / 637 (100.0%)
+
+=== CUMULATIVE PASS COUNT (criteria applied in order) ===
+  start                    : 637
+  after `ref_odds >= +150       `:  637  (   no drop)
+  after `p_true non-null        `:  626  (       -11)
+  after `edge >= 5pp            `:  122  (      -504)
+  after `EV > +0.10             `:  122  (   no drop)
+  after `HR_l10 >= 40           `:   43  (       -79)
+  after `CV <= 1.25             `:   41  (        -2)
+  after `v2 >= 50               `:    0  (       -41)
+  after `book_count >= 1        `:    0  (   no drop)
+  after `not no_reference       `:    0  (   no drop)
+
+=== SENSITIVITY: v2 floor (edge held at 5pp) ===
+  v2_floor  admitted   avg_EV  avg_HR  avg_odds  avg_CV  avg_v2
+          50         0
+          40         0
+          30         3   +0.397    43.3 +     190    0.41    33.1
+          20        14   +0.413    49.3 +     215    0.47    26.3
+          10        27   +0.410    46.7 +     259    0.53    20.5
+           0        41   +0.430    46.8 +     280    0.64    14.1
+
+=== 2-D SENSITIVITY: ADMITTED COUNT (edge_pp × v2_floor) ===
+             v2>= 50 v2>= 40 v2>= 30 v2>= 20 v2>= 10 v2>=  0
+  edge>= 5.0pp      0      0      3     14     27     41
+  edge>= 4.0pp      0      0      3     14     27     41
+  edge>= 3.0pp      0      0      3     14     29     45
+  edge>= 2.0pp      0      0      3     14     29     45
+  edge>= 1.0pp      0      0      3     14     29     45
+  edge>= 0.0pp      0      0      3     14     29     45
+
+=== ADMITTED at v2>=10 + edge>=5pp (other criteria unchanged) — top 25 by EV ===
+  total admitted: 27
+ # Player                   Stat                   L  refO refBk HR10    CV    μ-L  p_true   imp edge_pp    v2   EV/$1
+ 1 Deandre Ayton            PRA                 24.5 + 410    dk   40  0.43  -0.85   0.429 0.196  +23.34  28.4  +1.190
+ 2 Max Strus                player_points_rebo  19.5 + 484    dk   40  0.56  -3.10   0.320 0.171  +14.88  17.5  +0.869
+ 3 Donovan Mitchell         REB                  5.5 + 307    dk   40  0.41  -0.98   0.450 0.246  +20.43  16.8  +0.832
+ 4 Deandre Ayton            PTS                 14.5 + 543    dk   40  0.55  -3.73   0.252 0.156   +9.69  12.1  +0.623
+ 5 Max Strus                player_points_assi  14.5 + 253    dk   40  0.67  -0.68   0.456 0.283  +17.24  25.7  +0.609
+ 6 Deandre Ayton            player_points_assi  14.5 + 391    dk   40  0.53  -3.14   0.310 0.204  +10.68  15.8  +0.525
+ 7 Alex Caruso              REB                  3.5 + 173    dk   60  0.54  -0.45   0.550 0.366  +18.37  23.6  +0.502
+ 8 Cason Wallace            player_points_rebo  11.5 + 198    fd   40  0.51  -0.01   0.499 0.336  +16.38  35.9  +0.488
+ 9 Tobias Harris            PRA                 30.5 + 220    fd   40  0.30  -0.85   0.452 0.312  +13.94  30.5  +0.446
+10 Tobias Harris            PTS                 22.5 + 270    fd   40  0.38  -1.38   0.378 0.270  +10.79  22.0  +0.399
+11 Dean Wade                REB                  4.5 + 173    dk   50  0.51  -0.38   0.500 0.366  +13.37  24.9  +0.365
+12 Isaiah Stewart II        REB                  3.5 + 170    dk   40  0.60  -0.91   0.500 0.370  +12.96  13.8  +0.350
+13 Cason Wallace            REB                  3.5 + 195    dk   60  0.57  -0.40   0.450 0.339  +11.10  23.6  +0.328
+14 LeBron James             PTS                 25.5 + 225    fd   50  0.32  -0.97   0.407 0.308   +9.96  24.6  +0.324
+15 Marcus Smart             AST                  5.5 + 278    dk   60  0.66  -1.04   0.350 0.265   +8.54  11.0  +0.323
+16 Marcus Smart             player_rebounds_as   9.5 + 350    fd   50  0.47  -1.73   0.291 0.222   +6.90  14.1  +0.310
+17 Deandre Ayton            PTS                 11.5 + 189    dk   40  0.55  -0.73   0.448 0.346  +10.22  28.7  +0.295
+18 Luke Kennard             player_points_rebo  14.5 + 225    dk   40  0.61  -1.93   0.398 0.308   +8.99  18.6  +0.292
+19 De'Aaron Fox             3PM                  1.5 + 220    dk   60  0.88  -0.17   0.400 0.312   +8.75  11.4  +0.280
+20 Luke Kennard             player_points_assi  14.5 + 276    dk   40  0.61  -2.89   0.339 0.266   +7.28  14.0  +0.274
+21 Rui Hachimura            PTS                 15.5 + 152    fd   50  0.42  -0.01   0.499 0.397  +10.20  32.9  +0.257
+22 Max Strus                PRA                 19.5 + 296    dk   40  0.50  -1.95   0.317 0.253   +6.49  12.6  +0.257
+23 Marcus Smart             player_rebounds_as   8.5 + 205    fd   70  0.47  -0.73   0.408 0.328   +8.01  23.1  +0.244
+24 Luke Kornet              player_points_rebo   9.5 + 290    dk   40  0.54  -3.58   0.313 0.256   +5.69  14.2  +0.222
+25 Marcus Smart             player_points_assi  18.5 + 188    fd   50  0.48  -1.68   0.406 0.347   +5.90  21.9  +0.170
