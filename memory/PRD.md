@@ -57,6 +57,21 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-08 — Universal injury redistribution model (math rebuild)
+**Problem**: card outputs were unrealistic (Wemby +12% on a David Jones OUT, LeBron +15 mins, SGA +12% on JWill OUT). Root cause was `_get_beneficiaries` applying flat per-rank constants (+15 mins / +12% usage / +10 mins / +8% usage / +5 mins / +5% usage) that did not depend on injured magnitude or absorber saturation.
+- **New helper** `services/injury_vacuum_service.py::_compute_redistribution(injured, teammates)`. Sport-agnostic two-layer model:
+  - **Layer 1 (Minutes)**: weight = mins_headroom × mpg_proximity × bench_factor × position_match. Per-player saturation cap = `8.0 × (1 − baseline_mpg/40)^0.7`. Hard ceilings: `MAX_INDIVIDUAL_MPG=40`, `INDIVIDUAL_MIN_SHARE_CAP=0.45`.
+  - **Layer 2 (Usage)**: usage_share × elasticity, where `elasticity = (usage_headroom/MAX_INDIVIDUAL_USAGE)^1.5`. Saturated alphas absorb a fraction of what bench-rotation players absorb per share.
+- **Output exposure**: every card now carries `baseline_minutes`, `projected_minutes`, `minutes_delta`, `baseline_usage`, `projected_usage`, `usage_delta`, `redistribution_share`, `elasticity_factor`. Display-side `minutes_bump` / `usage_bump` are back-compat but reflect modeled deltas.
+- **Cross-sport safety**: helper returns zero-delta scaffolds when canonical fields (`minutes_per_game`, `usage_percentage`) are absent. MLB beneficiary code (separate path) is unchanged; opt-in only.
+- **Verified live (NBA, 2026-05-08)**:
+  - Wemby (David Jones OUT, primary): **+15 → +0.9 mins, +12% → +0.2% usage**.
+  - SGA (JWill OUT, primary): **+15 → +2.1 mins, +12% → +0.1% usage**.
+  - LeBron (Luka OUT, primary): **+15 → +1.8 mins, +12% → +0.5% usage**.
+  - Kobe Bufkin (Luka OUT, tertiary bench): **+5 → +6.9 mins, +5% → +4.6% usage** (correctly absorbs more minutes than LBJ).
+- **6 regression pytest cases pass** (`tests/test_injury_redistribution.py`): low-rotation injury (alpha minimal), secondary-star OUT (alpha dampened), minutes ceiling (≤40), usage elasticity (saturated < open-canvas), no noise flood (shares sum to 1, ceilings respected), cross-sport zero-delta scaffold.
+- **Files**: `backend/services/injury_vacuum_service.py`, `backend/tests/test_injury_redistribution.py` (new). NO frontend, NO scoring, NO tier, NO cached_board, NO ticker, NO Vision Intel touch.
+
 ### 2026-05-08 — Live Injury Advantage star-qualifier widening
 **Audit-only finding** (no caches involved): cards aren't stale — they're being **filtered out** by an overly-strict 22% usage gate in `InjuryVacuumService._is_star_player`. The recompute path is correct; it just rejects rotation regulars whose injury is genuine breaking news. Smoking gun: OG Anunoby (NYK, OUT, usage=19.4%, mpg=33+) was being silently dropped while Luka Doncic (36.8%) and Jalen Williams (25.2%) passed.
 - **Single change** in `services/injury_vacuum_service.py`:

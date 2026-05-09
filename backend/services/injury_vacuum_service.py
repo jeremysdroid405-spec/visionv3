@@ -57,6 +57,18 @@ ROTATION_MINUTES_THRESHOLD = 24.0 # Volume admission: mpg >= 24
 STAR_USAGE_THRESHOLD = 20.0
 HIGH_USAGE_THRESHOLD = 25.0
 
+# 2026-05-08 — Universal injury redistribution constants. The old
+# flat rank-based constants (+15 mins / +12% usage / etc.) were
+# replaced by a two-layer minutes-then-usage redistribution model
+# in `_compute_redistribution`. Constants below are physical
+# ceilings and role-weighting parameters — no superstar names, no
+# team rules, no fake smoothing.
+MAX_INDIVIDUAL_MPG       = 40.0   # Physical ceiling for a single player.
+MAX_INDIVIDUAL_USAGE     = 38.0   # Physical ceiling for usage_pct.
+INDIVIDUAL_MIN_SHARE_CAP = 0.45   # No teammate absorbs >45% of injured mpg.
+USAGE_ELASTICITY_EXPONENT = 1.5   # Saturation dampening exponent.
+USAGE_DELTA_HEADROOM_CAP  = 0.5   # Cap each usage_delta at 50% of headroom.
+
 # Ferrari Score modifiers
 PRIMARY_BENEFICIARY_MODIFIER = 15.0
 SECONDARY_BENEFICIARY_MODIFIER = 10.0
@@ -309,6 +321,168 @@ class InjuryVacuumService:
         
         return False, None
     
+    @staticmethod
+    def _position_match(inj_pos: Optional[str], t_pos: Optional[str]) -> float:
+        """Position-proximity multiplier. Uses position FAMILIES so the
+        rule generalises across sports (NBA G/F/C, future NFL OFF/DEF).
+        Returns 1.0 when either side is unknown — never penalises."""
+        if not inj_pos or not t_pos:
+            return 1.0
+        a = str(inj_pos).upper().strip()
+        b = str(t_pos).upper().strip()
+        if a == b:
+            return 1.30
+        # Family proximity: any shared character (G in 'G' / 'PG' / 'SG').
+        if a[0] == b[0] or a[-1] == b[-1]:
+            return 1.10
+        return 1.0
+
+    @classmethod
+    def _compute_redistribution(
+        cls,
+        injured_profile: Dict[str, Any],
+        teammates: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Universal two-layer injury redistribution.
+
+        Layer 1 (minutes) and Layer 2 (usage) — derived ONLY from
+        canonical fields any sport's master_hub already exposes:
+            - `minutes_per_game`
+            - `usage_percentage` (or `usg_pct`)
+            - `position` (optional; soft multiplier when present)
+
+        Sport-agnostic. No hardcoded names, teams, or per-rank
+        constants. Applied currently to NBA; MLB / NFL can opt in by
+        passing their teammate dicts through the same helper IFF the
+        required canonical fields are present (minutes_per_game and
+        usage_percentage). Sports without those fields keep their
+        existing beneficiary code.
+
+        Returns a list aligned 1:1 with `teammates`, each entry
+        carrying:
+            baseline_minutes, projected_minutes, minutes_delta,
+            baseline_usage,   projected_usage,   usage_delta,
+            redistribution_share, elasticity_factor.
+        """
+        if not teammates:
+            return []
+
+        def _fnum(d: Dict[str, Any], *keys: str, default: float = 0.0) -> float:
+            for k in keys:
+                v = d.get(k)
+                if v is None:
+                    continue
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    continue
+            return float(default)
+
+        # Injured player's redistributable pool (cap at physical ceiling).
+        inj_mpg = max(0.0, min(MAX_INDIVIDUAL_MPG, _fnum(
+            injured_profile, "minutes_per_game", "mpg", "min_per_game",
+            default=0.0,
+        )))
+        inj_usage = max(0.0, min(MAX_INDIVIDUAL_USAGE, _fnum(
+            injured_profile, "usage_percentage", "usage_pct", "usg_pct", "usage_rate",
+            default=0.0,
+        )))
+        inj_pos = injured_profile.get("position")
+
+        # If the injured player has zero recorded minutes/usage there is
+        # nothing to redistribute. Return zeroed scaffolds so the caller
+        # can still render the card without spurious deltas.
+        if inj_mpg <= 0 and inj_usage <= 0:
+            return [
+                {
+                    "baseline_minutes": _fnum(t, "minutes_per_game", default=0.0),
+                    "projected_minutes": _fnum(t, "minutes_per_game", default=0.0),
+                    "minutes_delta": 0.0,
+                    "baseline_usage": _fnum(t, "usage_percentage", "usage_pct", default=0.0),
+                    "projected_usage": _fnum(t, "usage_percentage", "usage_pct", default=0.0),
+                    "usage_delta": 0.0,
+                    "redistribution_share": 0.0,
+                    "elasticity_factor": 0.0,
+                }
+                for t in teammates
+            ]
+
+        # Compute per-teammate weights (Layer 1).
+        weights: List[float] = []
+        cached: List[Dict[str, float]] = []
+        for t in teammates:
+            t_mpg = max(0.0, min(MAX_INDIVIDUAL_MPG, _fnum(
+                t, "minutes_per_game", "mpg", default=0.0,
+            )))
+            t_usage = max(0.0, min(MAX_INDIVIDUAL_USAGE, _fnum(
+                t, "usage_percentage", "usage_pct", "usg_pct", default=0.0,
+            )))
+            mpg_proximity = 1.0 / (1.0 + abs(t_mpg - inj_mpg) / 12.0)
+            bench_factor = 1.0 + max(0.0, (24.0 - t_mpg) / 24.0)
+            mins_headroom = max(0.0, MAX_INDIVIDUAL_MPG - t_mpg)
+            position_match = cls._position_match(inj_pos, t.get("position"))
+            weight = mins_headroom * mpg_proximity * bench_factor * position_match
+            weights.append(weight)
+            # Saturation-aware per-player absorption ceiling. The
+            # higher a player's baseline mpg, the smaller their cap —
+            # 35 MPG alpha caps at ~1.8; 24 MPG starter at ~4; 16 MPG
+            # bench at ~5.7. This is the second cap layer beneath the
+            # 45%-of-injured rule, and it's what enforces the
+            # "stars get tiny minute deltas" invariant.
+            saturation_ratio = max(0.0, 1.0 - t_mpg / MAX_INDIVIDUAL_MPG)
+            absorb_cap_mpg = 8.0 * (saturation_ratio ** 0.7)
+            cached.append({
+                "t_mpg": t_mpg,
+                "t_usage": t_usage,
+                "mins_headroom": mins_headroom,
+                "absorb_cap_mpg": absorb_cap_mpg,
+            })
+
+        total_weight = sum(weights) or 1.0
+
+        results: List[Dict[str, Any]] = []
+        for i, t in enumerate(teammates):
+            c = cached[i]
+            share = weights[i] / total_weight if total_weight > 0 else 0.0
+
+            # Layer 1 — minutes delta with: per-share, headroom, share-of-
+            # injured-mpg, and per-player saturation caps.
+            raw_min_delta = inj_mpg * share
+            max_min_delta = min(
+                c["mins_headroom"],
+                inj_mpg * INDIVIDUAL_MIN_SHARE_CAP,
+                c["absorb_cap_mpg"],
+            )
+            min_delta = max(0.0, min(raw_min_delta, max_min_delta))
+            projected_mpg = c["t_mpg"] + min_delta
+
+            # Layer 2 — usage delta with elasticity dampening.
+            usage_share = inj_usage * share
+            usage_headroom = max(0.0, MAX_INDIVIDUAL_USAGE - c["t_usage"])
+            elasticity = (
+                (usage_headroom / MAX_INDIVIDUAL_USAGE) ** USAGE_ELASTICITY_EXPONENT
+                if MAX_INDIVIDUAL_USAGE > 0
+                else 0.0
+            )
+            usage_delta = max(0.0, min(
+                usage_share * elasticity,
+                usage_headroom * USAGE_DELTA_HEADROOM_CAP,
+            ))
+            projected_usage = c["t_usage"] + usage_delta
+
+            results.append({
+                "baseline_minutes": round(c["t_mpg"], 1),
+                "projected_minutes": round(projected_mpg, 1),
+                "minutes_delta": round(min_delta, 1),
+                "baseline_usage": round(c["t_usage"], 1),
+                "projected_usage": round(projected_usage, 1),
+                "usage_delta": round(usage_delta, 1),
+                "redistribution_share": round(share, 3),
+                "elasticity_factor": round(elasticity, 3),
+            })
+
+        return results
+
     def _get_beneficiaries(self, injured_player: str, injured_team: str = None) -> List[Dict]:
         """
         Dynamic Beneficiary Calculation v3.0
@@ -410,41 +584,83 @@ class InjuryVacuumService:
                 minutes = t.get('minutes_per_game', 28) or 28
                 t['usage_per_minute'] = round(usage / minutes, 3) if minutes > 0 else 0
             
+            # 2026-05-08 — Universal two-layer redistribution.
+            # The previous rank-flat constants (+15 mins / +12% usage / etc.)
+            # have been replaced by `_compute_redistribution`. The injured
+            # player's profile + every teammate is fed in; per-teammate
+            # `minutes_delta` and `usage_delta` are computed with physical
+            # ceilings, role-proximity weights, and usage elasticity.
+            inj_profile_for_redis: Dict[str, Any] = {
+                "minutes_per_game": 0.0,
+                "usage_percentage": 0.0,
+                "position": None,
+            }
+            inj_is_star, inj_star_profile = self._is_star_player(injured_player)
+            if inj_star_profile:
+                inj_profile_for_redis["minutes_per_game"] = (
+                    inj_star_profile.get("minutes_per_game") or 0.0
+                )
+                inj_profile_for_redis["usage_percentage"] = (
+                    inj_star_profile.get("usage_rate")
+                    or inj_star_profile.get("usage_percentage")
+                    or 0.0
+                )
+                inj_profile_for_redis["position"] = inj_star_profile.get("position")
+            # Final fallback: a synthetic rotation player. Ensures a
+            # non-star injury still produces a small, sane redistribution
+            # rather than zero output.
+            if not inj_profile_for_redis["minutes_per_game"]:
+                inj_profile_for_redis["minutes_per_game"] = 24.0
+            if not inj_profile_for_redis["usage_percentage"]:
+                inj_profile_for_redis["usage_percentage"] = 18.0
+
+            redistribution = self._compute_redistribution(
+                inj_profile_for_redis, teammates
+            )
+
             # Build beneficiary list
             result = []
             for i, teammate in enumerate(teammates[:3]):
-                is_primary = (i == 0)
-                is_secondary = (i == 1)
-                
-                # Calculate boost factor (+12% for primary PTS/PRA, +8% for secondary)
-                if is_primary:
-                    pts_pra_boost = 1.12  # +12% boost per user spec
-                    modifier = PRIMARY_BENEFICIARY_MODIFIER
-                    rank = "primary"
-                elif is_secondary:
-                    pts_pra_boost = 1.08  # +8% boost
-                    modifier = SECONDARY_BENEFICIARY_MODIFIER
-                    rank = "secondary"
-                else:
-                    pts_pra_boost = 1.05  # +5% tertiary
-                    modifier = 5.0
-                    rank = "tertiary"
-                
-                # Get baseline stats for projection
+                rank = "primary" if i == 0 else ("secondary" if i == 1 else "tertiary")
+                redis = redistribution[i] if i < len(redistribution) else {}
+                min_delta = float(redis.get("minutes_delta", 0.0) or 0.0)
+                usage_delta = float(redis.get("usage_delta", 0.0) or 0.0)
+                projected_minutes = float(
+                    redis.get("projected_minutes", teammate.get("minutes_per_game", 0))
+                )
+                projected_usage = float(
+                    redis.get("projected_usage", teammate.get("usage_percentage", 0))
+                )
+
+                # Get baseline stats for projection (existing source).
                 baseline = teammate.get('baseline_stats', {})
                 base_pts = baseline.get('PTS', {}).get('season_avg', 15.0) if isinstance(baseline.get('PTS'), dict) else 15.0
                 base_reb = baseline.get('REB', {}).get('season_avg', 5.0) if isinstance(baseline.get('REB'), dict) else 5.0
                 base_ast = baseline.get('AST', {}).get('season_avg', 3.5) if isinstance(baseline.get('AST'), dict) else 3.5
                 base_pra = baseline.get('PRA', {}).get('season_avg', 23.5) if isinstance(baseline.get('PRA'), dict) else base_pts + base_reb + base_ast
-                
-                # Apply +12% boost to PTS and PRA (user spec)
-                projected_pts = round(base_pts * pts_pra_boost, 1)
-                projected_pra = round(base_pra * pts_pra_boost, 1)
-                projected_reb = round(base_reb * 1.05, 1)  # Small reb boost
-                projected_ast = round(base_ast * 1.03, 1)  # Minimal ast boost
-                
-                boost_pct = round((pts_pra_boost - 1) * 100, 1)
-                
+
+                # Stat projections derived from modeled deltas — not flat
+                # constants. PTS/PRA scale with combined minutes+usage
+                # uplift; REB/AST get the minutes-only uplift.
+                base_mpg = float(teammate.get("minutes_per_game", 0) or 0)
+                base_usage = float(teammate.get("usage_percentage", 0) or 0)
+                minutes_uplift_factor = (
+                    (1.0 + min_delta / base_mpg) if base_mpg > 0 else 1.0
+                )
+                usage_uplift_factor = (
+                    (1.0 + usage_delta / base_usage) if base_usage > 0 else 1.0
+                )
+                pts_factor = minutes_uplift_factor * usage_uplift_factor
+                projected_pts = round(base_pts * pts_factor, 1)
+                projected_pra = round(base_pra * pts_factor, 1)
+                projected_reb = round(base_reb * minutes_uplift_factor, 1)
+                projected_ast = round(base_ast * minutes_uplift_factor, 1)
+
+                # Display fields back-compat: `minutes_bump` / `usage_bump`
+                # now reflect the MODELED deltas, not flat constants.
+                modifier = round(min_delta, 1)
+                boost_pct = round(usage_delta, 1)
+
                 beneficiary_data = {
                     "name": teammate.get('player_name'),
                     "player_name": teammate.get('player_name'),
@@ -454,12 +670,23 @@ class InjuryVacuumService:
                     "modifier": modifier,
                     "rank": rank,
                     "boost_percentage": boost_pct,
+                    # Internal redistribution telemetry (per spec).
+                    "baseline_minutes": redis.get("baseline_minutes"),
+                    "projected_minutes": redis.get("projected_minutes"),
+                    "minutes_delta": redis.get("minutes_delta"),
+                    "baseline_usage": redis.get("baseline_usage"),
+                    "projected_usage": redis.get("projected_usage"),
+                    "usage_delta": redis.get("usage_delta"),
+                    "redistribution_share": redis.get("redistribution_share"),
+                    "elasticity_factor": redis.get("elasticity_factor"),
                     "projections": {
                         "pts": projected_pts,
                         "reb": projected_reb,
                         "ast": projected_ast,
                         "pra": projected_pra,
-                        "boost_percentage": boost_pct
+                        "minutes": round(projected_minutes, 1),
+                        "usage": round(projected_usage, 1),
+                        "boost_percentage": boost_pct,
                     },
                     "high_usage_advantage": True,
                     "late_injury_boost": True,
@@ -469,9 +696,13 @@ class InjuryVacuumService:
                 }
                 
                 result.append(beneficiary_data)
-                logger.info(f"[VacuumService] Beneficiary {rank}: {teammate.get('player_name')} "
-                           f"(Usage: {teammate.get('usage_percentage', 0):.1f}%, "
-                           f"Boost: +{boost_pct}% PTS/PRA)")
+                logger.info(
+                    f"[VacuumService] Beneficiary {rank}: {teammate.get('player_name')} "
+                    f"(MPG: {redis.get('baseline_minutes')}→{redis.get('projected_minutes')}, "
+                    f"Δ+{min_delta:.1f}mpg | Usage: {redis.get('baseline_usage')}→{redis.get('projected_usage')}, "
+                    f"Δ+{usage_delta:.1f}% | share={redis.get('redistribution_share')}, "
+                    f"elasticity={redis.get('elasticity_factor')})"
+                )
             
             return result
             
