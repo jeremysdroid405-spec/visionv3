@@ -326,14 +326,19 @@ def _pick_reference_odds(
 
     Source-chain order (per sport):
 
-      NBA / default (unchanged historical behaviour):
-        DK → MGM → none
-
       MLB (2026-04-27 expansion — DK is missing on FD-only families
       such as Runs / Stolen Bases / a long tail of pitcher props.
       Without this fallback, those props always resolve to
       routed_tier=None and never reach the gate stage.):
         DK + FD consensus (mean of implied probs, re-converted) →
+        DK → FD → MGM → BOL → none
+
+      NBA (2026-05-09 chain port — same supply gap exists for NBA
+      where DK/MGM are missing on FD/BOL-only standard PTS / 3PM /
+      REB / AST / PRA lines plus alt-line ladders. Audit:
+      `/app/audit_reports/no_reference_market_deep_audit_2026-05-09.md`
+      proved 84.7 % of NBA `no_reference_market` rejects had a
+      same-line FD or BOL quote in `nba_live_props`.):
         DK → FD → MGM → BOL → none
 
     PrizePicks is intentionally NEVER consulted as a reference book —
@@ -374,11 +379,20 @@ def _pick_reference_odds(
             return bol_odds, "bol"
         return None, "none"
 
-    # NBA / default — unchanged.
+    # NBA / default — full sportsbook chain (2026-05-09 port from MLB).
+    # No DK+FD consensus path: NBA gates were calibrated against single-book
+    # reference odds historically; using a consensus would silently change
+    # routing thresholds for already-tiered props. We add FD/BOL as PURE
+    # fallbacks so currently-tiered NBA props keep their exact reference
+    # book + odds (mutation-guarded by tests).
     if dk_odds is not None:
         return dk_odds, "dk"
+    if fd_odds is not None:
+        return fd_odds, "fd"
     if mgm_odds is not None:
         return mgm_odds, "mgm"
+    if bol_odds is not None:
+        return bol_odds, "bol"
     return None, "none"
 
 

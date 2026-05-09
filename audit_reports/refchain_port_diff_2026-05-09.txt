@@ -1,0 +1,91 @@
+=== SLATE COUNTS ===
+  BEFORE final-nba-rt total : 3674
+  AFTER  final-nba-rt total : 1640
+  Common keys / new / dropped: 1534 / 106 / 2140
+
+=== NO_REFERENCE_MARKET REJECTS ===
+  BEFORE total / common : 1234 / 409
+  AFTER  total / common : 0 / 0
+  Δ on common keys      : -409
+
+=== TIER COUNTS ===
+                      BEFORE    AFTER    BEFORE_c   AFTER_c
+  safe_haven            10       23           7        23
+  front_lines           39       38          21        38
+  war_zone               7        2           1         2
+  unqualified         3618     1577        1505      1471
+  none                   0        0           0         0
+
+=== REFERENCE BOOK DISTRIBUTION ===
+                      BEFORE    AFTER    BEFORE_c   AFTER_c
+  dk                  2348     1206        1092      1111
+  fd                     0      339           0       331
+  mgm                   92       21          33        20
+  bol                    0       74           0        72
+  consensus              0        0           0         0
+  none                1234        0         409         0
+
+=== TIER TRANSITIONS (common keys) ===
+  unqualified    → front_lines     : 18
+  unqualified    → safe_haven      : 16
+  front_lines    → unqualified     : 1
+  unqualified    → war_zone        : 1
+  ---- (unchanged) ----
+  unqualified    = unqualified     : 1470
+  front_lines    = front_lines     : 20
+  safe_haven     = safe_haven      : 7
+  war_zone       = war_zone        : 1
+
+=== NEWLY TIERED PROPS: 35 (common+new) ===
+ # Player                 Stat                   L  Side refBk  refO vs_v2    VS   HR    CV Tier          prev
+ 1 Tobias Harris          PRA                 22.5  OVER    fd  -270  56.1   0.0   85  0.30 front_lines   unqualified
+ 2 Cason Wallace          PTS                  3.5  OVER    fd  -350  31.8   0.0   90  0.66 safe_haven    unqualified
+ 3 Victor Wembanyama      PRA                 46.5 UNDER    fd  -114  56.1   0.0   35  0.32 front_lines   unqualified
+ 4 Duncan Robinson        player_points_rebo  11.5  OVER    fd  -225  36.1   0.0   80  0.30 front_lines   unqualified
+ 5 Jarrett Allen          PTS                  6.5  OVER    fd  -580  51.1   0.0   90  0.46 safe_haven    unqualified
+ 6 Marcus Smart           REB                  1.5  OVER    fd  -670  35.9   0.0   85  0.56 safe_haven    unqualified
+ 7 Duncan Robinson        PRA                 12.5  OVER    fd  -310  52.8   0.0   95  0.28 safe_haven    unqualified
+ 8 Julian Champagnie      player_points_rebo  11.5  OVER    dk  -135  41.2  90.5   75  0.33 front_lines   unqualified
+ 9 Duncan Robinson        PTS                  8.5  OVER    fd  -275  40.8   0.0   95  0.30 front_lines   unqualified
+10 Ausar Thompson         player_rebounds_as   7.5  OVER    fd  -400  38.2   0.0   85  0.39 safe_haven    unqualified
+11 Rui Hachimura          PTS                 10.5  OVER    fd  -280  52.7   0.0   75  0.42 front_lines   unqualified
+12 Ausar Thompson         player_rebounds_as   8.5  OVER    fd  -220  36.4   0.0   70  0.39 front_lines   unqualified
+13 Dylan Harper           PRA                 16.5  OVER    fd  -130  35.6   0.0   75  0.36 front_lines   unqualified
+14 Dylan Harper           player_points_assi  13.5  OVER    dk  -120  42.1  82.1   75  0.39 front_lines   unqualified
+15 Evan Mobley            player_rebounds_as   9.5  OVER    fd  -320  37.0   0.0   80  0.34 safe_haven    unqualified
+16 Duncan Robinson        3PM                  1.5  OVER    dk  -399  43.0  81.4   90  0.39 safe_haven    unqualified
+17 LeBron James           AST                  5.5  OVER    dk  -412  43.8  80.5   90  0.39 safe_haven    unqualified
+18 Max Strus              player_rebounds_as   5.5  OVER   bol  -141  33.8   0.0   75  0.38 front_lines   unqualified
+19 Evan Mobley            AST                  1.5  OVER    fd  -750  36.0   0.0   90  0.41 safe_haven    unqualified
+20 Duncan Robinson        PTS                  6.5  OVER    fd  -550  41.9   0.0  100  0.30 safe_haven    unqualified
+21 Tobias Harris          PRA                 21.5  OVER    fd  -350  54.9   0.0   85  0.30 safe_haven    unqualified
+22 Ausar Thompson         PRA                 15.5  OVER    fd  -340  50.7   0.0   90  0.23 safe_haven    unqualified
+23 Julian Champagnie      PTS                  6.5  OVER    dk  -125  56.2  99.3   85  0.43 front_lines   unqualified
+24 Chet Holmgren          PTS                 13.5  OVER    fd  -235  50.1   0.0   75  0.34 front_lines   unqualified
+25 Victor Wembanyama      player_points_rebo  43.5 UNDER    fd  -106  51.9   0.0   35  0.33 front_lines   unqualified
+
+=== 10 RANDOM RECOVERED PROPS (was no_reference_market → now tiered) ===
+Player                 Stat                   L  Side refBk  refO p_true_active edge_vs_fair tier        
+Julian Champagnie      player_points_rebo  11.5  OVER    dk  -135        0.7631       0.1886 front_lines 
+Cason Wallace          PTS                  3.5  OVER    fd  -350        0.7829            — safe_haven  
+Deandre Ayton          PTS                  6.5  OVER    fd  -290        0.7776            — front_lines 
+Duncan Robinson        PTS                  8.5  OVER    fd  -275        0.7894            — front_lines 
+Dylan Harper           player_points_rebo  13.5  OVER    fd  -130        0.7074            — front_lines 
+James Harden           PTS                 15.5  OVER    fd  -330        0.8844            — safe_haven  
+Jarrett Allen          PTS                  6.5  OVER    fd  -580          0.99            — safe_haven  
+Duncan Robinson        PRA                 13.5  OVER    fd  -230        0.9042            — front_lines 
+Duncan Robinson        player_points_rebo  11.5  OVER    fd  -225        0.7201            — front_lines 
+Chet Holmgren          PTS                 13.5  OVER    fd  -235        0.8992            — front_lines 
+
+=== REGRESSION CHECK (5 random already-tiered props) ===
+  ✓  Duncan Robinson          PTS                L9.5  OVER  tier   front_lines→front_lines   refBk  dk→dk   refO  -184→-184 
+  ✓  James Harden             PTS                L14.5  OVER  tier    safe_haven→safe_haven    refBk  dk→dk   refO  -354→-354 
+  ✓  Jarrett Allen            PTS                L7.5  OVER  tier    safe_haven→safe_haven    refBk  dk→dk   refO  -474→-474 
+  ✓  Max Strus                REB                L2.5  OVER  tier    safe_haven→safe_haven    refBk  dk→dk   refO  -383→-383 
+  ✓  Daniss Jenkins           AST                L2.5  OVER  tier   front_lines→front_lines   refBk  dk→dk   refO  -237→-237 
+
+=== WZ COUNT BEFORE/AFTER ===
+  BEFORE WZ (overall) : 7
+  AFTER  WZ (overall) : 2
+  BEFORE WZ (common) : 1
+  AFTER  WZ (common) : 2

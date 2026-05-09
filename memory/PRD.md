@@ -23,6 +23,16 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
   - Post-fix sensitivity: 0 WZ rejects in vision_score_v2 [55,60) — floor move 60→55 yields zero gain. Floor stays at 60.
   - Tests: `tests/test_combo_synth_vk2_routing.py` (8 tests, all passing — incl. mutation guard).
   - Audit: `/app/audit_reports/wz_alt_line_projection_audit_2026-05-09.md`.
+- **NBA reference-odds chain port (2026-05-09) — COMMITTED**
+  - `_pick_reference_odds` NBA branch extended from `dk → mgm` to `dk → fd → mgm → bol`.
+  - 18 new tests (`tests/test_reference_odds_chain.py`); 51/51 stabilization tests passing.
+  - `no_reference_market` rejects: 1234 → 0 on common keys (full recovery).
+  - Tiered (common keys): 29 → 63 (+34, +117% supply).
+  - 35 newly tiered props this slate: 28 via new FD chain link, 1 via BOL, 6 via dk via slate refresh.
+  - 5/5 random regression check: already-tiered props preserved byte-for-byte (same tier/refBk/refO).
+  - MLB chain untouched and regression-tested.
+  - Audit: `/app/audit_reports/no_reference_market_deep_audit_2026-05-09.md`,
+            `/app/audit_reports/refchain_port_diff_2026-05-09.txt`
 - **War Zone OVER gate adjustment (2026-05-09) — COMMITTED**
   - HR floor 55 → 50 (`_NBA_WAR_ZONE_BASE.hit_rate_gate.min`)
   - CV-cap ladder armed: tier 2 (HR≥70 + edge>0 → CV≤1.15), tier 3 (HR≥80 + edge≥5 → CV≤1.50)
