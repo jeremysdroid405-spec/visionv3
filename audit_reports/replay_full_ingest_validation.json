@@ -1,0 +1,233 @@
+{
+  "1_total_credits_used": null,
+  "2_total_events": 183,
+  "3_total_snapshots": 24475,
+  "4_total_normalized_props": 3520527,
+  "5_total_alt_line_props": 2384144,
+  "5b_total_combo_props": 1525094,
+  "6_market_distribution": {
+    "player_points_alternate": 493797,
+    "player_points_rebounds_assists_alternate": 402450,
+    "player_rebounds_alternate": 373583,
+    "player_points_rebounds_alternate": 273235,
+    "player_points_assists_alternate": 247217,
+    "player_assists_alternate": 221331,
+    "player_rebounds_assists_alternate": 189126,
+    "player_threes_alternate": 183405,
+    "player_points": 135853,
+    "player_blocks": 134407,
+    "player_rebounds": 134059,
+    "player_threes": 122631,
+    "player_points_rebounds_assists": 121319,
+    "player_points_rebounds": 106191,
+    "player_assists": 104916,
+    "player_points_assists": 95907,
+    "player_steals": 91451,
+    "player_rebounds_assists": 89649
+  },
+  "7_sportsbook_distribution": {
+    "fanduel": 1141308,
+    "betonlineag": 766093,
+    "draftkings": 746155,
+    "williamhill_us": 611119,
+    "betmgm": 255852
+  },
+  "8_missing_market_stats": {
+    "by_window_label": {
+      "t-12h": 286440,
+      "t-3h": 501798,
+      "t-60m": 548790,
+      "t-90m": 513978,
+      "t-24h": 88002,
+      "close": 632904,
+      "t-30m": 574131,
+      "t-6h": 374484
+    },
+    "not_available_by_window": [
+      {
+        "window": "t-24h",
+        "n": 24
+      }
+    ],
+    "progress_status_counts": {
+      "done": 1439,
+      "not_available": 24,
+      "error": 1
+    }
+  },
+  "9_replay_coverage_report": {
+    "2024-02-02": {
+      "events_window_total": 32,
+      "terminal_pct": 100.0,
+      "not_available": 1,
+      "done": 31
+    },
+    "2024-02-03": {
+      "events_window_total": 88,
+      "terminal_pct": 100.0,
+      "not_available": 1,
+      "done": 87
+    },
+    "2024-02-04": {
+      "events_window_total": 80,
+      "terminal_pct": 100.0,
+      "done": 80
+    },
+    "2024-02-05": {
+      "events_window_total": 32,
+      "terminal_pct": 100.0,
+      "done": 32
+    },
+    "2024-02-06": {
+      "events_window_total": 48,
+      "terminal_pct": 100.0,
+      "not_available": 3,
+      "done": 45
+    },
+    "2024-02-07": {
+      "events_window_total": 56,
+      "terminal_pct": 100.0,
+      "not_available": 1,
+      "done": 55
+    },
+    "2024-02-08": {
+      "events_window_total": 56,
+      "terminal_pct": 100.0,
+      "done": 56
+    },
+    "2024-02-09": {
+      "events_window_total": 72,
+      "terminal_pct": 98.6,
+      "error": 1,
+      "done": 71
+    },
+    "2024-02-10": {
+      "events_window_total": 72,
+      "terminal_pct": 100.0,
+      "not_available": 1,
+      "done": 71
+    },
+    "2024-02-11": {
+      "events_window_total": 80,
+      "terminal_pct": 100.0,
+      "not_available": 5,
+      "done": 75
+    },
+    "2024-02-13": {
+      "events_window_total": 80,
+      "terminal_pct": 100.0,
+      "done": 80
+    },
+    "2024-02-14": {
+      "events_window_total": 48,
+      "terminal_pct": 100.0,
+      "not_available": 1,
+      "done": 47
+    },
+    "2024-02-15": {
+      "events_window_total": 104,
+      "terminal_pct": 100.0,
+      "done": 102,
+      "not_available": 2
+    },
+    "2024-02-16": {
+      "events_window_total": 24,
+      "terminal_pct": 100.0,
+      "done": 24
+    },
+    "2024-02-23": {
+      "events_window_total": 96,
+      "terminal_pct": 100.0,
+      "done": 96
+    },
+    "2024-02-24": {
+      "events_window_total": 80,
+      "terminal_pct": 100.0,
+      "done": 80
+    },
+    "2024-02-25": {
+      "events_window_total": 56,
+      "terminal_pct": 100.0,
+      "done": 55,
+      "not_available": 1
+    },
+    "2024-02-26": {
+      "events_window_total": 56,
+      "terminal_pct": 100.0,
+      "done": 55,
+      "not_available": 1
+    },
+    "2024-02-27": {
+      "events_window_total": 32,
+      "terminal_pct": 100.0,
+      "done": 32
+    },
+    "2024-02-28": {
+      "events_window_total": 88,
+      "terminal_pct": 100.0,
+      "done": 84,
+      "not_available": 4
+    },
+    "2024-02-29": {
+      "events_window_total": 48,
+      "terminal_pct": 100.0,
+      "not_available": 1,
+      "done": 47
+    },
+    "2024-03-01": {
+      "events_window_total": 64,
+      "terminal_pct": 100.0,
+      "done": 63,
+      "not_available": 1
+    },
+    "2024-03-02": {
+      "events_window_total": 72,
+      "terminal_pct": 100.0,
+      "done": 71,
+      "not_available": 1
+    }
+  },
+  "10_ingest_anomalies": {
+    "checks": [
+      {
+        "name": "duplicate_anomaly",
+        "status": "PASS"
+      },
+      {
+        "name": "malformed_threshold",
+        "status": "PASS"
+      },
+      {
+        "name": "book_whitelist_compliance",
+        "status": "PASS"
+      },
+      {
+        "name": "chronology_intact",
+        "status": "PASS"
+      }
+    ]
+  },
+  "11_duplicate_counts": {
+    "duplicate_groups_in_normalized": "PASS"
+  },
+  "12_final_wallclock": null,
+  "13_storage_footprint": {
+    "bytes_per_collection": {
+      "replay_odds_snapshots": 472692116,
+      "replay_odds_snapshots_indexes": 5373952,
+      "replay_props_normalized": 2496513993,
+      "replay_props_normalized_indexes": 268541952,
+      "replay_ingest_progress": 1425890,
+      "replay_ingest_progress_indexes": 233472
+    },
+    "total_bytes_replay": 3244781375,
+    "human_readable_total": "3094.5 MB"
+  },
+  "extra_pregame_audit_500_sample": {
+    "sampled": 500,
+    "violations": 0,
+    "violation_rows": []
+  },
+  "report_generated_at_utc": "2026-05-09T05:11:05.323744+00:00",
+  "report_wallclock_seconds": 67.099891
+}

@@ -1,0 +1,53 @@
+{
+  "run_id": "085f59645edc4e8580bba193110c6a65",
+  "range_start_utc": "2024-02-01T00:00:00+00:00",
+  "range_end_utc": "2024-03-01T00:00:00+00:00",
+  "slates_in_range": 30,
+  "events_seen_total": 183,
+  "events_seen_unique": 183,
+  "telemetry_final": {
+    "elapsed_seconds": 1114.4,
+    "credits_used": 205880,
+    "credits_per_minute": 11084.7,
+    "calls_total": 1233,
+    "calls_200": 1210,
+    "calls_404": 22,
+    "calls_error": 1,
+    "rate_limited": 0,
+    "calls_per_minute": 66.4,
+    "events_completed": 183,
+    "windows_completed": 1463,
+    "expected_total_calls": 1464,
+    "eta_seconds": 208.8,
+    "snapshot_inserts": 19686,
+    "normalized_inserts": 2857452,
+    "normalized_modifications": 198217,
+    "write_rps": 2564.1
+  },
+  "progress_summary": {
+    "pending": 0,
+    "in_flight": 0,
+    "done": 1439,
+    "not_available": 24,
+    "error": 1
+  },
+  "aborted_reason": null,
+  "totals": {
+    "snapshot_docs_in_collection": 24475,
+    "normalized_rows_in_collection": 3520527,
+    "snapshot_docs_inserted": 19686,
+    "normalized_rows_inserted": 2857452
+  },
+  "api_stats": {
+    "requests": 1263,
+    "success": 1240,
+    "failed": 0,
+    "rate_limited": 0,
+    "credits_used_session": 205880,
+    "credits_remaining_last_seen": 4131678
+  },
+  "wallclock_seconds": 1114.891913,
+  "started_utc": "2026-05-09T04:45:56.658505+00:00",
+  "finished_utc": "2026-05-09T05:04:31.550418+00:00",
+  "label": "phase1_30day_attempt_1"
+}

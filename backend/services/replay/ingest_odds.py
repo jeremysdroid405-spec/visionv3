@@ -98,27 +98,38 @@ async def _upsert_snapshot_doc(db, doc: Dict[str, Any]) -> Tuple[int, int]:
 
 async def _bulk_upsert_normalized(db, rows: List[Dict[str, Any]]
                                    ) -> Tuple[int, int]:
+    """Chunked bulk-upsert. ~500 ops per chunk to ease memory pressure on
+    the local mongod (the unique compound index + 3 secondary indexes
+    means every doc triggers 4 index-maintenance ops)."""
     if not rows:
         return 0, 0
-    ops: List[UpdateOne] = []
-    for r in rows:
-        flt = {
-            "event_id":       r["event_id"],
-            "snapshot_label": r["snapshot_label"],
-            "bookmaker":      r["bookmaker"],
-            "market_key":     r["market_key"],
-            "player":         r["player"],
-            "line":           r["line"],
-            "side":           r["side"],
-        }
-        ops.append(UpdateOne(
-            flt,
-            {"$set": r,
-             "$setOnInsert": {"_first_seen": r["normalized_at"]}},
-            upsert=True,
-        ))
-    res = await db[REPLAY_PROPS_NORMALIZED].bulk_write(ops, ordered=False)
-    return (res.upserted_count or 0, res.modified_count or 0)
+    CHUNK = 500
+    total_ins = 0
+    total_mod = 0
+    for i in range(0, len(rows), CHUNK):
+        chunk = rows[i:i + CHUNK]
+        ops: List[UpdateOne] = []
+        for r in chunk:
+            flt = {
+                "event_id":       r["event_id"],
+                "snapshot_label": r["snapshot_label"],
+                "bookmaker":      r["bookmaker"],
+                "market_key":     r["market_key"],
+                "player":         r["player"],
+                "line":           r["line"],
+                "side":           r["side"],
+            }
+            ops.append(UpdateOne(
+                flt,
+                {"$set": r,
+                 "$setOnInsert": {"_first_seen": r["normalized_at"]}},
+                upsert=True,
+            ))
+        res = await db[REPLAY_PROPS_NORMALIZED].bulk_write(
+            ops, ordered=False)
+        total_ins += res.upserted_count or 0
+        total_mod += res.modified_count or 0
+    return total_ins, total_mod
 
 
 async def ingest_event_window(

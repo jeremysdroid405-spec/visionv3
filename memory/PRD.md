@@ -89,6 +89,16 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-09 — Replay Phase 1 30-day NBA ingest COMPLETE + Phase 2 integrity gates
+- **Range**: 2024-02-01 → 2024-03-01 UTC (23 game-days, 6 All-Star break days). **183 events, 24,475 snapshot docs, 3,520,527 normalized rows** (2.38M alt-line + 1.53M combo). **205,880 credits** spent (4.13M remaining of 5M pool). **18m 35s wallclock**. Single-attempt clean completion after MongoDB pressure fix.
+- **All 18 markets** present, **all 5 Phase-1 books** present (FD 1.14M / BOL 766k / DK 746k / Caesars 611k / MGM 256k). 8-window snapshot ladder fully populated.
+- **Zero anomalies**: `duplicate_anomaly` PASS, `malformed_threshold` PASS, `book_whitelist_compliance` PASS, `chronology_intact` PASS. 500-row random pregame audit: 0 violations.
+- **Hardened ingest layer**: `services/replay/{ingest_progress,ingest_telemetry,full_ingest,leakage_checks}.py`, `scripts/{run_full_ingest,run_full_ingest_loop,validate_replay_ingest}.py`. Resumable (`replay_ingest_progress` collection with status lifecycle); idempotent re-runs; chunked 500-op bulk_writes prevent MongoDB index-maintenance pressure; bypass-tenacity 404 path saves ~5× retry cost.
+- **Phase 2 integrity tests COMMITTED**: `tests/test_replay_leakage.py` (18 passing) covering as-of-time leakage, pregame-only assertion, 8-window chronology monotonicity, envelope-chain integrity. `services/replay/leakage_checks.py` provides reusable check functions for the future replay engine.
+- Engineering note: cleared rotated `/var/log/mongodb.out.log.[1-9]` and `/var/log/supervisor/*.log.[1-9]` to free ~1 GB on the shared 9.8 GB `/app` volume after disk-full caused mongod to crash mid-write. Documented for future cleanup automation.
+- **Storage footprint**: 3.09 GB across 3 replay collections (data 2.83 GB + indexes 0.26 GB). Live collections + forward-test data UNTOUCHED.
+- Reports: `/app/audit_reports/replay_full_ingest_2024-02-01_to_2024-03-01_FINAL.md`, `/app/audit_reports/replay_full_ingest_2024-02-01_to_2024-03-01.json`, `/app/audit_reports/replay_full_ingest_validation.json`.
+
 ### 2026-05-09 — Replay Phase 1 NBA Canary (5 events × 8 windows × 18 markets) — PASSED
 - Built `services/replay/{odds_fetch,normalizer,canary_events,ingest_odds}.py` and `scripts/run_canary.py`. Writes ONLY to `replay_odds_snapshots` + `replay_props_normalized`. No production touch.
 - Initial run (2024-03-01 NBA slate, 5 events): 6,650 credits / 36.6s wallclock / 39 of 40 calls 200-OK / 1 t-24h SnapshotNotAvailable (events not yet listed by books) handled gracefully without retry waste / 0 errors.
