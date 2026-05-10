@@ -306,7 +306,57 @@ class InjuryTriggeredRescore:
                 f"[INJURY-RESCORE:{sport}] scoped load_live_props: {len(props)} props for "
                 f"{len(impacted_players)} players"
             )
-            return props
+            # 2026-05-10 — Canonical metadata decoration parity.
+            # The standard `load_live_props` runs filter_priceable +
+            # filter_pp_playable + build_companion_map on every batch.
+            # If we skip them here, the injury-rescore upsert overwrites
+            # previously-good docs with `book_count=None`,
+            # `coverage_class=None`, `books_anchored=None`, and
+            # `tp_source=one_sided` (no devig companion). That made
+            # WZ-routed rows from this branch fail `coverage_gate` with
+            # `actual=None vs threshold=1`. See
+            # `audit_reports/fd_anchor_*.json`.
+            try:
+                from services.scoring.coverage_filter import (
+                    filter_priceable, filter_pp_playable,
+                )
+                from services.scoring.tp_engine import build_companion_map
+                priceable, cov_stats = filter_priceable(
+                    props, sport=sport,
+                    run_id=f"injury_rescore_{sport}",
+                )
+                inner_self.last_coverage_stats = cov_stats
+                # Build the devig companion map over the FULL live_props
+                # collection (not just the scoped subset) so UNDER-side
+                # TP still has an OVER companion to devig against. The
+                # cost is one extra projection-only cursor on the live
+                # props collection — negligible vs. recompute itself.
+                companion_cursor = db[
+                    inner_self.live_props_collection
+                ].find({}, {"_id": 0})
+                full_props = await companion_cursor.to_list(length=None)
+                inner_self._companion_map = build_companion_map(
+                    full_props,
+                )
+                pp_playable, pp_stats = filter_pp_playable(
+                    priceable, sport=sport,
+                )
+                inner_self.last_pp_playable_stats = pp_stats
+                logger.info(
+                    f"[INJURY-RESCORE:{sport}] decoration: "
+                    f"priceable={len(priceable)}/{len(props)} "
+                    f"pp_playable={len(pp_playable)}/{len(priceable)} "
+                    f"companion_map_size={len(inner_self._companion_map)}"
+                )
+                return pp_playable
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    f"[INJURY-RESCORE:{sport}] decoration failed "
+                    f"({exc}); falling back to undecorated props — "
+                    f"book_count / TP companion will be missing on "
+                    f"this batch"
+                )
+                return props
 
         _Adapter.load_live_props = _scoped
         try:

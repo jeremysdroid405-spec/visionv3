@@ -1,0 +1,12 @@
+{
+  "audit_ts": "2026-05-10T22:02:59.811846+00:00",
+  "wz_routed_1h": 1805,
+  "wz_qualified_1h": 1,
+  "wz_tier_total": 41,
+  "fd_anchor_book_count_null_1h": 1872,
+  "fd_anchor_book_count_set_1h": 742,
+  "dk_anchor_book_count_null_1h": 477,
+  "fd_anchor_no_v1_1h": 2568,
+  "fd_anchor_no_uv_1h": 2614,
+  "coverage_fail_1h": 950
+}

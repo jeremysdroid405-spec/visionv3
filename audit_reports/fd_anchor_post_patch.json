@@ -1,0 +1,17 @@
+{
+  "audit_ts": "2026-05-10T22:05:47.162918+00:00",
+  "players_rescored": [
+    "Shai Gilgeous-Alexander",
+    "Anthony Edwards",
+    "Naz Reid",
+    "Chet Holmgren",
+    "VJ Edgecombe"
+  ],
+  "fd_book_count_set": 97,
+  "fd_book_count_null": 684,
+  "fd_coverage_class_set": 97,
+  "fd_v1_set": 10,
+  "fd_uv_set": 0,
+  "fd_match_set": 0,
+  "wz_total": 40
+}
