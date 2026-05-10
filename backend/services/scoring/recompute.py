@@ -343,6 +343,74 @@ async def recompute_sport(
     # 1. Load live props (read-only) — unless caller supplied them
     if props is None:
         props = await adapter.load_live_props(db, limit=limit)
+    else:
+        # 2026-05-10 — Universal decoration parity for caller-supplied
+        # props (board_engine `on_new_props` real-time path, future
+        # scoped ingest paths).
+        #
+        # `adapter.load_live_props` runs three universal decorations
+        # that every scoring run depends on:
+        #   1. `filter_priceable`  → stamps `book_count`,
+        #      `coverage_class`, `books_anchored` on every prop
+        #      (read by `coverage_gate` + surfaced on the score doc).
+        #   2. `build_companion_map` → builds OVER↔UNDER index over
+        #      the FULL live pool for de-vig TP fallback.
+        #   3. `filter_pp_playable` → drops every prop whose exact
+        #      side PrizePicks did not list (universal contract).
+        #
+        # Callers that supply `props=` bypass the adapter entrypoint,
+        # so we re-run the same three decorations here. Without this
+        # `coverage_gate` saw `book_count=None` on every prop from
+        # the bypass path and fail-closed unconditionally — see
+        # `audit_reports/fd_anchor_p1_fix.md` for the same bug
+        # pattern in `injury_triggered_rescore`.
+        try:
+            from services.scoring.coverage_filter import (
+                filter_priceable, filter_pp_playable,
+            )
+            from services.scoring.tp_engine import build_companion_map
+            priceable, cov_stats = filter_priceable(
+                props, sport=sport,
+                run_id=f"recompute_caller_supplied_{sport}",
+            )
+            adapter.last_coverage_stats = cov_stats
+            # Companion map built over the FULL live pool (not just the
+            # caller's subset) so UNDER-side TP de-vig still has its
+            # same-line OVER companion when only the OVER is in the
+            # caller's subset. One projection-only cursor on the live
+            # collection — cheap.
+            try:
+                companion_cursor = db[
+                    adapter.live_props_collection
+                ].find({}, {"_id": 0})
+                full_props = await companion_cursor.to_list(length=None)
+                adapter._companion_map = build_companion_map(full_props)
+            except Exception as comp_exc:  # noqa: BLE001
+                logger.warning(
+                    f"[RECOMPUTE:{sport}] caller-supplied props: "
+                    f"companion_map build over full pool failed "
+                    f"({comp_exc}); falling back to subset companion "
+                    f"map (UNDER-side TP de-vig may degrade)"
+                )
+                adapter._companion_map = build_companion_map(props)
+            pp_playable, pp_stats = filter_pp_playable(
+                priceable, sport=sport,
+            )
+            adapter.last_pp_playable_stats = pp_stats
+            logger.info(
+                f"[RECOMPUTE:{sport}] caller-supplied props decorated: "
+                f"input={len(props)} priceable={len(priceable)} "
+                f"pp_playable={len(pp_playable)} "
+                f"companion_map_size={len(adapter._companion_map)}"
+            )
+            props = pp_playable
+        except Exception as dec_exc:  # noqa: BLE001
+            logger.error(
+                f"[RECOMPUTE:{sport}] caller-supplied props decoration "
+                f"failed ({dec_exc}); proceeding with raw input — "
+                f"book_count / coverage_class will be missing on this "
+                f"batch and coverage_gate will fail-closed"
+            )
 
     # Phase D2 (2026-04-21) — Delta Engine scoped-rescore filter.
     # When a canonical-key subset is supplied, restrict the scoring pass

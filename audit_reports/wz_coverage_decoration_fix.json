@@ -1,0 +1,43 @@
+{
+  "fix_id": "P1-wz-coverage-decoration-bypass",
+  "fix_timestamp_utc": "2026-05-10T22:23:21Z",
+  "file_modified": "backend/services/scoring/recompute.py",
+  "function_modified": "recompute_sport",
+  "lines_added": 65,
+  "nba_pre_fix": {
+    "total_scored": 6785,
+    "fd_wz_routed": 951,
+    "fd_wz_no_coverage": 668,
+    "wz_routed": 2528,
+    "wz_qualified": 0,
+    "wz_coverage_fail": 1059,
+    "wz_direction_fail": 1456
+  },
+  "nba_post_fix": {
+    "total_scored": 528,
+    "fd_wz_routed": 35,
+    "fd_wz_no_coverage": 0,
+    "wz_routed": 184,
+    "wz_qualified": 0,
+    "wz_coverage_fail": 4,
+    "wz_direction_fail": 179
+  },
+  "mlb_pre_fix": {
+    "total_scored": 2447,
+    "fd_wz_routed": 314,
+    "fd_wz_no_coverage": 275,
+    "wz_routed": 1420,
+    "wz_qualified": 63,
+    "wz_coverage_fail": 876,
+    "wz_direction_fail": 406
+  },
+  "mlb_post_fix": {
+    "total_scored": 393,
+    "fd_wz_routed": 12,
+    "fd_wz_no_coverage": 0,
+    "wz_routed": 316,
+    "wz_qualified": 58,
+    "wz_coverage_fail": 0,
+    "wz_direction_fail": 215
+  }
+}

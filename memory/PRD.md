@@ -16,6 +16,14 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - 0-write guard in `prop_scores_store.write_versioned_scores` — DONE
 - **Breaking News Ticker stabilization (2026-05-08) — DONE**
 - **Combo-family VK2 routing fix (2026-05-09) — DONE**
+- **WZ coverage decoration bypass fix (2026-05-10) — DONE**
+  - Root cause: `services/board/engine.py::on_new_props` (real-time scoped ingest, dominant publish path) loaded raw `{sport}_live_props` and passed them directly to `recompute_sport(props=matched)`, bypassing `adapter.load_live_props`'s universal 3-step decoration (`filter_priceable` + `build_companion_map` + `filter_pp_playable`). Every real-time-written row landed in `{sport}_prop_scores` with `book_count=None`/`coverage_class=None`/`books_anchored=None`, and downstream `coverage_gate` fail-closed on `actual=None vs threshold=1`, torching WZ tier supply.
+  - Fix: `recompute_sport` now applies the canonical 3-step decoration on caller-supplied props before the build-context loop (mirroring `load_live_props` exactly). Companion map built over the full live pool. Defence-in-depth fallback on decoration failure.
+  - Production validation (NBA): FD-anchor missing `coverage_class` 70.2% → **0%**; `gate_coverage_fail` 1,059 → 4 (99.6% reduction).
+  - Production validation (MLB): FD-anchor missing `coverage_class` 87.6% → **0%**; `gate_coverage_fail` 876 → **0**; WZ qualified 63 (pre-fix) → 58 (post-fix, same slate).
+  - 4 regression tests (`tests/test_recompute_caller_supplied_decoration.py`); 36/36 scoring/coverage/recompute tests pass.
+  - Audit: `/app/audit_reports/wz_coverage_decoration_fix.md`.
+  - Note: NBA WZ qualified remained 0 on the post-fix slate because the model legitimately disagrees with the +150+ side on ~98% of OVER candidates (only 1 row across 3 games had proj/line >= 1.0, and that one failed `gate_hit_rate_fail` at HR=45% < 50% threshold). Coverage decoration is no longer the bottleneck; supply is now gate-limited as designed.
 
 ### Replay Test Suite
 - Phase 0-2 (snapshot plan, 30-day NBA ingest, resolver, replay engine) — DONE
