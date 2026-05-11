@@ -88,11 +88,16 @@ def _rebuild_prop(row: Dict[str, Any], side: str) -> Dict[str, Any]:
                          if fs.get("hit_rate_l20") is not None else None),
         "ceiling_rate": (fs["ceiling_rate"] * 100.0
                          if fs.get("ceiling_rate") is not None else None),
-        "dk_layer":   side_layer("draftkings"),
-        "fd_layer":   side_layer("fanduel"),
-        "mgm_layer":  side_layer("betmgm"),
-        "bol_layer":  side_layer("betonlineag"),
-        "sharp_layer": side_layer("williamhill_us"),
+        "dk_layer":    side_layer("draftkings"),
+        "fd_layer":    side_layer("fanduel"),
+        "mgm_layer":   side_layer("betmgm"),
+        "bol_layer":   side_layer("betonlineag"),
+        # 2026-05-11 — Caesars (williamhill_us) is now a first-class
+        # book (was previously aliased as `sharp_layer`; that legacy
+        # alias is dropped here too). `sharp_layer` is reserved for
+        # actual sharp books (Pinnacle etc.) if/when wired in.
+        "csr_layer":   side_layer("williamhill_us"),
+        "sharp_layer": None,
     }
     # Same flat-odds populate that production scoring expects from
     # `_pick_reference_odds` / `compute_tp`.

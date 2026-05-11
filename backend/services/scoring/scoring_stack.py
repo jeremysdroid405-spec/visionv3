@@ -319,6 +319,7 @@ def _pick_reference_odds(
     mgm_layer: Optional[Dict],
     fd_layer: Optional[Dict] = None,
     bol_layer: Optional[Dict] = None,
+    csr_layer: Optional[Dict] = None,
     sport: Optional[str] = None,
 ) -> Tuple[Optional[float], str]:
     """Reference odds used by the universal odds-bucket router
@@ -329,17 +330,21 @@ def _pick_reference_odds(
       MLB (2026-04-27 expansion — DK is missing on FD-only families
       such as Runs / Stolen Bases / a long tail of pitcher props.
       Without this fallback, those props always resolve to
-      routed_tier=None and never reach the gate stage.):
+      routed_tier=None and never reach the gate stage. 2026-05-11 —
+      Caesars (csr) inserted between MGM and BOL):
         DK + FD consensus (mean of implied probs, re-converted) →
-        DK → FD → MGM → BOL → none
+        DK → FD → MGM → CSR → BOL → none
 
       NBA (2026-05-09 chain port — same supply gap exists for NBA
       where DK/MGM are missing on FD/BOL-only standard PTS / 3PM /
       REB / AST / PRA lines plus alt-line ladders. Audit:
       `/app/audit_reports/no_reference_market_deep_audit_2026-05-09.md`
       proved 84.7 % of NBA `no_reference_market` rejects had a
-      same-line FD or BOL quote in `nba_live_props`.):
-        DK → FD → MGM → BOL → none
+      same-line FD or BOL quote in `nba_live_props`. 2026-05-11 —
+      Caesars (csr) inserted between MGM and BOL after the live API
+      probe confirmed Caesars was the only book quoting ~9% of the
+      Jan-15-2025 NBA prop sample.):
+        DK → FD → MGM → CSR → BOL → none
 
     PrizePicks is intentionally NEVER consulted as a reference book —
     PP odds are placeholder fixed-payout structure prices, not a real
@@ -350,11 +355,13 @@ def _pick_reference_odds(
     -------
     (reference_odds_in_american_format or None, book_label)
 
-    book_label values: "dk" | "fd" | "mgm" | "bol" | "consensus" | "none"
+    book_label values: "dk" | "fd" | "mgm" | "csr" | "bol" |
+                       "consensus" | "none"
     """
-    dk_odds = dk_layer.get("odds") if dk_layer else None
-    fd_odds = fd_layer.get("odds") if fd_layer else None
+    dk_odds  = dk_layer.get("odds")  if dk_layer  else None
+    fd_odds  = fd_layer.get("odds")  if fd_layer  else None
     mgm_odds = mgm_layer.get("odds") if mgm_layer else None
+    csr_odds = csr_layer.get("odds") if csr_layer else None
     bol_odds = bol_layer.get("odds") if bol_layer else None
 
     sport_lc = (sport or "").lower()
@@ -369,12 +376,14 @@ def _pick_reference_odds(
                     return consensus_amer, "consensus"
             # If for any reason consensus math fails, fall through to
             # the canonical DK price.
-        if dk_odds is not None:
-            return dk_odds, "dk"
-        if fd_odds is not None:
-            return fd_odds, "fd"
+        if dk_odds  is not None:
+            return dk_odds,  "dk"
+        if fd_odds  is not None:
+            return fd_odds,  "fd"
         if mgm_odds is not None:
             return mgm_odds, "mgm"
+        if csr_odds is not None:
+            return csr_odds, "csr"   # 2026-05-11
         if bol_odds is not None:
             return bol_odds, "bol"
         return None, "none"
@@ -382,15 +391,17 @@ def _pick_reference_odds(
     # NBA / default — full sportsbook chain (2026-05-09 port from MLB).
     # No DK+FD consensus path: NBA gates were calibrated against single-book
     # reference odds historically; using a consensus would silently change
-    # routing thresholds for already-tiered props. We add FD/BOL as PURE
-    # fallbacks so currently-tiered NBA props keep their exact reference
+    # routing thresholds for already-tiered props. We add FD/MGM/CSR/BOL as
+    # PURE fallbacks so currently-tiered NBA props keep their exact reference
     # book + odds (mutation-guarded by tests).
-    if dk_odds is not None:
-        return dk_odds, "dk"
-    if fd_odds is not None:
-        return fd_odds, "fd"
+    if dk_odds  is not None:
+        return dk_odds,  "dk"
+    if fd_odds  is not None:
+        return fd_odds,  "fd"
     if mgm_odds is not None:
         return mgm_odds, "mgm"
+    if csr_odds is not None:
+        return csr_odds, "csr"   # 2026-05-11
     if bol_odds is not None:
         return bol_odds, "bol"
     return None, "none"
@@ -411,6 +422,7 @@ def compute_tier(
     avg_miss_margin: Optional[float] = None,
     fd_layer: Optional[Dict] = None,
     bol_layer: Optional[Dict] = None,
+    csr_layer: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """Assign risk bucket via the UNIVERSAL GATE ENGINE.
 
@@ -424,6 +436,10 @@ def compute_tier(
         `tier_reference_book`, `tier_reference_odds`,
         `tier_gate_results`, `gate_eval`, optional
         `war_zone_cv_modifier`) is preserved.
+
+    2026-05-11 — `csr_layer` (Caesars / williamhill_us) added as an
+    optional 5th-priority reference book. Default None preserves the
+    existing 4-book chain when callers haven't been updated.
     """
     from services.scoring.gates import ReasonCode
     from services.scoring.gates.thresholds import resolve_target_tier
@@ -432,7 +448,8 @@ def compute_tier(
 
     ref_odds, ref_book = _pick_reference_odds(
         dk_layer, mgm_layer,
-        fd_layer=fd_layer, bol_layer=bol_layer, sport=sport,
+        fd_layer=fd_layer, bol_layer=bol_layer,
+        csr_layer=csr_layer, sport=sport,
     )
 
     side = (prop.get("recommendation") or "OVER").upper()
@@ -841,6 +858,8 @@ def compute_scoring_stack(
     sharp_layer = prop.get("sharp_layer")
     fd_layer = prop.get("fd_layer")
     bol_layer = prop.get("bol_layer")
+    # 2026-05-11 — Caesars (williamhill_us) as 5th-priority reference book.
+    csr_layer = prop.get("csr_layer")
 
     vs = compute_vision_score(
         p_model=p_model,
@@ -905,7 +924,7 @@ def compute_scoring_stack(
         p_model=p_model,
         avg_hit_margin=avg_hit_margin,
         avg_miss_margin=avg_miss_margin,
-        fd_layer=fd_layer, bol_layer=bol_layer,
+        fd_layer=fd_layer, bol_layer=bol_layer, csr_layer=csr_layer,
     )
     pp = compute_pp_utility(
         p_model=p_model, prop=prop,

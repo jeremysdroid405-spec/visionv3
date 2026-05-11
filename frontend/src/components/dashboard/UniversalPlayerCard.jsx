@@ -234,14 +234,15 @@ const resolveDisplayOdds = (p) => {
   if (refOdds != null && refBook && refBook !== 'none') {
     return { odds: refOdds, book: refBook, sourceLabel: refBook };
   }
-  // Per-book fallback chain DK → FD → MGM → BOL (raw scored doc
-  // doesn't carry these today, but pp_only / search-pool / live-prop
-  // shapes do — kept so the chip never falsely renders '—' when a
-  // book actually has a price).
+  // Per-book fallback chain DK → FD → MGM → CSR → BOL (raw scored
+  // doc doesn't carry these today, but pp_only / search-pool /
+  // live-prop shapes do — Caesars added 2026-05-11; kept so the chip
+  // never falsely renders '—' when a book actually has a price).
   const chain = [
     ['dk',  p.dk_odds],
     ['fd',  p.fd_odds],
     ['mgm', p.mgm_odds],
+    ['csr', p.csr_odds],
     ['bol', p.bol_odds],
   ];
   for (const [book, odds] of chain) {

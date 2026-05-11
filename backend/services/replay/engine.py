@@ -108,13 +108,15 @@ _BDL_FIELDS = {
 }
 
 # Production book code → odds-key prefix used by tp_engine.compute_tp
+# 2026-05-11 — Caesars (williamhill_us) added as a first-class book.
+# Multi-book de-vig TP engine now consumes it via the `csr_*` prefix
+# (mirror of `dk_*` / `fd_*` / `mgm_*` / `bol_*`).
 _BOOK_TO_PREFIX = {
     "draftkings":     "dk",
     "fanduel":        "fd",
     "betmgm":         "mgm",
     "betonlineag":    "bol",
-    # williamhill_us = Caesars; not in tp_engine's path-1 dict (only DK/FD/MGM/BOL)
-    # so it contributes only via the `sharp_layer` to scoring_stack.
+    "williamhill_us": "csr",
 }
 
 
@@ -443,11 +445,17 @@ def score_one_side(
                          else None),
         # Production-shaped book layers (carry both `odds` for the picked
         # side AND over_odds/under_odds so the TP engine can de-vig).
-        "dk_layer":   side_layers.get("draftkings"),
-        "fd_layer":   side_layers.get("fanduel"),
-        "mgm_layer":  side_layers.get("betmgm"),
-        "bol_layer":  side_layers.get("betonlineag"),
-        "sharp_layer": side_layers.get("williamhill_us"),
+        # 2026-05-11 — `csr_layer` (Caesars / williamhill_us) added as a
+        # first-class book; the old "sharp_layer = Caesars" alias is
+        # gone — Caesars is a regular post-rebrand US sportsbook now.
+        # `sharp_layer` is left None unless a true sharp book (pinnacle
+        # etc.) is later wired in.
+        "dk_layer":    side_layers.get("draftkings"),
+        "fd_layer":    side_layers.get("fanduel"),
+        "mgm_layer":   side_layers.get("betmgm"),
+        "bol_layer":   side_layers.get("betonlineag"),
+        "csr_layer":   side_layers.get("williamhill_us"),
+        "sharp_layer": None,
     }
     populate_flat_odds(prop, by_book=by_book, side=side)
 
@@ -494,6 +502,7 @@ def score_one_side(
             sport=sport,
             dk_layer=prop["dk_layer"], fd_layer=prop["fd_layer"],
             mgm_layer=prop["mgm_layer"], bol_layer=prop["bol_layer"],
+            csr_layer=prop["csr_layer"],
         )
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"[replay.engine] _pick_reference_odds: {exc}")
