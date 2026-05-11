@@ -197,6 +197,90 @@ const formatPct = (val) => {
   return (val * 100).toFixed(1);
 };
 
+/**
+ * Format American odds with explicit +/- prefix.
+ *   -444  →  "-444"
+ *    190  →  "+190"
+ *      0  →  "EVEN"
+ *   null  →  "—"
+ */
+const formatAmericanOdds = (n) => {
+  if (n == null || n === '' || Number.isNaN(Number(n))) return '—';
+  const v = Math.round(Number(n));
+  if (v === 0) return 'EVEN';
+  return v > 0 ? `+${v}` : `${v}`;
+};
+
+/**
+ * Resolve the best sportsbook odds to display on a pick.
+ *
+ * Universal contract — backend `services/scoring/scoring_stack._pick_reference_odds`
+ * already runs the DK → FD → MGM → BOL fallback chain (NBA) or
+ * DK+FD consensus → DK → FD → MGM → BOL (MLB) and stamps the winner
+ * onto every scored doc as `tier_reference_book` + `tier_reference_odds`.
+ *
+ * This helper just reads those two fields. If they're missing we
+ * walk a per-book fallback in case the prop carries the raw odds
+ * fields (live-prop pool / search results / non-scored rows). When
+ * nothing is found we still return a `book` label so the chip
+ * renders with `—` instead of vanishing entirely.
+ */
+const resolveDisplayOdds = (p) => {
+  if (!p) return { odds: null, book: null, sourceLabel: '—' };
+  const refBook = p.tier_reference_book;
+  const refOdds = p.tier_reference_odds;
+  // Treat 'none' the same as missing — the scoring stack stamps
+  // 'none' when no sportsbook in the chain quoted the line.
+  if (refOdds != null && refBook && refBook !== 'none') {
+    return { odds: refOdds, book: refBook, sourceLabel: refBook };
+  }
+  // Per-book fallback chain DK → FD → MGM → BOL (raw scored doc
+  // doesn't carry these today, but pp_only / search-pool / live-prop
+  // shapes do — kept so the chip never falsely renders '—' when a
+  // book actually has a price).
+  const chain = [
+    ['dk',  p.dk_odds],
+    ['fd',  p.fd_odds],
+    ['mgm', p.mgm_odds],
+    ['bol', p.bol_odds],
+  ];
+  for (const [book, odds] of chain) {
+    if (odds != null) return { odds, book, sourceLabel: book };
+  }
+  return { odds: null, book: null, sourceLabel: '—' };
+};
+
+/**
+ * OddsChip — terminal-style label/value pair, theme-aware.
+ *
+ * Renders inside the existing stat strip alongside Projection /
+ * L20-L10-L5 / Avg cells so the chip inherits the surrounding
+ * label typography (font-mono uppercase tracking-[0.15em]) and
+ * tabular-nums alignment. The numeric value picks up the active
+ * tier's text color so it reads as part of the card, not as a
+ * stranded chip.
+ */
+const OddsChip = memo(({ pick, themeText = 'text-zinc-200', size = 'md', testid }) => {
+  const { odds, sourceLabel } = resolveDisplayOdds(pick);
+  const valueClasses = size === 'sm'
+    ? 'text-xs font-bold font-mono tabular-nums'
+    : 'text-sm md:text-[15px] font-bold font-mono tabular-nums';
+  const labelClasses = size === 'sm'
+    ? 'text-[8px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5'
+    : 'text-[9px] font-mono uppercase tracking-[0.15em] text-zinc-500 mb-0.5';
+  return (
+    <div className="flex-1 min-w-0" data-testid={testid || 'pick-odds-chip'}>
+      <div className={labelClasses}>
+        Odds · <span className="text-zinc-400">{sourceLabel}</span>
+      </div>
+      <div className={`${valueClasses} ${odds == null ? 'text-zinc-500' : themeText}`}>
+        {formatAmericanOdds(odds)}
+      </div>
+    </div>
+  );
+});
+OddsChip.displayName = 'OddsChip';
+
 // ==================== SUB-COMPONENTS ====================
 
 /**
@@ -482,6 +566,27 @@ const PropRow = memo(({ prop, theme, onClick, onQuickAdd, onVKClick }) => {
             Avg: <span className="text-white">{prop.season_avg?.toFixed?.(1) || prop.season_avg}</span>
           </span>
         )}
+        {/* Odds chip — tier_reference_book (DK→FD→MGM→BOL chain). */}
+        {(() => {
+          const { odds, sourceLabel } = resolveDisplayOdds(prop);
+          const txt = isMinefield ? 'text-orange-400'
+            : isFrontLine ? 'text-yellow-400'
+            : isDemon ? 'text-red-400'
+            : isGoblin ? 'text-green-400'
+            : 'text-zinc-200';
+          return (
+            <span
+              className="inline-flex items-center gap-1 font-mono tabular-nums"
+              data-testid={`prop-row-odds-${prop.stat_type}-${prop.line}`}
+              title={`Reference book: ${sourceLabel}`}
+            >
+              <span className="text-[9px] uppercase tracking-[0.12em] text-zinc-500">{sourceLabel}</span>
+              <span className={`text-xs font-bold ${odds == null ? 'text-zinc-500' : txt}`}>
+                {formatAmericanOdds(odds)}
+              </span>
+            </span>
+          );
+        })()}
         {/* Quick Add */}
         {onQuickAdd && (
           <button
@@ -803,12 +908,35 @@ const UniversalPlayerCard = memo(({
           </div>
         </div>
 
-        {/* PRIMARY — direction + line + stat, left-aligned, bold, color-coded */}
-        <div className={`${sideColor} leading-none mb-2`}>
-          <span className="text-3xl md:text-2xl font-extrabold tracking-tight">{sideLabel} {line}</span>
-          <span className="ml-1.5 text-xs md:text-[11px] font-mono font-semibold text-zinc-400 uppercase tracking-wider">
-            {formatStatType(stat_type)}
-          </span>
+        {/* PRIMARY — direction + line + stat on the left, odds on the
+            right at the same typographic weight so the chip fills the
+            previously-empty negative space next to the title. The
+            odds value reads in the active tier color (theme.text)
+            so the eye links it to the rest of the card. */}
+        <div className={`flex items-baseline justify-between gap-3 mb-2 ${sideColor} leading-none`}>
+          <div className="min-w-0">
+            <span className="text-3xl md:text-2xl font-extrabold tracking-tight">{sideLabel} {line}</span>
+            <span className="ml-1.5 text-xs md:text-[11px] font-mono font-semibold text-zinc-400 uppercase tracking-wider">
+              {formatStatType(stat_type)}
+            </span>
+          </div>
+          {(() => {
+            const { odds, sourceLabel } = resolveDisplayOdds(player);
+            return (
+              <div
+                className="flex items-baseline gap-1.5 shrink-0 leading-none"
+                data-testid={`player-odds-${playerSlug}`}
+                title={`Reference book: ${sourceLabel}`}
+              >
+                <span className={`text-3xl md:text-2xl font-extrabold tracking-tight font-mono tabular-nums ${odds == null ? 'text-zinc-500' : theme.text}`}>
+                  {formatAmericanOdds(odds)}
+                </span>
+                <span className="text-xs md:text-[11px] font-mono font-semibold text-zinc-400 uppercase tracking-wider">
+                  {sourceLabel}
+                </span>
+              </div>
+            );
+          })()}
         </div>
 
         {/* INLINE VISION INTEL — always visible, no CTA button */}
@@ -995,8 +1123,24 @@ const UniversalPlayerCard = memo(({
             
             {/* Primary Prop Display (if single prop mode) */}
             {stat_type && !hasProps && (
-              <div className="flex items-center gap-2 mt-1.5">
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 <span className={`text-sm font-bold ${theme.text}`}>{formatStatType(stat_type)} {line}</span>
+                {/* Odds chip — DK→FD→MGM→BOL chain (tier_reference_*). */}
+                {(() => {
+                  const { odds, sourceLabel } = resolveDisplayOdds(player);
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1 font-mono tabular-nums"
+                      data-testid={`primary-prop-odds-${playerSlug}`}
+                      title={`Reference book: ${sourceLabel}`}
+                    >
+                      <span className="text-[9px] uppercase tracking-[0.12em] text-zinc-500">{sourceLabel}</span>
+                      <span className={`text-xs font-bold ${odds == null ? 'text-zinc-500' : theme.text}`}>
+                        {formatAmericanOdds(odds)}
+                      </span>
+                    </span>
+                  );
+                })()}
                 {/* 2026-05-07 P0 Phase 4B: canonical-only L10 read.
                     Backend no longer ships legacy `h10_rate` on tier
                     picks. */}
