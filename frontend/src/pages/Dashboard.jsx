@@ -11,6 +11,7 @@ import React, { useState, useCallback, useEffect, memo, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSport } from '../context/SportContext';
+import { useTheme } from '../context/ThemeContext';
 import { toast } from 'sonner';
 
 // Centralized styles
@@ -23,7 +24,8 @@ import { Card } from '../components/ui/card';
 import { 
   Search, X, LogOut, Crown, User, Radio, AlertTriangle, Activity, 
   ChevronRight, ChevronLeft, Eye, Zap, ChevronDown, Flame, ArrowLeft, Target,
-  TrendingUp, Newspaper, Clock, Crosshair, Lock, Maximize2, ShieldAlert, Info
+  TrendingUp, Newspaper, Clock, Crosshair, Lock, Maximize2, ShieldAlert, Info,
+  Sun, Moon
 } from 'lucide-react';
 
 // Dashboard Components
@@ -1480,6 +1482,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user, logout, isDemo } = useAuth();
   const { currentSport } = useSport();
+  const { theme, toggleTheme, isDark } = useTheme();
 
   // NBA ranking sort: projection-gap (ranking_score_v2 DESC) is the default
   // and only user-facing mode. Backend still supports ?sort=default for
@@ -1780,6 +1783,21 @@ const Dashboard = () => {
           </div>
           
           <div className="flex items-center gap-1 sm:gap-2">
+            {/* Theme Toggle (Light / Dark) — persists via ThemeContext.
+                Icon flips Sun ↔ Moon and the accent stays yellow so it
+                lives alongside the rest of the chrome buttons. */}
+            <button
+              onClick={toggleTheme}
+              className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-zinc-800/50 hover:bg-zinc-700 border border-zinc-700/50 transition-all"
+              data-testid="theme-toggle-btn"
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {isDark
+                ? <Sun  className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500" />
+                : <Moon className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500" />}
+            </button>
+
             {/* Fullscreen / Open in New Tab Button */}
             <button 
               onClick={() => window.open(window.location.href, '_blank')} 

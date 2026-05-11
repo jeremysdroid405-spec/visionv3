@@ -3,6 +3,7 @@ import '@/App.css';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { SportProvider } from './context/SportContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { GlobalQueryProvider } from './providers/QueryProvider';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Auth } from './pages/Auth';
@@ -22,8 +23,9 @@ function App() {
   return (
     <GlobalQueryProvider>
       <AuthProvider>
-        <SportProvider>
-          <div className="App">
+        <ThemeProvider>
+          <SportProvider>
+            <div className="App">
             <Toaster 
               position="top-right" 
               theme="dark"
@@ -92,6 +94,7 @@ function App() {
             </BrowserRouter>
           </div>
         </SportProvider>
+      </ThemeProvider>
       </AuthProvider>
     </GlobalQueryProvider>
   );
