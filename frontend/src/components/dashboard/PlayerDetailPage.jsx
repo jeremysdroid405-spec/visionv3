@@ -102,7 +102,7 @@ const SkeletonPlayerDetail = () => (
 );
 
 // ==================== SINGLE PROP ROW ====================
-const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLogs = [] }) => {
+const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLogs = [], baselineStats = {} }) => {
   // NEW: Sharp movement classification
   const hasSharpMovement = prop.sharp_movement;
   const tierLabel = prop.tier_label || 'STANDARD';
@@ -134,13 +134,23 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
   const vacuumModifier = prop.vacuum_modifier;
   const vacuumData = prop.vacuum_data;
   
-  // Stats from baseline (canonical-only after Phase 4B).
-  // Backend ships `prop.l5_avg / prop.l10_avg / prop.season_avg`
-  // directly; the legacy nested `prop.hit_rates.{l5,l10,season}.avg`
-  // bag is no longer emitted on tier picks.
-  const l5Avg = prop.l5_avg;
-  const l10Avg = prop.l10_avg;
-  const seasonAvg = prop.season_avg;
+  // Stats from baseline. Backend ships per-prop fields ONLY on the
+  // `/api/v3/ferrari/*` dashboard payloads — the `/api/v3/player-
+  // with-badges/{name}` payload that drives this page does NOT carry
+  // `prop.l5_avg / l10_avg / season_avg`. The secondary master-hub
+  // fetch populates `player.baseline_stats[stat_type] = { season_avg,
+  // l5_avg, l10_avg, l20_avg, l10_values }`, so we resolve the
+  // per-stat baseline from that table when the per-prop field is
+  // absent. Without this fallback the L5 AVG / L10 AVG / SEASON
+  // cells (PropRow + Vision Intel Suite header) render `-` for every
+  // NBA prop.
+  const _baselineForStat =
+    baselineStats?.[prop.stat_type_extracted] ||
+    baselineStats?.[prop.stat_type] ||
+    {};
+  const l5Avg     = prop.l5_avg     ?? _baselineForStat.l5_avg     ?? null;
+  const l10Avg    = prop.l10_avg    ?? _baselineForStat.l10_avg    ?? null;
+  const seasonAvg = prop.season_avg ?? _baselineForStat.season_avg ?? null;
 
   // Hit rates (percentage) - Handle both decimal (0-1) and percentage (0-100) formats
   const normalizeHitRate = (rate) => {
@@ -934,6 +944,7 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                           highlightRef={highlightRef}
                           onVisionClick={handleVisionClick}
                           gameLogs={prop.game_logs || player?.game_logs || []}
+                          baselineStats={player?.baseline_stats || {}}
                         />
                       ))}
                     </div>
@@ -992,21 +1003,47 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   </div>
                 </div>
                 
-                {/* Stats Grid */}
-                <div className="grid grid-cols-3 gap-4 pt-4 border-t border-amber-500/20">
-                  <div className="text-center">
-                    <div className="text-xs text-amber-400/50">L5 AVG</div>
-                    <div className="text-xl font-bold text-white">{selectedVisionProp.l5_avg || '-'}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-amber-400/50">L10 AVG</div>
-                    <div className="text-xl font-bold text-white">{selectedVisionProp.l10_avg || '-'}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-amber-400/50">SEASON AVG</div>
-                    <div className="text-xl font-bold text-white">{selectedVisionProp.season_avg || '-'}</div>
-                  </div>
-                </div>
+                {/* Stats Grid — baseline AVG values resolve via:
+                    1. per-prop `l5_avg/l10_avg/season_avg`
+                       (ferrari payload shape)
+                    2. `player.baseline_stats[stat_type]` (master-hub
+                       secondary fetch — populated for NBA tier picks
+                       on this page)
+                    so the L5/L10/SEASON cells are never blank for an
+                    NBA prop the player actually has logs for. */}
+                {(() => {
+                  const _b =
+                    player?.baseline_stats?.[selectedVisionProp.stat_type_extracted] ||
+                    player?.baseline_stats?.[selectedVisionProp.stat_type] ||
+                    {};
+                  const l5  = selectedVisionProp.l5_avg     ?? _b.l5_avg     ?? null;
+                  const l10 = selectedVisionProp.l10_avg    ?? _b.l10_avg    ?? null;
+                  const ssn = selectedVisionProp.season_avg ?? _b.season_avg ?? null;
+                  const fmt = (n) =>
+                    n == null ? '-' : (typeof n === 'number' ? n.toFixed(1) : n);
+                  return (
+                    <div className="grid grid-cols-3 gap-4 pt-4 border-t border-amber-500/20">
+                      <div className="text-center">
+                        <div className="text-xs text-amber-400/50">L5 AVG</div>
+                        <div className="text-xl font-bold text-white" data-testid="vision-suite-l5-avg">
+                          {fmt(l5)}
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xs text-amber-400/50">L10 AVG</div>
+                        <div className="text-xl font-bold text-white" data-testid="vision-suite-l10-avg">
+                          {fmt(l10)}
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xs text-amber-400/50">SEASON AVG</div>
+                        <div className="text-xl font-bold text-white" data-testid="vision-suite-season-avg">
+                          {fmt(ssn)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
               
               {/* Add Pick to Command Center Button */}
@@ -1556,6 +1593,18 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   const l20 = selectedVisionProp.hit_rate_l20 ?? null;
                   const l10 = selectedVisionProp.hit_rate_l10 ?? null;
                   const l5  = selectedVisionProp.hit_rate_l5  ?? null;
+                  // 2026-05-11 — baseline-stats fallback so the
+                  // "Avg: x.x" sub-labels below the HR cells aren't
+                  // stranded when the per-prop l*_avg is missing
+                  // (the player-with-badges payload doesn't ship it).
+                  const _b =
+                    player?.baseline_stats?.[selectedVisionProp.stat_type_extracted] ||
+                    player?.baseline_stats?.[selectedVisionProp.stat_type] ||
+                    {};
+                  const subL10 = selectedVisionProp.l10_avg ?? _b.l10_avg ?? null;
+                  const subL5  = selectedVisionProp.l5_avg  ?? _b.l5_avg  ?? null;
+                  const fmtAvg = (n) =>
+                    n == null ? null : `Avg: ${typeof n === 'number' ? n.toFixed(1) : n}`;
                   const Cell = ({ label, sub, rate, testid }) => (
                     <div className="bg-zinc-900/50 rounded-lg p-3" data-testid={testid}>
                       <div className="text-xs text-zinc-500">{label}</div>
@@ -1580,17 +1629,13 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                       <Cell
                         label="LAST 10"
                         rate={l10}
-                        sub={selectedVisionProp.l10_avg != null
-                          ? `Avg: ${selectedVisionProp.l10_avg}`
-                          : ''}
+                        sub={fmtAvg(subL10)}
                         testid="player-detail-hr-l10"
                       />
                       <Cell
                         label="LAST 5"
                         rate={l5}
-                        sub={selectedVisionProp.l5_avg != null
-                          ? `Avg: ${selectedVisionProp.l5_avg}`
-                          : ''}
+                        sub={fmtAvg(subL5)}
                         testid="player-detail-hr-l5"
                       />
                     </div>
