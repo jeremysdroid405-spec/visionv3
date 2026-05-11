@@ -911,9 +911,11 @@ const UniversalPlayerCard = memo(({
         {/* PRIMARY — direction + line + stat on the left, odds on the
             right at the same typographic weight so the chip fills the
             previously-empty negative space next to the title. The
-            odds value reads in the active tier color (theme.text)
-            so the eye links it to the rest of the card. */}
-        <div className={`flex items-baseline justify-between gap-3 mb-2 ${sideColor} leading-none`}>
+            title AND odds both render in the active tier color
+            (theme.text: green=Safe Haven, yellow=Front Lines,
+            red=War Zone/Minefield) so the card reads as a single
+            tier-glow signal rather than splitting on OVER/UNDER. */}
+        <div className={`flex items-baseline justify-between gap-3 mb-2 ${theme.text} leading-none`}>
           <div className="min-w-0">
             <span className="text-3xl md:text-2xl font-extrabold tracking-tight">{sideLabel} {line}</span>
             <span className="ml-1.5 text-xs md:text-[11px] font-mono font-semibold text-zinc-400 uppercase tracking-wider">
