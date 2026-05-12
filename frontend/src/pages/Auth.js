@@ -453,31 +453,31 @@ export const Auth = () => {
             <SpecRow
               spec="CORE"
               title="VISION CORE 3.0 — Multi-Layer Regression"
-              edge="Calculates true outcome probability independent of the line. Built on 186 features across five seasons, with rolling metrics that capture form, role, and consistency, not averages."
+              edge="Calculates true outcome probability independent of the line. Built on 186 features across five seasons of player data, with rolling metrics that capture form, role, and consistency, not averages. Per-stat probability curves are fitted to actual outcome history, so longshot pricing reflects real frequency, not textbook math."
               icon={<Cpu className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
             <SpecRow
               spec="INTEL"
               title="VISION INTEL — Intelligence Layer"
-              edge="Every play is processed for projection, hit profile, volatility, and structural fit. Environmental signals, heat streaks, and system badges surface the context the line doesn't show."
+              edge="Every play is processed for projection, hit profile, volatility, and structural fit. Five sportsbooks are de-vigged into one true-probability number, so you see the real edge, not the book's. Environmental signals, heat streaks, sharp-money movement, and system badges surface the context the line doesn't show."
               icon={<Layers className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
             <SpecRow
               spec="LIVE"
               title="VISION LIVE — Injury & Role Detection"
-              edge="Detects lineup and role changes as they happen and recalculates projections immediately. Value shifts are surfaced as they form, not after the market adjusts."
+              edge="Detects lineup and role changes as they happen and recalculates projections within seconds. Usage vacuum from injured starters is redistributed across the rotation automatically. Value shifts are surfaced as they form, not after the market adjusts."
               icon={<Radio className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
             <SpecRow
               spec="SIGNAL"
               title="VISION SIGNAL — Tiered Scoring"
-              edge="Separates strength, risk, and confirmation into three independent tiers. Plays are classified on probability, volatility, and market alignment, never on a single blended score."
+              edge="Separates strength, risk, and confirmation into three independent tiers, Safe Haven, Front Lines, and War Zone. Plays are classified on probability, volatility, and market alignment, never on a single blended score. Pre-built parlay shells assemble the legs for you, with combined probability shown live."
               icon={<BarChart3 className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
             <SpecRow
               spec="GUARD"
               title="VISION GUARD — Playability Filter"
-              edge="Enforces structural constraints and removes non-playable configurations at the scoring layer. Only plays that meet execution criteria reach the board."
+              edge="Enforces structural constraints and removes non-playable configurations at the scoring layer. Every play must clear book coverage, direction, edge, and execution checks before it surfaces. Only plays that meet execution criteria reach the board."
               icon={<ShieldCheck className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" strokeWidth={1.5} />}
             />
           </div>
