@@ -1664,10 +1664,15 @@ async def startup_event():
         from routes import debug_snapshots as _debug_snapshots
         _debug_snapshots.set_db(db)
         app.include_router(_debug_snapshots.router, prefix="/api")
+        # 2026-05-12 — token-gated DB-backup downloader. Lets the user
+        # pull the preview-DB tarball + manifest files via HTTPS link
+        # so they can mongorestore them to their production server.
+        from routes import admin_backups as _admin_backups
+        app.include_router(_admin_backups.router, prefix="/api")
         logger.info(
             "[ROUTES] /api/health/sync + /api/health/contracts + "
-            "/api/debug/snapshots/* registered + sync_locks + "
-            "contract_violations indexes ensured"
+            "/api/debug/snapshots/* + /api/admin/backups/* registered "
+            "+ sync_locks + contract_violations indexes ensured"
         )
     except Exception as _hs_err:  # noqa: BLE001
         logger.error(f"[ROUTES] health_sync wiring failed: {_hs_err}")
