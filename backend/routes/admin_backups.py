@@ -49,9 +49,13 @@ _NAME_RE = re.compile(
     r"|"
     # 2026-05-12 — also allow the split chunks `*.tar.part-aa`,
     # `*.tar.part-ab`, etc. Produced by `split -a 2` so each part is
-    # ~100 MB. Concatenate on the production server with `cat
+    # ~55 MB. Concatenate on the production server with `cat
     # *.tar.part-* > full.tar`.
     r"^preview_dump_\d{8}_\d{6}\.tar\.part-[a-z]{2}$"
+    r"|"
+    # 2026-05-12 — also expose the per-part MD5 checksum file so
+    # consumers can `md5sum -c parts.md5` before reassembly.
+    r"^preview_dump_\d{8}_\d{6}\.parts\.md5$"
 )
 
 _TOKEN_FILE = BACKUP_DIR / ".download_token"
