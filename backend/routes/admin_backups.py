@@ -31,8 +31,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Header, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Query, Header, Request, status
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,12 @@ _NAME_RE = re.compile(
     r"^preview_dump_\d{8}_\d{6}"
     r"(?:\.manifest)?"
     r"\.(?:tar|json|txt)$"
+    r"|"
+    # 2026-05-12 — also allow the split chunks `*.tar.part-aa`,
+    # `*.tar.part-ab`, etc. Produced by `split -a 2` so each part is
+    # ~100 MB. Concatenate on the production server with `cat
+    # *.tar.part-* > full.tar`.
+    r"^preview_dump_\d{8}_\d{6}\.tar\.part-[a-z]{2}$"
 )
 
 _TOKEN_FILE = BACKUP_DIR / ".download_token"
@@ -120,13 +126,28 @@ def list_backups(
 @router.get("/download/{filename}")
 def download_backup(
     filename: str,
+    request: Request,
     token: Optional[str] = Query(default=None),
     authorization: Optional[str] = Header(default=None),
+    range_header: Optional[str] = Header(default=None, alias="Range"),
 ):
-    """Stream a single backup artefact. Auth-gated.
+    """Stream a single backup artefact. Auth-gated. **Range-aware** so
+    browsers + Cloudflare can resume / chunk huge files.
 
-    `FileResponse` streams via sendfile / chunked transfer; the 925 MB
-    tarball never touches application memory.
+    Without Range support, a single 882 MB download streams as one
+    200 OK over Cloudflare's preview ingress, which times the
+    connection out after ~60 sec of buffering even if the origin
+    is still streaming. Adding `Accept-Ranges: bytes` + a `Range:`
+    handler lets the browser issue partial-content requests and
+    Cloudflare keeps each chunk under its limits.
+
+    Implements the minimum HTTP/1.1 Range subset:
+      • single-range `Range: bytes=START-END`  → 206 Partial Content
+      • `Range: bytes=START-`                   → 206, slice → EOF
+      • `Range: bytes=-N`                       → 206, last N bytes
+      • absent or malformed                     → 200, full body
+    Anything more exotic (multi-range, units != bytes) falls back to
+    200 OK full body — RFC-7233 says clients must accept that.
     """
     _check_token(token, authorization)
     if not _NAME_RE.match(filename):
@@ -140,17 +161,96 @@ def download_backup(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"{filename} not found in {BACKUP_DIR}",
         )
-    # Media type guess — tar is application/x-tar; json + txt are obvious.
+
+    file_size = path.stat().st_size
     if filename.endswith(".tar"):
         media_type = "application/x-tar"
     elif filename.endswith(".json"):
         media_type = "application/json"
+    elif ".tar.part-" in filename:
+        # Split tar chunk — `cat *.tar.part-* > full.tar` to reassemble.
+        media_type = "application/octet-stream"
     else:
         media_type = "text/plain"
-    return FileResponse(
-        path=str(path),
+
+    # Common headers for every code path.
+    base_headers = {
+        "Accept-Ranges":        "bytes",
+        "Content-Disposition":  f'attachment; filename="{filename}"',
+        # Cache nothing — tokens shouldn't end up in CDN caches.
+        "Cache-Control":        "no-store, no-cache, must-revalidate",
+    }
+
+    if not range_header or not range_header.lower().startswith("bytes="):
+        # Full download path. Use FileResponse for sendfile-based
+        # streaming when no Range was requested.
+        return FileResponse(
+            path=str(path),
+            media_type=media_type,
+            filename=filename,
+            headers=base_headers,
+        )
+
+    # Parse a single-range spec.
+    spec = range_header.split("=", 1)[1].strip()
+    # Multi-range fallback — RFC-7233 allows server to return full body.
+    if "," in spec:
+        return FileResponse(
+            path=str(path),
+            media_type=media_type,
+            filename=filename,
+            headers=base_headers,
+        )
+
+    try:
+        start_str, _, end_str = spec.partition("-")
+        if not start_str and end_str:
+            # `bytes=-N`  → last N bytes
+            suffix = int(end_str)
+            if suffix <= 0:
+                raise ValueError
+            start = max(0, file_size - suffix)
+            end = file_size - 1
+        elif start_str and not end_str:
+            # `bytes=START-`  → start to EOF
+            start = int(start_str)
+            end = file_size - 1
+        else:
+            start = int(start_str)
+            end = int(end_str)
+        if start < 0 or end < start or start >= file_size:
+            raise ValueError
+        end = min(end, file_size - 1)
+    except ValueError:
+        return Response(
+            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+            headers={**base_headers, "Content-Range": f"bytes */{file_size}"},
+        )
+
+    chunk_size = 1024 * 1024  # 1 MB
+    length = end - start + 1
+
+    def _iter():
+        with open(path, "rb") as fh:
+            fh.seek(start)
+            remaining = length
+            while remaining > 0:
+                buf = fh.read(min(chunk_size, remaining))
+                if not buf:
+                    break
+                remaining -= len(buf)
+                yield buf
+
+    headers = {
+        **base_headers,
+        "Content-Range":  f"bytes {start}-{end}/{file_size}",
+        "Content-Length": str(length),
+    }
+    return StreamingResponse(
+        _iter(),
+        status_code=status.HTTP_206_PARTIAL_CONTENT,
         media_type=media_type,
-        filename=filename,
+        headers=headers,
     )
 
 
