@@ -146,6 +146,17 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-13 — Caesars (williamhill_us) added to book-anchor counter (MLB lift +871 props)
+- **Root cause**: `coverage_filter._BOOK_FIELDS` only recognized 4 books (DK / FD / BetOnline / BetMGM). Caesars (`csr_layer` + `csr_odds`) was wired into `universal_odds_sync` on 2026-05-11 and persisted on 4,379 MLB props (30.2% of live pool), but never counted toward `book_count` or `books_anchored`.
+- **Fix**: added `("williamhill_us", "caesars_price", "csr_odds")` to `_BOOK_FIELDS`. Updated docstring to reflect 0..5 book range.
+- **Projected impact on the 14,499 live MLB props**:
+  - `pp_only` (dropped): 1,465 → **1,190 (−275 props rescued into scoring)**
+  - `single_book`: 4,603 → 4,282
+  - `multi_book` (devig-eligible): 8,431 → **9,027 (+596 props gained 2nd quote)**
+  - Total upgraded: 871 MLB props.
+- **Tests**: 3 new Caesars regressions added (`test_classify_caesars_counts_as_anchor`, `test_classify_caesars_legacy_field`, `test_classify_all_five_books_including_caesars`). 30/30 coverage / decoration / Caesars-chain tests pass.
+- **Audit**: `/app/audit_reports/mlb_vs_nba_gate_audit_2026-05-13.md`.
+
 ### 2026-05-09 — Replay Phase 2.5 partial-parity 30-day run COMPLETE — honest gap analysis
 - **TP engine + reference odds + coverage classifier wired** into the replay path: `services/replay/engine.py` now imports `compute_tp`, `_pick_reference_odds`, `classify_coverage` from production scoring with ZERO forks. Refactor: group by `canonical_key` (not side) → score both sides → paired-book layer construction → flat `{prefix}_odds`/`{prefix}_odds_opp` populated → TP fires → coverage gate passes → real production tier decisions emerge.
 - **30-day NBA replay** (2024-02-01 → 2024-03-01, t-30m, run_id `a1aeb71a6ef046baae4fb56deef06667`): **503,200 evaluations** scored end-to-end across all 18 markets and 5 Phase-1 books. **97.2% reached `feature_completeness="partial"`** (TP fired); 2.8% capped at `minimal` (rare no_reference_market cases). 0 leakage blocks, 0 feature/scoring failures.

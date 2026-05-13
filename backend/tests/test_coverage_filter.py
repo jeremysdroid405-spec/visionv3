@@ -70,6 +70,38 @@ def test_classify_all_four_books():
     assert cov == "multi_book"
 
 
+def test_classify_caesars_counts_as_anchor():
+    """2026-05-13 regression: Caesars (csr_odds / caesars_price) MUST
+    count toward book_count. The Caesars wiring landed on 2026-05-11
+    but `_BOOK_FIELDS` was never updated — silently undercounting
+    4,379 MLB props (30.2%) that had Caesars data."""
+    prop = {"csr_odds": -115}
+    bc, cov = classify_coverage(prop)
+    assert bc == 1
+    assert cov == "single_book"
+    assert prop["books_anchored"] == ["williamhill_us"]
+
+
+def test_classify_caesars_legacy_field():
+    prop = {"caesars_price": -160}
+    bc, _ = classify_coverage(prop)
+    assert bc == 1
+    assert prop["books_anchored"] == ["williamhill_us"]
+
+
+def test_classify_all_five_books_including_caesars():
+    prop = {
+        "dk_odds": -120, "fd_odds": -125, "bol_odds": -115,
+        "mgm_odds": -118, "csr_odds": -122,
+    }
+    bc, cov = classify_coverage(prop)
+    assert bc == 5
+    assert cov == "multi_book"
+    assert set(prop["books_anchored"]) == {
+        "draftkings", "fanduel", "betonlineag", "betmgm", "williamhill_us",
+    }
+
+
 def test_classify_sharp_market_nested_prices():
     """NBA demon_goblin path stores prices in a nested `sharp_market` dict."""
     prop = {"sharp_market": {"draftkings_price": -180, "fanduel_price": None}}

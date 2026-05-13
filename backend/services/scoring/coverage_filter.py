@@ -20,6 +20,7 @@ Recognised book-price fields (both NBA and MLB naming conventions):
     FanDuel    → ``fanduel_price``    or ``fd_odds``
     BetOnline  → ``betonline_price``  or ``bol_odds``
     BetMGM     → ``betmgm_price``     or ``mgm_odds``
+    Caesars    → ``caesars_price``    or ``csr_odds``     (williamhill_us)
 
 Usage
 -----
@@ -54,11 +55,16 @@ logger = logging.getLogger(__name__)
 
 # Tuple of (legacy_name, universal_name) per book. Either key counts as
 # an anchor as long as its value is not None.
+# 2026-05-13: Added williamhill_us (Caesars). csr_layer/csr_odds was
+# wired up by universal_odds_sync on 2026-05-11 but never added to the
+# anchor count — leaving 4,379 MLB props (30.2%) with Caesars data
+# silently uncounted in `book_count` and `books_anchored`.
 _BOOK_FIELDS: Tuple[Tuple[str, str, str], ...] = (
-    ("draftkings", "draftkings_price", "dk_odds"),
-    ("fanduel",    "fanduel_price",    "fd_odds"),
-    ("betonlineag","betonline_price",  "bol_odds"),
-    ("betmgm",     "betmgm_price",     "mgm_odds"),
+    ("draftkings",     "draftkings_price", "dk_odds"),
+    ("fanduel",        "fanduel_price",    "fd_odds"),
+    ("betonlineag",    "betonline_price",  "bol_odds"),
+    ("betmgm",         "betmgm_price",     "mgm_odds"),
+    ("williamhill_us", "caesars_price",    "csr_odds"),
 )
 
 
@@ -96,7 +102,7 @@ def classify_coverage(prop: Dict) -> Tuple[int, str]:
     stamp the values onto the prop dict in place.
 
     The prop dict will gain:
-        ``book_count`` (int 0..4)
+        ``book_count`` (int 0..5)
         ``coverage_class`` (``"pp_only"`` | ``"single_book"`` | ``"multi_book"``)
         ``books_anchored`` (list[str]) — which books had an exact-line anchor
     """
