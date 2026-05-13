@@ -3111,3 +3111,31 @@ from the VPS.
 - Backend never makes HTTP to PrizePicks during this flow — only
   the operator's own browser does, and the script just listens
   passively to its responses.
+
+---
+
+## 2026-05-13 — Vision Intel UX: "Generating…" loader + per-chunk Gemini timeout
+
+**Problem:** User reported some Pick Cards on production showed no Vision Intel
+summary (cards looked broken/empty). Root causes:
+  1. Gemini-flash-lite chunk calls had no explicit timeout — tail-latency spikes
+     (>60s) silently killed chunks, leaving `vision_intel` null on those picks.
+  2. UI rendered nothing when `vision_intel` was null — no signal that the
+     reaper would close the gap on its next pass.
+
+**Fixes shipped:**
+  - Frontend (`UniversalPlayerCard.jsx`):
+    `visionLine ? <intel block> : <Generating Vision Intel… loader>`. Loader
+    has a pulsing amber dot + bouncing-dot ellipsis, `aria-live="polite"`,
+    `data-testid="vision-intel-loading-{slug}"`.
+  - Backend (`services/master_sync.py`):
+    New helper `_call_gemini_chunk_with_timeout()` wraps every chunk call
+    in `asyncio.wait_for(timeout=GEMINI_CHUNK_TIMEOUT_SECONDS=300s)` with
+    `GEMINI_CHUNK_RETRIES=1` retry-once on timeout/error. Both NBA and
+    MLB enrichers now route through it. Exhausted retries log loudly and
+    fall through to `[None]*len(chunk)` (handled identically to old path
+    so JIT reaper's next pass picks them up).
+
+**Result:** Every card always shows either a Gemini-authored summary or a
+"Generating Vision Intel…" loader — no more silent empty slots. Slow Gemini
+calls now have a 5-minute window per attempt instead of being killed early.

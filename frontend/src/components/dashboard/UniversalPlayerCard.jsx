@@ -942,13 +942,37 @@ const UniversalPlayerCard = memo(({
           })()}
         </div>
 
-        {/* INLINE VISION INTEL — always visible, no CTA button */}
-        {visionLine && (
+        {/* INLINE VISION INTEL — always visible, no CTA button.
+            When backend hasn't returned a Gemini-authored narrative
+            yet (JIT reaper is still working through the visible board),
+            render a clear "Generating…" loader so the card never looks
+            broken / empty. Loader shows on EVERY card missing
+            vision_intel; the reaper closes the gap on the next pass. */}
+        {visionLine ? (
           <div
             className="text-[11px] md:text-[11.5px] leading-snug text-zinc-300/90 mb-2.5 line-clamp-2"
             data-testid={`vision-intel-inline-${playerSlug}`}
           >
             {visionLine}
+          </div>
+        ) : (
+          <div
+            className="flex items-center gap-2 mb-2.5 text-[11px] md:text-[11.5px] leading-snug text-amber-300/80"
+            data-testid={`vision-intel-loading-${playerSlug}`}
+            aria-live="polite"
+          >
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"
+              aria-hidden="true"
+            />
+            <span className="font-mono uppercase tracking-wider text-[10px]">
+              Generating Vision Intel
+            </span>
+            <span className="inline-flex gap-0.5" aria-hidden="true">
+              <span className="animate-bounce [animation-delay:0ms]">.</span>
+              <span className="animate-bounce [animation-delay:120ms]">.</span>
+              <span className="animate-bounce [animation-delay:240ms]">.</span>
+            </span>
           </div>
         )}
 

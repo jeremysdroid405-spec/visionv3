@@ -1280,6 +1280,17 @@ PICKS_PER_TIER_CAP = {
 VISION_INTEL_TIERS = ("safe_haven", "front_lines", "war_zone")
 VISION_INTEL_FETCH_LIMIT_PER_TIER = 50
 
+# Per-chunk Gemini timeout (2026-05-12 user-approved bump).
+# Each chunk is 20 props. Gemini-flash-lite typically returns in
+# 8-25s but tail-latency spikes to 60s+ during peak load and were
+# silently killing chunks (leaving cards with no `vision_intel`,
+# which surfaced as empty Vision Intel slots in the UI). We now
+# give every chunk a generous 5-minute ceiling AND retry once on
+# timeout before giving up. The JIT reaper still closes any gap
+# on its next 5-min pass.
+GEMINI_CHUNK_TIMEOUT_SECONDS = 300   # 5 min per attempt
+GEMINI_CHUNK_RETRIES = 1             # one retry on timeout/error
+
 
 async def _attach_badges_in_memory(
     picks: list, sport: str, db
@@ -1339,6 +1350,52 @@ async def _attach_badges_in_memory(
                 metrics["context_attached"] += 1
 
     return metrics
+
+
+async def _call_gemini_chunk_with_timeout(
+    vis,
+    chunk: list,
+    tier_name: str,
+    sport_label: str,
+    chunk_idx: int,
+) -> list:
+    """Run a single Gemini chunk under `GEMINI_CHUNK_TIMEOUT_SECONDS`
+    with one retry on TimeoutError. Returns the strict-mode result
+    list (one element per source pick — each `dict` or `None`).
+    Raises the underlying exception only after retries are exhausted.
+    """
+    import asyncio as _asyncio
+    attempts = GEMINI_CHUNK_RETRIES + 1
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return await _asyncio.wait_for(
+                vis.analyze_tier_batch(chunk, tier_name, strict=True),
+                timeout=GEMINI_CHUNK_TIMEOUT_SECONDS,
+            )
+        except _asyncio.TimeoutError as exc:
+            last_exc = exc
+            logger.warning(
+                f"[MASTER_SYNC:{sport_label}] vision_intel chunk "
+                f"{tier_name}#{chunk_idx} timed out after "
+                f"{GEMINI_CHUNK_TIMEOUT_SECONDS}s "
+                f"(attempt {attempt}/{attempts})"
+            )
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                f"[MASTER_SYNC:{sport_label}] vision_intel chunk "
+                f"{tier_name}#{chunk_idx} failed "
+                f"(attempt {attempt}/{attempts}): {exc}"
+            )
+    # All attempts exhausted — return all-None so caller falls through.
+    if last_exc is not None:
+        logger.error(
+            f"[MASTER_SYNC:{sport_label}] vision_intel chunk "
+            f"{tier_name}#{chunk_idx} exhausted retries; "
+            f"last error: {last_exc!r}"
+        )
+    return [None] * len(chunk)
 
 
 
@@ -1503,19 +1560,15 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
         for i in range(0, len(tier_picks), CHUNK):
             chunk = tier_picks[i : i + CHUNK]
             metrics["gemini_calls"] += 1
-            try:
-                chunk_results = await vis.analyze_tier_batch(
-                    chunk, tier_name, strict=True
-                )
-            except Exception as exc:
-                logger.warning(
-                    f"[MASTER_SYNC:nba] vision_intel chunk failed "
-                    f"for {tier_name} ({i}-{i+len(chunk)}): {exc}"
-                )
-                results.extend([None] * len(chunk))
+            chunk_results = await _call_gemini_chunk_with_timeout(
+                vis, chunk, tier_name, "nba", i // CHUNK
+            )
+            # _call_gemini_chunk_with_timeout returns [None]*len(chunk)
+            # on exhausted retries — treat that as a chunk failure for
+            # downstream `skip` reporting but never raise.
+            if not any(r is not None for r in chunk_results):
                 chunk_failed = True
-                continue
-            results.extend(chunk_results or [None] * len(chunk))
+            results.extend(chunk_results)
         if chunk_failed:
             skip[f"chunk_failed_{tier_name}"] = True
 
@@ -1803,19 +1856,12 @@ async def _enrich_mlb_board_vision_intel(db) -> dict:
         for i in range(0, len(tier_picks), CHUNK):
             chunk = tier_picks[i: i + CHUNK]
             metrics["gemini_calls"] += 1
-            try:
-                chunk_results = await vis.analyze_tier_batch(
-                    chunk, tier_name, strict=True
-                )
-            except Exception as exc:
-                logger.warning(
-                    f"[MASTER_SYNC:mlb] vision_intel chunk failed "
-                    f"for {tier_name} ({i}-{i+len(chunk)}): {exc}"
-                )
-                results.extend([None] * len(chunk))
+            chunk_results = await _call_gemini_chunk_with_timeout(
+                vis, chunk, tier_name, "mlb", i // CHUNK
+            )
+            if not any(r is not None for r in chunk_results):
                 chunk_failed = True
-                continue
-            results.extend(chunk_results or [None] * len(chunk))
+            results.extend(chunk_results)
         if chunk_failed:
             skip[f"chunk_failed_{tier_name}"] = True
 
