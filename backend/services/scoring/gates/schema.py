@@ -21,6 +21,7 @@ CANONICAL_GATE_TYPES = (
     "cv_gate",               # cv <= max (or stat-family-keyed `caps` map)
     "margin_gate",           # avg_hit_margin >= min (binary 0.5-line replacement for cv_gate, MLB)
     "edge_gate",             # edge_pct >= min
+    "tp_source_gate",        # tp_source == required_source (e.g. devig only)
     "ceiling_gate",          # ceiling_rate >= min pp
     "context_gate",          # no blowout / injury / lineup veto
     "vision_score_gate",     # vision_score >= min (optional per-tp_source floors)
@@ -52,6 +53,7 @@ class ReasonCode:
     CV_FAIL = "gate_cv_fail"
     MARGIN_FAIL = "gate_margin_fail"
     EDGE_FAIL = "gate_edge_fail"
+    TP_SOURCE_FAIL = "gate_tp_source_fail"
     CEILING_FAIL = "gate_ceiling_fail"
     CONTEXT_FAIL = "gate_context_fail"
     VISION_SCORE_FAIL = "gate_vision_score_fail"
@@ -66,6 +68,7 @@ class ReasonCode:
         "cv_gate": CV_FAIL,
         "margin_gate": MARGIN_FAIL,
         "edge_gate": EDGE_FAIL,
+        "tp_source_gate": TP_SOURCE_FAIL,
         "ceiling_gate": CEILING_FAIL,
         "context_gate": CONTEXT_FAIL,
         "vision_score_gate": VISION_SCORE_FAIL,

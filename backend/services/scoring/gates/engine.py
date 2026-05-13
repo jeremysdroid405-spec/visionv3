@@ -287,6 +287,50 @@ class UniversalGateEngine:
         )
 
     @staticmethod
+    def _eval_tp_source(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
+        """`tp_source_gate` — reject props whose true-prob estimate is
+        computed without an opposing-side companion price.
+
+        Added 2026-05-13 after the user audit of MLB SH rejections
+        revealed that all 5 flagged "close-edge" HRR 0.5 OVER props
+        were `tp_source=one_sided`: DK/FD/MGM quoted only the heavy-
+        chalk OVER (-300 to -500) and the Odds API never returned the
+        long-tail UNDER side. Without a two-sided quote per book the
+        de-vig engine falls back to raw implied-probability averaging
+        with NO vig removal, structurally inflating the "fair_prob"
+        and the resulting edge_vs_fair by 4-8 percentage points.
+
+        Config shape:
+            "tp_source_gate": {"required_source": "devig"}
+              → passes when `tp_source == "devig"`
+              → fails when `tp_source == "one_sided"` (or None)
+            "tp_source_gate": {"required_source": "devig", "allow_unknown": True}
+              → also passes when `tp_source is None` (un-scored)
+
+        Designed for SH-only use (where edge inflation matters most).
+        FL/WZ keep one-sided picks because supply is structurally lower
+        and the larger CV/HR/edge floors there absorb the inflation.
+        """
+        required = cfg.get("required_source", "devig")
+        allow_unknown = bool(cfg.get("allow_unknown", False))
+        actual = m.tp_source
+        if actual is None:
+            passed = allow_unknown
+            note = "tp_source_unknown_allowed" if allow_unknown else None
+        else:
+            passed = bool(actual == required)
+            note = None
+        return GateDetail(
+            gate_type="tp_source_gate",
+            threshold=required,
+            actual=actual,
+            passed=passed,
+            comparator="==",
+            reason_code=None if passed else ReasonCode.TP_SOURCE_FAIL,
+            note=note,
+        )
+
+    @staticmethod
     def _eval_ceiling(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
         threshold = float(cfg.get("min", 0.0))
         actual = _py(m.ceiling_rate)
@@ -582,6 +626,7 @@ class UniversalGateEngine:
         "cv_gate":               _eval_cv,
         "margin_gate":           _eval_margin,
         "edge_gate":             _eval_edge,
+        "tp_source_gate":        _eval_tp_source,
         "ceiling_gate":          _eval_ceiling,
         "context_gate":          _eval_context,
         "vision_score_gate":     _eval_vision_score,

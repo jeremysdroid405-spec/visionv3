@@ -452,10 +452,12 @@ def _mlb_thresholds(
             float(vals.get("edge_min", 0.0)), _UNIVERSAL_OVER_EDGE_FLOOR
         )
         if war_zone:
+            # 2026-05-13 — ceiling_gate REMOVED per user spec.
+            # War Zone is now: coverage + direction (OVER) + edge only.
+            # Previously rejected ~292 props/slate via ceiling_gate.
             out[family] = {
                 "coverage_gate":  {"min_books": 1},
                 "direction_gate": _UNIVERSAL_OVER_DIRECTION,
-                "ceiling_gate":   {"min": vals["ceiling_min"]},
                 "edge_gate":      {"min": family_edge_min},
             }
         else:
@@ -467,7 +469,7 @@ def _mlb_thresholds(
                 # NBA-parity additions (2026-05-13).
                 hit_rate_block["enforce_l5_subgate"] = True
                 tp_block["under_floor"] = 65.0
-            out[family] = {
+            gate_block: Dict[str, Any] = {
                 "coverage_gate":  {"min_books": 1},
                 "direction_gate": _UNIVERSAL_OVER_DIRECTION,
                 # cv_gate carries `min_margin` so the engine's MLB+0.5
@@ -481,6 +483,16 @@ def _mlb_thresholds(
                 "edge_gate":      {"min": family_edge_min},
                 "tp_gate":        tp_block,
             }
+            if not front_lines:
+                # 2026-05-13 — Safe Haven only: reject `tp_source=one_sided`
+                # props. User audit of HRR 0.5 OVER rejects showed the
+                # 5 closest-edge props were all DK/FD/MGM one-sided
+                # chalk (-300 to -500) with no UNDER companion price,
+                # which structurally inflates edge_vs_fair by 4-8 pp.
+                # FL keeps one-sided picks (lower supply, larger
+                # edge/HR/CV floors absorb the inflation there).
+                gate_block["tp_source_gate"] = {"required_source": "devig"}
+            out[family] = gate_block
     return out
 
 
