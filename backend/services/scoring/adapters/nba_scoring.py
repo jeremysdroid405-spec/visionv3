@@ -190,6 +190,24 @@ class NBAScoringAdapter(ScoringAdapter):
         "player_points_alternate": "PTS", "player_rebounds_alternate": "REB",
         "player_assists_alternate": "AST",
         "player_points_rebounds_assists_alternate": "PRA",
+        # 2026-05-13 SSOT — combos use ONE short-code token per family.
+        # Matches `universal_odds_sync.stat_type_map`; both must stay
+        # aligned so legacy score docs that bypass the new ingest path
+        # (e.g. canonical_key_from_raw fallback) still resolve correctly.
+        "player_points_rebounds":            "PR",
+        "player_points_rebounds_alternate":  "PR",
+        "player_points_assists":             "PA",
+        "player_points_assists_alternate":   "PA",
+        "player_rebounds_assists":           "RA",
+        "player_rebounds_assists_alternate": "RA",
+        "player_threes":              "3PM",
+        "player_threes_alternate":    "3PM",
+        "player_steals":              "STL",
+        "player_steals_alternate":    "STL",
+        "player_blocks":              "BLK",
+        "player_blocks_alternate":    "BLK",
+        "player_turnovers":           "TO",
+        "player_turnovers_alternate": "TO",
     }
 
     def canonical_key_from_raw(self, raw_prop):
@@ -2565,19 +2583,19 @@ class NBAScoringAdapter(ScoringAdapter):
                 bdl_player_id = None
         identity_status = "resolved" if bdl_player_id is not None else "missing_bdl_id"
         # Hard Consolidation (2026-04-22): universal_odds_sync writes
-        # `stat_type` (PTS/REB/AST/PRA) and `market_key` directly.
-        # Prefer the persisted stat_type first; fall back to market-
-        # name mapping for any legacy rows still carrying `market`.
+        # `stat_type` (PTS/REB/AST/PRA + PR/PA/RA combos + 3PM/STL/
+        # BLK/TO) and `market_key` directly. Prefer the persisted
+        # stat_type first; fall back to market-name mapping for any
+        # legacy rows still carrying `market`.
+        # 2026-05-13 SSOT: this fallback map now mirrors the full
+        # `_MARKET_TO_STAT` table to guarantee identical canonical
+        # tokens regardless of which code path produced the prop.
         stat_type = prop.get("stat_type")
         if not stat_type:
             market = prop.get("market") or prop.get("market_key") or ""
-            stat_type = {
-                "player_points": "PTS", "player_rebounds": "REB", "player_assists": "AST",
-                "player_points_rebounds_assists": "PRA",
-                "player_points_alternate": "PTS", "player_rebounds_alternate": "REB",
-                "player_assists_alternate": "AST",
-                "player_points_rebounds_assists_alternate": "PRA",
-            }.get(market, prop.get("stat_type_extracted") or market)
+            stat_type = self._MARKET_TO_STAT.get(
+                market, prop.get("stat_type_extracted") or market
+            )
 
         line = prop.get("line")
         if player_name is None or line is None or not stat_type:

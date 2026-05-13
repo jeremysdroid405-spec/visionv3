@@ -3261,3 +3261,65 @@ which had NO entry in the map. `getStatValue` returned null for every game →
 **Verified:** In-browser evaluation confirmed `player_points_rebounds_alternate`
 + `player_points_rebounds` + `PR` + `P+R` all resolve to the same `['pts','reb']`
 field combo and a sample `{pts:18, reb:5}` game correctly sums to 23.
+
+## 2026-05-13 — SSOT ENFORCEMENT: NBA combo stats collapse at ingest
+
+**User complaint:** "why are they short coded? we have very strict ssot
+and ownership rules" — referring to the previous fix that added
+long-form `player_points_rebounds_alternate` keys to the frontend
+`STAT_FIELD_MAP`. They were RIGHT — that patched the symptom, not the
+SSOT violation.
+
+**The SSOT violation found in DB:** `nba_prop_scores` contained MIXED
+stat_type formats for the same player Ayo Dosunmu — short codes
+(PTS, REB, AST, PRA) AND long-form market keys (player_points_assists,
+player_points_rebounds, player_points_rebounds_alternate, etc.). Standard
+markets were collapsed at ingest, but COMBO markets were intentionally
+"preserved" with the comment "scoring adapter / gate aliases already
+handle them downstream" — a comment that was a lie.
+
+**Root cause:** `services/universal_odds_sync.NBA_CONFIG.stat_type_map`
+explicitly mapped combo markets to themselves:
+  "player_points_rebounds":           "player_points_rebounds"   ← bug
+  "player_points_rebounds_alternate": "player_points_rebounds_alternate"
+  ... etc for PA, RA
+
+This caused score docs to carry the long-form token, which:
+  • Violated SSOT (two formats for same family in same collection)
+  • Caused chart rendering to silently fail for every alt-combo prop
+    because `STAT_FIELD_MAP` keyed short codes only
+
+**Fix (single source of truth at ingest boundary):**
+
+  1. `services/universal_odds_sync.py::stat_type_map`:
+     player_points_rebounds*  →  "PR"
+     player_points_assists*   →  "PA"
+     player_rebounds_assists* →  "RA"
+     (matching the pre-existing PTS/REB/AST/PRA/3PM/STL/BLK/TO pattern)
+
+  2. `services/scoring/adapters/nba_scoring.py::_MARKET_TO_STAT`:
+     Expanded to mirror the full set so the legacy `canonical_key_from_raw`
+     fallback path produces identical canonical tokens regardless of
+     whether the prop came through new ingest or a legacy code path.
+
+  3. `services/scoring/adapters/nba_scoring.py::build_context`:
+     Now reuses `self._MARKET_TO_STAT` instead of an inline duplicate
+     of the same map (DRY — one place to change, ever).
+
+  4. `frontend/src/components/dashboard/GameLogBarChart.jsx`:
+     Removed all 30+ long-form fallback entries that were defending
+     against the SSOT violation. Map is now short-code-only, matching
+     the backend canonical guarantee. The `_alternate`-suffix strip
+     fallback in `getStatValue` is retained as defense-in-depth for
+     any future external feed that bypasses the canonical ingest path.
+
+**Data migration:** Flushed all `nba_prop_scores` + `nba_live_props` rows
+with `stat_type ^/player_/` (21,225 + 409 docs). Re-ran odds sync +
+full NBA recompute. Verified DB now contains ONLY canonical short codes:
+
+  PTS=217  PRA=164  REB=161  PR=150  PA=126  AST=113  3PM=79
+  RA=70    STL=58   BLK=34   long-form=0 ✓
+
+**Verified end-to-end:** Ayo Dosunmu's PR 19.5 alt-line prop now carries
+`stat_type='PR'` end-to-end. PlayerDetailPage chart resolves correctly
+via the unmodified `STAT_FIELD_MAP['PR']` → ['pts','reb'].

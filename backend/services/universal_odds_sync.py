@@ -375,12 +375,26 @@ SPORT_API_CONFIG = {
             "player_turnovers_alternate": "TO",
             # Preserve raw combo keys — scoring adapter / gate aliases
             # already handle them downstream.
-            "player_points_rebounds": "player_points_rebounds",
-            "player_points_rebounds_alternate": "player_points_rebounds_alternate",
-            "player_points_assists": "player_points_assists",
-            "player_points_assists_alternate": "player_points_assists_alternate",
-            "player_rebounds_assists": "player_rebounds_assists",
-            "player_rebounds_assists_alternate": "player_rebounds_assists_alternate",
+            #
+            # 2026-05-13 SSOT FIX — combos NOW collapse to short codes
+            # (PR / PA / RA), matching the canonical pattern already used
+            # for `PTS / REB / AST / PRA / 3PM / STL / BLK / TO`.
+            # Previously these were left as raw market keys, which:
+            #   • produced two stat_type representations in the SAME
+            #     `nba_prop_scores` collection (PRA short + PR long form)
+            #   • caused GameLogBarChart to render "No game data" for
+            #     every alt-combo prop because its STAT_FIELD_MAP only
+            #     keyed short codes (Ayo Dosunmu P+R 19.5 repro).
+            # Single source of truth: ONE token per stat family,
+            # owned here at the ingest boundary. See
+            # `services/scoring/stat_family.py` for downstream alias
+            # canonicalization.
+            "player_points_rebounds":           "PR",
+            "player_points_rebounds_alternate": "PR",
+            "player_points_assists":            "PA",
+            "player_points_assists_alternate":  "PA",
+            "player_rebounds_assists":          "RA",
+            "player_rebounds_assists_alternate":"RA",
         },
         # PrizePicks anchor + DK + FD + BetOnline + BetMGM + Caesars
         # (2026-04-22: BetMGM added; 2026-05-11: Caesars (williamhill_us)
