@@ -76,23 +76,44 @@ async def find_visible_uncovered_cks(db, sport: str) -> List[str]:
     AND have no `vision_intel` on the LIVE-tag score doc. Pure read;
     no writes, no Gemini calls.
 
-    Returns the filtered ck list (may be empty)."""
+    Returns the filtered ck list (may be empty).
+
+    2026-05-13 expansion: the dashboard fetches `?sort=gap` (NBA only)
+    which returns a DIFFERENT canonical_key per player than the
+    default `vision_score` sort (different alt-line wins per ranking).
+    Without enriching both sort variants, gap-sort picks land on the
+    UI with `vision_intel=None` forever. We now union both visible
+    universes so the reaper covers every canonical_key the frontend
+    could surface.
+    """
     from services.board.reader import get_board
     from config.version_tags import for_sport
 
     visible_cks: List[str] = []
+    # Sort variants the frontend can request via the ferrari endpoints.
+    # `None` = adapter default (vision_score DESC for NBA, MLB).
+    # `"ranking_score_v2"` = projection-gap sort, fired by Dashboard
+    # via `?sort=gap` (NBA only today; harmless for MLB which falls
+    # back to the default key when missing).
+    sort_variants = (None, "ranking_score_v2") if sport == "nba" else (None,)
+
     for tier in ("safe_haven", "front_lines", "war_zone"):
-        try:
-            picks = await get_board(db, sport=sport, tier=tier, limit=50)
-        except Exception:
-            logger.exception(
-                f"[JIT_VI:{sport}] get_board({tier}) failed; skipping tier"
-            )
-            continue
-        for p in picks:
-            ck = p.get("canonical_key")
-            if ck:
-                visible_cks.append(ck)
+        for variant in sort_variants:
+            try:
+                picks = await get_board(
+                    db, sport=sport, tier=tier, limit=50,
+                    sort_key_override=variant,
+                )
+            except Exception:
+                logger.exception(
+                    f"[JIT_VI:{sport}] get_board({tier}, sort={variant!r}) "
+                    f"failed; skipping variant"
+                )
+                continue
+            for p in picks:
+                ck = p.get("canonical_key")
+                if ck:
+                    visible_cks.append(ck)
 
     if not visible_cks:
         return []

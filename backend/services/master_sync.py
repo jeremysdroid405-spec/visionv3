@@ -1483,13 +1483,30 @@ async def _enrich_nba_board_vision_intel(db) -> dict:
 
     board_picks: list = []
     per_tier_visible: dict = {}
+    # 2026-05-13 — Enrich BOTH default-sort AND projection-gap sort
+    # variants. Dashboard fires `?sort=gap` (NBA) which dedups to a
+    # DIFFERENT canonical_key per player (different alt-line wins per
+    # ranking key). Without enriching both, gap-sort picks land on the
+    # UI with `vision_intel=None`. MLB uses default sort only.
+    NBA_SORT_VARIANTS = (None, "ranking_score_v2")
+
+    seen_cks: set = set()
     for tier_name in VISION_INTEL_TIERS:
-        tier_picks = await get_board(
-            db, sport="nba", tier=tier_name,
-            limit=VISION_INTEL_FETCH_LIMIT_PER_TIER,
-        )
-        per_tier_visible[tier_name] = len(tier_picks)
-        board_picks.extend(tier_picks)
+        per_tier_count = 0
+        for variant in NBA_SORT_VARIANTS:
+            tier_picks = await get_board(
+                db, sport="nba", tier=tier_name,
+                limit=VISION_INTEL_FETCH_LIMIT_PER_TIER,
+                sort_key_override=variant,
+            )
+            for p in tier_picks:
+                ck = p.get("canonical_key")
+                if not ck or ck in seen_cks:
+                    continue
+                seen_cks.add(ck)
+                board_picks.append(p)
+                per_tier_count += 1
+        per_tier_visible[tier_name] = per_tier_count
 
     metrics["safe_haven_count"]    = per_tier_visible.get("safe_haven", 0)
     metrics["front_lines_count"]   = per_tier_visible.get("front_lines", 0)

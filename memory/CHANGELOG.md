@@ -3200,3 +3200,38 @@ same `503/500/429/UNAVAILABLE` sniff, same single-attempt fallback).
 **Verified end-to-end:**
   NBA: war-zone 4/4 + front-lines 8/8 + safe-haven 7/7 = **19/19 ✓**
   MLB: war-zone 2/2 + front-lines 1/1 + safe-haven 1/1 = **4/4 ✓**
+
+## 2026-05-13 (THE actual root-cause fix) — Sort-variant enrichment mismatch
+
+**Real bug:** Dashboard fires `/api/v3/ferrari/{tier}?sort=gap` (NBA only),
+which uses `ranking_score_v2` as the dedup-and-rank key. The board reader's
+"one pick per player" dedup picks a DIFFERENT alt-line per player when sorted
+by gap vs default vision_score:
+
+  Duncan Robinson PTS L8.5 — wins default sort (HAS vision_intel)
+  Duncan Robinson PTS L6.5 — wins gap sort   (NO vision_intel — never enriched)
+
+The JIT reaper and master_sync only ever enriched the DEFAULT sort variant.
+Result: gap-sort exposed canonical_keys that nothing had ever Gemini-enriched.
+
+The previous fixes (metadata loss, 503 fallback) were necessary too, but the
+PROXIMATE cause of "James Harden / Tobias Harris / Evan Mobley / Duncan Robinson
+showing loader while Donovan Mitchell showed text" was THIS — Mitchell happened
+to win the same canonical_key under both sort variants; the others didn't.
+
+**Fix:**
+  1. `services/jit_vision_intel_reaper.py::find_visible_uncovered_cks`:
+     Loop both `None` (vision_score) and `"ranking_score_v2"` sort variants
+     via `get_board(sort_key_override=...)`. Union the canonical_keys before
+     checking the "uncovered" filter. MLB still uses default-only.
+  2. `services/master_sync.py::_enrich_nba_board_vision_intel`:
+     Same expansion at the scheduled hourly path — dedup canonical_keys
+     across both sort variants in `seen_cks` to avoid double-enriching the
+     same ck if it wins both rankings.
+
+**Verified end-to-end:**
+  /api/v3/ferrari/safe-haven?sort=gap   → 7/7 ✓
+  /api/v3/ferrari/front-lines?sort=gap  → 8/8 ✓
+  /api/v3/ferrari/war-zone?sort=gap     → 4/4 ✓
+  Screenshot of dashboard.preview: 19/19 cards showing AI-authored intel.
+  loaders=0, inlines=19.
