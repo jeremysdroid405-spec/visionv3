@@ -3235,3 +3235,29 @@ to win the same canonical_key under both sort variants; the others didn't.
   /api/v3/ferrari/war-zone?sort=gap     → 4/4 ✓
   Screenshot of dashboard.preview: 19/19 cards showing AI-authored intel.
   loaders=0, inlines=19.
+
+## 2026-05-13 — Ayo Dosunmu P+R 19.5 "No game data" chart bug
+
+**Reported:** Player Detail Page for Ayo Dosunmu's War Zone OVER 19.5 P+R prop
+rendered "No game data available" despite the master-hub endpoint returning
+78 BDL game logs.
+
+**Root cause:** `frontend/src/components/dashboard/GameLogBarChart.jsx`'s
+`STAT_FIELD_MAP` only contained SHORT-CODE keys ('PR', 'P+R'). The score doc's
+`stat_type` arrives as the Odds-API long-form `player_points_rebounds_alternate`
+which had NO entry in the map. `getStatValue` returned null for every game →
+`values.length === 0` → `chartData = null` → "No game data" placeholder.
+
+**Fix:**
+  1. Added every NBA Odds-API market key + its `_alternate` variant to
+     `STAT_FIELD_MAP` (player_points, player_rebounds, player_assists,
+     player_points_rebounds, player_points_assists, player_rebounds_assists,
+     player_points_rebounds_assists, player_blocks_steals, player_threes,
+     etc.). All map to their underlying BDL game-log fields.
+  2. `getStatValue` now has a final fallback that strips the `_alternate`
+     suffix and re-tries the lookup, so any future alt-market key the
+     backend adds will resolve to its base stat without a code change.
+
+**Verified:** In-browser evaluation confirmed `player_points_rebounds_alternate`
++ `player_points_rebounds` + `PR` + `P+R` all resolve to the same `['pts','reb']`
+field combo and a sample `{pts:18, reb:5}` game correctly sums to 23.

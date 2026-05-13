@@ -24,7 +24,7 @@ const TEAM_ID_TO_ABBR = {
 
 // Map stat types to game log fields
 const STAT_FIELD_MAP = {
-  // NBA Stats
+  // NBA Stats — short codes
   'PTS': 'pts',
   'REB': 'reb',
   'AST': 'ast',
@@ -40,6 +40,39 @@ const STAT_FIELD_MAP = {
   'BLST': ['blk', 'stl'],
   'FTM': 'ftm',
   'MIN': 'min',
+  // NBA Stats — Odds-API long-form market keys (and `_alternate`
+  // variants) that arrive un-collapsed on score docs / alt-line
+  // props. Without these the chart silently returns null and the
+  // PlayerDetailPage renders "No game data" even when 60+ BDL game
+  // logs are loaded (2026-05-13 — Ayo Dosunmu P+R 19.5 repro).
+  'player_points': 'pts',
+  'player_points_alternate': 'pts',
+  'player_rebounds': 'reb',
+  'player_rebounds_alternate': 'reb',
+  'player_assists': 'ast',
+  'player_assists_alternate': 'ast',
+  'player_steals': 'stl',
+  'player_steals_alternate': 'stl',
+  'player_blocks': 'blk',
+  'player_blocks_alternate': 'blk',
+  'player_threes': 'fg3m',
+  'player_threes_alternate': 'fg3m',
+  'player_turnovers': 'turnover',
+  'player_turnovers_alternate': 'turnover',
+  'player_points_rebounds_assists': ['pts', 'reb', 'ast'],
+  'player_points_rebounds_assists_alternate': ['pts', 'reb', 'ast'],
+  'player_points_rebounds': ['pts', 'reb'],
+  'player_points_rebounds_alternate': ['pts', 'reb'],
+  'player_points_assists': ['pts', 'ast'],
+  'player_points_assists_alternate': ['pts', 'ast'],
+  'player_rebounds_assists': ['reb', 'ast'],
+  'player_rebounds_assists_alternate': ['reb', 'ast'],
+  'player_blocks_steals': ['blk', 'stl'],
+  'player_blocks_steals_alternate': ['blk', 'stl'],
+  'player_steals_blocks': ['blk', 'stl'],
+  'player_steals_blocks_alternate': ['blk', 'stl'],
+  'player_fantasy_points': 'pts',          // best-effort approximation
+  'player_fantasy_points_alternate': 'pts',
   // MLB Batter Stats
   'Hits': 'hits',
   'HITS': 'hits',
@@ -101,8 +134,13 @@ const STAT_FIELD_MAP = {
 };
 
 const getStatValue = (game, statType) => {
-  // Try exact match first, then uppercase
-  let field = STAT_FIELD_MAP[statType] || STAT_FIELD_MAP[statType?.toUpperCase()];
+  // Try exact match first, then uppercase, then lowercase-stripped `_alternate`
+  // suffix (2026-05-13 — defensive fallback so any future Odds-API
+  // alt-market key resolves to its base stat without a code change).
+  let field =
+    STAT_FIELD_MAP[statType] ||
+    STAT_FIELD_MAP[statType?.toUpperCase()] ||
+    STAT_FIELD_MAP[String(statType || '').replace(/_alternate$/i, '')];
   if (!field) return null;
   
   // Handle combo stats (arrays)
