@@ -437,6 +437,40 @@ class ScoreDocument(BaseModel):
     is_away_team:       Optional[int] = None    # 0/1
     commence_time:      Optional[Any] = None    # ISO string or datetime
 
+    # ── Book-coverage / per-book layers (2026-05-13 MLB diagnostic) ──
+    # The full per-book quote ladder + de-vig-companion `_odds_opp`
+    # fields, carried from `{sport}_live_props` so de-vig, gates, UI
+    # have real multi-book context.
+    dk_layer:           Optional[Dict[str, Any]] = None
+    fd_layer:           Optional[Dict[str, Any]] = None
+    pp_layer:           Optional[Dict[str, Any]] = None
+    bol_layer:          Optional[Dict[str, Any]] = None
+    mgm_layer:          Optional[Dict[str, Any]] = None
+    csr_layer:          Optional[Dict[str, Any]] = None
+    sharp_layer:        Optional[Dict[str, Any]] = None
+    dk_line:   Optional[float] = None
+    dk_odds:   Optional[float] = None
+    dk_odds_opp: Optional[float] = None
+    fd_line:   Optional[float] = None
+    fd_odds:   Optional[float] = None
+    fd_odds_opp: Optional[float] = None
+    pp_line:   Optional[float] = None
+    pp_odds:   Optional[float] = None
+    pp_odds_opp: Optional[float] = None
+    bol_line:  Optional[float] = None
+    bol_odds:  Optional[float] = None
+    bol_odds_opp: Optional[float] = None
+    mgm_line:  Optional[float] = None
+    mgm_odds:  Optional[float] = None
+    mgm_odds_opp: Optional[float] = None
+    csr_line:  Optional[float] = None
+    csr_odds:  Optional[float] = None
+    csr_odds_opp: Optional[float] = None
+    pp_payout_multiplier:  Optional[float] = None
+    pp_market_key:         Optional[str] = None
+    is_alternate_market:   Optional[bool] = None
+    market_key:            Optional[str] = None
+
 
 def validate_score_document(doc: Dict[str, Any]) -> Optional[str]:
     """Validate a single score doc against the strict Pydantic contract.

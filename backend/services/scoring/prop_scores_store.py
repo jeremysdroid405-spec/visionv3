@@ -498,6 +498,45 @@ _UNIVERSAL_POOL_FIELDS = (
     "active", "inactive_reason", "active_changed_at", "game_start_utc",
 )
 
+# ── Book-coverage allowlist (2026-05-13 — MLB multi-book diagnostic) ──
+# These fields originate on `{sport}_live_props` from `universal_odds_sync`'s
+# multi-pass canonical pool builder and represent the FULL set of per-book
+# quotes for a single (player, stat, line, side) tuple. Without them on
+# `{sport}_prop_scores`:
+#   • de-vig TP engine ran on phantom data — every score doc had
+#     dk_line=None, fd_line=None, pp_line=None, … and was forced to
+#     fall back to the raw anchor odds (= ~4-5pp inflated TP)
+#   • multi-book σ-penalty / book_count-aware gating was effectively
+#     disabled because the gating layer saw `book_count: 2` but
+#     could not enumerate which 2 books quoted the prop
+#   • frontend reference-odds chips showed empty for the majority of
+#     MLB cards (no per-book line/odds to display)
+# The fields are pure provenance — they do NOT touch scoring math
+# directly. Preserving them restores the multi-book context the
+# scoring/gating layer was designed around.
+_BOOK_LAYER_FIELDS = (
+    # Per-book layer objects (rich payload: book, line, odds, fetched_at,
+    # and `_opp` companion for the opposite side used by the de-vig engine)
+    "dk_layer", "fd_layer", "pp_layer", "bol_layer", "mgm_layer", "csr_layer",
+    "sharp_layer",
+    # Flat per-book line + odds + odds_opp (downstream gates / UI prefer these)
+    "dk_line",  "dk_odds",  "dk_odds_opp",
+    "fd_line",  "fd_odds",  "fd_odds_opp",
+    "pp_line",  "pp_odds",  "pp_odds_opp",
+    "bol_line", "bol_odds", "bol_odds_opp",
+    "mgm_line", "mgm_odds", "mgm_odds_opp",
+    "csr_line", "csr_odds", "csr_odds_opp",
+    # Aggregate book count (universal_odds_sync may or may not stamp this
+    # upstream — the de-vig engine re-derives it from the present layers
+    # when missing). Carrying it through so downstream readers don't have
+    # to recompute.
+    "book_count",
+    # PP-specific overlay metadata
+    "pp_payout_multiplier", "pp_market_key",
+    # Market structure fields used by the alt-line / one-sided gates
+    "is_alternate_market", "market_key",
+)
+
 # Retained for backward compatibility with services.scoring.prop_scores_store callers
 SCORE_FIELDS = _IDENTITY_FIELDS + _SCORE_OUTPUT_FIELDS
 SCORES_COLLECTION = "mlb_prop_scores"  # legacy default; now sport-specific
@@ -517,6 +556,7 @@ def _project_score_doc(
         | set(_SCORE_OUTPUT_FIELDS)
         | set(_MATCHUP_METADATA_FIELDS)
         | set(_UNIVERSAL_POOL_FIELDS)
+        | set(_BOOK_LAYER_FIELDS)
         | {"version_tag", "computed_at", "scored_at"}
     )
     _dropped = [k for k in context_out.keys() if k not in _known_keys]
@@ -545,6 +585,13 @@ def _project_score_doc(
     # doc so master_sync, the JIT Vision Intel reaper, and the
     # frontend cards all see real values instead of None.
     for k in _MATCHUP_METADATA_FIELDS:
+        if k in context_out and context_out[k] is not None:
+            doc[k] = context_out[k]
+    # Book-coverage projection (2026-05-13 MLB multi-book diagnostic).
+    # Carry every per-book layer/line/odds from the live_props row onto
+    # the score doc so de-vig, gates, and the UI all have real
+    # multi-book context instead of None-laden phantoms.
+    for k in _BOOK_LAYER_FIELDS:
         if k in context_out and context_out[k] is not None:
             doc[k] = context_out[k]
     # Universal pool lifecycle fields — default to "active=True" with no

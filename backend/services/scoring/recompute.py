@@ -690,6 +690,30 @@ async def recompute_sport(
             doc["coverage_class"] = raw["coverage_class"]
         if "books_anchored" in raw:
             doc["books_anchored"] = raw["books_anchored"]
+        # Per-book layer + flat line/odds projection (2026-05-13 — MLB
+        # multi-book diagnostic). The raw `{sport}_live_props` row
+        # carries rich per-book provenance from
+        # `universal_odds_sync._normalize_market_data`'s 3-pass canonical
+        # pool builder (dk_layer, fd_layer, …, dk_line, dk_odds, …,
+        # dk_odds_opp for the opposite side used by the de-vig engine).
+        # Without this stamp the prop_scores_store allowlist projection
+        # drops every per-book field — the de-vig engine and gating
+        # layer were silently running on phantom data.
+        for _book_k in (
+            "dk_layer", "fd_layer", "pp_layer",
+            "bol_layer", "mgm_layer", "csr_layer",
+            "sharp_layer",
+            "dk_line",  "dk_odds",  "dk_odds_opp",
+            "fd_line",  "fd_odds",  "fd_odds_opp",
+            "pp_line",  "pp_odds",  "pp_odds_opp",
+            "bol_line", "bol_odds", "bol_odds_opp",
+            "mgm_line", "mgm_odds", "mgm_odds_opp",
+            "csr_line", "csr_odds", "csr_odds_opp",
+            "pp_payout_multiplier", "pp_market_key",
+            "is_alternate_market", "market_key",
+        ):
+            if _book_k in raw and raw[_book_k] is not None:
+                doc[_book_k] = raw[_book_k]
         # Empirical-Bayes post-shrinkage audit fields (2026-04-24).
         # Stamped by mlb_scoring.build_context onto raw_prop regardless of
         # whether shrinkage applied; surface them on the score doc so
