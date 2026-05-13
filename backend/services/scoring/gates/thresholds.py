@@ -383,15 +383,29 @@ _MLB_SAFE_HAVEN: Dict[str, Dict[str, Any]] = {
     "_default":          {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
 }
 _MLB_FRONT_LINES: Dict[str, Dict[str, Any]] = {
-    "hits":              {"cv_max": 0.85, "hr_min": 65.0, "edge_min": 10.0, "tp_min": 58.0},
-    "total_bases":       {"cv_max": 0.95, "hr_min": 60.0, "edge_min": 15.0, "tp_min": 58.0},
-    "hits_runs_rbis":    {"cv_max": 0.75, "hr_min": 65.0, "edge_min": 12.0, "tp_min": 58.0},
-    "rbis":              {"cv_max": 0.75, "hr_min": 65.0, "edge_min": 12.0, "tp_min": 58.0},
-    "runs":              {"cv_max": 0.75, "hr_min": 65.0, "edge_min": 12.0, "tp_min": 58.0},
-    "pitching_outs":     {"cv_max": 0.50, "hr_min": 70.0, "edge_min": 6.0,  "tp_min": 70.0},
-    "pitcher_strikeouts":{"cv_max": 0.60, "hr_min": 65.0, "edge_min": 10.0, "tp_min": 65.0},
-    "earned_runs":       {"cv_max": 0.55, "hr_min": 65.0, "edge_min": 8.0,  "tp_min": 65.0},
-    "_default":          {"cv_max": 0.85, "hr_min": 65.0, "edge_min": 10.0, "tp_min": 58.0},
+    # 2026-05-13 — NBA-parity rebuild (un-frozen from audit mode).
+    # HR/edge/TP values now MATCH `_NBA_FRONT_LINES_BASE`:
+    #   • HR floor:   70 (was per-family 60-70)
+    #   • edge floor: 5.0 (was per-family 6-15 with universal 0.01 floor)
+    #   • TP floor:   50 (was per-family 58-70)
+    # CV is PER-FAMILY (more granular than NBA's flat 0.75) so we can
+    # fine-tune by stat without disturbing the NBA-shaped gate structure.
+    # Initial caps target NBA FL's median CV (~0.40) for the comparable
+    # families; Singles/HRR/TB caps tightened from the pre-rebuild
+    # values (0.85-1.92 actual CVs were tiering as Front Lines).
+    "hits":               {"cv_max": 0.55, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "total_bases":        {"cv_max": 0.70, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "hits_runs_rbis":     {"cv_max": 0.65, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "rbis":               {"cv_max": 0.55, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "runs":               {"cv_max": 0.55, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "pitcher_outs":       {"cv_max": 0.40, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "pitcher_strikeouts": {"cv_max": 0.50, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "batter_strikeouts":  {"cv_max": 0.65, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "earned_runs":        {"cv_max": 0.50, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "singles":            {"cv_max": 0.50, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "batter_walks":       {"cv_max": 0.60, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "walks_allowed":      {"cv_max": 0.60, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "_default":           {"cv_max": 0.65, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
 }
 _MLB_WAR_ZONE: Dict[str, Dict[str, Any]] = {
     "hits":              {"ceiling_min": 35.0, "edge_min": 30.0},
@@ -403,12 +417,24 @@ _MLB_WAR_ZONE: Dict[str, Dict[str, Any]] = {
     "_default":          {"ceiling_min": 35.0, "edge_min": 30.0},
 }
 
-def _mlb_thresholds(per_stat: Dict[str, Dict[str, Any]], *, war_zone: bool = False) -> Dict[str, Dict[str, Any]]:
+def _mlb_thresholds(
+    per_stat: Dict[str, Dict[str, Any]],
+    *,
+    war_zone: bool = False,
+    front_lines: bool = False,
+) -> Dict[str, Dict[str, Any]]:
     """Build MLB threshold map.
 
     tp_gate semantics are now UNIVERSAL across all sports — model
     probability is always evaluated (see `engine._eval_tp`). Only
-    threshold *values* differ by sport/stat/tier."""
+    threshold *values* differ by sport/stat/tier.
+
+    2026-05-13 NBA-parity rebuild adds two FL-only knobs:
+      • `enforce_l5_subgate=True` on hit_rate_gate (NBA parity — recent
+        L5 form must back the L20 hit rate floor).
+      • `under_floor=65.0` on tp_gate (NBA FL behaviour — UNDER picks
+        face a stricter TP floor than OVER).
+    Both are added only when `front_lines=True`."""
     out: Dict[str, Dict[str, Any]] = {}
     for family, vals in per_stat.items():
         # Universal OVER-side rule (2026-04-29): every OVER pick must
@@ -433,6 +459,14 @@ def _mlb_thresholds(per_stat: Dict[str, Dict[str, Any]], *, war_zone: bool = Fal
                 "edge_gate":      {"min": family_edge_min},
             }
         else:
+            hit_rate_block: Dict[str, Any] = {
+                "min": vals["hr_min"], "window": "default",
+            }
+            tp_block: Dict[str, Any] = {"min": vals["tp_min"]}
+            if front_lines:
+                # NBA-parity additions (2026-05-13).
+                hit_rate_block["enforce_l5_subgate"] = True
+                tp_block["under_floor"] = 65.0
             out[family] = {
                 "coverage_gate":  {"min_books": 1},
                 "direction_gate": _UNIVERSAL_OVER_DIRECTION,
@@ -443,11 +477,63 @@ def _mlb_thresholds(per_stat: Dict[str, Dict[str, Any]], *, war_zone: bool = Fal
                     "max": vals["cv_max"],
                     "min_margin": vals.get("min_margin", 0.75),
                 },
-                "hit_rate_gate":  {"min": vals["hr_min"], "window": "default"},
+                "hit_rate_gate":  hit_rate_block,
                 "edge_gate":      {"min": family_edge_min},
-                "tp_gate":        {"min": vals["tp_min"]},
+                "tp_gate":        tp_block,
             }
     return out
+
+
+# ── 2026-05-13 — MLB Front Lines UNDER (NBA-parity rebuild) ────────────
+# Mirrors `_NBA_FRONT_LINES_UNDER` exactly in STRUCTURE (gap-ratio
+# direction gate, HR-relax CV ladder, edge floor 5.0, TP gate with
+# under_floor) but uses MLB-tuned CV caps per stat family so we can
+# fine-tune by stat type without disturbing NBA.
+_MLB_UNDER_DIRECTION_GATE = {
+    "applies_to_sides":            ["UNDER"],
+    "max_projection_minus_line":   0.0,
+    # NBA-parity: require real downside skew, not just "proj <= line".
+    "min_line_minus_projection_ratio": 0.15,
+}
+
+_MLB_UNDER_CV_CAPS = {
+    "hits":               0.55,
+    "total_bases":        0.70,
+    "hits_runs_rbis":     0.65,
+    "rbis":               0.55,
+    "runs":               0.55,
+    "pitcher_outs":       0.40,
+    "pitcher_strikeouts": 0.50,
+    "batter_strikeouts":  0.65,
+    "earned_runs":        0.50,
+    "singles":            0.50,
+    "batter_walks":       0.60,
+    "walks_allowed":      0.60,
+}
+
+# Same HR-relax ladder as NBA FL UNDER — tested numerically.
+# HR≥75 → CV cap +0.10. HR≥80 → CV gate disabled entirely.
+_MLB_UNDER_CV_HR_RELAX = [
+    {"min_hr": 75.0, "absolute_add": 0.10},
+    {"min_hr": 80.0, "disable_gate": True},
+]
+
+_MLB_FRONT_LINES_UNDER = {
+    "coverage_gate":   {"min_books": 1},
+    "direction_gate":  _MLB_UNDER_DIRECTION_GATE,
+    "hit_rate_gate":   {
+        "min": 65.0, "window": "default",
+        "enforce_l5_subgate": True,
+    },
+    "cv_gate":         {
+        "caps":     _MLB_UNDER_CV_CAPS,
+        "hr_relax": _MLB_UNDER_CV_HR_RELAX,
+    },
+    "tp_gate":         {"min": 50.0, "under_floor": 65.0},
+    "edge_gate":       {"min": 5.0},
+}
+
+
 
 
 THRESHOLDS: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {
@@ -464,7 +550,41 @@ THRESHOLDS: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {
         # all sports — see `_eval_tp` in engine.py. Only thresholds
         # differ per sport/tier/stat.
         "safe_haven":  _mlb_thresholds(_MLB_SAFE_HAVEN),
-        "front_lines": _mlb_thresholds(_MLB_FRONT_LINES),
+        # 2026-05-13 NBA-parity rebuild: FL gates produce
+        # `enforce_l5_subgate=True` + `tp_gate.under_floor=65.0`
+        # via the `front_lines=True` flag. `_default_under` mirrors
+        # `_NBA_FRONT_LINES_UNDER` (gap ratio 0.15 + HR-relax CV ladder
+        # + edge_gate min 5.0). Override layer injected onto `_default`
+        # after _mlb_thresholds builds it (NBA-parity rescue rules
+        # adapted to MLB stats: pitcher_strikeouts_tp ↔ NBA threes_tp,
+        # batter_strikeouts_cv ↔ NBA ast_cv, hits_dominance ↔ NBA
+        # pts_dominance).
+        "front_lines": {
+            **{
+                **_mlb_thresholds(_MLB_FRONT_LINES, front_lines=True),
+                "_default": {
+                    **_mlb_thresholds(_MLB_FRONT_LINES, front_lines=True)["_default"],
+                    "__front_lines_over_overrides__": {
+                        "pitcher_strikeouts_tp": {
+                            "enabled":        True,
+                            "min_hit_rate":   75.0,
+                            "relax_tp_to":    45.0,
+                        },
+                        "batter_strikeouts_cv": {
+                            "enabled":        True,
+                            "min_hit_rate":   85.0,
+                            "relax_cv_to":    0.95,
+                        },
+                        "hits_dominance": {
+                            "enabled":                       True,
+                            "min_hit_rate":                  75.0,
+                            "min_l20_avg_to_line_ratio":     1.5,
+                        },
+                    },
+                },
+            },
+            "_default_under": _MLB_FRONT_LINES_UNDER,
+        },
         "war_zone":    _mlb_thresholds(_MLB_WAR_ZONE, war_zone=True),
     },
     # Drop NFL adapter in place and start tuning here — engine works
@@ -517,7 +637,7 @@ MLB_GATES_DISABLED_FOR_AUDIT: bool = False
 # Behaviour: routed_tier == "front_lines" → final tier == "front_lines"
 # for every prop that reached the gate stage (i.e. survived 0-book
 # exclusion + has a reference_odds in -239..+149).
-MLB_FRONT_LINES_GATES_DISABLED: bool = True
+MLB_FRONT_LINES_GATES_DISABLED: bool = False
 
 # Frozen pre-audit config (kept verbatim so the rebuild has a reference
 # to diff against — DO NOT EDIT until the audit lands.)

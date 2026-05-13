@@ -946,13 +946,45 @@ async def write_versioned_scores(
                 )
         # Sweep stale: anything tagged `version_tag` whose canonical_key
         # isn't in the new set is a leftover from a previous rebuild.
+        #
+        # 2026-05-13 — SHRINKAGE GUARD added.
+        # Symptom: master_sync ran with a transient slate (only 136 docs
+        # scored vs 5,400 typical) and wiped 5,459 valid props from the
+        # `final-mlb-rt` tag. Cause: scoring pipeline can return a
+        # partial batch when upstream odds / model features are
+        # intermittently unavailable, but the stale-sweep treats every
+        # canonical_key not in the partial batch as "deleted."
+        #
+        # Guard: if the new batch is < 50% of the existing tag size,
+        # skip the destructive sweep and surface a warning. Real
+        # collection shrinkage (off-season, slate completion) will
+        # drain naturally via `set_inactive_for_started_games` +
+        # age-based cleanup paths. The 0-write empty-batch guard above
+        # handles the total-blackout case (`prepared==0`); this guard
+        # handles the partial-blackout case where SOME props score.
         new_cks = list(seen.keys())
         if new_cks:
-            sweep = await coll.delete_many({
-                "version_tag": version_tag,
-                "canonical_key": {"$nin": new_cks},
-            })
-            stale_deleted = sweep.deleted_count or 0
+            existing_count_for_tag = await coll.count_documents({"version_tag": version_tag})
+            new_size = len(new_cks)
+            shrinkage_ratio = (
+                (new_size / existing_count_for_tag)
+                if existing_count_for_tag else 1.0
+            )
+            if existing_count_for_tag >= 500 and shrinkage_ratio < 0.5:
+                logger.warning(
+                    f"[SCORES_STORE:{sport}] mode=replace SHRINKAGE GUARD "
+                    f"version='{version_tag}' new_batch={new_size} "
+                    f"existing={existing_count_for_tag} "
+                    f"ratio={shrinkage_ratio:.2%} → SKIPPING stale_sweep "
+                    f"(partial-blackout protection, 2026-05-13)."
+                )
+                stale_deleted = 0
+            else:
+                sweep = await coll.delete_many({
+                    "version_tag": version_tag,
+                    "canonical_key": {"$nin": new_cks},
+                })
+                stale_deleted = sweep.deleted_count or 0
 
     logger.info(
         f"[SCORES_STORE:{sport}] mode=replace version='{version_tag}' "
