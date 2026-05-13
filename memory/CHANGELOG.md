@@ -3382,3 +3382,60 @@ header can use without polluting the prop's identity.
 DO NOT trust API-side or DB-side verification. ALWAYS reach the actual
 rendered DOM. The React fiber probe surfaced the truth in 200ms when the
 backend logs and API responses all said "everything is fine".
+
+## 2026-05-13 — Universal Stat Canonicalizer (Registry)
+
+**Goal:** Single source of truth for the full stat identity chain
+`external market key → canonical stat_type → stat family → model key → display label`,
+sport-agnostic, registry-driven, with backward-compatible shims for the three
+modules that previously owned duplicated mapping logic.
+
+**Module shipped:** `services/scoring/canonical_stats.py` (~370 lines)
+
+**Public API:**
+  - `register_sport(sport, *, market_to_stat, stat_to_family, stat_to_model=None, stat_to_display=None)`
+  - `canonical_stat_type(sport, raw)` — idempotent; raw market keys + canonical
+    tokens both resolve to the canonical token
+  - `stat_family(sport, stat_type, *, strict=False)` — fail-loud diagnostic
+    when unmapped (logs `[STAT_REGISTRY_MISS]` ERROR + increments per-sport
+    counter; `strict=True` raises `StatFamilyMissError`)
+  - `model_key`, `display_label`, `markets_for_sport`,
+    `market_to_stat_map`, `iter_sports`, `validate_sport`, `miss_counters`
+
+**Consumers consolidated:**
+  - `services/scoring/gates/thresholds.py`:
+      * `STAT_FAMILY_ALIASES` is now a derived view of the registry
+      * `resolve_stat_family()` delegates to `canonical_stats.stat_family(...)`
+      * 75 lines of inline dicts removed
+  - `services/scoring/adapters/nba_scoring.py`:
+      * `_MARKET_TO_STAT` dict replaced by a `@property` that reads from the
+        registry — preserves the legacy attribute name for any external caller
+      * `canonical_key_from_raw` + `build_context` both route through
+        `canonical_stat_type("nba", market)`
+  - `services/universal_odds_sync.py`:
+      * Two lookup sites (`_persist_raw_markets`, `_normalize_market_data`)
+        now read from `market_to_stat_map(sport)` instead of the embedded
+        `SPORT_API_CONFIG[sport]["stat_type_map"]` dict literal
+
+**SSOT preservation (the 2026-05-13 user-explicit fixes):**
+  - `PR    → pts_reb`        ✓ test_nba_stat_family_resolution[PR-pts_reb]
+  - `PA    → pts_ast`        ✓
+  - `RA    → reb_ast`        ✓
+  - `BLST  → blocks_steals`  ✓
+  - Long-form aliases still work via the family map's legacy entries
+
+**Validation:**
+  - 93 pytest tests at `/app/backend/tests/test_canonical_stats.py`
+    — all pass in 0.35s
+  - `validate_sport("nba")` → ok=True, 24 markets, 36 families, 5 models
+  - `validate_sport("mlb")` → ok=True, 39 markets, 20 families
+  - **Ayo Dosunmu PR 19.5 OVER still tier=war_zone, vision_score=86.7**
+  - Backend restarted clean
+  - Live API (`/api/v3/ferrari/...?sport=nba&sort=gap`) routes through the
+    registry-derived family resolver
+
+**Pluggability proof:**
+  `test_register_new_sport_without_editing_other_files` registers a synthetic
+  sport `test_sport_xyz` purely via `register_sport(...)` — round-trips
+  market → canonical → family → model → display without touching any
+  other file. New sport onboarding is now a one-call operation.

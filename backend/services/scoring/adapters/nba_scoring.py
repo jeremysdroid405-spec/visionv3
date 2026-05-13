@@ -184,41 +184,31 @@ class NBAScoringAdapter(ScoringAdapter):
     # an ingest-side change. MUST stay in sync with the canon_key
     # formula in `build_context`.
     # ------------------------------------------------------------------
-    _MARKET_TO_STAT = {
-        "player_points": "PTS", "player_rebounds": "REB",
-        "player_assists": "AST", "player_points_rebounds_assists": "PRA",
-        "player_points_alternate": "PTS", "player_rebounds_alternate": "REB",
-        "player_assists_alternate": "AST",
-        "player_points_rebounds_assists_alternate": "PRA",
-        # 2026-05-13 SSOT — combos use ONE short-code token per family.
-        # Matches `universal_odds_sync.stat_type_map`; both must stay
-        # aligned so legacy score docs that bypass the new ingest path
-        # (e.g. canonical_key_from_raw fallback) still resolve correctly.
-        "player_points_rebounds":            "PR",
-        "player_points_rebounds_alternate":  "PR",
-        "player_points_assists":             "PA",
-        "player_points_assists_alternate":   "PA",
-        "player_rebounds_assists":           "RA",
-        "player_rebounds_assists_alternate": "RA",
-        "player_threes":              "3PM",
-        "player_threes_alternate":    "3PM",
-        "player_steals":              "STL",
-        "player_steals_alternate":    "STL",
-        "player_blocks":              "BLK",
-        "player_blocks_alternate":    "BLK",
-        "player_turnovers":           "TO",
-        "player_turnovers_alternate": "TO",
-    }
+    # 2026-05-13 — Stat identity consolidation. The per-adapter
+    # `_MARKET_TO_STAT` dict has been moved to the universal
+    # `services.scoring.canonical_stats` registry. Both lookups below
+    # (`canonical_key_from_raw` + `build_context` fallback) now resolve
+    # through `canonical_stat_type("nba", market_key)`, which itself
+    # reads from the registry. Keep the legacy attribute name as a
+    # deprecation shim — it's a thin wrapper around the registry view
+    # so any third-party code still reading `nba_adapter._MARKET_TO_STAT`
+    # keeps working.
+    # ------------------------------------------------------------------
+    @property
+    def _MARKET_TO_STAT(self) -> Dict[str, str]:  # noqa: N802 (legacy name)
+        from services.scoring.canonical_stats import market_to_stat_map
+        return market_to_stat_map("nba")
 
     def canonical_key_from_raw(self, raw_prop):
+        from services.scoring.canonical_stats import canonical_stat_type
         ck = raw_prop.get("canonical_key")
         if isinstance(ck, str) and ck:
             return ck
         player_name = raw_prop.get("player_name")
         line = raw_prop.get("line")
         market = raw_prop.get("market", "")
-        stat_type = self._MARKET_TO_STAT.get(
-            market, raw_prop.get("stat_type_extracted") or market
+        stat_type = canonical_stat_type("nba", market) or (
+            raw_prop.get("stat_type_extracted") or market
         )
         event_id = raw_prop.get("event_id", "?")
         direction = (raw_prop.get("direction") or "OVER").upper()
@@ -2585,16 +2575,16 @@ class NBAScoringAdapter(ScoringAdapter):
         # Hard Consolidation (2026-04-22): universal_odds_sync writes
         # `stat_type` (PTS/REB/AST/PRA + PR/PA/RA combos + 3PM/STL/
         # BLK/TO) and `market_key` directly. Prefer the persisted
-        # stat_type first; fall back to market-name mapping for any
-        # legacy rows still carrying `market`.
-        # 2026-05-13 SSOT: this fallback map now mirrors the full
-        # `_MARKET_TO_STAT` table to guarantee identical canonical
-        # tokens regardless of which code path produced the prop.
+        # stat_type first; fall back to the canonical-stats registry
+        # for any legacy rows still carrying `market`.
+        # 2026-05-13 SSOT: routes through `canonical_stats.canonical_stat_type`
+        # — the single source of truth for the market→stat_type table.
         stat_type = prop.get("stat_type")
         if not stat_type:
+            from services.scoring.canonical_stats import canonical_stat_type
             market = prop.get("market") or prop.get("market_key") or ""
-            stat_type = self._MARKET_TO_STAT.get(
-                market, prop.get("stat_type_extracted") or market
+            stat_type = canonical_stat_type("nba", market) or (
+                prop.get("stat_type_extracted") or market
             )
 
         line = prop.get("line")

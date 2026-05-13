@@ -738,8 +738,13 @@ class UniversalOddsSyncService:
         The return summary lets the caller report mapped vs unmapped
         counts in the sync validation block.
         """
-        config = self._get_sport_config(sport)
-        stat_type_map = config.get("stat_type_map", {}) or {}
+        # 2026-05-13 SSOT — stat_type_map is now derived from the
+        # canonical-stats registry (services.scoring.canonical_stats)
+        # instead of the embedded SPORT_API_CONFIG dict. The local
+        # binding is preserved so the surrounding logic is unchanged;
+        # only the source of truth has moved.
+        from services.scoring.canonical_stats import market_to_stat_map
+        stat_type_map = market_to_stat_map(sport)
 
         event_id = odds_data.get("event_id") or event_info.get("id") or ""
         home = event_info.get("home_team")
@@ -962,7 +967,9 @@ class UniversalOddsSyncService:
             List of normalized prop dictionaries with multi-book data
         """
         config = self._get_sport_config(sport)
-        stat_type_map = config["stat_type_map"]
+        # 2026-05-13 SSOT — registry-backed; see `_persist_raw_markets` note.
+        from services.scoring.canonical_stats import market_to_stat_map
+        stat_type_map = market_to_stat_map(sport)
         
         # =================================================================
         # UNIVERSAL CANONICAL POOL (SSOT, 2026-04-25)

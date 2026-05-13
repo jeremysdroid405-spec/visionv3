@@ -19,107 +19,72 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+# 2026-05-13 — Stat identity consolidation. The duplicated
+# `STAT_FAMILY_ALIASES` table that previously lived here is now derived
+# from `services.scoring.canonical_stats` (the single source of truth
+# for `external market key → canonical stat_type → stat family → model
+# key → display label`). The dict + `resolve_stat_family()` function
+# below are kept as thin shims so legacy import sites keep working
+# without modification.
+from services.scoring.canonical_stats import (
+    stat_family as _registry_stat_family,
+    iter_sports as _registry_iter_sports,
+    market_to_stat_map as _registry_market_to_stat_map,
+)
+
 
 TIERS_ORDERED = ("safe_haven", "front_lines", "war_zone")
 
 
 # --------------------------------------------------------------------------
-# Stat family aliases (normalize adapter-specific stat names)
+# Stat family aliases (DEPRECATED — kept as a derived view of the registry)
 # --------------------------------------------------------------------------
-STAT_FAMILY_ALIASES: Dict[str, Dict[str, str]] = {
-    "nba": {
-        # Short canonical names (scoring adapter emits these directly).
-        # 2026-04-28: keys are lowercase because `resolve_stat_family`
-        # lowercases the raw input before lookup. Pre-2026-04-28 these
-        # were uppercase, which silently failed for "3PM" and "TO" (the
-        # only stats whose canonical family name differs from their
-        # lowercased token — the others trivially round-trip via the
-        # `replace(" ", "_")` fallback).
-        "pts": "pts", "reb": "reb", "ast": "ast", "pra": "pra",
-        "stl": "stl", "blk": "blk", "3pm": "threes", "to": "turnovers",
-        # 2026-05-13 SSOT — short-code aliases for 2-way combos. The
-        # universal_odds_sync now emits "PR"/"PA"/"RA" as canonical
-        # stat_type for combo markets (collapsed from
-        # player_points_rebounds[_alternate], etc.). Without these
-        # entries the family resolver falls through to "_default"
-        # config → no gate thresholds → tier=unqualified → picks
-        # silently disappear from the board (Ayo Dosunmu PR 19.5
-        # War Zone regression).
-        "pr":  "pts_reb",
-        "pa":  "pts_ast",
-        "ra":  "reb_ast",
-        "blst": "blocks_steals",
-        # Raw odds-market names (both standard + alternate variants map
-        # to the SAME canonical family — a PTS alt-line has the same
-        # underlying stat distribution as the standard PTS market).
-        "player_points":                     "pts",
-        "player_points_alternate":           "pts",
-        "player_rebounds":                   "reb",
-        "player_rebounds_alternate":         "reb",
-        "player_assists":                    "ast",
-        "player_assists_alternate":          "ast",
-        "player_points_rebounds_assists":            "pra",
-        "player_points_rebounds_assists_alternate":  "pra",
-        "player_threes":                     "threes",
-        "player_threes_alternate":           "threes",
-        "player_steals":                     "stl",
-        "player_steals_alternate":           "stl",
-        "player_blocks":                     "blk",
-        "player_blocks_alternate":           "blk",
-        "player_points_rebounds":            "pts_reb",
-        "player_points_rebounds_alternate":  "pts_reb",
-        "player_points_assists":             "pts_ast",
-        "player_points_assists_alternate":   "pts_ast",
-        "player_rebounds_assists":           "reb_ast",
-        "player_rebounds_assists_alternate": "reb_ast",
-        "player_turnovers":                  "turnovers",
-        "player_turnovers_alternate":        "turnovers",
-    },
-    "mlb": {
-        "hits": "hits", "total_bases": "total_bases",
-        "hits+runs+rbis": "hits_runs_rbis",
-        "rbis": "rbis", "runs": "runs",
-        "pitching_outs": "pitching_outs",
-        "pitcher_strikeouts": "pitcher_strikeouts",
-        "earned_runs": "earned_runs",
-        # Explicit aliases (2026-04-29) so per-family thresholds can
-        # be keyed without relying on the lowercase-fallback path.
-        "batter_strikeouts": "batter_strikeouts",
-        "batter_walks":      "batter_walks",
-        "walks_allowed":     "walks_allowed",
-        "singles":           "singles",
-        "doubles":           "doubles",
-        "hits_allowed":      "hits_allowed",
-    },
-    "nfl": {
-        # Ready-to-fill scaffold. The engine already supports NFL once
-        # the adapter + thresholds land.
-        "receptions": "receptions",
-        "rushing_yards": "rushing_yards",
-        "receiving_yards": "receiving_yards",
-        "passing_yards": "passing_yards",
-    },
-}
+# The 2026-05-13 consolidation moved the canonical data to
+# `services.scoring.canonical_stats`. This dict is now generated from
+# the registry so any import that previously did
+# `STAT_FAMILY_ALIASES["nba"]["pr"]` still reads "pts_reb" without code
+# changes. Use the new `canonical_stats.stat_family(...)` API for any
+# new code.
+def _build_alias_view() -> Dict[str, Dict[str, str]]:
+    out: Dict[str, Dict[str, str]] = {}
+    for s in _registry_iter_sports():
+        out[s] = {}
+        # Direct family entries from the registry
+        from services.scoring.canonical_stats import _REGISTRY  # type: ignore
+        reg = _REGISTRY.get(s)
+        if reg is not None:
+            out[s].update(reg.stat_to_family)
+    return out
+
+
+STAT_FAMILY_ALIASES: Dict[str, Dict[str, str]] = _build_alias_view()
+
+# Ensure the NFL scaffold (kept here for backward compatibility — the
+# engine routes NFL through the same `resolve_stat_family` plumbing
+# even though the adapter isn't fully landed yet). New sports should be
+# added by calling `canonical_stats.register_sport(...)` instead.
+STAT_FAMILY_ALIASES.setdefault("nfl", {}).update({
+    "receptions":      "receptions",
+    "rushing_yards":   "rushing_yards",
+    "receiving_yards": "receiving_yards",
+    "passing_yards":   "passing_yards",
+})
 
 
 def resolve_stat_family(sport: str, raw_stat: Optional[str]) -> str:
     """Return the canonical stat family for a sport/raw-stat pair.
 
-    Falls back to the lower-cased raw stat so a new stat type still
-    routes somewhere (it will land on the sport's ``_default`` config
-    if no direct entry exists).
+    Thin shim over `canonical_stats.stat_family(...)`. Preserves the
+    legacy contract:
+      • Empty / None → "_default"
+      • Unknown stat_type → logs `[STAT_REGISTRY_MISS]` ERROR + returns
+        "_default" (so callers' gate-engine logic keeps routing through
+        the sport's `_default` config — but unmapped tokens are no
+        longer silently invisible).
     """
     if not raw_stat:
         return "_default"
-    alias_map = STAT_FAMILY_ALIASES.get((sport or "").lower(), {})
-    # Case-insensitive alias lookup (2026-05). Raw stat names from the
-    # universal odds sync are mixed-case (e.g., "Hits+Runs+RBIs"); the
-    # alias map keys are lowercase. Without this normalize step the
-    # lookup misses and the prop falls through to `_default`.
-    raw_lower = raw_stat.strip().lower()
-    if raw_lower in alias_map:
-        return alias_map[raw_lower]
-    return raw_lower.replace(" ", "_")
+    return _registry_stat_family(sport, raw_stat, strict=False)
 
 
 # --------------------------------------------------------------------------
