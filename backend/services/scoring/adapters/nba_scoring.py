@@ -234,7 +234,11 @@ class NBAScoringAdapter(ScoringAdapter):
         return COLL("board_cache", "nba")
 
     async def load_live_props(self, db, limit: Optional[int] = None):
-        cursor = db[self.live_props_collection].find({}, {"_id": 0})
+        # 2026-05-13 — OOM defence: server-side batch_size of 200 so
+        # motor streams in chunks instead of one large wire buffer.
+        cursor = db[self.live_props_collection].find(
+            {}, {"_id": 0}
+        ).batch_size(200)
         if limit:
             cursor = cursor.limit(int(limit))
         props = await cursor.to_list(length=None)

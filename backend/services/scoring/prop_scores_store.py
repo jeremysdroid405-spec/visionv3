@@ -911,12 +911,20 @@ async def write_versioned_scores(
             if d.get("canonical_key")
         ]
         if ops:
+            # 2026-05-13 OOM defence: bulk_write a 16k+ op batch with
+            # multi-book layer docs (each ~8 KB after the "all books"
+            # expansion) holds 4-5x the doc set in memory simultaneously
+            # (`ops` + driver buffer + MongoDB wire frame). Chunk to 500
+            # ops at a time so peak memory stays bounded.
+            _CHUNK = 500
             try:
-                res = await coll.bulk_write(ops, ordered=False)
-                inserted_or_replaced = (
-                    (res.upserted_count or 0)
-                    + (res.modified_count or 0)
-                )
+                for _i in range(0, len(ops), _CHUNK):
+                    _batch = ops[_i:_i + _CHUNK]
+                    res = await coll.bulk_write(_batch, ordered=False)
+                    inserted_or_replaced += (
+                        (res.upserted_count or 0)
+                        + (res.modified_count or 0)
+                    )
             except Exception as e:
                 # Race-safe fallback: log and attempt best-effort count
                 # from the BulkWriteError.details attribute.
@@ -932,7 +940,7 @@ async def write_versioned_scores(
                     },
                 )
                 details = getattr(e, "details", None) or {}
-                inserted_or_replaced = (
+                inserted_or_replaced += (
                     (details.get("nUpserted") or 0)
                     + (details.get("nModified") or 0)
                 )

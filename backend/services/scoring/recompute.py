@@ -382,7 +382,7 @@ async def recompute_sport(
             try:
                 companion_cursor = db[
                     adapter.live_props_collection
-                ].find({}, {"_id": 0})
+                ].find({}, {"_id": 0}).batch_size(200)
                 full_props = await companion_cursor.to_list(length=None)
                 adapter._companion_map = build_companion_map(full_props)
             except Exception as comp_exc:  # noqa: BLE001

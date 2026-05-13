@@ -36,7 +36,14 @@ class MLBScoringAdapter(ScoringAdapter):
         return "mlb_cached_board"
 
     async def load_live_props(self, db, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        cursor = db[self.live_props_collection].find({}, {"_id": 0})
+        # 2026-05-13 — OOM defence: pin server-side batch_size so motor
+        # streams in 200-doc chunks instead of allocating the full
+        # collection in a single wire buffer. With 16k+ MLB live props
+        # and per-prop layer objects this measurably reduces peak
+        # memory during the to_list materialization.
+        cursor = db[self.live_props_collection].find(
+            {}, {"_id": 0}
+        ).batch_size(200)
         if limit:
             cursor = cursor.limit(int(limit))
         props = await cursor.to_list(length=None)

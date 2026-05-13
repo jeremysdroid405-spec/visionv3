@@ -447,6 +447,15 @@ class ScoreDocument(BaseModel):
     bol_layer:          Optional[Dict[str, Any]] = None
     mgm_layer:          Optional[Dict[str, Any]] = None
     csr_layer:          Optional[Dict[str, Any]] = None
+    # 2026-05-13 — "Pull from all books" expansion: ESPN BET, Hard Rock,
+    # BetRivers, BetParx, BallyBet, Fliff. Short codes match
+    # `universal_odds_sync` flat-field naming.
+    eb_layer:           Optional[Dict[str, Any]] = None
+    hrb_layer:          Optional[Dict[str, Any]] = None
+    brv_layer:          Optional[Dict[str, Any]] = None
+    prx_layer:          Optional[Dict[str, Any]] = None
+    bly_layer:          Optional[Dict[str, Any]] = None
+    flf_layer:          Optional[Dict[str, Any]] = None
     sharp_layer:        Optional[Dict[str, Any]] = None
     dk_line:   Optional[float] = None
     dk_odds:   Optional[float] = None
@@ -466,6 +475,24 @@ class ScoreDocument(BaseModel):
     csr_line:  Optional[float] = None
     csr_odds:  Optional[float] = None
     csr_odds_opp: Optional[float] = None
+    eb_line:   Optional[float] = None
+    eb_odds:   Optional[float] = None
+    eb_odds_opp: Optional[float] = None
+    hrb_line:  Optional[float] = None
+    hrb_odds:  Optional[float] = None
+    hrb_odds_opp: Optional[float] = None
+    brv_line:  Optional[float] = None
+    brv_odds:  Optional[float] = None
+    brv_odds_opp: Optional[float] = None
+    prx_line:  Optional[float] = None
+    prx_odds:  Optional[float] = None
+    prx_odds_opp: Optional[float] = None
+    bly_line:  Optional[float] = None
+    bly_odds:  Optional[float] = None
+    bly_odds_opp: Optional[float] = None
+    flf_line:  Optional[float] = None
+    flf_odds:  Optional[float] = None
+    flf_odds_opp: Optional[float] = None
     pp_payout_multiplier:  Optional[float] = None
     pp_market_key:         Optional[str] = None
     is_alternate_market:   Optional[bool] = None
