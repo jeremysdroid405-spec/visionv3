@@ -715,7 +715,15 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
       const rawCat = prop.stat_type_extracted || getCategoryKey(prop.market) || 'OTHER';
       const cat = normalizeStatType(rawCat);
       if (!groups[cat]) groups[cat] = [];
-      groups[cat].push({ ...prop, stat_type: cat });
+      // 2026-05-13 SSOT — DO NOT overwrite `prop.stat_type` with the
+      // display label here. The canonical stat_type ('PR'/'PA'/'RA'/
+      // 'PRA') is the SSOT token that GameLogBarChart's STAT_FIELD_MAP
+      // keys on. Overwriting it to 'P+R' (display label) caused the
+      // chart to fail to resolve game-log values and render "No game
+      // data" for every combo prop (Ayo Dosunmu PR 19.5 War Zone bug).
+      // Store the display label as `stat_display_label` so the section
+      // header / sorting still has the formatted token to render.
+      groups[cat].push({ ...prop, stat_display_label: cat });
     });
     
     return groups;

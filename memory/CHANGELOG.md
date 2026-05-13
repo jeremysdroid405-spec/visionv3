@@ -3343,3 +3343,42 @@ got `stat_type='PR'`, it fell through to `_default` → no gate thresholds
 **Verified:** Recompute landed PR=5 / PA=3 / RA=4 picks across the tiers.
 Ayo PR L19.5 OVER is back in War Zone with vision_score=85.3 and a fresh
 Gemini-authored Vision Intel narrative (351 chars).
+
+## 2026-05-13 — ACTUAL chart fix: PlayerDetailPage stat_type overwrite
+
+**User: "it's STILL not working" — and they were right, three times in a row.**
+
+The previous SSOT/canonicalization fixes were necessary but didn't reach the
+chart. Root cause: `PlayerDetailPage.jsx` line 718 was OVERWRITING the
+canonical `prop.stat_type='PR'` with the display label `'P+R'` (plus sign)
+inside `groupedProps`:
+
+  groups[cat].push({ ...prop, stat_type: cat })  // cat='P+R' for PR family
+
+So by the time PropRow → GameLogBarChart received the prop, `statType='P+R'`
+but `STAT_FIELD_MAP` keyed on `'PR'` (canonical SSOT token). Lookup missed,
+`getStatValue` returned null for every game, chart rendered "No game data"
+even though the BDL game logs had pts/reb data.
+
+**Why this was hard to find:** The probe initially returned `statType: 'PR'`
+when I read the score doc directly, AND returned `statType: 'P+R'` when I
+probed the React fiber on the rendered page. Two different statTypes on the
+same prop — the in-memory mutation happened inside PlayerDetailPage's
+useMemo grouping logic, not at any API boundary.
+
+**Fix:** Preserve `prop.stat_type` as the canonical SSOT token. Store the
+display label as a separate `stat_display_label` field that the section
+header can use without polluting the prop's identity.
+
+**Verified end-to-end:**
+  - 0 "No game data" anywhere on detail page
+  - 46 chart SVG elements rendered
+  - Ayo Dosunmu OVER 19.5 P+R: full 10-game bar history visible
+    (HOU 15, DEN 14, DEN 13, DEN 28, DEN 47, DEN 21, SAS 0, SAS 18,
+    SAS 15, SAS 25)
+  - Yellow target line at 19.5 visible across bars
+
+**Lesson — for next time when user says "still not working":**
+DO NOT trust API-side or DB-side verification. ALWAYS reach the actual
+rendered DOM. The React fiber probe surfaced the truth in 200ms when the
+backend logs and API responses all said "everything is fine".
