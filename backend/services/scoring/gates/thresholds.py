@@ -489,9 +489,30 @@ def _mlb_thresholds(
                 # 5 closest-edge props were all DK/FD/MGM one-sided
                 # chalk (-300 to -500) with no UNDER companion price,
                 # which structurally inflates edge_vs_fair by 4-8 pp.
-                # FL keeps one-sided picks (lower supply, larger
+                # FL keeps one_sided picks (lower supply, larger
                 # edge/HR/CV floors absorb the inflation there).
-                gate_block["tp_source_gate"] = {"required_source": "devig"}
+                #
+                # 2026-05-13 (revision) — narrow override rescue path
+                # for elite binary props. Blanket rejection killed
+                # legitimately strong picks (e.g. Josh Jung HRR
+                # HR_L20=90 / L5=80 / edge 15.6pp). Override allowed
+                # ONLY for hitter binary-line stat families (where
+                # the one-sided structure reflects real heavy chalk,
+                # not an inflation artefact). Pitcher counting stats
+                # and continuous markets remain hard-rejected.
+                gate_block["tp_source_gate"] = {
+                    "required_source": "devig",
+                    "one_sided_override": {
+                        "allowed_stat_families": [
+                            "hits", "hits_runs_rbis", "runs", "rbis",
+                            "batter_strikeouts", "stolen_bases", "batter_walks",
+                        ],
+                        "hr_l20_min": 90.0,
+                        "hr_l5_min":  80.0,
+                        "min_edge_pp": 5.0,  # fair_prob - implied_prob ≥ 0.05
+                        "cv_max":      0.70,
+                    },
+                }
             out[family] = gate_block
     return out
 

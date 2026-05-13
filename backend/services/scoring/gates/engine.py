@@ -287,6 +287,42 @@ class UniversalGateEngine:
         )
 
     @staticmethod
+    def _passes_one_sided_safe_haven_override(
+        m: NormalizedMetrics, cfg: Dict[str, Any]
+    ) -> tuple[bool, str]:
+        """Narrow rescue path for elite one-sided binary props.
+
+        See `_eval_tp_source` docstring for the structural problem this
+        addresses. Returns `(passed, reason)` so the caller can record
+        the verdict + reason on the gate detail.
+
+        Conditions (all must hold) — sourced from cfg.one_sided_override:
+          • stat_family ∈ allowed_stat_families
+          • hit_rate_l20 ≥ hr_l20_min   (default 90)
+          • hit_rate_l5  ≥ hr_l5_min    (default 80)
+          • edge_pct     ≥ min_edge_pp  (default 5.0 — equivalent to
+            `fair_prob - book_implied_prob ≥ 0.05`)
+          • cv           ≤ cv_max       (default 0.70)
+        """
+        override = cfg.get("one_sided_override") or {}
+        allowed = set(override.get("allowed_stat_families") or [])
+        if not allowed or m.stat_family not in allowed:
+            return False, "override_stat_family_fail"
+        hr_l20_min = float(override.get("hr_l20_min", 90.0))
+        hr_l5_min  = float(override.get("hr_l5_min",  80.0))
+        min_edge   = float(override.get("min_edge_pp", 5.0))
+        cv_max     = float(override.get("cv_max", 0.70))
+        if m.hit_rate_l20 is None or float(m.hit_rate_l20) < hr_l20_min:
+            return False, "override_hr_fail"
+        if m.hit_rate_l5 is None or float(m.hit_rate_l5) < hr_l5_min:
+            return False, "override_l5_fail"
+        if m.edge_pct is None or float(m.edge_pct) < min_edge:
+            return False, "override_edge_fail"
+        if m.cv is None or float(m.cv) > cv_max:
+            return False, "override_cv_fail"
+        return True, "override_pass"
+
+    @staticmethod
     def _eval_tp_source(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
         """`tp_source_gate` — reject props whose true-prob estimate is
         computed without an opposing-side companion price.
@@ -300,26 +336,46 @@ class UniversalGateEngine:
         with NO vig removal, structurally inflating the "fair_prob"
         and the resulting edge_vs_fair by 4-8 percentage points.
 
-        Config shape:
-            "tp_source_gate": {"required_source": "devig"}
-              → passes when `tp_source == "devig"`
-              → fails when `tp_source == "one_sided"` (or None)
-            "tp_source_gate": {"required_source": "devig", "allow_unknown": True}
-              → also passes when `tp_source is None` (un-scored)
+        2026-05-13 (revision) — added narrow override path for elite
+        binary props. User feedback: blanket rejection killed
+        legitimately strong picks like Josh Jung HRR (HR_L20=90,
+        L5=80, edge 15.6pp). Override conditions are intentionally
+        narrow (stat-family allow-list, HR_L20≥90, HR_L5≥80, edge
+        ≥5pp, CV≤0.70) so weak one-sided chalk still dies.
 
-        Designed for SH-only use (where edge inflation matters most).
-        FL/WZ keep one-sided picks because supply is structurally lower
-        and the larger CV/HR/edge floors there absorb the inflation.
+        Config shape:
+            "tp_source_gate": {
+              "required_source": "devig",       # default behaviour
+              "one_sided_override": {           # optional rescue path
+                 "allowed_stat_families": ["hits","hits_runs_rbis",...],
+                 "hr_l20_min": 90, "hr_l5_min": 80,
+                 "min_edge_pp": 5.0, "cv_max": 0.70,
+              },
+            }
         """
         required = cfg.get("required_source", "devig")
         allow_unknown = bool(cfg.get("allow_unknown", False))
         actual = m.tp_source
+        note: Optional[str] = None
+
         if actual is None:
             passed = allow_unknown
             note = "tp_source_unknown_allowed" if allow_unknown else None
+        elif actual == required:
+            passed = True
         else:
-            passed = bool(actual == required)
-            note = None
+            # actual is the disallowed source (typically "one_sided").
+            # Check the override rescue path.
+            override_passed, override_reason = (
+                UniversalGateEngine._passes_one_sided_safe_haven_override(m, cfg)
+            )
+            if override_passed:
+                passed = True
+                note = f"one_sided_override:{override_reason}"
+            else:
+                passed = False
+                note = f"one_sided_override:{override_reason}"
+
         return GateDetail(
             gate_type="tp_source_gate",
             threshold=required,
