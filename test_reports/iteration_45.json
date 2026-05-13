@@ -1,0 +1,164 @@
+{
+  "summary": "Universal stat canonicalizer testing complete. All 93 pytest tests pass. All live API endpoints return canonical stat_types with zero long-form (player_*) or _default leakage. Critical regression verified: Ayo Dosunmu PR 19.5 OVER is in War Zone with stat_type='PR' and vision_score=87.1. DB verification confirms NBA prop_scores has ZERO long-form stat_types and MLB prop_scores has ZERO _default leakage. All direct module tests pass including validate_sport, miss_counters, stat_family resolution, strict mode, and pluggability. Concurrent safety verified with 6 parallel requests returning 200 with no errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "pytest": {
+      "file": "/app/backend/tests/test_canonical_stats.py",
+      "total": 93,
+      "passed": 93,
+      "failed": 0,
+      "categories": {
+        "nba_market_to_canonical": 17,
+        "nba_canonical_idempotent": 12,
+        "nba_stat_family_resolution": 17,
+        "nba_combo_never_default": 1,
+        "nba_model_key": 5,
+        "nba_display_label": 5,
+        "mlb_market_to_canonical": 15,
+        "mlb_stat_family_resolution": 14,
+        "strict_mode": 2,
+        "validate_sport": 2,
+        "pluggability": 1,
+        "integration_shims": 2
+      }
+    },
+    "live_api_verification": {
+      "nba_war_zone": {
+        "status": 200,
+        "picks_count": 5,
+        "stat_types": ["PR", "PTS", "AST", "PRA"],
+        "long_form_found": [],
+        "ayo_dosunmu_verified": {
+          "player_name": "Ayo Dosunmu",
+          "stat_type": "PR",
+          "line": 19.5,
+          "recommendation": "Over",
+          "tier": "war_zone",
+          "vision_score": 87.1
+        }
+      },
+      "nba_safe_haven": {
+        "status": 200,
+        "picks_count": 10,
+        "stat_types": ["REB", "PRA", "PTS"],
+        "long_form_found": []
+      },
+      "nba_front_lines": {
+        "status": 200,
+        "picks_count": 10,
+        "stat_types": ["3PM", "PRA", "REB", "AST", "PR", "PTS"],
+        "long_form_found": []
+      },
+      "mlb_war_zone": {
+        "status": 200,
+        "picks_count": 10,
+        "stat_types": ["Runs", "Hits+Runs+RBIs", "Batter Walks", "RBIs", "Total Bases"],
+        "default_leakage": []
+      },
+      "mlb_safe_haven": {
+        "status": 200,
+        "picks_count": 10,
+        "stat_types": ["Hits+Runs+RBIs", "Batter Strikeouts"],
+        "default_leakage": []
+      },
+      "mlb_front_lines": {
+        "status": 200,
+        "picks_count": 10,
+        "stat_types": ["Hits+Runs+RBIs", "Total Bases"],
+        "default_leakage": []
+      }
+    },
+    "db_verification": {
+      "nba_prop_scores": {
+        "version_tag": "final-nba-rt",
+        "stat_types": ["PTS", "PRA", "REB", "PR", "PA", "AST", "RA", "3PM", "STL", "BLK"],
+        "long_form_count": 0,
+        "player_regex_matches": 0
+      },
+      "mlb_prop_scores": {
+        "version_tag": "final-mlb-rt",
+        "stat_types": ["Hits+Runs+RBIs", "Total Bases", "Hits", "Batter Strikeouts", "RBIs", "Singles", "Runs", "Doubles", "Batter Walks", "Home Runs", "Pitcher Strikeouts", "Stolen Bases", "Hits Allowed", "Earned Runs", "Pitcher Outs", "Walks Allowed"],
+        "default_leakage_count": 0
+      }
+    },
+    "direct_module_tests": {
+      "validate_sport_nba": "ok=True, n_markets=24, n_families=36",
+      "validate_sport_mlb": "ok=True, n_markets=39, n_families=20",
+      "miss_counters_initial": "empty dict (correct)",
+      "stat_family_combos": {
+        "PR": "pts_reb",
+        "PA": "pts_ast",
+        "RA": "reb_ast",
+        "BLST": "blocks_steals",
+        "Hits": "hits"
+      },
+      "empty_string_returns_default": true,
+      "unknown_stat_returns_default": true,
+      "strict_mode_raises": true,
+      "market_to_stat_map_nba": "24 entries, player_points->PTS, player_points_rebounds->PR, player_blocks_steals->BLST",
+      "market_to_stat_map_mlb": "39 entries, batter_hits->Hits, pitcher_strikeouts->Pitcher Strikeouts"
+    },
+    "integration_tests": {
+      "NBAScoringAdapter._MARKET_TO_STAT": {
+        "player_points": "PTS",
+        "player_points_rebounds": "PR",
+        "player_blocks_steals": "BLST",
+        "player_points_rebounds_assists": "PRA",
+        "player_threes": "3PM"
+      },
+      "gates_thresholds_resolve_stat_family": {
+        "PR": "pts_reb",
+        "PA": "pts_ast",
+        "RA": "reb_ast",
+        "BLST": "blocks_steals",
+        "empty": "_default",
+        "unknown": "_default"
+      },
+      "pluggability_test": "register_sport('test_smoke_xyz') works correctly"
+    },
+    "concurrent_safety": {
+      "parallel_requests": 6,
+      "nba_requests": 3,
+      "mlb_requests": 3,
+      "all_returned_200": true,
+      "errors_in_logs": false
+    }
+  },
+  "test_report_links": [
+    "/app/test_reports/pytest/pytest_canonical_stats.xml",
+    "/app/backend/tests/test_canonical_stats.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Universal stat canonicalizer correctly implemented in /app/backend/services/scoring/canonical_stats.py (~510 lines)",
+    "Registry-driven design supports unlimited future sports via register_sport() without editing existing files",
+    "Backward compatible - all legacy long-form aliases still resolve correctly",
+    "Fail-loud diagnostics - unmapped stat_types emit [STAT_REGISTRY_MISS] ERROR log and increment miss_counters",
+    "Combo stats (PR/PA/RA/BLST) correctly resolve to their families (pts_reb/pts_ast/reb_ast/blocks_steals)",
+    "gates/thresholds.py resolve_stat_family is now a thin shim over canonical_stats.stat_family",
+    "NBAScoringAdapter._MARKET_TO_STAT is now a @property reading from canonical_stats.market_to_stat_map('nba')",
+    "universal_odds_sync.py uses canonical_stats.market_to_stat_map(sport) instead of embedded SPORT_API_CONFIG dict"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "N/A (backend-only testing)"
+  },
+  "test_credentials": "N/A - no auth required for tested endpoints",
+  "seed_data_creation": "N/A - uses live data",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Universal stat canonicalizer is fully functional and production-tested. All 93 pytest tests pass. Live API verification confirms canonical stat_types throughout. Critical regression (Ayo Dosunmu PR 19.5 War Zone) is fixed and verified. DB contains ZERO long-form stat_types for NBA and ZERO _default leakage for MLB. The registry supports NBA (24 markets, 36 family aliases, 5 model keys) and MLB (39 markets, 20 families). New sports can be added via register_sport() without touching existing files.",
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}

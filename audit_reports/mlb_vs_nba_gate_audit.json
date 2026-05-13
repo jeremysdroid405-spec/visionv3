@@ -1,0 +1,161 @@
+{
+  "generated_at": "2026-05-13T18:18:30.270613+00:00",
+  "nba": {
+    "total_active": 1425,
+    "vision_score_present": 1004,
+    "vision_score_null": 309,
+    "vision_score_zero": 112,
+    "book_count_dist": {
+      "1": 439,
+      "2": 376,
+      "3": 380,
+      "4": 230
+    },
+    "multi_book_props": 986,
+    "single_book_props": 439,
+    "tier_dist": {
+      "safe_haven": 20,
+      "front_lines": 42,
+      "war_zone": 6,
+      "unqualified": 1357
+    },
+    "mb_and_vision": 796,
+    "books_anchored_dist": {
+      "draftkings": 1076,
+      "fanduel": 930,
+      "betonlineag": 815,
+      "betmgm": 430
+    },
+    "top_unqualified_reasons": [
+      {
+        "reason": "war_zone_failed: gate_direction_fail",
+        "n": 570
+      },
+      {
+        "reason": "front_lines_failed: gate_hit_rate_fail",
+        "n": 460
+      },
+      {
+        "reason": "front_lines_failed: gate_direction_fail",
+        "n": 158
+      },
+      {
+        "reason": "safe_haven_failed: gate_edge_fail",
+        "n": 65
+      },
+      {
+        "reason": "safe_haven_failed: gate_hit_rate_fail",
+        "n": 27
+      },
+      {
+        "reason": "front_lines_failed: gate_edge_fail",
+        "n": 27
+      },
+      {
+        "reason": "safe_haven_failed: gate_direction_fail",
+        "n": 16
+      },
+      {
+        "reason": "safe_haven_failed: gate_vision_score_fail",
+        "n": 13
+      },
+      {
+        "reason": "safe_haven_failed: gate_cv_fail",
+        "n": 12
+      },
+      {
+        "reason": "front_lines_failed: gate_cv_fail",
+        "n": 5
+      },
+      {
+        "reason": "war_zone_failed: gate_edge_fail",
+        "n": 2
+      },
+      {
+        "reason": "front_lines_failed: gate_tp_fail",
+        "n": 1
+      },
+      {
+        "reason": "war_zone_failed: gate_hit_rate_fail",
+        "n": 1
+      }
+    ]
+  },
+  "mlb": {
+    "total_active": 5639,
+    "vision_score_present": 3730,
+    "vision_score_null": 108,
+    "vision_score_zero": 1801,
+    "book_count_dist": {
+      "1": 1063,
+      "2": 1148,
+      "3": 2070,
+      "4": 1358
+    },
+    "multi_book_props": 4576,
+    "single_book_props": 1063,
+    "tier_dist": {
+      "unqualified": 5523,
+      "safe_haven": 23,
+      "front_lines": 75,
+      "war_zone": 18
+    },
+    "mb_and_vision": 3119,
+    "books_anchored_dist": {
+      "draftkings": 4790,
+      "betmgm": 4592,
+      "fanduel": 3735,
+      "betonlineag": 1884
+    },
+    "top_unqualified_reasons": [
+      {
+        "reason": "war_zone_failed: gate_direction_fail",
+        "n": 3079
+      },
+      {
+        "reason": "front_lines_failed: gate_hit_rate_fail",
+        "n": 1008
+      },
+      {
+        "reason": "front_lines_failed: gate_direction_fail",
+        "n": 724
+      },
+      {
+        "reason": "war_zone_failed: gate_ceiling_fail",
+        "n": 292
+      },
+      {
+        "reason": "front_lines_failed: gate_edge_fail",
+        "n": 201
+      },
+      {
+        "reason": "war_zone_failed: gate_edge_fail",
+        "n": 84
+      },
+      {
+        "reason": "safe_haven_failed: gate_hit_rate_fail",
+        "n": 80
+      },
+      {
+        "reason": "safe_haven_failed: gate_edge_fail",
+        "n": 30
+      },
+      {
+        "reason": "safe_haven_failed: gate_direction_fail",
+        "n": 12
+      },
+      {
+        "reason": "safe_haven_failed: gate_cv_fail",
+        "n": 8
+      },
+      {
+        "reason": "front_lines_failed: gate_cv_fail",
+        "n": 3
+      },
+      {
+        "reason": "front_lines_failed: gate_margin_fail",
+        "n": 2
+      }
+    ]
+  }
+}
