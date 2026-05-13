@@ -269,6 +269,41 @@ BOOKMAKER_CONFIG = {
         "is_sharp": False,
         "priority": 5,
     },
+    # ── 2026-05-13: 6 additional US sportsbooks (all in `regions=us`,
+    # FREE under existing credit accounting — same region, same
+    # markets, just more books in the response payload).
+    # Probed against a live MLB event and returned non-trivial
+    # coverage (>=80 outcomes each):
+    "espnbet": {
+        "region": "us",
+        "display_name": "ESPN BET",
+        "is_dfs": False, "is_sharp": False, "priority": 5,
+    },
+    "hardrockbet": {
+        "region": "us",
+        "display_name": "Hard Rock Bet",
+        "is_dfs": False, "is_sharp": False, "priority": 5,
+    },
+    "betrivers": {
+        "region": "us",
+        "display_name": "BetRivers",
+        "is_dfs": False, "is_sharp": False, "priority": 5,
+    },
+    "betparx": {
+        "region": "us",
+        "display_name": "betPARX",
+        "is_dfs": False, "is_sharp": False, "priority": 5,
+    },
+    "ballybet": {
+        "region": "us",
+        "display_name": "Bally Bet",
+        "is_dfs": False, "is_sharp": False, "priority": 5,
+    },
+    "fliff": {
+        "region": "us",
+        "display_name": "Fliff",
+        "is_dfs": False, "is_sharp": False, "priority": 6,
+    },
     # Sharp Books (lower limits, sharper lines)
     "pinnacle": {
         "region": "eu",
@@ -304,11 +339,21 @@ SHARP_BOOKMAKERS = ["pinnacle", "circa", "betcris"]
 #     audit confirmed Caesars is included free in the us-region pull
 #     and was the only book quoting ~9% of standard NBA props on the
 #     Jan-15-2025 probe slate.
-USER_SHARP_BOOKMAKERS = ["draftkings", "fanduel", "betonlineag", "betmgm", "williamhill_us"]
+#   - 2026-05-13: ESPN BET / Hard Rock / BetRivers / BetParx / BallyBet
+#     / Fliff added after "pull from all books" directive — all share
+#     the same `us` region so they're free credit-wise.
+USER_SHARP_BOOKMAKERS = [
+    "draftkings", "fanduel", "betonlineag", "betmgm", "williamhill_us",
+    "espnbet", "hardrockbet", "betrivers", "betparx", "ballybet", "fliff",
+]
 
-# MLB-specific: PrizePicks anchor + DK/FD/BOL/MGM/CSR
-# (per 2026-04-22 update + 2026-05-11 Caesars expansion).
-MLB_BOOKMAKERS = ["prizepicks", "draftkings", "fanduel", "betonlineag", "betmgm", "williamhill_us"]
+# MLB-specific: PrizePicks anchor + DK/FD/BOL/MGM/CSR + 6 new books
+# (2026-05-13 — "pull from all books" expansion).
+MLB_BOOKMAKERS = [
+    "prizepicks",
+    "draftkings", "fanduel", "betonlineag", "betmgm", "williamhill_us",
+    "espnbet", "hardrockbet", "betrivers", "betparx", "ballybet", "fliff",
+]
 
 # =============================================================================
 # SPORT-SPECIFIC CONFIGURATION
@@ -397,10 +442,14 @@ SPORT_API_CONFIG = {
             "player_rebounds_assists_alternate":"RA",
         },
         # PrizePicks anchor + DK + FD + BetOnline + BetMGM + Caesars
-        # (2026-04-22: BetMGM added; 2026-05-11: Caesars (williamhill_us)
-        # added — free under regions=us, recovers the ~9% of NBA props
-        # where Caesars is the only sportsbook quoting a given line).
-        "bookmakers": ["prizepicks", "draftkings", "fanduel", "betonlineag", "betmgm", "williamhill_us"],
+        # + ESPN BET + Hard Rock + BetRivers + BetParx + Bally Bet + Fliff
+        # (2026-05-13 "pull from all books" expansion — every new book
+        # is in regions=us so it's free credit-wise).
+        "bookmakers": [
+            "prizepicks",
+            "draftkings", "fanduel", "betonlineag", "betmgm", "williamhill_us",
+            "espnbet", "hardrockbet", "betrivers", "betparx", "ballybet", "fliff",
+        ],
     },
     "mlb": {
         "sport_key": "baseball_mlb",
@@ -494,10 +543,14 @@ SPORT_API_CONFIG = {
             "batter_hits_runs_alternate": "Hits+Runs",
         },
         # PrizePicks anchor + DK + FD + BetOnline + BetMGM + Caesars
-        # (2026-04-22: BetMGM added; 2026-05-11: Caesars (williamhill_us)
-        # added — free under regions=us, populates `csr_layer` in
-        # extract_props_from_odds + extends the MLB reference-odds chain).
-        "bookmakers": ["prizepicks", "draftkings", "fanduel", "betonlineag", "betmgm", "williamhill_us"]
+        # + ESPN BET + Hard Rock + BetRivers + BetParx + Bally Bet + Fliff
+        # (2026-05-13 — "pull from all books" expansion; all extra
+        # books are in regions=us so they're free credit-wise).
+        "bookmakers": [
+            "prizepicks",
+            "draftkings", "fanduel", "betonlineag", "betmgm", "williamhill_us",
+            "espnbet", "hardrockbet", "betrivers", "betparx", "ballybet", "fliff",
+        ],
     }
 }
 
@@ -1010,9 +1063,16 @@ class UniversalOddsSyncService:
         # 2026-05-11 — added "williamhill_us" (Caesars). Free under
         # regions=us; closes the gap where Caesars was the only book
         # quoting ~9% of the standard NBA prop pool on the probe slate.
+        # 2026-05-13 — "Pull from all books" expansion: ESPN BET, Hard
+        # Rock, BetRivers, BetParx, BallyBet, Fliff. All free under
+        # regions=us. Sportsbook anchor priority below: existing primary
+        # books retain their position (DK/FD/MGM/CSR/BOL), new books
+        # added at the end so they NEVER seed a canonical that an
+        # existing primary book would have anchored.
         ALLOWED_BOOKS = (
             "prizepicks", "draftkings", "fanduel", "betmgm",
             "williamhill_us", "betonlineag",
+            "espnbet", "hardrockbet", "betrivers", "betparx", "ballybet", "fliff",
         )
         ANCHOR_PRIORITY = list(ALLOWED_BOOKS)
 
@@ -1090,6 +1150,17 @@ class UniversalOddsSyncService:
                         "mgm_layer": None,
                         # 2026-05-11 — Caesars (williamhill_us) layer slot.
                         "csr_layer": None,
+                        # 2026-05-13 — additional US books (all free
+                        # under regions=us, "pull from all books"
+                        # expansion). Short codes: eb=ESPN BET,
+                        # hrb=Hard Rock, brv=BetRivers, prx=BetParx,
+                        # bly=BallyBet, flf=Fliff.
+                        "eb_layer": None,
+                        "hrb_layer": None,
+                        "brv_layer": None,
+                        "prx_layer": None,
+                        "bly_layer": None,
+                        "flf_layer": None,
                         "sharp_layer": None,
                     }
 
@@ -1146,6 +1217,18 @@ class UniversalOddsSyncService:
                         elif bm_key == "williamhill_us":
                             # 2026-05-11 — Caesars layer (post-rebrand).
                             target["csr_layer"] = layer
+                        elif bm_key == "espnbet":
+                            target["eb_layer"] = layer
+                        elif bm_key == "hardrockbet":
+                            target["hrb_layer"] = layer
+                        elif bm_key == "betrivers":
+                            target["brv_layer"] = layer
+                        elif bm_key == "betparx":
+                            target["prx_layer"] = layer
+                        elif bm_key == "ballybet":
+                            target["bly_layer"] = layer
+                        elif bm_key == "fliff":
+                            target["flf_layer"] = layer
                         if is_sharp and target["sharp_layer"] is None:
                             target["sharp_layer"] = layer
 
@@ -1163,6 +1246,12 @@ class UniversalOddsSyncService:
                             "betonlineag":     "bol_odds_opp",
                             "betmgm":          "mgm_odds_opp",
                             "williamhill_us":  "csr_odds_opp",
+                            "espnbet":         "eb_odds_opp",
+                            "hardrockbet":     "hrb_odds_opp",
+                            "betrivers":       "brv_odds_opp",
+                            "betparx":         "prx_odds_opp",
+                            "ballybet":        "bly_odds_opp",
+                            "fliff":           "flf_odds_opp",
                         }.get(bm_key)
                         if opp_field:
                             opp_target[opp_field] = price
@@ -1177,6 +1266,13 @@ class UniversalOddsSyncService:
             mgm = rec.get("mgm_layer")
             # 2026-05-11 — Caesars (williamhill_us) layer.
             csr = rec.get("csr_layer")
+            # 2026-05-13 — 6 new US sportsbooks (free credit-wise).
+            eb  = rec.get("eb_layer")
+            hrb = rec.get("hrb_layer")
+            brv = rec.get("brv_layer")
+            prx = rec.get("prx_layer")
+            bly = rec.get("bly_layer")
+            flf = rec.get("flf_layer")
             sharp = rec.get("sharp_layer")
 
             # SSOT anchor metadata (2026-04-25): when PP didn't quote
@@ -1208,6 +1304,12 @@ class UniversalOddsSyncService:
             bol_odds = bol["odds"] if bol else None
             mgm_odds = mgm["odds"] if mgm else None
             csr_odds = csr["odds"] if csr else None
+            eb_odds  = eb["odds"]  if eb  else None
+            hrb_odds = hrb["odds"] if hrb else None
+            brv_odds = brv["odds"] if brv else None
+            prx_odds = prx["odds"] if prx else None
+            bly_odds = bly["odds"] if bly else None
+            flf_odds = flf["odds"] if flf else None
             sharp_odds = sharp["odds"] if sharp else None
 
             # Demon/goblin from DK, then FD, then MGM, then Caesars,
@@ -1252,6 +1354,19 @@ class UniversalOddsSyncService:
                 all_odds["williamhill_us"] = csr_odds
                 all_lines["williamhill_us"] = csr["line"]
                 books_available.append("williamhill_us")
+            # 2026-05-13 — 6 additional US books.
+            for _bk_short, _bk_layer, _bk_full, _bk_odds in (
+                ("eb",  eb,  "espnbet",     eb_odds),
+                ("hrb", hrb, "hardrockbet", hrb_odds),
+                ("brv", brv, "betrivers",   brv_odds),
+                ("prx", prx, "betparx",     prx_odds),
+                ("bly", bly, "ballybet",    bly_odds),
+                ("flf", flf, "fliff",       flf_odds),
+            ):
+                if _bk_layer:
+                    all_odds[_bk_full] = _bk_odds
+                    all_lines[_bk_full] = _bk_layer["line"]
+                    books_available.append(_bk_full)
             if sharp:
                 all_odds[sharp["book"]] = sharp_odds
                 all_lines[sharp["book"]] = sharp["line"]
@@ -1299,6 +1414,19 @@ class UniversalOddsSyncService:
                 # 2026-05-11 — Caesars (williamhill_us) flat fields.
                 "csr_line": csr["line"] if csr else None,
                 "csr_odds": csr_odds,
+                # 2026-05-13 — 6 new US sportsbooks (flat line/odds).
+                "eb_line":  eb["line"]  if eb  else None,
+                "eb_odds":  eb_odds,
+                "hrb_line": hrb["line"] if hrb else None,
+                "hrb_odds": hrb_odds,
+                "brv_line": brv["line"] if brv else None,
+                "brv_odds": brv_odds,
+                "prx_line": prx["line"] if prx else None,
+                "prx_odds": prx_odds,
+                "bly_line": bly["line"] if bly else None,
+                "bly_odds": bly_odds,
+                "flf_line": flf["line"] if flf else None,
+                "flf_odds": flf_odds,
                 "sharp_line": sharp["line"] if sharp else None,
                 "sharp_odds": sharp_odds,
                 "sharp_book": sharp["book"] if sharp else None,
@@ -1311,6 +1439,12 @@ class UniversalOddsSyncService:
                 "bol_odds_opp": rec.get("bol_odds_opp"),
                 "mgm_odds_opp": rec.get("mgm_odds_opp"),
                 "csr_odds_opp": rec.get("csr_odds_opp"),
+                "eb_odds_opp":  rec.get("eb_odds_opp"),
+                "hrb_odds_opp": rec.get("hrb_odds_opp"),
+                "brv_odds_opp": rec.get("brv_odds_opp"),
+                "prx_odds_opp": rec.get("prx_odds_opp"),
+                "bly_odds_opp": rec.get("bly_odds_opp"),
+                "flf_odds_opp": rec.get("flf_odds_opp"),
                 # Structured layers (full objects)
                 "pp_layer": pp,
                 "dk_layer": dk,
@@ -1318,6 +1452,12 @@ class UniversalOddsSyncService:
                 "bol_layer": bol,
                 "mgm_layer": mgm,
                 "csr_layer": csr,
+                "eb_layer":  eb,
+                "hrb_layer": hrb,
+                "brv_layer": brv,
+                "prx_layer": prx,
+                "bly_layer": bly,
+                "flf_layer": flf,
                 "sharp_layer": sharp,
                 # Aggregated (from exact matches only)
                 "all_lines": all_lines,

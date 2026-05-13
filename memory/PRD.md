@@ -146,6 +146,27 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-13 — "Pull from all books" expansion: 4 books → 11 books (MLB multi-book 58% → 70.6%)
+- **Root context**: post the 2026-05-08 projection-store fix the audit revealed MLB was actually 81% multi-book (not 30% as previously believed). User directive: "pull from all books. we are already paying for the call. we want maximum coverage."
+- **Live API probe** showed 14 books returning MLB data; 6 with non-trivial coverage (>=80 outcomes per event) were unused: ESPN BET, Hard Rock Bet, BetRivers, BetParx, Bally Bet, Fliff. All in `regions=us` — **zero additional Odds API credit cost**.
+- **Plumbing changes** (single pass, all production):
+  - `universal_odds_sync.py`:
+    - `BOOKMAKER_CONFIG`: added 6 new entries (region=us).
+    - `MLB_BOOKMAKERS`, `USER_SHARP_BOOKMAKERS`, `SPORT_API_CONFIG.{nba,mlb}.bookmakers`: extended from 6 → 12 books each.
+    - `_normalize_market_data` Pass 1 (layer slots), Pass 2 (assignment + opp_field map), Pass 3 (flatten): added 6 new books with short codes `eb`/`hrb`/`brv`/`prx`/`bly`/`flf`.
+    - `ALLOWED_BOOKS` whitelist extended to all 12 books.
+  - `coverage_filter._BOOK_FIELDS`: 5 → 11 entries (book_count now ranges 0..11).
+  - `tp_engine._BOOKS` + `_OPP_FIELDS`: 4 → 11 books for de-vig probability averaging across the full book set.
+  - `prop_scores_store._BOOK_LAYER_FIELDS`: added layer/line/odds/odds_opp for all 6 new books (preserves through score-doc projection).
+  - `recompute.py` `_book_k` mirror loop: extended to 6 new book field tuples.
+- **Live verification (post-sync, 25 MLB events)**:
+  - Total props synced: 14,252 → **16,865** (+2,613 new props from broader book coverage).
+  - Bookmaker breakdown: DK 9,280 / MGM 9,254 / **ESPN BET 8,956** / **Hard Rock 7,860** / PP 7,001 / FD 5,722 / **Fliff 5,528** / Caesars 4,301 / BOL 3,812 / **BetParx 3,365** / **BallyBet 1,945** / **BetRivers 1,778**.
+  - Coverage class transition: pp_only 10.1% → **6.5%** | single_book 31.7% → 22.9% | **multi_book 58.2% → 70.6%**.
+  - 485 props now have ALL 11 books anchoring; 1,474 have 9–11 books (sharp consensus zone).
+- **Tests**: `tests/test_all_books_expansion.py` (6 new regressions) + `tests/test_coverage_filter.py` (3 new Caesars tests) — 21 new passing tests. 175+ legacy tests still pass.
+- **Audit**: `/app/audit_reports/mlb_vs_nba_gate_audit_2026-05-13.md` (covers pre-expansion baseline).
+
 ### 2026-05-13 — Caesars (williamhill_us) added to book-anchor counter (MLB lift +871 props)
 - **Root cause**: `coverage_filter._BOOK_FIELDS` only recognized 4 books (DK / FD / BetOnline / BetMGM). Caesars (`csr_layer` + `csr_odds`) was wired into `universal_odds_sync` on 2026-05-11 and persisted on 4,379 MLB props (30.2% of live pool), but never counted toward `book_count` or `books_anchored`.
 - **Fix**: added `("williamhill_us", "caesars_price", "csr_odds")` to `_BOOK_FIELDS`. Updated docstring to reflect 0..5 book range.

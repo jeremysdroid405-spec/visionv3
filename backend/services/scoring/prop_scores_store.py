@@ -518,6 +518,9 @@ _BOOK_LAYER_FIELDS = (
     # Per-book layer objects (rich payload: book, line, odds, fetched_at,
     # and `_opp` companion for the opposite side used by the de-vig engine)
     "dk_layer", "fd_layer", "pp_layer", "bol_layer", "mgm_layer", "csr_layer",
+    # 2026-05-13 — 6 new US sportsbooks (ESPN BET / Hard Rock / BetRivers
+    # / BetParx / Bally Bet / Fliff). Free under regions=us.
+    "eb_layer", "hrb_layer", "brv_layer", "prx_layer", "bly_layer", "flf_layer",
     "sharp_layer",
     # Flat per-book line + odds + odds_opp (downstream gates / UI prefer these)
     "dk_line",  "dk_odds",  "dk_odds_opp",
@@ -526,6 +529,12 @@ _BOOK_LAYER_FIELDS = (
     "bol_line", "bol_odds", "bol_odds_opp",
     "mgm_line", "mgm_odds", "mgm_odds_opp",
     "csr_line", "csr_odds", "csr_odds_opp",
+    "eb_line",  "eb_odds",  "eb_odds_opp",
+    "hrb_line", "hrb_odds", "hrb_odds_opp",
+    "brv_line", "brv_odds", "brv_odds_opp",
+    "prx_line", "prx_odds", "prx_odds_opp",
+    "bly_line", "bly_odds", "bly_odds_opp",
+    "flf_line", "flf_odds", "flf_odds_opp",
     # Aggregate book count (universal_odds_sync may or may not stamp this
     # upstream — the de-vig engine re-derives it from the present layers
     # when missing). Carrying it through so downstream readers don't have

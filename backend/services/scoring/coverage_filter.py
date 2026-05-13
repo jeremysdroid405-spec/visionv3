@@ -59,12 +59,21 @@ logger = logging.getLogger(__name__)
 # wired up by universal_odds_sync on 2026-05-11 but never added to the
 # anchor count — leaving 4,379 MLB props (30.2%) with Caesars data
 # silently uncounted in `book_count` and `books_anchored`.
+# 2026-05-13: "Pull from all books" expansion adds 6 more US books
+# (espnbet, hardrockbet, betrivers, betparx, ballybet, fliff). Short
+# codes match `universal_odds_sync` flat-field naming.
 _BOOK_FIELDS: Tuple[Tuple[str, str, str], ...] = (
     ("draftkings",     "draftkings_price", "dk_odds"),
     ("fanduel",        "fanduel_price",    "fd_odds"),
     ("betonlineag",    "betonline_price",  "bol_odds"),
     ("betmgm",         "betmgm_price",     "mgm_odds"),
     ("williamhill_us", "caesars_price",    "csr_odds"),
+    ("espnbet",        "espnbet_price",    "eb_odds"),
+    ("hardrockbet",    "hardrockbet_price","hrb_odds"),
+    ("betrivers",      "betrivers_price",  "brv_odds"),
+    ("betparx",        "betparx_price",    "prx_odds"),
+    ("ballybet",       "ballybet_price",   "bly_odds"),
+    ("fliff",          "fliff_price",      "flf_odds"),
 )
 
 

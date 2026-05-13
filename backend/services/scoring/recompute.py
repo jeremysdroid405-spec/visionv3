@@ -702,6 +702,8 @@ async def recompute_sport(
         for _book_k in (
             "dk_layer", "fd_layer", "pp_layer",
             "bol_layer", "mgm_layer", "csr_layer",
+            "eb_layer",  "hrb_layer", "brv_layer",
+            "prx_layer", "bly_layer", "flf_layer",
             "sharp_layer",
             "dk_line",  "dk_odds",  "dk_odds_opp",
             "fd_line",  "fd_odds",  "fd_odds_opp",
@@ -709,6 +711,12 @@ async def recompute_sport(
             "bol_line", "bol_odds", "bol_odds_opp",
             "mgm_line", "mgm_odds", "mgm_odds_opp",
             "csr_line", "csr_odds", "csr_odds_opp",
+            "eb_line",  "eb_odds",  "eb_odds_opp",
+            "hrb_line", "hrb_odds", "hrb_odds_opp",
+            "brv_line", "brv_odds", "brv_odds_opp",
+            "prx_line", "prx_odds", "prx_odds_opp",
+            "bly_line", "bly_odds", "bly_odds_opp",
+            "flf_line", "flf_odds", "flf_odds_opp",
             "pp_payout_multiplier", "pp_market_key",
             "is_alternate_market", "market_key",
         ):

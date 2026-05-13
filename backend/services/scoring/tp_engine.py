@@ -49,12 +49,38 @@ TP_SOURCE_ONE_SIDED = "one_sided"
 
 # Canonical (legacy_price_field, universal_odds_field, short_code) per book.
 # Either field, if not None, yields the book's American odds.
+# 2026-05-13: extended from 4 → 11 books to capture the "pull from all
+# books" expansion (Caesars + ESPN BET + Hard Rock + BetRivers + BetParx
+# + BallyBet + Fliff). Every additional book improves de-vig precision.
 _BOOKS = (
     ("draftkings_price", "dk_odds",  "DK"),
     ("fanduel_price",    "fd_odds",  "FD"),
     ("betmgm_price",     "mgm_odds", "MGM"),
     ("betonline_price",  "bol_odds", "BOL"),
+    ("caesars_price",    "csr_odds", "CSR"),
+    ("espnbet_price",    "eb_odds",  "EB"),
+    ("hardrockbet_price","hrb_odds", "HRB"),
+    ("betrivers_price",  "brv_odds", "BRV"),
+    ("betparx_price",    "prx_odds", "PRX"),
+    ("ballybet_price",   "bly_odds", "BLY"),
+    ("fliff_price",      "flf_odds", "FLF"),
 )
+
+# Path-1 self/opp maps (per-book OVER/UNDER pairing for de-vig). Each
+# entry: code → (self_odds_key, opp_odds_key, legacy_price_key).
+_OPP_FIELDS = {
+    "DK":  ("dk_odds",  "dk_odds_opp",  "draftkings_price"),
+    "FD":  ("fd_odds",  "fd_odds_opp",  "fanduel_price"),
+    "MGM": ("mgm_odds", "mgm_odds_opp", "betmgm_price"),
+    "BOL": ("bol_odds", "bol_odds_opp", "betonline_price"),
+    "CSR": ("csr_odds", "csr_odds_opp", "caesars_price"),
+    "EB":  ("eb_odds",  "eb_odds_opp",  "espnbet_price"),
+    "HRB": ("hrb_odds", "hrb_odds_opp", "hardrockbet_price"),
+    "BRV": ("brv_odds", "brv_odds_opp", "betrivers_price"),
+    "PRX": ("prx_odds", "prx_odds_opp", "betparx_price"),
+    "BLY": ("bly_odds", "bly_odds_opp", "ballybet_price"),
+    "FLF": ("flf_odds", "flf_odds_opp", "fliff_price"),
+}
 
 
 def _amer_to_prob(odds: Any) -> Optional[float]:
@@ -128,12 +154,7 @@ def compute_tp(
 
     # ---- Path 1: single-prop with `{book}_odds` + `{book}_odds_opp` --
     if prop is not None:
-        opp_fields = {
-            "DK":  ("dk_odds",  "dk_odds_opp",  "draftkings_price"),
-            "FD":  ("fd_odds",  "fd_odds_opp",  "fanduel_price"),
-            "MGM": ("mgm_odds", "mgm_odds_opp", "betmgm_price"),
-            "BOL": ("bol_odds", "bol_odds_opp", "betonline_price"),
-        }
+        opp_fields = _OPP_FIELDS
         for code, (self_key, opp_key, legacy_key) in opp_fields.items():
             this_odds = prop.get(self_key)
             if this_odds is None:
@@ -180,12 +201,7 @@ def compute_tp(
         raw_books: List[str] = []
 
         if prop is not None:
-            for code, (self_key, _opp_key, legacy_key) in {
-                "DK":  ("dk_odds",  "dk_odds_opp",  "draftkings_price"),
-                "FD":  ("fd_odds",  "fd_odds_opp",  "fanduel_price"),
-                "MGM": ("mgm_odds", "mgm_odds_opp", "betmgm_price"),
-                "BOL": ("bol_odds", "bol_odds_opp", "betonline_price"),
-            }.items():
+            for code, (self_key, _opp_key, legacy_key) in _OPP_FIELDS.items():
                 this_odds = prop.get(self_key)
                 if this_odds is None:
                     this_odds = prop.get(legacy_key)
