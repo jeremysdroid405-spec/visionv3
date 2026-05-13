@@ -3139,3 +3139,47 @@ summary (cards looked broken/empty). Root causes:
 **Result:** Every card always shows either a Gemini-authored summary or a
 "Generating Vision Intel…" loader — no more silent empty slots. Slow Gemini
 calls now have a 5-minute window per attempt instead of being killed early.
+
+## 2026-05-13 (later) — Vision Intel ROOT-CAUSE FIX: Metadata Hydration + Gemini Fallback
+
+**Root cause:** `_project_score_doc` in `services/scoring/prop_scores_store.py`
+silently dropped `team`, `opponent`, `home_team`, `away_team`, `commence_time`
+etc. because they weren't in any allowlist. Result: every score doc landed
+with `opponent=None`, Gemini received `"vs TBD (no DvP data)"`, no DvP /
+matchup / injury context could ever attach, and cards rendered blank.
+
+The user reported James Harden, Tobias Harris, Evan Mobley, Max Strus —
+all four were in the SAME game (CLE@DET, canonical_key hash
+`c3531530e77a4ada542bdbff23de5409`) and all four had `opponent=None`. The
+diagnostic surfaced this in <1 minute via `scripts/diag_vision_intel_misses.py`.
+
+**Fix shipped:**
+  1. `services/scoring/prop_scores_store.py`:
+     New `_MATCHUP_METADATA_FIELDS` allowlist (`team`, `team_full`,
+     `opponent`, `opponent_abbr`, `opponent_team`, `home_team`, `away_team`,
+     `is_home_team`, `is_away_team`, `commence_time`). Added to
+     `_known_keys` AND projected into the persisted doc.
+  2. `services/scoring/recompute.py`:
+     Stamps the same fields from `ctx.raw_prop` (the upstream
+     `nba_live_props` row) onto the score doc BEFORE persistence. Also
+     widened `_opp` lookup to include `opponent_team` as a primary source.
+  3. `services/scoring/score_document_schema.py`:
+     Added the 10 matchup-metadata fields to `ScoreDocument` so Pydantic
+     strict mode never rejects them.
+  4. `services/master_sync.py::_call_gemini_chunk_with_timeout`:
+     Now detects transient `503 / 500 / 429 / UNAVAILABLE` errors and
+     sleeps 5s before the single retry (immediate retries on capacity
+     errors just compound the throttle).
+  5. `services/vision_intel_service.py`:
+     New `fallback_model_name = 'gemini-flash-latest'`. When the primary
+     `gemini-flash-lite-latest` returns a transient 5xx/UNAVAILABLE, the
+     service automatically retries the SAME prompt against the heavier
+     `gemini-flash-latest` model (much larger capacity pool). Same parser,
+     same strict contract — Vision Intel never silently dies on a
+     Google-side spike.
+
+**Verification:** Full NBA recompute → all 733 `final-nba-rt` docs now
+carry team/opponent. JIT reaper run → 19/19 uncovered picks returned
+Gemini-authored intel. Harden/Harris/Mobley/Strus all generated narratives
+that explicitly reference the CLE↔DET matchup, DvP rank, and pace context
+that were invisible to Gemini 30 minutes prior.

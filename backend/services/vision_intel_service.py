@@ -156,11 +156,21 @@ class VisionIntelService:
         self.enabled = GEMINI_AVAILABLE and self.api_key is not None
         self.client = None
         self.model_name = 'gemini-flash-lite-latest'
-        
+        # 2026-05-13 — primary `gemini-flash-lite-latest` has been
+        # returning HTTP 503 "high demand" spikes that wipe out Vision
+        # Intel for entire batches. When the primary returns a
+        # transient 5xx/UNAVAILABLE, retry the SAME chunk against the
+        # heavier (and higher-capacity) `gemini-flash-latest` model.
+        # Same prompt, same parser, identical strict-mode contract.
+        self.fallback_model_name = 'gemini-flash-latest'
+
         if self.enabled:
             try:
                 self.client = genai.Client(api_key=self.api_key)
-                logger.info(f"Vision Intel Service initialized with {self.model_name}")
+                logger.info(
+                    f"Vision Intel Service initialized with "
+                    f"{self.model_name} (fallback={self.fallback_model_name})"
+                )
             except Exception as e:
                 logger.error(f"Failed to initialize Gemini: {e}")
                 self.enabled = False
@@ -397,16 +407,57 @@ Return your analysis as a JSON array. One object per prop with all required fiel
             # Debug: Log first part of prompt to verify L3 is not included
             logger.info(f"[VISION INTEL] Sending {len(props)} props to Gemini for {tier_name}")
             logger.debug(f"[VISION INTEL] Sample prop data keys: {list(props[0].keys()) if props else 'N/A'}")
-            
-            # Make ONE API call for the entire tier
+
+            # 2026-05-13 — Primary/fallback model wrapper. We try the
+            # lite model first (cheaper, faster). On transient Google-
+            # side overload (HTTP 503 / 500 / 429 / UNAVAILABLE) we
+            # retry the SAME chunk against `gemini-flash-latest`,
+            # which has a much larger capacity pool and rarely throws
+            # 503s. Same prompt, same parser, identical contract.
             loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=full_prompt
+            response = None
+            primary_exc: Exception | None = None
+            try:
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=full_prompt,
+                    ),
                 )
-            )
+            except Exception as exc:
+                msg = str(exc)
+                is_transient = any(
+                    code in msg for code in ("503", "500", "429", "UNAVAILABLE")
+                )
+                if is_transient and self.fallback_model_name:
+                    logger.warning(
+                        f"[VISION INTEL] {self.model_name} returned "
+                        f"transient error for {tier_name}: "
+                        f"{exc.__class__.__name__}: {msg[:160]} — "
+                        f"falling back to {self.fallback_model_name}"
+                    )
+                    try:
+                        response = await loop.run_in_executor(
+                            None,
+                            lambda: self.client.models.generate_content(
+                                model=self.fallback_model_name,
+                                contents=full_prompt,
+                            ),
+                        )
+                    except Exception as exc2:
+                        primary_exc = exc2
+                        logger.warning(
+                            f"[VISION INTEL] fallback model "
+                            f"{self.fallback_model_name} also failed for "
+                            f"{tier_name}: {exc2.__class__.__name__}: "
+                            f"{str(exc2)[:160]}"
+                        )
+                else:
+                    primary_exc = exc
+            if response is None:
+                raise primary_exc or RuntimeError("Gemini call produced no response")
+
             # P3.3 observability — record real API call.
             try:
                 from services.gemini_metrics import record_gemini_call

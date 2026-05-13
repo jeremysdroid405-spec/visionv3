@@ -638,6 +638,7 @@ async def recompute_sport(
         _opp = (
             (ctx.raw_prop or {}).get("opponent")
             or (ctx.raw_prop or {}).get("opponent_abbr")
+            or (ctx.raw_prop or {}).get("opponent_team")
             or (ctx.raw_prop or {}).get("away_team")
             or (ctx.raw_prop or {}).get("home_team")
         )
@@ -645,6 +646,36 @@ async def recompute_sport(
         doc["opponent_defensive_rank"] = _rank
         doc["opponent_defensive_source"] = _source
         doc["opponent_defensive_stat_type"] = ctx.stat_type
+
+        # Matchup metadata stamp (2026-05-13 — Vision Intel diagnostic
+        # fix). `nba_live_props` already carries the full team/opponent
+        # context; copy those fields onto the score doc so they are
+        # preserved by `_project_score_doc`'s matchup allowlist and
+        # consumed by master_sync's Vision Intel enrich path.
+        # Without this, score docs land with `opponent: None` and
+        # Gemini sees DvP context as "vs TBD (no DvP data)".
+        _raw = ctx.raw_prop or {}
+        # canonical opponent abbr (downstream alias) — fill from any
+        # of the available raw-prop fields, preferring the explicit
+        # opponent_team set by universal_odds_sync.
+        _opp_abbr = (
+            _raw.get("opponent_abbr")
+            or _raw.get("opponent")
+            or _raw.get("opponent_team")
+        )
+        if _opp_abbr is not None:
+            doc["opponent"] = _opp_abbr
+            doc["opponent_abbr"] = _opp_abbr
+        # team-side fields straight through when present.
+        for _mk in (
+            "team", "team_full",
+            "opponent_team",
+            "home_team", "away_team",
+            "is_home_team", "is_away_team",
+            "commence_time",
+        ):
+            if _raw.get(_mk) is not None:
+                doc[_mk] = _raw[_mk]
 
         # 0-Book Exclusion Rule (2026-04-22). The adapter already marks
         # every prop with `book_count`/`coverage_class`/`books_anchored`

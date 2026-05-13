@@ -1360,9 +1360,17 @@ async def _call_gemini_chunk_with_timeout(
     chunk_idx: int,
 ) -> list:
     """Run a single Gemini chunk under `GEMINI_CHUNK_TIMEOUT_SECONDS`
-    with one retry on TimeoutError. Returns the strict-mode result
-    list (one element per source pick — each `dict` or `None`).
-    Raises the underlying exception only after retries are exhausted.
+    with one retry on TimeoutError / transient 5xx. Returns the
+    strict-mode result list (one element per source pick — each `dict`
+    or `None`). Never raises; returns `[None] * len(chunk)` on
+    exhausted retries so the caller can fall through cleanly.
+
+    Retry strategy (2026-05-13):
+      • TimeoutError      → immediate retry once
+      • 503 / 500 / 429   → 5s sleep, then retry once with the same
+                            model (these are transient Google-side
+                            capacity issues — short backoff helps)
+      • Any other error   → immediate retry once
     """
     import asyncio as _asyncio
     attempts = GEMINI_CHUNK_RETRIES + 1
@@ -1383,12 +1391,24 @@ async def _call_gemini_chunk_with_timeout(
             )
         except Exception as exc:
             last_exc = exc
+            # Sniff transient Google capacity errors so we can back off
+            # before retrying. The google-genai client wraps these in a
+            # ServerError / ClientError with the HTTP status in the
+            # message — fall back to string match because the exception
+            # types are not stable across client versions.
+            msg = str(exc)
+            transient = any(
+                code in msg for code in ("503", "500", "429", "UNAVAILABLE")
+            )
             logger.warning(
                 f"[MASTER_SYNC:{sport_label}] vision_intel chunk "
                 f"{tier_name}#{chunk_idx} failed "
-                f"(attempt {attempt}/{attempts}): {exc}"
+                f"(attempt {attempt}/{attempts}, transient={transient}): "
+                f"{exc.__class__.__name__}: {msg[:160]}"
             )
-    # All attempts exhausted — return all-None so caller falls through.
+            if transient and attempt < attempts:
+                # Short backoff for Google-side overload spikes.
+                await _asyncio.sleep(5.0)
     if last_exc is not None:
         logger.error(
             f"[MASTER_SYNC:{sport_label}] vision_intel chunk "

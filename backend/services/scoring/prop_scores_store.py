@@ -469,6 +469,28 @@ _IDENTITY_FIELDS = (
     "stat_type", "line", "recommendation",
 )
 
+# Matchup-metadata allowlist (2026-05-13 — Vision Intel diagnostic).
+# These fields originate on `{sport}_live_props` and were being silently
+# dropped by `_project_score_doc` because they were not in any allowlist.
+# Without them on `{sport}_prop_scores`:
+#   • Vision Intel saw `opponent = "TBD"` (vision_intel_service.py:247)
+#   • Master-sync DvP/context badge attachment had no team to join on
+#   • Player cards rendered with empty opponent / tipoff rows
+# Preserving these does NOT touch scoring math; they are pure
+# identity/context fields that flow downstream to the UI + AI prompt.
+_MATCHUP_METADATA_FIELDS = (
+    "team",            # 3-letter abbr ('CLE')
+    "team_full",       # full name ('Cleveland Cavaliers')
+    "opponent",        # canonical 3-letter abbr (downstream-friendly alias)
+    "opponent_abbr",   # alias of opponent — frontend reads either
+    "opponent_team",   # 3-letter abbr ('DET') — raw nba_live_props name
+    "home_team",       # full name ('Detroit Pistons')
+    "away_team",       # full name ('Cleveland Cavaliers')
+    "is_home_team",    # 0/1
+    "is_away_team",    # 0/1
+    "commence_time",   # ISO string from Odds API event payload
+)
+
 # Universal pool lifecycle fields — present on every {sport}_prop_scores
 # document regardless of sport. Used by the universal board engine
 # (services/board/*) and the 60-second game-start scanner.
@@ -493,6 +515,7 @@ def _project_score_doc(
     _known_keys = (
         set(_IDENTITY_FIELDS)
         | set(_SCORE_OUTPUT_FIELDS)
+        | set(_MATCHUP_METADATA_FIELDS)
         | set(_UNIVERSAL_POOL_FIELDS)
         | {"version_tag", "computed_at", "scored_at"}
     )
@@ -516,6 +539,13 @@ def _project_score_doc(
     doc = {k: context_out.get(k) for k in _IDENTITY_FIELDS if k in context_out}
     for k in _SCORE_OUTPUT_FIELDS:
         if k in context_out:
+            doc[k] = context_out[k]
+    # Matchup-metadata projection (2026-05-13 Vision Intel fix).
+    # Carry the upstream team/opponent/event context onto the score
+    # doc so master_sync, the JIT Vision Intel reaper, and the
+    # frontend cards all see real values instead of None.
+    for k in _MATCHUP_METADATA_FIELDS:
+        if k in context_out and context_out[k] is not None:
             doc[k] = context_out[k]
     # Universal pool lifecycle fields — default to "active=True" with no
     # inactivation reason. scoring/recompute.py sets game_start_utc from

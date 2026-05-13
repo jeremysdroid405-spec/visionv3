@@ -420,6 +420,23 @@ class ScoreDocument(BaseModel):
     # the cache pair was absent — frontend suppresses the chip.
     momentum_data:                     Optional[Dict[str, Any]] = None
 
+    # ── Matchup metadata (2026-05-13 Vision Intel diagnostic) ─────
+    # These fields originate on `{sport}_live_props` from the Odds API
+    # event payload. Previously dropped by `_project_score_doc` because
+    # they weren't allowlisted; that bug surfaced as empty Vision Intel
+    # cards because Gemini saw `opponent="TBD"`. Now preserved end-to-end
+    # so the AI prompt + UI cards always have real team/opponent context.
+    team:               Optional[str] = None    # 3-letter abbr
+    team_full:          Optional[str] = None    # full team name
+    opponent:           Optional[str] = None    # canonical abbr alias
+    opponent_abbr:      Optional[str] = None    # alias of opponent
+    opponent_team:      Optional[str] = None    # raw nba_live_props name
+    home_team:          Optional[str] = None    # full name
+    away_team:          Optional[str] = None    # full name
+    is_home_team:       Optional[int] = None    # 0/1
+    is_away_team:       Optional[int] = None    # 0/1
+    commence_time:      Optional[Any] = None    # ISO string or datetime
+
 
 def validate_score_document(doc: Dict[str, Any]) -> Optional[str]:
     """Validate a single score doc against the strict Pydantic contract.
