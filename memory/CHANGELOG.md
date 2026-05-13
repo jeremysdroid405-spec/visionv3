@@ -3183,3 +3183,20 @@ carry team/opponent. JIT reaper run → 19/19 uncovered picks returned
 Gemini-authored intel. Harden/Harris/Mobley/Strus all generated narratives
 that explicitly reference the CLE↔DET matchup, DvP rank, and pace context
 that were invisible to Gemini 30 minutes prior.
+
+## 2026-05-13 (final) — MLB Vision Intel fallback parity
+
+**Issue spotted post-deploy:** NBA reached 100% Vision Intel coverage but
+MLB was still showing 3/4 picks missing. Root cause: MLB uses a separate
+service `services/mlb_vision_intel.py` (parallel to `services/vision_intel_service.py`)
+that I hadn't patched. The MLB service still pointed at
+`gemini-flash-lite-latest` with no fallback, so Google's transient 503
+spikes blanked it out.
+
+**Fix:** Mirrored the primary→fallback model wrapper into
+`services/mlb_vision_intel.py` (same `gemini-flash-latest` fallback,
+same `503/500/429/UNAVAILABLE` sniff, same single-attempt fallback).
+
+**Verified end-to-end:**
+  NBA: war-zone 4/4 + front-lines 8/8 + safe-haven 7/7 = **19/19 ✓**
+  MLB: war-zone 2/2 + front-lines 1/1 + safe-haven 1/1 = **4/4 ✓**

@@ -127,11 +127,17 @@ class MLBVisionIntel:
         self.enabled = GEMINI_AVAILABLE and self.api_key is not None
         self.client = None
         self.model_name = 'gemini-flash-lite-latest'
-        
+        # 2026-05-13 — Gemini-flash-lite has been throwing transient 503s.
+        # Auto-fall-back to gemini-flash-latest (larger capacity pool).
+        self.fallback_model_name = 'gemini-flash-latest'
+
         if self.enabled:
             try:
                 self.client = genai.Client(api_key=self.api_key)
-                logger.info(f"Vision Intel Service initialized with {self.model_name}")
+                logger.info(
+                    f"Vision Intel Service initialized with "
+                    f"{self.model_name} (fallback={self.fallback_model_name})"
+                )
             except Exception as e:
                 logger.error(f"Failed to initialize Gemini: {e}")
                 self.enabled = False
@@ -320,16 +326,53 @@ Return your analysis as a JSON array. One object per prop with all required fiel
             # Build the batch prompt
             prompt = self._build_batch_prompt(props, tier_name)
             full_prompt = f"{MLB_VISION_INTEL_BATCH_PROMPT}\n\n{prompt}"
-            
-            # Make ONE API call for the entire tier
+
+            # 2026-05-13 — Primary/fallback model wrapper.
+            # On transient 5xx/429/UNAVAILABLE from `gemini-flash-lite-latest`,
+            # retry the same prompt against `gemini-flash-latest`.
             loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=full_prompt
+            response = None
+            primary_exc: Exception | None = None
+            try:
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=full_prompt,
+                    ),
                 )
-            )
+            except Exception as exc:
+                msg = str(exc)
+                is_transient = any(
+                    code in msg for code in ("503", "500", "429", "UNAVAILABLE")
+                )
+                if is_transient and self.fallback_model_name:
+                    logger.warning(
+                        f"[VISION INTEL] {self.model_name} returned "
+                        f"transient error for {tier_name}: "
+                        f"{exc.__class__.__name__}: {msg[:160]} — "
+                        f"falling back to {self.fallback_model_name}"
+                    )
+                    try:
+                        response = await loop.run_in_executor(
+                            None,
+                            lambda: self.client.models.generate_content(
+                                model=self.fallback_model_name,
+                                contents=full_prompt,
+                            ),
+                        )
+                    except Exception as exc2:
+                        primary_exc = exc2
+                        logger.warning(
+                            f"[VISION INTEL] fallback model "
+                            f"{self.fallback_model_name} also failed for "
+                            f"{tier_name}: {exc2.__class__.__name__}: "
+                            f"{str(exc2)[:160]}"
+                        )
+                else:
+                    primary_exc = exc
+            if response is None:
+                raise primary_exc or RuntimeError("Gemini call produced no response")
             
             # Parse the batch response
             intel_map = self._parse_batch_response(response.text, props)
