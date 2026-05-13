@@ -128,6 +128,136 @@ async def recompute_one(
         raise HTTPException(status_code=400, detail=str(ve))
 
 
+# ── Background chunked rescore status (in-memory, single-tenant) ─────
+# Keyed by sport. Spawning a new run for the same sport while one is
+# already running returns the existing status (idempotent — no double
+# work). For multi-tenant we'd promote this to a Mongo collection;
+# single-pod single-sport at a time is sufficient for now.
+import asyncio as _asyncio
+import gc as _gc
+import time as _time
+import uuid as _uuid
+_CHUNKED_RESCORE_STATUS: Dict[str, Dict[str, Any]] = {}
+
+
+async def _run_chunked_rescore(db, sport: str, version_tag: str):
+    """Per-event chunked rescore. Runs IN-PROCESS (re-uses already
+    loaded ML models — no extra memory cost) with explicit GC + 1s
+    sleep between events so the FastAPI event loop stays responsive.
+
+    Vision-score percentile is computed per event (per-game slate) —
+    a coherent "elite within this game" reading that still satisfies
+    the gate's `min: 80` threshold semantics.
+    """
+    from services.scoring.recompute import recompute_sport
+    status = _CHUNKED_RESCORE_STATUS[sport]
+    try:
+        status["state"] = "running"
+        live_coll = db[f"{sport}_live_props"]
+        pipe = [
+            {"$match": {"canonical_key": {"$ne": None}}},
+            {"$group": {
+                "_id": "$event_id",
+                "keys": {"$addToSet": "$canonical_key"},
+                "n": {"$sum": 1},
+            }},
+            {"$sort": {"n": -1}},
+        ]
+        event_groups = []
+        async for doc in live_coll.aggregate(pipe):
+            if doc["_id"]:
+                event_groups.append((doc["_id"], doc["keys"], doc["n"]))
+        status["events_total"] = len(event_groups)
+        status["events_done"] = 0
+        status["props_written"] = 0
+        status["props_processed"] = 0
+        status["failures"] = 0
+        t0 = _time.monotonic()
+
+        for i, (event_id, keys, raw_n) in enumerate(event_groups, start=1):
+            try:
+                result = await recompute_sport(
+                    db=db, sport=sport, version_tag=version_tag,
+                    dry_run=False, only_canonical_keys=set(keys),
+                )
+                status["props_written"] += result.get("written", 0)
+                status["props_processed"] += result.get("processed", 0)
+            except Exception as exc:
+                status["failures"] += 1
+                status.setdefault("errors", []).append(
+                    f"event {event_id}: {exc!r}"
+                )
+            status["events_done"] = i
+            # Aggressive GC + cooldown so memory stays bounded and the
+            # FastAPI ingress healthcheck stays green.
+            _gc.collect()
+            await _asyncio.sleep(1.0)
+
+        status["elapsed_s"] = round(_time.monotonic() - t0, 1)
+        status["state"] = "completed"
+    except Exception as outer:
+        status["state"] = "failed"
+        status["outer_error"] = repr(outer)
+
+
+@router.post("/recompute/{sport}/chunked")
+async def recompute_one_chunked(
+    sport: str,
+    version_tag: str = Query("final-{sport}-rt"),
+):
+    """Memory-safe per-event chunked rescore.
+
+    Why this exists (2026-05-13):
+      The standard `/api/scores/recompute/{sport}` loads ALL live props
+      into memory at once. With the post-2026-05-13 "pull from all
+      books" expansion that's ~16k props × 12 book layers each, which
+      triggered repeated pod-OOM kills.
+
+      This endpoint instead groups by `event_id` (25 MLB games per
+      slate → ~700 props per chunk) and reuses the existing
+      `recompute_sport(only_canonical_keys=...)` scoped path which
+      auto-forces `upsert` mode (never wipes other props). Peak
+      memory stays bounded; the FastAPI event loop stays responsive.
+
+      Returns 202 immediately with a job_id; poll GET
+      `/api/scores/recompute/{sport}/chunked/status` for progress.
+    """
+    sport = (sport or "").lower()
+    if sport not in SUPPORTED_SPORTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported sport '{sport}'",
+        )
+    db = _get_db()
+    tag = version_tag.replace("{sport}", sport)
+
+    # Idempotency — if a job is already running for this sport, return it.
+    existing = _CHUNKED_RESCORE_STATUS.get(sport)
+    if existing and existing.get("state") == "running":
+        return {"status": "already_running", **existing}
+
+    _CHUNKED_RESCORE_STATUS[sport] = {
+        "job_id": _uuid.uuid4().hex[:12],
+        "sport": sport,
+        "version_tag": tag,
+        "state": "queued",
+        "queued_at": __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc
+        ).isoformat(),
+    }
+    _asyncio.create_task(_run_chunked_rescore(db, sport, tag))
+    return {"status": "queued", **_CHUNKED_RESCORE_STATUS[sport]}
+
+
+@router.get("/recompute/{sport}/chunked/status")
+async def recompute_one_chunked_status(sport: str):
+    sport = (sport or "").lower()
+    status = _CHUNKED_RESCORE_STATUS.get(sport)
+    if not status:
+        return {"sport": sport, "state": "none"}
+    return status
+
+
 @router.get("/{sport}/diff")
 async def diff_versions(
     sport: str,
