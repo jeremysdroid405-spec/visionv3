@@ -3323,3 +3323,23 @@ full NBA recompute. Verified DB now contains ONLY canonical short codes:
 **Verified end-to-end:** Ayo Dosunmu's PR 19.5 alt-line prop now carries
 `stat_type='PR'` end-to-end. PlayerDetailPage chart resolves correctly
 via the unmodified `STAT_FIELD_MAP['PR']` → ['pts','reb'].
+
+## 2026-05-13 — SSOT follow-up: stat_family aliases for short-code combos
+
+**Regression after SSOT migration:** Ayo Dosunmu's `PR 19.5 OVER` War Zone
+pick disappeared. Root cause: `STAT_FAMILY_ALIASES["nba"]` in
+`services/scoring/gates/thresholds.py` only had aliases for the long-form
+market keys (`player_points_rebounds → pts_reb`) but NOT for the canonical
+short codes the SSOT now emits (`pr → pts_reb`). When `resolve_stat_family`
+got `stat_type='PR'`, it fell through to `_default` → no gate thresholds
+→ `tier=unqualified` → silently vanished from the board.
+
+**Fix:** Added the missing canonical short-code → family aliases:
+  pr   → pts_reb
+  pa   → pts_ast
+  ra   → reb_ast
+  blst → blocks_steals
+
+**Verified:** Recompute landed PR=5 / PA=3 / RA=4 picks across the tiers.
+Ayo PR L19.5 OVER is back in War Zone with vision_score=85.3 and a fresh
+Gemini-authored Vision Intel narrative (351 chars).

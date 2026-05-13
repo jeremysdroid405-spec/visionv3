@@ -37,6 +37,18 @@ STAT_FAMILY_ALIASES: Dict[str, Dict[str, str]] = {
         # `replace(" ", "_")` fallback).
         "pts": "pts", "reb": "reb", "ast": "ast", "pra": "pra",
         "stl": "stl", "blk": "blk", "3pm": "threes", "to": "turnovers",
+        # 2026-05-13 SSOT — short-code aliases for 2-way combos. The
+        # universal_odds_sync now emits "PR"/"PA"/"RA" as canonical
+        # stat_type for combo markets (collapsed from
+        # player_points_rebounds[_alternate], etc.). Without these
+        # entries the family resolver falls through to "_default"
+        # config → no gate thresholds → tier=unqualified → picks
+        # silently disappear from the board (Ayo Dosunmu PR 19.5
+        # War Zone regression).
+        "pr":  "pts_reb",
+        "pa":  "pts_ast",
+        "ra":  "reb_ast",
+        "blst": "blocks_steals",
         # Raw odds-market names (both standard + alternate variants map
         # to the SAME canonical family — a PTS alt-line has the same
         # underlying stat distribution as the standard PTS market).
