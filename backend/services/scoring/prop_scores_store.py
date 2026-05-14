@@ -751,11 +751,13 @@ async def write_versioned_scores(
     if mode == "upsert":
         upserted = 0
         modified = 0
+        upsert_cks: list = []
         for doc in prepared:
             clean = {k: v for k, v in doc.items() if k != "_id"}
             ck = clean.get("canonical_key")
             if not ck:
                 continue
+            upsert_cks.append(ck)
             res = await coll.update_one(
                 {"canonical_key": ck, "version_tag": version_tag},
                 {"$set": clean},
@@ -769,6 +771,43 @@ async def write_versioned_scores(
             f"[SCORES_STORE:{sport}] mode=upsert version='{version_tag}' "
             f"upserted={upserted} modified={modified} → {coll_name}"
         )
+
+        # 2026-05-14 — Cross-tag active=True sweep for the upsert path.
+        # The chunked recompute (see routes/scores.py) writes via this
+        # branch. Same SSOT invariant as the replace path: after writing
+        # to the canonical live tag, flip active=False on any other-tag
+        # row sharing a written canonical_key. Without this, shadow /
+        # legacy tags can carry stale active=True rows that pollute the
+        # duplicate-prop audit.
+        cross_tag_deactivated_upsert = 0
+        live_tag_for_sport = f"final-{sport}-rt"
+        if upsert_cks and version_tag == live_tag_for_sport:
+            try:
+                _res = await coll.update_many(
+                    {
+                        "canonical_key": {"$in": upsert_cks},
+                        "version_tag": {"$ne": live_tag_for_sport},
+                        "active": True,
+                    },
+                    {"$set": {
+                        "active": False,
+                        "inactive_reason": "stale_tag_active_sweep_upsert",
+                        "active_changed_at": datetime.now(timezone.utc),
+                    }},
+                )
+                cross_tag_deactivated_upsert = _res.modified_count or 0
+                if cross_tag_deactivated_upsert:
+                    logger.info(
+                        f"[SCORES_STORE:{sport}] mode=upsert "
+                        f"version='{version_tag}' cross_tag_deactivated="
+                        f"{cross_tag_deactivated_upsert} (stale-tag SSOT sweep)"
+                    )
+            except Exception as _xtag_exc:
+                logger.warning(
+                    f"[SCORES_STORE:{sport}] mode=upsert cross-tag active "
+                    f"sweep failed ({_xtag_exc}); continuing — best-effort."
+                )
+
         return {
             "sport": sport,
             "collection": coll_name,
@@ -778,6 +817,7 @@ async def write_versioned_scores(
             "written": upserted + modified,
             "upserted": upserted,
             "modified": modified,
+            "cross_tag_deactivated": cross_tag_deactivated_upsert,
             "mode": "upsert",
             "dry_run": False,
             "pydantic_failures": len(pydantic_failures),
@@ -1007,11 +1047,14 @@ async def write_versioned_scores(
     # when written>0 (zero-write guard already short-circuits above).
     cross_tag_deactivated = 0
     live_tag_for_sport = f"final-{sport}-rt"
-    if (
-        inserted_or_replaced
-        and new_cks
-        and version_tag == live_tag_for_sport
-    ):
+    # 2026-05-14 — DO NOT gate on `inserted_or_replaced`. A re-run that
+    # writes IDENTICAL docs produces modified_count=0 (Mongo's `replace
+    # with same content` no-op semantics), even though every live-tag
+    # row was re-validated. Stale shadow / legacy tags MUST still be
+    # flipped even when nothing physically changed. Gate purely on:
+    #   1. there are canonical_keys to scope against, AND
+    #   2. we're writing the canonical live tag.
+    if new_cks and version_tag == live_tag_for_sport:
         try:
             res = await coll.update_many(
                 {

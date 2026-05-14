@@ -973,7 +973,22 @@ class MLBHighFrictionModel:
             logger.info(f"[MLB_HF_MODEL] Saved {stat} to {path}")
     
     def load_models(self) -> int:
-        """Load trained models."""
+        """Load trained models.
+
+        2026-05-14 — Tweedie A/B variant toggle.
+        ----------------------------------------
+        Setting the env var `MLB_HF_TWEEDIE_STATS` to a comma-separated
+        list of stat keys will load that stat's `_tweedie.pkl` variant
+        in place of the baseline pickle for the listed stats.
+
+        Example (shadow A/B on home_runs + doubles only — leaves
+        stolen_bases on baseline):
+            MLB_HF_TWEEDIE_STATS="home_runs,doubles"
+
+        Empty / unset → 100% baseline (no behavior change).
+        Tweedie pickle missing → fall back to baseline + warn.
+        Logged loudly so the active variant is auditable.
+        """
         # 2026-04-29 — verify on-disk SHA256 matches `.LOCKED` manifest
         # (warns only; load proceeds either way).
         try:
@@ -981,9 +996,35 @@ class MLBHighFrictionModel:
             assert_load_ok()
         except Exception as e:
             logger.warning(f"[MLB_HF_MODEL] lock-integrity check failed: {e!r}")
+
+        _tw_env = (os.environ.get("MLB_HF_TWEEDIE_STATS") or "").strip()
+        tweedie_stats = {
+            s.strip() for s in _tw_env.split(",") if s.strip()
+        }
+        if tweedie_stats:
+            logger.warning(
+                f"[MLB_HF_MODEL] MLB_HF_TWEEDIE_STATS active for: "
+                f"{sorted(tweedie_stats)} — these stats will load "
+                f"`mlb_hf_<stat>_tweedie.pkl` instead of baseline."
+            )
+
         loaded = 0
+        loaded_tweedie: list = []
         for stat in self.MLB_STAT_TYPES:
-            path = os.path.join(self.MODEL_DIR, f'mlb_hf_{stat}.pkl')
+            # Choose pickle path: tweedie sidecar if requested AND exists.
+            base_path = os.path.join(self.MODEL_DIR, f'mlb_hf_{stat}.pkl')
+            path = base_path
+            if stat in tweedie_stats:
+                tw_path = os.path.join(
+                    self.MODEL_DIR, f'mlb_hf_{stat}_tweedie.pkl'
+                )
+                if os.path.exists(tw_path):
+                    path = tw_path
+                else:
+                    logger.warning(
+                        f"[MLB_HF_MODEL] {stat}: Tweedie variant requested "
+                        f"but {tw_path} missing — falling back to baseline."
+                    )
             if os.path.exists(path):
                 try:
                     with open(path, 'rb') as f:
@@ -992,10 +1033,21 @@ class MLBHighFrictionModel:
                     self.scalers[stat] = data['scaler']
                     self.feature_cols[stat] = data['features']
                     loaded += 1
-                    logger.info(f"[MLB_HF_MODEL] Loaded {stat}")
+                    is_tw = path != base_path
+                    if is_tw:
+                        loaded_tweedie.append(stat)
+                    logger.info(
+                        f"[MLB_HF_MODEL] Loaded {stat}"
+                        f"{' [TWEEDIE vp=' + str(data.get('tweedie_variance_power', '?')) + ']' if is_tw else ''}"
+                    )
                 except Exception as e:
                     logger.error(f"[MLB_HF_MODEL] Failed to load {stat}: {e}")
-        
+
+        if loaded_tweedie:
+            logger.warning(
+                f"[MLB_HF_MODEL] ACTIVE TWEEDIE VARIANTS → "
+                f"{loaded_tweedie}"
+            )
         logger.info(f"[MLB_HF_MODEL] Loaded {loaded}/{len(self.MLB_STAT_TYPES)} models")
         return loaded
 
