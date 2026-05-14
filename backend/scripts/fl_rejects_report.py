@@ -19,10 +19,17 @@ print(f'MLB FL rejects (active, ref_odds in [-299, +149]): {n_active_fl_rejects:
 print(f'MLB FL passing (active, tier=front_lines): '
       f'{coll.count_documents({"active": True, "tier": "front_lines"}):,}')
 
-rows = list(coll.find(query, {'_id': 0}).sort([('total_edge', -1)]).limit(20))
+import sys
+sort_mode = sys.argv[1] if len(sys.argv) > 1 else 'total_edge'
+sort_key = {
+    'total_edge': [('total_edge', -1)],
+    'hr':         [('hit_rate_l20', -1), ('hit_rate_l10', -1), ('hit_rate_l5', -1)],
+    'model':      [('edge_vs_fair', -1)],
+}[sort_mode]
+rows = list(coll.find(query, {'_id': 0}).sort(sort_key).limit(20))
 
 print()
-print('=== TOP 20 MLB FRONT-LINES REJECTS (sorted by total_edge desc) ===\n')
+print(f'=== TOP 20 MLB FRONT-LINES REJECTS (sorted by {sort_mode} desc) ===\n')
 hdr = (
     f"{'#':>2}  {'PLAYER':<22} {'STAT':<16} {'SIDE':<5} {'LINE':>5}  "
     f"{'REF_BOOK':<11} {'REF_ODDS':>9}  {'TP':>5}  {'CV':>5}  "
