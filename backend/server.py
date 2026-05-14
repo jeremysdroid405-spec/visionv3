@@ -1669,10 +1669,16 @@ async def startup_event():
         # so they can mongorestore them to their production server.
         from routes import admin_backups as _admin_backups
         app.include_router(_admin_backups.router, prefix="/api")
+        # 2026-05-14 — duplicate-prop + probability-trace diagnostics.
+        # See routes/admin_diagnostics.py.
+        from routes import admin_diagnostics as _admin_diagnostics
+        _admin_diagnostics.set_db(db)
+        app.include_router(_admin_diagnostics.router)
         logger.info(
             "[ROUTES] /api/health/sync + /api/health/contracts + "
-            "/api/debug/snapshots/* + /api/admin/backups/* registered "
-            "+ sync_locks + contract_violations indexes ensured"
+            "/api/debug/snapshots/* + /api/admin/backups/* + "
+            "/api/v3/admin/duplicate-props + /api/v3/admin/probability-trace "
+            "registered + sync_locks + contract_violations indexes ensured"
         )
     except Exception as _hs_err:  # noqa: BLE001
         logger.error(f"[ROUTES] health_sync wiring failed: {_hs_err}")

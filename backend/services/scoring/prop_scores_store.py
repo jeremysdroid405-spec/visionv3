@@ -990,6 +990,54 @@ async def write_versioned_scores(
                 })
                 stale_deleted = sweep.deleted_count or 0
 
+    # ── Cross-tag active=True sweep (2026-05-14) ───────────────────
+    # ACTIVE-POOL SSOT INVARIANT: only one version_tag per sport may
+    # carry `active=True` for a given canonical_key. The canonical
+    # live tag is `final-{sport}-rt` (see `_LIVE_VERSION_TAGS`).
+    #
+    # Bug repro: 678/1350 (50.2%) of MLB canonical_keys had multiple
+    # active=True rows across stale tags (`final-mlb`, transient
+    # `recompute-…`, `final-mlb-rt-shadow`). Every Andy Pages /
+    # Heliot Ramos reject seen in the FL audit had 3-4 active rows.
+    #
+    # Fix: after a successful write to the SSOT live tag, flip
+    # active=False on every other-tag row for the same canonical_key.
+    # Scoped narrowly (only when writing the live tag) so audit /
+    # backtest / shadow runs don't disturb the live pool, and only
+    # when written>0 (zero-write guard already short-circuits above).
+    cross_tag_deactivated = 0
+    live_tag_for_sport = f"final-{sport}-rt"
+    if (
+        inserted_or_replaced
+        and new_cks
+        and version_tag == live_tag_for_sport
+    ):
+        try:
+            res = await coll.update_many(
+                {
+                    "canonical_key": {"$in": new_cks},
+                    "version_tag": {"$ne": live_tag_for_sport},
+                    "active": True,
+                },
+                {"$set": {
+                    "active": False,
+                    "inactive_reason": "stale_tag_active_sweep",
+                    "active_changed_at": datetime.now(timezone.utc),
+                }},
+            )
+            cross_tag_deactivated = res.modified_count or 0
+            if cross_tag_deactivated:
+                logger.info(
+                    f"[SCORES_STORE:{sport}] mode=replace "
+                    f"version='{version_tag}' cross_tag_deactivated="
+                    f"{cross_tag_deactivated} (stale-tag SSOT sweep)"
+                )
+        except Exception as _xtag_exc:
+            logger.warning(
+                f"[SCORES_STORE:{sport}] cross-tag active sweep failed "
+                f"({_xtag_exc}); continuing — sweep is best-effort."
+            )
+
     logger.info(
         f"[SCORES_STORE:{sport}] mode=replace version='{version_tag}' "
         f"written={inserted_or_replaced} stale_swept={stale_deleted} → {coll_name}"

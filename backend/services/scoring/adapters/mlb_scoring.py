@@ -306,6 +306,42 @@ class MLBScoringAdapter(ScoringAdapter):
                 prop["projection_model_version"] = result.get("model_version")
 
                 # ============================================================
+                # 2026-05-14 — EMPIRICAL-BAYES SHRINKAGE MOVED IN FRONT OF
+                # THE PROBABILITY ENGINE (Order-of-Ops fix).
+                # ------------------------------------------------------------
+                # PREVIOUS BUG: EB ran AFTER `compute_probability`, so the
+                # probability was computed off the RAW HF projection (e.g.
+                # 0.61 for Andy Pages HRR) while `model_projection`
+                # displayed to users was the EB-shrunk value (1.306).
+                # Result: p_model collapsed toward 50% even when projection
+                # said player would clear the 0.5 line by 2.6x.
+                #
+                # FIX: apply EB first → distribution engine sees the
+                # canonical projection that the user sees. ECDF still gets
+                # `raw_prediction` (training-distribution parity, computed
+                # below using `result.get("raw_prediction")`).
+                #
+                # Whitelisted families: home_runs / rbis / total_bases /
+                # hits+runs+rbis. Skipped families return None → projection
+                # unchanged. Live behavior on non-whitelisted families is
+                # identical to before this fix.
+                # ============================================================
+                try:
+                    from services.scoring.mlb_eb_shrinkage import apply_eb_shrinkage
+                    _shrunk, _eb_audit = apply_eb_shrinkage(
+                        master_hub=hf_model.master_hub,
+                        bdl_player_id=bdl_player_id,
+                        stat_type=stat_type,
+                        raw_projection=model_projection,
+                    )
+                    for _k, _v in _eb_audit.items():
+                        prop[_k] = _v
+                    if _shrunk is not None:
+                        model_projection = _shrunk
+                except Exception as _eb_exc:
+                    logger.debug(f"[MLB_SCORING] EB shrinkage skipped: {_eb_exc}")
+
+                # ============================================================
                 # 2026-04-27 — DISTRIBUTION-BASED PROBABILITY LAYER (new base).
                 # ------------------------------------------------------------
                 # Replaces the HF model's internal heuristic Gaussian (which
@@ -397,31 +433,11 @@ class MLBScoringAdapter(ScoringAdapter):
                 if model_projection is not None:
                     projection_method = "model"
 
-                # --- Empirical-Bayes post-shrinkage (2026-04-24, flagged) ---
-                # On whitelisted zero-heavy stat families only
-                # (home_runs / rbis / total_bases / hits+runs+rbis),
-                # pull the HF projection toward the player's historical
-                # career mean with per-stat Bayesian weights. Flagged
-                # OFF by default via MLB_HF_EB_SHRINKAGE_ENABLED. When
-                # applied, the shrunk projection is what feeds the
-                # ECDF probability lookup below AND what persists as
-                # `model_projection` on the score doc. Audit trail is
-                # persisted regardless so observability can diff raw
-                # vs shrunk.
-                try:
-                    from services.scoring.mlb_eb_shrinkage import apply_eb_shrinkage
-                    _shrunk, _eb_audit = apply_eb_shrinkage(
-                        master_hub=hf_model.master_hub,
-                        bdl_player_id=bdl_player_id,
-                        stat_type=stat_type,
-                        raw_projection=model_projection,
-                    )
-                    for _k, _v in _eb_audit.items():
-                        prop[_k] = _v
-                    if _shrunk is not None:
-                        model_projection = _shrunk
-                except Exception as _eb_exc:
-                    logger.debug(f"[MLB_SCORING] EB shrinkage skipped: {_eb_exc}")
+                # --- Empirical-Bayes post-shrinkage ---
+                # 2026-05-14 MOVED to BEFORE compute_probability — see
+                # comment block above the distribution engine call.
+                # This stub stays so any reference to "EB applied after
+                # probability" in older docs has a single grep hit.
 
                 # --- Universal ECDF probability — SHADOW ONLY (2026-04-29) ---
                 # MLB Probability Rebuild: ECDF no longer overrides
