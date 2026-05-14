@@ -942,6 +942,60 @@ const UniversalPlayerCard = memo(({
           })()}
         </div>
 
+        {/* BEST BET row (2026-05-14, universal display contract).
+            Surfaces `best_book` + `best_book_odds` directly on every
+            pick card so the user instantly sees the cheapest market
+            price + the resulting `total_edge` (Best Bet Edge =
+            p_model − best_book_implied). Renders ONLY when the score
+            doc carries a best_book — silent fallback when no books
+            quote this side. */}
+        {player.best_book && (() => {
+          const _bookMap = {
+            'draftkings': 'DraftKings', 'fanduel': 'FanDuel',
+            'betmgm': 'BetMGM', 'caesars': 'Caesars',
+            'espnbet': 'ESPN BET', 'hardrockbet': 'Hard Rock',
+            'betrivers': 'BetRivers', 'betparx': 'BetPARX',
+            'ballybet': 'Bally Bet', 'fliff': 'Fliff',
+            'pointsbetus': 'PointsBet', 'betonline': 'BetOnline',
+          };
+          const bookLabel = _bookMap[player.best_book] || player.best_book;
+          const bestOdds = player.best_book_odds;
+          const bestBetEdge = player.total_edge != null
+            ? Number(player.total_edge) * 100
+            : null;
+          const edgeColor = bestBetEdge == null ? 'text-zinc-400'
+            : bestBetEdge > 10 ? 'text-emerald-400'
+            : bestBetEdge > 3 ? 'text-amber-300'
+            : bestBetEdge < 0 ? 'text-red-400'
+            : 'text-zinc-300';
+          return (
+            <div
+              className="flex items-baseline justify-between gap-2 mb-2 text-[10.5px] font-mono"
+              data-testid={`best-bet-row-${playerSlug}`}
+              title="Best Bet Edge compares our model to the best sportsbook price currently available."
+            >
+              <span className="text-zinc-500 uppercase tracking-[0.14em]">
+                Best Bet
+              </span>
+              <div className="flex items-baseline gap-2 min-w-0">
+                <span className="text-zinc-200 font-semibold truncate">
+                  {bookLabel}
+                </span>
+                {bestOdds != null && (
+                  <span className="text-zinc-300 tabular-nums">
+                    {bestOdds > 0 ? `+${bestOdds}` : bestOdds}
+                  </span>
+                )}
+                {bestBetEdge != null && (
+                  <span className={`${edgeColor} font-bold tabular-nums`}>
+                    {bestBetEdge > 0 ? '+' : ''}{bestBetEdge.toFixed(1)}%
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* INLINE VISION INTEL — always visible, no CTA button.
             When backend hasn't returned a Gemini-authored narrative
             yet (JIT reaper is still working through the visible board),
