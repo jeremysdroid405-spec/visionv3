@@ -417,21 +417,25 @@ def _pick_display_reference_odds(
 ) -> Tuple[Optional[float], str]:
     """Display-only reference odds for pick-card UI parity.
 
-    2026-05-15 — NBA/MLB pick-card visual parity. MLB's
-    ``_pick_reference_odds`` returns ``("consensus", mean(dk_p,fd_p))``
-    when DK+FD both quote, so MLB pick cards display
-    ``OVER -319 CONSENSUS``. NBA's `_pick_reference_odds` skips the
-    consensus step (gate calibration), so NBA pick cards display
-    ``OVER -454 DK`` instead. This helper always prefers the DK+FD
-    consensus when both books quote, regardless of sport, so the
-    frontend can render an identical "CONSENSUS" label across NBA and
-    MLB. When DK+FD aren't both available, we fall back to the canonical
-    tier reference chain (`_pick_reference_odds`).
+    2026-05-15 — NBA/MLB pick-card visual parity. The tier reference
+    chain (``_pick_reference_odds``) is calibration-locked to a
+    single-book pick for NBA (gates were tuned against single-book
+    odds). MLB has its own DK+FD consensus first step. The result is
+    that NBA cards display the book name (DK / FD / MGM) while MLB
+    cards display "CONSENSUS", an inconsistency on the dashboard.
 
-    The output is stamped onto the score doc as
-    ``display_reference_book`` / ``display_reference_odds``. Gate
-    routing keeps reading ``tier_reference_*`` (single-book pick),
-    untouched.
+    This helper applies a **universal multi-book consensus rule** for
+    both sports, used purely for display:
+
+      • If 2+ of {DK, FD, MGM, CSR, BOL} quote the prop, return
+        ("consensus", mean(implied_prob)→american) across the books
+        that quoted.
+      • Else, defer to the canonical single-book tier reference
+        chain (``_pick_reference_odds``) so single-book picks keep
+        their actual book label.
+
+    Gate routing keeps reading ``tier_reference_*`` (single-book
+    pick), untouched.
 
     Returns
     -------
@@ -439,17 +443,21 @@ def _pick_display_reference_odds(
         book_label values: ``"consensus" | "dk" | "fd" | "mgm" | "csr" |
                             "bol" | "none"``
     """
-    dk_odds = dk_layer.get("odds") if dk_layer else None
-    fd_odds = fd_layer.get("odds") if fd_layer else None
-    if dk_odds is not None and fd_odds is not None:
-        dk_p = _american_to_prob(dk_odds)
-        fd_p = _american_to_prob(fd_odds)
-        if dk_p is not None and fd_p is not None:
-            consensus_amer = _prob_to_american((dk_p + fd_p) / 2.0)
-            if consensus_amer is not None:
-                return consensus_amer, "consensus"
-    # No DK+FD consensus available — defer to the tier reference book
-    # (already single-book and matches what users would otherwise see).
+    book_probs: List[float] = []
+    for layer in (dk_layer, fd_layer, mgm_layer, csr_layer, bol_layer):
+        if not layer:
+            continue
+        o = layer.get("odds")
+        if o is None:
+            continue
+        p = _american_to_prob(o)
+        if p is not None:
+            book_probs.append(p)
+    if len(book_probs) >= 2:
+        consensus_amer = _prob_to_american(sum(book_probs) / len(book_probs))
+        if consensus_amer is not None:
+            return consensus_amer, "consensus"
+    # Single book or no quotes — defer to tier reference chain.
     return _pick_reference_odds(
         dk_layer, mgm_layer,
         fd_layer=fd_layer, bol_layer=bol_layer,
