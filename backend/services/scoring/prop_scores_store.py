@@ -239,6 +239,14 @@ _SCORE_OUTPUT_FIELDS = (
     # canonical name (see services/scoring/adapters/mlb_scoring.py
     # `_propagate_phase1_context` docstring).
     "batter_hand", "batting_order", "venue",
+    # 2026-05-15 — Phase 2A MLB pitcher matchup context. Stamped by
+    # `services/feature_hydration.py` (probable-pitcher fields) and
+    # `services/scoring/adapters/mlb_scoring._propagate_phase1_context`
+    # (matchup flags). Source: free MLB Stats API (no auth).
+    "opp_pitcher_id", "opp_pitcher_name", "opp_pitcher_throws",
+    "probable_pitcher",
+    "opp_pitcher_era", "opp_pitcher_whip", "opp_pitcher_k9",
+    "same_hand_matchup", "opposite_hand_matchup",
     # Multi-book de-vig TP engine (2026-04-22). Replaces the legacy
     # avg(DK,FD) / avg(DK,MGM) implied-prob TP. Fields:
     #   tp               — final de-vigged true probability (0..100) or None

@@ -143,6 +143,21 @@ class ScoreDocument(BaseModel):
     batting_order:  Optional[int] = None     # 1..9 (lineup spot)
     venue:          Optional[str] = None     # stadium label
 
+    # ── Phase 2A MLB pitcher matchup context (2026-05-15) ─────────
+    # Stamped by `services/feature_hydration.py` (probable-pitcher
+    # fields, source: free MLB Stats API) and by the MLB adapter's
+    # `_propagate_phase1_context` (derived matchup flags). NBA leaves
+    # these None.
+    opp_pitcher_id:        Optional[int]   = None  # MLBAM person id
+    opp_pitcher_name:      Optional[str]   = None
+    opp_pitcher_throws:    Optional[str]   = None  # 'L' | 'R'
+    probable_pitcher:      Optional[str]   = None  # alias of opp_pitcher_name
+    opp_pitcher_era:       Optional[float] = None
+    opp_pitcher_whip:      Optional[float] = None
+    opp_pitcher_k9:        Optional[float] = None
+    same_hand_matchup:     Optional[int]   = None  # 0/1
+    opposite_hand_matchup: Optional[int]   = None  # 0/1
+
     # ── Universal ephemeral lifecycle (2026-05-15) ────────────────
     # Same contract as cached_board (services/boards/
     # board_lifecycle.LIFECYCLE_FIELDS). Stamped on every write by

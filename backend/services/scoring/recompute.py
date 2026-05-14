@@ -769,6 +769,13 @@ async def recompute_sport(
             # `_propagate_phase1_context`). Mirrors fields the
             # adapter stamps on the prop dict onto the score doc.
             "batter_hand", "batting_order", "venue",
+            # 2026-05-15 — Phase 2A pitcher matchup context. Stamped
+            # by feature_hydration (probable-pitcher fields) and
+            # `_propagate_phase1_context` (matchup flags).
+            "opp_pitcher_id", "opp_pitcher_name", "opp_pitcher_throws",
+            "probable_pitcher",
+            "opp_pitcher_era", "opp_pitcher_whip", "opp_pitcher_k9",
+            "same_hand_matchup", "opposite_hand_matchup",
             "mu_recency_blended", "mu_recency_blend_l3",
             "mu_recency_blend_l10_median", "mu_recency_blend_l20",
             "mu_recency_blend_l5", "mu_recency_blend_weights",

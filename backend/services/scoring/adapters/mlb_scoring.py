@@ -118,6 +118,33 @@ def _propagate_phase1_context(
     # transform — propagation only requires score-doc allowlist
     # (see `prop_scores_store._SCORE_OUTPUT_FIELDS`).
 
+    # ── Phase 2A (2026-05-15) — Pitcher Matchup Flags ─────────────
+    # Derive `same_hand_matchup` / `opposite_hand_matchup` from the
+    # batter_hand × opp_pitcher_throws pair. Switch-hitters ('S')
+    # always face the opposite hand (they swing from the side that
+    # opposes the pitcher) so encode as opposite_hand=1.
+    #
+    # Flags are written ONLY when both inputs are known so the
+    # downstream Step-5 missing-value audit can distinguish
+    # 0=known-platoon-match from None=unknown.
+    bh = prop.get("batter_hand")
+    ph = prop.get("opp_pitcher_throws")
+    if bh and ph:
+        bh_u = str(bh).strip().upper()
+        ph_u = str(ph).strip().upper()
+        if bh_u == "S":
+            prop["same_hand_matchup"] = 0
+            prop["opposite_hand_matchup"] = 1
+        elif bh_u in ("L", "R") and ph_u in ("L", "R"):
+            prop["same_hand_matchup"] = 1 if bh_u == ph_u else 0
+            prop["opposite_hand_matchup"] = 1 - prop["same_hand_matchup"]
+        else:
+            prop["same_hand_matchup"] = None
+            prop["opposite_hand_matchup"] = None
+    else:
+        prop["same_hand_matchup"] = None
+        prop["opposite_hand_matchup"] = None
+
 
 # ──────────────────────────────────────────────────────────────────────
 

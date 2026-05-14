@@ -22,7 +22,11 @@ Write fields (per prop):
   MLB-only
     park_team, venue, team_implied_runs,
     probable_pitcher, opp_pitcher_throws, opp_pitcher_id, opp_pitcher_name,
+    opp_pitcher_era, opp_pitcher_whip, opp_pitcher_k9,
     batting_order, lineup_confirmed
+    (matchup flags `same_hand_matchup` / `opposite_hand_matchup` are
+    derived in `services/scoring/adapters/mlb_scoring._propagate_phase1_context`
+    once `batter_hand` is stamped — keeps single source of truth.)
 
 Guardrail: this module only writes ADDITIONAL keys onto each prop.
 It never overwrites existing identity / odds / market fields.
@@ -114,6 +118,37 @@ async def _build_player_team_map(
                     break
         out[pid] = {"team_abbr": abbr or None, "team_full": (full or "").strip() or None}
     return out
+
+
+def _commence_date_iso(ct: Any) -> Optional[str]:
+    """Coerce a commence_time (datetime / ISO str / epoch ms) into the
+    YYYY-MM-DD UTC date string the MLB Stats API expects. Returns
+    ``None`` when the input is unparseable so the caller can skip
+    fetching pitchers for that prop without raising."""
+    if ct is None:
+        return None
+    if isinstance(ct, datetime):
+        d = ct if ct.tzinfo else ct.replace(tzinfo=timezone.utc)
+        return d.astimezone(timezone.utc).strftime("%Y-%m-%d")
+    if isinstance(ct, (int, float)):
+        try:
+            d = datetime.fromtimestamp(float(ct) / 1000.0, tz=timezone.utc)
+            return d.strftime("%Y-%m-%d")
+        except Exception:
+            return None
+    if isinstance(ct, str):
+        s = ct.strip()
+        if not s:
+            return None
+        # Fast path: ISO date prefix.
+        if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+            return s[:10]
+        try:
+            d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            return d.astimezone(timezone.utc).strftime("%Y-%m-%d")
+        except Exception:
+            return None
+    return None
 
 
 # =============================================================================
@@ -562,8 +597,34 @@ async def hydrate_game_context_on_props(
     if sport == "mlb":
         from services.mlb_lineups_loader import load_slot_map as _mlb_load_slot_map
         mlb_slot_map = await _mlb_load_slot_map(db, event_ids)
+        # Phase 2A (2026-05-15) — fetch real probable-pitcher index from
+        # the free MLB Stats API. One index per UTC date that any prop
+        # touches; typically 1 date per ingest cycle but doubleheaders
+        # spanning UTC midnight produce 2.  Failures degrade gracefully
+        # to an empty index — fields stay None, downstream behaviour is
+        # identical to the previous mock path.
+        from services.mlb_probable_pitcher import (
+            get_probable_pitcher_index as _get_pp_index,
+        )
+        mlb_pp_indexes: Dict[str, Any] = {}
+        unique_dates: set = set()
+        for _p in props:
+            _ct = _p.get("commence_time")
+            _d = _commence_date_iso(_ct)
+            if _d:
+                unique_dates.add(_d)
+        for _d in unique_dates:
+            try:
+                mlb_pp_indexes[_d] = await _get_pp_index(_d)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "[CTX_HYDRATE:mlb] probable pitcher fetch failed "
+                    "date=%s err=%s", _d, exc,
+                )
+                mlb_pp_indexes[_d] = None
     else:
         mlb_slot_map = {}
+        mlb_pp_indexes = {}
     # 2026-05 — per-player minutes / usage (NBA only) used to size
     # `team_minutes_removed`, `team_usage_removed_pct`,
     # `usage_vacuum_factor`, `key_player_out_flag`.
@@ -732,11 +793,45 @@ async def hydrate_game_context_on_props(
             # team_implied_runs == team_total (Vegas team total IS the
             # implied run line). Already filled above as `team_total`.
             p["team_implied_runs"] = p.get("team_total")
-            # MOCKED until external feed: probable_pitcher
-            p["probable_pitcher"] = None
-            p["opp_pitcher_id"] = None
-            p["opp_pitcher_name"] = None
-            p["opp_pitcher_throws"] = None
+            # ── Phase 2A (2026-05-15) — Probable Pitcher Wiring ─────────
+            # Replaces the four previously-mocked fields with values
+            # from `services.mlb_probable_pitcher`. Selection rule:
+            # opposing pitcher = pitcher on the OTHER side of the game.
+            #   batter is home → opp pitcher = away.probable
+            #   batter is away → opp pitcher = home.probable
+            # Falls back to None when:
+            #   • home_abbr/away_abbr unresolved
+            #   • is_home_team unresolved (sided lookup ambiguous)
+            #   • MLB Stats API returned no probable pitcher
+            opp_pitcher = None
+            pp_date = _commence_date_iso(p.get("commence_time"))
+            pp_idx = mlb_pp_indexes.get(pp_date) if pp_date else None
+            if pp_idx is not None and home_abbr and away_abbr:
+                pair = pp_idx.get(home_abbr, away_abbr)
+                if pair:
+                    if is_home_team == 1:
+                        opp_pitcher = pair.get("away")
+                    elif is_home_team == 0:
+                        opp_pitcher = pair.get("home")
+            if opp_pitcher:
+                p["opp_pitcher_id"] = opp_pitcher.get("id")
+                p["opp_pitcher_name"] = opp_pitcher.get("name")
+                p["opp_pitcher_throws"] = opp_pitcher.get("throws")
+                p["opp_pitcher_era"] = opp_pitcher.get("era")
+                p["opp_pitcher_whip"] = opp_pitcher.get("whip")
+                p["opp_pitcher_k9"] = opp_pitcher.get("k9")
+                # Display alias used by UI / picks.
+                p["probable_pitcher"] = opp_pitcher.get("name")
+                counters["probable_pitcher_filled"] = counters.get(
+                    "probable_pitcher_filled", 0) + 1
+            else:
+                p["opp_pitcher_id"] = None
+                p["opp_pitcher_name"] = None
+                p["opp_pitcher_throws"] = None
+                p["opp_pitcher_era"] = None
+                p["opp_pitcher_whip"] = None
+                p["opp_pitcher_k9"] = None
+                p["probable_pitcher"] = None
             # ---- batting_order via mlb_projected_lineups (strict no-leakage) ----
             from services.mlb_lineups_loader import lookup_slot as _mlb_lookup_slot
             slot, confirmed, lu_source = _mlb_lookup_slot(
@@ -758,7 +853,8 @@ async def hydrate_game_context_on_props(
                 if not confirmed:
                     imputed_fields.append("lineup_confirmed")
             for k in ("probable_pitcher", "opp_pitcher_throws"):
-                imputed_fields.append(k)
+                if p.get(k) is None:
+                    imputed_fields.append(k)
 
         # Stash imputed list on the prop (Step 5 missing-value policy
         # will surface this on score docs via downstream join).
@@ -782,6 +878,7 @@ async def hydrate_game_context_on_props(
         f"game_total={counters['game_total_filled']}  "
         f"injuries={counters['injuries_filled']}  "
         f"lineup_slots={counters['lineup_slot_filled']}  "
+        f"probable_pitcher_filled={counters.get('probable_pitcher_filled', 0)}  "
         f"top_imputed={list(report['imputed_field_summary'].items())[:5]}"
     )
     return report

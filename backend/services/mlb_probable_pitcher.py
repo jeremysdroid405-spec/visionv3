@@ -117,13 +117,16 @@ async def _fetch_schedule_for_date(date_iso: str) -> List[Dict[str, Any]]:
 async def _fetch_pitcher_stats(
     person_id: int, season: int,
 ) -> Dict[str, Optional[float]]:
-    """Fetch ERA/WHIP/K9 for ``person_id`` for ``season``.
+    """Fetch throws / ERA / WHIP / K9 for ``person_id`` for ``season``.
 
     Returns dict with possibly-None values when the pitcher has no
     season stats yet (rookie called up mid-season is the common case).
+    ``throws`` is sourced from the person's ``pitchHand.code`` which
+    is more reliable than the schedule-hydrated value (the schedule
+    endpoint often omits ``pitchHand`` on the embedded probablePitcher).
     """
     out: Dict[str, Optional[float]] = {
-        "era": None, "whip": None, "k9": None,
+        "throws": None, "era": None, "whip": None, "k9": None,
     }
     try:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SEC) as client:
@@ -141,7 +144,14 @@ async def _fetch_pitcher_stats(
         people = data.get("people") or []
         if not people:
             return out
-        stats = people[0].get("stats") or []
+        person = people[0]
+        # pitchHand fallback — schedule endpoint frequently omits this.
+        ph = person.get("pitchHand") or {}
+        if isinstance(ph, dict):
+            code = ph.get("code") or ph.get("description")
+            if code:
+                out["throws"] = str(code).strip().upper()[:1]
+        stats = person.get("stats") or []
         if not stats:
             return out
         splits = stats[0].get("splits") or []
@@ -212,10 +222,11 @@ async def build_probable_pitcher_index(
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for pid, res in zip(pids, results):
             stats_map[pid] = res if isinstance(res, dict) else {
-                "era": None, "whip": None, "k9": None,
+                "throws": None, "era": None, "whip": None, "k9": None,
             }
-    # Pitcher throws & bats are on the schedule hydration; if absent
-    # we fall back to None (rare).
+    # Pitcher throws & bats are on the schedule hydration when
+    # available; fall back to the people-endpoint pitchHand which we
+    # already fetched alongside the stats above.
     for h_abbr, a_abbr, hp, ap in pair_entries:
         def _pitcher_dict(pitcher_json: Dict) -> Optional[Dict[str, Any]]:
             if not pitcher_json or not pitcher_json.get("id"):
@@ -226,10 +237,12 @@ async def build_probable_pitcher_index(
                 or pitcher_json.get("throws")
             )
             stats = stats_map.get(pid, {})
+            if not throws:
+                throws = stats.get("throws")
             return {
                 "id": pid,
                 "name": pitcher_json.get("fullName"),
-                "throws": (throws or "").upper() if throws else None,
+                "throws": (throws or "").upper()[:1] if throws else None,
                 "era": stats.get("era"),
                 "whip": stats.get("whip"),
                 "k9": stats.get("k9"),
