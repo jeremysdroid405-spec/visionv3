@@ -115,6 +115,10 @@ _PRESERVE_ON_REPLACE = (
 
 # Exactly the fields a score doc may contain (plus canonical identity + versioning).
 _SCORE_OUTPUT_FIELDS = (
+    # ── Universal best-book / market-shopping edge (2026-05-13) ──────
+    "best_book", "best_book_odds", "best_book_implied_probability",
+    "best_book_edge", "market_spread", "market_spread_label",
+    "books_available_count",
     # vision_score dimension
     "vision_score", "vision_score_raw", "quality_source", "fair_prob",
     "stability", "confidence", "edge_vs_fair",

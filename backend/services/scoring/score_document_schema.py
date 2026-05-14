@@ -493,6 +493,17 @@ class ScoreDocument(BaseModel):
     flf_line:  Optional[float] = None
     flf_odds:  Optional[float] = None
     flf_odds_opp: Optional[float] = None
+
+    # ── Universal best-book / market-shopping edge (2026-05-13) ──────
+    # Sport-agnostic exploitability layer on top of consensus TP.
+    # Tells users where the actual best line lives across all books.
+    best_book:                       Optional[str]   = None
+    best_book_odds:                  Optional[float] = None
+    best_book_implied_probability:   Optional[float] = None
+    best_book_edge:                  Optional[float] = None
+    market_spread:                   Optional[float] = None
+    market_spread_label:             Optional[str]   = None
+    books_available_count:           Optional[int]   = None
     pp_payout_multiplier:  Optional[float] = None
     pp_market_key:         Optional[str] = None
     is_alternate_market:   Optional[bool] = None

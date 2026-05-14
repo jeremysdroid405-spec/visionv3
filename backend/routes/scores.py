@@ -258,6 +258,93 @@ async def recompute_one_chunked_status(sport: str):
     return status
 
 
+# ── 2026-05-13 — Universal best-book / shopping-edge debug endpoints ──
+# Surfaces:
+#   • top 50 props by best_book_edge
+#   • best_book distribution by sportsbook
+#   • average market_spread per sport / stat_family
+#   • count of props where consensus edge is weak (edge_vs_fair <= 0.02)
+#     but best_book_edge is strong (>= 0.04) — the soft-market opportunity
+@router.get("/best-book/report/{sport}")
+async def best_book_report(
+    sport: str,
+    version_tag: str = Query("final-{sport}-rt"),
+    top_n: int = Query(50, ge=1, le=200),
+):
+    sport = (sport or "").lower()
+    if sport not in SUPPORTED_SPORTS:
+        raise HTTPException(status_code=400, detail=f"Unsupported sport '{sport}'")
+    db = _get_db()
+    tag = version_tag.replace("{sport}", sport)
+    coll = db[f"{sport}_prop_scores"]
+    match = {"version_tag": tag, "active": True}
+
+    # 1. Top N props by best_book_edge
+    top_props = await coll.find(
+        {**match, "best_book_edge": {"$ne": None}},
+        {
+            "_id": 0, "player_name": 1, "stat_type": 1, "line": 1,
+            "recommendation": 1, "tier": 1, "tp": 1, "edge_vs_fair": 1,
+            "best_book": 1, "best_book_odds": 1,
+            "best_book_implied_probability": 1, "best_book_edge": 1,
+            "market_spread": 1, "market_spread_label": 1,
+            "books_available_count": 1,
+        },
+    ).sort("best_book_edge", -1).limit(top_n).to_list(length=top_n)
+
+    # 2. best_book distribution
+    pipe_dist = [
+        {"$match": {**match, "best_book": {"$ne": None}}},
+        {"$group": {"_id": "$best_book", "n": {"$sum": 1}}},
+        {"$sort": {"n": -1}},
+    ]
+    book_dist = {d["_id"]: d["n"] async for d in coll.aggregate(pipe_dist)}
+
+    # 3. Average market_spread per stat_family
+    pipe_spread = [
+        {"$match": {**match, "market_spread": {"$ne": None}}},
+        {"$group": {
+            "_id": "$gate_eval.stat_family",
+            "avg_spread": {"$avg": "$market_spread"},
+            "n":          {"$sum": 1},
+        }},
+        {"$sort": {"avg_spread": -1}},
+    ]
+    spread_by_family = [
+        {
+            "stat_family": d["_id"],
+            "n": d["n"],
+            "avg_spread": round(d["avg_spread"], 4) if d["avg_spread"] else None,
+        }
+        async for d in coll.aggregate(pipe_spread)
+    ]
+
+    # 4. Soft-market opportunities: consensus edge weak, shopping edge strong
+    soft_market_opps = await coll.count_documents({
+        **match,
+        "edge_vs_fair":   {"$lte": 0.02, "$gte": -0.02},
+        "best_book_edge": {"$gte": 0.04},
+    })
+
+    # 5. Overall coverage
+    total_active = await coll.count_documents(match)
+    bb_present   = await coll.count_documents({**match, "best_book": {"$ne": None}})
+
+    return {
+        "sport": sport,
+        "version_tag": tag,
+        "summary": {
+            "total_active":        total_active,
+            "props_with_best_book": bb_present,
+            "coverage_pct":         round(100.0 * bb_present / total_active, 2) if total_active else 0,
+            "soft_market_opportunities": soft_market_opps,
+        },
+        "best_book_distribution":     book_dist,
+        "avg_spread_by_stat_family":  spread_by_family,
+        f"top_{top_n}_by_shopping_edge": top_props,
+    }
+
+
 @router.get("/{sport}/diff")
 async def diff_versions(
     sport: str,

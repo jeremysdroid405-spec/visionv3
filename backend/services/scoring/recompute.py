@@ -887,6 +887,27 @@ async def recompute_sport(
 
         score_docs.append(doc)
 
+    # 2a. Universal best-book / market-shopping edge (2026-05-13).
+    # For every prop, compute the 6 best-book fields onto the score
+    # doc so the UI can surface "Best Book: DK -300 / Edge +5.0%".
+    # Data-driven via `_BOOK_PROBES` — works for NBA, MLB, and any
+    # future sport that adds canonical book fields.
+    from services.scoring.best_book import compute_best_book_metrics
+    for doc in score_docs:
+        # `tp` is on a 0-100 scale. Fair probability for the requested
+        # side is `tp / 100` (already side-aware — engine computes TP
+        # for the OVER or UNDER row's own side).
+        tp_value = doc.get("tp")
+        fair_prob = (
+            float(tp_value) / 100.0
+            if isinstance(tp_value, (int, float)) and tp_value is not None
+            else None
+        )
+        # The raw prop dict still carries the per-book layer fields
+        # via the persistence allowlist; passing `doc` directly works
+        # because the score doc inherits {book}_odds flat fields.
+        doc.update(compute_best_book_metrics(doc, fair_prob=fair_prob))
+
     # 3. Percentile-normalize vision_score across the sport's slate.
     _apply_vision_score_normalization(score_docs)
 
