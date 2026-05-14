@@ -1674,6 +1674,27 @@ async def startup_event():
         from routes import admin_diagnostics as _admin_diagnostics
         _admin_diagnostics.set_db(db)
         app.include_router(_admin_diagnostics.router)
+        # 2026-05-15 — system-wide ephemeral data cleanup utility.
+        # See services/cleanup/ephemeral_cleanup.py.
+        from routes import admin_ephemeral_cleanup as _admin_ephemeral
+        _admin_ephemeral.set_db(db)
+        app.include_router(_admin_ephemeral.router)
+        # Ensure TTL indexes on ttl_purge_at for every ephemeral
+        # collection (idempotent — Mongo no-ops on re-create).
+        try:
+            from services.cleanup.ephemeral_cleanup import (
+                ensure_ttl_indexes as _ensure_ephemeral_indexes,
+            )
+            _ttl_res = await _ensure_ephemeral_indexes(db)
+            logger.info(
+                "[EPHEMERAL_CLEANUP] startup TTL indexes ensured: %s",
+                _ttl_res,
+            )
+        except Exception as _exc:  # noqa: BLE001
+            logger.warning(
+                "[EPHEMERAL_CLEANUP] startup TTL index ensure failed: %s",
+                _exc,
+            )
         logger.info(
             "[ROUTES] /api/health/sync + /api/health/contracts + "
             "/api/debug/snapshots/* + /api/admin/backups/* + "

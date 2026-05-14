@@ -1131,6 +1131,38 @@ async def recompute(
             }
 
     duration_ms = int((time.monotonic() - t0) * 1000)
+
+    # ── Post-recompute ephemeral cleanup ───────────────────────
+    # 2026-05-15 — System-wide cleanup utility. After a successful
+    # recompute pass (real writes only, not dry-run), purge orphan
+    # docs whose canonical_key no longer appears on the slate.
+    # Skips automatically when live_props is empty (ingest outage).
+    # See services/cleanup/ephemeral_cleanup.py.
+    cleanup_results: Dict[str, Any] = {}
+    if not dry_run:
+        try:
+            from services.cleanup.ephemeral_cleanup import (
+                run_ephemeral_cleanup,
+            )
+            for s in sports:
+                # Per-sport real-mode cleanup. ``force=False`` honours
+                # the live-props-empty safety abort.
+                try:
+                    cleanup_results[s] = await run_ephemeral_cleanup(
+                        db, sport=s, dry_run=False, force=False,
+                    )
+                except Exception as _cl_exc:  # noqa: BLE001
+                    logger.warning(
+                        "[RECOMPUTE:%s] post-cleanup failed: %s",
+                        s, _cl_exc,
+                    )
+                    cleanup_results[s] = {"error": repr(_cl_exc)}
+        except Exception as _imp_exc:  # noqa: BLE001
+            logger.warning(
+                "[RECOMPUTE] post-cleanup module import failed: %s",
+                _imp_exc,
+            )
+
     return {
         "status": "success",
         "sports_processed": sports,
@@ -1142,4 +1174,5 @@ async def recompute(
         "dry_run": dry_run,
         "per_sport": per_sport,
         "samples": {s: per_sport[s].get("samples", []) for s in sports},
+        "ephemeral_cleanup": cleanup_results,
     }

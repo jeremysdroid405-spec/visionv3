@@ -146,6 +146,31 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-15 — System-wide ephemeral data cleanup utility (orphan TTL)
+- **Problem**: Stale orphan score docs from past slates were never being purged. Audit on 2026-05-15 showed 5,581 of 12,619 MLB FL OVER "rejects" (44%) were orphan docs whose `canonical_key` was no longer in `mlb_live_props` — contaminating gate calibration audits. Same pattern on NBA.
+- **Solution**: Two-step active/inactive lifecycle with grace-period TTL purge — never delete a current-slate doc, always give 24h debug window after marking inactive. Universal, sport-agnostic, config-driven.
+- **New files**:
+  - `services/cleanup/__init__.py`
+  - `services/cleanup/ephemeral_collections.py` — central per-sport config: `live_collection`, `canonical_key_field`, `grace_hours`, `collections`. Includes `PROTECTED_COLLECTIONS` blocklist that refuses any accidental inclusion of resolved-outcome / backtest / multiplier-lab / model-performance collections.
+  - `services/cleanup/ephemeral_cleanup.py` — 5 entrypoints: `ensure_ttl_indexes`, `get_live_canonical_keys`, `mark_orphan_docs`, `restore_active_docs`, `run_ephemeral_cleanup` + `status_report`. Default `dry_run=True`. Live-props-empty safety abort (`force=True` to override). Supports flat-canonical-key collections and nested-key collections (e.g. cached_board with `props[]`).
+  - `routes/admin_ephemeral_cleanup.py` — 3 admin endpoints behind `X-Admin-Token` (`ADMIN_DEBUG_TOKEN` env var):
+    - `GET  /api/v3/admin/ephemeral-cleanup/status`
+    - `POST /api/v3/admin/ephemeral-cleanup/run?sport=&dry_run=&force=`
+    - `POST /api/v3/admin/ephemeral-cleanup/ensure-indexes`
+  - `tests/test_ephemeral_cleanup.py` — 7 unit tests (mongomock-motor) covering: TTL index creation, live-empty safety abort, force override, end-to-end mark→restore lifecycle, dry-run non-mutation, protected-collection rejection, status-report shape. **All 7 PASS.**
+- **Server integration**:
+  - `server.py` startup: ensures TTL indexes on all configured ephemeral collections.
+  - `recompute.py` post-success: invokes `run_ephemeral_cleanup(dry_run=False)` per sport after every real (non-dry-run) recompute pass; honours the live-props-empty safety abort.
+  - `routes/player.py::/v3/board`: now filters `active=True` — orphan docs invisible to the board.
+- **TTL contract**: Mongo TTL index on `ttl_purge_at` field (`expireAfterSeconds=0`). Active docs leave `ttl_purge_at=null` and are NEVER touched by TTL. Inactive orphans get `ttl_purge_at = now + grace_hours` and are physically removed by Mongo when the clock passes. Grace = 24h default per sport.
+- **Live results (real run)**:
+  - Indexes: ensured on `mlb_prop_scores`, `mlb_cached_board`, `nba_prop_scores`, `nba_cached_board` (+ `nfl_*` for future).
+  - First pass marked 100 MLB + 0 NBA new orphans inactive (most legacy inactives were already deactivated by older code paths). Restored 6,474 MLB + 2,207 NBA docs whose canonical_keys had reappeared on the slate.
+  - Legacy-inactive backfill stamped `ttl_purge_at` on **106,884 MLB + 34,831 NBA** pre-existing inactive orphan docs that lacked TTL — total **141,815 stale docs scheduled for auto-purge in 24h.**
+  - Board sanity: `/api/v3/board?sport=mlb` returns 10 players / 47 props; `?sport=nba` returns 10/89. Safe Haven for both sports returns picks. Gate calibration audits now read only `active=True` so the 5,581 orphan contamination is gone permanently.
+- **What this is NOT**: a simple `older_than` TTL on `updated_at`. Active docs never get a TTL field stamped. Nothing is ever hard-deleted by this utility — Mongo's TTL index does the physical removal.
+- **Protected collections explicitly excluded**: resolved outcomes, settled bets, backtests, replay datasets, multiplier lab runs, model performance, master hub, game logs, training datasets, betting logs, drift audits, contract violations, sync locks. Adding any of these to the config raises `RuntimeError` at iter time.
+
 ### 2026-05-15 — NBA/MLB pick-card visual parity: universal `display_reference_*` (CONSENSUS label) — WIDENED to 2+ books
 - **User report**: NBA pick cards displayed the book name (DK / FD / MGM) after the odds; MLB cards displayed "CONSENSUS". Visual asymmetry on the dashboard board.
 - **Root cause**: `scoring_stack._pick_reference_odds` deliberately picks a single book for NBA (gates were calibrated against single-book reference odds; changing `tier_reference_odds` would silently re-route tiers). MLB's chain starts with a DK+FD consensus step, so MLB cards naturally show "CONSENSUS".

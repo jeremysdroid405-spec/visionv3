@@ -540,7 +540,11 @@ async def get_universal_board(
     version_tag = f"final-{sport}-rt"
 
     docs = await _db[f"{sport}_prop_scores"].find(
-        {"version_tag": version_tag},
+        # 2026-05-15 — Board safety: only active slate docs.
+        # Inactive docs are orphans scheduled for TTL purge by the
+        # system-wide ephemeral cleanup utility
+        # (services/cleanup/ephemeral_cleanup.py).
+        {"version_tag": version_tag, "active": True},
         {"_id": 0},
     ).sort([("ranking_score_v2", -1)]).to_list(length=limit * 20)
 
