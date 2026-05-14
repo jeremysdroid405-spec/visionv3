@@ -1679,6 +1679,10 @@ async def startup_event():
         from routes import admin_ephemeral_cleanup as _admin_ephemeral
         _admin_ephemeral.set_db(db)
         app.include_router(_admin_ephemeral.router)
+        # 2026-05-15 — universal cached board lifecycle admin.
+        from routes import admin_board_lifecycle as _admin_board_lifecycle
+        _admin_board_lifecycle.set_db(db)
+        app.include_router(_admin_board_lifecycle.router)
         # Ensure TTL indexes on ttl_purge_at for every ephemeral
         # collection (idempotent — Mongo no-ops on re-create).
         try:
@@ -1694,6 +1698,18 @@ async def startup_event():
             logger.warning(
                 "[EPHEMERAL_CLEANUP] startup TTL index ensure failed: %s",
                 _exc,
+            )
+        # 2026-05-15 — universal cached board lifecycle startup audit.
+        try:
+            _bl_findings = await _admin_board_lifecycle.startup_validate(db)
+            logger.info(
+                "[BOARD_LIFECYCLE_VALIDATE] startup audit: %s",
+                _bl_findings,
+            )
+        except Exception as _bl_exc:  # noqa: BLE001
+            logger.warning(
+                "[BOARD_LIFECYCLE_VALIDATE] startup audit failed: %s",
+                _bl_exc,
             )
         logger.info(
             "[ROUTES] /api/health/sync + /api/health/contracts + "

@@ -646,6 +646,14 @@ class MLBCachedBoardBuilder:
                     doc.update(_freshness_stamp)
                     doc["built_at"] = build_start.isoformat()  # legacy compat
                     doc["props_count"] = len(doc["props"])
+                    # 2026-05-15 — Universal active lifecycle stamp.
+                    # MUST be applied to every player doc this builder
+                    # writes so the schema matches the snapshot
+                    # publisher's contract.
+                    from services.boards.board_lifecycle import (
+                        stamp_active_board_doc,
+                    )
+                    stamp_active_board_doc(doc)
                 
                 await cached_board.insert_many(player_docs)
                 results["players_in_board"] = len(player_docs)

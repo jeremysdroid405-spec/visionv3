@@ -539,14 +539,37 @@ async def get_universal_board(
 
     version_tag = f"final-{sport}-rt"
 
+    # 2026-05-15 — Defensive board read. Lifecycle contract requires
+    # `active=True` on every served doc. Inactive docs (orphans
+    # scheduled for TTL purge) are NEVER returned. Docs missing the
+    # `active` field are surfaced as a warning so we can spot any
+    # publisher path bypassing services/boards/board_lifecycle.py.
     docs = await _db[f"{sport}_prop_scores"].find(
-        # 2026-05-15 — Board safety: only active slate docs.
-        # Inactive docs are orphans scheduled for TTL purge by the
-        # system-wide ephemeral cleanup utility
-        # (services/cleanup/ephemeral_cleanup.py).
         {"version_tag": version_tag, "active": True},
         {"_id": 0},
     ).sort([("ranking_score_v2", -1)]).to_list(length=limit * 20)
+
+    # Detect lifecycle-non-compliant docs (would have been served if
+    # not for the explicit `active=True` filter). Log-only.
+    try:
+        n_missing = await _db[f"{sport}_prop_scores"].count_documents({
+            "version_tag": version_tag,
+            "$or": [
+                {"active": {"$exists": False}},
+                {"active": None},
+            ],
+        })
+        if n_missing:
+            import logging as _logging
+            _logging.getLogger("services.boards.lifecycle").warning(
+                "[BOARD:%s] %d docs at version_tag=%s lack `active` "
+                "field — publisher path bypassing universal "
+                "lifecycle helper (services/boards/board_lifecycle.py). "
+                "Run /api/v3/admin/board-lifecycle/normalize.",
+                sport, n_missing, version_tag,
+            )
+    except Exception:  # noqa: BLE001
+        pass
 
     players_map: Dict[str, Dict[str, Any]] = {}
     for d in docs:

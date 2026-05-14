@@ -146,6 +146,33 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-15 — Universal cached board lifecycle infrastructure (`services/boards/board_lifecycle.py`)
+- **Problem**: After the ephemeral cleanup utility shipped, `/api/v3/admin/ephemeral-cleanup/status` showed `mlb_cached_board.no_active_field=284/286` — i.e. one of the publisher paths was writing docs that bypassed the lifecycle contract. Risk: orphan cleanup invariants violated, `/api/v3/board` filter could silently drop legit docs.
+- **Solution**: ONE authoritative lifecycle module that every cached_board writer system-wide MUST use. Removes scattered ad-hoc stamping.
+- **New files**:
+  - `services/boards/__init__.py` + `services/boards/board_lifecycle.py` — 8 public helpers: `stamp_active_board_doc`, `stamp_inactive_board_doc`, `normalize_board_doc`, `is_lifecycle_compliant`, `missing_lifecycle_fields`, `lifecycle_set_for_upsert`, `lifecycle_set_inactive`, + `LIFECYCLE_FIELDS` constant.
+  - `routes/admin_board_lifecycle.py` — 2 admin endpoints (`X-Admin-Token`):
+    - `GET  /api/v3/admin/board-lifecycle/status` — per-collection compliance audit.
+    - `POST /api/v3/admin/board-lifecycle/normalize?dry_run=true|false` — repair-in-place migration.
+    - Exports `startup_validate(db)` called from `server.py` at boot.
+  - `tests/test_board_lifecycle.py` — 12 unit tests (mongomock-motor) covering: active stamp, inactive stamp with default grace, inactive stamp preserving existing ttl_purge_at, normalize repair of missing-active-field doc, normalize preserving active=False with inactive-field backfill, normalize no-clobber of populated lifecycle fields, lifecycle compliance predicate, real Mongo round-trip for $set fragments (active + inactive), `/v3/board` filter excludes inactive+unstamped docs, dry-run non-mutation, real-run repairs.
+- **Audited and wired all cached_board writers**:
+  - `services/board_snapshot_publisher.py::publish_board_snapshot` — both upsert (per-player UpdateOne with $set) and stale-empty (update_many for players off-slate) paths now route through `lifecycle_set_for_upsert` / `lifecycle_set_inactive`. Stale-filter widened with `{"active": {"$exists": False}}` so the same op also backfills any pre-existing unstamped doc (one-shot migration as a side effect of normal publishes).
+  - `services/mlb_cached_board_builder.py::build()` — legacy path that does `delete_many({})` + `insert_many(player_docs)` now stamps `stamp_active_board_doc(doc)` on every doc before insert.
+  - Enrichment-only writers (`context_badge_service.py`, `picks_getter_service.py`, `photo_service.py`, `injury_service.py`, `master_sync.py`) only $set specific auxiliary fields on existing docs — they never insert new docs, so they're naturally lifecycle-preserving. No edit required.
+- **Defensive `/api/v3/board` read**:
+  - Still filters `active=True` (only active slate docs served — orphans invisible).
+  - Now also runs a count for `active`-missing docs at the same `version_tag` and logs a warning with the count, surfacing any future publisher-path bypass automatically.
+- **Server startup**:
+  - Calls `admin_board_lifecycle.startup_validate(db)` after wiring routers. Logs per-collection compliance count.
+  - First post-restart audit reported: `mlb_cached_board: 100% compliant (286 docs); nba_cached_board: 100% compliant (38 docs)`. Down from 284/286 missing → 0 missing.
+- **Live verification**:
+  - `GET /api/v3/admin/board-lifecycle/status`: `mlb_cached_board.missing_active_field=0`, `nba_cached_board.missing_active_field=0`, compliance 99.3%/100%.
+  - `POST .../normalize?dry_run=true`: 0 docs need repair.
+  - `POST .../normalize?dry_run=false`: idempotent — 0 modifications.
+  - `/api/v3/board?sport=mlb`: returns 5 players, 18 props. Service unbroken.
+- **Tests**: 12/12 unit tests pass.
+
 ### 2026-05-15 — System-wide ephemeral data cleanup utility (orphan TTL)
 - **Problem**: Stale orphan score docs from past slates were never being purged. Audit on 2026-05-15 showed 5,581 of 12,619 MLB FL OVER "rejects" (44%) were orphan docs whose `canonical_key` was no longer in `mlb_live_props` — contaminating gate calibration audits. Same pattern on NBA.
 - **Solution**: Two-step active/inactive lifecycle with grace-period TTL purge — never delete a current-slate doc, always give 24h debug window after marking inactive. Universal, sport-agnostic, config-driven.

@@ -53,6 +53,16 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from pymongo import UpdateOne
 
+# 2026-05-15 — Universal cached_board lifecycle stamping. Every doc
+# this publisher writes (or marks stale) MUST go through the helper
+# to guarantee identical `active / ttl_purge_at / stale_reason /
+# stale_marked_at / updated_at` schema across all sports.
+from services.boards.board_lifecycle import (
+    lifecycle_set_for_upsert,
+    lifecycle_set_inactive,
+    DEFAULT_INACTIVE_REASON_EMPTY,
+)
+
 from services.config.collection_names import COLL
 
 logger = logging.getLogger(__name__)
@@ -316,6 +326,11 @@ async def publish_board_snapshot(
                             "source_score_max_scored_at": max_scored,
                             "version_tag": version_tag,
                             "source_version_tag": _rt_source_tag(sport_l),
+                            # 2026-05-15 — Universal active lifecycle.
+                            # Clears any stale TTL fields the doc may
+                            # have picked up from a prior off-slate
+                            # cycle so re-appearance auto-restores.
+                            **lifecycle_set_for_upsert(now=ts),
                         },
                         # First-write defaults — never overwrite enrichment
                         # fields that other services maintain.
@@ -331,26 +346,35 @@ async def publish_board_snapshot(
             await cb_coll.bulk_write(bulk_ops, ordered=False)
             metrics["upserted_players"] = len(bulk_ops)
 
-        # --- Stale players: empty their props[] (do NOT delete). ---
+        # --- Stale players: empty their props[] AND mark inactive. ---
+        # 2026-05-15 — Universal lifecycle. Players that fell off the
+        # slate get their props emptied (existing behaviour, do NOT
+        # delete) plus the inactive lifecycle stamp so the orphan
+        # cleanup utility can TTL-purge them after the grace window.
+        stale_set = {
+            "props": [],
+            "props_count": 0,
+            "last_publish_ts": ts,
+            "source_score_max_scored_at": max_scored,
+            "version_tag": version_tag,
+            "source_version_tag": _rt_source_tag(sport_l),
+            **lifecycle_set_inactive(
+                reason=DEFAULT_INACTIVE_REASON_EMPTY,
+            ),
+        }
         stale_result = await cb_coll.update_many(
             {
                 "player_name": {"$nin": live_players},
                 "$or": [
                     {"props_count": {"$gt": 0}},
                     {"props": {"$exists": True, "$ne": []}},
+                    # 2026-05-15 — Also re-stamp any pre-existing
+                    # empty doc that's missing the lifecycle fields
+                    # so the migration is permanent (one-time backfill).
+                    {"active": {"$exists": False}},
                 ],
             },
-            {
-                "$set": {
-                    "props": [],
-                    "props_count": 0,
-                    "updated_at": ts,
-                    "last_publish_ts": ts,
-                    "source_score_max_scored_at": max_scored,
-                    "version_tag": version_tag,
-                    "source_version_tag": _rt_source_tag(sport_l),
-                }
-            },
+            {"$set": stale_set},
         )
         metrics["emptied_stale_players"] = int(
             getattr(stale_result, "modified_count", 0) or 0
