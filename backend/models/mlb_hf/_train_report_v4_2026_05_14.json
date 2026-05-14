@@ -1,0 +1,51 @@
+{
+  "trained_at": "2026-05-14T02:31:25.251563+00:00",
+  "version": "MLB_HF_v4.0_targeted_2026_05_14",
+  "scope": "weakest_4_only",
+  "targets": [
+    "stolen_bases",
+    "doubles",
+    "rbis",
+    "home_runs"
+  ],
+  "stats": {
+    "stolen_bases": {
+      "error": "MLBHighFrictionModel._build_friction_features() got an unexpected keyword argument 'opponent_team'",
+      "elapsed_s": 0.0
+    },
+    "doubles": {
+      "error": "Insufficient data: 0",
+      "elapsed_s": 7.6
+    },
+    "rbis": {
+      "error": "MLBHighFrictionModel._build_friction_features() got an unexpected keyword argument 'opponent_team'",
+      "elapsed_s": 0.0
+    },
+    "home_runs": {
+      "error": "MLBHighFrictionModel._build_friction_features() got an unexpected keyword argument 'opponent_team'",
+      "elapsed_s": 0.0
+    }
+  },
+  "previous_v3": {
+    "stolen_bases": {
+      "r2_test": 0.0072,
+      "mae_test": 0.0765,
+      "samples": 60619
+    },
+    "doubles": {
+      "r2_test": 0.0122,
+      "mae_test": 0.2275,
+      "samples": 34504
+    },
+    "rbis": {
+      "r2_test": 0.072,
+      "mae_test": 0.4682,
+      "samples": 61990
+    },
+    "home_runs": {
+      "r2_test": 0.0789,
+      "mae_test": 0.1398,
+      "samples": 61990
+    }
+  }
+}
