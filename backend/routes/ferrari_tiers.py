@@ -1163,6 +1163,22 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     prop["tp_method"] = score.get("tp_method")
     prop["tp_unavailable"] = score.get("tp_unavailable")
 
+    # Universal Best-Book / Shopping-Edge passthrough (2026-05-13, universal).
+    # The best-book engine (`services.scoring.best_book`) writes these
+    # fields onto every score doc — NBA, MLB, and any future sport —
+    # during recompute. They power the "Best Bet: DK -110 +5.2%" row
+    # on the universal pick card. Without this stamp the field gets
+    # dropped by the score→prop merge allowlist below and the UI row
+    # renders empty.
+    prop["best_book"]                     = score.get("best_book")
+    prop["best_book_odds"]                = score.get("best_book_odds")
+    prop["best_book_implied_probability"] = score.get("best_book_implied_probability")
+    prop["best_book_edge"]                = score.get("best_book_edge")
+    prop["total_edge"]                    = score.get("total_edge")
+    prop["market_spread"]                 = score.get("market_spread")
+    prop["market_spread_label"]           = score.get("market_spread_label")
+    prop["books_available_count"]         = score.get("books_available_count")
+
     # Side-aware VK probabilities from p_true_active (percent)
     p_true = score.get("p_true_active")
     if p_true is not None:
