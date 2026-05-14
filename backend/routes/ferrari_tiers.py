@@ -1178,6 +1178,13 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     prop["market_spread"]                 = score.get("market_spread")
     prop["market_spread_label"]           = score.get("market_spread_label")
     prop["books_available_count"]         = score.get("books_available_count")
+    # 2026-05-14 — devig-basis fields + source tags so the UI can
+    # display Best Bet Edge with explicit math-basis labeling.
+    prop["best_book_raw_implied_probability"] = score.get("best_book_raw_implied_probability")
+    prop["best_book_devig_probability"]       = score.get("best_book_devig_probability")
+    prop["consensus_edge_source"]             = score.get("consensus_edge_source")
+    prop["best_bet_edge_source"]              = score.get("best_bet_edge_source")
+    prop["shopping_edge_source"]              = score.get("shopping_edge_source")
 
     # Side-aware VK probabilities from p_true_active (percent)
     p_true = score.get("p_true_active")

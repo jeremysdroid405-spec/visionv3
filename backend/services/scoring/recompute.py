@@ -918,7 +918,12 @@ async def recompute_sport(
         # via the persistence allowlist; passing `doc` directly works
         # because the score doc inherits {book}_odds flat fields.
         doc.update(
-            compute_best_book_metrics(doc, fair_prob=fair_prob, p_model=p_model_val)
+            compute_best_book_metrics(
+                doc,
+                fair_prob=fair_prob,
+                p_model=p_model_val,
+                fair_prob_source=doc.get("tp_source"),
+            )
         )
 
     # 3. Percentile-normalize vision_score across the sport's slate.

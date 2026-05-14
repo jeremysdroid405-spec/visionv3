@@ -963,6 +963,7 @@ const UniversalPlayerCard = memo(({
           const bestBetEdge = player.total_edge != null
             ? Number(player.total_edge) * 100
             : null;
+          const isRawOneSided = player.best_bet_edge_source === 'raw_one_sided';
           const edgeColor = bestBetEdge == null ? 'text-zinc-400'
             : bestBetEdge > 10 ? 'text-emerald-400'
             : bestBetEdge > 3 ? 'text-amber-300'
@@ -972,7 +973,11 @@ const UniversalPlayerCard = memo(({
             <div
               className="flex items-baseline justify-between gap-2 mb-2 text-[10.5px] font-mono"
               data-testid={`best-bet-row-${playerSlug}`}
-              title="Best Bet Edge compares our model to the best sportsbook price currently available."
+              title={
+                isRawOneSided
+                  ? "Best Bet Edge (raw): best book lacks opposite side — vig not removable, basis-mismatched vs Consensus Edge."
+                  : "Best Bet Edge: model vs best available devigged sportsbook price."
+              }
             >
               <span className="text-zinc-500 uppercase tracking-[0.14em]">
                 Best Bet
@@ -989,6 +994,7 @@ const UniversalPlayerCard = memo(({
                 {bestBetEdge != null && (
                   <span className={`${edgeColor} font-bold tabular-nums`}>
                     {bestBetEdge > 0 ? '+' : ''}{bestBetEdge.toFixed(1)}%
+                    {isRawOneSided && <span className="text-zinc-500 ml-0.5">*</span>}
                   </span>
                 )}
               </div>
@@ -1096,12 +1102,11 @@ const UniversalPlayerCard = memo(({
                         : 'text-zinc-200'
                     }`}
                     title={(() => {
-                      // 2026-05-14 — Universal display tooltip:
-                      //   Consensus Edge = edge_vs_fair  (model vs market)
-                      //   Best Bet Edge  = total_edge    (model vs best book)
-                      //   Best Bet       = best_book + best_book_odds
-                      // The math is already on the score doc — this
-                      // just relabels the existing fields.
+                      // 2026-05-14 — Devig-basis-aware tooltip.
+                      //   Consensus Edge = p_model − consensus_devig_fair
+                      //   Best Bet Edge  = p_model − best_book_devig (when pair-complete)
+                      //                  = p_model − raw_best_book_implied (one-sided fallback)
+                      // Source tags surface basis-mismatch to the user.
                       const fmt = (v) => v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
                       const fmtOdds = (o) => o == null ? '' : (o > 0 ? `+${o}` : `${o}`);
                       const fmtBook = (b) => {
@@ -1117,16 +1122,22 @@ const UniversalPlayerCard = memo(({
                       const bestBet   = player?.total_edge ?? null;
                       const book      = player?.best_book ?? null;
                       const odds      = player?.best_book_odds ?? null;
+                      const bbSrc     = player?.best_bet_edge_source ?? null;
                       const lineEdgeTxt = dispEdge != null
                         ? `Edge vs line: ${dispEdge > 0 ? '+' : ''}${dispEdge.toFixed(2)}`
                         : null;
                       const bestBetLine = book
                         ? `Best Bet: ${fmtBook(book)}${odds != null ? ' ' + fmtOdds(odds) : ''}`
                         : null;
+                      const sourceNote = bbSrc === 'raw_one_sided'
+                        ? '(raw — best book lacks opposite side, vig not removable)'
+                        : bbSrc === 'devig' ? '(devigged — like-for-like vs consensus)'
+                        : null;
                       return [
-                        `Consensus Edge: ${fmt(consensus)}`,
+                        `Consensus Edge: ${fmt(consensus)}  (model vs market devigged fair)`,
                         bestBetLine,
-                        `Best Bet Edge: ${fmt(bestBet)}`,
+                        `Best Bet Edge: ${fmt(bestBet)}  (model vs best book)`,
+                        sourceNote,
                         lineEdgeTxt,
                       ].filter(Boolean).join('\n');
                     })()}

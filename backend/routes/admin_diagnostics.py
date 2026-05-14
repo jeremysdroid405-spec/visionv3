@@ -406,3 +406,115 @@ async def best_bet_edge_audit(
             100.0 * missing_best_book / max(1, len(rows)), 2
         ),
     }
+
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Edge-basis audit (2026-05-14)
+# ─────────────────────────────────────────────────────────────────────
+@router.get("/edge-basis-audit")
+async def edge_basis_audit(
+    sport: str = Query("mlb"),
+    limit: int = Query(50, ge=1, le=300),
+):
+    """Find props where Best Bet Edge < Consensus Edge AND surface the
+    probability bases used. Mathematically suspicious — if both edges
+    use the same `p_model` numerator, Best Bet Edge should be >=
+    Consensus Edge whenever the best book is truly more favorable than
+    the consensus average.
+
+    Common legitimate causes of a violation:
+      • best_bet_edge_source == "raw_one_sided" (vig on best-book side
+        not removable — basis mismatch)
+      • shopping_edge_source == "devig_vs_raw" (same reason)
+      • consensus_edge_source == "one_sided" (consensus fair was
+        synthetic — vig not fully removed)
+
+    Genuine bugs surface as violations where ALL three sources are
+    `devig` / `devig_vs_devig` — those are the rows to chase.
+    """
+    sport = (sport or "").lower()
+    if sport not in _VALID_SPORTS:
+        raise HTTPException(400, f"unsupported sport: {sport}")
+
+    db = _require_db()
+    coll = db[f"{sport}_prop_scores"]
+
+    proj = {
+        "_id": 0,
+        "player_name": 1, "stat_type": 1, "line": 1,
+        "recommendation": 1, "tier": 1,
+        "edge_vs_fair": 1, "total_edge": 1, "best_book_edge": 1,
+        "best_book": 1, "best_book_odds": 1,
+        "best_book_raw_implied_probability": 1,
+        "best_book_devig_probability": 1,
+        "best_book_implied_probability": 1,
+        "tp": 1, "tp_source": 1,
+        "consensus_edge_source": 1,
+        "best_bet_edge_source": 1,
+        "shopping_edge_source": 1,
+    }
+
+    violations: list = []
+    pure_devig_violations: list = []
+    source_counts: dict = {
+        "consensus_edge_source": {},
+        "best_bet_edge_source":  {},
+        "shopping_edge_source":  {},
+    }
+    total = 0
+    async for d in coll.find(
+        {"active": True, "version_tag": f"final-{sport}-rt"}, proj
+    ):
+        total += 1
+        for k in source_counts:
+            v = d.get(k) or "_none_"
+            source_counts[k][v] = source_counts[k].get(v, 0) + 1
+
+        ce = d.get("edge_vs_fair")
+        be = d.get("total_edge")
+        if ce is None or be is None:
+            continue
+        if be >= ce:
+            continue
+        # Violation: best-bet edge somehow smaller than consensus edge.
+        row = {
+            "player":             d.get("player_name"),
+            "stat":               d.get("stat_type"),
+            "side":               d.get("recommendation"),
+            "line":               d.get("line"),
+            "tier":               d.get("tier"),
+            "consensus_edge":     ce,
+            "best_bet_edge":      be,
+            "shopping_edge":      d.get("best_book_edge"),
+            "best_book":          d.get("best_book"),
+            "best_book_odds":     d.get("best_book_odds"),
+            "best_book_raw_implied_probability": d.get("best_book_raw_implied_probability"),
+            "best_book_devig_probability":       d.get("best_book_devig_probability"),
+            "consensus_fair_probability":        (
+                d.get("tp") / 100.0 if isinstance(d.get("tp"), (int, float)) else None
+            ),
+            "tp_source":                d.get("tp_source"),
+            "consensus_edge_source":    d.get("consensus_edge_source"),
+            "best_bet_edge_source":     d.get("best_bet_edge_source"),
+            "shopping_edge_source":     d.get("shopping_edge_source"),
+            "mathematically_valid":    (
+                d.get("consensus_edge_source") == "devig"
+                and d.get("best_bet_edge_source") == "devig"
+            ),
+        }
+        violations.append(row)
+        if row["mathematically_valid"]:
+            pure_devig_violations.append(row)
+
+    violations.sort(key=lambda r: r["best_bet_edge"] - r["consensus_edge"])
+    return {
+        "sport":   sport,
+        "source_collection": f"{sport}_prop_scores",
+        "active_rows_total": total,
+        "violations_total":  len(violations),
+        "pure_devig_violations_total": len(pure_devig_violations),
+        "source_distribution": source_counts,
+        "violations": violations[:limit],
+        "pure_devig_violations_sample": pure_devig_violations[:limit],
+    }

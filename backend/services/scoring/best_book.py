@@ -137,38 +137,86 @@ def _spread_label(spread: Optional[float]) -> str:
     return "tight"
 
 
+def _book_devig_for_this_side(
+    prop: Dict[str, Any],
+    universal_field: str,
+    legacy_field: str,
+) -> Tuple[Optional[float], Optional[float]]:
+    """Return ``(raw_implied, devig_implied)`` for the candidate book's
+    THIS-side price.
+
+    Devig is per-book — uses the book's own opposite-side quote
+    (`{book}_odds_opp`) to remove that book's vig. Returns
+    ``devig_implied = None`` when the opposite side is missing
+    (one-sided book → caller must use raw).
+
+    Reuses the same opposite-side field map as `tp_engine` so adding
+    a book in one place enables devigging everywhere.
+    """
+    this_odds = prop.get(universal_field)
+    if this_odds is None:
+        this_odds = prop.get(legacy_field)
+    raw_imp = american_to_implied(this_odds)
+    if raw_imp is None:
+        return None, None
+    opp_key = f"{universal_field}_opp"
+    opp_odds = prop.get(opp_key)
+    opp_imp = american_to_implied(opp_odds)
+    if opp_imp is None or (raw_imp + opp_imp) <= 0:
+        return raw_imp, None
+    devig = raw_imp / (raw_imp + opp_imp)
+    return raw_imp, devig
+
+
 def compute_best_book_metrics(
     prop: Dict[str, Any],
     *,
     fair_prob: Optional[float] = None,
     p_model: Optional[float] = None,
+    fair_prob_source: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Compute the universal best-book fields.
+    """Compute the universal best-book + edge fields with consistent
+    devigged probability bases (2026-05-14 rewrite).
+
+    Pipeline
+    --------
+    1. For every book that quotes THIS side, compute raw implied prob
+       (vigged). If the book also quotes the OPPOSITE side, devig per
+       book → store `devig_implied`.
+    2. Select the best book by **lowest raw implied probability** —
+       that's the highest payout for the bettor.
+    3. Compute edges on consistent probability bases:
+
+         consensus_edge  = p_model     − consensus_devig_fair   (devig)
+         best_bet_edge   = p_model     − best_book_devig        (devig)
+         shopping_edge   = consensus_devig_fair − best_book_devig (devig vs devig)
+
+       When the winning book is **one-sided** (no opposite-side quote
+       available) the devig isn't possible at that book → fall back
+       to raw implied AND set the corresponding `*_source` field to
+       ``raw_one_sided`` / ``devig_vs_raw`` so callers can flag the
+       comparison as basis-mismatched.
+
+    4. Displayed sportsbook odds are NEVER altered — devigged values
+       are internal comparison metrics only.
 
     Parameters
     ----------
     prop : dict
-        Must carry `{book}_odds` flat fields for this side. (Either
-        the legacy form like `draftkings_price` or the universal
-        `dk_odds` is accepted — both probed.)
+        Carries `{book}_odds` + `{book}_odds_opp` per book.
     fair_prob : float | None
-        Devigged market-consensus fair probability (0..1) for THIS
-        side (TP/100). Used to compute `best_book_edge` (the SHOPPING
-        edge — market consensus fair vs best-book implied).
+        Consensus devigged fair probability for THIS side (TP/100).
     p_model : float | None
-        Model probability (0..1) for THIS side. When provided,
-        `total_edge` = p_model - best_book_implied is also returned —
-        this is the *true ROI edge* (model vs cheapest book).
-        Left None when caller doesn't have a model probability.
-
-    Returns
-    -------
-    dict spread directly onto a score doc. Field names follow the
-    API-payload contract.
+        Model probability for THIS side.
+    fair_prob_source : str | None
+        Echoed onto `consensus_edge_source`. Pass ``"devig"`` /
+        ``"one_sided"`` / ``"raw_one_sided"`` from the caller (the
+        scoring stack carries this as `tp_source`).
     """
     best_book: Optional[str] = None
     best_book_odds: Optional[float] = None
-    best_book_implied: Optional[float] = None
+    best_book_raw_implied: Optional[float] = None
+    best_book_devig_implied: Optional[float] = None
 
     implied_probs: List[float] = []
     books_available: List[str] = []
@@ -179,36 +227,57 @@ def compute_best_book_metrics(
             odds = prop.get(legacy_field)
         if odds is None:
             continue
-        imp = american_to_implied(odds)
-        if imp is None:
+        raw_imp, devig_imp = _book_devig_for_this_side(prop, universal_field, legacy_field)
+        if raw_imp is None:
             continue
         books_available.append(display_key)
-        implied_probs.append(imp)
-        # Universal predicate: lower implied = better for bettor.
-        # Works for OVER + UNDER + plus-money + minus-money + any sport.
+        implied_probs.append(raw_imp)
+        # Best = lowest raw implied (= highest bettor payout). Devig
+        # is for edge math; selection is by the actual displayed price.
         if is_better_american_odds(odds, best_book_odds):
             best_book = display_key
             best_book_odds = float(odds)
-            best_book_implied = imp
+            best_book_raw_implied = raw_imp
+            best_book_devig_implied = devig_imp
 
     if implied_probs:
         market_spread = max(implied_probs) - min(implied_probs)
     else:
         market_spread = None
 
+    # ── Source tags ────────────────────────────────────────────────────
+    # The winner is pair-complete iff we successfully computed its
+    # devig (both sides present at that one book).
+    pair_complete = best_book_devig_implied is not None
+    best_bet_edge_source = "devig" if pair_complete else (
+        "raw_one_sided" if best_book_raw_implied is not None else None
+    )
+    shopping_edge_source = (
+        "devig_vs_devig" if pair_complete and fair_prob is not None
+        else "devig_vs_raw" if best_book_raw_implied is not None and fair_prob is not None
+        else None
+    )
+
+    # ── Edge math on consistent probability bases ──────────────────────
+    # Use devig when available; raw when one-sided. Caller can use the
+    # `*_source` tags to flag mixed-basis comparisons.
+    best_book_implied_for_edge = (
+        best_book_devig_implied if pair_complete else best_book_raw_implied
+    )
+
     best_book_edge: Optional[float] = None
-    if fair_prob is not None and best_book_implied is not None:
-        best_book_edge = round(float(fair_prob) - best_book_implied, 4)
+    if fair_prob is not None and best_book_implied_for_edge is not None:
+        best_book_edge = round(float(fair_prob) - best_book_implied_for_edge, 4)
 
-    # Total ROI edge (2026-05-13): combines model alpha with shopping
-    # alpha into a single actionable number. Independent of TP/devig —
-    # measures model probability vs the cheapest market price.
     total_edge: Optional[float] = None
-    if p_model is not None and best_book_implied is not None:
-        total_edge = round(float(p_model) - best_book_implied, 4)
+    if p_model is not None and best_book_implied_for_edge is not None:
+        total_edge = round(float(p_model) - best_book_implied_for_edge, 4)
 
-    best_book_implied_rounded = (
-        round(best_book_implied, 4) if best_book_implied is not None else None
+    best_book_raw_rounded = (
+        round(best_book_raw_implied, 4) if best_book_raw_implied is not None else None
+    )
+    best_book_devig_rounded = (
+        round(best_book_devig_implied, 4) if best_book_devig_implied is not None else None
     )
     market_spread_rounded = (
         round(market_spread, 4) if market_spread is not None else None
@@ -216,12 +285,24 @@ def compute_best_book_metrics(
     spread_label = _spread_label(market_spread)
 
     return {
+        # Display-facing book + price (raw American odds unchanged).
         "best_book": best_book,
         "best_book_odds": best_book_odds,
-        "best_book_implied_probability": best_book_implied_rounded,
-        "best_book_edge": best_book_edge,
-        "total_edge": total_edge,
-        "market_spread": market_spread_rounded,
-        "market_spread_label": spread_label,
+        # 2026-05-14 — both probability bases surfaced explicitly so
+        # callers can audit. Legacy field name `best_book_implied_probability`
+        # now mirrors `best_book_raw_implied_probability` for back-compat.
+        "best_book_raw_implied_probability":   best_book_raw_rounded,
+        "best_book_devig_probability":         best_book_devig_rounded,
+        "best_book_implied_probability":       best_book_raw_rounded,
+        # ── Edges (now on consistent devig basis when pair-complete) ────
+        "best_book_edge": best_book_edge,         # shopping edge (fair − best)
+        "total_edge":     total_edge,             # best-bet edge (model − best)
+        # ── Source tags so UI can flag basis-mismatch ──────────────────
+        "consensus_edge_source": (fair_prob_source or "devig") if fair_prob is not None else None,
+        "best_bet_edge_source":  best_bet_edge_source,
+        "shopping_edge_source":  shopping_edge_source,
+        # ── Coverage metadata ──────────────────────────────────────────
+        "market_spread":         market_spread_rounded,
+        "market_spread_label":   spread_label,
         "books_available_count": len(books_available),
     }

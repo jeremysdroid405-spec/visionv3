@@ -509,6 +509,21 @@ class ScoreDocument(BaseModel):
     market_spread:                   Optional[float] = None
     market_spread_label:             Optional[str]   = None
     books_available_count:           Optional[int]   = None
+    # ── Devig-basis fields + source tags (2026-05-14) ─────────────────
+    # `best_book_raw_implied_probability` mirrors the legacy
+    # `best_book_implied_probability` (always raw). The new
+    # `best_book_devig_probability` is populated only when the best
+    # book itself quoted both sides — used as the edge basis to keep
+    # `best_bet_edge` and `consensus_edge` on the same devig plane.
+    # `*_source` tags expose mathematical basis to the UI / audit:
+    #   consensus_edge_source   → "devig" | "one_sided" / "raw_one_sided"
+    #   best_bet_edge_source    → "devig" | "raw_one_sided"
+    #   shopping_edge_source    → "devig_vs_devig" | "devig_vs_raw"
+    best_book_raw_implied_probability:  Optional[float] = None
+    best_book_devig_probability:        Optional[float] = None
+    consensus_edge_source:              Optional[str]   = None
+    best_bet_edge_source:               Optional[str]   = None
+    shopping_edge_source:               Optional[str]   = None
     pp_payout_multiplier:  Optional[float] = None
     pp_market_key:         Optional[str] = None
     is_alternate_market:   Optional[bool] = None

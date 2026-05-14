@@ -119,6 +119,12 @@ _SCORE_OUTPUT_FIELDS = (
     "best_book", "best_book_odds", "best_book_implied_probability",
     "best_book_edge", "total_edge", "market_spread", "market_spread_label",
     "books_available_count",
+    # ── Devig-basis fields + source tags (2026-05-14) ────────────────
+    "best_book_raw_implied_probability",
+    "best_book_devig_probability",
+    "consensus_edge_source",
+    "best_bet_edge_source",
+    "shopping_edge_source",
     # vision_score dimension
     "vision_score", "vision_score_raw", "quality_source", "fair_prob",
     "stability", "confidence", "edge_vs_fair",
