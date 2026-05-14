@@ -501,6 +501,11 @@ class ScoreDocument(BaseModel):
     best_book_odds:                  Optional[float] = None
     best_book_implied_probability:   Optional[float] = None
     best_book_edge:                  Optional[float] = None
+    # 2026-05-14 — `total_edge` = p_model - best_book_implied.
+    # Combines model alpha with shopping alpha; this is the
+    # actionable ROI edge UI-side. Display-only — NOT fed into
+    # any gate config until distribution review is complete.
+    total_edge:                      Optional[float] = None
     market_spread:                   Optional[float] = None
     market_spread_label:             Optional[str]   = None
     books_available_count:           Optional[int]   = None

@@ -326,6 +326,25 @@ Audit identified 6 stale stages; user approved 5 (deferred legacy-writer cleanup
 - Verified: healthy cycle = 15 NBA / 11 MLB headlines; simulated blackout (ESPN→202, CBS→403) preserved baseline cache untouched (`preserved_cache:True`).
 - Files: `backend/routes/live.py`, `backend/server.py`
 
+### 2026-05-14 — `total_edge` (Model + Shopping combined) + replay cleanup
+- **Investigation conclusion**: `edge_vs_fair` (model alpha) and `best_book_edge` (shopping alpha) are correctly computed but measure two different things and share only the `fair_prob` operand. Documented in CHANGELOG.
+- **New field `total_edge`** on `ScoreDocument` (Pydantic) + `_SCORE_OUTPUT_FIELDS` allowlist + `compute_best_book_metrics(p_model=…)` kwarg. Formula: `p_model − best_book_implied`. Side-aware via `ctx.p_model` (== `doc.p_true_active`). Independent of `fair_prob`.
+- **Display only** — NOT fed into gates. Distribution-snapshot required before any gate touch (per user spec).
+- **UI labels renamed**: `UniversalPlayerCard.jsx` tooltip now shows "Model Edge / Shopping Edge / Total Edge"; `PlayerDetailPage.jsx` MLB stats row split into 4 cols (CV / Model Edge / Total Edge / True Prob).
+- **Distribution snapshot** (active=True only):
+  - **NBA** (n=290): median total_edge −3.3% slate-wide. Qualified tiers all ≥+16% median (FL +21.4%, SH +16.0%, WZ +35.3%). Unqualified median −4.6%.
+  - **MLB** (n=1,536): median +4.7% slate-wide. WZ median +43.9%, FL +12.9%, SH +9.8%. 39.5% of props show total_edge ≥+10%.
+- **Tests**: 5 new total_edge cases in `tests/test_best_book.py` (29 total, all pass). Includes mathematical proof that `total_edge` is independent of `fair_prob`.
+- **MongoDB cleanup**: Dropped `replay_evaluations` (1.22M docs / 5.998 GB) and `replay_outcomes` (230K docs / 0.158 GB). DB now 1.685 GB on disk.
+- **Files**:
+  - `backend/services/scoring/best_book.py`
+  - `backend/services/scoring/recompute.py` (best-book loop passes `p_model`)
+  - `backend/services/scoring/prop_scores_store.py` (allowlist)
+  - `backend/services/scoring/score_document_schema.py` (schema field)
+  - `backend/tests/test_best_book.py` (5 new tests)
+  - `frontend/src/components/dashboard/UniversalPlayerCard.jsx` (3-edge tooltip)
+  - `frontend/src/components/dashboard/PlayerDetailPage.jsx` (Model / Total Edge cells)
+
 ## Files of Reference
 - `backend/routes/live.py` — ticker sync + endpoints
 - `backend/server.py` — scheduler config

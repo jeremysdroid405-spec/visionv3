@@ -3439,3 +3439,76 @@ modules that previously owned duplicated mapping logic.
   sport `test_sport_xyz` purely via `register_sport(...)` — round-trips
   market → canonical → family → model → display without touching any
   other file. New sport onboarding is now a one-call operation.
+
+────────────────────────────────────────────────────────────
+## 2026-05-14 — `total_edge` (combined Model + Shopping edge)
+
+**Why:**
+Investigation found that `edge_vs_fair` (model vs market) and
+`best_book_edge` (market vs cheapest book) measure two completely
+different things. Neither alone tells the user "what's my actual
+ROI edge at the cheapest book". Added a third metric to surface
+the actionable combined edge.
+
+**Math:**
+```
+edge_vs_fair    = p_model - market_fair_prob       ← "Model Edge"
+best_book_edge  = market_fair_prob - best_book_implied  ← "Shopping Edge"
+total_edge      = p_model - best_book_implied      ← "Total Edge" (NEW)
+```
+`total_edge = edge_vs_fair + best_book_edge` (algebraic identity).
+
+**Implementation:**
+  - `services/scoring/best_book.py`:
+      • `compute_best_book_metrics()` gains `p_model` kwarg.
+        Returns `total_edge` when p_model + best_book_implied
+        both available; else None.
+  - `services/scoring/recompute.py:890-915`:
+      • Passes `p_model=doc.get("p_true_active")` (== ctx.p_model)
+        through to the best_book engine.
+  - `services/scoring/prop_scores_store.py:_SCORE_OUTPUT_FIELDS`:
+      • Adds `"total_edge"` to the allowlist so the field survives
+        the persistence projection.
+  - `services/scoring/score_document_schema.py`:
+      • `total_edge: Optional[float] = None` declared on
+        `ScoreDocument`. health_sync diff stays clean.
+
+**UI:**
+  - `UniversalPlayerCard.jsx`:
+      • Projection-cell tooltip now surfaces all 3 edges:
+        "Model Edge / Shopping Edge / Total Edge".
+  - `PlayerDetailPage.jsx`:
+      • MLB stats row split into 4 cols:
+        CV / Model Edge / Total Edge / True Prob.
+      • Old "Edge" label renamed to "Model Edge".
+      • Total Edge colored green ≥10%, yellow ≥3%, red <0%.
+
+**Tests:**
+  - `tests/test_best_book.py` — 5 new total_edge cases (29 total,
+    all green). Includes:
+      • independence-from-fair_prob proof
+      • negative-edge when p_model < best_book_implied
+      • None pass-through when p_model missing
+  - Other regression suites still green
+    (`test_tp_source_gate`, `test_all_books_expansion`).
+
+**Live data (post-recompute, MLB):**
+  - 1,594 props recomputed in 85.7s through chunked endpoint
+  - 1,037 of 2,990 active MLB props now have `total_edge`
+    (those with both p_model and best_book_implied).
+  - Distribution (active=True only):
+    *NBA*: median total_edge −3.3% slate-wide; qualified picks
+           (Front Lines / Safe Haven / War Zone) all median ≥ +16%.
+    *MLB*: median +4.7% slate-wide; War Zone picks median +43.9%,
+           Front Lines +12.9%.
+  - Shopping edge confirmed structurally tiny (mostly ±1%).
+
+**MongoDB cleanup:**
+  - Dropped `replay_evaluations` (1.22M docs, 5.998 GB) and
+    `replay_outcomes` (230K docs, 0.158 GB). Storage reclaimed:
+    ~6.16 GB logical, ~1.17 GB on disk. Total DB now 1.685 GB
+    on disk.
+
+**Gates: NOT TOUCHED.** Per user spec, total_edge is display-only
+until distribution-snapshot review completes.
+

@@ -117,7 +117,7 @@ _PRESERVE_ON_REPLACE = (
 _SCORE_OUTPUT_FIELDS = (
     # ── Universal best-book / market-shopping edge (2026-05-13) ──────
     "best_book", "best_book_odds", "best_book_implied_probability",
-    "best_book_edge", "market_spread", "market_spread_label",
+    "best_book_edge", "total_edge", "market_spread", "market_spread_label",
     "books_available_count",
     # vision_score dimension
     "vision_score", "vision_score_raw", "quality_source", "fair_prob",

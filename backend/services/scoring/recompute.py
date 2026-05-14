@@ -888,10 +888,15 @@ async def recompute_sport(
         score_docs.append(doc)
 
     # 2a. Universal best-book / market-shopping edge (2026-05-13).
-    # For every prop, compute the 6 best-book fields onto the score
-    # doc so the UI can surface "Best Book: DK -300 / Edge +5.0%".
-    # Data-driven via `_BOOK_PROBES` — works for NBA, MLB, and any
-    # future sport that adds canonical book fields.
+    # For every prop, compute the best-book fields onto the score
+    # doc so the UI can surface "Best Book: DK -300 / Shopping +0.5%
+    # / Total +12%". Data-driven via `_BOOK_PROBES` — works for
+    # NBA, MLB, and any future sport that adds canonical book fields.
+    #
+    # 2026-05-14 addition: pass `p_model` (== `p_true_active` on the
+    # score doc) so the engine also returns `total_edge` =
+    # p_model - best_book_implied. This is the actionable combined
+    # ROI edge (model alpha × shopping alpha).
     from services.scoring.best_book import compute_best_book_metrics
     for doc in score_docs:
         # `tp` is on a 0-100 scale. Fair probability for the requested
@@ -903,10 +908,18 @@ async def recompute_sport(
             if isinstance(tp_value, (int, float)) and tp_value is not None
             else None
         )
+        # `p_true_active` is `ctx.p_model` (see line ~549). It's a
+        # 0..1 probability already on the side that recommendation
+        # points to. Falls back to None when the model didn't resolve.
+        p_model_val = doc.get("p_true_active")
+        if not isinstance(p_model_val, (int, float)):
+            p_model_val = None
         # The raw prop dict still carries the per-book layer fields
         # via the persistence allowlist; passing `doc` directly works
         # because the score doc inherits {book}_odds flat fields.
-        doc.update(compute_best_book_metrics(doc, fair_prob=fair_prob))
+        doc.update(
+            compute_best_book_metrics(doc, fair_prob=fair_prob, p_model=p_model_val)
+        )
 
     # 3. Percentile-normalize vision_score across the sport's slate.
     _apply_vision_score_normalization(score_docs)

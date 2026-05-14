@@ -183,3 +183,55 @@ def test_immutable_returns_no_mutation_of_prop():
     snapshot = dict(prop)
     compute_best_book_metrics(prop, fair_prob=0.80)
     assert prop == snapshot
+
+
+# ── total_edge (model alpha + shopping alpha combined, 2026-05-14) ─
+
+def test_total_edge_basic_positive():
+    """total_edge = p_model - best_book_implied. Big when model
+    disagrees with the cheapest book."""
+    prop = {"dk_odds": -300, "fd_odds": -400}
+    # best implied = 0.75. p_model = 0.90 → total_edge = +0.15
+    out = compute_best_book_metrics(prop, fair_prob=0.80, p_model=0.90)
+    assert out["total_edge"] == pytest.approx(0.15, abs=0.001)
+    # And shopping edge (best_book_edge) is +0.05 (0.80 - 0.75).
+    assert out["best_book_edge"] == pytest.approx(0.05, abs=0.001)
+
+
+def test_total_edge_negative_when_model_lower_than_book():
+    """Model probability lower than book's implied → negative total
+    edge → avoid the bet."""
+    prop = {"dk_odds": -300}  # implied 0.75
+    out = compute_best_book_metrics(prop, fair_prob=0.75, p_model=0.60)
+    # 0.60 - 0.75 = -0.15
+    assert out["total_edge"] == pytest.approx(-0.15, abs=0.001)
+
+
+def test_total_edge_none_without_p_model():
+    """No p_model passed → total_edge is None (display-safe)."""
+    prop = {"dk_odds": -110, "fd_odds": -120}
+    out = compute_best_book_metrics(prop, fair_prob=0.55)
+    assert out["total_edge"] is None
+    # Other fields unaffected.
+    assert out["best_book"] == "draftkings"
+    assert out["best_book_edge"] is not None
+
+
+def test_total_edge_none_when_no_books_available():
+    out = compute_best_book_metrics({}, fair_prob=0.5, p_model=0.6)
+    assert out["total_edge"] is None
+    assert out["best_book"] is None
+
+
+def test_total_edge_independent_of_fair_prob():
+    """Mathematical contract: total_edge MUST be derived from p_model
+    and best_book_implied only — NOT from fair_prob. Two calls with
+    identical p_model + odds but different fair_prob values produce
+    identical total_edge."""
+    prop = {"dk_odds": -110, "fd_odds": -130}
+    out_a = compute_best_book_metrics(prop, fair_prob=0.50, p_model=0.70)
+    out_b = compute_best_book_metrics(prop, fair_prob=0.60, p_model=0.70)
+    assert out_a["total_edge"] == out_b["total_edge"]
+    # And shopping edge IS dependent on fair_prob (proves they're
+    # measuring different things).
+    assert out_a["best_book_edge"] != out_b["best_book_edge"]

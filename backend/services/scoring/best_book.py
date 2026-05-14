@@ -5,6 +5,13 @@ Computes per-prop:
     best_book_odds                  — American odds at best book for THIS side
     best_book_implied_probability   — implied prob from best_book_odds (0..1)
     best_book_edge                  — fair_prob - best_book_implied (0..1)
+                                       [SHOPPING edge: market consensus fair
+                                        vs cheapest book's implied prob]
+    total_edge                      — p_model - best_book_implied (0..1)
+                                       [TOTAL ROI edge: model probability
+                                        vs cheapest book's implied prob;
+                                        only populated when p_model is
+                                        passed by caller]
     market_spread                   — max(implied) - min(implied) (0..1)
     market_spread_label             — "wide" | "moderate" | "tight"
     books_available_count           — count of books quoting THIS side
@@ -106,8 +113,9 @@ def compute_best_book_metrics(
     prop: Dict[str, Any],
     *,
     fair_prob: Optional[float] = None,
+    p_model: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """Compute the 6 universal best-book fields.
+    """Compute the universal best-book fields.
 
     Parameters
     ----------
@@ -116,13 +124,19 @@ def compute_best_book_metrics(
         the legacy form like `draftkings_price` or the universal
         `dk_odds` is accepted — both probed.)
     fair_prob : float | None
-        Model fair probability (0..1) FOR THE REQUESTED SIDE. If
-        unavailable, `best_book_edge` is left None.
+        Devigged market-consensus fair probability (0..1) for THIS
+        side (TP/100). Used to compute `best_book_edge` (the SHOPPING
+        edge — market consensus fair vs best-book implied).
+    p_model : float | None
+        Model probability (0..1) for THIS side. When provided,
+        `total_edge` = p_model - best_book_implied is also returned —
+        this is the *true ROI edge* (model vs cheapest book).
+        Left None when caller doesn't have a model probability.
 
     Returns
     -------
-    dict with the 6 fields. Safe to spread directly onto a score doc.
-    Field names follow the API-payload contract.
+    dict spread directly onto a score doc. Field names follow the
+    API-payload contract.
     """
     best_book: Optional[str] = None
     best_book_odds: Optional[float] = None
@@ -157,6 +171,13 @@ def compute_best_book_metrics(
     if fair_prob is not None and best_book_implied is not None:
         best_book_edge = round(float(fair_prob) - best_book_implied, 4)
 
+    # Total ROI edge (2026-05-13): combines model alpha with shopping
+    # alpha into a single actionable number. Independent of TP/devig —
+    # measures model probability vs the cheapest market price.
+    total_edge: Optional[float] = None
+    if p_model is not None and best_book_implied is not None:
+        total_edge = round(float(p_model) - best_book_implied, 4)
+
     return {
         "best_book": best_book,
         "best_book_odds": best_book_odds,
@@ -164,6 +185,7 @@ def compute_best_book_metrics(
             round(best_book_implied, 4) if best_book_implied is not None else None
         ),
         "best_book_edge": best_book_edge,
+        "total_edge": total_edge,
         "market_spread": (
             round(market_spread, 4) if market_spread is not None else None
         ),

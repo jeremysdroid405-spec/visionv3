@@ -1653,15 +1653,30 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 {/* Additional MLB Stats Row.
                     SSOT Tier E (2026-05-04): derive edge % from
                     canonical `edge_vs_fair` ratio (× 100). Legacy
-                    `edge_pct` reads removed. */}
+                    `edge_pct` reads removed.
+                    2026-05-14 — split into Model Edge / Total Edge.
+                    Model Edge   = edge_vs_fair  (model alpha vs market).
+                    Total Edge   = total_edge   (model vs best-book price). */}
                 {(() => {
                   const _edgePct = (selectedVisionProp.edge_vs_fair != null)
                     ? Number(selectedVisionProp.edge_vs_fair) * 100
                     : null;
-                  return (selectedVisionProp.cv != null || _edgePct != null || selectedVisionProp.tp_odds != null) && (
-                  <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-zinc-700">
+                  const _totalEdgePct = (selectedVisionProp.total_edge != null)
+                    ? Number(selectedVisionProp.total_edge) * 100
+                    : null;
+                  const _shopEdgePct = (selectedVisionProp.best_book_edge != null)
+                    ? Number(selectedVisionProp.best_book_edge) * 100
+                    : null;
+                  const _show = (
+                    selectedVisionProp.cv != null
+                    || _edgePct != null
+                    || _totalEdgePct != null
+                    || selectedVisionProp.tp_odds != null
+                  );
+                  return _show && (
+                  <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-zinc-700">
                     {selectedVisionProp.cv != null && (
-                      <div className="text-center">
+                      <div className="text-center" data-testid="player-detail-cv">
                         <div className="text-[10px] text-zinc-500 uppercase">CV</div>
                         <div className={`text-sm font-bold ${selectedVisionProp.cv < 0.6 ? 'text-green-400' : selectedVisionProp.cv < 1.0 ? 'text-yellow-400' : 'text-red-400'}`}>
                           {typeof selectedVisionProp.cv === 'number' ? selectedVisionProp.cv.toFixed(2) : selectedVisionProp.cv}
@@ -1669,15 +1684,25 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                       </div>
                     )}
                     {_edgePct != null && (
-                      <div className="text-center">
-                        <div className="text-[10px] text-zinc-500 uppercase">Edge</div>
+                      <div className="text-center" data-testid="player-detail-model-edge"
+                           title={`Model Edge = p_model − market_fair. Measures model alpha (how much smarter the projection is than the consensus market).${_shopEdgePct != null ? `\nShopping Edge: ${_shopEdgePct > 0 ? '+' : ''}${_shopEdgePct.toFixed(1)}% (market_fair − best_book_implied)` : ''}`}>
+                        <div className="text-[10px] text-zinc-500 uppercase">Model Edge</div>
                         <div className={`text-sm font-bold ${_edgePct > 15 ? 'text-green-400' : _edgePct > 5 ? 'text-yellow-400' : 'text-zinc-400'}`}>
                           {_edgePct > 0 ? '+' : ''}{_edgePct.toFixed(1)}%
                         </div>
                       </div>
                     )}
+                    {_totalEdgePct != null && (
+                      <div className="text-center" data-testid="player-detail-total-edge"
+                           title="Total Edge = p_model − best_book_implied. Combined model alpha + shopping alpha — the actionable ROI edge against the cheapest available market price.">
+                        <div className="text-[10px] text-zinc-500 uppercase">Total Edge</div>
+                        <div className={`text-sm font-bold ${_totalEdgePct > 10 ? 'text-green-400' : _totalEdgePct > 3 ? 'text-yellow-400' : _totalEdgePct < 0 ? 'text-red-400' : 'text-zinc-400'}`}>
+                          {_totalEdgePct > 0 ? '+' : ''}{_totalEdgePct.toFixed(1)}%
+                        </div>
+                      </div>
+                    )}
                     {selectedVisionProp.tp_odds != null && (
-                      <div className="text-center">
+                      <div className="text-center" data-testid="player-detail-true-prob">
                         <div className="text-[10px] text-zinc-500 uppercase">True Prob</div>
                         <div className={`text-sm font-bold ${selectedVisionProp.tp_odds > 70 ? 'text-green-400' : selectedVisionProp.tp_odds > 55 ? 'text-yellow-400' : 'text-zinc-400'}`}>
                           {typeof selectedVisionProp.tp_odds === 'number' ? selectedVisionProp.tp_odds.toFixed(1) : selectedVisionProp.tp_odds}%
