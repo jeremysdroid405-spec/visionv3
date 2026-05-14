@@ -42,10 +42,34 @@ from typing import Any, Dict, List, Optional, Tuple
 # MLBHighFrictionModel._normalize_stat output for the whitelist to
 # match at runtime.
 _WEIGHTS: Dict[str, Tuple[float, float]] = {
-    "home_runs": (0.30, 0.70),
-    "rbis": (0.40, 0.60),
-    "total_bases": (0.50, 0.50),
-    "hits+runs+rbis": (0.60, 0.40),
+    # Original tier (count-stats with multi-value lines, EB-protected
+    # since the v1 rollout, calibrated against backtest):
+    "home_runs":         (0.30, 0.70),
+    "rbis":              (0.40, 0.60),
+    "total_bases":       (0.50, 0.50),
+    "hits+runs+rbis":    (0.60, 0.40),
+    # ── Phase-1 expansion (2026-05-15) ─────────────────────────────
+    # Audit (Andy Pages Hits 0.5) showed `MLB_HF_v3.0_bayes` can
+    # produce mean projections far below player's rolling history when
+    # contextual features are missing (batter_hand, pitcher matchup,
+    # park, lineup_spot, PA_expected). 45.1% of active MLB props
+    # (1,861 / 4,129) sit in stat families that were intentionally
+    # excluded from EB because the v1 weights weren't calibrated for
+    # them. Result: HF outliers reach the gates uncorrected.
+    #
+    # Phase 1 fix — CONSERVATIVE shrinkage (model-leaning weights).
+    # The aim is to catch catastrophic underprojections (e.g. Pages
+    # at 0.48 hits when his rolling mean is ~1.5) by blending in
+    # 10-20% of the rolling-last-CAP_AT_GAMES batter-game mean, while
+    # leaving the live model in charge of the majority of the signal.
+    # Calibration tightening (heavier player weights) is deferred to
+    # Phase 2 once we have real matchup features feeding the HF model.
+    "hits":              (0.80, 0.20),
+    "singles":           (0.80, 0.20),
+    "doubles":           (0.85, 0.15),
+    "runs":              (0.80, 0.20),
+    "stolen_bases":      (0.90, 0.10),
+    "batter_walks":      (0.80, 0.20),
 }
 
 # ----- Sample-size policy (2026-04-30) ----------------------------------
@@ -80,6 +104,18 @@ def _normalize_stat(stat_type: str) -> str:
     aliases = {
         "tb": "total_bases", "rbi": "rbis", "hr": "home_runs",
         "hrr": "hits+runs+rbis", "hits+runs+rbi": "hits+runs+rbis",
+        # 2026-05-15 — Phase 1 expansion aliases. Live ingest uses
+        # singular/plural variations that must canonicalize to the
+        # `_WEIGHTS` keys above.
+        "run": "runs",
+        "hit": "hits",
+        "single": "singles",
+        "double": "doubles",
+        "stolen_base": "stolen_bases",
+        "sb": "stolen_bases",
+        "batter_walk": "batter_walks",
+        "walks": "batter_walks",
+        "bb": "batter_walks",
     }
     return aliases.get(s, s)
 
@@ -160,6 +196,27 @@ def _career_mean_from_logs(
             if h is None or r is None or rbi is None:
                 continue
             total += float(h) + float(r) + float(rbi)
+            count += 1
+        elif stat_family == "singles":
+            # 2026-05-15 — Game logs ship `hits / doubles / triples /
+            # home_runs` separately; "singles" must be derived.
+            h = log.get("hits")
+            xb = (
+                (log.get("doubles") or 0)
+                + (log.get("triples") or 0)
+                + (log.get("home_runs") or 0)
+            )
+            if h is None:
+                continue
+            singles = max(float(h) - float(xb), 0.0)
+            total += singles
+            count += 1
+        elif stat_family == "batter_walks":
+            # 2026-05-15 — Log column is `walks` not `batter_walks`.
+            v = log.get("walks")
+            if v is None:
+                continue
+            total += float(v)
             count += 1
         else:
             v = log.get(stat_family)

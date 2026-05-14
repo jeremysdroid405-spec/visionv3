@@ -764,6 +764,11 @@ async def recompute_sport(
             "mu_raw_model_projection", "mu_pitcher_workload_anchored",
             "mu_active_baseline_applied", "mu_active_baseline_value",
             "expected_ip_used", "projection_model_version",
+            # 2026-05-15 — Phase 1 MLB context field propagation
+            # (services/scoring/adapters/mlb_scoring.py
+            # `_propagate_phase1_context`). Mirrors fields the
+            # adapter stamps on the prop dict onto the score doc.
+            "batter_hand", "batting_order", "venue",
             "mu_recency_blended", "mu_recency_blend_l3",
             "mu_recency_blend_l10_median", "mu_recency_blend_l20",
             "mu_recency_blend_l5", "mu_recency_blend_weights",

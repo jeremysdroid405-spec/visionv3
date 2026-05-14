@@ -146,6 +146,34 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-15 — Phase 1 MLB projection stabilization (context propagation + EB whitelist expansion)
+- **Motivation**: Andy Pages Hits 0.5 audit (separate session log) showed `MLB_HF_v3.0_bayes` projecting 0.48 hits/game for a player averaging 1.5 hits/game, with `eb_player_career_mean=None` (Hits was outside the EB whitelist) and 100% of contextual features missing on the score doc. Result: −21.2% "negative model edge" was actually model under-projection, not market mispricing.
+- **Scope (Phase 1 only — no model retrains, no gate tuning, no new external feeds)**:
+  - `services/scoring/adapters/mlb_scoring.py`: added `_propagate_phase1_context(prop, hf_model.master_hub, bdl_player_id)` called at the end of each prop projection. Stamps three already-available fields on the prop dict using the canonical name:
+    - `batter_hand` parsed from `mlb_master_hub_2026.bats_throws` (`"<Bats>/<Throws>"` → `L/R/S`). Normaliser handles `Left/Right/Both/Switch/L/R/S/B/SH/LHB/RHB` etc.
+    - `batting_order` already on live_props (`~48.9%` filled); helper also falls back to legacy aliases `lineup_spot, lineup_position, bo`.
+    - `venue` (stadium label) — already on live_props, propagation only required score-doc allowlist.
+  - `services/scoring/prop_scores_store._SCORE_OUTPUT_FIELDS`: allowlisted `batter_hand, batting_order, venue`.
+  - `services/scoring/recompute.py`: mirror block extended to copy the three new fields onto each score doc.
+  - `services/scoring/score_document_schema.py::ScoreDocument`: added the three Phase-1 fields and the four universal lifecycle fields (`ttl_purge_at, stale_reason, stale_marked_at, updated_at`) so Pydantic's `extra='forbid'` no longer rejects the writer.
+  - `services/scoring/mlb_eb_shrinkage._WEIGHTS`: expanded EB whitelist conservatively:
+    - `hits (0.80/0.20)`, `singles (0.80/0.20)`, `doubles (0.85/0.15)`, `runs (0.80/0.20)`, `stolen_bases (0.90/0.10)`, `batter_walks (0.80/0.20)`.
+    - Model-leaning weights — Phase 1 stabilizes the worst HF outliers without giving EB authority over the model.
+    - **Excluded until Phase 2**: `pitcher_strikeouts`, `batter_strikeouts`, `pitcher_outs`, `earned_runs`, `walks_allowed`.
+  - `services/scoring/mlb_eb_shrinkage._normalize_stat`: aliases added (`run→runs, single→singles, hit→hits, sb→stolen_bases, walks→batter_walks` etc.).
+  - `services/scoring/mlb_eb_shrinkage._career_mean_from_logs`: added per-family derivation for `singles` (H − 2B − 3B − HR) and field-name bridge for `batter_walks` (reads `walks` log column).
+  - Updated `tests/test_mlb_eb_shrinkage.py` to reflect the new whitelist (was hard-asserting `hits` not supported).
+- **New file**: `tests/test_phase1_mlb_propagation.py` — 31 unit tests covering batter-hand normalization (parametrised over `L/R/S/B/Switch/Both/Left/Right/RHB/LHB/SH` + bad input), propagation helper (batter_hand from `bats_throws`, switch-hitter, prefers `bats` when populated, silent skip when missing, no clobber of pre-set value), batting_order alias fallback (`lineup_spot → batting_order`, missing-stays-missing), and EB Phase-1 stats (hits Andy-Pages scenario, singles derivation from H/2B/3B/HR logs, batter_walks alias bridge, stolen_bases conservative weights, pitcher_strikeouts still excluded).
+- **Live verification**:
+  - 1,724 MLB props rescored. Phase-1 fields appearing as recompute drains.
+  - System-wide: `batter_hand 24.3%`, `batting_order 16.0%`, `venue 53.5%` (will rise toward 100% as recompute cycles touch each active doc; `batting_order` capped by upstream live_prop fill rate).
+  - **Andy Pages Hits 0.5 OVER**: projection 0.48 → **0.594** (+23.8%), `edge_vs_fair −21.2% → −12.2%`, `total_edge −14.0% → −6.0%`. `gate_direction_fail` replaced by `gate_edge_fail` — direction now correct. EB applied (`career_mean=1.05`).
+  - **Kyle Tucker Hits 0.5 OVER**: 0.53 → 0.634, edge −11.4% → −4.4%, **total_edge flipped from −10.5% to +0.8%**.
+  - **Freddie Freeman Hits 0.5 OVER**: 0.70 → 0.79, total_edge +0.7% → **+4.8%**.
+  - **Ozzie Albies H+R+RBI 1.5 OVER**: projection unchanged (already EB-protected), now displays `batter_hand=S, batting_order=3, venue=ATL`.
+- **Tests**: 85/85 pass (board_lifecycle 12 + ephemeral_cleanup 7 + prop_score_lifecycle 7 + mlb_eb_shrinkage 30 + dup_and_eb_order_fixes 7 + phase1_mlb_propagation 31 — well 87 collected, all passing).
+- **Phase 1 deferred items (explicitly NOT addressed)**: pitcher matchup feed (currently MOCKED None in `feature_hydration.py:735-739`), park factor table, opp_pitcher SIERA/K9/ERA, opp_team_k_rate, PA/AB expected, pitcher Ks EB whitelist. Phase 2 work.
+
 ### 2026-05-15 — Universal lifecycle EXTENDED to `{sport}_prop_scores`
 - **Problem**: After `services/boards/board_lifecycle.py` shipped for cached_board, the prop_scores collections still only stamped `active` (legacy universal-pool field) — missing `ttl_purge_at`, `stale_reason`, `stale_marked_at`, `updated_at`. Risk: stale-score contamination in gate audits / calibration / reject reports.
 - **Solution**: One contract across every ephemeral realtime collection. Same `services/boards/board_lifecycle.py` helper now stamps prop_scores at write time AND the cleanup utility consumes it for inactive markers.

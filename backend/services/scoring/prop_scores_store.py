@@ -235,6 +235,10 @@ _SCORE_OUTPUT_FIELDS = (
     # `active` is also a legacy universal-pool field (see line ~514)
     # — listed once here is sufficient.
     "ttl_purge_at", "stale_reason", "stale_marked_at", "updated_at",
+    # 2026-05-15 — Phase 1 MLB context field propagation. Source +
+    # canonical name (see services/scoring/adapters/mlb_scoring.py
+    # `_propagate_phase1_context` docstring).
+    "batter_hand", "batting_order", "venue",
     # Multi-book de-vig TP engine (2026-04-22). Replaces the legacy
     # avg(DK,FD) / avg(DK,MGM) implied-prob TP. Fields:
     #   tp               — final de-vigged true probability (0..100) or None

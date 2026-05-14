@@ -122,10 +122,16 @@ def test_hits_runs_rbis_composite_stat():
 
 
 def test_stat_outside_whitelist_skipped():
+    """2026-05-15 — Phase 1 expanded the whitelist to include hits,
+    singles, doubles, runs, stolen_bases, batter_walks. Verify a stat
+    NOT in the post-Phase-1 whitelist still returns the skip
+    sentinel."""
     os.environ["MLB_HF_EB_SHRINKAGE_ENABLED"] = "true"
-    logs = _logs([1] * 25, "hits")
+    logs = _logs([1] * 25, "pitcher_strikeouts")
     hub = _fake_hub([{"bdl_player_id": 1, "bdl_game_logs": logs}])
-    shrunk, audit = ebs.apply_eb_shrinkage(hub, 1, "hits", 1.5)
+    shrunk, audit = ebs.apply_eb_shrinkage(
+        hub, 1, "pitcher_strikeouts", 1.5,
+    )
     assert shrunk is None
     assert audit["eb_skip_reason"] == "stat_not_whitelisted"
     assert audit["eb_shrinkage_applied"] is False
@@ -449,5 +455,16 @@ def test_normalize_stat_aliases():
 def test_stat_supported_predicate():
     assert ebs.stat_supported("home_runs") is True
     assert ebs.stat_supported("HR") is True
-    assert ebs.stat_supported("hits") is False
+    # 2026-05-15 — Phase 1 expansion. The 6 stats below are now
+    # whitelisted with conservative model-leaning weights.
+    assert ebs.stat_supported("hits") is True
+    assert ebs.stat_supported("singles") is True
+    assert ebs.stat_supported("doubles") is True
+    assert ebs.stat_supported("runs") is True
+    assert ebs.stat_supported("stolen_bases") is True
+    assert ebs.stat_supported("batter_walks") is True
+    assert ebs.stat_supported("walks") is True       # alias
+    # Still excluded — these need Phase 2 calibration first.
     assert ebs.stat_supported("pitcher_strikeouts") is False
+    assert ebs.stat_supported("batter_strikeouts") is False
+    assert ebs.stat_supported("earned_runs") is False

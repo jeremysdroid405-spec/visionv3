@@ -14,6 +14,114 @@ from services.scoring.adapters.base import ScoringAdapter, ScoringContext
 logger = logging.getLogger(__name__)
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Phase 1 context field propagation (2026-05-15)
+# ──────────────────────────────────────────────────────────────────────
+# Three context fields that already exist somewhere in the system but
+# were dropped before reaching the score doc. This helper is the ONE
+# place that bridges the field-name mismatch between live_props /
+# master_hub and the canonical score-doc schema.
+#
+#   batting_order  — present on live_props (~48.9% filled). Score doc
+#                    schema previously aliased to `lineup_spot` causing
+#                    the field to be dropped at allowlist time.
+#   batter_hand    — present on master_hub as `bats` ('L'/'R'/'S').
+#                    Normalised to canonical 'L' / 'R' / 'S'.
+#   venue          — present on live_props as `venue` (stadium label).
+#                    Just need to allowlist it on score doc.
+# ──────────────────────────────────────────────────────────────────────
+_BATTER_HAND_NORMALISE = {
+    "L": "L", "LEFT": "L", "LH": "L", "LHB": "L",
+    "R": "R", "RIGHT": "R", "RH": "R", "RHB": "R",
+    # Switch-hitters. Master_hub format is `bats_throws="Both/<Throws>"`.
+    "S": "S", "B": "S", "BOTH": "S", "SWITCH": "S", "SH": "S",
+}
+
+
+def _normalise_batter_hand(raw) -> Optional[str]:
+    if raw is None:
+        return None
+    return _BATTER_HAND_NORMALISE.get(str(raw).strip().upper())
+
+
+def _propagate_phase1_context(
+    prop: Dict[str, Any], master_hub, bdl_player_id: Optional[int],
+) -> None:
+    """In-place stamping of canonical Phase-1 context fields on ``prop``.
+
+    Reads from ``master_hub`` (in-memory by ``bdl_player_id``) and from
+    the prop's own live-ingest fields, writes only canonical names so
+    downstream (recompute / score doc / model input remap) doesn't
+    need to know about the field-name aliases.
+
+    Failure modes are intentional silent skips — Phase 1 is meant to
+    LIFT projection coverage without ever breaking scoring on a row
+    that simply doesn't have the data.
+    """
+    # ── batter_hand from master_hub.bats / bats_throws ────────────
+    if not prop.get("batter_hand"):
+        try:
+            player_doc = None
+            if master_hub is not None and bdl_player_id is not None:
+                # `MLBHighFrictionModel.master_hub` is a sync pymongo
+                # Collection — read by bdl_id. Tiny doc, projection
+                # limits payload, no perf concern.
+                try:
+                    pid = int(bdl_player_id)
+                except (TypeError, ValueError):
+                    pid = None
+                if pid is not None:
+                    if hasattr(master_hub, "find_one"):
+                        player_doc = master_hub.find_one(
+                            {"$or": [
+                                {"bdl_player_id": pid},
+                                {"bdl_id": pid},
+                            ]},
+                            {"_id": 0, "bats": 1, "bats_throws": 1},
+                        )
+                    elif hasattr(master_hub, "get"):
+                        # Dict-style master_hub (used in unit tests).
+                        player_doc = master_hub.get(pid)
+            if player_doc:
+                # Primary: `bats` field. Production data has it `None`
+                # for nearly all hitters as of 2026-05; the populated
+                # form is `bats_throws` = "<Bats>/<Throws>" (e.g.
+                # "Right/Right", "Both/Right"). Parse first half.
+                raw_bats = player_doc.get("bats")
+                if not raw_bats:
+                    bt = player_doc.get("bats_throws")
+                    if isinstance(bt, str) and "/" in bt:
+                        raw_bats = bt.split("/", 1)[0]
+                    elif isinstance(bt, dict):
+                        raw_bats = bt.get("bats")
+                normalised = _normalise_batter_hand(raw_bats)
+                if normalised:
+                    prop["batter_hand"] = normalised
+        except Exception:  # pragma: no cover
+            pass
+
+    # ── batting_order from live_props ─────────────────────────────
+    # Already present under canonical name on live_props for ~48.9%
+    # of active props. Setdefault so we don't clobber if it was
+    # already stamped upstream.
+    if prop.get("batting_order") is None:
+        # Fall back to common alias names emitted by older ingest
+        # paths so propagation works on legacy rows too.
+        for alias in ("lineup_spot", "lineup_position", "bo"):
+            v = prop.get(alias)
+            if v is not None:
+                prop["batting_order"] = v
+                break
+
+    # ── venue from live_props (kept canonical, no remap needed) ───
+    # The field already exists on live_props as `venue`; nothing to
+    # transform — propagation only requires score-doc allowlist
+    # (see `prop_scores_store._SCORE_OUTPUT_FIELDS`).
+
+
+# ──────────────────────────────────────────────────────────────────────
+
+
 class MLBScoringAdapter(ScoringAdapter):
     def __init__(self):
         self._stats_cache = None
@@ -304,6 +412,19 @@ class MLBScoringAdapter(ScoringAdapter):
                 prop["mu_active_baseline_value"] = result.get("mu_active_baseline_value")
                 prop["expected_ip_used"] = result.get("expected_ip_used")
                 prop["projection_model_version"] = result.get("model_version")
+
+                # ============================================================
+                # 2026-05-15 — PHASE 1 CONTEXT FIELD PROPAGATION
+                # ------------------------------------------------------------
+                # Audit identified three already-available context fields
+                # that were silently dropped between live_props and the
+                # score doc. Phase 1 propagation only — no new feeds yet.
+                #   • batting_order  — already on live_props (~48.9% filled)
+                #   • batter_hand    — derive from master_hub.bats
+                #   • venue          — already on live_props
+                # See `_propagate_phase1_context` for the lookup contract.
+                # ============================================================
+                _propagate_phase1_context(prop, hf_model.master_hub, bdl_player_id)
 
                 # ============================================================
                 # 2026-05-14 — EMPIRICAL-BAYES SHRINKAGE MOVED IN FRONT OF

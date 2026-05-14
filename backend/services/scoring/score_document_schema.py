@@ -134,6 +134,24 @@ class ScoreDocument(BaseModel):
     routed_tier:            Optional[str] = None
     tier_gate_results:      Optional[Dict[str, Any]] = None
 
+    # ── Phase 1 MLB context propagation (2026-05-15) ──────────────
+    # Three context fields the audit identified as already-available
+    # but dropped before reaching the score doc. Stamped by
+    # `services/scoring/adapters/mlb_scoring._propagate_phase1_context`.
+    # NBA leaves these None (not applicable).
+    batter_hand:    Optional[str] = None     # 'L' | 'R' | 'S'
+    batting_order:  Optional[int] = None     # 1..9 (lineup spot)
+    venue:          Optional[str] = None     # stadium label
+
+    # ── Universal ephemeral lifecycle (2026-05-15) ────────────────
+    # Same contract as cached_board (services/boards/
+    # board_lifecycle.LIFECYCLE_FIELDS). Stamped on every write by
+    # `stamp_active_board_doc` in prop_scores_store._project_score_doc.
+    ttl_purge_at:    Optional[datetime] = None
+    stale_reason:    Optional[str]      = None
+    stale_marked_at: Optional[datetime] = None
+    updated_at:      Optional[datetime] = None
+
     # ── PP utility ────────────────────────────────────────────────
     pp_utility:             Optional[float] = None
     pp_utility_category:    Optional[str]   = None
