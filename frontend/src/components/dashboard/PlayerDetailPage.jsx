@@ -317,6 +317,91 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
         );
       })()}
 
+      {/* UNIVERSAL EDGE METRICS — Consensus Edge / Best Bet Edge / Best Book.
+          Sport-agnostic. Renders only when at least one canonical field is
+          shipped on the prop. Mirrors the in-modal block (line ~1693) so
+          users see the same edge basis on the pick listing AND inside the
+          Vision Intel Suite without opening the modal. (2026-05-15) */}
+      {(() => {
+        const consensusPct = prop.edge_vs_fair != null
+          ? Number(prop.edge_vs_fair) * 100
+          : null;
+        const bestBetPct = prop.total_edge != null
+          ? Number(prop.total_edge) * 100
+          : null;
+        const bestBook = prop.best_book;
+        const bestOdds = prop.best_book_odds;
+        const isRawOneSided = prop.best_bet_edge_source === 'raw_one_sided';
+        if (consensusPct == null && bestBetPct == null && !bestBook) return null;
+        const bookMap = {
+          'draftkings': 'DraftKings', 'fanduel': 'FanDuel',
+          'betmgm': 'BetMGM', 'caesars': 'Caesars',
+          'espnbet': 'ESPN BET', 'hardrockbet': 'Hard Rock',
+          'betrivers': 'BetRivers', 'betparx': 'BetPARX',
+          'ballybet': 'Bally Bet', 'fliff': 'Fliff',
+          'pointsbetus': 'PointsBet', 'betonline': 'BetOnline',
+        };
+        const bookLabel = bestBook ? (bookMap[bestBook] || bestBook) : null;
+        const fmtOdds = (o) => o == null ? '' : (o > 0 ? `+${o}` : `${o}`);
+        const consensusColor = consensusPct == null ? 'text-zinc-400'
+          : consensusPct > 15 ? 'text-green-400'
+          : consensusPct > 5 ? 'text-yellow-400'
+          : consensusPct < -5 ? 'text-red-400'
+          : 'text-zinc-300';
+        const bestBetColor = bestBetPct == null ? 'text-zinc-400'
+          : bestBetPct > 10 ? 'text-emerald-400'
+          : bestBetPct > 3 ? 'text-amber-300'
+          : bestBetPct < 0 ? 'text-red-400'
+          : 'text-zinc-300';
+        return (
+          <div
+            className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 rounded-md bg-zinc-900/60 border border-zinc-800/80 text-[10.5px] font-mono"
+            data-testid={`prop-row-edge-metrics-${prop.stat_type}-${line}`}
+          >
+            {consensusPct != null && (
+              <div
+                className="flex items-baseline gap-1.5"
+                data-testid={`prop-row-consensus-edge-${prop.stat_type}-${line}`}
+                title="Consensus Edge: model probability vs market devigged fair probability."
+              >
+                <span className="text-zinc-500 uppercase tracking-[0.12em]">Consensus</span>
+                <span className={`${consensusColor} font-bold tabular-nums`}>
+                  {consensusPct > 0 ? '+' : ''}{consensusPct.toFixed(1)}%
+                </span>
+              </div>
+            )}
+            {bestBetPct != null && (
+              <div
+                className="flex items-baseline gap-1.5"
+                data-testid={`prop-row-best-bet-edge-${prop.stat_type}-${line}`}
+                title={isRawOneSided
+                  ? "Best Bet Edge (raw): best book lacks opposite side — vig not removable, basis-mismatched vs Consensus."
+                  : "Best Bet Edge: model vs best available devigged sportsbook price."}
+              >
+                <span className="text-zinc-500 uppercase tracking-[0.12em]">Best Bet</span>
+                <span className={`${bestBetColor} font-bold tabular-nums`}>
+                  {bestBetPct > 0 ? '+' : ''}{bestBetPct.toFixed(1)}%
+                  {isRawOneSided && <span className="text-zinc-500 ml-0.5">*</span>}
+                </span>
+              </div>
+            )}
+            {bookLabel && (
+              <div
+                className="flex items-baseline gap-1.5 ml-auto"
+                data-testid={`prop-row-best-book-${prop.stat_type}-${line}`}
+                title="Best available sportsbook price for this side."
+              >
+                <span className="text-zinc-500 uppercase tracking-[0.12em]">Book</span>
+                <span className="text-emerald-300 font-semibold">{bookLabel}</span>
+                {bestOdds != null && (
+                  <span className="text-zinc-300 tabular-nums">{fmtOdds(bestOdds)}</span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* MARKET GAP — sport-agnostic book-disagreement signal.
           Silent unless prop crosses medium threshold. */}
       <MarketGapDetail pick={prop} />

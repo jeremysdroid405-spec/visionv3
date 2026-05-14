@@ -146,6 +146,19 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-15 — Universal Consensus / Best Bet chip on PlayerDetailPage PropRow (NBA/MLB pick card parity)
+- **User directive**: "The nba and mlb ui should be identical. Add consensus to the pick card page. Mirror mlb."
+- **Scope**: `frontend/src/components/dashboard/PlayerDetailPage.jsx::PropRow` — added a sport-agnostic edge-metrics strip that renders inline on every prop row below the Lasso Projection bar.
+- **Fields shown** (only when present on the score doc — graceful degrade):
+  - `Consensus`: `edge_vs_fair * 100` (model vs market devigged fair) — color: green >15%, yellow >5%, red <-5%, zinc neutral.
+  - `Best Bet`: `total_edge * 100` (model vs best book) — color: emerald >10%, amber >3%, red <0; raw-one-sided source flagged with trailing `*`.
+  - `Book`: `best_book` (label-mapped) + `best_book_odds` (signed American).
+- **Live verification**:
+  - NBA detail (Dylan Harper): 36 consensus chips rendered across 48 props (e.g. OVER 7.5 PTS → `CONSENSUS +21.9%`).
+  - MLB detail (Ozzie Albies): 22 consensus chips rendered across 22 props (e.g. OVER 0.5 HITS → `CONSENSUS +17.8%`).
+- **Not changed**: no backend, no gates, no thresholds. Pure presentation; the same data already feeds the Vision Intel Suite modal block at line ~1693 of the same file. No new fetch paths.
+- **Lint**: clean (`mcp_lint_javascript`).
+
 ### 2026-05-13 — "Pull from all books" expansion: 4 books → 11 books (MLB multi-book 58% → 70.6%)
 - **Root context**: post the 2026-05-08 projection-store fix the audit revealed MLB was actually 81% multi-book (not 30% as previously believed). User directive: "pull from all books. we are already paying for the call. we want maximum coverage."
 - **Live API probe** showed 14 books returning MLB data; 6 with non-trivial coverage (>=80 outcomes per event) were unused: ESPN BET, Hard Rock Bet, BetRivers, BetParx, Bally Bet, Fliff. All in `regions=us` — **zero additional Odds API credit cost**.
