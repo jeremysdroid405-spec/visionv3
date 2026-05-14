@@ -146,6 +146,22 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-15 — Universal lifecycle EXTENDED to `{sport}_prop_scores`
+- **Problem**: After `services/boards/board_lifecycle.py` shipped for cached_board, the prop_scores collections still only stamped `active` (legacy universal-pool field) — missing `ttl_purge_at`, `stale_reason`, `stale_marked_at`, `updated_at`. Risk: stale-score contamination in gate audits / calibration / reject reports.
+- **Solution**: One contract across every ephemeral realtime collection. Same `services/boards/board_lifecycle.py` helper now stamps prop_scores at write time AND the cleanup utility consumes it for inactive markers.
+- **Changes**:
+  - `services/scoring/prop_scores_store.py::_project_score_doc` — calls `stamp_active_board_doc(doc)` on every score doc at projection time (fail-soft: lifecycle stamping must never abort scoring). Allowlist `_SCORE_OUTPUT_FIELDS` widened with `ttl_purge_at, stale_reason, stale_marked_at, updated_at`.
+  - `services/cleanup/ephemeral_cleanup.py` — every place that stamped lifecycle fields manually now uses `lifecycle_set_inactive()` (mark + legacy backfill paths) or `lifecycle_set_for_upsert()` (restore path). Removes duplicated stamping logic.
+  - `routes/admin_board_lifecycle.py::_board_collections()` — widened from "cached_board-only" to "every ephemeral collection in the cleanup config". So the status + normalize endpoints now cover prop_scores too. Added `orphan_vs_live` count to status output (mirrors the cleanup status report; flat collections only).
+- **Live state after deploy**:
+  - Startup audit: `mlb_prop_scores: 100% compliant (121,590 docs); mlb_cached_board: 100% (286); nba_prop_scores: 100% (42,496); nba_cached_board: 100% (38)`. **164,410 docs total — `missing_active_field=0` across the board.**
+  - Status endpoint: `missing_active_field=0`, `missing_ttl_purge_at=0`, `missing_stale_reason=0`, `missing_stale_marked_at=0` for all 4 collections.
+  - Cleanup dry-run + real: 0 new orphans to mark (system fully converged).
+  - MLB FL OVER reject audit: **12,616 total / 2,139 active / 10,182 stale-marked**. The 10,182 stale rejects no longer contaminate calibration audits when filtered with `active=True`.
+  - `/v3/board?sport=mlb`: 5 players / 17 props served. `/v3/board?sport=nba`: 5 / 29. Unbroken.
+  - Replay collections never touched (in `PROTECTED_COLLECTIONS` blocklist; unit test verifies).
+- **Tests**: 26/26 unit tests pass across 3 files (`test_board_lifecycle.py: 12`, `test_ephemeral_cleanup.py: 7`, `test_prop_score_lifecycle.py: 7`). New tests cover prop_score active+inactive stamping, cleanup-via-helper integration, restore-via-helper integration, gate-audit active filter, normalize over prop_scores, and replay-collection isolation.
+
 ### 2026-05-15 — Universal cached board lifecycle infrastructure (`services/boards/board_lifecycle.py`)
 - **Problem**: After the ephemeral cleanup utility shipped, `/api/v3/admin/ephemeral-cleanup/status` showed `mlb_cached_board.no_active_field=284/286` — i.e. one of the publisher paths was writing docs that bypassed the lifecycle contract. Risk: orphan cleanup invariants violated, `/api/v3/board` filter could silently drop legit docs.
 - **Solution**: ONE authoritative lifecycle module that every cached_board writer system-wide MUST use. Removes scattered ad-hoc stamping.

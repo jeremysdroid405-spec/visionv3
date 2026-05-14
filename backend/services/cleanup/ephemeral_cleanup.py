@@ -60,6 +60,14 @@ from services.cleanup.ephemeral_collections import (
     iter_collections,
     list_configured_sports,
 )
+# 2026-05-15 — Use the universal lifecycle helper instead of
+# duplicating field assignments. Same contract as the cached_board
+# publisher, so prop_scores + cached_board collections all carry
+# byte-identical inactive markers.
+from services.boards.board_lifecycle import (
+    lifecycle_set_inactive,
+    lifecycle_set_for_upsert,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -233,12 +241,10 @@ async def mark_orphan_docs(
             if not dry_run and orphan_ids:
                 await db[cname].update_many(
                     {"_id": {"$in": orphan_ids}},
-                    {"$set": {
-                        "active": False,
-                        "ttl_purge_at": purge_at,
-                        "stale_reason": STALE_REASON_ORPHAN,
-                        "stale_marked_at": _utcnow(),
-                    }},
+                    {"$set": lifecycle_set_inactive(
+                        reason=STALE_REASON_ORPHAN,
+                        ttl_purge_at=purge_at,
+                    )},
                 )
             per_collection.append({
                 "sport": sport, "collection": cname,
@@ -279,12 +285,10 @@ async def mark_orphan_docs(
             if not dry_run and would_mark_filter:
                 res = await db[cname].update_many(
                     would_mark_filter,
-                    {"$set": {
-                        "active": False,
-                        "ttl_purge_at": purge_at,
-                        "stale_reason": STALE_REASON_ORPHAN,
-                        "stale_marked_at": _utcnow(),
-                    }},
+                    {"$set": lifecycle_set_inactive(
+                        reason=STALE_REASON_ORPHAN,
+                        ttl_purge_at=purge_at,
+                    )},
                 )
                 applied = True
                 logger.info(
@@ -419,12 +423,7 @@ async def restore_active_docs(
             if not dry_run and restore_ids:
                 await db[cname].update_many(
                     {"_id": {"$in": restore_ids}},
-                    {"$set": {
-                        "active": True,
-                        "ttl_purge_at": None,
-                        "stale_reason": None,
-                        "stale_marked_at": None,
-                    }},
+                    {"$set": lifecycle_set_for_upsert()},
                 )
                 applied = True
             per_collection.append({
@@ -449,12 +448,7 @@ async def restore_active_docs(
             if not dry_run and would_restore_filter:
                 res = await db[cname].update_many(
                     would_restore_filter,
-                    {"$set": {
-                        "active": True,
-                        "ttl_purge_at": None,
-                        "stale_reason": None,
-                        "stale_marked_at": None,
-                    }},
+                    {"$set": lifecycle_set_for_upsert()},
                 )
                 applied = True
                 logger.info(

@@ -228,6 +228,13 @@ _SCORE_OUTPUT_FIELDS = (
     # ranking score. Stamped by
     # `services/mlb_tier_sorter.war_zone_cv_modifier`.
     "war_zone_cv_modifier",
+    # Universal lifecycle fields (2026-05-15). Defined in
+    # services/boards/board_lifecycle.LIFECYCLE_FIELDS. Stamped on
+    # every score doc via stamp_active_board_doc() so the same
+    # contract holds across cached_board AND prop_scores.
+    # `active` is also a legacy universal-pool field (see line ~514)
+    # — listed once here is sufficient.
+    "ttl_purge_at", "stale_reason", "stale_marked_at", "updated_at",
     # Multi-book de-vig TP engine (2026-04-22). Replaces the legacy
     # avg(DK,FD) / avg(DK,MGM) implied-prob TP. Fields:
     #   tp               — final de-vigged true probability (0..100) or None
@@ -630,6 +637,22 @@ def _project_score_doc(
     doc.setdefault("inactive_reason", None)
     doc.setdefault("active_changed_at", None)
     doc.setdefault("game_start_utc", None)
+    # 2026-05-15 — Universal lifecycle stamp (services/boards/
+    # board_lifecycle.py). Every score doc this writer emits MUST
+    # carry the same active/inactive contract as cached_board docs.
+    # ``stamp_active_board_doc`` writes a fresh ``updated_at`` and
+    # clears any stale TTL/reason markers a previous off-slate cycle
+    # may have left on the doc, so re-appearance auto-restores.
+    try:
+        from services.boards.board_lifecycle import (
+            stamp_active_board_doc,
+        )
+        stamp_active_board_doc(doc)
+    except Exception:  # pragma: no cover
+        # Fail-soft: lifecycle stamping must never abort scoring.
+        # The startup audit + admin /normalize endpoint will catch
+        # any doc that fell through this branch.
+        pass
     doc["version_tag"] = version_tag
     doc["computed_at"] = computed_at
     # SSOT: `scored_at` is the ownership-declared freshness timestamp

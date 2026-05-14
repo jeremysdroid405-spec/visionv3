@@ -50,16 +50,22 @@ def _require_admin_token(provided: Optional[str]) -> None:
 
 
 def _board_collections() -> List[str]:
-    """Every cached_board-style collection across all configured
-    sports. (Filters out *_prop_scores — those are handled by the
-    ephemeral cleanup utility, not board lifecycle.)"""
+    """Every ephemeral realtime collection that should follow the
+    universal active/inactive lifecycle contract.
+
+    Pulls from ``EPHEMERAL_CLEANUP_CONFIG`` so adding a new sport
+    (or new ephemeral collection per sport) is one config change.
+
+    2026-05-15 — Originally cached_board-only; widened to include
+    every collection declared in the ephemeral config (prop_scores,
+    future gate_outputs, board_cache, …) so the lifecycle audit and
+    the cleanup utility share the exact same surface."""
     out: List[str] = []
     for sport, block in EPHEMERAL_CLEANUP_CONFIG.items():
         if not block.get("enabled"):
             continue
         for entry in iter_collections(sport):
-            if "cached_board" in entry["name"]:
-                out.append(entry["name"])
+            out.append(entry["name"])
     return out
 
 
@@ -105,6 +111,54 @@ async def status(
             "stale_reason": {"$exists": True},
             "stale_marked_at": {"$exists": True},
         })
+        # Orphan count vs live_props (only for flat-keyed prop_scores
+        # / similar collections; nested cached_board skipped — same
+        # rationale as the ephemeral_cleanup status_report path).
+        n_orphan_vs_live: Optional[int] = None
+        try:
+            from services.cleanup.ephemeral_collections import (
+                iter_collections as _iter_cols,
+            )
+            from services.cleanup.ephemeral_cleanup import (
+                get_live_canonical_keys,
+            )
+            # Find this collection's sport block + entry to learn
+            # the canonical_key_field + nested_path settings.
+            sport_for_coll = None
+            entry_for_coll = None
+            for s, blk in EPHEMERAL_CLEANUP_CONFIG.items():
+                if not blk.get("enabled"):
+                    continue
+                for e in _iter_cols(s):
+                    if e["name"] == cname:
+                        sport_for_coll = s
+                        entry_for_coll = e
+                        break
+                if sport_for_coll:
+                    break
+            if (
+                sport_for_coll
+                and entry_for_coll
+                and not entry_for_coll.get("nested_key_path")
+            ):
+                live_keys = await get_live_canonical_keys(
+                    _db, sport_for_coll,
+                )
+                key_field = entry_for_coll["key_field"]
+                active_distinct = await coll.distinct(
+                    key_field, {"active": True},
+                )
+                active_set = {k for k in active_distinct if k}
+                orphan_keys = active_set - live_keys
+                if orphan_keys:
+                    n_orphan_vs_live = await coll.count_documents({
+                        "active": True,
+                        key_field: {"$in": list(orphan_keys)},
+                    })
+                else:
+                    n_orphan_vs_live = 0
+        except Exception:  # noqa: BLE001
+            n_orphan_vs_live = None
         out["per_collection"][cname] = {
             "total": total,
             "active": n_active,
@@ -114,6 +168,7 @@ async def status(
             "missing_stale_reason": n_missing_reason,
             "missing_stale_marked_at": n_missing_marked,
             "pending_purge": n_pending_purge,
+            "orphan_vs_live": n_orphan_vs_live,
             "lifecycle_compliant": n_compliant,
             "compliance_pct": round(
                 100.0 * n_compliant / max(total, 1), 2,
