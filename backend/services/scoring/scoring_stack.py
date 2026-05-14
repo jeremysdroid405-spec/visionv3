@@ -407,6 +407,56 @@ def _pick_reference_odds(
     return None, "none"
 
 
+def _pick_display_reference_odds(
+    dk_layer: Optional[Dict],
+    mgm_layer: Optional[Dict],
+    fd_layer: Optional[Dict] = None,
+    bol_layer: Optional[Dict] = None,
+    csr_layer: Optional[Dict] = None,
+    sport: Optional[str] = None,
+) -> Tuple[Optional[float], str]:
+    """Display-only reference odds for pick-card UI parity.
+
+    2026-05-15 — NBA/MLB pick-card visual parity. MLB's
+    ``_pick_reference_odds`` returns ``("consensus", mean(dk_p,fd_p))``
+    when DK+FD both quote, so MLB pick cards display
+    ``OVER -319 CONSENSUS``. NBA's `_pick_reference_odds` skips the
+    consensus step (gate calibration), so NBA pick cards display
+    ``OVER -454 DK`` instead. This helper always prefers the DK+FD
+    consensus when both books quote, regardless of sport, so the
+    frontend can render an identical "CONSENSUS" label across NBA and
+    MLB. When DK+FD aren't both available, we fall back to the canonical
+    tier reference chain (`_pick_reference_odds`).
+
+    The output is stamped onto the score doc as
+    ``display_reference_book`` / ``display_reference_odds``. Gate
+    routing keeps reading ``tier_reference_*`` (single-book pick),
+    untouched.
+
+    Returns
+    -------
+    (display_odds_in_american_format or None, book_label)
+        book_label values: ``"consensus" | "dk" | "fd" | "mgm" | "csr" |
+                            "bol" | "none"``
+    """
+    dk_odds = dk_layer.get("odds") if dk_layer else None
+    fd_odds = fd_layer.get("odds") if fd_layer else None
+    if dk_odds is not None and fd_odds is not None:
+        dk_p = _american_to_prob(dk_odds)
+        fd_p = _american_to_prob(fd_odds)
+        if dk_p is not None and fd_p is not None:
+            consensus_amer = _prob_to_american((dk_p + fd_p) / 2.0)
+            if consensus_amer is not None:
+                return consensus_amer, "consensus"
+    # No DK+FD consensus available — defer to the tier reference book
+    # (already single-book and matches what users would otherwise see).
+    return _pick_reference_odds(
+        dk_layer, mgm_layer,
+        fd_layer=fd_layer, bol_layer=bol_layer,
+        csr_layer=csr_layer, sport=sport,
+    )
+
+
 def compute_tier(
     prop: Dict,
     cv: Optional[float],
@@ -452,6 +502,16 @@ def compute_tier(
         csr_layer=csr_layer, sport=sport,
     )
 
+    # Display-only consensus (UI pick-card parity). Calibration-free —
+    # gates still read `tier_reference_*` above. See
+    # `_pick_display_reference_odds` docstring for the universal
+    # "prefer DK+FD consensus" contract.
+    display_odds, display_book = _pick_display_reference_odds(
+        dk_layer, mgm_layer,
+        fd_layer=fd_layer, bol_layer=bol_layer,
+        csr_layer=csr_layer, sport=sport,
+    )
+
     side = (prop.get("recommendation") or "OVER").upper()
     p_model_pct = round((p_model or 0.0) * 100.0, 1) if p_model is not None else None
 
@@ -461,6 +521,8 @@ def compute_tier(
             "tier_reason": ReasonCode.NO_REFERENCE_MARKET,
             "tier_reference_book": "none",
             "tier_reference_odds": None,
+            "display_reference_book": display_book,
+            "display_reference_odds": display_odds,
             "routed_tier": None,
             "tier_gate_results": {},
         }
@@ -570,6 +632,8 @@ def compute_tier(
             "tier_reason": ReasonCode.GATES_PASSED,
             "tier_reference_book": ref_book,
             "tier_reference_odds": ref_odds,
+            "display_reference_book": display_book,
+            "display_reference_odds": display_odds,
             "routed_tier": routed_tier,
             "tier_gate_results": legacy_gate_results,
             "gate_eval": eval_result.to_dict(),
@@ -583,6 +647,8 @@ def compute_tier(
         "tier_reason": f"{target_tier}_failed: {eval_result.reason_code}",
         "tier_reference_book": ref_book,
         "tier_reference_odds": ref_odds,
+        "display_reference_book": display_book,
+        "display_reference_odds": display_odds,
         "routed_tier": routed_tier,
         "tier_gate_results": legacy_gate_results,
         "gate_eval": eval_result.to_dict(),

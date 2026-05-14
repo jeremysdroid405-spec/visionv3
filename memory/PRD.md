@@ -146,6 +146,22 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+### 2026-05-15 — NBA/MLB pick-card visual parity: universal `display_reference_*` (CONSENSUS label)
+- **User report**: NBA pick cards displayed the book name (DK / FD / MGM) after the odds; MLB cards displayed "CONSENSUS". Visual asymmetry on the dashboard board.
+- **Root cause**: `scoring_stack._pick_reference_odds` deliberately skips the DK+FD consensus step for NBA (gates are calibrated against single-book reference odds — changing `tier_reference_odds` would silently re-route tiers). MLB returns `("consensus", mean(dk_p,fd_p)→amer)` when both books quote, so MLB cards naturally show "CONSENSUS".
+- **Fix (display-only — gates / routing UNTOUCHED)**:
+  - Added `_pick_display_reference_odds()` in `scoring_stack.py` — universal "prefer DK+FD consensus when both quote, else fall back to tier reference chain".
+  - `compute_tier()` now stamps `display_reference_book` + `display_reference_odds` on every score-doc return path (qualified, unqualified, and `no_reference_market`).
+  - `score_document_schema.py`: added two new optional fields.
+  - `prop_scores_store._SCORE_DOC_FIELDS`: whitelisted both fields for projection.
+  - `ferrari_tiers.py`: passthrough into the tier API payload (`prop.display_reference_*`).
+  - Frontend `resolveDisplayOdds` in `UniversalPlayerCard.jsx`: prefers `display_reference_*` over `tier_reference_*`, falling back gracefully on older score docs.
+- **Live verification** (post first recompute cycle, 123 NBA rows refreshed):
+  - DB: NBA `display_reference_book="consensus"` = 109 rows (out of 199 with display fields stamped so far); MLB = 274. As recompute drains the queue, all NBA props with DK+FD coverage will pick up the label.
+  - API: `/api/v3/ferrari/safe-haven?sport=nba` returns `display_reference_book: "consensus"` on De'Aaron Fox PTS 11.5 (`-526`); tier_reference unchanged at `(dk, -466)`.
+  - UI screenshot: NBA Safe Haven De'Aaron Fox card now reads `OVER 11.5 PTS  -526 CONSENSUS`. MLB Safe Haven Ozzie Albies card unchanged: `OVER 0.5 H+R+RBI  -319 CONSENSUS`.
+- **Gate / tier invariance**: `tier_reference_book` / `tier_reference_odds` byte-for-byte unchanged across all post-fix score docs. `resolve_target_tier` and the universal gate engine read the same single-book reference they always did. No regression test changes needed (existing tier_reference_* mutation guards still pass).
+
 ### 2026-05-15 — Universal Consensus / Best Bet chip on PlayerDetailPage PropRow (NBA/MLB pick card parity)
 - **User directive**: "The nba and mlb ui should be identical. Add consensus to the pick card page. Mirror mlb."
 - **Scope**: `frontend/src/components/dashboard/PlayerDetailPage.jsx::PropRow` — added a sport-agnostic edge-metrics strip that renders inline on every prop row below the Lasso Projection bar.

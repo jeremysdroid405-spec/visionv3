@@ -119,6 +119,18 @@ class ScoreDocument(BaseModel):
     tier_reason:            Optional[str] = None
     tier_reference_book:    Optional[str] = None
     tier_reference_odds:    Optional[float] = None
+    # ── Display reference odds (UI parity) ────────────────────────
+    # 2026-05-15 — Frontend pick-card parity fix. NBA `tier_reference_*`
+    # is a single-book pick (DK→FD→MGM→CSR→BOL) because the gate engine
+    # is calibrated against single-book reference odds; MLB returns
+    # ("consensus", mean(dk_p,fd_p)→amer) when DK+FD both quote, so MLB
+    # cards display "CONSENSUS" while NBA cards display the book name.
+    # The `display_reference_*` pair below carries the universal
+    # "prefer DK+FD consensus when available, else fall back to the
+    # tier reference book" pick for BOTH sports — purely for UI. Gates
+    # / routing continue to read `tier_reference_*` untouched.
+    display_reference_book: Optional[str]   = None
+    display_reference_odds: Optional[float] = None
     routed_tier:            Optional[str] = None
     tier_gate_results:      Optional[Dict[str, Any]] = None
 

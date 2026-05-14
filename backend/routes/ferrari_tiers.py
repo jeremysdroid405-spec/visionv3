@@ -1017,6 +1017,10 @@ def _merge_score_with_board(score: Dict[str, Any], board_entry: Dict[str, Any] |
     prop["tier_reason"] = score.get("tier_reason")
     prop["tier_reference_book"] = score.get("tier_reference_book")
     prop["tier_reference_odds"] = score.get("tier_reference_odds")
+    # 2026-05-15 — UI-only pick-card parity (NBA/MLB show CONSENSUS).
+    # Frontend `resolveDisplayOdds` prefers these when present.
+    prop["display_reference_book"] = score.get("display_reference_book")
+    prop["display_reference_odds"] = score.get("display_reference_odds")
     prop["edge_vs_fair"] = score.get("edge_vs_fair")
     prop["fair_prob"] = score.get("fair_prob")
     prop["quality_source"] = score.get("quality_source")

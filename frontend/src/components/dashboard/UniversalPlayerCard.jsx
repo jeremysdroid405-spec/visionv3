@@ -227,6 +227,17 @@ const formatAmericanOdds = (n) => {
  */
 const resolveDisplayOdds = (p) => {
   if (!p) return { odds: null, book: null, sourceLabel: '—' };
+  // 2026-05-15 — UI pick-card parity. Backend stamps
+  // `display_reference_*` which prefers DK+FD consensus across both
+  // NBA and MLB. Gates still read `tier_reference_*` (single-book
+  // pick) — these are display-only. Fall back to `tier_reference_*`
+  // when display fields aren't stamped (older score docs / shapes
+  // that don't run through scoring_stack).
+  const dispBook = p.display_reference_book;
+  const dispOdds = p.display_reference_odds;
+  if (dispOdds != null && dispBook && dispBook !== 'none') {
+    return { odds: dispOdds, book: dispBook, sourceLabel: dispBook };
+  }
   const refBook = p.tier_reference_book;
   const refOdds = p.tier_reference_odds;
   // Treat 'none' the same as missing — the scoring stack stamps

@@ -139,6 +139,12 @@ _SCORE_OUTPUT_FIELDS = (
     "vision_volatility_penalty", "vision_v2_dir_gate", "vision_v2_weights",
     # tier dimension
     "tier", "tier_reason", "tier_reference_book", "tier_reference_odds",
+    # Display reference odds (2026-05-15) — UI-only pick-card parity
+    # between NBA and MLB. Prefers DK+FD consensus when both books
+    # quote, else mirrors `tier_reference_*`. Gates still read
+    # `tier_reference_*` untouched. See
+    # `scoring_stack._pick_display_reference_odds`.
+    "display_reference_book", "display_reference_odds",
     # Routed tier (2026-04-25) — odds-bucket assignment from the
     # FIRST-CLASS routing step. Stamped before any gate evaluates.
     # Universal across NBA / MLB / NFL: ref_odds <= -240 → safe_haven,
