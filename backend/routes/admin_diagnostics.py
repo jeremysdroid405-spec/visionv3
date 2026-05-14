@@ -292,3 +292,117 @@ async def probability_trace(
         "rows_found": len(trace),
         "rows": trace,
     }
+
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Best-bet edge audit (2026-05-14)
+# ─────────────────────────────────────────────────────────────────────
+@router.get("/best-bet-edge-audit")
+async def best_bet_edge_audit(
+    sport: str = Query("mlb"),
+    top_n: int = Query(25, ge=1, le=100),
+):
+    """Consensus Edge + Best Bet Edge slate audit (universal, 2026-05-14).
+
+    Reads the existing canonical fields — NO new schema, NO new
+    aliases. The math has been in place since 2026-05-13:
+
+        Consensus Edge   = `edge_vs_fair`  (p_model − consensus_fair)
+        Best Bet Edge    = `total_edge`    (p_model − best_book_implied)
+        Best Bet Book    = `best_book`     + `best_book_odds`
+
+    Returns the slate snapshots the user asked for:
+      • top N props by Best Bet Edge
+      • top N props where Consensus Edge is modest (|x|<3%) but
+        Best Bet Edge is strong (≥5%) — shopping carries the bet
+      • best_book frequency distribution
+      • market_spread_label distribution
+      • count of props missing a best-book selection
+    """
+    sport = (sport or "").lower()
+    if sport not in _VALID_SPORTS:
+        raise HTTPException(400, f"unsupported sport: {sport}")
+
+    db = _require_db()
+    coll = db[f"{sport}_prop_scores"]
+    base_filter = {"active": True, "version_tag": f"final-{sport}-rt"}
+
+    proj = {
+        "_id": 0,
+        "player_name": 1, "stat_type": 1, "line": 1,
+        "recommendation": 1, "tier": 1,
+        "edge_vs_fair": 1,
+        "total_edge": 1,
+        "best_book": 1, "best_book_odds": 1,
+        "best_book_implied_probability": 1,
+        "best_book_edge": 1,
+        "market_spread": 1, "market_spread_label": 1,
+        "books_available_count": 1,
+    }
+
+    rows: list = []
+    async for d in coll.find(base_filter, proj):
+        rows.append({
+            "player":         d.get("player_name"),
+            "stat":           d.get("stat_type"),
+            "side":           d.get("recommendation"),
+            "line":           d.get("line"),
+            "tier":           d.get("tier"),
+            # Universal display labels mapped to existing fields:
+            "consensus_edge": d.get("edge_vs_fair"),
+            "best_bet_edge":  d.get("total_edge"),
+            "best_bet_book":  d.get("best_book"),
+            "best_bet_odds":  d.get("best_book_odds"),
+            "best_bet_implied_probability":
+                d.get("best_book_implied_probability"),
+            "shopping_edge":  d.get("best_book_edge"),
+            "market_spread":  d.get("market_spread"),
+            "market_spread_label": d.get("market_spread_label"),
+            "books_available_count": d.get("books_available_count"),
+        })
+
+    top_by_best_bet = sorted(
+        (r for r in rows if r["best_bet_edge"] is not None),
+        key=lambda r: r["best_bet_edge"],
+        reverse=True,
+    )[:top_n]
+
+    # Shopping carries the bet: consensus_edge near zero but
+    # best_bet_edge strong (≥+5%). These are the "the model agrees
+    # with the market, but ONE book is priced too generously" plays.
+    modest_consensus_strong_best_bet = sorted(
+        (
+            r for r in rows
+            if r["consensus_edge"] is not None
+            and r["best_bet_edge"] is not None
+            and abs(r["consensus_edge"]) < 0.03
+            and r["best_bet_edge"] >= 0.05
+        ),
+        key=lambda r: r["best_bet_edge"],
+        reverse=True,
+    )[:top_n]
+
+    from collections import Counter
+    book_counts = Counter(
+        r["best_bet_book"] for r in rows if r["best_bet_book"]
+    )
+    spread_counts = Counter(
+        r["market_spread_label"] for r in rows if r["market_spread_label"]
+    )
+    missing_best_book = sum(1 for r in rows if not r["best_bet_book"])
+
+    return {
+        "sport": sport,
+        "source_collection": f"{sport}_prop_scores",
+        "active_rows_total": len(rows),
+        "top_by_best_bet_edge": top_by_best_bet,
+        "modest_consensus_strong_best_bet": modest_consensus_strong_best_bet,
+        "best_bet_book_distribution":
+            sorted(book_counts.items(), key=lambda kv: -kv[1]),
+        "market_spread_distribution": dict(spread_counts),
+        "missing_best_book_count": missing_best_book,
+        "missing_best_book_pct":   round(
+            100.0 * missing_best_book / max(1, len(rows)), 2
+        ),
+    }

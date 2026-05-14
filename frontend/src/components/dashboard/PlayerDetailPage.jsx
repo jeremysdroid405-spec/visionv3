@@ -1654,59 +1654,85 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                     SSOT Tier E (2026-05-04): derive edge % from
                     canonical `edge_vs_fair` ratio (× 100). Legacy
                     `edge_pct` reads removed.
-                    2026-05-14 — split into Model Edge / Total Edge.
-                    Model Edge   = edge_vs_fair  (model alpha vs market).
-                    Total Edge   = total_edge   (model vs best-book price). */}
+                    2026-05-14 — Universal display contract:
+                      • Consensus Edge = edge_vs_fair (model vs market)
+                      • Best Bet Edge  = total_edge   (model vs best book)
+                      • Best Bet       = best_book + best_book_odds */}
                 {(() => {
-                  const _edgePct = (selectedVisionProp.edge_vs_fair != null)
+                  const _consensusEdgePct = (selectedVisionProp.edge_vs_fair != null)
                     ? Number(selectedVisionProp.edge_vs_fair) * 100
                     : null;
-                  const _totalEdgePct = (selectedVisionProp.total_edge != null)
+                  const _bestBetEdgePct = (selectedVisionProp.total_edge != null)
                     ? Number(selectedVisionProp.total_edge) * 100
                     : null;
-                  const _shopEdgePct = (selectedVisionProp.best_book_edge != null)
-                    ? Number(selectedVisionProp.best_book_edge) * 100
-                    : null;
+                  const _bestBetBook = selectedVisionProp.best_book;
+                  const _bestBetOdds = selectedVisionProp.best_book_odds;
+                  const _fmtOdds = (o) => o == null ? '' : (o > 0 ? `+${o}` : `${o}`);
+                  const _fmtBook = (b) => {
+                    if (!b) return '';
+                    const map = {
+                      'draftkings': 'DraftKings', 'fanduel': 'FanDuel',
+                      'betmgm': 'BetMGM', 'caesars': 'Caesars',
+                      'espnbet': 'ESPN BET', 'hardrockbet': 'Hard Rock',
+                      'betrivers': 'BetRivers', 'betparx': 'BetPARX',
+                      'ballybet': 'Bally Bet', 'fliff': 'Fliff',
+                      'pointsbetus': 'PointsBet',
+                    };
+                    return map[b] || b;
+                  };
                   const _show = (
                     selectedVisionProp.cv != null
-                    || _edgePct != null
-                    || _totalEdgePct != null
+                    || _consensusEdgePct != null
+                    || _bestBetEdgePct != null
+                    || _bestBetBook
                     || selectedVisionProp.tp_odds != null
                   );
+                  const _bestBetLabel = _bestBetBook
+                    ? `${_fmtBook(_bestBetBook)}${_bestBetOdds ? ' ' + _fmtOdds(_bestBetOdds) : ''}`
+                    : null;
                   return _show && (
-                  <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-zinc-700">
-                    {selectedVisionProp.cv != null && (
-                      <div className="text-center" data-testid="player-detail-cv">
-                        <div className="text-[10px] text-zinc-500 uppercase">CV</div>
-                        <div className={`text-sm font-bold ${selectedVisionProp.cv < 0.6 ? 'text-green-400' : selectedVisionProp.cv < 1.0 ? 'text-yellow-400' : 'text-red-400'}`}>
-                          {typeof selectedVisionProp.cv === 'number' ? selectedVisionProp.cv.toFixed(2) : selectedVisionProp.cv}
+                  <div className="space-y-2 mt-3 pt-3 border-t border-zinc-700">
+                    <div className="grid grid-cols-4 gap-2">
+                      {selectedVisionProp.cv != null && (
+                        <div className="text-center" data-testid="player-detail-cv">
+                          <div className="text-[10px] text-zinc-500 uppercase">CV</div>
+                          <div className={`text-sm font-bold ${selectedVisionProp.cv < 0.6 ? 'text-green-400' : selectedVisionProp.cv < 1.0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                            {typeof selectedVisionProp.cv === 'number' ? selectedVisionProp.cv.toFixed(2) : selectedVisionProp.cv}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {_edgePct != null && (
-                      <div className="text-center" data-testid="player-detail-model-edge"
-                           title={`Model Edge = p_model − market_fair. Measures model alpha (how much smarter the projection is than the consensus market).${_shopEdgePct != null ? `\nShopping Edge: ${_shopEdgePct > 0 ? '+' : ''}${_shopEdgePct.toFixed(1)}% (market_fair − best_book_implied)` : ''}`}>
-                        <div className="text-[10px] text-zinc-500 uppercase">Model Edge</div>
-                        <div className={`text-sm font-bold ${_edgePct > 15 ? 'text-green-400' : _edgePct > 5 ? 'text-yellow-400' : 'text-zinc-400'}`}>
-                          {_edgePct > 0 ? '+' : ''}{_edgePct.toFixed(1)}%
+                      )}
+                      {_consensusEdgePct != null && (
+                        <div className="text-center" data-testid="player-detail-consensus-edge"
+                             title="Consensus Edge compares our model to the overall market (devigged fair probability).">
+                          <div className="text-[10px] text-zinc-500 uppercase">Consensus Edge</div>
+                          <div className={`text-sm font-bold ${_consensusEdgePct > 15 ? 'text-green-400' : _consensusEdgePct > 5 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                            {_consensusEdgePct > 0 ? '+' : ''}{_consensusEdgePct.toFixed(1)}%
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {_totalEdgePct != null && (
-                      <div className="text-center" data-testid="player-detail-total-edge"
-                           title="Total Edge = p_model − best_book_implied. Combined model alpha + shopping alpha — the actionable ROI edge against the cheapest available market price.">
-                        <div className="text-[10px] text-zinc-500 uppercase">Total Edge</div>
-                        <div className={`text-sm font-bold ${_totalEdgePct > 10 ? 'text-green-400' : _totalEdgePct > 3 ? 'text-yellow-400' : _totalEdgePct < 0 ? 'text-red-400' : 'text-zinc-400'}`}>
-                          {_totalEdgePct > 0 ? '+' : ''}{_totalEdgePct.toFixed(1)}%
+                      )}
+                      {_bestBetEdgePct != null && (
+                        <div className="text-center" data-testid="player-detail-best-bet-edge"
+                             title="Best Bet Edge compares our model to the best sportsbook price currently available — the actionable bettor edge.">
+                          <div className="text-[10px] text-zinc-500 uppercase">Best Bet Edge</div>
+                          <div className={`text-sm font-bold ${_bestBetEdgePct > 10 ? 'text-green-400' : _bestBetEdgePct > 3 ? 'text-yellow-400' : _bestBetEdgePct < 0 ? 'text-red-400' : 'text-zinc-400'}`}>
+                            {_bestBetEdgePct > 0 ? '+' : ''}{_bestBetEdgePct.toFixed(1)}%
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {selectedVisionProp.tp_odds != null && (
-                      <div className="text-center" data-testid="player-detail-true-prob">
-                        <div className="text-[10px] text-zinc-500 uppercase">True Prob</div>
-                        <div className={`text-sm font-bold ${selectedVisionProp.tp_odds > 70 ? 'text-green-400' : selectedVisionProp.tp_odds > 55 ? 'text-yellow-400' : 'text-zinc-400'}`}>
-                          {typeof selectedVisionProp.tp_odds === 'number' ? selectedVisionProp.tp_odds.toFixed(1) : selectedVisionProp.tp_odds}%
+                      )}
+                      {selectedVisionProp.tp_odds != null && (
+                        <div className="text-center" data-testid="player-detail-true-prob">
+                          <div className="text-[10px] text-zinc-500 uppercase">True Prob</div>
+                          <div className={`text-sm font-bold ${selectedVisionProp.tp_odds > 70 ? 'text-green-400' : selectedVisionProp.tp_odds > 55 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                            {typeof selectedVisionProp.tp_odds === 'number' ? selectedVisionProp.tp_odds.toFixed(1) : selectedVisionProp.tp_odds}%
+                          </div>
                         </div>
+                      )}
+                    </div>
+                    {_bestBetLabel && (
+                      <div className="flex items-center justify-between text-xs"
+                           data-testid="player-detail-best-bet-row">
+                        <span className="text-zinc-500 uppercase tracking-wide">Best Bet</span>
+                        <span className="font-semibold text-emerald-300">{_bestBetLabel}</span>
                       </div>
                     )}
                   </div>

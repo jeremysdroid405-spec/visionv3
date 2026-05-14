@@ -1042,24 +1042,37 @@ const UniversalPlayerCard = memo(({
                         : 'text-zinc-200'
                     }`}
                     title={(() => {
-                      // 2026-05-14 — Three-edge tooltip:
-                      //   • Model Edge   = p_model - market_fair          (model alpha)
-                      //   • Shopping Edge = market_fair - best_book_implied (vig vs cheapest book)
-                      //   • Total Edge   = p_model - best_book_implied    (actionable ROI edge)
-                      // edge_vs_fair / best_book_edge / total_edge are all
-                      // side-aware on the score doc (stamped per
-                      // recommendation in scoring_stack + recompute).
+                      // 2026-05-14 — Universal display tooltip:
+                      //   Consensus Edge = edge_vs_fair  (model vs market)
+                      //   Best Bet Edge  = total_edge    (model vs best book)
+                      //   Best Bet       = best_book + best_book_odds
+                      // The math is already on the score doc — this
+                      // just relabels the existing fields.
                       const fmt = (v) => v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
-                      const model = player?.edge_vs_fair ?? null;
-                      const shop  = player?.best_book_edge ?? null;
-                      const tot   = player?.total_edge ?? null;
+                      const fmtOdds = (o) => o == null ? '' : (o > 0 ? `+${o}` : `${o}`);
+                      const fmtBook = (b) => {
+                        if (!b) return '';
+                        const map = { 'draftkings': 'DraftKings', 'fanduel': 'FanDuel',
+                          'betmgm': 'BetMGM', 'caesars': 'Caesars',
+                          'espnbet': 'ESPN BET', 'hardrockbet': 'Hard Rock',
+                          'betrivers': 'BetRivers', 'betparx': 'BetPARX',
+                          'ballybet': 'Bally Bet', 'fliff': 'Fliff' };
+                        return map[b] || b;
+                      };
+                      const consensus = player?.edge_vs_fair ?? null;
+                      const bestBet   = player?.total_edge ?? null;
+                      const book      = player?.best_book ?? null;
+                      const odds      = player?.best_book_odds ?? null;
                       const lineEdgeTxt = dispEdge != null
                         ? `Edge vs line: ${dispEdge > 0 ? '+' : ''}${dispEdge.toFixed(2)}`
                         : null;
+                      const bestBetLine = book
+                        ? `Best Bet: ${fmtBook(book)}${odds != null ? ' ' + fmtOdds(odds) : ''}`
+                        : null;
                       return [
-                        `Model Edge: ${fmt(model)}`,
-                        `Shopping Edge: ${fmt(shop)}`,
-                        `Total Edge: ${fmt(tot)}`,
+                        `Consensus Edge: ${fmt(consensus)}`,
+                        bestBetLine,
+                        `Best Bet Edge: ${fmt(bestBet)}`,
                         lineEdgeTxt,
                       ].filter(Boolean).join('\n');
                     })()}

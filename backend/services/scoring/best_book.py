@@ -69,31 +69,59 @@ def american_to_implied(odds: Any) -> Optional[float]:
     return 100.0 / (o + 100.0)
 
 
-def better_american_odds(candidate: Optional[float], current_best: Optional[float]) -> Optional[float]:
+def is_better_american_odds(
+    candidate: Optional[float], current_best: Optional[float]
+) -> bool:
+    """Boolean form of the better-odds predicate.
+
+    Returns True iff `candidate` is strictly better for the bettor than
+    `current_best` (lower implied probability, i.e. higher payout).
+
+    Universal across NBA / MLB / NFL / future sports — odds semantics
+    are sport-agnostic. Side-agnostic too: works for OVER + UNDER
+    because the caller passes "this side's price" by convention.
+
+    Examples
+    --------
+    >>> is_better_american_odds(+140, +110)      # True  (+140 = 41.7%, +110 = 47.6%)
+    True
+    >>> is_better_american_odds(-105, -130)      # True  (-105 = 51.2%, -130 = 56.5%)
+    True
+    >>> is_better_american_odds(-300, -400)      # True  (-300 = 75.0%, -400 = 80.0%)
+    True
+    >>> is_better_american_odds(+110, +140)      # False
+    False
+    >>> is_better_american_odds(None, -110)      # False (no candidate)
+    False
+    >>> is_better_american_odds(-110, None)      # True  (anything beats None)
+    True
+    >>> is_better_american_odds(0, -110)         # False (0 is invalid)
+    False
+    """
+    c_imp = american_to_implied(candidate)
+    if c_imp is None:
+        return False
+    b_imp = american_to_implied(current_best)
+    if b_imp is None:
+        return True
+    return c_imp < b_imp
+
+
+def better_american_odds(
+    candidate: Optional[float], current_best: Optional[float]
+) -> Optional[float]:
     """Return whichever odds value is better FOR THE BETTOR (lower
     implied probability == higher payout). Side-agnostic — works for
     both OVER and UNDER because `{book}_odds` carries this-side prices.
 
-    Examples (the bettor wants the smaller implied probability):
-      better_american_odds(-300, -400) → -300   (-300 ⇒ 0.75 implied,
-                                                 -400 ⇒ 0.80 implied)
-      better_american_odds(+120, -110) → +120   (+120 ⇒ 0.45,
-                                                  -110 ⇒ 0.524)
-      better_american_odds(None, -110) → -110
-      better_american_odds(-110, None) → -110
+    Thin wrapper over `is_better_american_odds` that returns the winning
+    odds value (or fallback) instead of a bool.
     """
     if candidate is None:
         return current_best
     if current_best is None:
         return candidate
-    c_imp = american_to_implied(candidate)
-    b_imp = american_to_implied(current_best)
-    if c_imp is None:
-        return current_best
-    if b_imp is None:
-        return candidate
-    # Lower implied = better for bettor (more payout).
-    return candidate if c_imp < b_imp else current_best
+    return candidate if is_better_american_odds(candidate, current_best) else current_best
 
 
 def _spread_label(spread: Optional[float]) -> str:
@@ -156,8 +184,9 @@ def compute_best_book_metrics(
             continue
         books_available.append(display_key)
         implied_probs.append(imp)
-        # Pick best: lower implied = better for bettor.
-        if best_book_odds is None or imp < (best_book_implied or 1.0):
+        # Universal predicate: lower implied = better for bettor.
+        # Works for OVER + UNDER + plus-money + minus-money + any sport.
+        if is_better_american_odds(odds, best_book_odds):
             best_book = display_key
             best_book_odds = float(odds)
             best_book_implied = imp
@@ -178,17 +207,21 @@ def compute_best_book_metrics(
     if p_model is not None and best_book_implied is not None:
         total_edge = round(float(p_model) - best_book_implied, 4)
 
+    best_book_implied_rounded = (
+        round(best_book_implied, 4) if best_book_implied is not None else None
+    )
+    market_spread_rounded = (
+        round(market_spread, 4) if market_spread is not None else None
+    )
+    spread_label = _spread_label(market_spread)
+
     return {
         "best_book": best_book,
         "best_book_odds": best_book_odds,
-        "best_book_implied_probability": (
-            round(best_book_implied, 4) if best_book_implied is not None else None
-        ),
+        "best_book_implied_probability": best_book_implied_rounded,
         "best_book_edge": best_book_edge,
         "total_edge": total_edge,
-        "market_spread": (
-            round(market_spread, 4) if market_spread is not None else None
-        ),
-        "market_spread_label": _spread_label(market_spread),
+        "market_spread": market_spread_rounded,
+        "market_spread_label": spread_label,
         "books_available_count": len(books_available),
     }
