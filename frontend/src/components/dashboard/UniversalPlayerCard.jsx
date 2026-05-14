@@ -1050,9 +1050,9 @@ const UniversalPlayerCard = memo(({
                       // side-aware on the score doc (stamped per
                       // recommendation in scoring_stack + recompute).
                       const fmt = (v) => v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
-                      const model = player?.edge_vs_fair ?? prop?.edge_vs_fair ?? null;
-                      const shop  = player?.best_book_edge ?? prop?.best_book_edge ?? null;
-                      const tot   = player?.total_edge ?? prop?.total_edge ?? null;
+                      const model = player?.edge_vs_fair ?? null;
+                      const shop  = player?.best_book_edge ?? null;
+                      const tot   = player?.total_edge ?? null;
                       const lineEdgeTxt = dispEdge != null
                         ? `Edge vs line: ${dispEdge > 0 ? '+' : ''}${dispEdge.toFixed(2)}`
                         : null;
