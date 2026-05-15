@@ -1,0 +1,33 @@
+
+ # PLAYER              STAT               LN   L5 L10 L20   PROJ     µ     σ    CV    p_M  fair    TP    EDGE     TE    BBE     DK    FD   MGM BK  BH VS                 GATE FAIL
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 1 Cody Bellinger      Hits+Runs+RBIs    0.5  100  80  85   2.67  2.67  2.84  1.07  0.777 0.746  75.2   +3.13  +4.17  +1.66   -278  -310  -325  3   L Clay Holmes R      edge
+ 2 Ozzie Albies        Hits+Runs+RBIs    1.5   80  80  80   3.15  3.15  2.15  0.68  0.778 0.594  54.6  +18.39 +23.73  +0.52   -143  -150  -155  8   S Connelly Early L   cv
+ 3 Cole Young          Hits+Runs+RBIs    0.5   60  70  80   2.42  2.42  2.40  0.99  0.788 0.634  58.6  +15.41 +20.70  +0.52   -171  -175  -175  7   L — ?                hit_rate
+ 4 Junior Caminero     Hits              0.5   60  60  80   1.54  1.54  1.00  0.65  0.851 0.728  67.1  +12.37 +18.54  +0.51   -255  -280  -250 11   R Janson Junk R      hit_rate
+ 5 Daniel Schneemann   Hits+Runs+RBIs    0.5   40  60  80   2.56  2.56  2.32  0.90  0.814 0.694  69.4  +12.00 +13.22  +1.25   -214  -240     —  2   L Andrew Abbott L    hit_rate
+ 6 Byron Buxton        Total Bases       0.5   60  80  80   2.49  2.49  2.22  0.89  0.815 0.702  73.4  +11.34 +11.34  +3.25      —     —  -235  3   R — ?                hit_rate
+ 7 Junior Caminero     Total Bases       0.5   60  60  80   2.83  2.83  2.86  1.01  0.792 0.714  67.4   +7.78  +7.78  -4.03      —     —  -250  3   R Janson Junk R      hit_rate
+ 8 Byron Buxton        Hits              0.5   60  80  80   1.32  1.32  1.08  0.82  0.777 0.721  66.5   +5.63 +12.25  +1.05   -256  -260  -235 11   R — ?                hit_rate
+ 9 Yandy Diaz          Hits              0.5   80  80  80   1.19  1.19  0.86  0.72  0.788 0.745  68.0   +4.36  +7.39  -3.43   -293  -290  -275 10   R Janson Junk R      edge
+10 Daulton Varsho      Hits+Runs+RBIs    0.5   80  90  80   1.27  1.27  1.00  0.78  0.781 0.749  73.7   +3.24  +6.71  +2.27   -279  -320  -250  3   L — ?                edge
+11 Cody Bellinger      Total Bases       0.5  100  80  80   1.85  1.85  2.34  1.26  0.719 0.688  65.0   +3.11  +3.11  -3.75      —     —  -220  3   L Clay Holmes R      edge
+12 Josh Naylor         Hits+Runs+RBIs    0.5  100  80  80   2.34  2.34  2.44  1.04  0.775 0.745  74.1   +2.97  +4.15  +0.77   -285  -300  -275  3   L — ?                edge
+13 Nico Hoerner        Total Bases       0.5   80  80  80   1.59  1.59  1.64  1.03  0.748 0.733  71.5   +1.44  +1.44  -1.83      —     —  -275  3   R — ?                edge
+14 Kyle Tucker         Hits              0.5  100  90  80   0.89  0.89  0.64  0.72  0.728 0.715  65.9   +1.33  +9.10  +2.22   -273  -230  -220 11   L José Soriano R     edge
+15 Cody Bellinger      Hits              0.5  100  80  80   0.90  0.90  0.77  0.86  0.698 0.686  64.3   +1.21  +2.60  -2.91   -217  -220  -220 11   L Clay Holmes R      edge
+16 Jorge Soler         Hits              0.5   80  90  75   0.94  0.94  0.65  0.69  0.750 0.543  50.9  +20.71 +26.51  +2.37   -123  -115  -110 11   R Justin Wrobleski L margin
+17 Miguel Vargas       Total Bases       0.5   60  70  75   1.97  1.97  1.92  0.98  0.777 0.600  58.1  +17.68 +21.93  +2.35      —     —  -150  5   R — ?                hit_rate
+18 Daniel Schneemann   Hits              0.5   40  60  75   1.03  1.03  0.81  0.79  0.743 0.609  57.0  +13.47 +17.43  +0.10   -156  -155     — 10   L Andrew Abbott L    hit_rate
+19 Colson Montgomery   Hits+Runs+RBIs    0.5   60  70  75   2.37  2.37  2.00  0.84  0.826 0.698  69.9  +12.82 +13.64  +0.96   -222  -240  -235  3   L — ?                hit_rate
+20 Ernie Clement       Total Bases       0.5   60  60  75   1.76  1.76  1.49  0.85  0.801 0.688  65.0  +11.38 +11.38  -3.75      —     —  -220  3   R — ?                hit_rate
+21 Zach Neto           Hits+Runs+RBIs    0.5   60  70  75   1.74  1.74  1.82  1.05  0.752 0.653  64.7   +9.92 +11.55  +1.06   -186  -190  -175  3   R Justin Wrobleski L hit_rate
+22 Fernando Tatis Jr.  Hits+Runs+RBIs    0.5   60  70  75   1.80  1.80  1.46  0.81  0.813 0.715  71.5   +9.82 +11.32  +1.53   -233  -270  -250  3   R Logan Gilbert R    hit_rate
+23 Yordan Alvarez      Total Bases       0.5   40  50  75   2.86  2.86  2.75  0.96  0.805 0.714  74.0   +9.07  +9.91  +3.41      —     —  -250  3   L Jacob deGrom R     hit_rate
+24 Shea Langeliers     Hits+Runs+RBIs    1.5   80  80  75   2.66  2.66  1.90  0.71  0.729 0.643  63.4   +8.67 +11.40  +1.86   -175  -185  -160  3   R — ?                cv
+25 Yordan Alvarez      Hits              0.5   40  50  75   1.36  1.36  1.02  0.75  0.799 0.713  66.5   +8.64 +13.51  +0.10   -246  -250  -250 11   L Jacob deGrom R     hit_rate
+26 Liam Hicks          Total Bases       0.5   60  70  75   1.58  1.58  1.49  0.95  0.765 0.688  65.0   +7.75  +7.75  -3.75      —     —  -220  3   L Jesse Scholtens R  hit_rate
+27 Otto Lopez          Hits+Runs+RBIs    1.5   80  70  75   2.17  2.17  1.56  0.72  0.667 0.593  54.8   +7.32 +12.81  +0.95   -142  -150  -125  8   R Jesse Scholtens R  cv
+28 Ernie Clement       Hits+Runs+RBIs    0.5   60  60  75   1.95  1.95  1.66  0.85  0.809 0.737  73.5   +7.21  +7.53  +0.17   -279  -280  -275  3   R — ?                hit_rate
+29 Troy Johnston       Total Bases       0.5   60  80  75   1.63  1.63  1.52  0.94  0.771 0.702  71.5   +6.93  +6.93  +1.35      —     —  -235  3   L — ?                hit_rate
+30 Miguel Vargas       Hits              0.5   60  70  75   0.84  0.84  0.60  0.72  0.712 0.650  59.6   +6.15 +15.43  +3.85   -187  -185  -150 11   R — ?                hit_rate

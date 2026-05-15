@@ -1,0 +1,1748 @@
+====================================================================================================
+TOP 30 MLB FL OVER REJECTS — COMPREHENSIVE TUNING VIEW
+ Sorted: hit_rate_l20 desc, then edge_vs_fair desc
+ Filter:  active + FL routing + unqualified + batter + v3.1_phase2a
+====================================================================================================
+
+╔════ # 1  Cody Bellinger          Hits+Runs+RBIs      Line=0.5  OVER  (NYY @ NYM)
+║   commence: 2026-05-15T23:16:00Z  | updated: 2026-05-15 18:09:56  | books: 3  | ref: consensus @ -293
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: NYM
+║     opp_pitcher          : Clay Holmes (R)  id=605280  ERA=1.86  WHIP=1.01  K/9=6.89
+║     handedness           : same_hand=0  opp_hand=1
+║     expected_pa          : — | tempo_mod: 1.02 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :   100 /    80 /    85
+║     avg_hit_margin / avg_miss   : 2.79 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 2.580
+║     eb_shrunk_projection        : 2.668
+║     mu_raw_model_projection     : 2.577
+║     distribution_effective_mu   : 2.668
+║     FINAL  model_projection     : 2.668  (line 0.5, margin = 2.168)
+║     model_sigma                 : 3.381  | distribution_sigma: 2.844  (cv_derived_from_l10)
+║     CV                          : 1.066  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7771 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7771
+║     p_true_active / method      : 0.7771 / model
+║     fair_prob                   : 0.7458  | tp: 75.20%  | market_prob: 0.7521
+║     best_book                   : draftkings @ -278 (implied=0.7354, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 3.13 pp (0.0313 decimal)
+║       total_edge (vs best book) : 0.0417
+║       best_book_edge            : 0.0166
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -278 / -310 / -325 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : one_sided / 3 (books: ['DK', 'FD', 'MGM'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 42.90 / 17.13 / 1.00
+║     direction_margin             : 2.168 (strength: 0.682)
+║     ranking_score_v2             : 1.6848
+║     stability                    : 0.6447  volatility_penalty: 1.000
+║
+║   VERDICT: unqualified — front_lines_failed: gate_edge_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 2.668, 'line': 0.5, 'diff': 2.168, 'ratio_proj/line': 5.336, 'ratio_(line-proj)/line': -4.336}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✓] hit_rate_gate      value=85.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  
+║      [✗] edge_gate          value=3.13  threshold=5.0  gate_edge_fail
+║      [✓] tp_gate            value=77.7  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ # 2  Ozzie Albies            Hits+Runs+RBIs      Line=1.5  OVER  (ATL vs BOS)
+║   commence: 2026-05-15T23:16:00Z  | updated: 2026-05-15 18:16:32  | books: 8  | ref: consensus @ -146
+║
+║   MATCHUP
+║     batter_hand          : S | batting_order: None | lineup_confirmed: None | venue: ATL
+║     opp_pitcher          : Connelly Early (L)  id=813349  ERA=3.16  WHIP=1.22  K/9=8.23
+║     handedness           : same_hand=0  opp_hand=1
+║     expected_pa          : — | tempo_mod: 1.02 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    80 /    80 /    80
+║     avg_hit_margin / avg_miss   : 2.06 / 0.75
+║
+║   PROJECTION
+║     raw_hf_projection           : 3.250
+║     eb_shrunk_projection        : 3.150
+║     mu_raw_model_projection     : 3.251
+║     distribution_effective_mu   : 3.150
+║     FINAL  model_projection     : 3.150  (line 1.5, margin = 1.650)
+║     model_sigma                 : 1.792  | distribution_sigma: 2.155  (cv_derived_from_l10)
+║     CV                          : 0.684  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7781 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7781
+║     p_true_active / method      : 0.7781 / model
+║     fair_prob                   : 0.5942  | tp: 54.60%  | market_prob: 0.5459
+║     best_book                   : hardrockbet @ -135 (implied=0.5745, devig=0.5408)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 18.39 pp (0.1839 decimal)
+║       total_edge (vs best book) : 0.2373
+║       best_book_edge            : 0.0052
+║       shopping_edge_source      : devig_vs_devig
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -143 / -150 / -155 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 7 (books: ['DK', 'MGM', 'BOL', 'CSR', 'EB', 'HRB', 'FLF'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 96.50 / 39.44 / 1.00
+║     direction_margin             : 1.650 (strength: 0.683)
+║     ranking_score_v2             : 1.0483
+║     stability                    : 0.7720  volatility_penalty: 0.298
+║
+║   VERDICT: unqualified — front_lines_failed: gate_cv_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=8  threshold=1  
+║      [✓] direction_gate     value={'projection': 3.15, 'line': 1.5, 'diff': 1.65, 'ratio_proj/line': 2.1, 'ratio_(line-proj)/line': -1.1}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] cv_gate            value=0.684  threshold=0.65  gate_cv_fail
+║      [✓] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  
+║      [✓] edge_gate          value=18.39  threshold=5.0  
+║      [✓] tp_gate            value=77.8  threshold=50.0  
+║
+║   PRIZEPICKS: line=1.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ # 3  Cole Young              Hits+Runs+RBIs      Line=0.5  OVER  (SEA vs SD)
+║   commence: 2026-05-16T01:41:00Z  | updated: 2026-05-15 18:09:24  | books: 7  | ref: consensus @ -173
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: SEA
+║     opp_pitcher          : — (?)  id=None  ERA=—  WHIP=—  K/9=—
+║     handedness           : same_hand=None  opp_hand=None
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    70 /    80
+║     avg_hit_margin / avg_miss   : 2.19 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 2.600
+║     eb_shrunk_projection        : 2.420
+║     mu_raw_model_projection     : 2.604
+║     distribution_effective_mu   : 2.420
+║     FINAL  model_projection     : 2.420  (line 0.5, margin = 1.920)
+║     model_sigma                 : 2.234  | distribution_sigma: 2.403  (cv_derived_from_l10)
+║     CV                          : 0.993  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7878 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7878
+║     p_true_active / method      : 0.7878 / model
+║     fair_prob                   : 0.6337  | tp: 58.60%  | market_prob: 0.5856
+║     best_book                   : caesars @ -164 (implied=0.6212, devig=0.5808)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 15.41 pp (0.1541 decimal)
+║       total_edge (vs best book) : 0.2070
+║       best_book_edge            : 0.0052
+║       shopping_edge_source      : devig_vs_devig
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -171 / -175 / -175 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 6 (books: ['DK', 'MGM', 'CSR', 'EB', 'HRB', 'FLF'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 93.40 / 25.79 / 1.00
+║     direction_margin             : 1.920 (strength: 0.690)
+║     ranking_score_v2             : 1.5126
+║     stability                    : 0.6690  volatility_penalty: 0.984
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=7  threshold=1  
+║      [✓] direction_gate     value={'projection': 2.42, 'line': 0.5, 'diff': 1.92, 'ratio_proj/line': 4.84, 'ratio_(line-proj)/line': -3.84}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=15.41  threshold=5.0  
+║      [✓] tp_gate            value=78.8  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ # 4  Junior Caminero         Hits                Line=0.5  OVER  (TB vs MIA)
+║   commence: 2026-05-15T23:11:00Z  | updated: 2026-05-15 18:08:24  | books: 11  | ref: consensus @ -267
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: TB
+║     opp_pitcher          : Janson Junk (R)  id=676083  ERA=3.25  WHIP=1.11  K/9=6.70
+║     handedness           : same_hand=1  opp_hand=0
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    60 /    80
+║     avg_hit_margin / avg_miss   : 0.75 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.680
+║     eb_shrunk_projection        : 1.544
+║     mu_raw_model_projection     : 1.684
+║     distribution_effective_mu   : 1.544
+║     FINAL  model_projection     : 1.544  (line 0.5, margin = 1.044)
+║     model_sigma                 : 0.516  | distribution_sigma: 1.002  (cv_derived_from_l10)
+║     CV                          : 0.649  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.8513 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.8513
+║     p_true_active / method      : 0.8513 / model
+║     fair_prob                   : 0.7276  | tp: 67.10%  | market_prob: 0.6715
+║     best_book                   : betonline @ -244 (implied=0.7093, devig=0.6659)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 12.37 pp (0.1237 decimal)
+║       total_edge (vs best book) : 0.1854
+║       best_book_edge            : 0.0051
+║       shopping_edge_source      : devig_vs_devig
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -255 / -280 / -250 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 7 (books: ['DK', 'MGM', 'BOL', 'EB', 'HRB', 'PRX', 'FLF'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 96.20 / 38.18 / 1.00
+║     direction_margin             : 1.044 (strength: 0.739)
+║     ranking_score_v2             : 0.8888
+║     stability                    : 0.7837  volatility_penalty: 0.220
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=11  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.544, 'line': 0.5, 'diff': 1.044, 'ratio_proj/line': 3.088, 'ratio_(line-proj)/line': -2.088}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=12.37  threshold=5.0  
+║      [✓] tp_gate            value=85.1  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ # 5  Daniel Schneemann       Hits+Runs+RBIs      Line=0.5  OVER  (CLE vs CIN)
+║   commence: 2026-05-15T23:11:00Z  | updated: 2026-05-15 18:16:32  | books: 2  | ref: consensus @ -226
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: CLE
+║     opp_pitcher          : Andrew Abbott (L)  id=671096  ERA=4.47  WHIP=1.51  K/9=6.41
+║     handedness           : same_hand=1  opp_hand=0
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    40 /    60 /    80
+║     avg_hit_margin / avg_miss   : 1.94 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 2.840
+║     eb_shrunk_projection        : 2.564
+║     mu_raw_model_projection     : 2.842
+║     distribution_effective_mu   : 2.564
+║     FINAL  model_projection     : 2.564  (line 0.5, margin = 2.064)
+║     model_sigma                 : 1.247  | distribution_sigma: 2.315  (cv_derived_from_l10)
+║     CV                          : 0.903  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.8137 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.8137
+║     p_true_active / method      : 0.8137 / model
+║     fair_prob                   : 0.6937  | tp: 69.40%  | market_prob: 0.6937
+║     best_book                   : draftkings @ -214 (implied=0.6815, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 12.00 pp (0.1200 decimal)
+║       total_edge (vs best book) : 0.1322
+║       best_book_edge            : 0.0125
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -214 / -240 / — / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : one_sided / 2 (books: ['DK', 'FD'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 88.00 / 25.28 / 1.00
+║     direction_margin             : 2.064 (strength: 0.709)
+║     ranking_score_v2             : 1.6795
+║     stability                    : 0.6990  volatility_penalty: 0.784
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=2  threshold=1  
+║      [✓] direction_gate     value={'projection': 2.564, 'line': 0.5, 'diff': 2.064, 'ratio_proj/line': 5.128, 'ratio_(line-proj)/line': -4.128}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=12.0  threshold=5.0  
+║      [✓] tp_gate            value=81.4  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ # 6  Byron Buxton            Total Bases         Line=0.5  OVER  (MIN vs MIL)
+║   commence: 2026-05-15T23:11:00Z  | updated: 2026-05-15 18:16:32  | books: 3  | ref: mgm @ -235
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: MIN
+║     opp_pitcher          : — (?)  id=None  ERA=—  WHIP=—  K/9=—
+║     handedness           : same_hand=None  opp_hand=None
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    80 /    80
+║     avg_hit_margin / avg_miss   : 3.25 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.980
+║     eb_shrunk_projection        : 2.490
+║     mu_raw_model_projection     : 1.985
+║     distribution_effective_mu   : 2.490
+║     FINAL  model_projection     : 2.490  (line 0.5, margin = 1.990)
+║     model_sigma                 : 2.348  | distribution_sigma: 2.221  (cv_derived_from_l10)
+║     CV                          : 0.892  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.65 mu_floor=1.0 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.8149 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.8149
+║     p_true_active / method      : 0.8149 / model
+║     fair_prob                   : 0.7015  | tp: 73.40%  | market_prob: 0.7337
+║     best_book                   : betmgm @ -235 (implied=0.7015, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 11.34 pp (0.1134 decimal)
+║       total_edge (vs best book) : 0.1134
+║       best_book_edge            : 0.0325
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : — / — / -235 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : one_sided / 3 (books: ['MGM', 'BOL', 'EB'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 86.90 / 25.95 / 1.00
+║     direction_margin             : 1.990 (strength: 0.710)
+║     ranking_score_v2             : 1.6217
+║     stability                    : 0.7027  volatility_penalty: 0.760
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 2.49, 'line': 0.5, 'diff': 1.99, 'ratio_proj/line': 4.98, 'ratio_(line-proj)/line': -3.98}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=11.34  threshold=5.0  
+║      [✓] tp_gate            value=81.5  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ # 7  Junior Caminero         Total Bases         Line=0.5  OVER  (TB vs MIA)
+║   commence: 2026-05-15T23:11:00Z  | updated: 2026-05-15 18:16:32  | books: 3  | ref: mgm @ -250
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: TB
+║     opp_pitcher          : Janson Junk (R)  id=676083  ERA=3.25  WHIP=1.11  K/9=6.70
+║     handedness           : same_hand=1  opp_hand=0
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    60 /    80
+║     avg_hit_margin / avg_miss   : 2.12 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 3.560
+║     eb_shrunk_projection        : 2.830
+║     mu_raw_model_projection     : 3.562
+║     distribution_effective_mu   : 2.830
+║     FINAL  model_projection     : 2.830  (line 0.5, margin = 2.330)
+║     model_sigma                 : 1.197  | distribution_sigma: 2.864  (cv_derived_from_l10)
+║     CV                          : 1.012  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.65 mu_floor=1.0 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7921 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7921
+║     p_true_active / method      : 0.7921 / model
+║     fair_prob                   : 0.7143  | tp: 67.40%  | market_prob: 0.6744
+║     best_book                   : betmgm @ -250 (implied=0.7143, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 7.78 pp (0.0778 decimal)
+║       total_edge (vs best book) : 0.0778
+║       best_book_edge            : -0.0403
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : — / — / -250 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 1 (books: ['EB'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 72.40 / 18.18 / 1.00
+║     direction_margin             : 2.330 (strength: 0.693)
+║     ranking_score_v2             : 1.8456
+║     stability                    : 0.6627  volatility_penalty: 1.000
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 2.83, 'line': 0.5, 'diff': 2.33, 'ratio_proj/line': 5.66, 'ratio_(line-proj)/line': -4.66}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=7.78  threshold=5.0  
+║      [✓] tp_gate            value=79.2  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ # 8  Byron Buxton            Hits                Line=0.5  OVER  (MIN vs MIL)
+║   commence: 2026-05-15T23:11:00Z  | updated: 2026-05-15 18:16:32  | books: 11  | ref: consensus @ -258
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: MIN
+║     opp_pitcher          : — (?)  id=None  ERA=—  WHIP=—  K/9=—
+║     handedness           : same_hand=None  opp_hand=None
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    80 /    80
+║     avg_hit_margin / avg_miss   : 1.06 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.340
+║     eb_shrunk_projection        : 1.322
+║     mu_raw_model_projection     : 1.342
+║     distribution_effective_mu   : 1.322
+║     FINAL  model_projection     : 1.322  (line 0.5, margin = 0.822)
+║     model_sigma                 : 0.949  | distribution_sigma: 1.079  (cv_derived_from_l10)
+║     CV                          : 0.816  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7770 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7770
+║     p_true_active / method      : 0.7770 / model
+║     fair_prob                   : 0.7207  | tp: 66.50%  | market_prob: 0.6646
+║     best_book                   : betmgm @ -235 (implied=0.7015, devig=0.6545)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 5.63 pp (0.0563 decimal)
+║       total_edge (vs best book) : 0.1225
+║       best_book_edge            : 0.0105
+║       shopping_edge_source      : devig_vs_devig
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -256 / -260 / -235 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 7 (books: ['DK', 'MGM', 'BOL', 'EB', 'HRB', 'PRX', 'FLF'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 63.90 / 25.85 / 1.00
+║     direction_margin             : 0.822 (strength: 0.682)
+║     ranking_score_v2             : 0.6387
+║     stability                    : 0.7280  volatility_penalty: 0.591
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=11  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.322, 'line': 0.5, 'diff': 0.822, 'ratio_proj/line': 2.644, 'ratio_(line-proj)/line': -1.644}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=5.63  threshold=5.0  
+║      [✓] tp_gate            value=77.7  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ # 9  Yandy Diaz              Hits                Line=0.5  OVER  (TB vs MIA)
+║   commence: 2026-05-15T23:11:00Z  | updated: 2026-05-15 18:08:24  | books: 10  | ref: consensus @ -291
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: TB
+║     opp_pitcher          : Janson Junk (R)  id=676083  ERA=3.25  WHIP=1.11  K/9=6.70
+║     handedness           : same_hand=1  opp_hand=0
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    80 /    80 /    80
+║     avg_hit_margin / avg_miss   : 0.81 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.220
+║     eb_shrunk_projection        : 1.186
+║     mu_raw_model_projection     : 1.216
+║     distribution_effective_mu   : 1.186
+║     FINAL  model_projection     : 1.186  (line 0.5, margin = 0.686)
+║     model_sigma                 : 0.568  | distribution_sigma: 0.858  (cv_derived_from_l10)
+║     CV                          : 0.723  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7882 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7882
+║     p_true_active / method      : 0.7882 / model
+║     fair_prob                   : 0.7446  | tp: 68.00%  | market_prob: 0.6803
+║     best_book                   : caesars @ -250 (implied=0.7143, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 4.36 pp (0.0436 decimal)
+║       total_edge (vs best book) : 0.0739
+║       best_book_edge            : -0.0343
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -293 / -290 / -275 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 4 (books: ['MGM', 'EB', 'HRB', 'PRX'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 52.40 / 28.78 / 1.00
+║     direction_margin             : 0.686 (strength: 0.690)
+║     ranking_score_v2             : 0.5407
+║     stability                    : 0.7590  volatility_penalty: 0.384
+║
+║   VERDICT: unqualified — front_lines_failed: gate_edge_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=10  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.186, 'line': 0.5, 'diff': 0.686, 'ratio_proj/line': 2.372, 'ratio_(line-proj)/line': -1.372}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✓] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  
+║      [✗] edge_gate          value=4.36  threshold=5.0  gate_edge_fail
+║      [✓] tp_gate            value=78.8  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #10  Daulton Varsho          Hits+Runs+RBIs      Line=0.5  OVER  (TOR @ SF)
+║   commence: 2026-05-15T22:46:00Z  | updated: 2026-05-15 18:27:12  | books: 3  | ref: consensus @ -298
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: SF
+║     opp_pitcher          : — (?)  id=None  ERA=—  WHIP=—  K/9=—
+║     handedness           : same_hand=None  opp_hand=None
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    80 /    90 /    80
+║     avg_hit_margin / avg_miss   : 1.25 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.190
+║     eb_shrunk_projection        : 1.274
+║     mu_raw_model_projection     : 1.188
+║     distribution_effective_mu   : 1.274
+║     FINAL  model_projection     : 1.274  (line 0.5, margin = 0.774)
+║     model_sigma                 : 0.966  | distribution_sigma: 0.996  (cv_derived_from_l10)
+║     CV                          : 0.782  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7814 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7814
+║     p_true_active / method      : 0.7814 / model
+║     fair_prob                   : 0.7490  | tp: 73.70%  | market_prob: 0.7374
+║     best_book                   : betmgm @ -250 (implied=0.7143, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 3.24 pp (0.0324 decimal)
+║       total_edge (vs best book) : 0.0671
+║       best_book_edge            : 0.0227
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -279 / -320 / -250 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : one_sided / 3 (books: ['DK', 'FD', 'MGM'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 58.90 / 25.14 / 1.00
+║     direction_margin             : 0.774 (strength: 0.685)
+║     ranking_score_v2             : 0.6048
+║     stability                    : 0.7393  volatility_penalty: 0.516
+║
+║   VERDICT: unqualified — front_lines_failed: gate_edge_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.274, 'line': 0.5, 'diff': 0.774, 'ratio_proj/line': 2.548, 'ratio_(line-proj)/line': -1.548}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✓] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  
+║      [✗] edge_gate          value=3.24  threshold=5.0  gate_edge_fail
+║      [✓] tp_gate            value=78.1  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #11  Cody Bellinger          Total Bases         Line=0.5  OVER  (NYY @ NYM)
+║   commence: 2026-05-15T23:16:00Z  | updated: 2026-05-15 18:16:32  | books: 3  | ref: mgm @ -220
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: NYM
+║     opp_pitcher          : Clay Holmes (R)  id=605280  ERA=1.86  WHIP=1.01  K/9=6.89
+║     handedness           : same_hand=0  opp_hand=1
+║     expected_pa          : — | tempo_mod: 1.02 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :   100 /    80 /    80
+║     avg_hit_margin / avg_miss   : 2.38 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.410
+║     eb_shrunk_projection        : 1.855
+║     mu_raw_model_projection     : 1.405
+║     distribution_effective_mu   : 1.855
+║     FINAL  model_projection     : 1.855  (line 0.5, margin = 1.355)
+║     model_sigma                 : 3.225  | distribution_sigma: 2.341  (cv_derived_from_l10)
+║     CV                          : 1.262  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.65 mu_floor=1.0 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7186 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7186
+║     p_true_active / method      : 0.7186 / model
+║     fair_prob                   : 0.6875  | tp: 65.00%  | market_prob: 0.6499
+║     best_book                   : betmgm @ -220 (implied=0.6875, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 3.11 pp (0.0311 decimal)
+║       total_edge (vs best book) : 0.0311
+║       best_book_edge            : -0.0375
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : — / — / -220 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 1 (books: ['EB'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 37.30 / 13.76 / 1.00
+║     direction_margin             : 1.355 (strength: 0.641)
+║     ranking_score_v2             : 0.9737
+║     stability                    : 0.5793  volatility_penalty: 1.000
+║
+║   VERDICT: unqualified — front_lines_failed: gate_edge_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.855, 'line': 0.5, 'diff': 1.355, 'ratio_proj/line': 3.71, 'ratio_(line-proj)/line': -2.71}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✓] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  
+║      [✗] edge_gate          value=3.11  threshold=5.0  gate_edge_fail
+║      [✓] tp_gate            value=71.9  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #12  Josh Naylor             Hits+Runs+RBIs      Line=0.5  OVER  (SEA vs SD)
+║   commence: 2026-05-16T01:41:00Z  | updated: 2026-05-15 18:09:24  | books: 3  | ref: consensus @ -292
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: SEA
+║     opp_pitcher          : — (?)  id=None  ERA=—  WHIP=—  K/9=—
+║     handedness           : same_hand=None  opp_hand=None
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :   100 /    80 /    80
+║     avg_hit_margin / avg_miss   : 2.50 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 2.300
+║     eb_shrunk_projection        : 2.340
+║     mu_raw_model_projection     : 2.300
+║     distribution_effective_mu   : 2.340
+║     FINAL  model_projection     : 2.340  (line 0.5, margin = 1.840)
+║     model_sigma                 : 2.234  | distribution_sigma: 2.438  (cv_derived_from_l10)
+║     CV                          : 1.042  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7748 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7748
+║     p_true_active / method      : 0.7748 / model
+║     fair_prob                   : 0.7451  | tp: 74.10%  | market_prob: 0.7412
+║     best_book                   : betmgm @ -275 (implied=0.7333, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 2.97 pp (0.0297 decimal)
+║       total_edge (vs best book) : 0.0415
+║       best_book_edge            : 0.0077
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -285 / -300 / -275 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : one_sided / 3 (books: ['DK', 'FD', 'MGM'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 39.10 / 16.49 / 1.00
+║     direction_margin             : 1.840 (strength: 0.680)
+║     ranking_score_v2             : 1.4256
+║     stability                    : 0.6527  volatility_penalty: 1.000
+║
+║   VERDICT: unqualified — front_lines_failed: gate_edge_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 2.34, 'line': 0.5, 'diff': 1.84, 'ratio_proj/line': 4.68, 'ratio_(line-proj)/line': -3.68}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✓] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  
+║      [✗] edge_gate          value=2.97  threshold=5.0  gate_edge_fail
+║      [✓] tp_gate            value=77.5  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #13  Nico Hoerner            Total Bases         Line=0.5  OVER  (CHC @ CHW)
+║   commence: 2026-05-15T23:41:00Z  | updated: 2026-05-15 18:16:32  | books: 3  | ref: mgm @ -275
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: CHW
+║     opp_pitcher          : — (?)  id=None  ERA=—  WHIP=—  K/9=—
+║     handedness           : same_hand=None  opp_hand=None
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    80 /    80 /    80
+║     avg_hit_margin / avg_miss   : 1.75 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.390
+║     eb_shrunk_projection        : 1.595
+║     mu_raw_model_projection     : 1.393
+║     distribution_effective_mu   : 1.595
+║     FINAL  model_projection     : 1.595  (line 0.5, margin = 1.095)
+║     model_sigma                 : 0.949  | distribution_sigma: 1.641  (cv_derived_from_l10)
+║     CV                          : 1.029  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.65 mu_floor=1.0 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7477 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7477
+║     p_true_active / method      : 0.7477 / model
+║     fair_prob                   : 0.7333  | tp: 71.50%  | market_prob: 0.7154
+║     best_book                   : betmgm @ -275 (implied=0.7333, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 1.44 pp (0.0144 decimal)
+║       total_edge (vs best book) : 0.0144
+║       best_book_edge            : -0.0183
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : — / — / -275 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 1 (books: ['EB'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 24.40 / 13.15 / 1.00
+║     direction_margin             : 1.095 (strength: 0.661)
+║     ranking_score_v2             : 0.8187
+║     stability                    : 0.6570  volatility_penalty: 1.000
+║
+║   VERDICT: unqualified — front_lines_failed: gate_edge_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.595, 'line': 0.5, 'diff': 1.095, 'ratio_proj/line': 3.19, 'ratio_(line-proj)/line': -2.19}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✓] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  
+║      [✗] edge_gate          value=1.44  threshold=5.0  gate_edge_fail
+║      [✓] tp_gate            value=74.8  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #14  Kyle Tucker             Hits                Line=0.5  OVER  (LAD @ LAA)
+║   commence: 2026-05-16T01:39:00Z  | updated: 2026-05-15 18:07:45  | books: 11  | ref: consensus @ -250
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: LAA
+║     opp_pitcher          : José Soriano (R)  id=667755  ERA=1.66  WHIP=1.05  K/9=10.10
+║     handedness           : same_hand=0  opp_hand=1
+║     expected_pa          : — | tempo_mod: 1.02 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :   100 /    90 /    80
+║     avg_hit_margin / avg_miss   : 0.81 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 0.850
+║     eb_shrunk_projection        : 0.890
+║     mu_raw_model_projection     : 0.847
+║     distribution_effective_mu   : 0.890
+║     FINAL  model_projection     : 0.890  (line 0.5, margin = 0.390)
+║     model_sigma                 : 0.568  | distribution_sigma: 0.643  (cv_derived_from_l10)
+║     CV                          : 0.723  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7278 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7278
+║     p_true_active / method      : 0.7278 / model
+║     fair_prob                   : 0.7145  | tp: 65.90%  | market_prob: 0.6593
+║     best_book                   : betmgm @ -220 (implied=0.6875, devig=0.6368)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 1.33 pp (0.0133 decimal)
+║       total_edge (vs best book) : 0.0910
+║       best_book_edge            : 0.0222
+║       shopping_edge_source      : devig_vs_devig
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -273 / -230 / -220 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 6 (books: ['MGM', 'BOL', 'EB', 'HRB', 'PRX', 'FLF'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 23.50 / 25.68 / 1.00
+║     direction_margin             : 0.390 (strength: 0.647)
+║     ranking_score_v2             : 0.2838
+║     stability                    : 0.7590  volatility_penalty: 0.384
+║
+║   VERDICT: unqualified — front_lines_failed: gate_edge_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=11  threshold=1  
+║      [✓] direction_gate     value={'projection': 0.89, 'line': 0.5, 'diff': 0.39, 'ratio_proj/line': 1.78, 'ratio_(line-proj)/line': -0.78}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✓] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  
+║      [✗] edge_gate          value=1.33  threshold=5.0  gate_edge_fail
+║      [✓] tp_gate            value=72.8  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=74.7 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #15  Cody Bellinger          Hits                Line=0.5  OVER  (NYY @ NYM)
+║   commence: 2026-05-15T23:16:00Z  | updated: 2026-05-15 18:09:56  | books: 11  | ref: consensus @ -218
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: NYM
+║     opp_pitcher          : Clay Holmes (R)  id=605280  ERA=1.86  WHIP=1.01  K/9=6.89
+║     handedness           : same_hand=0  opp_hand=1
+║     expected_pa          : — | tempo_mod: 1.02 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :   100 /    80 /    80
+║     avg_hit_margin / avg_miss   : 0.94 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 0.840
+║     eb_shrunk_projection        : 0.902
+║     mu_raw_model_projection     : 0.843
+║     distribution_effective_mu   : 0.902
+║     FINAL  model_projection     : 0.902  (line 0.5, margin = 0.402)
+║     model_sigma                 : 1.159  | distribution_sigma: 0.775  (cv_derived_from_l10)
+║     CV                          : 0.859  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.6981 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.6981
+║     p_true_active / method      : 0.6981 / model
+║     fair_prob                   : 0.6860  | tp: 64.30%  | market_prob: 0.6427
+║     best_book                   : betrivers @ -205 (implied=0.6721, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 1.21 pp (0.0121 decimal)
+║       total_edge (vs best book) : 0.0260
+║       best_book_edge            : -0.0291
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -217 / -220 / -220 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 7 (books: ['DK', 'MGM', 'BOL', 'EB', 'HRB', 'PRX', 'FLF'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 20.60 / 19.88 / 1.00
+║     direction_margin             : 0.402 (strength: 0.627)
+║     ranking_score_v2             : 0.2806
+║     stability                    : 0.7137  volatility_penalty: 0.687
+║
+║   VERDICT: unqualified — front_lines_failed: gate_edge_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=11  threshold=1  
+║      [✓] direction_gate     value={'projection': 0.902, 'line': 0.5, 'diff': 0.402, 'ratio_proj/line': 1.804, 'ratio_(line-proj)/line': -0.804}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✓] hit_rate_gate      value=80.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  
+║      [✗] edge_gate          value=1.21  threshold=5.0  gate_edge_fail
+║      [✓] tp_gate            value=69.8  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #16  Jorge Soler             Hits                Line=0.5  OVER  (LAA vs LAD)
+║   commence: 2026-05-16T01:39:00Z  | updated: 2026-05-15 18:07:45  | books: 11  | ref: consensus @ -118
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: LAA
+║     opp_pitcher          : Justin Wrobleski (L)  id=680736  ERA=2.42  WHIP=0.99  K/9=4.43
+║     handedness           : same_hand=0  opp_hand=1
+║     expected_pa          : — | tempo_mod: 0.94 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    80 /    90 /    75
+║     avg_hit_margin / avg_miss   : 0.63 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 0.960
+║     eb_shrunk_projection        : 0.938
+║     mu_raw_model_projection     : 0.961
+║     distribution_effective_mu   : 0.938
+║     FINAL  model_projection     : 0.938  (line 0.5, margin = 0.438)
+║     model_sigma                 : 0.471  | distribution_sigma: 0.648  (cv_derived_from_l10)
+║     CV                          : 0.691  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7504 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7504
+║     p_true_active / method      : 0.7504 / model
+║     fair_prob                   : 0.5433  | tp: 50.90%  | market_prob: 0.5091
+║     best_book                   : betmgm @ -110 (implied=0.5238, devig=0.4853)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 20.71 pp (0.2071 decimal)
+║       total_edge (vs best book) : 0.2651
+║       best_book_edge            : 0.0237
+║       shopping_edge_source      : devig_vs_devig
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -123 / -115 / -110 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 7 (books: ['DK', 'MGM', 'BOL', 'EB', 'HRB', 'PRX', 'FLF'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 96.00 / 39.72 / 1.00
+║     direction_margin             : 0.438 (strength: 0.663)
+║     ranking_score_v2             : 0.3287
+║     stability                    : 0.7697  volatility_penalty: 0.313
+║
+║   VERDICT: unqualified — front_lines_failed: gate_margin_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=11  threshold=1  
+║      [✓] direction_gate     value={'projection': 0.938, 'line': 0.5, 'diff': 0.438, 'ratio_proj/line': 1.876, 'ratio_(line-proj)/line': -0.876}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✓] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  
+║      [✓] edge_gate          value=20.71  threshold=5.0  
+║      [✓] tp_gate            value=75.0  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #17  Miguel Vargas           Total Bases         Line=0.5  OVER  (CHW vs CHC)
+║   commence: 2026-05-15T23:41:00Z  | updated: 2026-05-15 18:16:32  | books: 5  | ref: mgm @ -150
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: CHW
+║     opp_pitcher          : — (?)  id=None  ERA=—  WHIP=—  K/9=—
+║     handedness           : same_hand=None  opp_hand=None
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    70 /    75
+║     avg_hit_margin / avg_miss   : 2.03 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 2.030
+║     eb_shrunk_projection        : 1.965
+║     mu_raw_model_projection     : 2.028
+║     distribution_effective_mu   : 1.965
+║     FINAL  model_projection     : 1.965  (line 0.5, margin = 1.465)
+║     model_sigma                 : 1.713  | distribution_sigma: 1.924  (cv_derived_from_l10)
+║     CV                          : 0.979  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.65 mu_floor=1.0 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7768 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7768
+║     p_true_active / method      : 0.7768 / model
+║     fair_prob                   : 0.6000  | tp: 58.10%  | market_prob: 0.5812
+║     best_book                   : betmgm @ -150 (implied=0.6000, devig=0.5575)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 17.68 pp (0.1768 decimal)
+║       total_edge (vs best book) : 0.2193
+║       best_book_edge            : 0.0235
+║       shopping_edge_source      : devig_vs_devig
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : — / — / -150 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 5 (books: ['MGM', 'BOL', 'CSR', 'EB', 'FLF'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 94.40 / 26.13 / 1.00
+║     direction_margin             : 1.465 (strength: 0.682)
+║     ranking_score_v2             : 1.1380
+║     stability                    : 0.6737  volatility_penalty: 0.953
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=5  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.965, 'line': 0.5, 'diff': 1.465, 'ratio_proj/line': 3.93, 'ratio_(line-proj)/line': -2.93}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=17.68  threshold=5.0  
+║      [✓] tp_gate            value=77.7  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #18  Daniel Schneemann       Hits                Line=0.5  OVER  (CLE vs CIN)
+║   commence: 2026-05-15T23:11:00Z  | updated: 2026-05-15 18:16:32  | books: 10  | ref: consensus @ -155
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: CLE
+║     opp_pitcher          : Andrew Abbott (L)  id=671096  ERA=4.47  WHIP=1.51  K/9=6.41
+║     handedness           : same_hand=1  opp_hand=0
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    40 /    60 /    75
+║     avg_hit_margin / avg_miss   : 0.90 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.010
+║     eb_shrunk_projection        : 1.028
+║     mu_raw_model_projection     : 1.011
+║     distribution_effective_mu   : 1.028
+║     FINAL  model_projection     : 1.028  (line 0.5, margin = 0.528)
+║     model_sigma                 : 0.675  | distribution_sigma: 0.808  (cv_derived_from_l10)
+║     CV                          : 0.786  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7433 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7433
+║     p_true_active / method      : 0.7433 / model
+║     fair_prob                   : 0.6086  | tp: 57.00%  | market_prob: 0.5696
+║     best_book                   : espnbet @ -150 (implied=0.6000, devig=0.5690)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 13.47 pp (0.1347 decimal)
+║       total_edge (vs best book) : 0.1743
+║       best_book_edge            : 0.0010
+║       shopping_edge_source      : devig_vs_devig
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -156 / -155 / — / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 6 (books: ['DK', 'BOL', 'EB', 'HRB', 'PRX', 'FLF'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 89.80 / 30.13 / 1.00
+║     direction_margin             : 0.528 (strength: 0.658)
+║     ranking_score_v2             : 0.3925
+║     stability                    : 0.7380  volatility_penalty: 0.524
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=10  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.028, 'line': 0.5, 'diff': 0.528, 'ratio_proj/line': 2.056, 'ratio_(line-proj)/line': -1.056}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=13.47  threshold=5.0  
+║      [✓] tp_gate            value=74.3  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #19  Colson Montgomery       Hits+Runs+RBIs      Line=0.5  OVER  (CHW vs CHC)
+║   commence: 2026-05-15T23:41:00Z  | updated: 2026-05-15 18:16:32  | books: 3  | ref: consensus @ -230
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: CHW
+║     opp_pitcher          : — (?)  id=None  ERA=—  WHIP=—  K/9=—
+║     handedness           : same_hand=None  opp_hand=None
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    70 /    75
+║     avg_hit_margin / avg_miss   : 2.43 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 2.490
+║     eb_shrunk_projection        : 2.374
+║     mu_raw_model_projection     : 2.485
+║     distribution_effective_mu   : 2.374
+║     FINAL  model_projection     : 2.374  (line 0.5, margin = 1.874)
+║     model_sigma                 : 1.506  | distribution_sigma: 1.999  (cv_derived_from_l10)
+║     CV                          : 0.842  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.8258 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.8258
+║     p_true_active / method      : 0.8258 / model
+║     fair_prob                   : 0.6976  | tp: 69.90%  | market_prob: 0.6989
+║     best_book                   : draftkings @ -222 (implied=0.6894, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 12.82 pp (0.1282 decimal)
+║       total_edge (vs best book) : 0.1364
+║       best_book_edge            : 0.0096
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -222 / -240 / -235 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : one_sided / 3 (books: ['DK', 'FD', 'MGM'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 90.60 / 29.57 / 1.00
+║     direction_margin             : 1.874 (strength: 0.719)
+║     ranking_score_v2             : 1.5475
+║     stability                    : 0.7193  volatility_penalty: 0.649
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 2.374, 'line': 0.5, 'diff': 1.874, 'ratio_proj/line': 4.748, 'ratio_(line-proj)/line': -3.748}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=12.82  threshold=5.0  
+║      [✓] tp_gate            value=82.6  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #20  Ernie Clement           Total Bases         Line=0.5  OVER  (TOR @ SF)
+║   commence: 2026-05-15T22:46:00Z  | updated: 2026-05-15 18:27:13  | books: 3  | ref: mgm @ -220
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: SF
+║     opp_pitcher          : — (?)  id=None  ERA=—  WHIP=—  K/9=—
+║     handedness           : same_hand=None  opp_hand=None
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    60 /    75
+║     avg_hit_margin / avg_miss   : 1.63 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.920
+║     eb_shrunk_projection        : 1.760
+║     mu_raw_model_projection     : 1.920
+║     distribution_effective_mu   : 1.760
+║     FINAL  model_projection     : 1.760  (line 0.5, margin = 1.260)
+║     model_sigma                 : 1.247  | distribution_sigma: 1.489  (cv_derived_from_l10)
+║     CV                          : 0.846  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.65 mu_floor=1.0 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.8013 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.8013
+║     p_true_active / method      : 0.8013 / model
+║     fair_prob                   : 0.6875  | tp: 65.00%  | market_prob: 0.6499
+║     best_book                   : betmgm @ -220 (implied=0.6875, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 11.38 pp (0.1138 decimal)
+║       total_edge (vs best book) : 0.1138
+║       best_book_edge            : -0.0375
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : — / — / -220 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 1 (books: ['EB'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 89.20 / 26.15 / 1.00
+║     direction_margin             : 1.260 (strength: 0.700)
+║     ranking_score_v2             : 1.0096
+║     stability                    : 0.7180  volatility_penalty: 0.658
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.76, 'line': 0.5, 'diff': 1.26, 'ratio_proj/line': 3.52, 'ratio_(line-proj)/line': -2.52}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=11.38  threshold=5.0  
+║      [✓] tp_gate            value=80.1  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #21  Zach Neto               Hits+Runs+RBIs      Line=0.5  OVER  (LAA vs LAD)
+║   commence: 2026-05-16T01:39:00Z  | updated: 2026-05-15 18:07:45  | books: 3  | ref: consensus @ -188
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: LAA
+║     opp_pitcher          : Justin Wrobleski (L)  id=680736  ERA=2.42  WHIP=0.99  K/9=4.43
+║     handedness           : same_hand=0  opp_hand=1
+║     expected_pa          : — | tempo_mod: 0.94 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    70 /    75
+║     avg_hit_margin / avg_miss   : 1.83 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.730
+║     eb_shrunk_projection        : 1.738
+║     mu_raw_model_projection     : 1.726
+║     distribution_effective_mu   : 1.738
+║     FINAL  model_projection     : 1.738  (line 0.5, margin = 1.238)
+║     model_sigma                 : 2.424  | distribution_sigma: 1.820  (cv_derived_from_l10)
+║     CV                          : 1.047  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7519 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7519
+║     p_true_active / method      : 0.7519 / model
+║     fair_prob                   : 0.6527  | tp: 64.70%  | market_prob: 0.6473
+║     best_book                   : betmgm @ -175 (implied=0.6364, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 9.92 pp (0.0992 decimal)
+║       total_edge (vs best book) : 0.1155
+║       best_book_edge            : 0.0106
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -186 / -190 / -175 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : one_sided / 3 (books: ['DK', 'FD', 'MGM'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 79.00 / 20.21 / 1.00
+║     direction_margin             : 1.238 (strength: 0.664)
+║     ranking_score_v2             : 0.9309
+║     stability                    : 0.6510  volatility_penalty: 1.000
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.738, 'line': 0.5, 'diff': 1.238, 'ratio_proj/line': 3.476, 'ratio_(line-proj)/line': -2.476}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=9.92  threshold=5.0  
+║      [✓] tp_gate            value=75.2  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #22  Fernando Tatis Jr.      Hits+Runs+RBIs      Line=0.5  OVER  (SD @ SEA)
+║   commence: 2026-05-16T01:41:00Z  | updated: 2026-05-15 18:09:24  | books: 3  | ref: consensus @ -250
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: SEA
+║     opp_pitcher          : Logan Gilbert (R)  id=669302  ERA=3.78  WHIP=1.16  K/9=9.36
+║     handedness           : same_hand=1  opp_hand=0
+║     expected_pa          : — | tempo_mod: 1.02 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    70 /    75
+║     avg_hit_margin / avg_miss   : 1.77 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.860
+║     eb_shrunk_projection        : 1.796
+║     mu_raw_model_projection     : 1.862
+║     distribution_effective_mu   : 1.796
+║     FINAL  model_projection     : 1.796  (line 0.5, margin = 1.296)
+║     model_sigma                 : 1.354  | distribution_sigma: 1.458  (cv_derived_from_l10)
+║     CV                          : 0.812  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.8129 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.8129
+║     p_true_active / method      : 0.8129 / model
+║     fair_prob                   : 0.7147  | tp: 71.50%  | market_prob: 0.7146
+║     best_book                   : draftkings @ -233 (implied=0.6997, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 9.82 pp (0.0982 decimal)
+║       total_edge (vs best book) : 0.1132
+║       best_book_edge            : 0.0153
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -233 / -270 / -250 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : one_sided / 3 (books: ['DK', 'FD', 'MGM'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 87.90 / 28.47 / 1.00
+║     direction_margin             : 1.296 (strength: 0.709)
+║     ranking_score_v2             : 1.0535
+║     stability                    : 0.7293  volatility_penalty: 0.582
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.796, 'line': 0.5, 'diff': 1.296, 'ratio_proj/line': 3.592, 'ratio_(line-proj)/line': -2.592}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=9.82  threshold=5.0  
+║      [✓] tp_gate            value=81.3  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #23  Yordan Alvarez          Total Bases         Line=0.5  OVER  (HOU vs TEX)
+║   commence: 2026-05-16T00:11:00Z  | updated: 2026-05-15 18:16:32  | books: 3  | ref: mgm @ -250
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: HOU
+║     opp_pitcher          : Jacob deGrom (R)  id=594798  ERA=2.62  WHIP=0.92  K/9=11.49
+║     handedness           : same_hand=0  opp_hand=1
+║     expected_pa          : — | tempo_mod: 1.02 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    40 /    50 /    75
+║     avg_hit_margin / avg_miss   : 2.70 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 3.320
+║     eb_shrunk_projection        : 2.860
+║     mu_raw_model_projection     : 3.316
+║     distribution_effective_mu   : 2.860
+║     FINAL  model_projection     : 2.860  (line 0.5, margin = 2.360)
+║     model_sigma                 : 1.946  | distribution_sigma: 2.746  (cv_derived_from_l10)
+║     CV                          : 0.960  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.65 mu_floor=1.0 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.8050 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.8050
+║     p_true_active / method      : 0.8050 / model
+║     fair_prob                   : 0.7143  | tp: 74.00%  | market_prob: 0.7401
+║     best_book                   : espnbet @ -240 (implied=0.7059, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 9.07 pp (0.0907 decimal)
+║       total_edge (vs best book) : 0.0991
+║       best_book_edge            : 0.0341
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : — / — / -250 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : one_sided / 3 (books: ['MGM', 'BOL', 'EB'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 79.10 / 21.14 / 1.00
+║     direction_margin             : 2.360 (strength: 0.703)
+║     ranking_score_v2             : 1.8998
+║     stability                    : 0.6800  volatility_penalty: 0.911
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 2.86, 'line': 0.5, 'diff': 2.36, 'ratio_proj/line': 5.72, 'ratio_(line-proj)/line': -4.72}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=9.07  threshold=5.0  
+║      [✓] tp_gate            value=80.5  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #24  Shea Langeliers         Hits+Runs+RBIs      Line=1.5  OVER  (OAK vs SF)
+║   commence: 2026-05-16T01:41:00Z  | updated: 2026-05-15 18:09:05  | books: 3  | ref: consensus @ -179
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: OAK
+║     opp_pitcher          : — (?)  id=None  ERA=—  WHIP=—  K/9=—
+║     handedness           : same_hand=None  opp_hand=None
+║     expected_pa          : — | tempo_mod: 0.94 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    80 /    80 /    75
+║     avg_hit_margin / avg_miss   : 2.10 / 0.90
+║
+║   PROJECTION
+║     raw_hf_projection           : 2.530
+║     eb_shrunk_projection        : 2.658
+║     mu_raw_model_projection     : 2.527
+║     distribution_effective_mu   : 2.658
+║     FINAL  model_projection     : 2.658  (line 1.5, margin = 1.158)
+║     model_sigma                 : 2.378  | distribution_sigma: 1.895  (cv_derived_from_l10)
+║     CV                          : 0.713  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7294 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7294
+║     p_true_active / method      : 0.7294 / model
+║     fair_prob                   : 0.6427  | tp: 63.40%  | market_prob: 0.6336
+║     best_book                   : betmgm @ -160 (implied=0.6154, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 8.67 pp (0.0867 decimal)
+║       total_edge (vs best book) : 0.1140
+║       best_book_edge            : 0.0186
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -175 / -185 / -160 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : one_sided / 3 (books: ['DK', 'FD', 'MGM'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 89.00 / 29.99 / 1.00
+║     direction_margin             : 1.158 (strength: 0.648)
+║     ranking_score_v2             : 0.6896
+║     stability                    : 0.7623  volatility_penalty: 0.362
+║
+║   VERDICT: unqualified — front_lines_failed: gate_cv_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 2.658, 'line': 1.5, 'diff': 1.158, 'ratio_proj/line': 1.772, 'ratio_(line-proj)/line': -0.772}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] cv_gate            value=0.713  threshold=0.65  gate_cv_fail
+║      [✓] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  
+║      [✓] edge_gate          value=8.67  threshold=5.0  
+║      [✓] tp_gate            value=72.9  threshold=50.0  
+║
+║   PRIZEPICKS: line=1.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #25  Yordan Alvarez          Hits                Line=0.5  OVER  (HOU vs TEX)
+║   commence: 2026-05-16T00:11:00Z  | updated: 2026-05-15 18:16:32  | books: 11  | ref: consensus @ -248
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: HOU
+║     opp_pitcher          : Jacob deGrom (R)  id=594798  ERA=2.62  WHIP=0.92  K/9=11.49
+║     handedness           : same_hand=0  opp_hand=1
+║     expected_pa          : — | tempo_mod: 1.02 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    40 /    50 /    75
+║     avg_hit_margin / avg_miss   : 1.23 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.370
+║     eb_shrunk_projection        : 1.356
+║     mu_raw_model_projection     : 1.371
+║     distribution_effective_mu   : 1.356
+║     FINAL  model_projection     : 1.356  (line 0.5, margin = 0.856)
+║     model_sigma                 : 1.101  | distribution_sigma: 1.021  (cv_derived_from_l10)
+║     CV                          : 0.753  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7991 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7991
+║     p_true_active / method      : 0.7991 / model
+║     fair_prob                   : 0.7127  | tp: 66.50%  | market_prob: 0.6655
+║     best_book                   : espnbet @ -240 (implied=0.7059, devig=0.6640)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 8.64 pp (0.0864 decimal)
+║       total_edge (vs best book) : 0.1351
+║       best_book_edge            : 0.0010
+║       shopping_edge_source      : devig_vs_devig
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -246 / -250 / -250 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 7 (books: ['DK', 'MGM', 'BOL', 'EB', 'HRB', 'PRX', 'FLF'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 80.30 / 30.18 / 1.00
+║     direction_margin             : 0.856 (strength: 0.698)
+║     ranking_score_v2             : 0.6840
+║     stability                    : 0.7490  volatility_penalty: 0.451
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=11  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.356, 'line': 0.5, 'diff': 0.856, 'ratio_proj/line': 2.712, 'ratio_(line-proj)/line': -1.712}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=8.64  threshold=5.0  
+║      [✓] tp_gate            value=79.9  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #26  Liam Hicks              Total Bases         Line=0.5  OVER  (MIA @ TB)
+║   commence: 2026-05-15T23:11:00Z  | updated: 2026-05-15 18:16:32  | books: 3  | ref: mgm @ -220
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: TB
+║     opp_pitcher          : Jesse Scholtens (R)  id=669947  ERA=3.29  WHIP=1.17  K/9=6.91
+║     handedness           : same_hand=0  opp_hand=1
+║     expected_pa          : — | tempo_mod: 0.94 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    70 /    75
+║     avg_hit_margin / avg_miss   : 2.17 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.160
+║     eb_shrunk_projection        : 1.580
+║     mu_raw_model_projection     : 1.155
+║     distribution_effective_mu   : 1.580
+║     FINAL  model_projection     : 1.580  (line 0.5, margin = 1.080)
+║     model_sigma                 : 2.394  | distribution_sigma: 1.495  (cv_derived_from_l10)
+║     CV                          : 0.946  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.65 mu_floor=1.0 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7650 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7650
+║     p_true_active / method      : 0.7650 / model
+║     fair_prob                   : 0.6875  | tp: 65.00%  | market_prob: 0.6499
+║     best_book                   : betmgm @ -220 (implied=0.6875, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 7.75 pp (0.0775 decimal)
+║       total_edge (vs best book) : 0.0775
+║       best_book_edge            : -0.0375
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : — / — / -220 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 1 (books: ['EB'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 72.00 / 19.23 / 1.00
+║     direction_margin             : 1.080 (strength: 0.673)
+║     ranking_score_v2             : 0.8262
+║     stability                    : 0.6847  volatility_penalty: 0.880
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.58, 'line': 0.5, 'diff': 1.08, 'ratio_proj/line': 3.16, 'ratio_(line-proj)/line': -2.16}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=7.75  threshold=5.0  
+║      [✓] tp_gate            value=76.5  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #27  Otto Lopez              Hits+Runs+RBIs      Line=1.5  OVER  (MIA @ TB)
+║   commence: 2026-05-15T23:11:00Z  | updated: 2026-05-15 18:16:32  | books: 8  | ref: consensus @ -145
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: TB
+║     opp_pitcher          : Jesse Scholtens (R)  id=669947  ERA=3.29  WHIP=1.17  K/9=6.91
+║     handedness           : same_hand=1  opp_hand=0
+║     expected_pa          : — | tempo_mod: 0.94 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    80 /    70 /    75
+║     avg_hit_margin / avg_miss   : 1.83 / 0.90
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.850
+║     eb_shrunk_projection        : 2.170
+║     mu_raw_model_projection     : 1.851
+║     distribution_effective_mu   : 2.170
+║     FINAL  model_projection     : 2.170  (line 1.5, margin = 0.670)
+║     model_sigma                 : 1.958  | distribution_sigma: 1.556  (cv_derived_from_l10)
+║     CV                          : 0.717  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.6666 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.6666
+║     p_true_active / method      : 0.6666 / model
+║     fair_prob                   : 0.5934  | tp: 54.80%  | market_prob: 0.5478
+║     best_book                   : betmgm @ -125 (implied=0.5556, devig=0.5385)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 7.32 pp (0.0732 decimal)
+║       total_edge (vs best book) : 0.1281
+║       best_book_edge            : 0.0095
+║       shopping_edge_source      : devig_vs_devig
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -142 / -150 / -125 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 7 (books: ['DK', 'MGM', 'BOL', 'CSR', 'EB', 'HRB', 'FLF'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 68.80 / 28.38 / 1.00
+║     direction_margin             : 0.670 (strength: 0.606)
+║     ranking_score_v2             : 0.3647
+║     stability                    : 0.7610  volatility_penalty: 0.371
+║
+║   VERDICT: unqualified — front_lines_failed: gate_cv_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=8  threshold=1  
+║      [✓] direction_gate     value={'projection': 2.17, 'line': 1.5, 'diff': 0.67, 'ratio_proj/line': 1.4467, 'ratio_(line-proj)/line': -0.4467}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] cv_gate            value=0.717  threshold=0.65  gate_cv_fail
+║      [✓] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  
+║      [✓] edge_gate          value=7.32  threshold=5.0  
+║      [✓] tp_gate            value=66.7  threshold=50.0  
+║
+║   PRIZEPICKS: line=1.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #28  Ernie Clement           Hits+Runs+RBIs      Line=0.5  OVER  (TOR @ SF)
+║   commence: 2026-05-15T22:46:00Z  | updated: 2026-05-15 18:27:12  | books: 3  | ref: consensus @ -279
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: SF
+║     opp_pitcher          : — (?)  id=None  ERA=—  WHIP=—  K/9=—
+║     handedness           : same_hand=None  opp_hand=None
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    60 /    75
+║     avg_hit_margin / avg_miss   : 1.50 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 2.250
+║     eb_shrunk_projection        : 1.950
+║     mu_raw_model_projection     : 2.254
+║     distribution_effective_mu   : 1.950
+║     FINAL  model_projection     : 1.950  (line 0.5, margin = 1.450)
+║     model_sigma                 : 1.287  | distribution_sigma: 1.661  (cv_derived_from_l10)
+║     CV                          : 0.852  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.8086 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.8086
+║     p_true_active / method      : 0.8086 / model
+║     fair_prob                   : 0.7365  | tp: 73.50%  | market_prob: 0.7354
+║     best_book                   : betmgm @ -275 (implied=0.7333, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 7.21 pp (0.0721 decimal)
+║       total_edge (vs best book) : 0.0753
+║       best_book_edge            : 0.0017
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -279 / -280 / -275 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : one_sided / 3 (books: ['DK', 'FD', 'MGM'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 77.20 / 25.11 / 1.00
+║     direction_margin             : 1.450 (strength: 0.705)
+║     ranking_score_v2             : 1.1725
+║     stability                    : 0.7160  volatility_penalty: 0.671
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.95, 'line': 0.5, 'diff': 1.45, 'ratio_proj/line': 3.9, 'ratio_(line-proj)/line': -2.9}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=7.21  threshold=5.0  
+║      [✓] tp_gate            value=80.9  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #29  Troy Johnston           Total Bases         Line=0.5  OVER  (COL vs ARI)
+║   commence: 2026-05-16T00:41:00Z  | updated: 2026-05-15 18:08:13  | books: 3  | ref: mgm @ -235
+║
+║   MATCHUP
+║     batter_hand          : L | batting_order: None | lineup_confirmed: None | venue: COL
+║     opp_pitcher          : — (?)  id=None  ERA=—  WHIP=—  K/9=—
+║     handedness           : same_hand=None  opp_hand=None
+║     expected_pa          : — | tempo_mod: 0.94 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    80 /    75
+║     avg_hit_margin / avg_miss   : 1.43 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 1.810
+║     eb_shrunk_projection        : 1.630
+║     mu_raw_model_projection     : 1.808
+║     distribution_effective_mu   : 1.630
+║     FINAL  model_projection     : 1.630  (line 0.5, margin = 1.130)
+║     model_sigma                 : 1.075  | distribution_sigma: 1.524  (cv_derived_from_l10)
+║     CV                          : 0.935  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.65 mu_floor=1.0 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7708 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7708
+║     p_true_active / method      : 0.7708 / model
+║     fair_prob                   : 0.7015  | tp: 71.50%  | market_prob: 0.7154
+║     best_book                   : betmgm @ -235 (implied=0.7015, devig=—)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 6.93 pp (0.0693 decimal)
+║       total_edge (vs best book) : 0.0693
+║       best_book_edge            : 0.0135
+║       shopping_edge_source      : devig_vs_raw
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : — / — / -235 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 1 (books: ['EB'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 74.10 / 19.21 / 1.00
+║     direction_margin             : 1.130 (strength: 0.677)
+║     ranking_score_v2             : 0.8710
+║     stability                    : 0.6883  volatility_penalty: 0.856
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=3  threshold=1  
+║      [✓] direction_gate     value={'projection': 1.63, 'line': 0.5, 'diff': 1.13, 'ratio_proj/line': 3.26, 'ratio_(line-proj)/line': -2.26}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=6.93  threshold=5.0  
+║      [✓] tp_gate            value=77.1  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
+
+╔════ #30  Miguel Vargas           Hits                Line=0.5  OVER  (CHW vs CHC)
+║   commence: 2026-05-15T23:41:00Z  | updated: 2026-05-15 18:16:32  | books: 11  | ref: consensus @ -186
+║
+║   MATCHUP
+║     batter_hand          : R | batting_order: None | lineup_confirmed: None | venue: CHW
+║     opp_pitcher          : — (?)  id=None  ERA=—  WHIP=—  K/9=—
+║     handedness           : same_hand=None  opp_hand=None
+║     expected_pa          : — | tempo_mod: 0.98 | park_team: ?
+║
+║   HIT RATE  (sample size: 20)
+║     hit_rate_l5  / l10  / l20  :    60 /    70 /    75
+║     avg_hit_margin / avg_miss   : 0.77 / 0.50
+║
+║   PROJECTION
+║     raw_hf_projection           : 0.810
+║     eb_shrunk_projection        : 0.838
+║     mu_raw_model_projection     : 0.806
+║     distribution_effective_mu   : 0.838
+║     FINAL  model_projection     : 0.838  (line 0.5, margin = 0.338)
+║     model_sigma                 : 0.632  | distribution_sigma: 0.605  (cv_derived_from_l10)
+║     CV                          : 0.722  (status: computed)
+║     distribution_kind           : normal_cdf  (normal_cdf cv_floor=0.55 mu_floor=0.5 capped)
+║     EB shrinkage applied        : True  (skip_reason: None)
+║
+║   PROBABILITY / EDGE  (Universal Edge SSOT)
+║     p_model (recon)             : 0.7118 (= fair_prob + edge_vs_fair)
+║     p_distribution              : 0.7118
+║     p_true_active / method      : 0.7118 / model
+║     fair_prob                   : 0.6503  | tp: 59.60%  | market_prob: 0.5955
+║     best_book                   : betmgm @ -150 (implied=0.6000, devig=0.5575)
+║     EDGES
+║       edge_vs_fair (UI = gate)   : 6.15 pp (0.0615 decimal)
+║       total_edge (vs best book) : 0.1543
+║       best_book_edge            : 0.0385
+║       shopping_edge_source      : devig_vs_devig
+║
+║   ODDS
+║     DK / FD / MGM / Pinnacle / PrizePicks : -187 / -185 / -150 / — / -137
+║     consensus_odds              : — (implied —)
+║     tp_source / books_used       : devig / 7 (books: ['DK', 'MGM', 'BOL', 'EB', 'HRB', 'PRX', 'FLF'])
+║
+║   VISION / RANK
+║     vision_score / v2 / dir_gate : 65.30 / 28.16 / 1.00
+║     direction_margin             : 0.338 (strength: 0.636)
+║     ranking_score_v2             : 0.2406
+║     stability                    : 0.7593  volatility_penalty: 0.382
+║
+║   VERDICT: unqualified — front_lines_failed: gate_hit_rate_fail
+║   GATE RESULTS
+║      [✓] coverage_gate      value=11  threshold=1  
+║      [✓] direction_gate     value={'projection': 0.838, 'line': 0.5, 'diff': 0.338, 'ratio_proj/line': 1.676, 'ratio_(line-proj)/line': -0.676}  threshold={'applies_to_sides': ['OVER'], 'min_projection_minus_line': 0.0}  
+║      [✗] hit_rate_gate      value=75.0  threshold={'min': 70.0, 'window': 'default', 'l5_subgate_enforced': True}  gate_hit_rate_fail
+║      [✓] edge_gate          value=6.15  threshold=5.0  
+║      [✓] tp_gate            value=71.2  threshold=50.0  
+║
+║   PRIZEPICKS: line=0.5  odds=-137  playable=True  utility=75.0 (pp_fair)
+╚══════════════════════════════════════════════════════════════════════════════════════════════════
