@@ -395,7 +395,7 @@ _MLB_FRONT_LINES: Dict[str, Dict[str, Any]] = {
     # values (0.85-1.92 actual CVs were tiering as Front Lines).
     "hits":               {"cv_max": 0.55, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
     "total_bases":        {"cv_max": 0.70, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
-    "hits_runs_rbis":     {"cv_max": 0.65, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "hits_runs_rbis":     {"cv_max": 0.75, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
     "rbis":               {"cv_max": 0.55, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
     "runs":               {"cv_max": 0.55, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
     "pitcher_outs":       {"cv_max": 0.40, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},

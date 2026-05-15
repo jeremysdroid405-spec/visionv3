@@ -147,6 +147,27 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 
 ## Recent Changelog
 
+### 2026-05-15 — MLB Front Lines `hits_runs_rbis` threshold loosening
+- **Change** (per user directive): `_MLB_FRONT_LINES["hits_runs_rbis"]` in
+  `services/scoring/gates/thresholds.py`:
+  - `cv_max`: 0.65 → **0.75** (raise — more permissive CV cap on non-0.5 lines)
+  - `edge_min`: 5.0 → **4.0** (lower — accept smaller positive edges)
+- **Live impact (post-recompute, 6,319 props rescored in 209s, 0 failures)**:
+  - HRR FL OVER tier count: 33 → **36** (+3 rescues).
+  - New tiered picks: Ozzie Albies HRR 1.5 (cv 0.684), Shea Langeliers HRR 1.5
+    (cv 0.713), + 1 more — all binary CV-cap rescues from the 0.65–0.75 band.
+  - **Jorge Soler Hits 0.5 OVER** now surfaces in `front_lines` (the flagship
+    audit case the universal direction-gate refactor + this threshold change
+    together resolved).
+- **edge_min lift** had no immediate FL impact on HRR this slate (most HRR rows
+  carry `edge_pct=None` — engine treats null as skip-pass for `edge_gate`).
+  The change still applies sport-wide for the broader FL OVER bucket.
+- Note: `cv_max` only binds on non-0.5 HRR lines (1.5+, 2.5+) because the
+  MLB binary 0.5-line cv→margin swap in `engine.py` replaces `cv_gate` with
+  `margin_gate` at line=0.5. The 0.5-line picks (Soler, Trout, etc.) clear
+  via the direction-gate strict refactor + existing margin-gate floor.
+- Broader board health: MLB 309 players · 110 FL · 46 WZ · 13 SH.
+
 ### 2026-05-15 — Universal Direction Gate strict refactor (engine SSOT)
 - **Spec**: `services/scoring/gates/engine.py::_eval_direction` is now pure side-lean.
   - OVER passes iff `projection > line` (strict)
