@@ -737,16 +737,25 @@ class MLBScoringAdapter(ScoringAdapter):
             preferred_method=active_method_early,
         )
 
-        # Multi-book de-vig TP contract (2026-04-22): no 50% fallback.
-        # edge_pct is None when tp or p_model are unavailable so
-        # downstream gates receive an explicit "unknown" signal rather
-        # than a fabricated 0.0. Carbon-copy of NBA (2026-05 parity
-        # cleanup): MLB previously had a `hit_rate - tp` fallback path
-        # NBA never had — removed for strict parity.
-        if tp is None or p_model is None:
-            edge_pct = None
-        else:
-            edge_pct = round((p_model * 100.0) - tp, 1)
+        # ====================================================================
+        # 2026-05-15 — UNIVERSAL EDGE SSOT
+        # --------------------------------------------------------------------
+        # Local edge math is now FORBIDDEN. The previous formula
+        # `edge_pct = p_model·100 − tp` evaluated a different number
+        # than the UI displayed (`edge_vs_fair = p_model - fair_prob`)
+        # because `tp` and `fair_prob` come from different selection
+        # chains. Gates and UI now consume the SAME edge through
+        # `services.scoring.universal_edge.compute_edge_bundle`.
+        # ====================================================================
+        from services.scoring.scoring_stack import _pick_fair_probability
+        from services.scoring.universal_edge import compute_edge_bundle
+        fair_prob_for_edge, _ = _pick_fair_probability(
+            None, dk_layer, mgm_layer, sharp_layer,
+            fd_layer=fd_layer, sport="mlb",
+        )
+        _edge_bundle = compute_edge_bundle(p_model, fair_prob_for_edge)
+        edge_vs_fair = _edge_bundle["edge_vs_fair"]
+        edge_pct = _edge_bundle["edge_pct"]
 
         # MLB has no verified PP multiplier data yet
         return ScoringContext(

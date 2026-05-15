@@ -166,3 +166,51 @@ Priority = user-visible impact × fragility:
 - ❌ No silent field drops
 - ❌ No silent missing-value replacement
 - ❌ No patching symptoms without removing the duplicate source
+
+
+---
+
+## 2026-05-15 — `edge_vs_fair` / `edge_pct` SSOT registration 🟢
+
+**Owner:** `services/scoring/universal_edge.py`
+
+**Trigger:** Audit on 2026-05-15 found THREE concurrent edge formulas
+in the live scoring path (`(p_model*100)-tp` in adapters,
+`p_model - fair_prob` in scoring_stack, `edge_vs_fair*100` in
+metrics_builder). UI displayed +7.62% edge while a 5.0% gate rejected
+the same prop. First-pass vs recompute produced different verdicts.
+
+### `edge_vs_fair` (canonical, decimal)
+
+| | |
+|---|---|
+| **Status** | 🟢 enforced |
+| **Owner** | `services/scoring/universal_edge.py::compute_edge_vs_fair` |
+| **Definition** | `p_model − fair_prob` (rounded to 4dp) |
+| **Storage unit** | decimal (e.g. `0.0762`) |
+| **Persisted on** | `mlb_prop_scores`, `nba_prop_scores`, all sports |
+| **Writers** | `universal_edge.compute_edge_vs_fair` (canonical) + `scoring_stack._compute_vision_score` (inline-allowlisted to avoid import cycle, math is bit-identical) |
+| **Readers** | scoring_stack, gates/engine, metrics_builder, recompute, prop_scores_store, routes, UI |
+| **Drift detector** | `universal_edge.audit_edge_writers()` — flags any `p_model - fair_prob`, `p_model * 100 - tp`, or `edge_vs_fair * 100` outside the allowlist |
+| **Lint script** | `scripts/lint_universal_edge.py` (fails CI on violation) |
+
+### `edge_pct` (derived, percentage-points)
+
+| | |
+|---|---|
+| **Status** | 🟢 enforced |
+| **Owner** | `services/scoring/universal_edge.py::derive_edge_pct` |
+| **Definition** | `edge_vs_fair × 100` (rounded to 4dp). **NEVER** recomputed from raw `p_model` / `tp`. |
+| **Storage unit** | percentage points (e.g. `7.62`) |
+| **Persisted** | NO — derived in-flight only. Score docs persist `edge_vs_fair` as the SSOT. |
+| **Writers** | `universal_edge.derive_edge_pct` (canonical), adapters call via `compute_edge_bundle`, `metrics_builder` rebuilds at re-eval time from `doc.edge_vs_fair × 100` |
+| **Readers** | `gates/engine._eval_edge` (only) |
+| **Rule** | Adapters MUST use `compute_edge_bundle(p_model, fair_prob)` — local `(p_model*100) - tp` math is FORBIDDEN and lint-rejected. |
+
+### Absolute restrictions added (2026-05-15)
+
+- ❌ No adapter-local edge math
+- ❌ No `(p_model * 100) - tp` anywhere outside the universal module
+- ❌ No `edge_vs_fair * 100` outside `derive_edge_pct`
+- ❌ First-pass and re-eval gates must consume bit-identical edge values
+- ❌ No sport-specific edge formula — all sports import `universal_edge`

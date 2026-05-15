@@ -269,7 +269,13 @@ def compute_vision_score(
     ]
     confidence = round(sum(conf_signals) / len(conf_signals), 4)
 
-    edge = p_model - fair_prob  # signed; positive = model sees more value than market
+    edge = p_model - fair_prob  # signed; SSOT: services/scoring/universal_edge.py
+    # NOTE: The math here is identical to `compute_edge_vs_fair`; this
+    # call site predates the universal module and is kept inline only
+    # to avoid an import-cycle (scoring_stack ↔ universal_edge). The
+    # `audit_edge_writers` lint allowlists this exact site for that
+    # reason. ANY OTHER occurrence of `p_model - fair_prob` outside
+    # the universal_edge module is a SSOT violation.
 
     # Raw vision score: magnitude of POSITIVE edge, scaled by p_model, stability, confidence.
     pos_edge = max(0.0, edge)

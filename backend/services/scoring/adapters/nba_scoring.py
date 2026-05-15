@@ -3250,15 +3250,22 @@ class NBAScoringAdapter(ScoringAdapter):
             preferred_method=active_method_early,
         )
 
-        # Multi-book de-vig TP contract (2026-04-22): no 50% fallback.
-        # When TP is unavailable:
-        #   * edge_pct = None (not computable without a reference market)
-        #   * gates receive tp=None, causing the TP gate to fail hard
-        #     (see tiering/gate logic).
-        if tp is None or p_model is None:
-            edge_pct = None
-        else:
-            edge_pct = round(p_model * 100.0 - tp, 1)
+        # ====================================================================
+        # 2026-05-15 — UNIVERSAL EDGE SSOT
+        # --------------------------------------------------------------------
+        # Local edge math is now FORBIDDEN. Gates and UI now consume
+        # the SAME edge value via `universal_edge.compute_edge_bundle`.
+        # See module docstring of `services.scoring.universal_edge`.
+        # ====================================================================
+        from services.scoring.scoring_stack import _pick_fair_probability
+        from services.scoring.universal_edge import compute_edge_bundle
+        fair_prob_for_edge, _ = _pick_fair_probability(
+            None, dk_layer, mgm_layer, sharp_layer,
+            fd_layer=None, sport="nba",
+        )
+        _edge_bundle = compute_edge_bundle(p_model, fair_prob_for_edge)
+        edge_vs_fair = _edge_bundle["edge_vs_fair"]
+        edge_pct = _edge_bundle["edge_pct"]
 
         books = 1 + int(dk_layer is not None) + int(mgm_layer is not None) + int(sharp_layer is not None)
 
