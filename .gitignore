@@ -1211,3 +1211,12 @@ credentials.json
 .credentials
 backend/models/mlb_hf/_phase2a_workdir/sc_caches.pkl
 backend/models/mlb_hf/_phase2a_workdir/sc_caches.pkl
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
