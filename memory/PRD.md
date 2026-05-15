@@ -147,6 +147,32 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 
 ## Recent Changelog
 
+### 2026-05-15 — Universal Direction Gate strict refactor (engine SSOT)
+- **Spec**: `services/scoring/gates/engine.py::_eval_direction` is now pure side-lean.
+  - OVER passes iff `projection > line` (strict)
+  - UNDER passes iff `projection < line` (strict)
+  - Equality fails — no side-lean
+  - All historical positive cushions (`min_projection_minus_line`, `min_line_minus_projection_ratio`,
+    `min_projection_to_line_ratio`, `max_projection_minus_line`) are accepted in threshold
+    configs for backwards compatibility but **ignored** by the engine.
+- **Rationale**: The direction gate was acting as a hidden confidence floor on top of its
+  side-lean role. Quality concerns (margin, CV, edge magnitude, hit-rate) now live exclusively
+  in their own gates — direction is purely "which side is the model leaning?".
+- **Live MLB FL OVER impact (active board)**:
+  - 108/108 active FL OVER picks pass strict direction; reject distribution within the
+    FL-routed bucket (1,934 props): `gate_hit_rate_fail 888 / gate_direction_fail 612 /
+    gate_cv_fail 262 / gate_edge_fail 60 / gate_margin_fail 4`.
+  - **27 active picks** (25%) were rescued by removing the old stat-family `min_margin`
+    floor (e.g. Aaron Judge Hits 0.5 +0.66 diff, Michael Busch +0.74, Riley Greene +0.66).
+  - **Zero leakage**: 575 direction-fail rejects audited; 100% have `proj ≤ line`.
+- **Tests**: New `tests/test_universal_direction_gate.py` (19 cases incl. parametrised
+  mutation guard that fails if any future change re-honours a positive cushion config key).
+  Pre-existing tests updated: `test_fl_over_overrides`, `test_nba_under_tuning`,
+  `test_war_zone_refactor` (stale config assertions brought current). **282/282** gate +
+  stabilization tests pass.
+- **Audit**: `/app/backend/audits/universal_direction_gate_refactor_2026_05_15.md`.
+  Validation script: `scripts/audit_direction_gate_refactor.py`.
+
 ### 2026-05-15 — Phase 2A MLB_HF retrain (MLB_HF_v3.1_phase2a)
 - **First true MLB model recalibration** after Phase 1 + Phase 2A infra stabilization. Strict scope per user mandate: NO gate tuning, NO CV threshold changes, NO HR floor changes, NO tier-logic changes, NO pitcher-stat retraining, NO infrastructure additions.
 - **Approved feature additions** to `_build_friction_features` (Category 8, 14 new features):

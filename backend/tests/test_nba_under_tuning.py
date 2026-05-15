@@ -64,23 +64,39 @@ def test_unspecified_side_resolves_to_default():
     assert cfg is _NBA_FRONT_LINES_BASE
 
 
-# ─── direction (proj < line, gap >= 0.15) ─────────────────────
-def test_under_direction_passes_when_gap_at_least_15pct():
-    m = _u(line=1.5, extras={"projection": 1.275})  # gap 0.15 exactly
+# ─── direction (proj < line — strict side-lean only, 2026-05-15) ──
+# Universal refactor: direction_gate is pure side-lean.
+#   OVER passes iff projection > line; UNDER passes iff projection < line.
+# All historical "min gap %" / "ratio" rules were removed from the
+# engine. Threshold configs may still carry legacy keys for
+# backwards-compat — the engine ignores them.
+def test_under_direction_passes_when_projection_below_line():
+    m = _u(line=1.5, extras={"projection": 1.275})  # proj < line
     res = get_engine().evaluate(m)
     assert "direction_gate" in res.gate_details
     assert res.gate_details["direction_gate"].passed
 
 
-def test_under_direction_fails_just_below_15pct_gap():
-    """LeBron-style: line 1.5, proj 1.28, gap (1.5-1.28)/1.5 = 0.146."""
-    m = _u(line=1.5, extras={"projection": 1.28})
+def test_under_direction_passes_with_tiny_gap_below_line():
+    """Post-refactor (2026-05-15): the engine no longer enforces a
+    minimum line-to-projection gap. proj just below line still passes
+    direction — other quality concerns (CV / margin / edge / HR) are
+    enforced by their OWN gates.
+    """
+    m = _u(line=1.5, extras={"projection": 1.28})  # diff = -0.22, strict <
     res = get_engine().evaluate(m)
-    assert "direction_gate" in res.failed_gates
+    assert res.gate_details["direction_gate"].passed
 
 
 def test_under_direction_fails_when_proj_above_line():
     m = _u(line=1.5, extras={"projection": 1.6})
+    res = get_engine().evaluate(m)
+    assert "direction_gate" in res.failed_gates
+
+
+def test_under_direction_fails_on_equality():
+    """Equality fails — strict inequality contract."""
+    m = _u(line=1.5, extras={"projection": 1.5})
     res = get_engine().evaluate(m)
     assert "direction_gate" in res.failed_gates
 
@@ -185,16 +201,23 @@ def test_anunoby_blk_under_passes():
     assert res.passed, f"failed={res.failed_gates}"
 
 
-def test_lebron_3pm_under_fails_when_gap_below_15pct():
-    """L=1.5, proj=1.28 → gap 0.147 < 0.15 (FL UNDER). HR=75 → relaxed
-    cap, but direction_gate still fails."""
+def test_lebron_3pm_under_passes_now_that_gap_rule_is_removed():
+    """L=1.5, proj=1.28, side=UNDER. Pre-refactor (≤2026-05-14) this
+    failed direction at gap 0.147 < 0.15. Post-refactor (2026-05-15)
+    the gap rule is gone; UNDER passes direction strictly on
+    `projection < line`. Quality concerns (CV / HR / TP / edge) are
+    enforced by their own gates — this setup also satisfies those,
+    so the pick now passes overall.
+    """
     m = _u(stat_family="threes", line=1.5, hit_rate=75.0,
            hit_rate_l20=75.0, cv=1.047, vision_score=85.0,
            reference_odds=-124, extras={"projection": 1.28},
            edge_pct=22.3, tp=52.7)
     res = get_engine().evaluate(m)
-    assert "direction_gate" in res.failed_gates
-    assert not res.passed
+    assert res.gate_details["direction_gate"].passed
+    # CV 1.047 > 3PM cap 0.55 (no HR-relax at HR=75 → cap+0.10 = 0.65).
+    # The pick still fails downstream — but NOT on direction.
+    assert "direction_gate" not in res.failed_gates
 
 
 # ─── Hard rules: do NOT override these ────────────────────────
@@ -209,9 +232,14 @@ def test_under_does_not_override_hr_below_65():
 
 
 def test_under_does_not_override_direction_failure():
+    """Direction fails strictly when proj >= line for an UNDER pick.
+    Post 2026-05-15 refactor: pure side-lean check — no gap ratio. We
+    pick `proj > line` so direction strictly fails, and verify the
+    UNDER-side override layer doesn't rescue a direction failure.
+    """
     m = _u(stat_family="threes", line=1.5, hit_rate=85.0,
            hit_rate_l20=85.0, cv=0.30, vision_score=85.0,
-           extras={"projection": 1.4})  # gap 0.067 < 0.15
+           extras={"projection": 1.6})  # proj > line — strict UNDER fail
     res = get_engine().evaluate(m)
     assert not res.passed
     assert "direction_gate" in res.failed_gates

@@ -91,10 +91,14 @@ def test_pts_pick_passes_at_min_thresholds():
     assert res.passed
 
 
-# ─── WZ rules — direction (1.05× ratio) ───────────────────────
-def test_wz_fails_when_proj_only_at_line():
-    """Jalen Duren-style failure: proj ~= line, ratio 1.0008 < 1.05."""
-    m = _wz(stat_family="ast", line=2.5, extras={"projection": 2.502},
+# ─── WZ rules — direction (strict OVER, 2026-05-15 refactor) ──
+# Post 2026-05-15 the direction gate is pure side-lean:
+#   OVER passes iff projection > line. No ratio / cushion logic.
+# Config still carries a `min_projection_to_line_ratio` for
+# backwards-compat — the engine ignores it.
+def test_wz_fails_when_proj_strictly_at_line():
+    """Strict semantics: proj == line fails direction (no side-lean)."""
+    m = _wz(stat_family="ast", line=2.5, extras={"projection": 2.5},
             hit_rate=60.0, hit_rate_l20=60.0, cv=0.685, vision_score=92.0)
     res = get_engine().evaluate(m)
     assert not res.passed
@@ -102,52 +106,64 @@ def test_wz_fails_when_proj_only_at_line():
 
 
 def test_wz_passes_at_exactly_1_05x():
-    m = _wz(line=10.0, extras={"projection": 10.5},  # ratio == 1.05
+    m = _wz(line=10.0, extras={"projection": 10.5},
             hit_rate=55.0, hit_rate_l20=55.0, cv=0.50, vision_score=80.0)
     res = get_engine().evaluate(m)
     assert res.passed
 
 
-def test_wz_fails_just_below_1_05x():
-    m = _wz(line=10.0, extras={"projection": 10.49},  # ratio 1.049
+def test_wz_passes_with_tiny_positive_margin():
+    """Post-refactor: any proj > line passes direction. Confidence
+    is enforced by CV / HR / vision / edge gates — not direction.
+    """
+    m = _wz(line=10.0, extras={"projection": 10.49},
             hit_rate=55.0, hit_rate_l20=55.0, cv=0.50, vision_score=80.0)
     res = get_engine().evaluate(m)
-    assert not res.passed
-    assert "direction_gate" in res.failed_gates
+    assert res.gate_details["direction_gate"].passed
 
 
 # ─── WZ rules — HR / CV ───────────────────────────────────────
-def test_wz_fails_hr_below_55():
-    m = _wz(hit_rate=54.0, hit_rate_l20=54.0)
+# (HR floor lowered 55 → 50 on 2026-05-09; CV-ladder rescue refined.)
+def test_wz_fails_hr_below_50():
+    m = _wz(hit_rate=49.0, hit_rate_l20=49.0)
     res = get_engine().evaluate(m)
     assert not res.passed
     assert "hit_rate_gate" in res.failed_gates
 
 
-def test_wz_fails_cv_above_0_75_when_hr_at_or_below_70():
-    m = _wz(hit_rate=70.0, hit_rate_l20=70.0, cv=0.80)
+def test_wz_passes_hr_at_50():
+    m = _wz(hit_rate=50.0, hit_rate_l20=50.0)
+    res = get_engine().evaluate(m)
+    assert "hit_rate_gate" not in res.failed_gates
+
+
+def test_wz_fails_cv_above_0_75_when_hr_below_70():
+    """Below the HR≥70 ladder threshold, the flat CV cap (0.75) applies."""
+    m = _wz(hit_rate=65.0, hit_rate_l20=65.0, cv=0.80)
     res = get_engine().evaluate(m)
     assert not res.passed
     assert "cv_gate" in res.failed_gates
 
 
 def test_wz_hr_expansion_rescues_high_cv_when_hr_above_70():
-    m = _wz(hit_rate=80.0, hit_rate_l20=80.0, cv=0.95)  # cv > 0.75 but <= 1.0
+    """HR≥70 + edge>0 → CV cap relaxes to 1.15 (2026-05-09 ladder)."""
+    m = _wz(hit_rate=80.0, hit_rate_l20=80.0, cv=0.95)
     res = get_engine().evaluate(m)
     assert res.passed
-    aud = res.gate_details.get("__override_applied__")
-    assert aud is not None
-    assert aud.threshold == {"name": "war_zone:hr_expansion"}
 
 
-def test_wz_hr_expansion_does_not_rescue_above_1_00():
-    m = _wz(hit_rate=80.0, hit_rate_l20=80.0, cv=1.05)
+def test_wz_hr_expansion_does_not_rescue_above_ladder_ceiling():
+    """CV beyond the highest ladder cap (1.50 at HR≥80 + edge≥5) fails."""
+    m = _wz(hit_rate=80.0, hit_rate_l20=80.0, cv=1.60)
     res = get_engine().evaluate(m)
     assert not res.passed
 
 
-def test_wz_hr_expansion_requires_strict_above_70():
-    m = _wz(hit_rate=70.0, hit_rate_l20=70.0, cv=0.85)  # NOT > 70
+def test_wz_hr_expansion_does_not_rescue_below_70():
+    """The HR-ladder rescue tier requires HR ≥ 70. At HR=69 the
+    rescue does not apply and the flat 0.75 cap binds.
+    """
+    m = _wz(hit_rate=69.0, hit_rate_l20=69.0, cv=0.85)
     res = get_engine().evaluate(m)
     assert not res.passed
 
@@ -185,11 +201,11 @@ def test_wz_override_does_not_rescue_non_cv_failures():
     assert not res.passed
 
 
-# ─── SH / FL configs unchanged (regression) ───────────────────
-def test_sh_config_vision_score_unchanged():
+# ─── SH / FL configs (current production reality) ─────────────
+def test_sh_config_vision_score_floor():
+    """SH vision floor lowered 85 → 80 on 2026-05-02 post Phase 1 Debias."""
     vs = _NBA_SAFE_HAVEN_BASE.get("vision_score_gate") or {}
-    # SH uses a flat vision floor (NOT use_v2)
-    assert vs.get("min") == 85.0
+    assert vs.get("min") == 80.0
     assert vs.get("use_v2") is None or vs.get("use_v2") is False
 
 
@@ -198,8 +214,14 @@ def test_sh_config_still_uses_stat_family_cv_caps():
     assert "caps" in cv
 
 
-def test_sh_config_does_not_have_direction_gate():
-    assert "direction_gate" not in _NBA_SAFE_HAVEN_BASE
+def test_sh_config_carries_universal_direction_gate():
+    """Universal OVER-side rule applied to SH on 2026-04-29.
+    Post 2026-05-15 the engine uses strict-inequality semantics —
+    legacy `min_projection_minus_line` key is still present but
+    inert (engine ignores positive cushions).
+    """
+    dg = _NBA_SAFE_HAVEN_BASE.get("direction_gate") or {}
+    assert dg.get("applies_to_sides") == ["OVER"]
 
 
 def test_fl_config_unchanged_direction_uses_minus_line():

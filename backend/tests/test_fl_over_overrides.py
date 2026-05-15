@@ -232,45 +232,46 @@ def test_direction_gate_fails_when_projection_below_line_over():
     assert "direction_gate" in res.failed_gates
 
 
-def test_direction_gate_passes_when_projection_equals_line_over():
+def test_direction_gate_fails_when_projection_equals_line_over():
+    """2026-05-15 — Universal direction-gate refactor: equality fails.
+    OVER passes iff projection > line (strict); equality is no side-lean
+    and must fail (the engine no longer applies a positive cushion).
+    """
     m = _m(stat_family="ast", hit_rate=80.0, hit_rate_l20=80.0,
            tp=60.0, cv=0.40, edge_pct=10.0,
            line=4.5, extras={"projection": 4.5})  # proj == line
     res = get_engine().evaluate(m)
-    assert res.passed
+    assert not res.passed
+    assert "direction_gate" in res.failed_gates
 
 
-def test_direction_gate_skipped_for_under_side():
-    """UNDER picks ARE now routed through their own direction_gate
-    (UNDER tuning, 2026-04-29) — but the OVER-side direction_gate
-    config is what `applies_to_sides=['OVER']` would gate on. We
-    verify that an UNDER pick is not subjected to OVER-side rules:
-    a side=UNDER pick whose proj > line (would fail OVER direction)
-    must NOT fail under FL UNDER rules — it instead fails the
-    UNDER projection-gap check, not the OVER direction check.
+def test_direction_gate_under_side_fails_on_proj_above_line():
+    """2026-05-15 — Universal direction-gate refactor: pure side-lean
+    semantics. UNDER picks pass iff projection < line; an UNDER with
+    projection > line strictly fails. The `actual` payload now
+    surfaces `{projection, line, diff}` only — no legacy gap ratio.
     """
     m = _m(side="UNDER", stat_family="ast", hit_rate=80.0,
            hit_rate_l20=80.0, tp=70.0, cv=0.40, edge_pct=10.0,
            line=4.5, extras={"projection": 5.0},  # proj > line — bad for UNDER
            p_model_pct=70.0)
     res = get_engine().evaluate(m)
-    # The pick fails the UNDER direction gate (proj > line, gap < 0.15)
-    # — that's the correct UNDER-side reason. No leakage of OVER-side
-    # check semantics: confirm the recorded actual reflects UNDER mode
-    # ("ratio_(line-proj)/line" present and negative).
     assert "direction_gate" in res.failed_gates
     dg = res.gate_details["direction_gate"]
     actual = dg.actual or {}
-    assert "ratio_(line-proj)/line" in actual
-    assert actual["ratio_(line-proj)/line"] is not None
-    assert actual["ratio_(line-proj)/line"] < 0.15
+    assert set(actual.keys()) == {"projection", "line", "diff"}
+    assert actual["diff"] == 0.5
+    assert dg.comparator == "<"
 
 
-def test_direction_gate_only_on_nba_front_lines():
-    """SH / WZ never declare direction_gate — verify by absence."""
+def test_direction_gate_universal_across_tiers():
+    """Post 2026-04-29: direction_gate is a UNIVERSAL OVER-side rule
+    applied across SH / FL / WZ. Verify it fires on Safe Haven too —
+    a proj<line OVER pick fails direction at any tier.
+    """
     sh = _m(tier="safe_haven", reference_odds=-400, stat_family="ast",
             hit_rate=90.0, hit_rate_l20=90.0, cv=0.30,
             line=4.5, extras={"projection": 3.0})  # proj < line
     res = get_engine().evaluate(sh)
-    # SH does its own evaluation; direction_gate must NOT be in details.
-    assert "direction_gate" not in res.gate_details
+    assert "direction_gate" in res.gate_details
+    assert "direction_gate" in res.failed_gates
