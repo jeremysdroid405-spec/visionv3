@@ -150,6 +150,77 @@ for d in db.mlb_statcast_pitcher_features.find(
 logger.info(f"  pitcher SC: {sum(len(v) for v in sc_pitcher.values()):,} (pitcher,date) keys "
             f"across {len(sc_pitcher):,} pitchers")
 
+# =============================================================================
+# 2026-05-15 — Phase 2A: per-(batter, game_date) opposing pitcher resolver
+# =============================================================================
+# Build server-side via aggregation to avoid streaming 1.6M raw rows
+# into the Python process. We group statcast_raw by
+# (batter, game_date) and keep the FIRST observation (lowest
+# at_bat_number → lowest pitch_number) per pair. That's the
+# opposing-game starter from the batter's perspective.
+#
+# Output: three compact maps, all in-process:
+#   • batter_first_pitcher[(b, gd)] = opp_pitcher_mlbam_id
+#   • batter_stand[(b, gd)]         = "L" | "R"  (per-game)
+#   • pitcher_throws[pid]           = "L" | "R"  (stable)
+#
+# The aggregation runs in MongoDB, returning ~N pair-level docs
+# (where N ≈ unique batter-games, ~1M rows max). Pure scan of those
+# docs into in-memory dicts is the only Python-side cost.
+logger.info("Aggregating mlb_statcast_raw → per-game opp-pitcher resolver…")
+batter_first_pitcher: dict = {}
+batter_stand: dict = {}
+pitcher_throws: dict = {}
+agg_pipe = [
+    {"$match": {
+        "batter": {"$ne": None}, "pitcher": {"$ne": None},
+        "game_date": {"$ne": None},
+    }},
+    # Order by earliest plate appearance per game so $first picks
+    # the opener (the opposing starter we want).
+    {"$sort": {"batter": 1, "game_date": 1,
+                "at_bat_number": 1, "pitch_number": 1}},
+    {"$group": {
+        "_id": {"b": "$batter", "gd": "$game_date"},
+        "p": {"$first": "$pitcher"},
+        "stand": {"$first": "$stand"},
+        "p_throws": {"$first": "$p_throws"},
+    }},
+]
+n_pairs = 0
+try:
+    for d in db.mlb_statcast_raw.aggregate(
+            agg_pipe, allowDiskUse=True, batchSize=2000):
+        _id = d.get("_id") or {}
+        b = _id.get("b"); gd = _id.get("gd"); p = d.get("p")
+        if b is None or p is None or not gd:
+            continue
+        try:
+            b = int(b); p = int(p)
+        except (TypeError, ValueError):
+            continue
+        batter_first_pitcher[(b, gd)] = p
+        s = d.get("stand")
+        if s:
+            batter_stand[(b, gd)] = str(s).strip().upper()[:1]
+        if p not in pitcher_throws:
+            t = d.get("p_throws")
+            if t:
+                pitcher_throws[p] = str(t).strip().upper()[:1]
+        n_pairs += 1
+        if n_pairs % 100000 == 0:
+            logger.info(f"  aggregated pairs streamed: {n_pairs:,}")
+except Exception as exc:  # noqa: BLE001
+    logger.error(
+        f"[PHASE2A] statcast_raw aggregation failed: {exc!r} — "
+        f"continuing with empty matchup resolver (rows train with "
+        f"imputed flags)."
+    )
+logger.info(
+    f"  → {len(batter_first_pitcher):,} (batter,date) pairs, "
+    f"{len(pitcher_throws):,} pitcher-throws entries"
+)
+
 # 2026-04-29 v2.1 — Per-PA Statcast cache (mlb_statcast_raw)
 logger.info("Loading mlb_statcast_raw → PA cache …")
 from services.mlb_pa_features import MLBPACache
@@ -206,7 +277,7 @@ def _sc_lookup_pitcher(mlbam_id: int | None, gdate: str | None) -> dict | None:
 # Train each stat
 # =============================================================================
 report: dict = {"trained_at": datetime.now(timezone.utc).isoformat(),
-                 "version": "MLB_HF_v3.0_bayes",
+                 "version": "MLB_HF_v3.1_phase2a",
                  "stats": {}}
 
 for stat_name in STATS:
@@ -278,6 +349,21 @@ for stat_name in STATS:
             if sc_b is not None or sc_p is not None: sc_hit += 1
             else: sc_miss += 1
 
+            # 2026-05-15 — Phase 2A: resolve opposing pitcher for BATTER
+            # stat retrain. Pitcher-stat retrain is out of scope this
+            # pass (skip the lookup entirely for those targets).
+            bh_t = None
+            opt_t = None
+            opp_pitcher_feats_t = None
+            if (not is_pitcher_stat and mlbam_id is not None
+                    and gdate is not None):
+                key = (int(mlbam_id), gdate)
+                bh_t = batter_stand.get(key)
+                opp_pid = batter_first_pitcher.get(key)
+                if opp_pid is not None:
+                    opt_t = pitcher_throws.get(opp_pid)
+                    opp_pitcher_feats_t = _sc_lookup_pitcher(opp_pid, gdate)
+
             features = model._build_friction_features(
                 player, history, stat_name,
                 opponent=None, park_team=team,
@@ -286,6 +372,9 @@ for stat_name in STATS:
                 pitcher_statcast_features=sc_p,
                 pa_batter_features=pa_b,
                 pa_pitcher_features=pa_p,
+                batter_hand=bh_t,
+                opp_pitcher_throws=opt_t,
+                opp_pitcher_features=opp_pitcher_feats_t,
             )
             if features is None:
                 continue
@@ -353,7 +442,7 @@ for stat_name in STATS:
 
     data = {
         'model': xgb, 'scaler': scaler, 'features': feature_cols,
-        'version': 'MLB_HF_v3.0_bayes',
+        'version': 'MLB_HF_v3.1_phase2a',
         'trained_at': datetime.now(timezone.utc).isoformat(),
         'samples': total_samples, 'feature_count': len(feature_cols),
         'r2_train': round(r2_tr, 4), 'r2_test': round(r2_te, 4),

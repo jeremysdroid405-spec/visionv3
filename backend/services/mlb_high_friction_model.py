@@ -276,6 +276,29 @@ class MLBHighFrictionModel:
         except Exception:
             return None
 
+    def _lookup_opp_pitcher_features(
+        self, mlbam_pid: int,
+    ) -> Optional[Dict[str, Any]]:
+        """Phase 2A — fetch latest rolling-14 Statcast features for an
+        opposing pitcher by MLBAM id. Same shape `_get_pitcher_sc_latest`
+        returns but keyed by external id rather than the master_hub
+        player dict (the prop carries `opp_pitcher_id` from the MLB
+        Stats API; that's an MLBAM id, same key as
+        `mlb_statcast_pitcher_features.pitcher_id`)."""
+        if mlbam_pid is None:
+            return None
+        try:
+            import pymongo as _pm
+            doc = self.db.mlb_statcast_pitcher_features.find_one(
+                {"pitcher_id": int(mlbam_pid)},
+                {"_id": 0, "rolling_14": 1, "rolling_30": 1,
+                 "season_window": 1},
+                sort=[("game_date", _pm.DESCENDING)],
+            )
+            return doc or None
+        except Exception:
+            return None
+
     def _normalize_stat(self, stat_type: str) -> str:
         """Normalize stat type."""
         stat_lower = stat_type.lower().replace(' ', '_').replace('+', '+')
@@ -505,6 +528,15 @@ class MLBHighFrictionModel:
         pitcher_statcast_features: Optional[Dict[str, Any]] = None,
         pa_batter_features: Optional[Dict[str, Any]] = None,
         pa_pitcher_features: Optional[Dict[str, Any]] = None,
+        # ── Phase 2A matchup-aware inputs (2026-05-15) ────────────
+        # All four params are OPTIONAL and DEFAULT to None so older
+        # callers don't need to know about them. When omitted the
+        # feature builder emits the canonical Phase-2A feature names
+        # but sets them to zero with `*_is_imputed = 1` so the
+        # XGBoost model can learn to ignore them on imputed rows.
+        batter_hand: Optional[str] = None,
+        opp_pitcher_throws: Optional[str] = None,
+        opp_pitcher_features: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, float]]:
         """
         Build the FULL High-Friction feature vector.
@@ -521,6 +553,11 @@ class MLBHighFrictionModel:
         7. PA-windowed Statcast (2026-04-29 v2.1):
            - Batter last-7/14/30 PA + season xwOBA/wOBA/HardHit/Barrel/EV/LA/SS%/K%/BB%/Whiff%/Contact%
            - Pitcher last-14/30 PA + season xwOBA-allowed/HardHit-allowed/Barrel-allowed/K%/BB%/Whiff%
+        8. Matchup-aware Phase-2A (2026-05-15):
+           - batter handedness (L/R/S one-hot + switch flag)
+           - opposing pitcher throws (L/R one-hot)
+           - same_hand_matchup / opposite_hand_matchup
+           - opp pitcher rolling-14 quality (k_rate, bb_rate, xwOBA-allowed)
         """
         features = {}
         
@@ -808,6 +845,69 @@ class MLBHighFrictionModel:
                 features[f"pa_p_{tag}_{fld}"] = float(v) if v is not None else 0.0
         features["pa_pitcher_is_imputed"] = 0 if pa_pitcher_features else 1
 
+        # =====================================================================
+        # CATEGORY 8: MATCHUP-AWARE (Phase 2A, 2026-05-15)
+        # =====================================================================
+        # Fixed feature shape regardless of input availability. Imputed
+        # flags carry the missingness signal so XGBoost can route around
+        # rows with no resolved matchup. All emissions are deterministic
+        # so the FEATURE_COLS list is identical across training samples.
+        bh_norm = (str(batter_hand).strip().upper()[:1]
+                   if batter_hand else None)
+        pt_norm = (str(opp_pitcher_throws).strip().upper()[:1]
+                   if opp_pitcher_throws else None)
+        # ── Batter handedness ───────────────────────────────────────
+        features["batter_is_lhh"] = 1.0 if bh_norm == "L" else 0.0
+        features["batter_is_rhh"] = 1.0 if bh_norm == "R" else 0.0
+        features["batter_is_switch"] = 1.0 if bh_norm == "S" else 0.0
+        features["batter_hand_is_imputed"] = 0 if bh_norm in ("L", "R", "S") else 1
+        # ── Opposing pitcher throws ─────────────────────────────────
+        features["opp_pitcher_throws_l"] = 1.0 if pt_norm == "L" else 0.0
+        features["opp_pitcher_throws_r"] = 1.0 if pt_norm == "R" else 0.0
+        features["opp_pitcher_throws_is_imputed"] = (
+            0 if pt_norm in ("L", "R") else 1
+        )
+        # ── Matchup flags (switch = always "opposite") ──────────────
+        if bh_norm and pt_norm and pt_norm in ("L", "R"):
+            if bh_norm == "S":
+                same = 0.0
+                opp = 1.0
+                features["matchup_is_imputed"] = 0
+            elif bh_norm in ("L", "R"):
+                same = 1.0 if bh_norm == pt_norm else 0.0
+                opp = 1.0 - same
+                features["matchup_is_imputed"] = 0
+            else:
+                same = 0.0
+                opp = 0.0
+                features["matchup_is_imputed"] = 1
+        else:
+            same = 0.0
+            opp = 0.0
+            features["matchup_is_imputed"] = 1
+        features["same_hand_matchup"] = same
+        features["opposite_hand_matchup"] = opp
+        # ── Opposing pitcher rolling-14 quality (from statcast) ─────
+        # Source: mlb_statcast_pitcher_features.rolling_14 — same shape
+        # the retrain script already loads into `sc_pitcher`. Pulled at
+        # training time as-of the target game date, at inference time
+        # as-of the prop's commence date. League-average shrinkage is
+        # NOT applied here — XGBoost handles tiny-sample noise via the
+        # `_is_imputed` flag.
+        opf = opp_pitcher_features or {}
+        r14 = (opf.get("rolling_14") if isinstance(opf, dict) else {}) or {}
+        for fld_out, fld_in in (
+            ("opp_pitcher_k_rate_14d", "k_rate"),
+            ("opp_pitcher_bb_rate_14d", "bb_rate"),
+            ("opp_pitcher_xwoba_allowed_14d", "xwOBA_allowed"),
+        ):
+            v = r14.get(fld_in)
+            try:
+                features[fld_out] = float(v) if v is not None else 0.0
+            except (TypeError, ValueError):
+                features[fld_out] = 0.0
+        features["opp_pitcher_quality_is_imputed"] = 0 if r14 else 1
+
         return features
     
     def build_training_dataset(self, stat_type: str) -> pd.DataFrame:
@@ -1032,6 +1132,14 @@ class MLBHighFrictionModel:
                     self.models[stat] = data['model']
                     self.scalers[stat] = data['scaler']
                     self.feature_cols[stat] = data['features']
+                    # Capture the pickle's own version string so
+                    # `predict()` can return the *actual* trained
+                    # model version instead of a hardcoded string.
+                    if not hasattr(self, "_model_versions"):
+                        self._model_versions = {}
+                    self._model_versions[stat] = (
+                        data.get("version") or "MLB_HF_unknown"
+                    )
                     loaded += 1
                     is_tw = path != base_path
                     if is_tw:
@@ -1155,6 +1263,12 @@ class MLBHighFrictionModel:
         park_team: str = None,
         dk_odds: int = None,
         bdl_player_id: int = None,
+        # ── Phase 2A matchup inputs (2026-05-15) ──────────────────
+        # Optional — when omitted the model emits imputed features
+        # so older callers continue to work without modification.
+        batter_hand: Optional[str] = None,
+        opp_pitcher_throws: Optional[str] = None,
+        opp_pitcher_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Generate High-Friction prediction.
@@ -1243,6 +1357,25 @@ class MLBHighFrictionModel:
                     else:
                         pa_batter = pa_cache.batter_features(int(mlbam_id), as_of)
 
+            # 2026-05-15 Phase 2A: opposing-pitcher rolling-14 quality
+            # lookup. Only relevant for BATTER stat predictions (pitcher
+            # props face an opposing lineup, not a single pitcher). When
+            # opp_pitcher_id is None or no Statcast doc exists for that
+            # pitcher, opp_pitcher_features stays None and the feature
+            # builder emits `opp_pitcher_quality_is_imputed=1`.
+            opp_pitcher_feats = None
+            if (norm_stat not in pitcher_stat_set
+                    and opp_pitcher_id is not None):
+                try:
+                    opp_pitcher_feats = self._lookup_opp_pitcher_features(
+                        int(opp_pitcher_id),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug(
+                        f"[MLB_HF_PRED] opp_pitcher feature lookup "
+                        f"failed pid={opp_pitcher_id} err={exc!r}"
+                    )
+
             features = self._build_friction_features(
                 player,
                 game_logs,
@@ -1255,6 +1388,9 @@ class MLBHighFrictionModel:
                 pitcher_statcast_features=sc_pitcher,
                 pa_batter_features=pa_batter,
                 pa_pitcher_features=pa_pitcher,
+                batter_hand=batter_hand,
+                opp_pitcher_throws=opp_pitcher_throws,
+                opp_pitcher_features=opp_pitcher_feats,
             )
             
             if features is None:
@@ -1407,7 +1543,10 @@ class MLBHighFrictionModel:
                 'friction_audit': friction_audit,
                 'full_features': friction_audit,
                 'mlr_features_used': True,
-                'model_version': 'MLB_HF_v3.0_bayes',
+                'model_version': (
+                    getattr(self, "_model_versions", {}).get(norm_stat)
+                    or "MLB_HF_unknown"
+                ),
                 'feature_health': feature_health,
                 # 2026-04-27 — μ-override audit fields
                 'mu_raw_model_projection': round(mu_raw_model_projection, 4),

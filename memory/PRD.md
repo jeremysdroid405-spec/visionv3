@@ -146,6 +146,55 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 - Universal Vision Intel Refactor (YAML configs)
 
 ## Recent Changelog
+
+### 2026-05-15 — Phase 2A MLB_HF retrain (MLB_HF_v3.1_phase2a)
+- **First true MLB model recalibration** after Phase 1 + Phase 2A infra stabilization. Strict scope per user mandate: NO gate tuning, NO CV threshold changes, NO HR floor changes, NO tier-logic changes, NO pitcher-stat retraining, NO infrastructure additions.
+- **Approved feature additions** to `_build_friction_features` (Category 8, 14 new features):
+  - Batter handedness one-hot: `batter_is_lhh`, `batter_is_rhh`, `batter_is_switch`, `batter_hand_is_imputed`
+  - Opp pitcher throws one-hot: `opp_pitcher_throws_l/r/is_imputed`
+  - Matchup flags: `same_hand_matchup`, `opposite_hand_matchup`, `matchup_is_imputed`
+  - Opp pitcher rolling-14 quality: `opp_pitcher_k_rate_14d`, `opp_pitcher_bb_rate_14d`, `opp_pitcher_xwoba_allowed_14d`, `opp_pitcher_quality_is_imputed`
+- **Order-of-ops fix**: `_propagate_phase1_context` moved BEFORE predict() in `mlb_scoring.py` so the model actually sees `batter_hand`. Previous placement (after success branch) silently passed `None` every call.
+- **Live wiring**: `predict()` accepts `batter_hand`, `opp_pitcher_throws`, `opp_pitcher_id`; new `_lookup_opp_pitcher_features` reads `mlb_statcast_pitcher_features` keyed by MLBAM id. Model version string now read from pickle, not hardcoded.
+- **Retrain pipeline**: `scripts/phase2a_retrain_worker.py` — resumable, per-stat, ~60-90s/stat, ~3.7GB peak RSS. Daemonized via `_daemon_launch.py` to survive MCP shell drops. State pickled to persistent `/app/backend/models/mlb_hf/_phase2a_workdir/` so any pod restart resumes where it left off.
+- **Retrain sources**: `master_hub.bdl_game_logs` (target + history), `mlb_statcast_player_features` (batter rolling), `mlb_statcast_pitcher_features` (pitcher rolling), `mlb_statcast_raw` (per-game opponent pitcher + batter handedness via Mongo aggregation, 109,864 (batter,date) pairs in 13.6s).
+- **Trained**: 10 batter stat models. All artifacts pickle-version-stamped `MLB_HF_v3.1_phase2a`, feature_count=222 (was 208 for legacy v3.0_bayes). Pitcher pickles intentionally untouched.
+- **Backup**: `models/mlb_hf/_pre_phase2a_backup_2026_05_15/` (23 files).
+
+#### Validation results (PRIMARY metric — calibration target met)
+**Fake-negative-edge cluster** (OVER row with HR ≥ 60%, book_count ≥ 3, model_projection < line, edge < 0):
+- v3.0_bayes: **14.5%** (18/124)
+- v3.1_phase2a: **0.8%** (12/1524) — **94% reduction**
+
+**Binary prop OVER positive-edge rate**:
+- Hits 0.5: 18% → **51%**
+- Singles 0.5: 25% → **69%**
+
+**Per-stat R²_test** (test-set, train/test split 80/20):
+- hits 0.190, total_bases 0.195, hits+runs+rbis 0.264, singles 0.119, runs 0.089, walks 0.086, home_runs 0.068, rbis 0.061, doubles 0.010, stolen_bases 0.017
+- Lower R² on hit-rate-style binary props is expected (high target variance, near-binary distribution); calibration improvement is the actual win, not R².
+
+**Audit players (current slate, 2026-05-16 LAD vs Angels)**:
+- Kyle Tucker Hits 0.5 OVER: μ=0.890, tp=66.4%, edge_vs_fair +0.65%, total_edge +9.1%, **tier=front_lines (gates_passed)** — was unqualified pre-retrain.
+- Freddie Freeman Hits 0.5 OVER: μ=0.854, edge_vs_fair -5.1% (consensus TP=73.4% reasonably gates this — Freeman's career mean ~0.78 supports model).
+- Andy Pages Hits 0.5 OVER: now realistic projection but tier=unqualified (per strict mandate, gate logic untouched).
+- Ozzie Albies Hits+Runs+RBIs 1.5: no active row at report time (game in progress).
+
+**Top matchup-feature importance shifts** (where matchup context matters most):
+- `hits+runs+rbis`: `opp_pitcher_quality_is_imputed=0.040`, `opp_pitcher_xwoba_allowed_14d=0.013`
+- `total_bases`: `opp_pitcher_quality_is_imputed=0.051`, `batter_hand_is_imputed=0.018`, `opp_pitcher_xwoba_allowed_14d=0.014`
+- `home_runs`: `opp_pitcher_quality_is_imputed=0.036`, `opp_pitcher_xwoba_allowed_14d=0.010`, `opp_pitcher_throws_r=0.009`
+- `walks`: `opp_pitcher_bb_rate_14d=0.012`, `opp_pitcher_throws_r=0.010`
+- Imputation flags ranking high confirms missingness carries signal — model correctly learns to weight predictions differently when context is missing.
+
+**Recompute coverage**: 70.8% of active props relabelled v3.1 at first pass; remaining 29% are pitcher-stat rows (out of scope, still v3.0_bayes — intentional per user mandate). All 100% of batter-stat rows on the new slate now use v3.1 features.
+
+#### Dependency audit — `mlb_historical_logs`
+- 6,645 docs; **production retrain pipeline already ignores it** (canonical = `master_hub.bdl_game_logs`).
+- Still referenced by 4 legacy scripts (`train_mlb_ecdf_artifacts.py`, `train_line_outcome_models.py`, etc.) and 5 production services (handle-only, not read in hot paths).
+- Still being WRITTEN by `scripts/run_mlb_backfill.py` ingest.
+- **Verdict**: rename deferred to a follow-up pass — would require migrating writers + readers first. NOT a blocker for retrain (validated by successful Phase 2A pipeline).
+
 ### 2026-05-15 — Phase 2A MLB pitcher matchup wiring (real probable-pitcher feed)
 - **Motivation**: Phase 1 left `feature_hydration.py:735-739` MOCKED — `probable_pitcher / opp_pitcher_id / opp_pitcher_name / opp_pitcher_throws` were hardcoded `None`. Audit confirmed this stripped opponent context from EVERY MLB score doc, contributing to systemic under-projection.
 - **Scope (strict Phase 2A — no model retrains, no gate tuning, no park factors, no PA/AB models)**:

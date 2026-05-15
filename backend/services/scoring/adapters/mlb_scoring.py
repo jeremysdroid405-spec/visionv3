@@ -408,10 +408,29 @@ class MLBScoringAdapter(ScoringAdapter):
                     dk_odds_int = int(dk_layer["odds"])
                 except (TypeError, ValueError):
                     dk_odds_int = None
+            # ============================================================
+            # 2026-05-15 — PHASE 2A CONTEXT PROPAGATION ORDER-OF-OPS FIX
+            # ------------------------------------------------------------
+            # `_propagate_phase1_context` must run BEFORE predict() so the
+            # model receives `batter_hand`. Previous placement (after the
+            # success branch) meant predict() always saw batter_hand=None.
+            # The helper is idempotent and silent-skip on failures, so
+            # running it early is safe.
+            # ============================================================
+            _propagate_phase1_context(prop, hf_model.master_hub, bdl_player_id)
+
             result = hf_model.predict(
                 player_name=player_name, stat_type=stat_type, line=line,
                 opponent_team=opponent, park_team=park_team, dk_odds=dk_odds_int,
                 bdl_player_id=bdl_player_id,
+                # ── Phase 2A matchup inputs (2026-05-15) ───────────
+                # All sourced from `services/feature_hydration.py` and
+                # `_propagate_phase1_context` upstream; safe to forward
+                # as-is. None values flow through to the model as
+                # imputed (1.0 on the *_is_imputed feature flag).
+                batter_hand=prop.get("batter_hand"),
+                opp_pitcher_throws=prop.get("opp_pitcher_throws"),
+                opp_pitcher_id=prop.get("opp_pitcher_id"),
             )
             # 2026-05 missing-value policy — capture HF feature_health
             # so the score doc preserves which features were imputed.
@@ -440,18 +459,8 @@ class MLBScoringAdapter(ScoringAdapter):
                 prop["expected_ip_used"] = result.get("expected_ip_used")
                 prop["projection_model_version"] = result.get("model_version")
 
-                # ============================================================
-                # 2026-05-15 — PHASE 1 CONTEXT FIELD PROPAGATION
-                # ------------------------------------------------------------
-                # Audit identified three already-available context fields
-                # that were silently dropped between live_props and the
-                # score doc. Phase 1 propagation only — no new feeds yet.
-                #   • batting_order  — already on live_props (~48.9% filled)
-                #   • batter_hand    — derive from master_hub.bats
-                #   • venue          — already on live_props
-                # See `_propagate_phase1_context` for the lookup contract.
-                # ============================================================
-                _propagate_phase1_context(prop, hf_model.master_hub, bdl_player_id)
+                # NOTE: `_propagate_phase1_context` now runs BEFORE
+                # predict() (see the order-of-ops fix block above).
 
                 # ============================================================
                 # 2026-05-14 — EMPIRICAL-BAYES SHRINKAGE MOVED IN FRONT OF

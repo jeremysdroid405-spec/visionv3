@@ -1,0 +1,1897 @@
+{
+  "trained_at": "2026-05-14T03:21:31.872533+00:00",
+  "binary_calibration_line": 0.5,
+  "variance_powers_swept": [
+    1.1,
+    1.2,
+    1.3,
+    1.4,
+    1.5
+  ],
+  "stats": {
+    "home_runs": {
+      "stat": "home_runs",
+      "n_train": 50709,
+      "n_test": 12678,
+      "sigma_stat_used_for_calibration": 0.2828,
+      "baseline_gaussian": {
+        "r2_test": 0.0684,
+        "mae_test": 0.1377,
+        "distribution_shift": {
+          "pct_zero_predictions": 0.0402,
+          "mean_prediction": 0.0804,
+          "prediction_std": 0.0834,
+          "min_prediction": -0.1049,
+          "max_prediction": 1.908
+        },
+        "calibration": {
+          "weighted_abs_calibration_error": 0.0108,
+          "n_samples": 12678,
+          "buckets": [
+            {
+              "bucket": "0-10%",
+              "n": 11198,
+              "mean_predicted_p_over": 0.0617,
+              "actual_hit_rate": 0.0568,
+              "abs_calibration_error": 0.0049
+            },
+            {
+              "bucket": "10-20%",
+              "n": 1127,
+              "mean_predicted_p_over": 0.1256,
+              "actual_hit_rate": 0.1677,
+              "abs_calibration_error": 0.0421
+            },
+            {
+              "bucket": "20-30%",
+              "n": 157,
+              "mean_predicted_p_over": 0.2389,
+              "actual_hit_rate": 0.2803,
+              "abs_calibration_error": 0.0414
+            },
+            {
+              "bucket": "30-40%",
+              "n": 80,
+              "mean_predicted_p_over": 0.3448,
+              "actual_hit_rate": 0.4625,
+              "abs_calibration_error": 0.1177
+            },
+            {
+              "bucket": "40-50%",
+              "n": 35,
+              "mean_predicted_p_over": 0.445,
+              "actual_hit_rate": 0.4,
+              "abs_calibration_error": 0.045
+            },
+            {
+              "bucket": "50-60%",
+              "n": 34,
+              "mean_predicted_p_over": 0.5506,
+              "actual_hit_rate": 0.4412,
+              "abs_calibration_error": 0.1094
+            },
+            {
+              "bucket": "60-70%",
+              "n": 17,
+              "mean_predicted_p_over": 0.645,
+              "actual_hit_rate": 0.4118,
+              "abs_calibration_error": 0.2332
+            },
+            {
+              "bucket": "70-80%",
+              "n": 7,
+              "mean_predicted_p_over": 0.747,
+              "actual_hit_rate": 0.4286,
+              "abs_calibration_error": 0.3184
+            },
+            {
+              "bucket": "80-90%",
+              "n": 13,
+              "mean_predicted_p_over": 0.8617,
+              "actual_hit_rate": 0.7692,
+              "abs_calibration_error": 0.0924
+            },
+            {
+              "bucket": "90-101%",
+              "n": 10,
+              "mean_predicted_p_over": 0.9682,
+              "actual_hit_rate": 0.3,
+              "abs_calibration_error": 0.6682
+            }
+          ]
+        }
+      },
+      "tweedie_sweep": [
+        {
+          "tweedie_variance_power": 1.1,
+          "r2_test": 0.0655,
+          "mae_test": 0.1327,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.0888,
+            "mean_prediction": 0.0746,
+            "prediction_std": 0.0835,
+            "min_prediction": 0.0001,
+            "max_prediction": 2.2982
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0079,
+            "n_samples": 12678,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 11397,
+                "mean_predicted_p_over": 0.0608,
+                "actual_hit_rate": 0.0597,
+                "abs_calibration_error": 0.0011
+              },
+              {
+                "bucket": "10-20%",
+                "n": 1067,
+                "mean_predicted_p_over": 0.1208,
+                "actual_hit_rate": 0.1743,
+                "abs_calibration_error": 0.0536
+              },
+              {
+                "bucket": "20-30%",
+                "n": 107,
+                "mean_predicted_p_over": 0.2436,
+                "actual_hit_rate": 0.3645,
+                "abs_calibration_error": 0.1209
+              },
+              {
+                "bucket": "30-40%",
+                "n": 39,
+                "mean_predicted_p_over": 0.3449,
+                "actual_hit_rate": 0.4615,
+                "abs_calibration_error": 0.1166
+              },
+              {
+                "bucket": "40-50%",
+                "n": 17,
+                "mean_predicted_p_over": 0.4347,
+                "actual_hit_rate": 0.4118,
+                "abs_calibration_error": 0.023
+              },
+              {
+                "bucket": "50-60%",
+                "n": 12,
+                "mean_predicted_p_over": 0.5501,
+                "actual_hit_rate": 0.5,
+                "abs_calibration_error": 0.0501
+              },
+              {
+                "bucket": "60-70%",
+                "n": 3,
+                "mean_predicted_p_over": 0.6285,
+                "actual_hit_rate": 0.6667,
+                "abs_calibration_error": 0.0382
+              },
+              {
+                "bucket": "70-80%",
+                "n": 11,
+                "mean_predicted_p_over": 0.7536,
+                "actual_hit_rate": 0.4545,
+                "abs_calibration_error": 0.299
+              },
+              {
+                "bucket": "80-90%",
+                "n": 3,
+                "mean_predicted_p_over": 0.8513,
+                "actual_hit_rate": 0.3333,
+                "abs_calibration_error": 0.518
+              },
+              {
+                "bucket": "90-101%",
+                "n": 22,
+                "mean_predicted_p_over": 0.9745,
+                "actual_hit_rate": 0.6364,
+                "abs_calibration_error": 0.3382
+              }
+            ]
+          }
+        },
+        {
+          "tweedie_variance_power": 1.2,
+          "r2_test": 0.0707,
+          "mae_test": 0.1312,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.0894,
+            "mean_prediction": 0.0721,
+            "prediction_std": 0.0741,
+            "min_prediction": 0.0,
+            "max_prediction": 2.0799
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0067,
+            "n_samples": 12678,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 11467,
+                "mean_predicted_p_over": 0.0604,
+                "actual_hit_rate": 0.061,
+                "abs_calibration_error": 0.0006
+              },
+              {
+                "bucket": "10-20%",
+                "n": 1026,
+                "mean_predicted_p_over": 0.1213,
+                "actual_hit_rate": 0.1725,
+                "abs_calibration_error": 0.0512
+              },
+              {
+                "bucket": "20-30%",
+                "n": 84,
+                "mean_predicted_p_over": 0.2425,
+                "actual_hit_rate": 0.3571,
+                "abs_calibration_error": 0.1146
+              },
+              {
+                "bucket": "30-40%",
+                "n": 40,
+                "mean_predicted_p_over": 0.348,
+                "actual_hit_rate": 0.45,
+                "abs_calibration_error": 0.102
+              },
+              {
+                "bucket": "40-50%",
+                "n": 16,
+                "mean_predicted_p_over": 0.4498,
+                "actual_hit_rate": 0.375,
+                "abs_calibration_error": 0.0748
+              },
+              {
+                "bucket": "50-60%",
+                "n": 10,
+                "mean_predicted_p_over": 0.5348,
+                "actual_hit_rate": 0.7,
+                "abs_calibration_error": 0.1652
+              },
+              {
+                "bucket": "60-70%",
+                "n": 12,
+                "mean_predicted_p_over": 0.6521,
+                "actual_hit_rate": 0.25,
+                "abs_calibration_error": 0.4021
+              },
+              {
+                "bucket": "70-80%",
+                "n": 7,
+                "mean_predicted_p_over": 0.7402,
+                "actual_hit_rate": 0.7143,
+                "abs_calibration_error": 0.0259
+              },
+              {
+                "bucket": "80-90%",
+                "n": 4,
+                "mean_predicted_p_over": 0.8507,
+                "actual_hit_rate": 0.75,
+                "abs_calibration_error": 0.1007
+              },
+              {
+                "bucket": "90-101%",
+                "n": 12,
+                "mean_predicted_p_over": 0.9734,
+                "actual_hit_rate": 0.75,
+                "abs_calibration_error": 0.2234
+              }
+            ]
+          }
+        },
+        {
+          "tweedie_variance_power": 1.3,
+          "r2_test": 0.0623,
+          "mae_test": 0.1302,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.0909,
+            "mean_prediction": 0.0704,
+            "prediction_std": 0.075,
+            "min_prediction": 0.0,
+            "max_prediction": 2.2589
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0078,
+            "n_samples": 12678,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 11478,
+                "mean_predicted_p_over": 0.0599,
+                "actual_hit_rate": 0.061,
+                "abs_calibration_error": 0.0011
+              },
+              {
+                "bucket": "10-20%",
+                "n": 1032,
+                "mean_predicted_p_over": 0.1199,
+                "actual_hit_rate": 0.1802,
+                "abs_calibration_error": 0.0603
+              },
+              {
+                "bucket": "20-30%",
+                "n": 81,
+                "mean_predicted_p_over": 0.2379,
+                "actual_hit_rate": 0.321,
+                "abs_calibration_error": 0.083
+              },
+              {
+                "bucket": "30-40%",
+                "n": 26,
+                "mean_predicted_p_over": 0.3461,
+                "actual_hit_rate": 0.3846,
+                "abs_calibration_error": 0.0385
+              },
+              {
+                "bucket": "40-50%",
+                "n": 14,
+                "mean_predicted_p_over": 0.4379,
+                "actual_hit_rate": 0.7857,
+                "abs_calibration_error": 0.3478
+              },
+              {
+                "bucket": "50-60%",
+                "n": 11,
+                "mean_predicted_p_over": 0.5341,
+                "actual_hit_rate": 0.2727,
+                "abs_calibration_error": 0.2613
+              },
+              {
+                "bucket": "60-70%",
+                "n": 9,
+                "mean_predicted_p_over": 0.6632,
+                "actual_hit_rate": 0.6667,
+                "abs_calibration_error": 0.0034
+              },
+              {
+                "bucket": "70-80%",
+                "n": 4,
+                "mean_predicted_p_over": 0.7441,
+                "actual_hit_rate": 0.75,
+                "abs_calibration_error": 0.0059
+              },
+              {
+                "bucket": "80-90%",
+                "n": 11,
+                "mean_predicted_p_over": 0.8521,
+                "actual_hit_rate": 0.5455,
+                "abs_calibration_error": 0.3066
+              },
+              {
+                "bucket": "90-101%",
+                "n": 12,
+                "mean_predicted_p_over": 0.9681,
+                "actual_hit_rate": 0.5833,
+                "abs_calibration_error": 0.3848
+              }
+            ]
+          }
+        },
+        {
+          "tweedie_variance_power": 1.4,
+          "r2_test": 0.0561,
+          "mae_test": 0.1289,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.0982,
+            "mean_prediction": 0.068,
+            "prediction_std": 0.0701,
+            "min_prediction": 0.0,
+            "max_prediction": 1.886
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0088,
+            "n_samples": 12678,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 11534,
+                "mean_predicted_p_over": 0.0594,
+                "actual_hit_rate": 0.0625,
+                "abs_calibration_error": 0.0031
+              },
+              {
+                "bucket": "10-20%",
+                "n": 995,
+                "mean_predicted_p_over": 0.1181,
+                "actual_hit_rate": 0.1749,
+                "abs_calibration_error": 0.0568
+              },
+              {
+                "bucket": "20-30%",
+                "n": 64,
+                "mean_predicted_p_over": 0.2358,
+                "actual_hit_rate": 0.3438,
+                "abs_calibration_error": 0.1079
+              },
+              {
+                "bucket": "30-40%",
+                "n": 35,
+                "mean_predicted_p_over": 0.3335,
+                "actual_hit_rate": 0.4571,
+                "abs_calibration_error": 0.1236
+              },
+              {
+                "bucket": "40-50%",
+                "n": 12,
+                "mean_predicted_p_over": 0.442,
+                "actual_hit_rate": 0.25,
+                "abs_calibration_error": 0.192
+              },
+              {
+                "bucket": "50-60%",
+                "n": 12,
+                "mean_predicted_p_over": 0.5575,
+                "actual_hit_rate": 0.5,
+                "abs_calibration_error": 0.0575
+              },
+              {
+                "bucket": "60-70%",
+                "n": 7,
+                "mean_predicted_p_over": 0.6569,
+                "actual_hit_rate": 0.5714,
+                "abs_calibration_error": 0.0855
+              },
+              {
+                "bucket": "70-80%",
+                "n": 6,
+                "mean_predicted_p_over": 0.7443,
+                "actual_hit_rate": 0.6667,
+                "abs_calibration_error": 0.0776
+              },
+              {
+                "bucket": "80-90%",
+                "n": 3,
+                "mean_predicted_p_over": 0.8521,
+                "actual_hit_rate": 0.6667,
+                "abs_calibration_error": 0.1855
+              },
+              {
+                "bucket": "90-101%",
+                "n": 10,
+                "mean_predicted_p_over": 0.9707,
+                "actual_hit_rate": 0.6,
+                "abs_calibration_error": 0.3707
+              }
+            ]
+          }
+        },
+        {
+          "tweedie_variance_power": 1.5,
+          "r2_test": 0.0552,
+          "mae_test": 0.1276,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.1117,
+            "mean_prediction": 0.0659,
+            "prediction_std": 0.0652,
+            "min_prediction": 0.0,
+            "max_prediction": 1.3627
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0098,
+            "n_samples": 12678,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 11664,
+                "mean_predicted_p_over": 0.0593,
+                "actual_hit_rate": 0.0635,
+                "abs_calibration_error": 0.0042
+              },
+              {
+                "bucket": "10-20%",
+                "n": 881,
+                "mean_predicted_p_over": 0.1189,
+                "actual_hit_rate": 0.1748,
+                "abs_calibration_error": 0.0559
+              },
+              {
+                "bucket": "20-30%",
+                "n": 63,
+                "mean_predicted_p_over": 0.2421,
+                "actual_hit_rate": 0.4762,
+                "abs_calibration_error": 0.2341
+              },
+              {
+                "bucket": "30-40%",
+                "n": 29,
+                "mean_predicted_p_over": 0.3368,
+                "actual_hit_rate": 0.4483,
+                "abs_calibration_error": 0.1115
+              },
+              {
+                "bucket": "40-50%",
+                "n": 13,
+                "mean_predicted_p_over": 0.4522,
+                "actual_hit_rate": 0.3846,
+                "abs_calibration_error": 0.0676
+              },
+              {
+                "bucket": "50-60%",
+                "n": 5,
+                "mean_predicted_p_over": 0.5396,
+                "actual_hit_rate": 0.2,
+                "abs_calibration_error": 0.3396
+              },
+              {
+                "bucket": "60-70%",
+                "n": 5,
+                "mean_predicted_p_over": 0.6508,
+                "actual_hit_rate": 0.4,
+                "abs_calibration_error": 0.2508
+              },
+              {
+                "bucket": "70-80%",
+                "n": 5,
+                "mean_predicted_p_over": 0.7484,
+                "actual_hit_rate": 0.6,
+                "abs_calibration_error": 0.1484
+              },
+              {
+                "bucket": "80-90%",
+                "n": 5,
+                "mean_predicted_p_over": 0.8504,
+                "actual_hit_rate": 0.6,
+                "abs_calibration_error": 0.2504
+              },
+              {
+                "bucket": "90-101%",
+                "n": 8,
+                "mean_predicted_p_over": 0.9622,
+                "actual_hit_rate": 0.75,
+                "abs_calibration_error": 0.2122
+              }
+            ]
+          }
+        }
+      ],
+      "chosen_variant": {
+        "tweedie_variance_power": 1.2,
+        "r2_test": 0.0707,
+        "mae_test": 0.1312,
+        "distribution_shift": {
+          "pct_zero_predictions": 0.0894,
+          "mean_prediction": 0.0721,
+          "prediction_std": 0.0741,
+          "min_prediction": 0.0,
+          "max_prediction": 2.0799
+        },
+        "calibration": {
+          "weighted_abs_calibration_error": 0.0067,
+          "n_samples": 12678,
+          "buckets": [
+            {
+              "bucket": "0-10%",
+              "n": 11467,
+              "mean_predicted_p_over": 0.0604,
+              "actual_hit_rate": 0.061,
+              "abs_calibration_error": 0.0006
+            },
+            {
+              "bucket": "10-20%",
+              "n": 1026,
+              "mean_predicted_p_over": 0.1213,
+              "actual_hit_rate": 0.1725,
+              "abs_calibration_error": 0.0512
+            },
+            {
+              "bucket": "20-30%",
+              "n": 84,
+              "mean_predicted_p_over": 0.2425,
+              "actual_hit_rate": 0.3571,
+              "abs_calibration_error": 0.1146
+            },
+            {
+              "bucket": "30-40%",
+              "n": 40,
+              "mean_predicted_p_over": 0.348,
+              "actual_hit_rate": 0.45,
+              "abs_calibration_error": 0.102
+            },
+            {
+              "bucket": "40-50%",
+              "n": 16,
+              "mean_predicted_p_over": 0.4498,
+              "actual_hit_rate": 0.375,
+              "abs_calibration_error": 0.0748
+            },
+            {
+              "bucket": "50-60%",
+              "n": 10,
+              "mean_predicted_p_over": 0.5348,
+              "actual_hit_rate": 0.7,
+              "abs_calibration_error": 0.1652
+            },
+            {
+              "bucket": "60-70%",
+              "n": 12,
+              "mean_predicted_p_over": 0.6521,
+              "actual_hit_rate": 0.25,
+              "abs_calibration_error": 0.4021
+            },
+            {
+              "bucket": "70-80%",
+              "n": 7,
+              "mean_predicted_p_over": 0.7402,
+              "actual_hit_rate": 0.7143,
+              "abs_calibration_error": 0.0259
+            },
+            {
+              "bucket": "80-90%",
+              "n": 4,
+              "mean_predicted_p_over": 0.8507,
+              "actual_hit_rate": 0.75,
+              "abs_calibration_error": 0.1007
+            },
+            {
+              "bucket": "90-101%",
+              "n": 12,
+              "mean_predicted_p_over": 0.9734,
+              "actual_hit_rate": 0.75,
+              "abs_calibration_error": 0.2234
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "r2_delta_vs_baseline": 0.0022999999999999965,
+        "mae_delta_vs_baseline": -0.006499999999999978,
+        "calibration_delta_vs_baseline": -0.0041
+      }
+    },
+    "doubles": {
+      "stat": "doubles",
+      "n_train": 28900,
+      "n_test": 7225,
+      "sigma_stat_used_for_calibration": 0.3697,
+      "baseline_gaussian": {
+        "r2_test": 0.0087,
+        "mae_test": 0.2331,
+        "distribution_shift": {
+          "pct_zero_predictions": 0.0127,
+          "mean_prediction": 0.137,
+          "prediction_std": 0.0862,
+          "min_prediction": -0.1144,
+          "max_prediction": 1.1548
+        },
+        "calibration": {
+          "weighted_abs_calibration_error": 0.0366,
+          "n_samples": 7225,
+          "buckets": [
+            {
+              "bucket": "0-10%",
+              "n": 285,
+              "mean_predicted_p_over": 0.09,
+              "actual_hit_rate": 0.0632,
+              "abs_calibration_error": 0.0268
+            },
+            {
+              "bucket": "10-20%",
+              "n": 5895,
+              "mean_predicted_p_over": 0.1508,
+              "actual_hit_rate": 0.1198,
+              "abs_calibration_error": 0.0311
+            },
+            {
+              "bucket": "20-30%",
+              "n": 732,
+              "mean_predicted_p_over": 0.2373,
+              "actual_hit_rate": 0.1926,
+              "abs_calibration_error": 0.0446
+            },
+            {
+              "bucket": "30-40%",
+              "n": 188,
+              "mean_predicted_p_over": 0.342,
+              "actual_hit_rate": 0.3138,
+              "abs_calibration_error": 0.0282
+            },
+            {
+              "bucket": "40-50%",
+              "n": 71,
+              "mean_predicted_p_over": 0.4488,
+              "actual_hit_rate": 0.2254,
+              "abs_calibration_error": 0.2235
+            },
+            {
+              "bucket": "50-60%",
+              "n": 28,
+              "mean_predicted_p_over": 0.5383,
+              "actual_hit_rate": 0.3214,
+              "abs_calibration_error": 0.2169
+            },
+            {
+              "bucket": "60-70%",
+              "n": 14,
+              "mean_predicted_p_over": 0.6449,
+              "actual_hit_rate": 0.2143,
+              "abs_calibration_error": 0.4307
+            },
+            {
+              "bucket": "70-80%",
+              "n": 6,
+              "mean_predicted_p_over": 0.7309,
+              "actual_hit_rate": 0.1667,
+              "abs_calibration_error": 0.5642
+            },
+            {
+              "bucket": "80-90%",
+              "n": 3,
+              "mean_predicted_p_over": 0.8445,
+              "actual_hit_rate": 0.3333,
+              "abs_calibration_error": 0.5111
+            },
+            {
+              "bucket": "90-101%",
+              "n": 3,
+              "mean_predicted_p_over": 0.9393,
+              "actual_hit_rate": 0.0,
+              "abs_calibration_error": 0.9393
+            }
+          ]
+        }
+      },
+      "tweedie_sweep": [
+        {
+          "tweedie_variance_power": 1.1,
+          "r2_test": 0.005,
+          "mae_test": 0.2245,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.0,
+            "mean_prediction": 0.1235,
+            "prediction_std": 0.0751,
+            "min_prediction": 0.0046,
+            "max_prediction": 1.5008
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0262,
+            "n_samples": 7225,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 185,
+                "mean_predicted_p_over": 0.097,
+                "actual_hit_rate": 0.0541,
+                "abs_calibration_error": 0.0429
+              },
+              {
+                "bucket": "10-20%",
+                "n": 6347,
+                "mean_predicted_p_over": 0.1466,
+                "actual_hit_rate": 0.124,
+                "abs_calibration_error": 0.0226
+              },
+              {
+                "bucket": "20-30%",
+                "n": 509,
+                "mean_predicted_p_over": 0.2334,
+                "actual_hit_rate": 0.224,
+                "abs_calibration_error": 0.0094
+              },
+              {
+                "bucket": "30-40%",
+                "n": 110,
+                "mean_predicted_p_over": 0.3376,
+                "actual_hit_rate": 0.2,
+                "abs_calibration_error": 0.1376
+              },
+              {
+                "bucket": "40-50%",
+                "n": 41,
+                "mean_predicted_p_over": 0.4437,
+                "actual_hit_rate": 0.3415,
+                "abs_calibration_error": 0.1022
+              },
+              {
+                "bucket": "50-60%",
+                "n": 17,
+                "mean_predicted_p_over": 0.5425,
+                "actual_hit_rate": 0.1176,
+                "abs_calibration_error": 0.4249
+              },
+              {
+                "bucket": "60-70%",
+                "n": 9,
+                "mean_predicted_p_over": 0.6331,
+                "actual_hit_rate": 0.5556,
+                "abs_calibration_error": 0.0775
+              },
+              {
+                "bucket": "70-80%",
+                "n": 2,
+                "mean_predicted_p_over": 0.7476,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.7476
+              },
+              {
+                "bucket": "80-90%",
+                "n": 1,
+                "mean_predicted_p_over": 0.821,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.821
+              },
+              {
+                "bucket": "90-101%",
+                "n": 4,
+                "mean_predicted_p_over": 0.956,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.956
+              }
+            ]
+          }
+        },
+        {
+          "tweedie_variance_power": 1.2,
+          "r2_test": 0.0039,
+          "mae_test": 0.2222,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.0,
+            "mean_prediction": 0.1198,
+            "prediction_std": 0.0722,
+            "min_prediction": 0.0024,
+            "max_prediction": 1.0626
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0239,
+            "n_samples": 7225,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 277,
+                "mean_predicted_p_over": 0.0967,
+                "actual_hit_rate": 0.0325,
+                "abs_calibration_error": 0.0642
+              },
+              {
+                "bucket": "10-20%",
+                "n": 6343,
+                "mean_predicted_p_over": 0.1463,
+                "actual_hit_rate": 0.1282,
+                "abs_calibration_error": 0.0182
+              },
+              {
+                "bucket": "20-30%",
+                "n": 456,
+                "mean_predicted_p_over": 0.2376,
+                "actual_hit_rate": 0.2018,
+                "abs_calibration_error": 0.0358
+              },
+              {
+                "bucket": "30-40%",
+                "n": 94,
+                "mean_predicted_p_over": 0.3464,
+                "actual_hit_rate": 0.2766,
+                "abs_calibration_error": 0.0698
+              },
+              {
+                "bucket": "40-50%",
+                "n": 29,
+                "mean_predicted_p_over": 0.4456,
+                "actual_hit_rate": 0.3793,
+                "abs_calibration_error": 0.0663
+              },
+              {
+                "bucket": "50-60%",
+                "n": 12,
+                "mean_predicted_p_over": 0.5422,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.5422
+              },
+              {
+                "bucket": "60-70%",
+                "n": 4,
+                "mean_predicted_p_over": 0.6104,
+                "actual_hit_rate": 0.75,
+                "abs_calibration_error": 0.1396
+              },
+              {
+                "bucket": "70-80%",
+                "n": 5,
+                "mean_predicted_p_over": 0.7308,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.7308
+              },
+              {
+                "bucket": "80-90%",
+                "n": 2,
+                "mean_predicted_p_over": 0.8372,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.8372
+              },
+              {
+                "bucket": "90-101%",
+                "n": 3,
+                "mean_predicted_p_over": 0.9296,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.9296
+              }
+            ]
+          }
+        },
+        {
+          "tweedie_variance_power": 1.3,
+          "r2_test": 0.0056,
+          "mae_test": 0.2185,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.0,
+            "mean_prediction": 0.1149,
+            "prediction_std": 0.07,
+            "min_prediction": 0.0013,
+            "max_prediction": 0.9095
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0227,
+            "n_samples": 7225,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 422,
+                "mean_predicted_p_over": 0.096,
+                "actual_hit_rate": 0.0616,
+                "abs_calibration_error": 0.0344
+              },
+              {
+                "bucket": "10-20%",
+                "n": 6249,
+                "mean_predicted_p_over": 0.1453,
+                "actual_hit_rate": 0.1266,
+                "abs_calibration_error": 0.0187
+              },
+              {
+                "bucket": "20-30%",
+                "n": 405,
+                "mean_predicted_p_over": 0.2336,
+                "actual_hit_rate": 0.2494,
+                "abs_calibration_error": 0.0158
+              },
+              {
+                "bucket": "30-40%",
+                "n": 97,
+                "mean_predicted_p_over": 0.3401,
+                "actual_hit_rate": 0.2577,
+                "abs_calibration_error": 0.0824
+              },
+              {
+                "bucket": "40-50%",
+                "n": 36,
+                "mean_predicted_p_over": 0.4473,
+                "actual_hit_rate": 0.1667,
+                "abs_calibration_error": 0.2807
+              },
+              {
+                "bucket": "50-60%",
+                "n": 5,
+                "mean_predicted_p_over": 0.5403,
+                "actual_hit_rate": 0.2,
+                "abs_calibration_error": 0.3403
+              },
+              {
+                "bucket": "60-70%",
+                "n": 3,
+                "mean_predicted_p_over": 0.6353,
+                "actual_hit_rate": 1.0,
+                "abs_calibration_error": 0.3647
+              },
+              {
+                "bucket": "70-80%",
+                "n": 6,
+                "mean_predicted_p_over": 0.7753,
+                "actual_hit_rate": 0.1667,
+                "abs_calibration_error": 0.6086
+              },
+              {
+                "bucket": "80-90%",
+                "n": 2,
+                "mean_predicted_p_over": 0.8546,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.8546
+              },
+              {
+                "bucket": "90-101%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              }
+            ]
+          }
+        },
+        {
+          "tweedie_variance_power": 1.4,
+          "r2_test": 0.004,
+          "mae_test": 0.2164,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.0004,
+            "mean_prediction": 0.1121,
+            "prediction_std": 0.0691,
+            "min_prediction": 0.0002,
+            "max_prediction": 0.9324
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0188,
+            "n_samples": 7225,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 560,
+                "mean_predicted_p_over": 0.0955,
+                "actual_hit_rate": 0.0589,
+                "abs_calibration_error": 0.0366
+              },
+              {
+                "bucket": "10-20%",
+                "n": 6185,
+                "mean_predicted_p_over": 0.1457,
+                "actual_hit_rate": 0.1314,
+                "abs_calibration_error": 0.0142
+              },
+              {
+                "bucket": "20-30%",
+                "n": 342,
+                "mean_predicted_p_over": 0.234,
+                "actual_hit_rate": 0.2047,
+                "abs_calibration_error": 0.0293
+              },
+              {
+                "bucket": "30-40%",
+                "n": 88,
+                "mean_predicted_p_over": 0.3387,
+                "actual_hit_rate": 0.2273,
+                "abs_calibration_error": 0.1114
+              },
+              {
+                "bucket": "40-50%",
+                "n": 28,
+                "mean_predicted_p_over": 0.442,
+                "actual_hit_rate": 0.4286,
+                "abs_calibration_error": 0.0135
+              },
+              {
+                "bucket": "50-60%",
+                "n": 14,
+                "mean_predicted_p_over": 0.544,
+                "actual_hit_rate": 0.3571,
+                "abs_calibration_error": 0.1868
+              },
+              {
+                "bucket": "60-70%",
+                "n": 4,
+                "mean_predicted_p_over": 0.6546,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.6546
+              },
+              {
+                "bucket": "70-80%",
+                "n": 3,
+                "mean_predicted_p_over": 0.7446,
+                "actual_hit_rate": 0.3333,
+                "abs_calibration_error": 0.4113
+              },
+              {
+                "bucket": "80-90%",
+                "n": 1,
+                "mean_predicted_p_over": 0.8789,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.8789
+              },
+              {
+                "bucket": "90-101%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              }
+            ]
+          }
+        },
+        {
+          "tweedie_variance_power": 1.5,
+          "r2_test": 0.0019,
+          "mae_test": 0.2139,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.0014,
+            "mean_prediction": 0.108,
+            "prediction_std": 0.0657,
+            "min_prediction": 0.0001,
+            "max_prediction": 0.6977
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0173,
+            "n_samples": 7225,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 698,
+                "mean_predicted_p_over": 0.0947,
+                "actual_hit_rate": 0.0731,
+                "abs_calibration_error": 0.0216
+              },
+              {
+                "bucket": "10-20%",
+                "n": 6083,
+                "mean_predicted_p_over": 0.1452,
+                "actual_hit_rate": 0.13,
+                "abs_calibration_error": 0.0152
+              },
+              {
+                "bucket": "20-30%",
+                "n": 343,
+                "mean_predicted_p_over": 0.2378,
+                "actual_hit_rate": 0.2507,
+                "abs_calibration_error": 0.013
+              },
+              {
+                "bucket": "30-40%",
+                "n": 69,
+                "mean_predicted_p_over": 0.3369,
+                "actual_hit_rate": 0.2319,
+                "abs_calibration_error": 0.105
+              },
+              {
+                "bucket": "40-50%",
+                "n": 22,
+                "mean_predicted_p_over": 0.4496,
+                "actual_hit_rate": 0.3636,
+                "abs_calibration_error": 0.0859
+              },
+              {
+                "bucket": "50-60%",
+                "n": 4,
+                "mean_predicted_p_over": 0.5387,
+                "actual_hit_rate": 0.5,
+                "abs_calibration_error": 0.0387
+              },
+              {
+                "bucket": "60-70%",
+                "n": 5,
+                "mean_predicted_p_over": 0.648,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.648
+              },
+              {
+                "bucket": "70-80%",
+                "n": 1,
+                "mean_predicted_p_over": 0.7036,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.7036
+              },
+              {
+                "bucket": "80-90%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              },
+              {
+                "bucket": "90-101%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              }
+            ]
+          }
+        }
+      ],
+      "chosen_variant": {
+        "tweedie_variance_power": 1.5,
+        "r2_test": 0.0019,
+        "mae_test": 0.2139,
+        "distribution_shift": {
+          "pct_zero_predictions": 0.0014,
+          "mean_prediction": 0.108,
+          "prediction_std": 0.0657,
+          "min_prediction": 0.0001,
+          "max_prediction": 0.6977
+        },
+        "calibration": {
+          "weighted_abs_calibration_error": 0.0173,
+          "n_samples": 7225,
+          "buckets": [
+            {
+              "bucket": "0-10%",
+              "n": 698,
+              "mean_predicted_p_over": 0.0947,
+              "actual_hit_rate": 0.0731,
+              "abs_calibration_error": 0.0216
+            },
+            {
+              "bucket": "10-20%",
+              "n": 6083,
+              "mean_predicted_p_over": 0.1452,
+              "actual_hit_rate": 0.13,
+              "abs_calibration_error": 0.0152
+            },
+            {
+              "bucket": "20-30%",
+              "n": 343,
+              "mean_predicted_p_over": 0.2378,
+              "actual_hit_rate": 0.2507,
+              "abs_calibration_error": 0.013
+            },
+            {
+              "bucket": "30-40%",
+              "n": 69,
+              "mean_predicted_p_over": 0.3369,
+              "actual_hit_rate": 0.2319,
+              "abs_calibration_error": 0.105
+            },
+            {
+              "bucket": "40-50%",
+              "n": 22,
+              "mean_predicted_p_over": 0.4496,
+              "actual_hit_rate": 0.3636,
+              "abs_calibration_error": 0.0859
+            },
+            {
+              "bucket": "50-60%",
+              "n": 4,
+              "mean_predicted_p_over": 0.5387,
+              "actual_hit_rate": 0.5,
+              "abs_calibration_error": 0.0387
+            },
+            {
+              "bucket": "60-70%",
+              "n": 5,
+              "mean_predicted_p_over": 0.648,
+              "actual_hit_rate": 0.0,
+              "abs_calibration_error": 0.648
+            },
+            {
+              "bucket": "70-80%",
+              "n": 1,
+              "mean_predicted_p_over": 0.7036,
+              "actual_hit_rate": 0.0,
+              "abs_calibration_error": 0.7036
+            },
+            {
+              "bucket": "80-90%",
+              "n": 0,
+              "mean_predicted_p_over": null,
+              "actual_hit_rate": null,
+              "abs_calibration_error": null
+            },
+            {
+              "bucket": "90-101%",
+              "n": 0,
+              "mean_predicted_p_over": null,
+              "actual_hit_rate": null,
+              "abs_calibration_error": null
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "r2_delta_vs_baseline": -0.0068,
+        "mae_delta_vs_baseline": -0.019199999999999995,
+        "calibration_delta_vs_baseline": -0.0193
+      }
+    },
+    "stolen_bases": {
+      "stat": "stolen_bases",
+      "n_train": 49599,
+      "n_test": 12400,
+      "sigma_stat_used_for_calibration": 0.2164,
+      "baseline_gaussian": {
+        "r2_test": 0.0172,
+        "mae_test": 0.0793,
+        "distribution_shift": {
+          "pct_zero_predictions": 0.018,
+          "mean_prediction": 0.0427,
+          "prediction_std": 0.0558,
+          "min_prediction": -0.0498,
+          "max_prediction": 1.2607
+        },
+        "calibration": {
+          "weighted_abs_calibration_error": 0.0223,
+          "n_samples": 12400,
+          "buckets": [
+            {
+              "bucket": "0-10%",
+              "n": 12213,
+              "mean_predicted_p_over": 0.0179,
+              "actual_hit_rate": 0.0387,
+              "abs_calibration_error": 0.0208
+            },
+            {
+              "bucket": "10-20%",
+              "n": 111,
+              "mean_predicted_p_over": 0.1379,
+              "actual_hit_rate": 0.1712,
+              "abs_calibration_error": 0.0333
+            },
+            {
+              "bucket": "20-30%",
+              "n": 27,
+              "mean_predicted_p_over": 0.2534,
+              "actual_hit_rate": 0.1852,
+              "abs_calibration_error": 0.0682
+            },
+            {
+              "bucket": "30-40%",
+              "n": 19,
+              "mean_predicted_p_over": 0.347,
+              "actual_hit_rate": 0.1053,
+              "abs_calibration_error": 0.2418
+            },
+            {
+              "bucket": "40-50%",
+              "n": 8,
+              "mean_predicted_p_over": 0.4304,
+              "actual_hit_rate": 0.375,
+              "abs_calibration_error": 0.0554
+            },
+            {
+              "bucket": "50-60%",
+              "n": 6,
+              "mean_predicted_p_over": 0.544,
+              "actual_hit_rate": 0.1667,
+              "abs_calibration_error": 0.3773
+            },
+            {
+              "bucket": "60-70%",
+              "n": 4,
+              "mean_predicted_p_over": 0.6458,
+              "actual_hit_rate": 0.25,
+              "abs_calibration_error": 0.3958
+            },
+            {
+              "bucket": "70-80%",
+              "n": 4,
+              "mean_predicted_p_over": 0.7394,
+              "actual_hit_rate": 0.0,
+              "abs_calibration_error": 0.7394
+            },
+            {
+              "bucket": "80-90%",
+              "n": 4,
+              "mean_predicted_p_over": 0.8657,
+              "actual_hit_rate": 0.0,
+              "abs_calibration_error": 0.8657
+            },
+            {
+              "bucket": "90-101%",
+              "n": 4,
+              "mean_predicted_p_over": 0.9565,
+              "actual_hit_rate": 0.5,
+              "abs_calibration_error": 0.4565
+            }
+          ]
+        }
+      },
+      "tweedie_sweep": [
+        {
+          "tweedie_variance_power": 1.1,
+          "r2_test": 0.0162,
+          "mae_test": 0.0741,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.0923,
+            "mean_prediction": 0.0366,
+            "prediction_std": 0.0479,
+            "min_prediction": 0.0002,
+            "max_prediction": 1.0939
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0238,
+            "n_samples": 12400,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 12284,
+                "mean_predicted_p_over": 0.0168,
+                "actual_hit_rate": 0.0396,
+                "abs_calibration_error": 0.0227
+              },
+              {
+                "bucket": "10-20%",
+                "n": 70,
+                "mean_predicted_p_over": 0.1406,
+                "actual_hit_rate": 0.1857,
+                "abs_calibration_error": 0.0451
+              },
+              {
+                "bucket": "20-30%",
+                "n": 19,
+                "mean_predicted_p_over": 0.256,
+                "actual_hit_rate": 0.1053,
+                "abs_calibration_error": 0.1507
+              },
+              {
+                "bucket": "30-40%",
+                "n": 7,
+                "mean_predicted_p_over": 0.3398,
+                "actual_hit_rate": 0.1429,
+                "abs_calibration_error": 0.197
+              },
+              {
+                "bucket": "40-50%",
+                "n": 5,
+                "mean_predicted_p_over": 0.4502,
+                "actual_hit_rate": 0.2,
+                "abs_calibration_error": 0.2502
+              },
+              {
+                "bucket": "50-60%",
+                "n": 4,
+                "mean_predicted_p_over": 0.553,
+                "actual_hit_rate": 0.25,
+                "abs_calibration_error": 0.303
+              },
+              {
+                "bucket": "60-70%",
+                "n": 5,
+                "mean_predicted_p_over": 0.6319,
+                "actual_hit_rate": 0.2,
+                "abs_calibration_error": 0.4319
+              },
+              {
+                "bucket": "70-80%",
+                "n": 1,
+                "mean_predicted_p_over": 0.733,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.733
+              },
+              {
+                "bucket": "80-90%",
+                "n": 2,
+                "mean_predicted_p_over": 0.84,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.84
+              },
+              {
+                "bucket": "90-101%",
+                "n": 3,
+                "mean_predicted_p_over": 0.9755,
+                "actual_hit_rate": 0.3333,
+                "abs_calibration_error": 0.6422
+              }
+            ]
+          }
+        },
+        {
+          "tweedie_variance_power": 1.2,
+          "r2_test": 0.0193,
+          "mae_test": 0.0725,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.0927,
+            "mean_prediction": 0.0347,
+            "prediction_std": 0.0448,
+            "min_prediction": 0.0001,
+            "max_prediction": 1.0317
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0242,
+            "n_samples": 12400,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 12313,
+                "mean_predicted_p_over": 0.0166,
+                "actual_hit_rate": 0.0398,
+                "abs_calibration_error": 0.0232
+              },
+              {
+                "bucket": "10-20%",
+                "n": 47,
+                "mean_predicted_p_over": 0.1389,
+                "actual_hit_rate": 0.1915,
+                "abs_calibration_error": 0.0526
+              },
+              {
+                "bucket": "20-30%",
+                "n": 12,
+                "mean_predicted_p_over": 0.226,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.226
+              },
+              {
+                "bucket": "30-40%",
+                "n": 9,
+                "mean_predicted_p_over": 0.3425,
+                "actual_hit_rate": 0.1111,
+                "abs_calibration_error": 0.2314
+              },
+              {
+                "bucket": "40-50%",
+                "n": 5,
+                "mean_predicted_p_over": 0.4342,
+                "actual_hit_rate": 0.2,
+                "abs_calibration_error": 0.2342
+              },
+              {
+                "bucket": "50-60%",
+                "n": 6,
+                "mean_predicted_p_over": 0.5284,
+                "actual_hit_rate": 0.1667,
+                "abs_calibration_error": 0.3617
+              },
+              {
+                "bucket": "60-70%",
+                "n": 4,
+                "mean_predicted_p_over": 0.6573,
+                "actual_hit_rate": 0.5,
+                "abs_calibration_error": 0.1573
+              },
+              {
+                "bucket": "70-80%",
+                "n": 2,
+                "mean_predicted_p_over": 0.7512,
+                "actual_hit_rate": 1.0,
+                "abs_calibration_error": 0.2488
+              },
+              {
+                "bucket": "80-90%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              },
+              {
+                "bucket": "90-101%",
+                "n": 2,
+                "mean_predicted_p_over": 0.9535,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.9535
+              }
+            ]
+          }
+        },
+        {
+          "tweedie_variance_power": 1.3,
+          "r2_test": 0.0207,
+          "mae_test": 0.0712,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.0965,
+            "mean_prediction": 0.033,
+            "prediction_std": 0.0409,
+            "min_prediction": 0.0,
+            "max_prediction": 0.6586
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0244,
+            "n_samples": 12400,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 12321,
+                "mean_predicted_p_over": 0.0163,
+                "actual_hit_rate": 0.0401,
+                "abs_calibration_error": 0.0238
+              },
+              {
+                "bucket": "10-20%",
+                "n": 54,
+                "mean_predicted_p_over": 0.1392,
+                "actual_hit_rate": 0.0741,
+                "abs_calibration_error": 0.0651
+              },
+              {
+                "bucket": "20-30%",
+                "n": 13,
+                "mean_predicted_p_over": 0.2405,
+                "actual_hit_rate": 0.3846,
+                "abs_calibration_error": 0.1441
+              },
+              {
+                "bucket": "30-40%",
+                "n": 2,
+                "mean_predicted_p_over": 0.3447,
+                "actual_hit_rate": 0.5,
+                "abs_calibration_error": 0.1553
+              },
+              {
+                "bucket": "40-50%",
+                "n": 5,
+                "mean_predicted_p_over": 0.4617,
+                "actual_hit_rate": 0.2,
+                "abs_calibration_error": 0.2617
+              },
+              {
+                "bucket": "50-60%",
+                "n": 1,
+                "mean_predicted_p_over": 0.5745,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.5745
+              },
+              {
+                "bucket": "60-70%",
+                "n": 3,
+                "mean_predicted_p_over": 0.6318,
+                "actual_hit_rate": 0.3333,
+                "abs_calibration_error": 0.2985
+              },
+              {
+                "bucket": "70-80%",
+                "n": 1,
+                "mean_predicted_p_over": 0.7681,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.7681
+              },
+              {
+                "bucket": "80-90%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              },
+              {
+                "bucket": "90-101%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              }
+            ]
+          }
+        },
+        {
+          "tweedie_variance_power": 1.4,
+          "r2_test": 0.0181,
+          "mae_test": 0.07,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.1063,
+            "mean_prediction": 0.0316,
+            "prediction_std": 0.0394,
+            "min_prediction": 0.0,
+            "max_prediction": 0.5304
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0247,
+            "n_samples": 12400,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 12336,
+                "mean_predicted_p_over": 0.0161,
+                "actual_hit_rate": 0.0404,
+                "abs_calibration_error": 0.0243
+              },
+              {
+                "bucket": "10-20%",
+                "n": 38,
+                "mean_predicted_p_over": 0.144,
+                "actual_hit_rate": 0.0789,
+                "abs_calibration_error": 0.065
+              },
+              {
+                "bucket": "20-30%",
+                "n": 11,
+                "mean_predicted_p_over": 0.2434,
+                "actual_hit_rate": 0.1818,
+                "abs_calibration_error": 0.0615
+              },
+              {
+                "bucket": "30-40%",
+                "n": 12,
+                "mean_predicted_p_over": 0.3464,
+                "actual_hit_rate": 0.0833,
+                "abs_calibration_error": 0.2631
+              },
+              {
+                "bucket": "40-50%",
+                "n": 2,
+                "mean_predicted_p_over": 0.4638,
+                "actual_hit_rate": 0.5,
+                "abs_calibration_error": 0.0362
+              },
+              {
+                "bucket": "50-60%",
+                "n": 1,
+                "mean_predicted_p_over": 0.5559,
+                "actual_hit_rate": 1.0,
+                "abs_calibration_error": 0.4441
+              },
+              {
+                "bucket": "60-70%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              },
+              {
+                "bucket": "70-80%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              },
+              {
+                "bucket": "80-90%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              },
+              {
+                "bucket": "90-101%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              }
+            ]
+          }
+        },
+        {
+          "tweedie_variance_power": 1.5,
+          "r2_test": 0.0148,
+          "mae_test": 0.0691,
+          "distribution_shift": {
+            "pct_zero_predictions": 0.1249,
+            "mean_prediction": 0.0303,
+            "prediction_std": 0.0379,
+            "min_prediction": 0.0,
+            "max_prediction": 0.6608
+          },
+          "calibration": {
+            "weighted_abs_calibration_error": 0.0248,
+            "n_samples": 12400,
+            "buckets": [
+              {
+                "bucket": "0-10%",
+                "n": 12339,
+                "mean_predicted_p_over": 0.0158,
+                "actual_hit_rate": 0.0404,
+                "abs_calibration_error": 0.0245
+              },
+              {
+                "bucket": "10-20%",
+                "n": 44,
+                "mean_predicted_p_over": 0.137,
+                "actual_hit_rate": 0.1591,
+                "abs_calibration_error": 0.0221
+              },
+              {
+                "bucket": "20-30%",
+                "n": 11,
+                "mean_predicted_p_over": 0.2412,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.2412
+              },
+              {
+                "bucket": "30-40%",
+                "n": 3,
+                "mean_predicted_p_over": 0.3485,
+                "actual_hit_rate": 0.3333,
+                "abs_calibration_error": 0.0151
+              },
+              {
+                "bucket": "40-50%",
+                "n": 2,
+                "mean_predicted_p_over": 0.4383,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.4383
+              },
+              {
+                "bucket": "50-60%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              },
+              {
+                "bucket": "60-70%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              },
+              {
+                "bucket": "70-80%",
+                "n": 1,
+                "mean_predicted_p_over": 0.7713,
+                "actual_hit_rate": 0.0,
+                "abs_calibration_error": 0.7713
+              },
+              {
+                "bucket": "80-90%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              },
+              {
+                "bucket": "90-101%",
+                "n": 0,
+                "mean_predicted_p_over": null,
+                "actual_hit_rate": null,
+                "abs_calibration_error": null
+              }
+            ]
+          }
+        }
+      ],
+      "chosen_variant": {
+        "tweedie_variance_power": 1.1,
+        "r2_test": 0.0162,
+        "mae_test": 0.0741,
+        "distribution_shift": {
+          "pct_zero_predictions": 0.0923,
+          "mean_prediction": 0.0366,
+          "prediction_std": 0.0479,
+          "min_prediction": 0.0002,
+          "max_prediction": 1.0939
+        },
+        "calibration": {
+          "weighted_abs_calibration_error": 0.0238,
+          "n_samples": 12400,
+          "buckets": [
+            {
+              "bucket": "0-10%",
+              "n": 12284,
+              "mean_predicted_p_over": 0.0168,
+              "actual_hit_rate": 0.0396,
+              "abs_calibration_error": 0.0227
+            },
+            {
+              "bucket": "10-20%",
+              "n": 70,
+              "mean_predicted_p_over": 0.1406,
+              "actual_hit_rate": 0.1857,
+              "abs_calibration_error": 0.0451
+            },
+            {
+              "bucket": "20-30%",
+              "n": 19,
+              "mean_predicted_p_over": 0.256,
+              "actual_hit_rate": 0.1053,
+              "abs_calibration_error": 0.1507
+            },
+            {
+              "bucket": "30-40%",
+              "n": 7,
+              "mean_predicted_p_over": 0.3398,
+              "actual_hit_rate": 0.1429,
+              "abs_calibration_error": 0.197
+            },
+            {
+              "bucket": "40-50%",
+              "n": 5,
+              "mean_predicted_p_over": 0.4502,
+              "actual_hit_rate": 0.2,
+              "abs_calibration_error": 0.2502
+            },
+            {
+              "bucket": "50-60%",
+              "n": 4,
+              "mean_predicted_p_over": 0.553,
+              "actual_hit_rate": 0.25,
+              "abs_calibration_error": 0.303
+            },
+            {
+              "bucket": "60-70%",
+              "n": 5,
+              "mean_predicted_p_over": 0.6319,
+              "actual_hit_rate": 0.2,
+              "abs_calibration_error": 0.4319
+            },
+            {
+              "bucket": "70-80%",
+              "n": 1,
+              "mean_predicted_p_over": 0.733,
+              "actual_hit_rate": 0.0,
+              "abs_calibration_error": 0.733
+            },
+            {
+              "bucket": "80-90%",
+              "n": 2,
+              "mean_predicted_p_over": 0.84,
+              "actual_hit_rate": 0.0,
+              "abs_calibration_error": 0.84
+            },
+            {
+              "bucket": "90-101%",
+              "n": 3,
+              "mean_predicted_p_over": 0.9755,
+              "actual_hit_rate": 0.3333,
+              "abs_calibration_error": 0.6422
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "r2_delta_vs_baseline": -0.0010000000000000009,
+        "mae_delta_vs_baseline": -0.005199999999999996,
+        "calibration_delta_vs_baseline": 0.0015000000000000013
+      }
+    }
+  }
+}

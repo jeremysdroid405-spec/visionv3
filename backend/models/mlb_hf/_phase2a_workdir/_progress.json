@@ -1,0 +1,16 @@
+{
+  "completed": [
+    "doubles",
+    "hits",
+    "hits+runs+rbis",
+    "home_runs",
+    "rbis",
+    "runs",
+    "singles",
+    "stolen_bases",
+    "total_bases",
+    "walks"
+  ],
+  "started_at": "2026-05-15T12:30:24.313112+00:00",
+  "last_updated": "2026-05-15T12:40:56.552850+00:00"
+}

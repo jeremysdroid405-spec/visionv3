@@ -1209,3 +1209,5 @@ credentials.json
 *.pem
 *.key
 .credentials
+backend/models/mlb_hf/_phase2a_workdir/sc_caches.pkl
+backend/models/mlb_hf/_phase2a_workdir/sc_caches.pkl

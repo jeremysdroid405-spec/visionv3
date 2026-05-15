@@ -1,0 +1,397 @@
+[
+  {
+    "player_name": "Andy Pages",
+    "stat_type": "Hits",
+    "line": 0.5,
+    "recommendation": "OVER",
+    "total_edge": 0.068,
+    "edge_vs_fair": 0.0094,
+    "routed_tier": "front_lines",
+    "tier_gate_results": {
+      "coverage_gate": {
+        "threshold": 1,
+        "value": 11,
+        "passed": true,
+        "reason_code": null
+      },
+      "direction_gate": {
+        "threshold": {
+          "applies_to_sides": [
+            "OVER"
+          ],
+          "min_projection_minus_line": 0.0
+        },
+        "value": {
+          "projection": 0.906,
+          "line": 0.5,
+          "diff": 0.406,
+          "ratio_proj/line": 1.812,
+          "ratio_(line-proj)/line": -0.812
+        },
+        "passed": true,
+        "note": "direction_check_OVER",
+        "reason_code": null
+      },
+      "hit_rate_gate": {
+        "threshold": {
+          "min": 70.0,
+          "window": "default",
+          "l5_subgate_enforced": true
+        },
+        "value": 75.0,
+        "passed": true,
+        "reason_code": null
+      },
+      "edge_gate": {
+        "threshold": 5.0,
+        "value": 5.9,
+        "passed": true,
+        "reason_code": null
+      },
+      "tp_gate": {
+        "threshold": 50.0,
+        "value": 70.2,
+        "passed": true,
+        "note": "model_confidence_over",
+        "reason_code": null
+      },
+      "margin_gate": {
+        "threshold": 0.75,
+        "value": 0.9,
+        "passed": true,
+        "note": "binary_0.5_line",
+        "reason_code": null
+      }
+    },
+    "model_projection": 0.906,
+    "batter_hand": "R",
+    "batting_order": null,
+    "venue": "LAD",
+    "opp_pitcher_name": null,
+    "opp_pitcher_throws": null,
+    "opp_pitcher_era": null,
+    "opp_pitcher_whip": null,
+    "opp_pitcher_k9": null,
+    "same_hand_matchup": null,
+    "opposite_hand_matchup": null,
+    "tp": 64.3,
+    "tp_source": "devig",
+    "market_probability": 0.6428,
+    "projection_model_version": "MLB_HF_v3.0_bayes",
+    "active": true,
+    "stale_reason": null
+  },
+  {
+    "player_name": "Kyle Tucker",
+    "stat_type": "Hits",
+    "line": 0.5,
+    "recommendation": "OVER",
+    "total_edge": 0.1361,
+    "edge_vs_fair": 0.0728,
+    "routed_tier": "front_lines",
+    "tier_gate_results": {
+      "coverage_gate": {
+        "threshold": 1,
+        "value": 11,
+        "passed": true,
+        "reason_code": null
+      },
+      "direction_gate": {
+        "threshold": {
+          "applies_to_sides": [
+            "OVER"
+          ],
+          "min_projection_minus_line": 0.0
+        },
+        "value": {
+          "projection": 0.946,
+          "line": 0.5,
+          "diff": 0.446,
+          "ratio_proj/line": 1.892,
+          "ratio_(line-proj)/line": -0.892
+        },
+        "passed": true,
+        "note": "direction_check_OVER",
+        "reason_code": null
+      },
+      "hit_rate_gate": {
+        "threshold": {
+          "min": 70.0,
+          "window": "default",
+          "l5_subgate_enforced": true
+        },
+        "value": 80.0,
+        "passed": true,
+        "reason_code": null
+      },
+      "edge_gate": {
+        "threshold": 5.0,
+        "value": 12.5,
+        "passed": true,
+        "reason_code": null
+      },
+      "tp_gate": {
+        "threshold": 50.0,
+        "value": 74.3,
+        "passed": true,
+        "note": "model_confidence_over",
+        "reason_code": null
+      },
+      "margin_gate": {
+        "threshold": 0.75,
+        "value": 0.812,
+        "passed": true,
+        "note": "binary_0.5_line",
+        "reason_code": null
+      }
+    },
+    "model_projection": 0.946,
+    "batter_hand": "L",
+    "batting_order": null,
+    "venue": "LAD",
+    "opp_pitcher_name": null,
+    "opp_pitcher_throws": null,
+    "opp_pitcher_era": null,
+    "opp_pitcher_whip": null,
+    "opp_pitcher_k9": null,
+    "same_hand_matchup": null,
+    "opposite_hand_matchup": null,
+    "tp": 61.8,
+    "tp_source": "devig",
+    "market_probability": 0.6176,
+    "projection_model_version": "MLB_HF_v3.0_bayes",
+    "active": true,
+    "stale_reason": null
+  },
+  {
+    "player_name": "Freddie Freeman",
+    "stat_type": "Hits",
+    "line": 0.5,
+    "recommendation": "OVER",
+    "total_edge": 0.1117,
+    "edge_vs_fair": 0.0524,
+    "routed_tier": "front_lines",
+    "tier_gate_results": {
+      "coverage_gate": {
+        "threshold": 1,
+        "value": 11,
+        "passed": true,
+        "reason_code": null
+      },
+      "direction_gate": {
+        "threshold": {
+          "applies_to_sides": [
+            "OVER"
+          ],
+          "min_projection_minus_line": 0.0
+        },
+        "value": {
+          "projection": 1.006,
+          "line": 0.5,
+          "diff": 0.506,
+          "ratio_proj/line": 2.012,
+          "ratio_(line-proj)/line": -1.012
+        },
+        "passed": true,
+        "note": "direction_check_OVER",
+        "reason_code": null
+      },
+      "hit_rate_gate": {
+        "threshold": {
+          "min": 70.0,
+          "window": "default",
+          "l5_subgate_enforced": true
+        },
+        "value": 75.0,
+        "passed": true,
+        "reason_code": null
+      },
+      "edge_gate": {
+        "threshold": 5.0,
+        "value": 9.8,
+        "passed": true,
+        "reason_code": null
+      },
+      "tp_gate": {
+        "threshold": 50.0,
+        "value": 76.2,
+        "passed": true,
+        "note": "model_confidence_over",
+        "reason_code": null
+      },
+      "margin_gate": {
+        "threshold": 0.75,
+        "value": 1.033,
+        "passed": true,
+        "note": "binary_0.5_line",
+        "reason_code": null
+      }
+    },
+    "model_projection": 1.006,
+    "batter_hand": "L",
+    "batting_order": null,
+    "venue": "LAD",
+    "opp_pitcher_name": null,
+    "opp_pitcher_throws": null,
+    "opp_pitcher_era": null,
+    "opp_pitcher_whip": null,
+    "opp_pitcher_k9": null,
+    "same_hand_matchup": null,
+    "opposite_hand_matchup": null,
+    "tp": 66.4,
+    "tp_source": "devig",
+    "market_probability": 0.664,
+    "projection_model_version": "MLB_HF_v3.0_bayes",
+    "active": true,
+    "stale_reason": null
+  },
+  {
+    "player_name": "Ozzie Albies",
+    "stat_type": "Hits+Runs+RBIs",
+    "line": 1.5,
+    "recommendation": "OVER",
+    "total_edge": 0.3007,
+    "edge_vs_fair": 0.2482,
+    "routed_tier": "front_lines",
+    "tier_gate_results": {
+      "coverage_gate": {
+        "threshold": 1,
+        "value": 8,
+        "passed": true,
+        "reason_code": null
+      },
+      "direction_gate": {
+        "threshold": {
+          "applies_to_sides": [
+            "OVER"
+          ],
+          "min_projection_minus_line": 0.0
+        },
+        "value": {
+          "projection": 3.45,
+          "line": 1.5,
+          "diff": 1.95,
+          "ratio_proj/line": 2.3,
+          "ratio_(line-proj)/line": -1.3
+        },
+        "passed": true,
+        "note": "direction_check_OVER",
+        "reason_code": null
+      },
+      "cv_gate": {
+        "threshold": 0.65,
+        "value": 0.684,
+        "passed": false,
+        "reason_code": "gate_cv_fail"
+      },
+      "hit_rate_gate": {
+        "threshold": {
+          "min": 70.0,
+          "window": "default",
+          "l5_subgate_enforced": true
+        },
+        "value": 80.0,
+        "passed": true,
+        "reason_code": null
+      },
+      "edge_gate": {
+        "threshold": 5.0,
+        "value": 29.4,
+        "passed": true,
+        "reason_code": null
+      },
+      "tp_gate": {
+        "threshold": 50.0,
+        "value": 79.6,
+        "passed": true,
+        "note": "model_confidence_over",
+        "reason_code": null
+      }
+    },
+    "model_projection": 3.45,
+    "batter_hand": "S",
+    "batting_order": 3,
+    "venue": "ATL",
+    "tp": 50.2,
+    "tp_source": "devig",
+    "market_probability": 0.5021,
+    "projection_model_version": "MLB_HF_v3.0_bayes",
+    "active": true,
+    "stale_reason": null
+  },
+  {
+    "player_name": "Ozzie Albies",
+    "stat_type": "Hits+Runs+RBIs",
+    "line": 1.5,
+    "recommendation": "UNDER",
+    "total_edge": -0.2826,
+    "edge_vs_fair": -0.3172,
+    "routed_tier": "front_lines",
+    "tier_gate_results": {
+      "coverage_gate": {
+        "threshold": 1,
+        "value": 7,
+        "passed": true,
+        "reason_code": null
+      },
+      "direction_gate": {
+        "threshold": {
+          "applies_to_sides": [
+            "UNDER"
+          ],
+          "max_projection_minus_line": 0.0,
+          "min_line_minus_projection_ratio": 0.15
+        },
+        "value": {
+          "projection": 3.45,
+          "line": 1.5,
+          "diff": 1.95,
+          "ratio_proj/line": 2.3,
+          "ratio_(line-proj)/line": -1.3
+        },
+        "passed": false,
+        "note": "direction_check_UNDER",
+        "reason_code": "gate_direction_fail"
+      },
+      "hit_rate_gate": {
+        "threshold": {
+          "min": 65.0,
+          "window": "default",
+          "l5_subgate_enforced": true
+        },
+        "value": 20.0,
+        "passed": false,
+        "reason_code": "gate_hit_rate_fail"
+      },
+      "cv_gate": {
+        "threshold": 0.65,
+        "value": 0.684,
+        "passed": false,
+        "reason_code": "gate_cv_fail"
+      },
+      "tp_gate": {
+        "threshold": 65.0,
+        "value": 20.4,
+        "passed": false,
+        "note": "model_confidence_under",
+        "reason_code": "gate_tp_fail"
+      },
+      "edge_gate": {
+        "threshold": 5.0,
+        "value": -29.4,
+        "passed": false,
+        "reason_code": "gate_edge_fail"
+      }
+    },
+    "model_projection": 3.45,
+    "batter_hand": "S",
+    "batting_order": 3,
+    "venue": "ATL",
+    "tp": 49.8,
+    "tp_source": "devig",
+    "market_probability": 0.4979,
+    "projection_model_version": "MLB_HF_v3.0_bayes",
+    "active": true,
+    "stale_reason": null
+  }
+]
