@@ -147,7 +147,24 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 
 ## Recent Changelog
 
-### 2026-05-15 — MLB Front Lines `hits_runs_rbis` threshold loosening
+### 2026-05-15 — Phase 2B Session 1 — MLB_HF Pitcher Context Infrastructure
+- **Goal**: Build the foundational data + feature layers required to retrain pitcher models with opposing-lineup, park-factor, and pitcher-recent-form context. Strictly an infrastructure pass — no retrain, no live wiring, no gate/UI/edge changes.
+- **Architectural decisions** (locked, see `/app/backend/models/mlb_hf/_phase2b_workdir/README.md`):
+  - Live-prediction lineup source: **BDL lineup feed → last-played fallback → None (imputed)** (option 1c).
+  - Park factors: **expose existing `PARK_FACTORS_3YR` table as features; no new aggregation** (option 2a).
+  - Execution: **3-session milestoned build** (Session 2 wires builder/predict/hydration; Session 3 retrains + chunked recompute + audit).
+- **Backup**: 6 v3.1 pitcher pickles (`pitcher_strikeouts, pitcher_walks, earned_runs, hits_allowed, walks, strikeouts`) copied to `/app/backend/models/mlb_hf/_pre_phase2b_backup_2026_05_15/`. Rollback procedure documented.
+- **New code**:
+  - `services/mlb_lineup_resolver.py` — historical (training-only) pitcher×date → batters_faced from `mlb_statcast_raw`. Streaming aggregate, ~30s to build full resolver, pickled to `_phase2b_workdir/lineup_resolver.pkl` for resumable training.
+  - `services/mlb_lineup_features.py` — **canonical 21-feature aggregator** (locked schema in `PHASE2B_LINEUP_FEATURE_NAMES`): handedness mix (9), lineup strength rolling-14d (7), matchup-interaction counts vs pitcher hand (5). Strict imputation contract — every feature ALWAYS present; missing-data raises matching `*_is_imputed=1` flag. Switch-hitters always count as opposite-hand. Strict as-of leakage prevention on rolling-14 lookups.
+  - `services/mlb_live_lineup_feed.py` — live BDL adapter with last-played fallback. Sync + async entry points. Wired in Session 2.
+- **Tests**: `tests/test_phase2b_lineup_features.py` — 14 pytests covering schema contract, handedness math (incl. switch-hitter platoon-advantage), matchup-interaction (vs L/R/None pitcher), as-of leakage prevention, partial-lineup handling, imputation flag propagation. **14/14 pass**.
+- **Smoke test**: validated aggregation end-to-end against real `mlb_statcast_raw` data on game_pk=747218 — pitcher 573009 faced 6 batters (3L/3R), produced correct handedness mix and same/opposite-hand counts vs RHP, in 0.02s.
+- **Lint**: all 3 new modules pass ruff clean.
+- **Session 2 plan committed**: extend `_build_friction_features` with pitcher-context branch (+3 park-factor + 4 pitcher recent-form features), thread new params through `predict()`, wire `feature_hydration.py` to populate `opposing_lineup` on live MLB pitcher props, widen `_SCORE_OUTPUT_FIELDS` allowlist, add 8-12 builder/predict/hydration tests.
+- **Files**: `services/mlb_lineup_resolver.py`, `services/mlb_lineup_features.py`, `services/mlb_live_lineup_feed.py`, `tests/test_phase2b_lineup_features.py`, `models/mlb_hf/_phase2b_workdir/README.md`, `models/mlb_hf/_pre_phase2b_backup_2026_05_15/` (6 pickles).
+
+### 2026-05-15 — MLB Front Lines `edge_min` universal floor lift (Option A)
 - **Change** (per user directive): `_MLB_FRONT_LINES["hits_runs_rbis"]` in
   `services/scoring/gates/thresholds.py`:
   - `cv_max`: 0.65 → **0.75** (raise — more permissive CV cap on non-0.5 lines)
