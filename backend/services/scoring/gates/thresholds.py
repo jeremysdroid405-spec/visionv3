@@ -393,19 +393,19 @@ _MLB_FRONT_LINES: Dict[str, Dict[str, Any]] = {
     # Initial caps target NBA FL's median CV (~0.40) for the comparable
     # families; Singles/HRR/TB caps tightened from the pre-rebuild
     # values (0.85-1.92 actual CVs were tiering as Front Lines).
-    "hits":               {"cv_max": 0.55, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
-    "total_bases":        {"cv_max": 0.70, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "hits":               {"cv_max": 0.55, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
+    "total_bases":        {"cv_max": 0.70, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
     "hits_runs_rbis":     {"cv_max": 0.75, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
-    "rbis":               {"cv_max": 0.55, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
-    "runs":               {"cv_max": 0.55, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
-    "pitcher_outs":       {"cv_max": 0.40, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
-    "pitcher_strikeouts": {"cv_max": 0.50, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
-    "batter_strikeouts":  {"cv_max": 0.65, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
-    "earned_runs":        {"cv_max": 0.50, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
-    "singles":            {"cv_max": 0.50, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
-    "batter_walks":       {"cv_max": 0.60, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
-    "walks_allowed":      {"cv_max": 0.60, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
-    "_default":           {"cv_max": 0.65, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 50.0},
+    "rbis":               {"cv_max": 0.55, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
+    "runs":               {"cv_max": 0.55, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
+    "pitcher_outs":       {"cv_max": 0.40, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
+    "pitcher_strikeouts": {"cv_max": 0.50, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
+    "batter_strikeouts":  {"cv_max": 0.65, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
+    "earned_runs":        {"cv_max": 0.50, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
+    "singles":            {"cv_max": 0.50, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
+    "batter_walks":       {"cv_max": 0.60, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
+    "walks_allowed":      {"cv_max": 0.60, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
+    "_default":           {"cv_max": 0.65, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
 }
 _MLB_WAR_ZONE: Dict[str, Dict[str, Any]] = {
     "hits":              {"ceiling_min": 35.0, "edge_min": 30.0},
