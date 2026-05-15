@@ -776,6 +776,9 @@ async def recompute_sport(
             "probable_pitcher",
             "opp_pitcher_era", "opp_pitcher_whip", "opp_pitcher_k9",
             "same_hand_matchup", "opposite_hand_matchup",
+            # 2026-05-15 — Phase 2B opposing-lineup diagnostic.
+            # Lineup payload itself is NOT mirrored (large, volatile).
+            "opposing_lineup_size",
             "mu_recency_blended", "mu_recency_blend_l3",
             "mu_recency_blend_l10_median", "mu_recency_blend_l20",
             "mu_recency_blend_l5", "mu_recency_blend_weights",

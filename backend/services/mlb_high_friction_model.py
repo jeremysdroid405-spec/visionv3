@@ -537,6 +537,17 @@ class MLBHighFrictionModel:
         batter_hand: Optional[str] = None,
         opp_pitcher_throws: Optional[str] = None,
         opp_pitcher_features: Optional[Dict[str, Any]] = None,
+        # ── Phase 2B opposing-lineup inputs (2026-05-15) ──────────
+        # Used by pitcher-stat models. When provided, the canonical
+        # 21-feature lineup block (handedness mix, rolling-14d
+        # strength, matchup-interaction counts) is emitted on top of
+        # the existing pitcher features. When omitted (batter props
+        # or pitcher props with no lineup data), the block still
+        # emits — with `*_is_imputed=1` flags raised so XGBoost can
+        # learn to discount those rows. See:
+        #   services/mlb_lineup_features.py::PHASE2B_LINEUP_FEATURE_NAMES
+        opposing_lineup: Optional[List[Dict[str, Any]]] = None,
+        sc_batter_cache: Optional[Dict[int, Dict[str, Any]]] = None,
     ) -> Optional[Dict[str, float]]:
         """
         Build the FULL High-Friction feature vector.
@@ -908,6 +919,48 @@ class MLBHighFrictionModel:
                 features[fld_out] = 0.0
         features["opp_pitcher_quality_is_imputed"] = 0 if r14 else 1
 
+        # =====================================================================
+        # CATEGORY 9: OPPOSING-LINEUP CONTEXT (Phase 2B, 2026-05-15)
+        # =====================================================================
+        # Canonical 21-feature block consumed by pitcher-stat models
+        # (pitcher_strikeouts, pitcher_outs, earned_runs, walks_allowed,
+        # hits_allowed, pitcher_walks). Always emitted — when
+        # `opposing_lineup` is None / empty the block falls back to
+        # zeros with `*_is_imputed=1` flags raised, so the feature
+        # vector shape stays fixed across all training samples.
+        #
+        # Pitcher hand wiring: prefer the `pitcher_throws` flowing in
+        # via the player master_hub doc, but accept a caller-supplied
+        # override on the player dict (used by the retrain worker
+        # when the master doc is stale). For batter props this
+        # category stays imputed — pitcher-side feature, not used.
+        from services.mlb_lineup_features import (
+            build_lineup_features as _build_lineup_features,
+        )
+        _pitcher_throws = (
+            (player.get("pitching_hand")
+             or player.get("throws")
+             or player.get("pitcher_throws"))
+            if isinstance(player, dict) else None
+        )
+        # Game-date sourcing: when called from training we don't
+        # explicitly carry the target date (history[0] is the most
+        # recent prior game). Pass `None` and let `build_lineup_features`
+        # use the inline `rolling_14` payload on each batter (live
+        # path) or fall back to imputed when the cache lookup is
+        # also unavailable (training path with no cache supplied).
+        _gd = None
+        if game_logs and isinstance(game_logs[0], dict):
+            _gd = (game_logs[0].get("date")
+                   or game_logs[0].get("game_date"))
+        lineup_features = _build_lineup_features(
+            lineup=opposing_lineup,
+            game_date=_gd,
+            pitcher_throws=_pitcher_throws,
+            sc_batter_cache=sc_batter_cache,
+        )
+        features.update(lineup_features)
+
         return features
     
     def build_training_dataset(self, stat_type: str) -> pd.DataFrame:
@@ -1269,6 +1322,14 @@ class MLBHighFrictionModel:
         batter_hand: Optional[str] = None,
         opp_pitcher_throws: Optional[str] = None,
         opp_pitcher_id: Optional[int] = None,
+        # ── Phase 2B opposing-lineup input (2026-05-15) ───────────
+        # Live wiring path: `services/feature_hydration.py` populates
+        # `prop["opposing_lineup"]` for MLB pitcher props via
+        # `mlb_live_lineup_feed.fetch_opposing_lineup(...)`. Each
+        # batter dict may carry an inline `rolling_14` block read
+        # from `mlb_statcast_player_features`. When None or empty
+        # the lineup-feature block is emitted with `*_is_imputed=1`.
+        opposing_lineup: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         Generate High-Friction prediction.
@@ -1391,6 +1452,12 @@ class MLBHighFrictionModel:
                 batter_hand=batter_hand,
                 opp_pitcher_throws=opp_pitcher_throws,
                 opp_pitcher_features=opp_pitcher_feats,
+                # Phase 2B opposing-lineup payload (lineup list with
+                # optional inline `rolling_14` per batter). Live
+                # path: hydrated by `feature_hydration.py`. Training
+                # path: injected by `phase2b_retrain_worker.py` from
+                # `mlb_lineup_resolver` output.
+                opposing_lineup=opposing_lineup,
             )
             
             if features is None:

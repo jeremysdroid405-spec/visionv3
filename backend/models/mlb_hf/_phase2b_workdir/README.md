@@ -1,6 +1,6 @@
 # Phase 2B — MLB_HF Pitcher Context Retrain
 
-**Status:** Session 1 (infrastructure) complete · Sessions 2 + 3 pending.
+**Status:** Session 1 ✅ · **Session 2 ✅** · Session 3 pending.
 **Target model version:** `MLB_HF_v3.2_phase2b`
 **Backup of v3.1 pickles:** `/app/backend/models/mlb_hf/_pre_phase2b_backup_2026_05_15/`
 
@@ -53,7 +53,45 @@ as opposite-hand against either-handed pitchers (platoon advantage).
 `max(date for date in cache if date <= game_date)` — no future-date
 peeking. Locked by `test_strength_as_of_lookup_uses_latest_prior_date`.
 
-## Session 2 plan (next)
+## Session 2 deliverables (this session) ✅
+
+### Code changes
+| Path | Change | Status |
+|---|---|---|
+| `services/mlb_high_friction_model.py::_build_friction_features` | Added `opposing_lineup` + `sc_batter_cache` kwargs; emits CATEGORY 9 (21-feature opposing-lineup block, always — imputed when missing) | ✅ |
+| `services/mlb_high_friction_model.py::predict` | Added `opposing_lineup` kwarg; threads through to the feature builder | ✅ |
+| `services/scoring/adapters/mlb_scoring.py` | Forwards `prop["opposing_lineup"]` to `predict()` | ✅ |
+| `services/feature_hydration.py` | Added `_PITCHER_STAT_TYPES` registry, `_attach_inline_rolling_to_lineup`, `_hydrate_opposing_lineup_for_pitcher`, run-level lineup + SC rolling-14 caches, batch hydration for all pitcher props per slate | ✅ |
+| `services/mlb_lineup_features.py` | Extended `build_lineup_features` to accept inline `rolling_14` per batter (preferred at predict time); cache lookup retained for training | ✅ |
+| `services/scoring/prop_scores_store.py::_SCORE_OUTPUT_FIELDS` | Added `opposing_lineup_size` as a diagnostic field (lineup payload itself stays off score docs) | ✅ |
+| `services/scoring/recompute.py` | Mirror block widened for `opposing_lineup_size` | ✅ |
+| `tests/test_phase2b_session2_wiring.py` | 12 pytests covering signature contract, inline-rolling path, hydration decorator, pitcher-stat registry, score-doc allowlist, schema invariance | ✅ pass |
+
+### Park-factor decision
+Park factors are **already emitted** by the existing v3.1 feature builder
+(`park_hits_factor`, `park_runs_factor`, `park_hr_factor`, `park_k_factor`,
+`park_tb_factor`, `park_factor`). No additional code needed — Session 3 just
+needs to ensure `park_team` flows into training samples for pitcher stats.
+
+### Pitcher recent-form decision
+Already covered by the existing v3.1 `pitcher_statcast_features` path emitting
+`sc_p_r14_*` / `sc_p_r30_*` / `pa_p_*` features. The Phase 2A retrain pulled
+these from `mlb_statcast_pitcher_features`. Session 3 reuses that data source.
+
+### Smoke-test results (real slate)
+- Aaron Nola Pitcher Strikeouts 5.5 vs PIT — opposing lineup resolved 9/9
+  batters from last-played fallback, 9/9 decorated with inline `rolling_14`.
+- `_build_friction_features` emitted CATEGORY 9 with `pct_lhh=0.333`,
+  `pct_rhh=0.556`, `lineup_k_rate_14d=0.240`, `lineup_woba_14d=0.330`,
+  all 21 features present, no schema drift.
+- Imputed path verified: empty `opposing_lineup` → all 4 `*_is_imputed=1`
+  flags raised, all rate features zeroed, lineup_size=0.
+
+### Regression sweep
+**278/278** stabilization tests green (gate engine, score lifecycle,
+Phase 1 + 2A propagation, Phase 2B features + wiring, universal edge SSOT).
+
+## Session 3 plan
 
 **Goal:** wire the new features into the training feature builder and
 the live prediction path.
@@ -83,7 +121,22 @@ the live prediction path.
 7. Add 8-12 tests covering the feature builder pitcher-branch shape,
    the predict-path threading, and the live feed fallback chain.
 
-## Session 3 plan
+**Goal:** wire the new features into the training feature builder and
+the live prediction path. ✅ COMPLETE — see *Session 2 deliverables* above.
+
+1. `services/mlb_high_friction_model.py::_build_friction_features`
+   — added pitcher-context branch. ✅
+2. Park-factor features — confirmed already emitted by v3.1 builder. ✅
+3. Pitcher recent-form — confirmed already emitted via
+   `pitcher_statcast_features` path. ✅
+4. `services/mlb_high_friction_model.py::predict()` — threads
+   `opposing_lineup` through. ✅
+5. `services/feature_hydration.py` — populates `opposing_lineup` per
+   live MLB pitcher prop with inline `rolling_14` per batter. ✅
+6. `_SCORE_OUTPUT_FIELDS` widened for `opposing_lineup_size`. ✅
+7. 12 builder/predict/hydration tests added. ✅
+
+## Session 3 plan (next)
 
 **Goal:** retrain pitcher models on v3.2 features, validate, recompute.
 

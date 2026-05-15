@@ -147,6 +147,20 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 
 ## Recent Changelog
 
+### 2026-05-15 — Phase 2B Session 2 — Feature builder + live prediction wiring
+- **Goal**: Wire the Phase 2B opposing-lineup features end-to-end from `feature_hydration.py` through `_build_friction_features` and `predict()`. Strictly infrastructure — no retrain yet, no gate/UI/edge changes.
+- **Feature builder** (`services/mlb_high_friction_model.py::_build_friction_features`): added 2 new kwargs (`opposing_lineup`, `sc_batter_cache`) + CATEGORY 9 block. Always emits the canonical 21 lineup features; raises `*_is_imputed=1` flags when lineup is missing. Feature-vector shape is invariant across stat-family, so existing v3.1 batter models silently ignore the new features (not in their `feature_cols` pickle) — safe deployment.
+- **Predict path** (`predict()` + `mlb_scoring.py`): threads `prop["opposing_lineup"]` from the hydration step into the feature builder.
+- **Feature aggregator** (`services/mlb_lineup_features.py`): extended `build_lineup_features` to read inline `rolling_14` per batter dict (preferred live wiring — no external cache lookup needed). Cache lookup retained for training.
+- **Live hydration** (`services/feature_hydration.py`): added `_PITCHER_STAT_TYPES` registry (`Pitcher Strikeouts`, `Pitcher Outs`, `Earned Runs`, `Hits Allowed`, `Walks Allowed`, `Pitcher Walks`); built run-level `mlb_lineup_cache` (one fetch per unique `(opp_team, game_date)` pair) and `mlb_sc_rolling_cache` (one batch query for all opposing batters' rolling-14); per-prop helper decorates the lineup with as-of inline rolling stats. BDL → last-played → None imputed fallback chain preserved.
+- **Diagnostic propagation**: added `opposing_lineup_size` to `_SCORE_OUTPUT_FIELDS` and the recompute mirror block. Full lineup list stays OFF score docs (volatile, rebuildable).
+- **Park-factor decision**: confirmed park factors are already emitted by the v3.1 feature builder (`park_hits_factor`, `park_runs_factor`, `park_hr_factor`, `park_k_factor`, `park_tb_factor`, `park_factor`) — no new code needed. Session 3 just needs to ensure `park_team` flows into training samples for pitcher stats.
+- **Pitcher recent-form decision**: confirmed already emitted via the `pitcher_statcast_features` path (`sc_p_r14_*`, `sc_p_r30_*`, `pa_p_*`) from Phase 2A — no new code needed.
+- **Tests**: new `tests/test_phase2b_session2_wiring.py` — 12 cases (signature contract, inline-rolling path, hydration decorator, pitcher-stat registry, score-doc allowlist, schema invariance). **12/12 pass**.
+- **Live smoke test**: Aaron Nola Pitcher Strikeouts 5.5 vs PIT — opposing lineup resolved 9/9 batters from last-played fallback, 9/9 decorated with inline `rolling_14`. Feature builder emitted CATEGORY 9 with `pct_lhh=0.333`, `pct_rhh=0.556`, `lineup_k_rate_14d=0.240`, `lineup_woba_14d=0.330`, all 21 features present, no schema drift. Imputed path verified — empty lineup raises all 4 imputed flags.
+- **Regression**: **278/278** stabilization tests green (gate engine, score lifecycle, Phase 1 + 2A propagation, Phase 2B features + wiring, universal edge SSOT).
+- **Status**: Session 3 unblocked — retrain worker can now build training samples with the new feature schema and the live predict path will consume them when v3.2 pickles land.
+
 ### 2026-05-15 — Phase 2B Session 1 — MLB_HF Pitcher Context Infrastructure
 - **Goal**: Build the foundational data + feature layers required to retrain pitcher models with opposing-lineup, park-factor, and pitcher-recent-form context. Strictly an infrastructure pass — no retrain, no live wiring, no gate/UI/edge changes.
 - **Architectural decisions** (locked, see `/app/backend/models/mlb_hf/_phase2b_workdir/README.md`):

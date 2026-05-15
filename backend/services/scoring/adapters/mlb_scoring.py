@@ -431,6 +431,11 @@ class MLBScoringAdapter(ScoringAdapter):
                 batter_hand=prop.get("batter_hand"),
                 opp_pitcher_throws=prop.get("opp_pitcher_throws"),
                 opp_pitcher_id=prop.get("opp_pitcher_id"),
+                # ── Phase 2B opposing-lineup payload (2026-05-15) ──
+                # Hydrated by `services/feature_hydration.py` for MLB
+                # pitcher props. None for batter props — the lineup
+                # feature block stays imputed in that case.
+                opposing_lineup=prop.get("opposing_lineup"),
             )
             # 2026-05 missing-value policy — capture HF feature_health
             # so the score doc preserves which features were imputed.

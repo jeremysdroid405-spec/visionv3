@@ -39,6 +39,66 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
+# Phase 2B (2026-05-15) — pitcher-prop stat types. Used to decide when
+# to populate `opposing_lineup` on a prop (pitcher props only — for
+# batter props the lineup-feature block stays imputed downstream).
+_PITCHER_STAT_TYPES = frozenset({
+    "Pitcher Strikeouts",
+    "Pitcher Outs",
+    "Earned Runs",
+    "Hits Allowed",
+    "Walks Allowed",
+    "Pitcher Walks",
+})
+
+
+def _attach_inline_rolling_to_lineup(
+    lineup: Optional[List[Dict[str, Any]]],
+    game_date: Optional[str],
+    sc_rolling_cache: Dict[int, Dict[str, Any]],
+) -> Optional[List[Dict[str, Any]]]:
+    """Decorate each batter dict in `lineup` with an inline `rolling_14`
+    block resolved as-of `game_date` from the pre-fetched SC cache.
+    Returns a NEW list (does not mutate caller-supplied dicts)."""
+    if not lineup:
+        return lineup
+    gd = str(game_date)[:10] if game_date else None
+    out: List[Dict[str, Any]] = []
+    for b in lineup:
+        b2 = dict(b)
+        bid = b2.get("batter_id")
+        by_date = sc_rolling_cache.get(int(bid)) if bid is not None else None
+        if by_date and gd:
+            earlier = [d for d in by_date.keys() if d and d <= gd]
+            if earlier:
+                pick = max(earlier)
+                rolling = (by_date[pick] or {}).get("rolling_14") or {}
+                if rolling:
+                    b2["rolling_14"] = rolling
+        out.append(b2)
+    return out
+
+
+async def _hydrate_opposing_lineup_for_pitcher(
+    *,
+    opp_team_abbr: Optional[str],
+    game_date: Optional[str],
+    lineup_cache: Dict[Tuple[str, str], Optional[List[Dict[str, Any]]]],
+    sc_rolling_cache: Dict[int, Dict[str, Any]],
+) -> Optional[List[Dict[str, Any]]]:
+    """Per-prop lookup against the run-level lineup cache populated at
+    the top of `hydrate_game_context_on_props`. Decorates each batter
+    with an inline `rolling_14` block resolved as-of `game_date`.
+    """
+    if not opp_team_abbr or not game_date:
+        return None
+    key = (opp_team_abbr, str(game_date)[:10])
+    lineup = lineup_cache.get(key)
+    return _attach_inline_rolling_to_lineup(
+        lineup, game_date, sc_rolling_cache,
+    )
+
+
 # =============================================================================
 # Team-name alias maps (full name <-> 3-letter abbreviation).
 # Built once per hydration run from the master hub.
@@ -622,9 +682,76 @@ async def hydrate_game_context_on_props(
                     "date=%s err=%s", _d, exc,
                 )
                 mlb_pp_indexes[_d] = None
+
+        # ── Phase 2B (2026-05-15) — Opposing-lineup pre-fetch ───────
+        # Pre-resolve opposing lineups for every (opp_team, game_date)
+        # pair touched by a pitcher prop. One BDL-or-fallback lookup
+        # per pair, NOT per prop — props sharing the same opponent on
+        # the same day share a single lineup payload.
+        # Each batter dict in the resolved lineup is enriched with
+        # an inline `rolling_14` block read from
+        # `mlb_statcast_player_features` as-of the game date so the
+        # downstream model can compute lineup_strength_14d without
+        # a second lookup loop.
+        from services.mlb_live_lineup_feed import (
+            fetch_opposing_lineup as _mlb_fetch_opposing_lineup,
+        )
+        # Collect unique pitcher-prop (opp_team, game_date) pairs.
+        mlb_pitcher_pairs: set = set()
+        for _p in props:
+            if (_p.get("stat_type") or "").strip() in _PITCHER_STAT_TYPES:
+                ot = _p.get("opponent_team")
+                gd = _commence_date_iso(_p.get("commence_time"))
+                if ot and gd:
+                    mlb_pitcher_pairs.add((ot, gd))
+        mlb_lineup_cache: Dict[Tuple[str, str],
+                               Optional[List[Dict[str, Any]]]] = {}
+        mlb_sc_rolling_cache: Dict[int, Dict[str, Any]] = {}
+        for opp_team, gd in mlb_pitcher_pairs:
+            try:
+                lineup = await _mlb_fetch_opposing_lineup(
+                    db, opp_team, gd,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "[CTX_HYDRATE:mlb] opposing lineup fetch failed "
+                    "opp=%s date=%s err=%s", opp_team, gd, exc,
+                )
+                lineup = None
+            mlb_lineup_cache[(opp_team, gd)] = lineup
+            # Collect batter IDs whose rolling-14 we still need.
+            if lineup:
+                for b in lineup:
+                    bid = b.get("batter_id")
+                    if bid is not None and bid not in mlb_sc_rolling_cache:
+                        mlb_sc_rolling_cache[int(bid)] = {}
+        # Batch-fetch rolling_14 for all batters across all pairs.
+        # `mlb_statcast_player_features` is keyed by (player_id,
+        # game_date). We pick the latest doc dated <= game_date for
+        # the relevant batter — falls back gracefully when no SC row
+        # exists (lineup_strength stays imputed).
+        if mlb_sc_rolling_cache:
+            try:
+                async for sc_doc in db["mlb_statcast_player_features"].find(
+                    {"player_id": {"$in": list(mlb_sc_rolling_cache.keys())}},
+                    {"_id": 0, "player_id": 1,
+                     "game_date": 1, "rolling_14": 1},
+                ):
+                    bid = int(sc_doc.get("player_id"))
+                    gd = sc_doc.get("game_date") or ""
+                    mlb_sc_rolling_cache.setdefault(bid, {})[str(gd)[:10]] = {
+                        "rolling_14": sc_doc.get("rolling_14") or {}
+                    }
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "[CTX_HYDRATE:mlb] sc_rolling pre-fetch failed err=%s",
+                    exc,
+                )
     else:
         mlb_slot_map = {}
         mlb_pp_indexes = {}
+        mlb_lineup_cache = {}
+        mlb_sc_rolling_cache = {}
     # 2026-05 — per-player minutes / usage (NBA only) used to size
     # `team_minutes_removed`, `team_usage_removed_pct`,
     # `usage_vacuum_factor`, `key_player_out_flag`.
@@ -855,6 +982,40 @@ async def hydrate_game_context_on_props(
             for k in ("probable_pitcher", "opp_pitcher_throws"):
                 if p.get(k) is None:
                     imputed_fields.append(k)
+
+            # ── Phase 2B (2026-05-15) — Opposing Lineup Hydration ───────
+            # Pitcher props only: when the player IS the pitcher (stat
+            # in `_PITCHER_STAT_TYPES`), populate `opposing_lineup` with
+            # the opponent team's batters as resolved by the live feed:
+            #   BDL posted lineup → last-played fallback → None.
+            # Each batter dict carries `batter_id`, `stand`, and an
+            # inline `rolling_14` block (k_rate/bb_rate/wOBA/xwOBA/
+            # hard_hit_rate/barrel_rate) read as-of the prop's
+            # commence_date from `mlb_statcast_player_features`. The
+            # downstream model emits the canonical 21-feature
+            # lineup-context block; missing inputs raise
+            # `*_is_imputed=1` flags (see
+            # services/mlb_lineup_features.py).
+            #
+            # Batter props leave `opposing_lineup` unset — the
+            # lineup-feature block is N/A and is emitted imputed.
+            stat_type_norm = (p.get("stat_type") or "").strip()
+            if stat_type_norm in _PITCHER_STAT_TYPES:
+                lineup = await _hydrate_opposing_lineup_for_pitcher(
+                    opp_team_abbr=p.get("opponent_team"),
+                    game_date=_commence_date_iso(p.get("commence_time")),
+                    lineup_cache=mlb_lineup_cache,
+                    sc_rolling_cache=mlb_sc_rolling_cache,
+                )
+                if lineup:
+                    p["opposing_lineup"] = lineup
+                    p["opposing_lineup_size"] = len(lineup)
+                    counters["opposing_lineup_filled"] = counters.get(
+                        "opposing_lineup_filled", 0) + 1
+                else:
+                    p["opposing_lineup"] = None
+                    p["opposing_lineup_size"] = 0
+                    imputed_fields.append("opposing_lineup")
 
         # Stash imputed list on the prop (Step 5 missing-value policy
         # will surface this on score docs via downstream join).

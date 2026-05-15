@@ -247,6 +247,14 @@ _SCORE_OUTPUT_FIELDS = (
     "probable_pitcher",
     "opp_pitcher_era", "opp_pitcher_whip", "opp_pitcher_k9",
     "same_hand_matchup", "opposite_hand_matchup",
+    # 2026-05-15 — Phase 2B MLB opposing-lineup context. Stamped by
+    # `services/feature_hydration.py::_hydrate_opposing_lineup_for_pitcher`
+    # for pitcher props. Only the size diagnostic propagates onto
+    # score docs — the full lineup payload is consumed by the
+    # model's pitcher-context feature builder but not persisted
+    # (the lineup list is volatile and rebuildable from
+    # `mlb_statcast_raw` / live BDL feed).
+    "opposing_lineup_size",
     # Multi-book de-vig TP engine (2026-04-22). Replaces the legacy
     # avg(DK,FD) / avg(DK,MGM) implied-prob TP. Fields:
     #   tp               — final de-vigged true probability (0..100) or None

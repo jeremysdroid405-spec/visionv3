@@ -101,13 +101,21 @@ def build_lineup_features(
 
     Args:
       lineup: list of dicts with at least `batter_id` and `stand`.
-              Pass None when the resolver returned nothing.
-      game_date: ISO `YYYY-MM-DD`. Used for the as-of rolling lookup.
+              May ALSO carry an inline `rolling_14` dict per batter
+              (preferred live-prediction wiring — no external cache
+              lookup needed). Pass None when the resolver returned
+              nothing.
+      game_date: ISO `YYYY-MM-DD`. Used for the as-of rolling lookup
+              when `sc_batter_cache` is supplied. Ignored when the
+              lineup carries inline `rolling_14`.
       pitcher_throws: "L" / "R" — drives the matchup interaction
               counts. None ⇒ matchup features stay imputed.
       sc_batter_cache: optional map `batter_id → {game_date → rolling_14}`
-              for lineup-strength aggregation. None ⇒ strength stays
-              imputed.
+              for lineup-strength aggregation. Used by the training
+              path (`mlb_lineup_resolver` output + bulk SC pull). The
+              live path passes `rolling_14` inline on each batter
+              dict instead. Either path may supply data; inline
+              takes precedence when present.
 
     Returns: dict with every key in PHASE2B_LINEUP_FEATURE_NAMES.
     """
@@ -161,14 +169,21 @@ def build_lineup_features(
         out["matchup_exposure_is_imputed"] = 0.0 if denom > 0 else 1.0
 
     # — Lineup strength rolling 14d —
-    if sc_batter_cache and game_date:
-        gd = str(game_date)[:10]
+    # Prefer inline `rolling_14` per batter (live-prediction wiring);
+    # fall back to as-of `sc_batter_cache` lookup (training wiring).
+    has_any_rolling = any(
+        isinstance(b.get("rolling_14"), dict) for b in lineup
+    )
+    if has_any_rolling or (sc_batter_cache and game_date):
+        gd = str(game_date)[:10] if game_date else None
         k_rates, bb_rates, wobas, xwobas, hard_hits, barrels = (
             [], [], [], [], [], []
         )
         for b in lineup:
-            bid = b.get("batter_id")
-            r14 = _lookup_rolling_14(sc_batter_cache, bid, gd)
+            # Inline rolling on batter dict (live path) wins.
+            r14 = b.get("rolling_14") if isinstance(b.get("rolling_14"), dict) else None
+            if r14 is None and sc_batter_cache and gd:
+                r14 = _lookup_rolling_14(sc_batter_cache, b.get("batter_id"), gd)
             if not r14:
                 continue
             k_rates.append(_safe_float(r14.get("k_rate"), default=None)
