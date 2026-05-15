@@ -1,0 +1,1433 @@
+==============================================================================================================
+BURIED EXECUTABLE-EDGE AUDIT — MLB FL OVER rejects
+  Filters: consensus_edge<5pp • total_edge≥8pp • tp≥50 • books≥3
+          • best_book is executable major (no PP/UD)
+  Universe (matching all filters): 65
+==============================================================================================================
+
+── #1  Freddie Freeman         Singles             0.5  OVER  (LAD @ LAA)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/60.0/65.0
+  Projection: 0.808  (p_model=0.6694)
+  fair_prob: 0.6323   tp: 56.9%   consensus_edge: +3.71pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -135  total_edge=+13.47pp  best_book_edge(devig)=+3.43pp
+  best_book_devig_p=0.5347  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -174      63.50          +1.73pp  
+      FanDuel                            -170      62.96          +1.19pp  
+      BetMGM                             -135      57.45          -4.32pp  
+      ESPN BET                           -160      61.54          -0.23pp  
+      Hard Rock                          -160      61.54          -0.23pp  
+      Fliff                              -175      63.64          +1.87pp  
+      PrizePicks      (non-executable)   -137      57.81          -3.97pp  
+  Consensus implied (executable books only):  61.77%
+  Gap (consensus − best raw):  +4.32pp
+  Classification: a) one-rogue-book
+
+── #2  Max Muncy               Hits                0.5  OVER  (LAD @ LAA)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/70.0/70.0
+  Projection: 1.204  (p_model=0.7173)
+  fair_prob: 0.6678   tp: 61.8%   consensus_edge: +4.95pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -175  total_edge=+12.85pp  best_book_edge(devig)=+2.92pp
+  best_book_devig_p=0.5888  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -219      68.65          +2.46pp  
+      FanDuel                            -185      64.91          -1.28pp  
+      BetMGM                             -175      63.64          -2.56pp  
+      Caesars                            -190      65.52          -0.68pp  
+      ESPN BET                           -180      64.29          -1.91pp  
+      BetRivers                          -195      66.10          -0.09pp  
+      Hard Rock                          -210      67.74          +1.55pp  
+      BetOnline                          -189      65.40          -0.80pp  
+      BetParx                            -195      66.10          -0.09pp  
+      Bally Bet                          -195      66.10          -0.09pp  
+      Fliff                              -230      69.70          +3.50pp  
+      PrizePicks      (non-executable)   -137      57.81          -8.39pp  
+  Consensus implied (executable books only):  66.20%
+  Gap (consensus − best raw):  +2.56pp
+  Classification: a) one-rogue-book
+
+── #3  Hyeseong Kim            Total Bases         0.5  OVER  (LAD @ LAA)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  80.0/60.0/60.0
+  Projection: 1.04  (p_model=0.6955)
+  fair_prob: 0.6491   tp: 57.2%   consensus_edge: +4.64pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -150  total_edge=+12.65pp  best_book_edge(devig)=+0.30pp
+  best_book_devig_p=0.569  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -185      64.91          +3.23pp  
+      Caesars                            -154      60.63          -1.06pp  
+      ESPN BET                           -150      60.00          -1.69pp  
+      BetOnline                          -154      60.63          -1.06pp  
+      Fliff                              -165      62.26          +0.58pp  
+      PrizePicks      (non-executable)   -137      57.81          -3.88pp  
+  Consensus implied (executable books only):  61.69%
+  Gap (consensus − best raw):  +1.69pp
+  Classification: a) one-rogue-book
+
+── #4  Marcus Semien           Hits                0.5  OVER  (NYM vs NYY)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/50.0/60.0
+  Projection: 0.822  (p_model=0.6385)
+  fair_prob: 0.5958   tp: 53.8%   consensus_edge: +4.27pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -125  total_edge=+12.38pp  best_book_edge(devig)=+2.33pp
+  best_book_devig_p=0.5147  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -136      57.63          -0.56pp  
+      FanDuel                            -160      61.54          +3.35pp  
+      BetMGM                             -125      55.56          -2.63pp  
+      Caesars                            -137      57.81          -0.38pp  
+      ESPN BET                           -140      58.33          +0.14pp  
+      BetRivers                          -139      58.16          -0.03pp  
+      Hard Rock                          -130      56.52          -1.67pp  
+      BetOnline                          -135      57.45          -0.74pp  
+      BetParx                            -139      58.16          -0.03pp  
+      Bally Bet                          -139      58.16          -0.03pp  
+      Fliff                              -155      60.78          +2.59pp  
+      PrizePicks      (non-executable)   -137      57.81          -0.38pp  
+  Consensus implied (executable books only):  58.19%
+  Gap (consensus − best raw):  +2.63pp
+  Classification: a) one-rogue-book
+
+── #5  Ben Rice                Hits                0.5  OVER  (NYY @ NYM)
+  Verdict:   unqualified — front_lines_failed: gate_edge_fail
+  HR L5/L10/L20:  80.0/80.0/70.0
+  Projection: 1.126  (p_model=0.7413)
+  fair_prob: 0.6942   tp: 64.3%   consensus_edge: +4.71pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -200  total_edge=+12.10pp  best_book_edge(devig)=+2.27pp
+  best_book_devig_p=0.6203  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -224      69.14          -0.37pp  
+      FanDuel                            -230      69.70          +0.19pp  
+      BetMGM                             -200      66.67          -2.84pp  
+      Caesars                            -218      68.55          -0.95pp  
+      ESPN BET                           -200      66.67          -2.84pp  
+      BetRivers                          -250      71.43          +1.92pp  
+      Hard Rock                          -230      69.70          +0.19pp  
+      BetOnline                          -213      68.05          -1.46pp  
+      BetParx                            -250      71.43          +1.92pp  
+      Bally Bet                          -250      71.43          +1.92pp  
+      Fliff                              -255      71.83          +2.32pp  
+      PrizePicks      (non-executable)   -137      57.81         -11.70pp  
+  Consensus implied (executable books only):  69.51%
+  Gap (consensus − best raw):  +2.84pp
+  Classification: a) one-rogue-book
+
+── #6  Troy Johnston           Hits                0.5  OVER  (COL vs ARI)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/80.0/75.0
+  Projection: 1.326  (p_model=0.7785)
+  fair_prob: 0.7481   tp: 69.5%   consensus_edge: +3.04pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -235  total_edge=+11.99pp  best_book_edge(devig)=+3.64pp
+  best_book_devig_p=0.6586  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -294      74.62          -1.08pp  
+      FanDuel                            -300      75.00          -0.70pp  
+      BetMGM                             -235      70.15          -5.55pp  
+      Caesars                            -320      76.19          +0.49pp  
+      ESPN BET                           -320      76.19          +0.49pp  
+      BetRivers                          -315      75.90          +0.20pp  
+      Hard Rock                          -350      77.78          +2.08pp  
+      BetOnline                          -385      79.38          +3.68pp  
+      BetParx                            -315      75.90          +0.20pp  
+      Bally Bet                          -315      75.90          +0.20pp  
+      PrizePicks      (non-executable)   -137      57.81         -17.90pp  
+  Consensus implied (executable books only):  75.70%
+  Gap (consensus − best raw):  +5.55pp
+  Classification: a) one-rogue-book
+
+── #7  Angel Martinez          Hits                0.5  OVER  (CLE vs CIN)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/60.0/55.0
+  Projection: 1.474  (p_model=0.7264)
+  fair_prob: 0.7067   tp: 64.2%   consensus_edge: +1.97pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -190  total_edge=+11.71pp  best_book_edge(devig)=+3.27pp
+  best_book_devig_p=0.6093  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -242      70.76          +1.59pp  
+      FanDuel                            -240      70.59          +1.42pp  
+      BetMGM                             -190      65.52          -3.65pp  
+      Caesars                            -225      69.23          +0.06pp  
+      ESPN BET                           -220      68.75          -0.42pp  
+      BetRivers                          -225      69.23          +0.06pp  
+      Hard Rock                          -230      69.70          +0.53pp  
+      BetOnline                          -213      68.05          -1.12pp  
+      BetParx                            -225      69.23          +0.06pp  
+      Bally Bet                          -225      69.23          +0.06pp  
+      Fliff                              -240      70.59          +1.42pp  
+      PrizePicks      (non-executable)   -137      57.81         -11.36pp  
+  Consensus implied (executable books only):  69.17%
+  Gap (consensus − best raw):  +3.65pp
+  Classification: a) one-rogue-book
+
+── #8  Miguel Andujar          Hits                0.5  OVER  (SD @ SEA)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/80.0/70.0
+  Projection: 1.044  (p_model=0.7352)
+  fair_prob: 0.6961   tp: 63.8%   consensus_edge: +3.91pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -200  total_edge=+11.49pp  best_book_edge(devig)=+1.77pp
+  best_book_devig_p=0.6203  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -228      69.51          +1.06pp  
+      FanDuel                            -230      69.70          +1.25pp  
+      BetMGM                             -200      66.67          -1.78pp  
+      Caesars                            -218      68.55          +0.10pp  
+      ESPN BET                           -200      66.67          -1.78pp  
+      BetRivers                          -210      67.74          -0.71pp  
+      Hard Rock                          -220      68.75          +0.30pp  
+      BetOnline                          -217      68.45          +0.00pp  
+      BetParx                            -210      67.74          -0.71pp  
+      Bally Bet                          -210      67.74          -0.71pp  
+      Fliff                              -250      71.43          +2.98pp  
+      PrizePicks      (non-executable)   -137      57.81         -10.64pp  
+  Consensus implied (executable books only):  68.45%
+  Gap (consensus − best raw):  +1.78pp
+  Classification: a) one-rogue-book
+
+── #9  Matt McLain             Hits+Runs+RBIs      0.5  OVER  (CIN @ CLE)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  20.0/30.0/50.0
+  Projection: 2.358  (p_model=0.7034)
+  fair_prob: 0.6613   tp: 59.1%   consensus_edge: +4.21pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -165  total_edge=+11.46pp  best_book_edge(devig)=+0.22pp
+  best_book_devig_p=0.5888  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -174      63.50          -1.30pp  
+      FanDuel                            -220      68.75          +3.95pp  
+      BetMGM                             -200      66.67          +1.86pp  
+      Caesars                            -173      63.37          -1.43pp  
+      ESPN BET                           -165      62.26          -2.54pp  
+      Hard Rock                          -170      62.96          -1.84pp  
+      Fliff                              -195      66.10          +1.30pp  
+      PrizePicks      (non-executable)   -137      57.81          -7.00pp  
+  Consensus implied (executable books only):  64.80%
+  Gap (consensus − best raw):  +2.54pp
+  Classification: a) one-rogue-book
+
+── #10  Bo Bichette             Singles             0.5  OVER  (NYM vs NYY)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  80.0/60.0/60.0
+  Projection: 0.76  (p_model=0.6392)
+  fair_prob: 0.6182   tp: 56.1%   consensus_edge: +2.10pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -130  total_edge=+11.46pp  best_book_edge(devig)=+3.64pp
+  best_book_devig_p=0.5246  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -150      60.00          -1.02pp  
+      FanDuel                            -175      63.64          +2.62pp  
+      BetMGM                             -130      56.52          -4.50pp  
+      ESPN BET                           -160      61.54          +0.52pp  
+      Hard Rock                          -155      60.78          -0.24pp  
+      Fliff                              -175      63.64          +2.62pp  
+      PrizePicks      (non-executable)   -137      57.81          -3.21pp  
+  Consensus implied (executable books only):  61.02%
+  Gap (consensus − best raw):  +4.50pp
+  Classification: a) one-rogue-book
+
+── #11  Yandy Diaz              Hits                0.5  OVER  (TB vs MIA)
+  Verdict:   unqualified — front_lines_failed: gate_edge_fail
+  HR L5/L10/L20:  80.0/80.0/80.0
+  Projection: 1.186  (p_model=0.7882)
+  fair_prob: 0.7484   tp: 67.6%   consensus_edge: +3.98pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -250  total_edge=+11.38pp  best_book_edge(devig)=+0.16pp
+  best_book_devig_p=0.6744  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -295      74.68          +1.39pp  
+      FanDuel                            -300      75.00          +1.70pp  
+      BetMGM                             -275      73.33          +0.04pp  
+      Caesars                            -265      72.60          -0.69pp  
+      ESPN BET                           -250      71.43          -1.87pp  
+      BetRivers                          -265      72.60          -0.69pp  
+      BetOnline                          -286      74.09          +0.80pp  
+      BetParx                            -265      72.60          -0.69pp  
+      Bally Bet                          -265      72.60          -0.69pp  
+      Fliff                              -285      74.03          +0.73pp  
+      PrizePicks      (non-executable)   -137      57.81         -15.49pp  
+  Consensus implied (executable books only):  73.30%
+  Gap (consensus − best raw):  +1.87pp
+  Classification: a) one-rogue-book
+
+── #12  Ezequiel Duran          Total Bases         0.5  OVER  (TEX @ HOU)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  80.0/60.0/65.0
+  Projection: 0.775  (p_model=0.6944)
+  fair_prob: 0.6667   tp: 58.6%   consensus_edge: +2.77pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -160  total_edge=+11.38pp  best_book_edge(devig)=+0.54pp
+  best_book_devig_p=0.5806  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -200      66.67          +1.87pp  
+      Caesars                            -176      63.77          -1.03pp  
+      ESPN BET                           -160      61.54          -3.26pp  
+      BetOnline                          -204      67.11          +2.31pp  
+      Fliff                              -185      64.91          +0.11pp  
+      PrizePicks      (non-executable)   -137      57.81          -6.99pp  
+  Consensus implied (executable books only):  64.80%
+  Gap (consensus − best raw):  +3.26pp
+  Classification: a) one-rogue-book
+
+── #13  Kevin McGonigle         Total Bases         0.5  OVER  (DET @ None)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  40.0/60.0/75.0
+  Projection: 1.39  (p_model=0.7345)
+  fair_prob: 0.6875   tp: 62.1%   consensus_edge: +4.70pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -190  total_edge=+11.36pp  best_book_edge(devig)=+0.01pp
+  best_book_devig_p=0.6209  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -220      68.75          -0.52pp  
+      ESPN BET                           -190      65.52          -3.75pp  
+      BetOnline                          -278      73.54          +4.27pp  
+      PrizePicks      (non-executable)   -137      57.81         -11.46pp  
+  Consensus implied (executable books only):  69.27%
+  Gap (consensus − best raw):  +3.75pp
+  Classification: d) legitimate-disagreement
+
+── #14  Nick Kurtz              Hits                0.5  OVER  (OAK vs SF)
+  Verdict:   unqualified — front_lines_failed: gate_edge_fail
+  HR L5/L10/L20:  80.0/70.0/75.0
+  Projection: 0.932  (p_model=0.7413)
+  fair_prob: 0.6927   tp: 65.1%   consensus_edge: +4.86pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -210  total_edge=+11.26pp  best_book_edge(devig)=+2.23pp
+  best_book_devig_p=0.6287  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -231      69.79          -0.52pp  
+      FanDuel                            -220      68.75          -1.56pp  
+      BetMGM                             -210      67.74          -2.57pp  
+      Caesars                            -230      69.70          -0.61pp  
+      ESPN BET                           -220      68.75          -1.56pp  
+      BetRivers                          -265      72.60          +2.29pp  
+      Hard Rock                          -240      70.59          +0.28pp  
+      BetOnline                          -217      68.45          -1.86pp  
+      BetParx                            -265      72.60          +2.29pp  
+      Bally Bet                          -265      72.60          +2.29pp  
+      Fliff                              -255      71.83          +1.52pp  
+      PrizePicks      (non-executable)   -137      57.81         -12.50pp  
+  Consensus implied (executable books only):  70.31%
+  Gap (consensus − best raw):  +2.57pp
+  Classification: a) one-rogue-book
+
+── #15  Fernando Tatis Jr.      Hits                0.5  OVER  (SD @ SEA)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  40.0/60.0/65.0
+  Projection: 1.03  (p_model=0.7092)
+  fair_prob: 0.6639   tp: 61.1%   consensus_edge: +4.53pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -185  total_edge=+11.03pp  best_book_edge(devig)=+1.21pp
+  best_book_devig_p=0.5989  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -186      65.03          -0.73pp  
+      FanDuel                            -210      67.74          +1.98pp  
+      BetMGM                             -185      64.91          -0.85pp  
+      Caesars                            -193      65.87          +0.10pp  
+      ESPN BET                           -190      65.52          -0.25pp  
+      BetRivers                          -186      65.03          -0.73pp  
+      Hard Rock                          -195      66.10          +0.34pp  
+      BetOnline                          -189      65.40          -0.37pp  
+      BetParx                            -186      65.03          -0.73pp  
+      Bally Bet                          -186      65.03          -0.73pp  
+      Fliff                              -210      67.74          +1.98pp  
+      PrizePicks      (non-executable)   -137      57.81          -7.96pp  
+  Consensus implied (executable books only):  65.77%
+  Gap (consensus − best raw):  +0.85pp
+  Classification: a) one-rogue-book
+
+── #16  Bo Bichette             Hits                0.5  OVER  (NYM vs NYY)
+  Verdict:   unqualified — front_lines_failed: gate_edge_fail
+  HR L5/L10/L20:  80.0/70.0/75.0
+  Projection: 1.04  (p_model=0.7432)
+  fair_prob: 0.7228   tp: 66.2%   consensus_edge: +2.04pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -210  total_edge=+10.98pp  best_book_edge(devig)=+2.86pp
+  best_book_devig_p=0.6334  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -252      71.59          +0.00pp  
+      FanDuel                            -270      72.97          +1.39pp  
+      BetMGM                             -210      67.74          -3.84pp  
+      Caesars                            -250      71.43          -0.16pp  
+      ESPN BET                           -240      70.59          -1.00pp  
+      BetRivers                          -265      72.60          +1.02pp  
+      Hard Rock                          -260      72.22          +0.64pp  
+      BetOnline                          -227      69.42          -2.17pp  
+      BetParx                            -265      72.60          +1.02pp  
+      Bally Bet                          -265      72.60          +1.02pp  
+      Fliff                              -280      73.68          +2.10pp  
+      PrizePicks      (non-executable)   -137      57.81         -13.78pp  
+  Consensus implied (executable books only):  71.59%
+  Gap (consensus − best raw):  +3.84pp
+  Classification: a) one-rogue-book
+
+── #17  Royce Lewis             Total Bases         0.5  OVER  (MIN vs MIL)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  0.0/20.0/50.0
+  Projection: 0.775  (p_model=0.6434)
+  fair_prob: 0.6000   tp: 54.1%   consensus_edge: +4.34pp
+  EXECUTABLE EDGE:  best_book=betonline @ -132  total_edge=+10.87pp  best_book_edge(devig)=+0.63pp
+  best_book_devig_p=0.5347  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -150      60.00          +1.59pp  
+      Caesars                            -136      57.63          -0.78pp  
+      ESPN BET                           -140      58.33          -0.07pp  
+      BetOnline                          -132      56.90          -1.51pp  
+      Fliff                              -145      59.18          +0.78pp  
+      PrizePicks      (non-executable)   -137      57.81          -0.60pp  
+  Consensus implied (executable books only):  58.41%
+  Gap (consensus − best raw):  +1.51pp
+  Classification: a) one-rogue-book
+
+── #18  Luke Keaschall          Total Bases         0.5  OVER  (MIN vs MIL)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  80.0/80.0/65.0
+  Projection: 1.15  (p_model=0.7206)
+  fair_prob: 0.6774   tp: 60.7%   consensus_edge: +4.32pp
+  EXECUTABLE EDGE:  best_book=caesars @ -190  total_edge=+10.84pp  best_book_edge(devig)=-0.52pp
+  best_book_devig_p=0.6122  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -210      67.74          +0.13pp  
+      Caesars                            -190      65.52          -2.09pp  
+      BetOnline                          -233      69.97          +2.36pp  
+      Fliff                              -205      67.21          -0.40pp  
+      PrizePicks      (non-executable)   -137      57.81          -9.80pp  
+  Consensus implied (executable books only):  67.61%
+  Gap (consensus − best raw):  +2.09pp
+  Classification: a) one-rogue-book
+
+── #19  Mark Vientos            Hits                0.5  OVER  (NYM vs NYY)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  80.0/70.0/50.0
+  Projection: 0.896  (p_model=0.6516)
+  fair_prob: 0.6052   tp: 55.6%   consensus_edge: +4.64pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -140  total_edge=+10.70pp  best_book_edge(devig)=+1.14pp
+  best_book_devig_p=0.5446  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -147      59.51          -0.46pp  
+      FanDuel                            -160      61.54          +1.57pp  
+      BetMGM                             -140      58.33          -1.64pp  
+      Caesars                            -148      59.68          -0.29pp  
+      ESPN BET                           -140      58.33          -1.64pp  
+      BetRivers                          -152      60.32          +0.35pp  
+      Hard Rock                          -145      59.18          -0.79pp  
+      BetOnline                          -145      59.18          -0.79pp  
+      BetParx                            -152      60.32          +0.35pp  
+      Bally Bet                          -152      60.32          +0.35pp  
+      Fliff                              -170      62.96          +2.99pp  
+      PrizePicks      (non-executable)   -137      57.81          -2.16pp  
+  Consensus implied (executable books only):  59.97%
+  Gap (consensus − best raw):  +1.64pp
+  Classification: a) one-rogue-book
+
+── #20  Oswald Peraza           Hits+Runs+RBIs      0.5  OVER  (LAA vs LAD)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  40.0/50.0/60.0
+  Projection: 1.514  (p_model=0.6958)
+  fair_prob: 0.6698   tp: 60.4%   consensus_edge: +2.60pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -175  total_edge=+10.70pp  best_book_edge(devig)=+1.52pp
+  best_book_devig_p=0.5888  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -211      67.85          +1.14pp  
+      FanDuel                            -195      66.10          -0.60pp  
+      BetMGM                             -175      63.64          -3.07pp  
+      Fliff                              -225      69.23          +2.53pp  
+      PrizePicks      (non-executable)   -137      57.81          -8.90pp  
+  Consensus implied (executable books only):  66.70%
+  Gap (consensus − best raw):  +3.07pp
+  Classification: a) one-rogue-book
+
+── #21  Vaughn Grissom          Total Bases         0.5  OVER  (LAA vs LAD)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  20.0/50.0/45.0
+  Projection: 2.53  (p_model=0.7124)
+  fair_prob: 0.6667   tp: 61.7%   consensus_edge: +4.57pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -180  total_edge=+10.57pp  best_book_edge(devig)=+1.03pp
+  best_book_devig_p=0.6067  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -200      66.67          +0.28pp  
+      Caesars                            -190      65.52          -0.87pp  
+      ESPN BET                           -180      64.29          -2.10pp  
+      BetOnline                          -192      65.75          -0.63pp  
+      Fliff                              -230      69.70          +3.31pp  
+      PrizePicks      (non-executable)   -137      57.81          -8.58pp  
+  Consensus implied (executable books only):  66.38%
+  Gap (consensus − best raw):  +2.10pp
+  Classification: a) one-rogue-book
+
+── #22  Shohei Ohtani           Total Bases         1.5  OVER  (LAD @ LAA)
+  Verdict:   unqualified — front_lines_failed: gate_cv_fail
+  HR L5/L10/L20:  20.0/30.0/25.0
+  Projection: 2.245  (p_model=0.5947)
+  fair_prob: 0.5631   tp: 50.5%   consensus_edge: +3.16pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -110  total_edge=+10.48pp  best_book_edge(devig)=+1.51pp
+  best_book_devig_p=0.4899  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -123      55.16          +0.12pp  
+      FanDuel                            -135      57.45          +2.41pp  
+      BetMGM                             -110      52.38          -2.66pp  
+      Caesars                            -115      53.49          -1.55pp  
+      ESPN BET                           -115      53.49          -1.55pp  
+      BetRivers                          -130      56.52          +1.48pp  
+      Hard Rock                          -120      54.55          -0.49pp  
+      BetOnline                          -112      52.83          -2.21pp  
+      BetParx                            -130      56.52          +1.48pp  
+      Bally Bet                          -130      56.52          +1.48pp  
+      Fliff                              -130      56.52          +1.48pp  
+      PrizePicks      (non-executable)   -137      57.81          +2.77pp  
+  Consensus implied (executable books only):  55.04%
+  Gap (consensus − best raw):  +2.66pp
+  Classification: a) one-rogue-book
+
+── #23  Jung Hoo Lee            Singles             0.5  OVER  (SF @ OAK)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  20.0/40.0/50.0
+  Projection: 0.948  (p_model=0.6544)
+  fair_prob: 0.6175   tp: 57.4%   consensus_edge: +3.69pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -140  total_edge=+10.38pp  best_book_edge(devig)=+2.34pp
+  best_book_devig_p=0.5506  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -174      63.50          +1.96pp  
+      FanDuel                            -150      60.00          -1.55pp  
+      BetMGM                             -160      61.54          -0.01pp  
+      ESPN BET                           -140      58.33          -3.21pp  
+      Hard Rock                          -165      62.26          +0.72pp  
+      Fliff                              -175      63.64          +2.09pp  
+      PrizePicks      (non-executable)   -137      57.81          -3.74pp  
+  Consensus implied (executable books only):  61.55%
+  Gap (consensus − best raw):  +3.21pp
+  Classification: a) one-rogue-book
+
+── #24  Yandy Diaz              Singles             0.5  OVER  (TB vs MIA)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/60.0/60.0
+  Projection: 0.874  (p_model=0.6611)
+  fair_prob: 0.6269   tp: 56.1%   consensus_edge: +3.42pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -150  total_edge=+10.36pp  best_book_edge(devig)=+0.35pp
+  best_book_devig_p=0.5575  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -153      60.47          -0.80pp  
+      FanDuel                            -185      64.91          +3.64pp  
+      BetMGM                             -150      60.00          -1.28pp  
+      ESPN BET                           -150      60.00          -1.28pp  
+      Hard Rock                          -150      60.00          -1.28pp  
+      Fliff                              -165      62.26          +0.99pp  
+      PrizePicks      (non-executable)   -137      57.81          -3.47pp  
+  Consensus implied (executable books only):  61.28%
+  Gap (consensus − best raw):  +1.28pp
+  Classification: a) one-rogue-book
+
+── #25  Adolis Garcia           Hits                0.5  OVER  (PHI @ PIT)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/70.0/65.0
+  Projection: 1.03  (p_model=0.7092)
+  fair_prob: 0.6673   tp: 61.4%   consensus_edge: +4.19pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -180  total_edge=+10.25pp  best_book_edge(devig)=+0.73pp
+  best_book_devig_p=0.6067  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -212      67.95          +2.32pp  
+      FanDuel                            -190      65.52          -0.11pp  
+      BetMGM                             -185      64.91          -0.72pp  
+      Caesars                            -190      65.52          -0.11pp  
+      ESPN BET                           -180      64.29          -1.35pp  
+      BetRivers                          -180      64.29          -1.35pp  
+      Hard Rock                          -210      67.74          +2.11pp  
+      BetOnline                          -185      64.91          -0.72pp  
+      BetParx                            -180      64.29          -1.35pp  
+      Bally Bet                          -180      64.29          -1.35pp  
+      Fliff                              -215      68.25          +2.62pp  
+      PrizePicks      (non-executable)   -137      57.81          -7.83pp  
+  Consensus implied (executable books only):  65.63%
+  Gap (consensus − best raw):  +1.35pp
+  Classification: a) one-rogue-book
+
+── #26  Shohei Ohtani           Runs                0.5  OVER  (LAD @ LAA)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  40.0/40.0/45.0
+  Projection: 1.082  (p_model=0.6956)
+  fair_prob: 0.6535   tp: 60.0%   consensus_edge: +4.21pp
+  EXECUTABLE EDGE:  best_book=draftkings @ -178  total_edge=+10.21pp  best_book_edge(devig)=+0.65pp
+  best_book_devig_p=0.5935  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -178      64.03          -0.96pp  
+      FanDuel                            -200      66.67          +1.68pp  
+      BetMGM                             -185      64.91          -0.08pp  
+      Caesars                            -182      64.54          -0.45pp  
+      ESPN BET                           -180      64.29          -0.70pp  
+      Hard Rock                          -180      64.29          -0.70pp  
+      BetParx                            -186      65.03          +0.05pp  
+      Bally Bet                          -186      65.03          +0.05pp  
+      Fliff                              -195      66.10          +1.11pp  
+      PrizePicks      (non-executable)   -137      57.81          -7.18pp  
+  Consensus implied (executable books only):  64.99%
+  Gap (consensus − best raw):  +0.96pp
+  Classification: a) one-rogue-book
+
+── #27  Manny Machado           Hits                0.5  OVER  (SD @ SEA)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  20.0/50.0/50.0
+  Projection: 1.176  (p_model=0.6856)
+  fair_prob: 0.6460   tp: 59.5%   consensus_edge: +3.96pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -165  total_edge=+10.21pp  best_book_edge(devig)=+1.15pp
+  best_book_devig_p=0.5835  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -180      64.29          +0.22pp  
+      FanDuel                            -185      64.91          +0.84pp  
+      BetMGM                             -165      62.26          -1.81pp  
+      Caesars                            -176      63.77          -0.30pp  
+      ESPN BET                           -180      64.29          +0.22pp  
+      BetRivers                          -180      64.29          +0.22pp  
+      Hard Rock                          -175      63.64          -0.43pp  
+      BetOnline                          -172      63.24          -0.83pp  
+      BetParx                            -180      64.29          +0.22pp  
+      Bally Bet                          -180      64.29          +0.22pp  
+      Fliff                              -190      65.52          +1.45pp  
+      PrizePicks      (non-executable)   -137      57.81          -6.26pp  
+  Consensus implied (executable books only):  64.07%
+  Gap (consensus − best raw):  +1.81pp
+  Classification: a) one-rogue-book
+
+── #28  Adley Rutschman         Hits+Runs+RBIs      1.5  OVER  (BAL @ None)
+  Verdict:   unqualified — front_lines_failed: gate_cv_fail
+  HR L5/L10/L20:  80.0/40.0/40.0
+  Projection: 2.756  (p_model=0.6523)
+  fair_prob: 0.6161   tp: 55.9%   consensus_edge: +3.62pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -140  total_edge=+10.17pp  best_book_edge(devig)=+0.84pp
+  best_book_devig_p=0.5506  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -161      61.69          +1.36pp  
+      FanDuel                            -160      61.54          +1.21pp  
+      BetMGM                             -140      58.33          -1.99pp  
+      Caesars                            -148      59.68          -0.65pp  
+      ESPN BET                           -140      58.33          -1.99pp  
+      Hard Rock                          -155      60.78          +0.46pp  
+      BetOnline                          -150      60.00          -0.33pp  
+      Fliff                              -165      62.26          +1.94pp  
+      PrizePicks      (non-executable)   -137      57.81          -2.52pp  
+  Consensus implied (executable books only):  60.33%
+  Gap (consensus − best raw):  +1.99pp
+  Classification: a) one-rogue-book
+
+── #29  Kody Clemens            Hits                0.5  OVER  (MIN vs MIL)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  40.0/60.0/55.0
+  Projection: 0.794  (p_model=0.6401)
+  fair_prob: 0.6334   tp: 57.7%   consensus_edge: +0.67pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -140  total_edge=+10.16pp  best_book_edge(devig)=+3.85pp
+  best_book_devig_p=0.5385  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -181      64.41          +2.27pp  
+      FanDuel                            -165      62.26          +0.12pp  
+      BetMGM                             -140      58.33          -3.81pp  
+      Caesars                            -164      62.12          -0.03pp  
+      ESPN BET                           -160      61.54          -0.61pp  
+      Hard Rock                          -170      62.96          +0.82pp  
+      BetOnline                          -154      60.63          -1.52pp  
+      Fliff                              -185      64.91          +2.77pp  
+      PrizePicks      (non-executable)   -137      57.81          -4.34pp  
+  Consensus implied (executable books only):  62.15%
+  Gap (consensus − best raw):  +3.81pp
+  Classification: a) one-rogue-book
+
+── #30  CJ Abrams               Hits+Runs+RBIs      1.5  OVER  (WSH vs TB)
+  Verdict:   unqualified — front_lines_failed: gate_cv_fail
+  HR L5/L10/L20:  60.0/50.0/35.0
+  Projection: 2.222  (p_model=0.6012)
+  fair_prob: 0.5644   tp: 51.7%   consensus_edge: +3.68pp
+  EXECUTABLE EDGE:  best_book=draftkings @ -116  total_edge=+10.02pp  best_book_edge(devig)=+1.60pp
+  best_book_devig_p=0.501  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -116      53.70          -2.60pp  
+      FanDuel                            -145      59.18          +2.88pp  
+      BetMGM                             -125      55.56          -0.75pp  
+      Caesars                            -127      55.95          -0.36pp  
+      ESPN BET                           -130      56.52          +0.22pp  
+      Hard Rock                          -125      55.56          -0.75pp  
+      BetOnline                          -130      56.52          +0.22pp  
+      Fliff                              -135      57.45          +1.14pp  
+      PrizePicks      (non-executable)   -137      57.81          +1.50pp  
+  Consensus implied (executable books only):  56.30%
+  Gap (consensus − best raw):  +2.60pp
+  Classification: a) one-rogue-book
+
+── #31  Andrew Vaughn           Hits                0.5  OVER  (MIL @ MIN)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/60.0/60.0
+  Projection: 1.1253  (p_model=0.7317)
+  fair_prob: 0.6865   tp: 63.4%   consensus_edge: +4.52pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -210  total_edge=+9.83pp  best_book_edge(devig)=+0.06pp
+  best_book_devig_p=0.6334  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -218      68.55          +0.16pp  
+      FanDuel                            -220      68.75          +0.35pp  
+      BetMGM                             -210      67.74          -0.65pp  
+      Caesars                            -213      68.05          -0.35pp  
+      BetOnline                          -213      68.05          -0.35pp  
+      Fliff                              -225      69.23          +0.83pp  
+      PrizePicks      (non-executable)   -137      57.81         -10.59pp  
+  Consensus implied (executable books only):  68.40%
+  Gap (consensus − best raw):  +0.65pp
+  Classification: a) one-rogue-book
+
+── #32  Jacob Young             Hits                0.5  OVER  (WSH vs TB)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/70.0/60.0
+  Projection: 0.752  (p_model=0.6372)
+  fair_prob: 0.6357   tp: 58.3%   consensus_edge: +0.15pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -140  total_edge=+9.26pp  best_book_edge(devig)=+3.84pp
+  best_book_devig_p=0.5446  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -174      63.50          +0.85pp  
+      FanDuel                            -175      63.64          +0.99pp  
+      BetMGM                             -140      58.33          -4.32pp  
+      Caesars                            -173      63.37          +0.72pp  
+      ESPN BET                           -165      62.26          -0.39pp  
+      BetRivers                          -162      61.83          -0.82pp  
+      Hard Rock                          -185      64.91          +2.26pp  
+      BetOnline                          -164      62.12          -0.53pp  
+      BetParx                            -162      61.83          -0.82pp  
+      Bally Bet                          -162      61.83          -0.82pp  
+      Fliff                              -190      65.52          +2.87pp  
+      PrizePicks      (non-executable)   -137      57.81          -4.84pp  
+  Consensus implied (executable books only):  62.65%
+  Gap (consensus − best raw):  +4.32pp
+  Classification: a) one-rogue-book
+
+── #33  Jordan Walker           Hits+Runs+RBIs      1.5  OVER  (STL vs KC)
+  Verdict:   unqualified — front_lines_failed: gate_cv_fail
+  HR L5/L10/L20:  60.0/60.0/55.0
+  Projection: 2.08  (p_model=0.6188)
+  fair_prob: 0.5746   tp: 52.8%   consensus_edge: +4.42pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -125  total_edge=+9.25pp  best_book_edge(devig)=+0.17pp
+  best_book_devig_p=0.5263  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -126      55.75          -1.28pp  
+      FanDuel                            -145      59.18          +2.15pp  
+      BetMGM                             -125      55.56          -1.48pp  
+      Caesars                            -130      56.52          -0.51pp  
+      ESPN BET                           -130      56.52          -0.51pp  
+      Hard Rock                          -130      56.52          -0.51pp  
+      Fliff                              -145      59.18          +2.15pp  
+      PrizePicks      (non-executable)   -137      57.81          +0.77pp  
+  Consensus implied (executable books only):  57.03%
+  Gap (consensus − best raw):  +1.48pp
+  Classification: a) one-rogue-book
+
+── #34  Jordan Walker           Hits+Runs+RBIs      1.5  OVER  (STL vs KC)
+  Verdict:   unqualified — front_lines_failed: gate_cv_fail
+  HR L5/L10/L20:  60.0/60.0/55.0
+  Projection: 2.08  (p_model=0.6188)
+  fair_prob: 0.5746   tp: 52.6%   consensus_edge: +4.42pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -125  total_edge=+9.25pp  best_book_edge(devig)=-0.03pp
+  best_book_devig_p=0.5263  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -126      55.75          -1.16pp  
+      FanDuel                            -145      59.18          +2.27pp  
+      BetMGM                             -125      55.56          -1.36pp  
+      Caesars                            -130      56.52          -0.39pp  
+      ESPN BET                           -130      56.52          -0.39pp  
+      Hard Rock                          -130      56.52          -0.39pp  
+      Fliff                              -140      58.33          +1.42pp  
+      PrizePicks      (non-executable)   -137      57.81          +0.89pp  
+  Consensus implied (executable books only):  56.91%
+  Gap (consensus − best raw):  +1.36pp
+  Classification: a) one-rogue-book
+
+── #35  Jordan Walker           Hits+Runs+RBIs      1.5  OVER  (STL vs KC)
+  Verdict:   unqualified — front_lines_failed: gate_cv_fail
+  HR L5/L10/L20:  60.0/60.0/55.0
+  Projection: 2.08  (p_model=0.6188)
+  fair_prob: 0.5746   tp: 52.6%   consensus_edge: +4.42pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -125  total_edge=+9.25pp  best_book_edge(devig)=-0.03pp
+  best_book_devig_p=0.5263  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -126      55.75          -1.16pp  
+      FanDuel                            -145      59.18          +2.27pp  
+      BetMGM                             -125      55.56          -1.36pp  
+      Caesars                            -130      56.52          -0.39pp  
+      ESPN BET                           -130      56.52          -0.39pp  
+      Hard Rock                          -130      56.52          -0.39pp  
+      Fliff                              -140      58.33          +1.42pp  
+      PrizePicks      (non-executable)   -137      57.81          +0.89pp  
+  Consensus implied (executable books only):  56.91%
+  Gap (consensus − best raw):  +1.36pp
+  Classification: a) one-rogue-book
+
+── #36  Brett Baty              Hits+Runs+RBIs      0.5  OVER  (NYM vs NYY)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  40.0/40.0/45.0
+  Projection: 2.08  (p_model=0.6726)
+  fair_prob: 0.6275   tp: 58.4%   consensus_edge: +4.51pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -160  total_edge=+9.20pp  best_book_edge(devig)=+0.34pp
+  best_book_devig_p=0.5806  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -172      63.24          +0.47pp  
+      FanDuel                            -165      62.26          -0.50pp  
+      BetMGM                             -165      62.26          -0.50pp  
+      Caesars                            -164      62.12          -0.64pp  
+      ESPN BET                           -160      61.54          -1.23pp  
+      Hard Rock                          -175      63.64          +0.87pp  
+      Fliff                              -180      64.29          +1.52pp  
+      PrizePicks      (non-executable)   -137      57.81          -4.96pp  
+  Consensus implied (executable books only):  62.76%
+  Gap (consensus − best raw):  +1.23pp
+  Classification: a) one-rogue-book
+
+── #37  Adley Rutschman         Singles             0.5  OVER  (BAL @ None)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/40.0/60.0
+  Projection: 0.66  (p_model=0.6020)
+  fair_prob: 0.6061   tp: 53.1%   consensus_edge: -0.41pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -120  total_edge=+9.19pp  best_book_edge(devig)=+2.09pp
+  best_book_devig_p=0.5101  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -148      59.68          +1.54pp  
+      FanDuel                            -160      61.54          +3.40pp  
+      BetMGM                             -120      54.55          -3.59pp  
+      ESPN BET                           -130      56.52          -1.61pp  
+      Hard Rock                          -130      56.52          -1.61pp  
+      Fliff                              -150      60.00          +1.87pp  
+      PrizePicks      (non-executable)   -137      57.81          -0.33pp  
+  Consensus implied (executable books only):  58.13%
+  Gap (consensus − best raw):  +3.59pp
+  Classification: a) one-rogue-book
+
+── #38  Edouard Julien          Singles             0.5  OVER  (COL vs ARI)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  20.0/60.0/50.0
+  Projection: 0.71  (p_model=0.6018)
+  fair_prob: 0.5771   tp: 52.4%   consensus_edge: +2.47pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -120  total_edge=+9.17pp  best_book_edge(devig)=+1.39pp
+  best_book_devig_p=0.5101  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -133      57.08          +0.19pp  
+      FanDuel                            -140      58.33          +1.44pp  
+      BetMGM                             -120      54.55          -2.34pp  
+      ESPN BET                           -130      56.52          -0.37pp  
+      Hard Rock                          -130      56.52          -0.37pp  
+      Fliff                              -140      58.33          +1.44pp  
+      PrizePicks      (non-executable)   -137      57.81          +0.92pp  
+  Consensus implied (executable books only):  56.89%
+  Gap (consensus − best raw):  +2.34pp
+  Classification: a) one-rogue-book
+
+── #39  Kyle Tucker             Hits                0.5  OVER  (LAD @ LAA)
+  Verdict:   unqualified — front_lines_failed: gate_edge_fail
+  HR L5/L10/L20:  100.0/90.0/80.0
+  Projection: 0.89  (p_model=0.7278)
+  fair_prob: 0.7145   tp: 65.8%   consensus_edge: +1.33pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -220  total_edge=+9.10pp  best_book_edge(devig)=+2.12pp
+  best_book_devig_p=0.6368  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -273      73.19          +1.96pp  
+      FanDuel                            -230      69.70          -1.53pp  
+      BetMGM                             -220      68.75          -2.48pp  
+      Caesars                            -230      69.70          -1.53pp  
+      ESPN BET                           -220      68.75          -2.48pp  
+      BetRivers                          -265      72.60          +1.38pp  
+      Hard Rock                          -275      73.33          +2.11pp  
+      BetOnline                          -222      68.94          -2.28pp  
+      BetParx                            -265      72.60          +1.38pp  
+      Bally Bet                          -265      72.60          +1.38pp  
+      Fliff                              -275      73.33          +2.11pp  
+      PrizePicks      (non-executable)   -137      57.81         -13.42pp  
+  Consensus implied (executable books only):  71.23%
+  Gap (consensus − best raw):  +2.48pp
+  Classification: a) one-rogue-book
+
+── #40  Troy Johnston           Hits+Runs+RBIs      1.5  OVER  (COL vs ARI)
+  Verdict:   unqualified — front_lines_failed: gate_cv_fail
+  HR L5/L10/L20:  60.0/70.0/60.0
+  Projection: 2.166  (p_model=0.6428)
+  fair_prob: 0.6108   tp: 56.4%   consensus_edge: +3.20pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -135  total_edge=+9.02pp  best_book_edge(devig)=+1.14pp
+  best_book_devig_p=0.5526  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -154      60.63          +0.13pp  
+      FanDuel                            -160      61.54          +1.04pp  
+      BetMGM                             -135      57.45          -3.05pp  
+      Caesars                            -154      60.63          +0.13pp  
+      ESPN BET                           -150      60.00          -0.50pp  
+      Hard Rock                          -155      60.78          +0.29pp  
+      BetOnline                          -150      60.00          -0.50pp  
+      Fliff                              -170      62.96          +2.46pp  
+      PrizePicks      (non-executable)   -137      57.81          -2.69pp  
+  Consensus implied (executable books only):  60.50%
+  Gap (consensus − best raw):  +3.05pp
+  Classification: a) one-rogue-book
+
+── #41  Travis Bazzana          Hits                0.5  OVER  (CLE vs CIN)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/50.0/50.0
+  Projection: 0.7745  (p_model=0.6101)
+  fair_prob: 0.5902   tp: 53.5%   consensus_edge: +1.99pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -125  total_edge=+8.98pp  best_book_edge(devig)=+1.47pp
+  best_book_devig_p=0.5203  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -134      57.26          -0.69pp  
+      FanDuel                            -155      60.78          +2.83pp  
+      BetMGM                             -125      55.56          -2.40pp  
+      Caesars                            -137      57.81          -0.15pp  
+      ESPN BET                           -130      56.52          -1.43pp  
+      BetRivers                          -139      58.16          +0.21pp  
+      Hard Rock                          -140      58.33          +0.38pp  
+      BetOnline                          -127      55.95          -2.01pp  
+      BetParx                            -139      58.16          +0.21pp  
+      Bally Bet                          -139      58.16          +0.21pp  
+      Fliff                              -155      60.78          +2.83pp  
+      PrizePicks      (non-executable)   -137      57.81          -0.15pp  
+  Consensus implied (executable books only):  57.95%
+  Gap (consensus − best raw):  +2.40pp
+  Classification: a) one-rogue-book
+
+── #42  Ryan Jeffers            Hits                0.5  OVER  (MIN vs MIL)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/80.0/65.0
+  Projection: 1.0  (p_model=0.6963)
+  fair_prob: 0.6804   tp: 62.9%   consensus_edge: +1.59pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -180  total_edge=+8.96pp  best_book_edge(devig)=+2.23pp
+  best_book_devig_p=0.6067  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -227      69.42          +1.91pp  
+      FanDuel                            -200      66.67          -0.84pp  
+      BetMGM                             -200      66.67          -0.84pp  
+      Caesars                            -200      66.67          -0.84pp  
+      ESPN BET                           -180      64.29          -3.22pp  
+      BetRivers                          -215      68.25          +0.75pp  
+      Hard Rock                          -210      67.74          +0.24pp  
+      BetOnline                          -204      67.11          -0.40pp  
+      BetParx                            -215      68.25          +0.75pp  
+      Bally Bet                          -215      68.25          +0.75pp  
+      Fliff                              -225      69.23          +1.73pp  
+      PrizePicks      (non-executable)   -137      57.81          -9.70pp  
+  Consensus implied (executable books only):  67.50%
+  Gap (consensus − best raw):  +3.22pp
+  Classification: a) one-rogue-book
+
+── #43  Brandon Nimmo           Total Bases         0.5  OVER  (TEX @ HOU)
+  Verdict:   unqualified — front_lines_failed: gate_edge_fail
+  HR L5/L10/L20:  80.0/70.0/70.0
+  Projection: 1.075  (p_model=0.7232)
+  fair_prob: 0.6875   tp: 63.4%   consensus_edge: +3.57pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -200  total_edge=+8.91pp  best_book_edge(devig)=-0.01pp
+  best_book_devig_p=0.6341  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -220      68.75          -1.26pp  
+      ESPN BET                           -200      66.67          -3.35pp  
+      BetOnline                          -294      74.62          +4.61pp  
+      PrizePicks      (non-executable)   -137      57.81         -12.21pp  
+  Consensus implied (executable books only):  70.01%
+  Gap (consensus − best raw):  +3.35pp
+  Classification: d) legitimate-disagreement
+
+── #44  Jake McCarthy           Hits+Runs+RBIs      1.5  OVER  (COL vs ARI)
+  Verdict:   unqualified — front_lines_failed: gate_cv_fail
+  HR L5/L10/L20:  60.0/80.0/45.0
+  Projection: 1.998  (p_model=0.5997)
+  fair_prob: 0.5671   tp: 52.4%   consensus_edge: +3.26pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -115  total_edge=+8.89pp  best_book_edge(devig)=+1.32pp
+  best_book_devig_p=0.5108  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -132      56.90          +0.68pp  
+      FanDuel                            -130      56.52          +0.30pp  
+      BetMGM                             -115      53.49          -2.73pp  
+      Caesars                            -124      55.36          -0.86pp  
+      ESPN BET                           -130      56.52          +0.30pp  
+      Hard Rock                          -125      55.56          -0.66pp  
+      Fliff                              -145      59.18          +2.97pp  
+      PrizePicks      (non-executable)   -137      57.81          +1.59pp  
+  Consensus implied (executable books only):  56.22%
+  Gap (consensus − best raw):  +2.73pp
+  Classification: a) one-rogue-book
+
+── #45  JJ Wetherholt           Total Bases         0.5  OVER  (STL vs KC)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  40.0/70.0/70.0
+  Projection: 1.43  (p_model=0.7225)
+  fair_prob: 0.6875   tp: 63.4%   consensus_edge: +3.50pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -200  total_edge=+8.84pp  best_book_edge(devig)=-0.01pp
+  best_book_devig_p=0.6341  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -220      68.75          -0.36pp  
+      ESPN BET                           -200      66.67          -2.44pp  
+      BetOnline                          -256      71.91          +2.80pp  
+      PrizePicks      (non-executable)   -137      57.81         -11.30pp  
+  Consensus implied (executable books only):  69.11%
+  Gap (consensus − best raw):  +2.44pp
+  Classification: c) market-fragmentation
+
+── #46  Alex Bregman            Hits                0.5  OVER  (CHC @ CHW)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/60.0/70.0
+  Projection: 1.022  (p_model=0.7217)
+  fair_prob: 0.6941   tp: 63.9%   consensus_edge: +2.76pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -200  total_edge=+8.76pp  best_book_edge(devig)=+0.49pp
+  best_book_devig_p=0.6341  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -234      70.06          +1.44pp  
+      FanDuel                            -220      68.75          +0.13pp  
+      BetMGM                             -210      67.74          -0.88pp  
+      Caesars                            -218      68.55          -0.07pp  
+      ESPN BET                           -200      66.67          -1.95pp  
+      BetRivers                          -215      68.25          -0.37pp  
+      Hard Rock                          -225      69.23          +0.61pp  
+      BetOnline                          -213      68.05          -0.57pp  
+      BetParx                            -215      68.25          -0.37pp  
+      Bally Bet                          -215      68.25          -0.37pp  
+      Fliff                              -245      71.01          +2.39pp  
+      PrizePicks      (non-executable)   -137      57.81         -10.82pp  
+  Consensus implied (executable books only):  68.62%
+  Gap (consensus − best raw):  +1.95pp
+  Classification: a) one-rogue-book
+
+── #47  Ernie Clement           Hits                0.5  OVER  (TOR @ SF)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/60.0/75.0
+  Projection: 0.962  (p_model=0.7294)
+  fair_prob: 0.6865   tp: 65.1%   consensus_edge: +4.29pp
+  EXECUTABLE EDGE:  best_book=draftkings @ -218  total_edge=+8.70pp  best_book_edge(devig)=+0.86pp
+  best_book_devig_p=0.6424  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -218      68.55          -1.66pp  
+      FanDuel                            -220      68.75          -1.47pp  
+      BetMGM                             -220      68.75          -1.47pp  
+      Caesars                            -230      69.70          -0.52pp  
+      ESPN BET                           -220      68.75          -1.47pp  
+      BetRivers                          -265      72.60          +2.39pp  
+      Hard Rock                          -230      69.70          -0.52pp  
+      BetOnline                          -222      68.94          -1.27pp  
+      BetParx                            -265      72.60          +2.39pp  
+      Bally Bet                          -265      72.60          +2.39pp  
+      Fliff                              -250      71.43          +1.21pp  
+      PrizePicks      (non-executable)   -137      57.81         -12.41pp  
+  Consensus implied (executable books only):  70.22%
+  Gap (consensus − best raw):  +1.66pp
+  Classification: a) one-rogue-book
+
+── #48  Sam Antonacci           Singles             0.5  OVER  (CHW vs CHC)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/60.0/50.0
+  Projection: 0.696  (p_model=0.5971)
+  fair_prob: 0.5779   tp: 52.1%   consensus_edge: +1.92pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -120  total_edge=+8.70pp  best_book_edge(devig)=+1.09pp
+  best_book_devig_p=0.5101  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -134      57.26          +0.65pp  
+      FanDuel                            -140      58.33          +1.72pp  
+      BetMGM                             -120      54.55          -2.07pp  
+      ESPN BET                           -130      56.52          -0.09pp  
+      Hard Rock                          -125      55.56          -1.06pp  
+      Fliff                              -135      57.45          +0.84pp  
+      PrizePicks      (non-executable)   -137      57.81          +1.19pp  
+  Consensus implied (executable books only):  56.61%
+  Gap (consensus − best raw):  +2.07pp
+  Classification: a) one-rogue-book
+
+── #49  Salvador Perez          Singles             0.5  OVER  (KC @ STL)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/70.0/55.0
+  Projection: 0.668  (p_model=0.5869)
+  fair_prob: 0.5474   tp: 50.4%   consensus_edge: +3.95pp
+  EXECUTABLE EDGE:  best_book=hardrockbet @ -115  total_edge=+8.69pp  best_book_edge(devig)=+0.40pp
+  best_book_devig_p=0.5  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -117      53.92          -0.68pp  
+      FanDuel                            -125      55.56          +0.95pp  
+      BetMGM                             -120      54.55          -0.06pp  
+      ESPN BET                           -120      54.55          -0.06pp  
+      Hard Rock                          -115      53.49          -1.11pp  
+      Fliff                              -125      55.56          +0.95pp  
+      PrizePicks      (non-executable)   -137      57.81          +3.20pp  
+  Consensus implied (executable books only):  54.60%
+  Gap (consensus − best raw):  +1.11pp
+  Classification: a) one-rogue-book
+
+── #50  Daylen Lile             Total Bases         0.5  OVER  (WSH vs TB)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  40.0/30.0/55.0
+  Projection: 1.73  (p_model=0.7208)
+  fair_prob: 0.6875   tp: 63.4%   consensus_edge: +3.33pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -200  total_edge=+8.67pp  best_book_edge(devig)=-0.01pp
+  best_book_devig_p=0.6341  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -220      68.75          -1.26pp  
+      ESPN BET                           -200      66.67          -3.35pp  
+      BetOnline                          -294      74.62          +4.61pp  
+      PrizePicks      (non-executable)   -137      57.81         -12.21pp  
+  Consensus implied (executable books only):  70.01%
+  Gap (consensus − best raw):  +3.35pp
+  Classification: d) legitimate-disagreement
+
+── #51  Jacob Young             Hits+Runs+RBIs      0.5  OVER  (WSH vs TB)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/70.0/65.0
+  Projection: 1.558  (p_model=0.7417)
+  fair_prob: 0.7014   tp: 68.6%   consensus_edge: +4.03pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -190  total_edge=+8.65pp  best_book_edge(devig)=+3.08pp
+  best_book_devig_p=None  shopping_edge_source=devig_vs_raw
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -221      68.85          +0.25pp  
+      FanDuel                            -250      71.43          +2.83pp  
+      BetMGM                             -190      65.52          -3.08pp  
+      PrizePicks      (non-executable)   -137      57.81         -10.79pp  
+  Consensus implied (executable books only):  68.60%
+  Gap (consensus − best raw):  +3.08pp
+  Classification: c) market-fragmentation
+
+── #52  Kyle Stowers            Total Bases         0.5  OVER  (MIA @ TB)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/80.0/50.0
+  Projection: 0.795  (p_model=0.6968)
+  fair_prob: 0.6552   tp: 61.6%   consensus_edge: +4.16pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -190  total_edge=+8.55pp  best_book_edge(devig)=+0.47pp
+  best_book_devig_p=0.6113  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -190      65.52          -1.97pp  
+      ESPN BET                           -190      65.52          -1.97pp  
+      BetOnline                          -250      71.43          +3.94pp  
+      PrizePicks      (non-executable)   -137      57.81          -9.68pp  
+  Consensus implied (executable books only):  67.49%
+  Gap (consensus − best raw):  +1.97pp
+  Classification: c) market-fragmentation
+
+── #53  Drew Romo               Total Bases         0.5  OVER  (CHW vs CHC)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  40.0/30.0/25.0
+  Projection: 0.755  (p_model=0.5958)
+  fair_prob: 0.5556   tp: 51.7%   consensus_edge: +4.02pp
+  EXECUTABLE EDGE:  best_book=betonline @ -119  total_edge=+8.55pp  best_book_edge(devig)=+0.67pp
+  best_book_devig_p=0.5103  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -125      55.56          -0.22pp  
+      Caesars                            -127      55.95          +0.17pp  
+      ESPN BET                           -130      56.52          +0.74pp  
+      BetOnline                          -119      54.34          -1.44pp  
+      Fliff                              -130      56.52          +0.74pp  
+      PrizePicks      (non-executable)   -137      57.81          +2.03pp  
+  Consensus implied (executable books only):  55.78%
+  Gap (consensus − best raw):  +1.44pp
+  Classification: a) one-rogue-book
+
+── #54  Liam Hicks              Hits+Runs+RBIs      1.5  OVER  (MIA @ TB)
+  Verdict:   unqualified — front_lines_failed: gate_cv_fail
+  HR L5/L10/L20:  20.0/50.0/50.0
+  Projection: 1.848  (p_model=0.5842)
+  fair_prob: 0.5349   tp: 50.6%   consensus_edge: +4.93pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -105  total_edge=+8.42pp  best_book_edge(devig)=+0.60pp
+  best_book_devig_p=0.5  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      FanDuel                            -115      53.49          -0.76pp  
+      BetMGM                             -105      51.22          -3.02pp  
+      Caesars                            -117      53.92          -0.33pp  
+      ESPN BET                           -120      54.55          +0.30pp  
+      Hard Rock                          -120      54.55          +0.30pp  
+      BetOnline                          -120      54.55          +0.30pp  
+      Fliff                              -135      57.45          +3.20pp  
+      PrizePicks      (non-executable)   -137      57.81          +3.56pp  
+  Consensus implied (executable books only):  54.24%
+  Gap (consensus − best raw):  +3.02pp
+  Classification: a) one-rogue-book
+
+── #55  Jesus Rodriguez         Total Bases         0.5  OVER  (SF @ OAK)
+  Verdict:   unqualified — front_lines_failed: gate_edge_fail
+  HR L5/L10/L20:  80.0/70.0/70.0
+  Projection: 1.2285  (p_model=0.6948)
+  fair_prob: 0.6552   tp: 61.7%   consensus_edge: +3.96pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -190  total_edge=+8.35pp  best_book_edge(devig)=+0.57pp
+  best_book_devig_p=0.6113  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -190      65.52          -1.19pp  
+      Caesars                            -197      66.33          -0.38pp  
+      BetOnline                          -192      65.75          -0.95pp  
+      Fliff                              -225      69.23          +2.52pp  
+      PrizePicks      (non-executable)   -137      57.81          -8.90pp  
+  Consensus implied (executable books only):  66.71%
+  Gap (consensus − best raw):  +1.19pp
+  Classification: a) one-rogue-book
+
+── #56  Angel Martinez          Singles             0.5  OVER  (CLE vs CIN)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  40.0/40.0/35.0
+  Projection: 0.666  (p_model=0.5587)
+  fair_prob: 0.5565   tp: 50.0%   consensus_edge: +0.22pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -105  total_edge=+8.33pp  best_book_edge(devig)=+2.46pp
+  best_book_devig_p=0.4754  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -126      55.75          +1.40pp  
+      FanDuel                            -125      55.56          +1.20pp  
+      BetMGM                             -105      51.22          -3.13pp  
+      ESPN BET                           -120      54.55          +0.19pp  
+      Hard Rock                          -115      53.49          -0.86pp  
+      Fliff                              -125      55.56          +1.20pp  
+      PrizePicks      (non-executable)   -137      57.81          +3.45pp  
+  Consensus implied (executable books only):  54.35%
+  Gap (consensus − best raw):  +3.13pp
+  Classification: a) one-rogue-book
+
+── #57  Jo Adell                Hits                0.5  OVER  (LAA vs LAD)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/70.0/65.0
+  Projection: 0.792  (p_model=0.6495)
+  fair_prob: 0.6353   tp: 58.9%   consensus_edge: +1.42pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -155  total_edge=+8.30pp  best_book_edge(devig)=+2.25pp
+  best_book_devig_p=0.5665  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -184      64.79          +1.31pp  
+      FanDuel                            -165      62.26          -1.22pp  
+      BetMGM                             -155      60.78          -2.70pp  
+      Caesars                            -164      62.12          -1.36pp  
+      ESPN BET                           -160      61.54          -1.94pp  
+      BetRivers                          -190      65.52          +2.04pp  
+      Hard Rock                          -175      63.64          +0.16pp  
+      BetOnline                          -161      61.69          -1.79pp  
+      BetParx                            -190      65.52          +2.04pp  
+      Bally Bet                          -190      65.52          +2.04pp  
+      Fliff                              -185      64.91          +1.43pp  
+      PrizePicks      (non-executable)   -137      57.81          -5.67pp  
+  Consensus implied (executable books only):  63.48%
+  Gap (consensus − best raw):  +2.70pp
+  Classification: a) one-rogue-book
+
+── #58  Ildemaro Vargas         Hits+Runs+RBIs      1.5  OVER  (ARI @ COL)
+  Verdict:   unqualified — front_lines_failed: gate_cv_fail
+  HR L5/L10/L20:  40.0/60.0/65.0
+  Projection: 3.56  (p_model=0.7320)
+  fair_prob: 0.6880   tp: 67.5%   consensus_edge: +4.40pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -185  total_edge=+8.29pp  best_book_edge(devig)=+2.59pp
+  best_book_devig_p=None  shopping_edge_source=devig_vs_raw
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -221      68.85          +1.34pp  
+      FanDuel                            -220      68.75          +1.25pp  
+      BetMGM                             -185      64.91          -2.59pp  
+      PrizePicks      (non-executable)   -137      57.81          -9.70pp  
+  Consensus implied (executable books only):  67.50%
+  Gap (consensus − best raw):  +2.59pp
+  Classification: c) market-fragmentation
+
+── #59  Mickey Moniak           Total Bases         1.5  OVER  (COL vs ARI)
+  Verdict:   unqualified — front_lines_failed: gate_cv_fail
+  HR L5/L10/L20:  60.0/40.0/50.0
+  Projection: 2.24  (p_model=0.6271)
+  fair_prob: 0.6019   tp: 55.4%   consensus_edge: +2.52pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -140  total_edge=+8.25pp  best_book_edge(devig)=+0.94pp
+  best_book_devig_p=0.5446  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -143      58.85          -1.02pp  
+      FanDuel                            -160      61.54          +1.67pp  
+      BetMGM                             -140      58.33          -1.54pp  
+      Caesars                            -155      60.78          +0.92pp  
+      ESPN BET                           -140      58.33          -1.54pp  
+      Hard Rock                          -150      60.00          +0.13pp  
+      BetOnline                          -143      58.85          -1.02pp  
+      Fliff                              -165      62.26          +2.40pp  
+      PrizePicks      (non-executable)   -137      57.81          -2.06pp  
+  Consensus implied (executable books only):  59.87%
+  Gap (consensus − best raw):  +1.54pp
+  Classification: a) one-rogue-book
+
+── #60  Casey Schmitt           Hits+Runs+RBIs      1.5  OVER  (SF @ OAK)
+  Verdict:   unqualified — front_lines_failed: gate_cv_fail
+  HR L5/L10/L20:  60.0/60.0/50.0
+  Projection: 2.018  (p_model=0.6127)
+  fair_prob: 0.5884   tp: 53.7%   consensus_edge: +2.43pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -130  total_edge=+8.21pp  best_book_edge(devig)=+0.64pp
+  best_book_devig_p=0.5306  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -141      58.51          +0.47pp  
+      FanDuel                            -145      59.18          +1.14pp  
+      BetMGM                             -135      57.45          -0.59pp  
+      Caesars                            -137      57.81          -0.23pp  
+      ESPN BET                           -130      56.52          -1.52pp  
+      Hard Rock                          -130      56.52          -1.52pp  
+      BetOnline                          -140      58.33          +0.29pp  
+      Fliff                              -150      60.00          +1.96pp  
+      PrizePicks      (non-executable)   -137      57.81          -0.23pp  
+  Consensus implied (executable books only):  58.04%
+  Gap (consensus − best raw):  +1.52pp
+  Classification: a) one-rogue-book
+
+── #61  Mark Vientos            Total Bases         0.5  OVER  (NYM vs NYY)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  80.0/70.0/50.0
+  Projection: 1.09  (p_model=0.6266)
+  fair_prob: 0.5833   tp: 55.3%   consensus_edge: +4.33pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -140  total_edge=+8.20pp  best_book_edge(devig)=+0.84pp
+  best_book_devig_p=0.5446  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -140      58.33          -1.06pp  
+      Caesars                            -143      58.85          -0.54pp  
+      ESPN BET                           -140      58.33          -1.06pp  
+      BetOnline                          -145      59.18          -0.21pp  
+      Fliff                              -165      62.26          +2.87pp  
+      PrizePicks      (non-executable)   -137      57.81          -1.59pp  
+  Consensus implied (executable books only):  59.39%
+  Gap (consensus − best raw):  +1.06pp
+  Classification: a) one-rogue-book
+
+── #62  Brandon Nimmo           Hits                0.5  OVER  (TEX @ HOU)
+  Verdict:   unqualified — front_lines_failed: gate_edge_fail
+  HR L5/L10/L20:  80.0/70.0/70.0
+  Projection: 0.838  (p_model=0.6932)
+  fair_prob: 0.6916   tp: 63.6%   consensus_edge: +0.16pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -190  total_edge=+8.19pp  best_book_edge(devig)=+2.47pp
+  best_book_devig_p=0.6113  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -210      67.74          -1.19pp  
+      FanDuel                            -240      70.59          +1.66pp  
+      BetMGM                             -190      65.52          -3.41pp  
+      Caesars                            -209      67.64          -1.29pp  
+      ESPN BET                           -220      68.75          -0.18pp  
+      BetRivers                          -245      71.01          +2.08pp  
+      Hard Rock                          -210      67.74          -1.19pp  
+      BetOnline                          -196      66.22          -2.72pp  
+      BetParx                            -245      71.01          +2.08pp  
+      Bally Bet                          -245      71.01          +2.08pp  
+      Fliff                              -245      71.01          +2.08pp  
+      PrizePicks      (non-executable)   -137      57.81         -11.13pp  
+  Consensus implied (executable books only):  68.93%
+  Gap (consensus − best raw):  +3.41pp
+  Classification: a) one-rogue-book
+
+── #63  Dillon Dingler          Total Bases         0.5  OVER  (DET @ None)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  80.0/60.0/55.0
+  Projection: 1.63  (p_model=0.7021)
+  fair_prob: 0.6667   tp: 62.1%   consensus_edge: +3.54pp
+  EXECUTABLE EDGE:  best_book=espnbet @ -190  total_edge=+8.12pp  best_book_edge(devig)=+0.01pp
+  best_book_devig_p=0.6209  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      BetMGM                             -200      66.67          -1.04pp  
+      ESPN BET                           -190      65.52          -2.19pp  
+      BetOnline                          -244      70.93          +3.23pp  
+      PrizePicks      (non-executable)   -137      57.81          -9.90pp  
+  Consensus implied (executable books only):  67.70%
+  Gap (consensus − best raw):  +2.19pp
+  Classification: c) market-fragmentation
+
+── #64  Corey Seager            Hits+Runs+RBIs      1.5  OVER  (TEX @ HOU)
+  Verdict:   unqualified — front_lines_failed: gate_cv_fail
+  HR L5/L10/L20:  20.0/20.0/40.0
+  Projection: 1.986  (p_model=0.5949)
+  fair_prob: 0.5640   tp: 51.9%   consensus_edge: +3.09pp
+  EXECUTABLE EDGE:  best_book=draftkings @ -124  total_edge=+8.11pp  best_book_edge(devig)=+0.52pp
+  best_book_devig_p=0.5138  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -124      55.36          -0.89pp  
+      FanDuel                            -135      57.45          +1.20pp  
+      BetMGM                             -125      55.56          -0.69pp  
+      Caesars                            -125      55.56          -0.69pp  
+      ESPN BET                           -130      56.52          +0.28pp  
+      Hard Rock                          -125      55.56          -0.69pp  
+      BetOnline                          -130      56.52          +0.28pp  
+      Fliff                              -135      57.45          +1.20pp  
+      PrizePicks      (non-executable)   -137      57.81          +1.56pp  
+  Consensus implied (executable books only):  56.25%
+  Gap (consensus − best raw):  +0.89pp
+  Classification: a) one-rogue-book
+
+── #65  Isaac Collins           Hits                0.5  OVER  (KC @ STL)
+  Verdict:   unqualified — front_lines_failed: gate_hit_rate_fail
+  HR L5/L10/L20:  60.0/60.0/55.0
+  Projection: 0.876  (p_model=0.6552)
+  fair_prob: 0.6330   tp: 58.5%   consensus_edge: +2.22pp
+  EXECUTABLE EDGE:  best_book=betmgm @ -160  total_edge=+8.00pp  best_book_edge(devig)=+0.98pp
+  best_book_devig_p=0.5752  shopping_edge_source=devig_vs_devig
+  Per-book board:
+      BOOK             ODDS  IMPLIED %   Δ vs consensus
+      DraftKings                         -175      63.64          +1.04pp  
+      FanDuel                            -170      62.96          +0.36pp  
+      BetMGM                             -160      61.54          -1.06pp  
+      Caesars                            -164      62.12          -0.48pp  
+      ESPN BET                           -160      61.54          -1.06pp  
+      BetRivers                          -165      62.26          -0.33pp  
+      Hard Rock                          -170      62.96          +0.36pp  
+      BetOnline                          -164      62.12          -0.48pp  
+      BetParx                            -165      62.26          -0.33pp  
+      Bally Bet                          -165      62.26          -0.33pp  
+      Fliff                              -185      64.91          +2.31pp  
+      PrizePicks      (non-executable)   -137      57.81          -4.79pp  
+  Consensus implied (executable books only):  62.60%
+  Gap (consensus − best raw):  +1.06pp
+  Classification: a) one-rogue-book
+
+==============================================================================================================
+SUMMARY
+==============================================================================================================
+
+1. Actionable count under executable-edge architecture: 65
+
+2. Books producing exploitable best lines (count):
+   BetMGM               (betmgm): 41
+   ESPN BET             (espnbet): 16
+   DraftKings           (draftkings): 4
+   BetOnline            (betonline): 2
+   Caesars              (caesars): 1
+   Hard Rock            (hardrockbet): 1
+
+3. Stat-family breakdown:
+   Hits                  : 24
+   Total Bases           : 16
+   Hits+Runs+RBIs        : 15
+   Singles               : 9
+   Runs                  : 1
+
+4. Source classification:
+   a) one-rogue-book             : 57
+   c) market-fragmentation       : 5
+   d) legitimate-disagreement    : 3
