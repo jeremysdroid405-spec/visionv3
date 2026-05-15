@@ -602,20 +602,18 @@ class UniversalGateEngine:
 
     @staticmethod
     def _eval_direction(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
-        """Direction-consistency gate (configurable per tier and side).
+        """Direction-consistency gate — UNIVERSAL, side-lean only (2026-05-15).
 
-        OVER-side config (existing):
-            {"applies_to_sides": ["OVER"],
-             "min_projection_minus_line": 0.0,        # FL: proj >= line
-             "min_projection_to_line_ratio": 1.0}     # WZ: proj >= line * 1.05
+        Pure semantics — no hidden confidence/cushion thresholds:
+            OVER  passes iff  projection > line   (strict)
+            UNDER passes iff  projection < line   (strict)
+            Equality (projection == line) fails — no side-lean.
 
-        UNDER-side config (NBA UNDER tuning, 2026-04-29):
-            {"applies_to_sides": ["UNDER"],
-             "max_projection_minus_line": 0.0,        # proj <= line + X
-             "min_line_minus_projection_ratio": 0.15} # (line - proj) / line >= X
-
-        Both directional thresholds may be set; ALL configured thresholds
-        must hold. Sides not in `applies_to_sides` auto-pass.
+        Other quality concerns (margin, CV, edge magnitude, hit-rate)
+        live in their OWN gates. Direction MUST NOT act as a hidden
+        confidence floor. Historical config keys are accepted for
+        backwards compatibility but only their SIGN (>0 / <0) is
+        honoured; any positive cushion is ignored.
         """
         applies = {s.upper() for s in cfg.get("applies_to_sides", ["OVER"])}
         side_uc = (m.side or "").upper()
@@ -638,39 +636,24 @@ class UniversalGateEngine:
                 reason_code=ReasonCode.DIRECTION_FAIL,
                 note="direction_gate_missing_inputs",
             )
-        diff = proj - line                                  # OVER-flavoured
-        line_minus_proj = (line - proj)                     # UNDER-flavoured
-        ratio_proj_over_line = (proj / line) if line not in (0, 0.0) else None
-        ratio_line_minus_proj = (line_minus_proj / line) if line not in (0, 0.0) else None
 
-        passed = True
-        # OVER-side checks (proj >= line + X / proj >= line * X)
-        if "min_projection_minus_line" in cfg:
-            if diff < float(cfg["min_projection_minus_line"]):
-                passed = False
-        if "min_projection_to_line_ratio" in cfg:
-            if (ratio_proj_over_line is None or
-                    ratio_proj_over_line < float(cfg["min_projection_to_line_ratio"])):
-                passed = False
-
-        # UNDER-side checks (proj <= line - X / (line-proj)/line >= X)
-        if "max_projection_minus_line" in cfg:
-            if diff > float(cfg["max_projection_minus_line"]):
-                passed = False
-        if "min_line_minus_projection_ratio" in cfg:
-            if (ratio_line_minus_proj is None or
-                    ratio_line_minus_proj < float(cfg["min_line_minus_projection_ratio"])):
-                passed = False
+        diff = proj - line
+        if side_uc == "OVER":
+            passed = diff > 0          # strict; equality fails
+            cmp_str = ">"
+        elif side_uc == "UNDER":
+            passed = diff < 0          # strict; equality fails
+            cmp_str = "<"
+        else:
+            # Shouldn't reach (applies-to filter handled), but be safe.
+            passed = False
+            cmp_str = ">"
 
         return GateDetail(
-            gate_type="direction_gate", threshold=cfg,
+            gate_type="direction_gate", threshold={"rule": f"projection {cmp_str} line"},
             actual={"projection": round(proj, 4), "line": line,
-                    "diff": round(diff, 4),
-                    "ratio_proj/line": round(ratio_proj_over_line, 4)
-                                          if ratio_proj_over_line is not None else None,
-                    "ratio_(line-proj)/line": round(ratio_line_minus_proj, 4)
-                                          if ratio_line_minus_proj is not None else None},
-            passed=passed, comparator=">=",
+                    "diff": round(diff, 4)},
+            passed=passed, comparator=cmp_str,
             reason_code=None if passed else ReasonCode.DIRECTION_FAIL,
             note=f"direction_check_{side_uc}",
         )
