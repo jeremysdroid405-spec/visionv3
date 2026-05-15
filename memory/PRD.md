@@ -147,6 +147,26 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 
 ## Recent Changelog
 
+### 2026-05-15 — Phase 2B Session 3 — MLB_HF Pitcher Retrain DEPLOYED ✅
+- **Model version live**: `MLB_HF_v3.2_phase2b` — 4 pitcher pickles retrained and overwritten (`pitcher_strikeouts`, `pitcher_walks`, `earned_runs`, `hits_allowed`). `pitcher_outs` excluded (analytical path, no XGBoost).
+- **Calibration delta (test set)**:
+  - `pitcher_strikeouts`: R² **0.5759 → 0.6966** (+0.121, +21% relative), MAE 0.929 → 0.907
+  - `hits_allowed`: R² **0.5381 → 0.6166** (+0.079), MAE 1.038 → **0.854** (−17.7%)
+  - `pitcher_walks`: R² 0.343 → 0.351, MAE 0.601 → **0.531** (−11.6%)
+  - `earned_runs`: R² 0.310 → 0.251 (-0.06), MAE 0.874 → **0.723** (−17.3%) — R² regressed slightly but MAE lifted strongly; volatile-stat tail behaviour, MAE is the more meaningful metric.
+  - **3/4 stats improved on R², 4/4 improved on MAE.**
+- **Feature importance**: all 21 Phase 2B lineup features non-zero across all 4 stats. Top signals — `lineup_size`, `projected_rhh_count`/`lineup_xwoba_14d`/`lineup_k_rate_14d`. `pitcher_walks` shows `lineup_size 0.041` as its #1 feature. `lineup_handedness_is_imputed` is itself a strong signal (0.02-0.03 importance) — the model learned to discount imputed rows.
+- **Park-factor validation**: park factors (emitted by v3.1 builder, no new code) now carry non-trivial importance: `park_runs_factor` 0.023 on pitcher_walks; `park_k_factor` 0.012 on earned_runs.
+- **Training infrastructure**:
+  - `scripts/phase2b_retrain_worker.py` (NEW, 480 lines) — resumable per-stat worker mirroring Phase 2A. **Memory-safe design**: drops PA cache (saves ~2GB), splits SC cache (drops `sc_batter` half, lazily loads only the ~1,420 batters referenced by the lineup resolver via ONE bounded `find({"player_id":{"$in":[...]}})` query). Peak RSS <4GB per stat.
+  - `models/mlb_hf/_phase2b_workdir/lineup_resolver.pkl` (NEW, 7.4MB) — 47,021 pitcher-game pairs from `mlb_statcast_raw`, built in 18s. Reusable across retrain runs.
+  - 4 stats trained sequentially in ~14s total.
+- **Score-doc schema**: `services/scoring/score_document_schema.py::ScoreDocument` extended with `opposing_lineup_size: Optional[int] = None` (Pydantic strict `extra=forbid` model required this). Previously surfaced in `_SCORE_OUTPUT_FIELDS` + recompute mirror block in Session 2.
+- **Production state**: **86 active pitcher score docs on v3.2** (37 pitcher_strikeouts, 35 hits_allowed, 14 earned_runs; pitcher_walks ingest cycle pending). Remaining 55 props still on v3.1 — naturally migrate as new slates ingest. `opposing_lineup_size=0` on all v3.2 docs because the existing `mlb_live_props` pre-dates Phase 2B hydration; lineup features stay imputed for these (same path 54% of training samples saw — no user-visible degradation). Next fresh ingest cycle populates real lineups.
+- **Hot-hydrate prototype reverted**: a just-in-time `opposing_lineup` rebuild was prototyped inside `mlb_scoring.py` to repopulate stale live_props during recompute. Caused pod OOM (resolver + lazy batter cache + HF singleton + Phase 2A resolver = ~28GB RSS). Reverted; natural ingest path handles this correctly.
+- **Regression**: **225/225** stabilization tests green. Lint clean on new worker.
+- **Files**: `scripts/phase2b_retrain_worker.py`, `audits/phase2b_retrain_report_2026_05_15.md`, `models/mlb_hf/_phase2b_workdir/{lineup_resolver.pkl, _progress.json, _train_report.json}`, 4 v3.2 pickles, `services/scoring/score_document_schema.py` (1 field added).
+
 ### 2026-05-15 — Phase 2B Session 2 — Feature builder + live prediction wiring
 - **Goal**: Wire the Phase 2B opposing-lineup features end-to-end from `feature_hydration.py` through `_build_friction_features` and `predict()`. Strictly infrastructure — no retrain yet, no gate/UI/edge changes.
 - **Feature builder** (`services/mlb_high_friction_model.py::_build_friction_features`): added 2 new kwargs (`opposing_lineup`, `sc_batter_cache`) + CATEGORY 9 block. Always emits the canonical 21 lineup features; raises `*_is_imputed=1` flags when lineup is missing. Feature-vector shape is invariant across stat-family, so existing v3.1 batter models silently ignore the new features (not in their `feature_cols` pickle) — safe deployment.

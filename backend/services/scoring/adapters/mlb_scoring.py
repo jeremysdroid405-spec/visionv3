@@ -419,6 +419,16 @@ class MLBScoringAdapter(ScoringAdapter):
             # ============================================================
             _propagate_phase1_context(prop, hf_model.master_hub, bdl_player_id)
 
+            # 2026-05-15 Phase 2B note: opposing_lineup is hydrated
+            # upstream in `services/feature_hydration.py` during the
+            # ingest pipeline. The retrospective recompute path
+            # against an existing live_props collection reads whatever
+            # `opposing_lineup` payload was stamped at ingest time —
+            # None for props that pre-date Phase 2B (lineup features
+            # stay imputed in that case, model handles via
+            # `*_is_imputed=1` flags). No just-in-time hydration is
+            # performed here to keep recompute memory profile bounded.
+
             result = hf_model.predict(
                 player_name=player_name, stat_type=stat_type, line=line,
                 opponent_team=opponent, park_team=park_team, dk_odds=dk_odds_int,

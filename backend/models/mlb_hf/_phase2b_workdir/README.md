@@ -1,8 +1,9 @@
 # Phase 2B — MLB_HF Pitcher Context Retrain
 
-**Status:** Session 1 ✅ · **Session 2 ✅** · Session 3 pending.
-**Target model version:** `MLB_HF_v3.2_phase2b`
+**Status:** Session 1 ✅ · Session 2 ✅ · **Session 3 ✅ DEPLOYED**
+**Model version:** `MLB_HF_v3.2_phase2b` (4 pitcher pickles overwritten)
 **Backup of v3.1 pickles:** `/app/backend/models/mlb_hf/_pre_phase2b_backup_2026_05_15/`
+**Audit report:** `/app/backend/audits/phase2b_retrain_report_2026_05_15.md`
 
 ## Architectural decisions (locked, 2026-05-15)
 

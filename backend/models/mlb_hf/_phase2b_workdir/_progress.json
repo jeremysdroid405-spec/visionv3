@@ -1,0 +1,10 @@
+{
+  "completed": [
+    "earned_runs",
+    "hits_allowed",
+    "pitcher_strikeouts",
+    "pitcher_walks"
+  ],
+  "started_at": "2026-05-15T21:45:32.214788+00:00",
+  "last_updated": "2026-05-15T21:46:09.122830+00:00"
+}

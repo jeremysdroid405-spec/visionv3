@@ -157,6 +157,13 @@ class ScoreDocument(BaseModel):
     opp_pitcher_k9:        Optional[float] = None
     same_hand_matchup:     Optional[int]   = None  # 0/1
     opposite_hand_matchup: Optional[int]   = None  # 0/1
+    # ── Phase 2B opposing-lineup diagnostic (2026-05-15) ──────────
+    # Number of batters in the opposing lineup resolved by
+    # `services/feature_hydration.py::_hydrate_opposing_lineup_for_pitcher`
+    # for pitcher props. 0 ⇒ no lineup (BDL not posted + no
+    # last-played fallback hit). The full lineup payload itself is
+    # NOT mirrored onto score docs (volatile, large).
+    opposing_lineup_size:  Optional[int]   = None
 
     # ── Universal ephemeral lifecycle (2026-05-15) ────────────────
     # Same contract as cached_board (services/boards/
