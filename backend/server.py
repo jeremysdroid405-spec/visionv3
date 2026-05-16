@@ -2194,12 +2194,18 @@ async def startup_event():
             mlb_pick_grade as _mlb_pick_grade,
         )
 
-        # Daily pipeline at 04:00 UTC.  Holds sync:mlb for ≤30 min.
+        # Daily pipeline at 12:00 UTC.  Holds sync:mlb for ≤30 min.
+        # 2026-05-16 — moved from 04:00 UTC. At 04:00 UTC (midnight EDT)
+        # Baseball Savant has not yet posted the previous day's Statcast
+        # data, so the ingest consistently returned `scanned: 0`. 12:00
+        # UTC (08:00 EDT) lets Savant finish overnight posting and
+        # produces a fully populated feature rebuild. Operational PR
+        # A+B — no model or scoring change.
         scheduler.add_job(
             _mlb_daily_pipeline,
-            CronTrigger(hour=4, minute=0, timezone=timezone.utc),
+            CronTrigger(hour=12, minute=0, timezone=timezone.utc),
             id='mlb_daily_pipeline',
-            name='04:00 UTC MLB Daily Pipeline (statcast+features+score)',
+            name='12:00 UTC MLB Daily Pipeline (statcast+features+score)',
             replace_existing=True,
             misfire_grace_time=900,
         )
@@ -2233,7 +2239,7 @@ async def startup_event():
         )
         logger.info(
             "[SCHEDULER] Phase 4 MLB jobs registered: "
-            "mlb_daily_pipeline (04:00), mlb_lineups_early (18:00), "
+            "mlb_daily_pipeline (12:00), mlb_lineups_early (18:00), "
             "mlb_lineups_final (22:00), mlb_pick_grade (05:00)"
         )
     except Exception as _phase4_err:  # noqa: BLE001

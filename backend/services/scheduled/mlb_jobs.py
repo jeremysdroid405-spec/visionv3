@@ -214,11 +214,11 @@ async def _step_grade_mlb(db) -> Dict[str, Any]:
 # JOB: MLB daily pipeline (replaces run_mlb_daily_pipeline.sh)
 # ---------------------------------------------------------------------------
 async def mlb_daily_pipeline() -> Dict[str, Any]:
-    """Runs once daily at 04:00 UTC. Holds `sync:mlb` for the duration.
+    """Runs once daily at 12:00 UTC. Holds `sync:mlb` for the duration.
 
     Steps (mirrors run_mlb_daily_pipeline.sh ordering):
       1. lineup ingest (today)         — lock:mlb
-      2. statcast ingest (yesterday)
+      2. statcast ingest (today-3 .. yesterday, idempotent self-heal)
       3. batter features rebuild
       4. pitcher features rebuild
       5. pitcher context backfill (shadow)
@@ -229,6 +229,15 @@ async def mlb_daily_pipeline() -> Dict[str, Any]:
     cli, db = _get_db()
     yesterday = _yesterday_utc()
     today = _today_utc()
+    # 2026-05-16 — widen the Statcast catch-up window from yesterday-only
+    # to (today - 3 days .. yesterday). The ingest is idempotent on
+    # (game_pk, at_bat_number, pitch_number), so re-pulling the prior
+    # two days is free and self-heals any missed cron tick (e.g. pod
+    # restart, OOM, Savant posting lag). Operational PR A+B (no model
+    # or scoring change).
+    statcast_start = (
+        datetime.now(timezone.utc) - timedelta(days=3)
+    ).strftime("%Y-%m-%d")
     job_id = "mlb_daily_pipeline"
 
     async def body() -> Dict[str, Any]:
@@ -236,7 +245,7 @@ async def mlb_daily_pipeline() -> Dict[str, Any]:
         # Each step wrapped so one failure doesn't abort the rest.
         for label, runner in (
             ("01_lineup_ingest",        lambda: _step_lineup_ingest(db, date=today)),
-            ("02_statcast_ingest",      lambda: _step_statcast_ingest(db, start=yesterday, end=yesterday)),
+            ("02_statcast_ingest",      lambda: _step_statcast_ingest(db, start=statcast_start, end=yesterday)),
             ("03_batter_features",      lambda: _step_build_batter_features(db)),
             ("04_pitcher_features",     lambda: _step_build_pitcher_features(db)),
             ("05_pitcher_context",      lambda: _step_backfill_pitcher_context(db)),
