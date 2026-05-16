@@ -90,13 +90,17 @@ REPORT_PATH = os.path.join(WORKDIR_2B, "_train_report.json")
 VERSION = "MLB_HF_v3.2_phase2b"
 
 # Pitcher stats with trainable XGBoost models.
-# `pitcher_outs` is intentionally excluded — it uses the analytical
-# expected_IP × 3 path (see MLBHighFrictionModel._predict_pitcher_outs).
+# 2026-05-17 — `pitcher_outs` is now a first-class model target. When
+# the trained pickle is loaded, `MLBHighFrictionModel.predict()` uses
+# it for μ; the analytical `expected_IP × 3` projection in
+# `_predict_pitcher_outs` becomes the cold-start fallback and a
+# permanent diagnostic on every response.
 PITCHER_STATS = [
     "pitcher_strikeouts",
     "pitcher_walks",
     "earned_runs",
     "hits_allowed",
+    "pitcher_outs",
 ]
 
 

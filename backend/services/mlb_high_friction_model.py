@@ -75,8 +75,13 @@ class MLBHighFrictionModel:
         'earned_runs',
         'hits_allowed',
         'pitcher_walks',
-        # Analytical-only — no trained XGBoost model.
-        # μ derived from expected_IP × 3 (workload anchor).
+        # 2026-05-17 Phase 2B promotion: pitcher_outs is now a
+        # first-class XGBoost model target. When the trained pickle
+        # `mlb_hf_pitcher_outs.pkl` exists it is used directly;
+        # otherwise predict() falls back to the analytical
+        # expected_IP × 3 projection (retained as both the cold-start
+        # fallback and a permanent diagnostic — see
+        # `_predict_pitcher_outs`).
         'pitcher_outs',
     ]
     
@@ -96,6 +101,10 @@ class MLBHighFrictionModel:
         'pitcher_walks': 'pitcher_walks',
         'hits+runs+rbis': ['hits', 'runs', 'rbis'],
         'singles': '_calc_singles',
+        # Pitcher outs are derived from `innings_pitched` using
+        # MLB-notation decoding (5.1 IP → 16 outs, 5.2 IP → 17 outs).
+        # See `_calc_pitcher_outs_value` and `_decode_innings`.
+        'pitcher_outs': '_calc_pitcher_outs',
     }
     
     # =========================================================================
@@ -330,6 +339,22 @@ class MLBHighFrictionModel:
             if h is None:
                 return None
             return max(0, float(h) - float(game.get('doubles', 0) or 0) - float(game.get('triples', 0) or 0) - float(game.get('home_runs', 0) or 0))
+        if field == '_calc_pitcher_outs':
+            # 2026-05-17 — Pitcher outs SSOT.
+            # Prefer an explicit `outs` field when the source feed
+            # provides it; otherwise decode `innings_pitched` from
+            # MLB notation (5.0/5.1/5.2 → 15/16/17 outs).
+            outs_explicit = game.get('outs')
+            if outs_explicit is not None:
+                try:
+                    return float(outs_explicit)
+                except (TypeError, ValueError):
+                    pass
+            ip_dec = self._decode_innings(game.get('innings_pitched'))
+            if ip_dec is None:
+                return None
+            # Round to nearest integer — outs are discrete.
+            return float(int(round(ip_dec * 3.0)))
         if isinstance(field, list):
             return sum(float(game.get(f, 0) or 0) for f in field)
         val = game.get(field)
@@ -1214,10 +1239,91 @@ class MLBHighFrictionModel:
 
     # -------------------------------------------------------------------
     # 2026-04-27 — Pitcher Outs analytical projection.
-    # No XGBoost model on disk for pitcher_outs (the previous alias to
-    # pitcher_strikeouts was the bug). μ is derived directly from
-    # workload:  μ_outs = expected_IP × 3, with σ from std(starts) × 3.
+    # 2026-05-17 — Promoted to fallback / diagnostic. When the XGBoost
+    # pickle `mlb_hf_pitcher_outs.pkl` exists predict() uses the model
+    # directly. This analytical projection is retained as:
+    #   1. A cold-start FALLBACK when the model is missing.
+    #   2. A permanent DIAGNOSTIC block (`expected_ip`, `starts_used`,
+    #      `analytical_mu_outs`) attached to friction_audit on every
+    #      pitcher_outs response — model path included — so the
+    #      workload anchor is always visible alongside the model μ.
+    # μ_outs = expected_IP × 3, σ_outs = std(starts) × 3.
     # -------------------------------------------------------------------
+    def _compute_analytical_outs_block(
+        self, game_logs: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Compute the analytical (expected_IP × 3) workload block.
+
+        Returns ``None`` when fewer than 2 starts are available so the
+        diagnostic stays absent rather than misleading on cold starts.
+        """
+        ip_block = self._expected_ip_from_starts(game_logs)
+        if ip_block is None:
+            return None
+        expected_ip, n_starts, start_innings = ip_block
+        mu_outs = expected_ip * 3.0
+        starts_outs = [ip * 3.0 for ip in start_innings]
+        sigma_outs = (float(np.std(starts_outs, ddof=1))
+                      if len(starts_outs) > 1 else mu_outs * 0.18)
+        return {
+            "expected_ip": round(expected_ip, 2),
+            "starts_used": n_starts,
+            "analytical_mu_outs": round(mu_outs, 4),
+            "analytical_sigma_outs": round(sigma_outs, 4),
+        }
+
+    def _compute_pitcher_outs_hit_rate(
+        self,
+        game_logs: List[Dict[str, Any]],
+        line: Optional[float],
+    ) -> Optional[Dict[str, Any]]:
+        """Pitcher-outs-specific hit-rate diagnostic.
+
+        Mirrors the 10-start / 5-start sample-floor contract enforced
+        by ``mlb_tier_sorter._calculate_pitcher_hit_rate_sides`` so
+        the diagnostic reflects the same window the scoring adapter
+        will compute downstream. Outs are decoded via
+        ``_decode_innings`` (5.2 IP → 17 outs) to stay consistent
+        with this module's pitcher_outs SSOT (``_get_stat_value``).
+        """
+        if line is None or not game_logs:
+            return None
+        sorted_logs = sorted(
+            game_logs,
+            key=lambda x: x.get("date", "") or "",
+            reverse=True,
+        )
+        n = len(sorted_logs)
+        if n >= 10:
+            window = 10
+        elif n >= 5:
+            window = n
+        else:
+            return None
+        selected = sorted_logs[:window]
+        over_hits = 0
+        sum_val = 0.0
+        valid = 0
+        for g in selected:
+            ip_dec = self._decode_innings(g.get("innings_pitched"))
+            if ip_dec is None:
+                continue
+            outs = int(round(ip_dec * 3.0))
+            if outs > line:
+                over_hits += 1
+            sum_val += outs
+            valid += 1
+        hit_rate_over = round((over_hits / window) * 100.0, 1)
+        return {
+            "pitcher_hit_rate_over": hit_rate_over,
+            "pitcher_hit_rate_under": round(100.0 - hit_rate_over, 1),
+            "pitcher_hit_rate_n": window,
+            "pitcher_hit_rate_window_used": str(window),
+            "pitcher_hit_rate_avg_outs": (
+                round(sum_val / valid, 2) if valid else None
+            ),
+        }
+
     def _predict_pitcher_outs(
         self,
         player_name: Optional[str],
@@ -1278,6 +1384,22 @@ class MLBHighFrictionModel:
             f"expected_IP={expected_ip:.2f} starts={n_starts} "
             f"μ={mu_outs:.2f} σ={sigma_outs:.2f}"
         )
+        # Diagnostics — pitcher hit-rate window (mirrors the
+        # 10/5-start contract enforced downstream by
+        # mlb_tier_sorter::_calculate_pitcher_hit_rate_sides).
+        hit_rate_diag = self._compute_pitcher_outs_hit_rate(game_logs, line)
+        analytical_block = {
+            "expected_ip": round(expected_ip, 2),
+            "starts_used": n_starts,
+            "analytical_mu_outs": round(mu_outs, 4),
+            "analytical_sigma_outs": round(sigma_outs, 4),
+        }
+        friction_audit = {
+            "trends": analytical_block,
+            "analytical_pitcher_outs": analytical_block,
+        }
+        if hit_rate_diag is not None:
+            friction_audit["pitcher_hit_rate"] = hit_rate_diag
         return {
             "player_name": player_name,
             "stat_type": stat_type,
@@ -1287,12 +1409,7 @@ class MLBHighFrictionModel:
             "line": line,
             "prob_over": round(prob_over, 1) if prob_over is not None else None,
             "z_score": round(z_score, 4) if z_score is not None else None,
-            "friction_audit": {
-                "trends": {
-                    "expected_ip": round(expected_ip, 2),
-                    "starts_used": n_starts,
-                },
-            },
+            "friction_audit": friction_audit,
             "full_features": {},
             "mlr_features_used": False,
             "model_version": "MLB_HF_v1.0_pitcher_outs_analytical",
@@ -1343,11 +1460,15 @@ class MLBHighFrictionModel:
         """
         norm_stat = self._normalize_stat(stat_type)
 
-        # 2026-04-27 — Pitcher Outs analytical projection.
-        # No XGBoost model; μ derives from expected_IP × 3 (workload
-        # anchor). σ is std(starts) × 3 so the universal probability
-        # engine receives a coherent CV signal. Bypasses model.predict().
-        if norm_stat == 'pitcher_outs':
+        # 2026-05-17 — Pitcher Outs routing.
+        # Phase 2B promotion: if the trained `mlb_hf_pitcher_outs.pkl`
+        # is loaded, route through the standard XGBoost path below
+        # so μ comes from the model. When the pickle is absent (cold
+        # start, fresh deploy, or training in progress) we fall back
+        # to the analytical `expected_IP × 3` projection. Either way
+        # the analytical block is also computed as a diagnostic
+        # alongside the model μ — see `_compose_pitcher_outs_response`.
+        if norm_stat == 'pitcher_outs' and norm_stat not in self.models:
             return self._predict_pitcher_outs(
                 player_name=player_name, stat_type=stat_type,
                 line=line, opponent_team=opponent_team, park_team=park_team,
@@ -1583,6 +1704,20 @@ class MLBHighFrictionModel:
                     'hit_rate_l10': features.get('hit_rate_l10'),
                 }
             }
+
+            # 2026-05-17 Phase 2B — when the XGBoost model is used for
+            # pitcher_outs, surface the analytical expected_IP × 3
+            # workload anchor and the pitcher_hit_rate window as
+            # permanent diagnostics on every response. Lets the
+            # scoring layer compare model μ against the workload
+            # anchor without re-running the analytical path.
+            if norm_stat == 'pitcher_outs':
+                analytical_block = self._compute_analytical_outs_block(game_logs)
+                if analytical_block is not None:
+                    friction_audit['analytical_pitcher_outs'] = analytical_block
+                hr_diag = self._compute_pitcher_outs_hit_rate(game_logs, line)
+                if hr_diag is not None:
+                    friction_audit['pitcher_hit_rate'] = hr_diag
             
             # 2026-05 missing-value policy — emit a feature_health
             # block summarising which features were silent defaults vs

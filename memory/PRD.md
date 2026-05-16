@@ -147,6 +147,16 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 
 ## Recent Changelog
 
+### 2026-05-17 — Phase 2B Session 4 — `pitcher_outs` promoted to XGBoost ✅
+- **Promotion**: `pitcher_outs` is no longer analytical-only. Added `_calc_pitcher_outs` route in `STAT_FIELD_MAP` + `_get_stat_value` that decodes MLB-notation `innings_pitched` (5.0/5.1/5.2 → 15/16/17 outs) and prefers an explicit `outs` field when present. Same SSOT extraction is now consumed by every training path (`phase2b_retrain_worker`, `retrain_mlb_models_v2`, `train_mlb_ecdf_artifacts`).
+- **Trained model**: `mlb_hf_pitcher_outs.pkl` (`MLB_HF_v3.2_phase2b`) — **samples=2,449, features=243, R²_test=0.8711, MAE_test=1.1219 outs**, lineup_hit_rate=46% (chunked single-stat training, ~4s wall time, peak RSS well under pod limit). Verified live on Yu Darvish (model μ=14.09 outs vs analytical μ=13.80 outs at 17.5 line).
+- **Routing**: `predict()` prefers the XGBoost path when the pickle is loaded; falls back to the analytical `expected_IP × 3` projection (`_predict_pitcher_outs`) when the pickle is absent (cold start / pre-train deploy).
+- **Analytical path retained as PERMANENT DIAGNOSTIC**: every pitcher_outs response — model path included — now carries `friction_audit.analytical_pitcher_outs` = `{expected_ip, starts_used, analytical_mu_outs, analytical_sigma_outs}` so the workload anchor is always visible alongside the model μ.
+- **`pitcher_hit_rate` wired into the analytical path**: `_compute_pitcher_outs_hit_rate` mirrors the 10-/5-start sample-floor contract from `mlb_tier_sorter::_calculate_pitcher_hit_rate_sides` and surfaces `pitcher_hit_rate_over / _under / _n / _window_used / _avg_outs` in `friction_audit['pitcher_hit_rate']` on both routes. Downstream `_calculate_pitcher_hit_rate_sides` remains the canonical SSOT for the score-doc fields — this is purely a model-level diagnostic so the workload-anchor and HR signal travel together.
+- **Tests**: `tests/test_pitcher_outs_model.py` (20 cases) — IP→outs decoding (5.0/5.1/5.2/0.2/9.0/etc), explicit-`outs`-field preference, missing-data path, `STAT_FIELD_MAP` route shape, 10-start window, 5-start minimum, sub-5 suppression, `line=None` suppression, analytical-block shape and 2-start minimum, and `predict()` analytical fallback wiring (model-absent case). **20/20 pass.** Broader regression on Phase 2B / HR / direction-gate / Statcast Bayes suites: **81/81 pass.**
+- **No changes to**: gate logic, thresholds, edge formulas, TP formulas, universal edge SSOT, UI, sportsbook routing, recompute architecture. **Pure modeling promotion + diagnostic wiring.**
+
+
 ### 2026-05-16 — Pitcher-specific HR sample-floor contract
 - **Problem**: The MLB HR SSOT (`mlb_tier_sorter::_calculate_hit_rate_sides`) was designed for batters — strict 20→10 fallback returns `None` when fewer than 10 games are available. Starting pitchers structurally violate this in mid-season (one start every 5-6 days = 7-9 starts by mid-May), silently killing strong-edge pitcher picks at the `hit_rate_gate` (e.g. Merrill Kelly Hits Allowed UNDER +29% edge, Kyle Freeland Pitcher K +26%).
 - **Solution**: New `_calculate_pitcher_hit_rate_sides` peer method on `MLBTierSorter`. Pitcher-only contract:
