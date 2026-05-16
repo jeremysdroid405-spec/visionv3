@@ -52,21 +52,26 @@ def main():
             d.pop("_id", None)
             rows.append(d)
 
-    # Rank by vision_score desc, tie-break on total_edge
+    # Rank by L10 hit-rate desc, tie-break on L20 hit-rate desc, then vision_score
     def _sort_key(d):
-        return (-(d.get("vision_score") or 0.0), -(d.get("total_edge") or 0.0))
+        return (
+            -(d.get("hit_rate_l10") or 0.0),
+            -(d.get("hit_rate_l20") or 0.0),
+            -(d.get("hit_rate_l5") or 0.0),
+            -(d.get("vision_score") or 0.0),
+        )
 
     rows.sort(key=_sort_key)
     top = rows[:LIMIT]
 
     # Pretty print
     print(f"\n=== TOP {LIMIT} WAR ZONE CANDIDATES (across {','.join(SPORTS).upper()}) ===")
-    print(f"=== last {SINCE_HOURS}h, ranked by vision_score (production WZ rank) ===\n")
+    print(f"=== last {SINCE_HOURS}h, ranked by L10 hit-rate (tie: L20, L5, vision) ===\n")
 
     # Section 1: ranked summary
     print(f"{'#':<3} {'Sport':<5} {'Player':<22} {'Stat':<22} {'L':<6} {'Side':<5} "
-          f"{'VS':>6} {'TP%':>6} {'FairP':>6} {'Edge':>7} {'μ':>6} {'σ':>5} {'P̂':>6} {'HR_L10':>7}")
-    print("-" * 138)
+          f"{'HR_L5':>6} {'HR_L10':>7} {'HR_L20':>7} {'VS':>6} {'TP%':>6} {'FairP':>6} {'Edge':>7} {'μ':>6} {'σ':>5} {'P̂':>6}")
+    print("-" * 145)
     for i, d in enumerate(top, 1):
         line = d.get("line")
         line_s = f"{line:.1f}" if line is not None else "—"
@@ -76,14 +81,16 @@ def main():
             f"{(d.get('player_name') or '')[:22]:<22} "
             f"{(d.get('stat_type') or '')[:22]:<22} "
             f"{line_s:<6} {d.get('side','—'):<5} "
+            f"{_f(d.get('hit_rate_l5'),1):>6} "
+            f"{_f(d.get('hit_rate_l10'),1):>7} "
+            f"{_f(d.get('hit_rate_l20'),1):>7} "
             f"{_f(d.get('vision_score'),1):>6} "
             f"{_f(d.get('tp'),1):>6} "
             f"{_f(d.get('fair_prob'),3):>6} "
             f"{_f(d.get('total_edge'),3):>7} "
             f"{_f(d.get('model_projection'),2):>6} "
             f"{_f(d.get('model_sigma'),2):>5} "
-            f"{_f(p_true,3):>6} "
-            f"{_f(d.get('hit_rate_l10'),1):>7}"
+            f"{_f(p_true,3):>6}"
         )
 
     # Section 2: detailed per-row breakdown

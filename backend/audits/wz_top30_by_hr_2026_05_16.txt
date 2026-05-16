@@ -1,0 +1,751 @@
+
+=== TOP 30 WAR ZONE CANDIDATES (across MLB,NBA,NFL) ===
+=== last 6h, ranked by L10 hit-rate (tie: L20, L5, vision) ===
+
+#   Sport Player                 Stat                   L      Side   HR_L5  HR_L10  HR_L20     VS    TP%  FairP    Edge      μ     σ     P̂
+-------------------------------------------------------------------------------------------------------------------------------------------------
+1   MLB   Brandon Marsh          Hits                   0.5    OVER   100.0    90.0    80.0   98.4   33.6  0.377   0.453   1.13  0.97  0.772
+2   MLB   Ildemaro Vargas        Hits                   0.5    OVER    60.0    80.0    90.0  100.0   33.8  0.369   0.492   1.38  1.27  0.828
+3   MLB   Trea Turner            Batter Strikeouts      0.5    OVER    80.0    80.0    75.0   98.1   30.8  0.308   0.341   0.72  0.88  0.649
+4   MLB   Nolan Arenado          Hits                   0.5    OVER    80.0    70.0    70.0   99.3   33.4  0.355   0.395   1.21  0.74  0.742
+5   MLB   Coby Mayo              Batter Strikeouts      0.5    OVER    80.0    70.0    65.0   99.7   32.8  0.328   0.457   1.59  0.82  0.785
+6   MLB   Geraldo Perdomo        Batter Strikeouts      0.5    OVER    60.0    70.0    65.0   99.9   18.2  0.182   0.533   0.97  0.63  0.715
+7   MLB   Matt Olson             Total Bases            2.5    OVER    80.0    70.0    60.0   98.7   30.4  0.286   0.326   3.02  1.87  0.604
+8   MLB   Gunnar Henderson       Hits+Runs+RBIs         0.5    OVER    60.0    70.0    60.0   97.8   35.6  0.385   0.382   2.15  1.58  0.738
+9   MLB   Brandon Marsh          Runs                   0.5    OVER    80.0    70.0    50.0   72.1   19.0  0.208   0.320   0.53  0.63  0.520
+10  MLB   Jose Fernandez         Batter Strikeouts      0.5    OVER    60.0    60.0    70.0   99.2   26.7  0.267   0.397   0.74  0.52  0.663
+11  MLB   Austin Martin          Batter Walks           0.5    OVER    40.0    60.0    60.0   99.1   34.0  0.360   0.363   0.94  0.52  0.698
+12  MLB   Otto Lopez             Batter Strikeouts      0.5    OVER    40.0    60.0    60.0   98.3   35.1  0.351   0.352   1.09  0.99  0.703
+13  NBA   Duncan Robinson        PTS                    11.5   OVER    80.0    60.0    55.0   93.1   33.8  0.338   0.297  13.42  5.80  0.635
+14  NBA   Dylan Harper           PRA                    21.5   OVER    80.0    60.0    55.0      —   35.7      —   0.275  23.11  7.65  0.632
+15  MLB   Jonathan Aranda        RBIs                   0.5    OVER    60.0    60.0    50.0   91.0   20.9  0.216   0.316   0.73  0.79  0.520
+16  NBA   James Harden           PRA                    33.5   OVER    60.0    60.0    50.0      —   36.0      —   0.256  34.89  6.25  0.615
+17  MLB   Zach Neto              Batter Strikeouts      1.5    OVER    40.0    60.0    45.0   98.8   26.0  0.260   0.334   1.80  1.32  0.594
+18  MLB   Kyle Stowers           Runs                   0.5    OVER    80.0    60.0    40.0   93.9   23.2  0.250   0.343   0.67  0.52  0.581
+19  MLB   Oneil Cruz             Total Bases            0.5    OVER    60.0    50.0    60.0   99.1   36.4  0.392   0.417   2.22  1.62  0.771
+20  MLB   Owen Caissie           Hits+Runs+RBIs         0.5    OVER    60.0    50.0    55.0   98.6   28.8  0.312   0.420   1.19  0.82  0.705
+21  MLB   Brandon Lowe           Runs                   0.5    OVER    60.0    50.0    55.0   85.2   20.5  0.204   0.370   0.62  0.95  0.571
+22  MLB   Ildemaro Vargas        Total Bases            1.5    OVER    40.0    50.0    55.0   99.6   13.1  0.154   0.520   2.35  2.66  0.647
+23  NBA   Paul Reed Jr           PTS                    9.5    OVER    80.0    50.0    50.0   89.8   36.7  0.338   0.318  11.06  5.80  0.630
+24  MLB   Nick Gonzales          Total Bases            1.5    OVER    40.0    50.0    50.0   95.0   27.1  0.248   0.323   1.68  1.43  0.550
+25  MLB   Nolan Arenado          Runs                   0.5    OVER    40.0    50.0    50.0   94.4   20.7  0.227   0.368   0.64  0.70  0.569
+26  MLB   Oneil Cruz             RBIs                   0.5    OVER    40.0    50.0    50.0   92.6   17.0  0.174   0.356   0.73  0.53  0.520
+27  MLB   Brandon Lowe           Total Bases            1.5    OVER    40.0    50.0    50.0   91.8   19.1  0.204   0.414   2.10  2.08  0.600
+28  MLB   Liam Hicks             RBIs                   0.5    OVER    40.0    50.0    45.0   90.3   20.7  0.225   0.317   0.75  1.37  0.526
+29  MLB   Samuel Basallo         Total Bases            1.5    OVER    40.0    50.0    40.0   91.5   21.5  0.235   0.333   1.74  2.75  0.544
+30  MLB   Payton Tolle           Pitcher Strikeouts     6.5    OVER    60.0    42.9    43.0   93.6   27.5  0.287   0.303   7.23  3.89  0.553
+
+
+=== DETAILED BREAKDOWN ===
+
+──── #1  Brandon Marsh — Hits OVER 0.5 (MLB) ────
+  Match: PHI @ PIT | start 2026-05-16T20:06:00Z
+  Opp Pitcher: Bubba Chandler (throws R, K/9 7.71, ERA 5.14, WHIP 1.52)
+  Batter hand: L  same=0  opp=1
+  Odds (per-book):
+    DraftKings           line=0.5 odds=165  fetched=2026-05-16T21:26:32.819045+00:00
+    ESPNBet              line=0.5 odds=180  fetched=2026-05-16T21:26:32.821475+00:00
+    HardRock             line=0.5 odds=-110  fetched=2026-05-16T21:19:37.889718+00:00
+    WilliamHill (CSR)    line=0.5 odds=-107  fetched=2026-05-16T21:24:39.123086+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:26:32.824227+00:00
+  TP/Devig: tp=33.60%  fair_prob=0.3774  books_used=3  books_list=['DK', 'EB', 'PRX']  method=multi_book_devig_v1
+  Anchor: best_book=betparx odds=188.0 edge=0.0169  total_edge=0.4529  shopping_edge_source=devig_vs_devig
+  Model: μ_raw=1.0617  μ_final=1.1280  σ=0.9718  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=1.128  player_career_mean=1.400  player_n=20  weights model=0.8 player=0.2
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.7720  selector=normal_cdf cv_floor=0.55 mu_floor=0.5 capped
+  Shadow probs: lom=0.6989  ecdf=0.6400 (bucket=9 n=5814)  raw_gauss=0.7180
+  Form: HR_L5=100.0%  HR_L10=90.0%  HR_L20=80.0%  HR_over=80.0%  n_games=20
+  Margins: avg_hit=1.25  avg_miss=0.50  ceiling=80.0%  CV=0.747  stability=0.751
+  Vision: SCORE=98.40 | prob=0.000  proj=0.678  edge=1.000  consist=0.426  context=0.500  mkt_conf=0.800  dir_align=0.356  vol_penalty=0.438
+  Gates: coverage_gate=✓(5 vs 1) | direction_gate=✓({'projection': 1.128, 'line': 0.5, 'diff': 0.628} vs {'rule': 'projection > line'}) | edge_gate=✓(39.46 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: +2% (Standard PA Volume)
+  Injury: team out=3 dtd=0  key_out=['Kyle Backhus', 'Zach Pop', 'Max Lazar']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:28:17.710166+00:00
+
+──── #2  Ildemaro Vargas — Hits OVER 0.5 (MLB) ────
+  Match: ARI @ COL | start 2026-05-16T19:11:00Z
+  Batter hand: S  same=None  opp=None
+  Odds (per-book):
+    DraftKings           line=0.5 odds=170  fetched=2026-05-16T21:19:35.882605+00:00
+    FanDuel              line=0.5 odds=172  fetched=2026-05-16T21:19:35.880134+00:00
+    ESPNBet              line=0.5 odds=180  fetched=2026-05-16T21:19:35.886087+00:00
+    HardRock             line=0.5 odds=175  fetched=2026-05-16T21:19:35.884520+00:00
+    WilliamHill (CSR)    line=0.5 odds=176  fetched=2026-05-16T21:19:35.881927+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:35.888772+00:00
+  TP/Devig: tp=33.80%  fair_prob=0.3690  books_used=5  books_list=['DK', 'EB', 'HRB', 'PRX', 'FLF']  method=multi_book_devig_v1
+  Anchor: best_book=espnbet odds=180.0 edge=0.0020  total_edge=0.4923  shopping_edge_source=devig_vs_devig
+  Model: μ_raw=1.3682  μ_final=1.3760  σ=1.2693  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=1.376  player_career_mean=1.400  player_n=20  weights model=0.8 player=0.2
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.8283  selector=normal_cdf cv_floor=0.55 mu_floor=0.5 capped
+  Shadow probs: lom=0.7017  ecdf=0.6465 (bucket=9 n=5814)  raw_gauss=0.7530
+  Form: HR_L5=60.0%  HR_L10=80.0%  HR_L20=90.0%  HR_over=90.0%  n_games=20
+  Margins: avg_hit=1.06  avg_miss=0.50  ceiling=90.0%  CV=0.672  stability=0.776
+  Vision: SCORE=100.00 | prob=0.000  proj=0.721  edge=1.000  consist=0.564  context=0.500  mkt_conf=0.800  dir_align=0.441  vol_penalty=0.271
+  Gates: coverage_gate=✓(9 vs 1) | direction_gate=✓({'projection': 1.376, 'line': 0.5, 'diff': 0.876} vs {'rule': 'projection > line'}) | edge_gate=✓(45.93 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -2% (Standard PA Volume)
+  Injury: team out=3 dtd=2  key_out=['Pavin Smith', 'Carlos Santana', 'Jordan Lawlar']
+  Feature health: {'imputed_count': 9, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup', 'matchup_exposure', 'opp_pitcher_quality', 'opp_pitcher_throws', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #3  Trea Turner — Batter Strikeouts OVER 0.5 (MLB) ────
+  Match: PHI @ PIT | start 2026-05-16T20:06:00Z
+  Opp Pitcher: Bubba Chandler (throws R, K/9 7.71, ERA 5.14, WHIP 1.52)
+  Batter hand: R  same=1  opp=0
+  Odds (per-book):
+    DraftKings           line=0.5 odds=225  fetched=2026-05-16T21:19:37.893758+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:37.898512+00:00
+  TP/Devig: tp=30.80%  fair_prob=0.3077  books_used=1  books_list=['DK']  method=multi_book_devig_v1
+  Anchor: best_book=draftkings odds=225.0 edge=0.0003  total_edge=0.3414  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=0.7180  μ_final=0.7200  σ=0.8756  version=MLB_HF_v3.0_bayes
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.6491  selector=normal_cdf cv_floor=0.45 mu_floor=0.5 capped
+  Shadow probs: lom=0.6779  ecdf=0.6083 (bucket=6 n=5813)  raw_gauss=0.5980
+  Form: HR_L5=80.0%  HR_L10=80.0%  HR_L20=75.0%  HR_over=75.0%  n_games=20
+  Margins: avg_hit=0.70  avg_miss=0.50  ceiling=75.0%  CV=0.798  stability=0.734
+  Vision: SCORE=98.10 | prob=0.000  proj=0.595  edge=1.000  consist=0.351  context=0.500  mkt_conf=0.433  dir_align=0.189  vol_penalty=0.551
+  Gates: coverage_gate=✓(1 vs 1) | direction_gate=✓({'projection': 0.72, 'line': 0.5, 'diff': 0.22} vs {'rule': 'projection > line'}) | edge_gate=✓(34.14 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: +2% (Standard PA Volume)
+  Injury: team out=3 dtd=0  key_out=['Kyle Backhus', 'Zach Pop', 'Max Lazar']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #4  Nolan Arenado — Hits OVER 0.5 (MLB) ────
+  Match: ARI @ COL | start 2026-05-16T19:11:00Z
+  Batter hand: R  same=None  opp=None
+  Odds (per-book):
+    DraftKings           line=0.5 odds=175  fetched=2026-05-16T21:19:35.882612+00:00
+    FanDuel              line=0.5 odds=188  fetched=2026-05-16T21:19:35.880139+00:00
+    ESPNBet              line=0.5 odds=180  fetched=2026-05-16T21:19:35.886079+00:00
+    HardRock             line=0.5 odds=175  fetched=2026-05-16T21:19:35.884524+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:35.888780+00:00
+  TP/Devig: tp=33.40%  fair_prob=0.3554  books_used=5  books_list=['DK', 'EB', 'HRB', 'PRX', 'FLF']  method=multi_book_devig_v1
+  Anchor: best_book=fanduel odds=188.0 edge=-0.0132  total_edge=0.3951  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=1.2336  μ_final=1.2140  σ=0.7379  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=1.214  player_career_mean=1.150  player_n=20  weights model=0.8 player=0.2
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.7423  selector=normal_cdf cv_floor=0.55 mu_floor=0.5 capped
+  Shadow probs: lom=0.6655  ecdf=0.6376 (bucket=9 n=5814)  raw_gauss=0.8400
+  Form: HR_L5=80.0%  HR_L10=70.0%  HR_L20=70.0%  HR_over=70.0%  n_games=20
+  Margins: avg_hit=1.14  avg_miss=0.50  ceiling=70.0%  CV=0.904  stability=0.699
+  Vision: SCORE=99.30 | prob=0.000  proj=0.657  edge=1.000  consist=0.248  context=0.500  mkt_conf=0.800  dir_align=0.314  vol_penalty=0.787
+  Gates: coverage_gate=✓(8 vs 1) | direction_gate=✓({'projection': 1.214, 'line': 0.5, 'diff': 0.714} vs {'rule': 'projection > line'}) | edge_gate=✓(38.690000000000005 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -2% (Standard PA Volume)
+  Injury: team out=3 dtd=2  key_out=['Pavin Smith', 'Carlos Santana', 'Jordan Lawlar']
+  Feature health: {'imputed_count': 9, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup', 'matchup_exposure', 'opp_pitcher_quality', 'opp_pitcher_throws', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #5  Coby Mayo — Batter Strikeouts OVER 0.5 (MLB) ────
+  Match: BAL vs None | start 2026-05-16T20:07:00Z
+  Batter hand: R  same=None  opp=None
+  Odds (per-book):
+    DraftKings           line=0.5 odds=205  fetched=2026-05-16T21:19:41.678275+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:41.684133+00:00
+  TP/Devig: tp=32.80%  fair_prob=0.3279  books_used=1  books_list=['DK']  method=multi_book_devig_v1
+  Anchor: best_book=draftkings odds=205.0 edge=0.0001  total_edge=0.4570  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=1.5928  μ_final=1.5900  σ=0.8165  version=MLB_HF_v3.0_bayes
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.7849  selector=normal_cdf cv_floor=0.45 mu_floor=0.5 capped
+  Shadow probs: lom=0.6849  ecdf=0.9352 (bucket=9 n=5814)  raw_gauss=0.9100
+  Form: HR_L5=80.0%  HR_L10=70.0%  HR_L20=65.0%  HR_over=65.0%  n_games=20
+  Margins: avg_hit=0.96  avg_miss=0.50  ceiling=65.0%  CV=0.869  stability=0.710
+  Vision: SCORE=99.70 | prob=0.000  proj=0.688  edge=1.000  consist=0.215  context=0.500  mkt_conf=0.433  dir_align=0.375  vol_penalty=0.709
+  Gates: coverage_gate=✓(1 vs 1) | direction_gate=✓({'projection': 1.59, 'line': 0.5, 'diff': 1.09} vs {'rule': 'projection > line'}) | edge_gate=✓(45.7 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -2% (Standard PA Volume)
+  Injury: team out=9 dtd=1  key_out=['Dean Kremer', 'Yaramil Hiraldo', 'Cade Povich', 'Zach Eflin', 'Ryan Mountcastle', 'Ryan Helsley', 'Dylan Beavers', 'Grant Wolfram', 'Heston Kjerstad']
+  Feature health: {'imputed_count': 9, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup', 'matchup_exposure', 'opp_pitcher_quality', 'opp_pitcher_throws', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #6  Geraldo Perdomo — Batter Strikeouts OVER 0.5 (MLB) ────
+  Match: ARI @ COL | start 2026-05-16T19:11:00Z
+  Batter hand: S  same=None  opp=None
+  Odds (per-book):
+    DraftKings           line=0.5 odds=450  fetched=2026-05-16T21:19:35.883751+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:35.889035+00:00
+  TP/Devig: tp=18.20%  fair_prob=0.1818  books_used=1  books_list=['DK']  method=multi_book_devig_v1
+  Anchor: best_book=draftkings odds=450.0 edge=0.0002  total_edge=0.5334  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=0.9721  μ_final=0.9700  σ=0.6325  version=MLB_HF_v3.0_bayes
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.7152  selector=normal_cdf cv_floor=0.45 mu_floor=0.5 capped
+  Shadow probs: lom=0.6377  ecdf=0.6778 (bucket=9 n=5814)  raw_gauss=0.7720
+  Form: HR_L5=60.0%  HR_L10=70.0%  HR_L20=65.0%  HR_over=65.0%  n_games=20
+  Margins: avg_hit=0.65  avg_miss=0.50  ceiling=65.0%  CV=0.852  stability=0.716
+  Vision: SCORE=99.90 | prob=0.000  proj=0.638  edge=1.000  consist=0.224  context=0.500  mkt_conf=0.433  dir_align=0.277  vol_penalty=0.671
+  Gates: coverage_gate=✓(1 vs 1) | direction_gate=✓({'projection': 0.97, 'line': 0.5, 'diff': 0.47} vs {'rule': 'projection > line'}) | edge_gate=✓(53.339999999999996 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -2% (Standard PA Volume)
+  Injury: team out=3 dtd=2  key_out=['Pavin Smith', 'Carlos Santana', 'Jordan Lawlar']
+  Feature health: {'imputed_count': 9, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup', 'matchup_exposure', 'opp_pitcher_quality', 'opp_pitcher_throws', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #7  Matt Olson — Total Bases OVER 2.5 (MLB) ────
+  Match: ATL vs BOS | start 2026-05-16T23:16:00Z
+  Opp Pitcher: Payton Tolle (throws L, K/9 10.72, ERA 1.99, WHIP 0.84)
+  Batter hand: L  same=1  opp=0
+  Odds (per-book):
+    DraftKings           line=2.5 odds=260  fetched=2026-05-16T17:09:17.206168+00:00
+    FanDuel              line=2.5 odds=240  fetched=2026-05-16T17:09:17.196877+00:00
+    ESPNBet              line=2.5 odds=260  fetched=2026-05-16T17:09:17.212947+00:00
+    HardRock             line=2.5 odds=220  fetched=2026-05-16T17:09:17.201968+00:00
+    PrizePicks           line=2.5 odds=100  fetched=2026-05-16T17:09:17.216879+00:00
+  TP/Devig: tp=30.40%  fair_prob=0.2859  books_used=6  books_list=['DK', 'FD', 'MGM', 'BOL', 'EB', 'HRB']  method=multi_book_devig_v1
+  Anchor: best_book=draftkings odds=260.0 edge=0.0262  total_edge=0.3258  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=3.2273  μ_final=3.0150  σ=1.8738  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=3.015  player_career_mean=2.800  player_n=20  weights model=0.5 player=0.5
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.6036  selector=normal_cdf cv_floor=0.65 mu_floor=1.0 capped
+  Shadow probs: lom=0.3698  ecdf=0.3077 (bucket=9 n=5814)  raw_gauss=0.6510
+  Form: HR_L5=80.0%  HR_L10=70.0%  HR_L20=60.0%  HR_over=60.0%  n_games=20
+  Margins: avg_hit=1.58  avg_miss=1.62  ceiling=55.0%  CV=0.630  stability=0.790
+  Vision: SCORE=98.70 | prob=0.000  proj=0.565  edge=1.000  consist=0.285  context=0.500  mkt_conf=0.900  dir_align=0.131  vol_penalty=0.178
+  Gates: coverage_gate=✓(6 vs 1) | direction_gate=✓({'projection': 3.015, 'line': 2.5, 'diff': 0.515} vs {'rule': 'projection > line'}) | edge_gate=✓(31.77 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: +2% (Standard PA Volume)
+  Injury: team out=5 dtd=0  key_out=['Ronald Acuna Jr.', 'Eli White', 'Sean Murphy', 'Dylan Dodd', 'Joey Wentz']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T17:26:02.762945+00:00
+
+──── #8  Gunnar Henderson — Hits+Runs+RBIs OVER 0.5 (MLB) ────
+  Match: BAL vs None | start 2026-05-16T20:07:00Z
+  Batter hand: L  same=None  opp=None
+  Odds (per-book):
+    DraftKings           line=0.5 odds=160  fetched=2026-05-16T21:19:41.677251+00:00
+    PrizePicks           line=0.5 odds=-137  fetched=2026-05-16T21:19:41.683866+00:00
+  TP/Devig: tp=35.60%  fair_prob=0.3846  books_used=1  books_list=['DK']  method=multi_book_devig_v1
+  Anchor: best_book=draftkings odds=160.0 edge=0.0004  total_edge=0.3820  shopping_edge_source=devig_vs_devig
+  Model: μ_raw=2.5086  μ_final=2.1460  σ=1.5776  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=2.146  player_career_mean=1.600  player_n=20  weights model=0.6 player=0.4
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.7376  selector=normal_cdf cv_floor=0.55 mu_floor=0.5 capped
+  Shadow probs: lom=0.6794  ecdf=0.7072 (bucket=8 n=5813)  raw_gauss=0.8990
+  Form: HR_L5=60.0%  HR_L10=70.0%  HR_L20=60.0%  HR_over=60.0%  n_games=20
+  Margins: avg_hit=2.17  avg_miss=0.50  ceiling=60.0%  CV=1.206  stability=0.598
+  Vision: SCORE=97.80 | prob=0.000  proj=0.654  edge=1.000  consist=0.100  context=0.500  mkt_conf=0.533  dir_align=0.308  vol_penalty=1.000
+  Gates: coverage_gate=✓(1 vs 1) | direction_gate=✓({'projection': 2.146, 'line': 0.5, 'diff': 1.646} vs {'rule': 'projection > line'}) | edge_gate=✓(35.3 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -2% (Standard PA Volume)
+  Injury: team out=9 dtd=1  key_out=['Dean Kremer', 'Yaramil Hiraldo', 'Cade Povich', 'Zach Eflin', 'Ryan Mountcastle', 'Ryan Helsley', 'Dylan Beavers', 'Grant Wolfram', 'Heston Kjerstad']
+  Feature health: {'imputed_count': 9, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup', 'matchup_exposure', 'opp_pitcher_quality', 'opp_pitcher_throws', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #9  Brandon Marsh — Runs OVER 0.5 (MLB) ────
+  Match: PHI @ PIT | start 2026-05-16T20:06:00Z
+  Opp Pitcher: Bubba Chandler (throws R, K/9 7.71, ERA 5.14, WHIP 1.52)
+  Batter hand: L  same=0  opp=1
+  Odds (per-book):
+    DraftKings           line=0.5 odds=380  fetched=2026-05-16T21:26:32.819851+00:00
+    FanDuel              line=0.5 odds=300  fetched=2026-05-16T21:24:39.120716+00:00
+    ESPNBet              line=0.5 odds=400  fetched=2026-05-16T21:26:32.822019+00:00
+    HardRock             line=0.5 odds=260  fetched=2026-05-16T21:19:37.890548+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:26:32.824461+00:00
+  TP/Devig: tp=19.00%  fair_prob=0.2083  books_used=2  books_list=['DK', 'PRX']  method=multi_book_devig_v1
+  Anchor: best_book=espnbet odds=400.0 edge=-0.0100  total_edge=0.3197  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=0.4958  μ_final=0.5300  σ=0.6325  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=0.530  player_career_mean=0.650  player_n=20  weights model=0.8 player=0.2
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.5197  selector=normal_cdf cv_floor=0.85 mu_floor=0.5 capped
+  Shadow probs: lom=0.4173  ecdf=0.4074 (bucket=8 n=5813)  raw_gauss=0.4970
+  Form: HR_L5=80.0%  HR_L10=70.0%  HR_L20=50.0%  HR_over=50.0%  n_games=20
+  Margins: avg_hit=0.80  avg_miss=0.50  ceiling=50.0%  CV=1.146  stability=0.618
+  Vision: SCORE=72.10 | prob=0.000  proj=0.512  edge=1.000  consist=0.000  context=0.500  mkt_conf=0.667  dir_align=0.025  vol_penalty=1.000
+  Gates: coverage_gate=✓(5 vs 1) | direction_gate=✓({'projection': 0.53, 'line': 0.5, 'diff': 0.03} vs {'rule': 'projection > line'}) | edge_gate=✓(31.14 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: +2% (Standard PA Volume)
+  Injury: team out=3 dtd=0  key_out=['Kyle Backhus', 'Zach Pop', 'Max Lazar']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:28:17.710166+00:00
+
+──── #10  Jose Fernandez — Batter Strikeouts OVER 0.5 (MLB) ────
+  Match: ARI @ COL | start 2026-05-16T19:11:00Z
+  Batter hand: R  same=None  opp=None
+  Odds (per-book):
+    DraftKings           line=0.5 odds=275  fetched=2026-05-16T21:19:35.883740+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:35.889055+00:00
+  TP/Devig: tp=26.70%  fair_prob=0.2667  books_used=1  books_list=['DK']  method=multi_book_devig_v1
+  Anchor: best_book=draftkings odds=275.0 edge=0.0003  total_edge=0.3967  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=0.7378  μ_final=0.7400  σ=0.5164  version=MLB_HF_v3.0_bayes
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.6634  selector=normal_cdf cv_floor=0.45 mu_floor=0.5 capped
+  Shadow probs: lom=0.6560  ecdf=0.6379 (bucket=7 n=5813)  raw_gauss=0.6770
+  Form: HR_L5=60.0%  HR_L10=60.0%  HR_L20=70.0%  HR_over=70.0%  n_games=20
+  Margins: avg_hit=0.64  avg_miss=0.50  ceiling=70.0%  CV=0.769  stability=0.744
+  Vision: SCORE=99.20 | prob=0.000  proj=0.604  edge=1.000  consist=0.316  context=0.500  mkt_conf=0.433  dir_align=0.208  vol_penalty=0.487
+  Gates: coverage_gate=✓(1 vs 1) | direction_gate=✓({'projection': 0.74, 'line': 0.5, 'diff': 0.24} vs {'rule': 'projection > line'}) | edge_gate=✓(39.67 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -2% (Standard PA Volume)
+  Injury: team out=3 dtd=2  key_out=['Pavin Smith', 'Carlos Santana', 'Jordan Lawlar']
+  Feature health: {'imputed_count': 15, 'imputed_features': ['home_away_split', 'lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup', 'matchup_exposure', 'opp_pitcher_quality', 'opp_pitcher_throws', 'pa_batter', 'pa_pitcher', 'platoon_split', 'sc_batter', 'sc_pitcher', 'vs_lhp', 'vs_rhp']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #11  Austin Martin — Batter Walks OVER 0.5 (MLB) ────
+  Match: MIN vs MIL | start 2026-05-16T23:11:00Z
+  Opp Pitcher: Logan Henderson (throws R, K/9 11.08, ERA 4.15, WHIP 0.92)
+  Batter hand: R  same=1  opp=0
+  Odds (per-book):
+    DraftKings           line=0.5 odds=178  fetched=2026-05-16T17:09:16.435901+00:00
+    ESPNBet              line=0.5 odds=165  fetched=2026-05-16T17:09:16.442674+00:00
+    HardRock             line=0.5 odds=175  fetched=2026-05-16T17:09:16.431289+00:00
+    WilliamHill (CSR)    line=0.5 odds=176  fetched=2026-05-16T17:09:16.432717+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T17:09:16.444889+00:00
+  TP/Devig: tp=34.00%  fair_prob=0.3597  books_used=5  books_list=['DK', 'CSR', 'EB', 'HRB', 'FLF']  method=multi_book_devig_v1
+  Anchor: best_book=draftkings odds=178.0 edge=0.0056  total_edge=0.3635  shopping_edge_source=devig_vs_devig
+  Model: μ_raw=1.0041  μ_final=0.9400  σ=0.5164  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=0.940  player_career_mean=0.700  player_n=20  weights model=0.8 player=0.2
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.6979  selector=normal_cdf cv_floor=0.85 mu_floor=0.5 capped
+  Shadow probs: lom=0.4267  ecdf=0.3376 (bucket=9 n=5814)  raw_gauss=0.8360
+  Form: HR_L5=40.0%  HR_L10=60.0%  HR_L20=60.0%  HR_over=60.0%  n_games=20
+  Margins: avg_hit=0.58  avg_miss=0.50  ceiling=60.0%  CV=0.903  stability=0.699
+  Vision: SCORE=99.10 | prob=0.000  proj=0.627  edge=1.000  consist=0.148  context=0.500  mkt_conf=0.800  dir_align=0.254  vol_penalty=0.784
+  Gates: coverage_gate=✓(5 vs 1) | direction_gate=✓({'projection': 0.94, 'line': 0.5, 'diff': 0.44} vs {'rule': 'projection > line'}) | edge_gate=✓(33.82 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -2% (Standard PA Volume)
+  Injury: team out=5 dtd=2  key_out=['Taj Bradley', 'Cody Laweryson', 'Garrett Acton', 'Cole Sands', 'Mick Abel']
+  Feature health: {'imputed_count': 10, 'imputed_features': ['home_away_split', 'lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'platoon_split', 'sc_pitcher', 'vs_lhp', 'vs_rhp']}
+  Computed: 2026-05-16T17:26:02.762945+00:00
+
+──── #12  Otto Lopez — Batter Strikeouts OVER 0.5 (MLB) ────
+  Match: MIA @ TB | start 2026-05-16T20:11:00Z
+  Opp Pitcher: Nick Martinez (throws R, K/9 6.02, ERA 1.55, WHIP 1.05)
+  Batter hand: R  same=1  opp=0
+  Odds (per-book):
+    DraftKings           line=0.5 odds=185  fetched=2026-05-16T21:19:43.637578+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:43.640405+00:00
+  TP/Devig: tp=35.10%  fair_prob=0.3509  books_used=1  books_list=['DK']  method=multi_book_devig_v1
+  Anchor: best_book=draftkings odds=185.0 edge=0.0001  total_edge=0.3525  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=1.0935  μ_final=1.0900  σ=0.9944  version=MLB_HF_v3.0_bayes
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.7034  selector=normal_cdf cv_floor=0.45 mu_floor=0.5 capped
+  Shadow probs: lom=0.6377  ecdf=0.6801 (bucket=9 n=5814)  raw_gauss=0.7250
+  Form: HR_L5=40.0%  HR_L10=60.0%  HR_L20=60.0%  HR_over=60.0%  n_games=20
+  Margins: avg_hit=1.00  avg_miss=0.50  ceiling=60.0%  CV=1.013  stability=0.662
+  Vision: SCORE=98.30 | prob=0.000  proj=0.630  edge=1.000  consist=0.100  context=0.500  mkt_conf=0.433  dir_align=0.261  vol_penalty=1.000
+  Gates: coverage_gate=✓(1 vs 1) | direction_gate=✓({'projection': 1.09, 'line': 0.5, 'diff': 0.59} vs {'rule': 'projection > line'}) | edge_gate=✓(35.25 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -6% (Reduced Opportunity)
+  Injury: team out=3 dtd=0  key_out=['Robby Snelling', 'Griffin Conine', 'Adam Mazur']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #13  Duncan Robinson — PTS OVER 11.5 (NBA) ────
+  Match: DET vs CLE | start 2026-05-18T00:10:00Z
+  Odds (per-book):
+    DraftKings           line=11.5 odds=196  fetched=2026-05-16T18:13:55.121539+00:00
+    PrizePicks           line=11.5 odds=100  fetched=2026-05-16T18:13:55.144196+00:00
+  TP/Devig: tp=33.80%  fair_prob=0.3378  books_used=1  books_list=['DK']  method=multi_book_devig_v1
+  Anchor: best_book=draftkings odds=196.0 edge=0.0002  total_edge=0.2969  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=11.8800  μ_final=13.4249  σ=5.8000  version=None
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.6347  selector=normal_cdf explicit_sigma
+  Shadow probs: lom=—  ecdf=— (bucket=None n=None)  raw_gauss=—
+  Form: HR_L5=80.0%  HR_L10=60.0%  HR_L20=55.0%  HR_over=55.0%  n_games=20
+  Margins: avg_hit=—  avg_miss=—  ceiling=20.0%  CV=0.347  stability=0.884
+  Vision: SCORE=93.10 | prob=0.000  proj=0.585  edge=0.990  consist=0.377  context=0.500  mkt_conf=0.633  dir_align=0.171  vol_penalty=0.000
+  Gates: coverage_gate=✓(1 vs 1) | direction_gate=✓({'projection': 13.4249, 'line': 11.5, 'diff': 1.9249} vs {'rule': 'projection > line'}) | edge_gate=✓(29.69 vs 0.01) | hit_rate_gate=✓(55.0 vs {'min': 50.0, 'window': 'default', 'l5_subgate_enforced': False}) | cv_gate=✓(0.3467 vs 0.75) | vision_score_gate=✓(93.1 vs {'min': 60.0})
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Injury: team out=0 dtd=0  key_out=[]
+  Feature health: {'imputed_count': 0, 'imputed_features': []}
+  Computed: 2026-05-16T18:21:43.462761+00:00
+
+──── #14  Dylan Harper — PRA OVER 21.5 (NBA) ────
+  Match: SAS @ OKC | start 2026-05-19T00:40:00Z
+  Odds (per-book):
+    PrizePicks           line=21.5 odds=100  fetched=2026-05-16T18:13:56.261563+00:00
+  TP/Devig: tp=35.70%  fair_prob=—  books_used=1  books_list=['BOL']  method=multi_book_devig_v1
+  Anchor: best_book=betonline odds=180.0 edge=-0.0001  total_edge=0.2750  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=20.5900  μ_final=23.1085  σ=7.6500  version=None
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.6321  selector=normal_cdf explicit_sigma
+  Shadow probs: lom=—  ecdf=— (bucket=None n=None)  raw_gauss=—
+  Form: HR_L5=80.0%  HR_L10=60.0%  HR_L20=55.0%  HR_over=55.0%  n_games=20
+  Margins: avg_hit=—  avg_miss=—  ceiling=5.0%  CV=0.366  stability=—
+  Vision: SCORE=— | prob=0.000  proj=0.584  edge=0.000  consist=0.367  context=0.519  mkt_conf=0.633  dir_align=0.167  vol_penalty=0.000
+  Gates: coverage_gate=✓(1 vs 1) | direction_gate=✓({'projection': 23.1085, 'line': 21.5, 'diff': 1.6085} vs {'rule': 'projection > line'}) | edge_gate=✓(None vs 0.01) | hit_rate_gate=✓(55.0 vs {'min': 50.0, 'window': 'default', 'l5_subgate_enforced': False}) | cv_gate=✓(0.3657 vs 0.75) | vision_score_gate=✓(None vs {'min': 60.0})
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Injury: team out=1 dtd=0  key_out=['David Jones']
+  Feature health: {'imputed_count': 1, 'imputed_features': ['sharp_implied']}
+  Computed: 2026-05-16T18:21:43.462761+00:00
+
+──── #15  Jonathan Aranda — RBIs OVER 0.5 (MLB) ────
+  Match: TB vs MIA | start 2026-05-16T20:11:00Z
+  Opp Pitcher: Sandy Alcantara (throws R, K/9 6.28, ERA 3.65, WHIP 1.25)
+  Batter hand: L  same=0  opp=1
+  Odds (per-book):
+    DraftKings           line=0.5 odds=340  fetched=2026-05-16T21:19:43.636910+00:00
+    FanDuel              line=0.5 odds=390  fetched=2026-05-16T21:19:43.634479+00:00
+    ESPNBet              line=0.5 odds=340  fetched=2026-05-16T21:19:43.639256+00:00
+    WilliamHill (CSR)    line=0.5 odds=325  fetched=2026-05-16T21:19:43.635774+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:43.640262+00:00
+  TP/Devig: tp=20.90%  fair_prob=0.2157  books_used=2  books_list=['DK', 'MGM']  method=multi_book_devig_v1
+  Anchor: best_book=fanduel odds=390.0 edge=0.0049  total_edge=0.3159  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=0.7131  μ_final=0.7340  σ=0.7888  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=0.734  player_career_mean=0.750  player_n=20  weights model=0.4 player=0.6
+  Distribution: kind=poisson λ=0.734 thresh=1  p_over=0.5200  selector=poisson λ_clip=[0.001,5.0]
+  Shadow probs: lom=0.3723  ecdf=0.3199 (bucket=9 n=5814)  raw_gauss=0.6060
+  Form: HR_L5=60.0%  HR_L10=60.0%  HR_L20=50.0%  HR_over=50.0%  n_games=20
+  Margins: avg_hit=1.00  avg_miss=0.50  ceiling=50.0%  CV=1.214  stability=0.595
+  Vision: SCORE=91.00 | prob=0.000  proj=0.574  edge=1.000  consist=0.000  context=0.500  mkt_conf=0.867  dir_align=0.147  vol_penalty=1.000
+  Gates: coverage_gate=✓(5 vs 1) | direction_gate=✓({'projection': 0.734, 'line': 0.5, 'diff': 0.234} vs {'rule': 'projection > line'}) | edge_gate=✓(30.43 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -2% (Standard PA Volume)
+  Injury: team out=4 dtd=0  key_out=['Gavin Lux', 'Joe Boyle', 'Steven Matz', 'Ryan Pepiot']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #16  James Harden — PRA OVER 33.5 (NBA) ────
+  Match: CLE @ DET | start 2026-05-18T00:10:00Z
+  Odds (per-book):
+    PrizePicks           line=33.5 odds=100  fetched=2026-05-16T18:13:55.145393+00:00
+  TP/Devig: tp=36.00%  fair_prob=—  books_used=1  books_list=['BOL']  method=multi_book_devig_v1
+  Anchor: best_book=betonline odds=178.0 edge=0.0003  total_edge=0.2557  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=34.7000  μ_final=34.8883  σ=6.2550  version=None
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.6154  selector=normal_cdf explicit_sigma
+  Shadow probs: lom=—  ecdf=— (bucket=None n=None)  raw_gauss=—
+  Form: HR_L5=60.0%  HR_L10=60.0%  HR_L20=50.0%  HR_over=50.0%  n_games=20
+  Margins: avg_hit=—  avg_miss=—  ceiling=0.0%  CV=0.205  stability=—
+  Vision: SCORE=— | prob=0.000  proj=0.573  edge=0.000  consist=0.398  context=0.500  mkt_conf=0.633  dir_align=0.146  vol_penalty=0.000
+  Gates: coverage_gate=✓(1 vs 1) | direction_gate=✓({'projection': 34.8883, 'line': 33.5, 'diff': 1.3883} vs {'rule': 'projection > line'}) | edge_gate=✓(None vs 0.01) | hit_rate_gate=✓(50.0 vs {'min': 50.0, 'window': 'default', 'l5_subgate_enforced': False}) | cv_gate=✓(0.2046 vs 0.75) | vision_score_gate=✓(None vs {'min': 60.0})
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Injury: team out=0 dtd=1  key_out=[]
+  Feature health: {'imputed_count': 1, 'imputed_features': ['sharp_implied']}
+  Computed: 2026-05-16T18:21:43.462761+00:00
+
+──── #17  Zach Neto — Batter Strikeouts OVER 1.5 (MLB) ────
+  Match: LAA vs LAD | start 2026-05-17T01:39:00Z
+  Opp Pitcher: Roki Sasaki (throws R, K/9 8.29, ERA 5.88, WHIP 1.63)
+  Batter hand: R  same=1  opp=0
+  Odds (per-book):
+    DraftKings           line=1.5 odds=284  fetched=2026-05-16T17:09:19.639637+00:00
+    PrizePicks           line=1.5 odds=100  fetched=2026-05-16T17:09:19.651132+00:00
+  TP/Devig: tp=26.00%  fair_prob=0.2604  books_used=1  books_list=['DK']  method=multi_book_devig_v1
+  Anchor: best_book=draftkings odds=284.0 edge=-0.0004  total_edge=0.3336  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=1.7991  μ_final=1.8000  σ=1.3166  version=MLB_HF_v3.0_bayes
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.5940  selector=normal_cdf cv_floor=0.45 mu_floor=0.5 capped
+  Shadow probs: lom=0.3724  ecdf=0.6703 (bucket=9 n=5814)  raw_gauss=0.5900
+  Form: HR_L5=40.0%  HR_L10=60.0%  HR_L20=45.0%  HR_over=45.0%  n_games=20
+  Margins: avg_hit=0.94  avg_miss=0.77  ceiling=15.0%  CV=0.701  stability=0.766
+  Vision: SCORE=98.80 | prob=0.000  proj=0.559  edge=1.000  consist=0.149  context=0.500  mkt_conf=0.433  dir_align=0.118  vol_penalty=0.336
+  Gates: coverage_gate=✓(1 vs 1) | direction_gate=✓({'projection': 1.8, 'line': 1.5, 'diff': 0.3} vs {'rule': 'projection > line'}) | edge_gate=✓(33.36 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -6% (Reduced Opportunity)
+  Injury: team out=4 dtd=1  key_out=['Drew Pomeranz', 'Grayson Rodriguez', "Travis d'Arnaud", 'Yusei Kikuchi']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T17:26:02.762945+00:00
+
+──── #18  Kyle Stowers — Runs OVER 0.5 (MLB) ────
+  Match: MIA @ TB | start 2026-05-16T20:11:00Z
+  Opp Pitcher: Nick Martinez (throws R, K/9 6.02, ERA 1.55, WHIP 1.05)
+  Odds (per-book):
+    DraftKings           line=0.5 odds=290  fetched=2026-05-16T21:19:43.637177+00:00
+    FanDuel              line=0.5 odds=310  fetched=2026-05-16T21:19:43.634567+00:00
+    ESPNBet              line=0.5 odds=320  fetched=2026-05-16T21:19:43.639432+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:43.640339+00:00
+  TP/Devig: tp=23.20%  fair_prob=0.2501  books_used=2  books_list=['DK', 'PRX']  method=multi_book_devig_v1
+  Anchor: best_book=espnbet odds=320.0 edge=-0.0061  total_edge=0.3426  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=0.7398  μ_final=0.6720  σ=0.5164  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=0.672  player_career_mean=0.400  player_n=20  weights model=0.8 player=0.2
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.5807  selector=normal_cdf cv_floor=0.85 mu_floor=0.5 capped
+  Shadow probs: lom=0.3937  ecdf=0.4176 (bucket=9 n=5814)  raw_gauss=0.6790
+  Form: HR_L5=80.0%  HR_L10=60.0%  HR_L20=40.0%  HR_over=40.0%  n_games=20
+  Margins: avg_hit=0.50  avg_miss=0.50  ceiling=40.0%  CV=1.257  stability=0.581
+  Vision: SCORE=93.90 | prob=0.000  proj=0.551  edge=1.000  consist=0.000  context=0.500  mkt_conf=0.667  dir_align=0.102  vol_penalty=1.000
+  Gates: coverage_gate=✓(6 vs 1) | direction_gate=✓({'projection': 0.672, 'line': 0.5, 'diff': 0.172} vs {'rule': 'projection > line'}) | edge_gate=✓(33.06 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -6% (Reduced Opportunity)
+  Injury: team out=3 dtd=0  key_out=['Robby Snelling', 'Griffin Conine', 'Adam Mazur']
+  Feature health: {'imputed_count': 8, 'imputed_features': ['batter_hand', 'lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #19  Oneil Cruz — Total Bases OVER 0.5 (MLB) ────
+  Match: PIT vs PHI | start 2026-05-16T20:06:00Z
+  Opp Pitcher: Cristopher Sánchez (throws L, K/9 11.22, ERA 1.97, WHIP 1.21)
+  Batter hand: L  same=1  opp=0
+  Odds (per-book):
+    DraftKings           line=0.5 odds=155  fetched=2026-05-16T21:19:37.893913+00:00
+    ESPNBet              line=0.5 odds=160  fetched=2026-05-16T21:19:37.896446+00:00
+    HardRock             line=0.5 odds=120  fetched=2026-05-16T21:19:37.891078+00:00
+    WilliamHill (CSR)    line=0.5 odds=160  fetched=2026-05-16T21:19:37.891761+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:37.898592+00:00
+  TP/Devig: tp=36.40%  fair_prob=0.3922  books_used=4  books_list=['MGM', 'CSR', 'EB', 'PRX']  method=multi_book_devig_v1
+  Anchor: best_book=betmgm odds=165.0 edge=0.0096  total_edge=0.4170  shopping_edge_source=devig_vs_devig
+  Model: μ_raw=2.8447  μ_final=2.2200  σ=1.6193  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=2.220  player_career_mean=1.600  player_n=20  weights model=0.5 player=0.5
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.7714  selector=normal_cdf cv_floor=0.65 mu_floor=1.0 capped
+  Shadow probs: lom=0.6330  ecdf=0.6151 (bucket=9 n=5814)  raw_gauss=0.9260
+  Form: HR_L5=60.0%  HR_L10=50.0%  HR_L20=60.0%  HR_over=60.0%  n_games=20
+  Margins: avg_hit=2.17  avg_miss=0.50  ceiling=60.0%  CV=1.042  stability=0.653
+  Vision: SCORE=99.10 | prob=0.000  proj=0.678  edge=1.000  consist=0.100  context=0.500  mkt_conf=1.000  dir_align=0.355  vol_penalty=1.000
+  Gates: coverage_gate=✓(8 vs 1) | direction_gate=✓({'projection': 2.22, 'line': 0.5, 'diff': 1.72} vs {'rule': 'projection > line'}) | edge_gate=✓(37.92 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -6% (Reduced Opportunity)
+  Injury: team out=3 dtd=1  key_out=['Joey Bart', 'Jake Mangum', 'Chris Devenski']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #20  Owen Caissie — Hits+Runs+RBIs OVER 0.5 (MLB) ────
+  Match: MIA @ TB | start 2026-05-16T20:11:00Z
+  Opp Pitcher: Nick Martinez (throws R, K/9 6.02, ERA 1.55, WHIP 1.05)
+  Batter hand: L  same=0  opp=1
+  Odds (per-book):
+    DraftKings           line=0.5 odds=220  fetched=2026-05-16T21:19:43.636694+00:00
+    ESPNBet              line=0.5 odds=230  fetched=2026-05-16T21:19:43.638936+00:00
+    HardRock             line=0.5 odds=225  fetched=2026-05-16T21:19:43.635218+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:43.640212+00:00
+  TP/Devig: tp=28.80%  fair_prob=0.3125  books_used=3  books_list=['DK', 'EB', 'HRB']  method=multi_book_devig_v1
+  Anchor: best_book=espnbet odds=230.0 edge=0.0034  total_edge=0.4204  shopping_edge_source=devig_vs_devig
+  Model: μ_raw=1.3804  μ_final=1.1880  σ=0.8233  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=1.188  player_career_mean=0.900  player_n=20  weights model=0.6 player=0.4
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.7050  selector=normal_cdf cv_floor=0.55 mu_floor=0.5 capped
+  Shadow probs: lom=0.6337  ecdf=0.6738 (bucket=3 n=5813)  raw_gauss=0.8580
+  Form: HR_L5=60.0%  HR_L10=50.0%  HR_L20=55.0%  HR_over=55.0%  n_games=20
+  Margins: avg_hit=1.14  avg_miss=0.50  ceiling=55.0%  CV=1.075  stability=0.642
+  Vision: SCORE=98.60 | prob=0.000  proj=0.631  edge=1.000  consist=0.050  context=0.500  mkt_conf=0.800  dir_align=0.263  vol_penalty=1.000
+  Gates: coverage_gate=✓(3 vs 1) | direction_gate=✓({'projection': 1.188, 'line': 0.5, 'diff': 0.688} vs {'rule': 'projection > line'}) | edge_gate=✓(39.25 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -6% (Reduced Opportunity)
+  Injury: team out=3 dtd=0  key_out=['Robby Snelling', 'Griffin Conine', 'Adam Mazur']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #21  Brandon Lowe — Runs OVER 0.5 (MLB) ────
+  Match: PIT vs PHI | start 2026-05-16T20:06:00Z
+  Opp Pitcher: Cristopher Sánchez (throws L, K/9 11.22, ERA 1.97, WHIP 1.21)
+  Batter hand: L  same=1  opp=0
+  Odds (per-book):
+    DraftKings           line=0.5 odds=380  fetched=2026-05-16T21:26:32.819847+00:00
+    FanDuel              line=0.5 odds=400  fetched=2026-05-16T21:26:32.815904+00:00
+    ESPNBet              line=0.5 odds=400  fetched=2026-05-16T21:26:32.822015+00:00
+    HardRock             line=0.5 odds=350  fetched=2026-05-16T21:26:32.817306+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:26:32.824457+00:00
+  TP/Devig: tp=20.50%  fair_prob=0.2041  books_used=3  books_list=['DK', 'HRB', 'PRX']  method=multi_book_devig_v1
+  Anchor: best_book=fanduel odds=400.0 edge=0.0050  total_edge=0.3705  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=0.5817  μ_final=0.6240  σ=0.9487  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=0.624  player_career_mean=0.800  player_n=20  weights model=0.8 player=0.2
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.5705  selector=normal_cdf cv_floor=0.85 mu_floor=0.5 capped
+  Shadow probs: lom=0.4574  ecdf=0.4169 (bucket=9 n=5814)  raw_gauss=0.5340
+  Form: HR_L5=60.0%  HR_L10=50.0%  HR_L20=55.0%  HR_over=55.0%  n_games=20
+  Margins: avg_hit=0.95  avg_miss=0.50  ceiling=55.0%  CV=1.118  stability=0.627
+  Vision: SCORE=85.20 | prob=0.000  proj=0.544  edge=1.000  consist=0.050  context=0.500  mkt_conf=0.800  dir_align=0.089  vol_penalty=1.000
+  Gates: coverage_gate=✓(7 vs 1) | direction_gate=✓({'projection': 0.624, 'line': 0.5, 'diff': 0.124} vs {'rule': 'projection > line'}) | edge_gate=✓(36.64 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -6% (Reduced Opportunity)
+  Injury: team out=3 dtd=1  key_out=['Joey Bart', 'Jake Mangum', 'Chris Devenski']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:28:17.710166+00:00
+
+──── #22  Ildemaro Vargas — Total Bases OVER 1.5 (MLB) ────
+  Match: ARI @ COL | start 2026-05-16T19:11:00Z
+  Batter hand: S  same=None  opp=None
+  Odds (per-book):
+    DraftKings           line=1.5 odds=550  fetched=2026-05-16T21:19:35.884064+00:00
+    FanDuel              line=1.5 odds=550  fetched=2026-05-16T21:19:35.880604+00:00
+    ESPNBet              line=1.5 odds=600  fetched=2026-05-16T21:19:35.887077+00:00
+    HardRock             line=1.5 odds=650  fetched=2026-05-16T21:19:35.885413+00:00
+    PrizePicks           line=1.5 odds=100  fetched=2026-05-16T21:19:35.889105+00:00
+  TP/Devig: tp=13.10%  fair_prob=0.1538  books_used=2  books_list=['EB', 'HRB']  method=multi_book_devig_v1
+  Anchor: best_book=hardrockbet odds=650.0 edge=0.0040  total_edge=0.5196  shopping_edge_source=devig_vs_devig
+  Model: μ_raw=2.1882  μ_final=2.3450  σ=2.6583  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=2.345  player_career_mean=2.500  player_n=20  weights model=0.5 player=0.5
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.6466  selector=normal_cdf cv_floor=0.65 mu_floor=1.0 capped
+  Shadow probs: lom=0.4914  ecdf=0.3645 (bucket=7 n=5813)  raw_gauss=0.6020
+  Form: HR_L5=40.0%  HR_L10=50.0%  HR_L20=55.0%  HR_over=55.0%  n_games=20
+  Margins: avg_hit=2.41  avg_miss=0.72  ceiling=35.0%  CV=0.958  stability=0.681
+  Vision: SCORE=99.60 | prob=0.000  proj=0.593  edge=1.000  consist=0.071  context=0.500  mkt_conf=0.667  dir_align=0.186  vol_penalty=0.907
+  Gates: coverage_gate=✓(4 vs 1) | direction_gate=✓({'projection': 2.345, 'line': 1.5, 'diff': 0.845} vs {'rule': 'projection > line'}) | edge_gate=✓(49.28 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -2% (Standard PA Volume)
+  Injury: team out=3 dtd=2  key_out=['Pavin Smith', 'Carlos Santana', 'Jordan Lawlar']
+  Feature health: {'imputed_count': 9, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup', 'matchup_exposure', 'opp_pitcher_quality', 'opp_pitcher_throws', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #23  Paul Reed Jr — PTS OVER 9.5 (NBA) ────
+  Match: DET vs CLE | start 2026-05-18T00:10:00Z
+  Odds (per-book):
+    DraftKings           line=9.5 odds=175  fetched=2026-05-16T18:13:55.121595+00:00
+    FanDuel              line=9.5 odds=186  fetched=2026-05-16T18:13:55.126029+00:00
+    ESPNBet              line=9.5 odds=180  fetched=2026-05-16T18:13:55.138336+00:00
+    WilliamHill (CSR)    line=9.5 odds=150  fetched=2026-05-16T18:13:55.136802+00:00
+    PrizePicks           line=9.5 odds=100  fetched=2026-05-16T18:13:55.144267+00:00
+  TP/Devig: tp=36.70%  fair_prob=0.3380  books_used=6  books_list=['DK', 'FD', 'MGM', 'BOL', 'CSR', 'EB']  method=multi_book_devig_v1
+  Anchor: best_book=betmgm odds=220.0 edge=0.0545  total_edge=0.3177  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=12.3430  μ_final=11.0615  σ=5.8000  version=None
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.6302  selector=normal_cdf explicit_sigma
+  Shadow probs: lom=—  ecdf=— (bucket=None n=None)  raw_gauss=—
+  Form: HR_L5=80.0%  HR_L10=50.0%  HR_L20=50.0%  HR_over=50.0%  n_games=20
+  Margins: avg_hit=—  avg_miss=—  ceiling=20.0%  CV=0.680  stability=0.773
+  Vision: SCORE=89.80 | prob=0.000  proj=0.582  edge=0.912  consist=0.160  context=0.500  mkt_conf=0.900  dir_align=0.165  vol_penalty=0.289
+  Gates: coverage_gate=✓(6 vs 1) | direction_gate=✓({'projection': 11.0615, 'line': 9.5, 'diff': 1.5615} vs {'rule': 'projection > line'}) | edge_gate=✓(29.220000000000002 vs 0.01) | hit_rate_gate=✓(50.0 vs {'min': 50.0, 'window': 'default', 'l5_subgate_enforced': False}) | cv_gate=✓(0.6799 vs 0.75) | vision_score_gate=✓(89.8 vs {'min': 60.0})
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Injury: team out=0 dtd=0  key_out=[]
+  Feature health: {'imputed_count': 0, 'imputed_features': []}
+  Computed: 2026-05-16T18:21:43.462761+00:00
+
+──── #24  Nick Gonzales — Total Bases OVER 1.5 (MLB) ────
+  Match: PIT vs PHI | start 2026-05-16T20:06:00Z
+  Opp Pitcher: Cristopher Sánchez (throws L, K/9 11.22, ERA 1.97, WHIP 1.21)
+  Batter hand: R  same=0  opp=1
+  Odds (per-book):
+    DraftKings           line=1.5 odds=330  fetched=2026-05-16T21:19:37.894055+00:00
+    FanDuel              line=1.5 odds=280  fetched=2026-05-16T21:19:37.889123+00:00
+    ESPNBet              line=1.5 odds=340  fetched=2026-05-16T21:19:37.896370+00:00
+    HardRock             line=1.5 odds=240  fetched=2026-05-16T21:19:37.891074+00:00
+    PrizePicks           line=1.5 odds=100  fetched=2026-05-16T21:19:37.898571+00:00
+  TP/Devig: tp=27.10%  fair_prob=0.2479  books_used=1  books_list=['HRB']  method=multi_book_devig_v1
+  Anchor: best_book=espnbet odds=340.0 edge=0.0437  total_edge=0.3230  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=1.9591  μ_final=1.6800  σ=1.4298  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=1.680  player_career_mean=1.400  player_n=20  weights model=0.5 player=0.5
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.5503  selector=normal_cdf cv_floor=0.65 mu_floor=1.0 capped
+  Shadow probs: lom=0.4002  ecdf=0.3645 (bucket=7 n=5813)  raw_gauss=0.6260
+  Form: HR_L5=40.0%  HR_L10=50.0%  HR_L20=50.0%  HR_over=50.0%  n_games=20
+  Margins: avg_hit=0.90  avg_miss=1.10  ceiling=15.0%  CV=0.848  stability=0.717
+  Vision: SCORE=95.00 | prob=0.000  proj=0.531  edge=1.000  consist=0.076  context=0.500  mkt_conf=0.533  dir_align=0.063  vol_penalty=0.662
+  Gates: coverage_gate=✓(4 vs 1) | direction_gate=✓({'projection': 1.68, 'line': 1.5, 'diff': 0.18} vs {'rule': 'projection > line'}) | edge_gate=✓(30.240000000000002 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -6% (Reduced Opportunity)
+  Injury: team out=3 dtd=1  key_out=['Joey Bart', 'Jake Mangum', 'Chris Devenski']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #25  Nolan Arenado — Runs OVER 0.5 (MLB) ────
+  Match: ARI @ COL | start 2026-05-16T19:11:00Z
+  Batter hand: R  same=None  opp=None
+  Odds (per-book):
+    DraftKings           line=0.5 odds=350  fetched=2026-05-16T21:19:35.883441+00:00
+    FanDuel              line=0.5 odds=330  fetched=2026-05-16T21:19:35.880386+00:00
+    ESPNBet              line=0.5 odds=340  fetched=2026-05-16T21:19:35.886588+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:35.888997+00:00
+  TP/Devig: tp=20.70%  fair_prob=0.2274  books_used=3  books_list=['DK', 'PRX', 'FLF']  method=multi_book_devig_v1
+  Anchor: best_book=fliff odds=370.0 edge=0.0067  total_edge=0.3684  shopping_edge_source=devig_vs_devig
+  Model: μ_raw=0.6229  μ_final=0.6360  σ=0.6992  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=0.636  player_career_mean=0.700  player_n=20  weights model=0.8 player=0.2
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.5687  selector=normal_cdf cv_floor=0.85 mu_floor=0.5 capped
+  Shadow probs: lom=0.4279  ecdf=0.4074 (bucket=8 n=5813)  raw_gauss=0.5700
+  Form: HR_L5=40.0%  HR_L10=50.0%  HR_L20=50.0%  HR_over=50.0%  n_games=20
+  Margins: avg_hit=0.90  avg_miss=0.50  ceiling=50.0%  CV=1.235  stability=0.588
+  Vision: SCORE=94.40 | prob=0.000  proj=0.543  edge=1.000  consist=0.000  context=0.500  mkt_conf=0.800  dir_align=0.086  vol_penalty=1.000
+  Gates: coverage_gate=✓(7 vs 1) | direction_gate=✓({'projection': 0.636, 'line': 0.5, 'diff': 0.136} vs {'rule': 'projection > line'}) | edge_gate=✓(34.13 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -2% (Standard PA Volume)
+  Injury: team out=3 dtd=2  key_out=['Pavin Smith', 'Carlos Santana', 'Jordan Lawlar']
+  Feature health: {'imputed_count': 9, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup', 'matchup_exposure', 'opp_pitcher_quality', 'opp_pitcher_throws', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #26  Oneil Cruz — RBIs OVER 0.5 (MLB) ────
+  Match: PIT vs PHI | start 2026-05-16T20:06:00Z
+  Opp Pitcher: Cristopher Sánchez (throws L, K/9 11.22, ERA 1.97, WHIP 1.21)
+  Batter hand: L  same=1  opp=0
+  Odds (per-book):
+    DraftKings           line=0.5 odds=475  fetched=2026-05-16T21:19:37.893033+00:00
+    ESPNBet              line=0.5 odds=475  fetched=2026-05-16T21:19:37.895713+00:00
+    HardRock             line=0.5 odds=425  fetched=2026-05-16T21:19:37.890226+00:00
+    WilliamHill (CSR)    line=0.5 odds=400  fetched=2026-05-16T21:19:37.891688+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:37.898388+00:00
+  TP/Devig: tp=17.00%  fair_prob=0.1739  books_used=3  books_list=['DK', 'MGM', 'HRB']  method=multi_book_devig_v1
+  Anchor: best_book=draftkings odds=475.0 edge=0.0059  total_edge=0.3559  shopping_edge_source=devig_vs_devig
+  Model: μ_raw=0.7129  μ_final=0.7340  σ=0.5270  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=0.734  player_career_mean=0.750  player_n=20  weights model=0.4 player=0.6
+  Distribution: kind=poisson λ=0.734 thresh=1  p_over=0.5200  selector=poisson λ_clip=[0.001,5.0]
+  Shadow probs: lom=0.3515  ecdf=0.3180 (bucket=9 n=5814)  raw_gauss=0.6570
+  Form: HR_L5=40.0%  HR_L10=50.0%  HR_L20=50.0%  HR_over=50.0%  n_games=20
+  Margins: avg_hit=1.00  avg_miss=0.50  ceiling=50.0%  CV=1.289  stability=0.570
+  Vision: SCORE=92.60 | prob=0.000  proj=0.609  edge=1.000  consist=0.000  context=0.500  mkt_conf=1.000  dir_align=0.218  vol_penalty=1.000
+  Gates: coverage_gate=✓(5 vs 1) | direction_gate=✓({'projection': 0.734, 'line': 0.5, 'diff': 0.234} vs {'rule': 'projection > line'}) | edge_gate=✓(34.61 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -6% (Reduced Opportunity)
+  Injury: team out=3 dtd=1  key_out=['Joey Bart', 'Jake Mangum', 'Chris Devenski']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #27  Brandon Lowe — Total Bases OVER 1.5 (MLB) ────
+  Match: PIT vs PHI | start 2026-05-16T20:06:00Z
+  Opp Pitcher: Cristopher Sánchez (throws L, K/9 11.22, ERA 1.97, WHIP 1.21)
+  Batter hand: L  same=1  opp=0
+  Odds (per-book):
+    DraftKings           line=1.5 odds=390  fetched=2026-05-16T21:26:32.820374+00:00
+    FanDuel              line=1.5 odds=390  fetched=2026-05-16T21:26:32.815976+00:00
+    ESPNBet              line=1.5 odds=400  fetched=2026-05-16T21:26:32.822556+00:00
+    HardRock             line=1.5 odds=375  fetched=2026-05-16T21:26:32.817759+00:00
+    PrizePicks           line=1.5 odds=100  fetched=2026-05-16T21:26:32.824621+00:00
+  TP/Devig: tp=19.10%  fair_prob=0.2041  books_used=2  books_list=['EB', 'HRB']  method=multi_book_devig_v1
+  Anchor: best_book=espnbet odds=400.0 edge=0.0050  total_edge=0.4144  shopping_edge_source=devig_vs_devig
+  Model: μ_raw=1.9385  μ_final=2.0950  σ=2.0790  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=2.095  player_career_mean=2.250  player_n=20  weights model=0.5 player=0.5
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.6004  selector=normal_cdf cv_floor=0.65 mu_floor=1.0 capped
+  Shadow probs: lom=0.4015  ecdf=0.3645 (bucket=7 n=5813)  raw_gauss=0.5840
+  Form: HR_L5=40.0%  HR_L10=50.0%  HR_L20=50.0%  HR_over=50.0%  n_games=20
+  Margins: avg_hit=2.70  avg_miss=1.20  ceiling=30.0%  CV=1.116  stability=0.628
+  Vision: SCORE=91.80 | prob=0.000  proj=0.563  edge=1.000  consist=0.000  context=0.500  mkt_conf=0.667  dir_align=0.127  vol_penalty=1.000
+  Gates: coverage_gate=✓(4 vs 1) | direction_gate=✓({'projection': 2.095, 'line': 1.5, 'diff': 0.595} vs {'rule': 'projection > line'}) | edge_gate=✓(39.629999999999995 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -6% (Reduced Opportunity)
+  Injury: team out=3 dtd=1  key_out=['Joey Bart', 'Jake Mangum', 'Chris Devenski']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:28:17.710166+00:00
+
+──── #28  Liam Hicks — RBIs OVER 0.5 (MLB) ────
+  Match: MIA @ TB | start 2026-05-16T20:11:00Z
+  Opp Pitcher: Nick Martinez (throws R, K/9 6.02, ERA 1.55, WHIP 1.05)
+  Batter hand: L  same=0  opp=1
+  Odds (per-book):
+    DraftKings           line=0.5 odds=330  fetched=2026-05-16T21:19:43.636941+00:00
+    FanDuel              line=0.5 odds=360  fetched=2026-05-16T21:19:43.634471+00:00
+    ESPNBet              line=0.5 odds=380  fetched=2026-05-16T21:19:43.639272+00:00
+    PrizePicks           line=0.5 odds=100  fetched=2026-05-16T21:19:43.640275+00:00
+  TP/Devig: tp=20.70%  fair_prob=0.2250  books_used=2  books_list=['DK', 'MGM']  method=multi_book_devig_v1
+  Anchor: best_book=espnbet odds=380.0 edge=-0.0013  total_edge=0.3174  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=0.4398  μ_final=0.7460  σ=1.3703  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=0.746  player_career_mean=0.950  player_n=20  weights model=0.4 player=0.6
+  Distribution: kind=poisson λ=0.746 thresh=1  p_over=0.5257  selector=poisson λ_clip=[0.001,5.0]
+  Shadow probs: lom=0.3487  ecdf=0.3083 (bucket=7 n=5813)  raw_gauss=0.4820
+  Form: HR_L5=40.0%  HR_L10=50.0%  HR_L20=45.0%  HR_over=45.0%  n_games=20
+  Margins: avg_hit=1.61  avg_miss=0.50  ceiling=45.0%  CV=1.299  stability=0.567
+  Vision: SCORE=90.30 | prob=0.000  proj=0.545  edge=1.000  consist=0.000  context=0.500  mkt_conf=0.867  dir_align=0.089  vol_penalty=1.000
+  Gates: coverage_gate=✓(4 vs 1) | direction_gate=✓({'projection': 0.746, 'line': 0.5, 'diff': 0.246} vs {'rule': 'projection > line'}) | edge_gate=✓(30.070000000000004 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -6% (Reduced Opportunity)
+  Injury: team out=3 dtd=0  key_out=['Robby Snelling', 'Griffin Conine', 'Adam Mazur']
+  Feature health: {'imputed_count': 6, 'imputed_features': ['lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup_exposure', 'pa_pitcher', 'sc_pitcher']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #29  Samuel Basallo — Total Bases OVER 1.5 (MLB) ────
+  Match: BAL vs None | start 2026-05-16T20:07:00Z
+  Batter hand: L  same=None  opp=None
+  Odds (per-book):
+    DraftKings           line=1.5 odds=330  fetched=2026-05-16T21:19:41.678496+00:00
+    FanDuel              line=1.5 odds=320  fetched=2026-05-16T21:19:41.673734+00:00
+    ESPNBet              line=1.5 odds=340  fetched=2026-05-16T21:19:41.681144+00:00
+    HardRock             line=1.5 odds=325  fetched=2026-05-16T21:19:41.675533+00:00
+    PrizePicks           line=1.5 odds=100  fetched=2026-05-16T21:19:41.684256+00:00
+  TP/Devig: tp=21.50%  fair_prob=0.2354  books_used=2  books_list=['EB', 'HRB']  method=multi_book_devig_v1
+  Anchor: best_book=espnbet odds=340.0 edge=0.0033  total_edge=0.3326  shopping_edge_source=devig_vs_devig
+  Model: μ_raw=1.5280  μ_final=1.7400  σ=2.7508  version=MLB_HF_v3.1_phase2a
+  EB shrink: shrunk=1.740  player_career_mean=1.950  player_n=20  weights model=0.5 player=0.5
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.5443  selector=normal_cdf cv_floor=0.65 mu_floor=1.0 capped
+  Shadow probs: lom=0.3814  ecdf=0.3692 (bucket=5 n=5813)  raw_gauss=0.5040
+  Form: HR_L5=40.0%  HR_L10=50.0%  HR_L20=40.0%  HR_over=40.0%  n_games=20
+  Margins: avg_hit=2.88  avg_miss=1.17  ceiling=30.0%  CV=1.239  stability=0.587
+  Vision: SCORE=91.50 | prob=0.000  proj=0.528  edge=1.000  consist=0.000  context=0.500  mkt_conf=0.667  dir_align=0.056  vol_penalty=1.000
+  Gates: coverage_gate=✓(4 vs 1) | direction_gate=✓({'projection': 1.74, 'line': 1.5, 'diff': 0.24} vs {'rule': 'projection > line'}) | edge_gate=✓(30.89 vs 30.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: -2% (Standard PA Volume)
+  Injury: team out=9 dtd=1  key_out=['Dean Kremer', 'Yaramil Hiraldo', 'Cade Povich', 'Zach Eflin', 'Ryan Mountcastle', 'Ryan Helsley', 'Dylan Beavers', 'Grant Wolfram', 'Heston Kjerstad']
+  Feature health: {'imputed_count': 13, 'imputed_features': ['home_away_split', 'lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup', 'matchup_exposure', 'opp_pitcher_quality', 'opp_pitcher_throws', 'pa_pitcher', 'platoon_split', 'sc_pitcher', 'vs_lhp', 'vs_rhp']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
+
+──── #30  Payton Tolle — Pitcher Strikeouts OVER 6.5 (MLB) ────
+  Match: BOS @ ATL | start 2026-05-16T23:16:00Z
+  Opp Pitcher: Bryce Elder (throws R, K/9 8.73, ERA 1.81, WHIP 1.01)
+  Odds (per-book):
+    DraftKings           line=6.5 odds=221  fetched=2026-05-16T21:20:00.587028+00:00
+    FanDuel              line=6.5 odds=280  fetched=2026-05-16T21:20:00.576997+00:00
+    ESPNBet              line=6.5 odds=300  fetched=2026-05-16T21:20:00.594037+00:00
+    HardRock             line=6.5 odds=200  fetched=2026-05-16T21:20:00.582539+00:00
+    WilliamHill (CSR)    line=6.5 odds=230  fetched=2026-05-16T21:20:00.583862+00:00
+    PrizePicks           line=6.5 odds=100  fetched=2026-05-16T21:20:00.598260+00:00
+  TP/Devig: tp=27.50%  fair_prob=0.2873  books_used=2  books_list=['BRV', 'PRX']  method=multi_book_devig_v1
+  Anchor: best_book=espnbet odds=300.0 edge=0.0250  total_edge=0.3031  shopping_edge_source=devig_vs_raw
+  Model: μ_raw=6.8331  μ_final=7.2300  σ=3.8914  version=MLB_HF_v3.2_phase2b
+  Distribution: kind=normal_cdf λ=None thresh=None  p_over=0.5531  selector=normal_cdf cv_floor=0.3 mu_floor=2.0
+  Shadow probs: lom=0.4422  ecdf=0.5847 (bucket=9 n=1570)  raw_gauss=0.5740
+  Form: HR_L5=60.0%  HR_L10=42.9%  HR_L20=43.0%  HR_over=43.0%  n_games=7
+  Margins: avg_hit=—  avg_miss=—  ceiling=—%  CV=0.757  stability=0.748
+  Vision: SCORE=93.60 | prob=0.000  proj=0.533  edge=0.886  consist=0.121  context=0.500  mkt_conf=0.867  dir_align=0.067  vol_penalty=0.460
+  Gates: coverage_gate=✓(10 vs 1) | direction_gate=✓({'projection': 7.23, 'line': 6.5, 'diff': 0.73} vs {'rule': 'projection > line'}) | edge_gate=✓(26.58 vs 25.0)
+  Tier: war_zone  routed=war_zone  reason=gates_passed
+  Tempo: +0% (Standard Workload)
+  Injury: team out=5 dtd=2  key_out=['Trevor Story', 'Danny Coulombe', 'Roman Anthony', 'Garrett Crochet', 'Johan Oviedo']
+  Feature health: {'imputed_count': 16, 'imputed_features': ['batter_hand', 'expected_pa', 'home_away_split', 'lineup_handedness', 'lineup_size', 'lineup_strength', 'matchup', 'matchup_exposure', 'opp_pitcher_quality', 'pa_batter', 'pa_pitcher', 'platoon_split', 'sc_batter', 'sc_pitcher', 'vs_lhp', 'vs_rhp']}
+  Computed: 2026-05-16T21:22:53.596760+00:00
