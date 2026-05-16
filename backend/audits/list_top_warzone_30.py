@@ -68,11 +68,20 @@ def main():
     print(f"\n=== TOP {LIMIT} WAR ZONE CANDIDATES (across {','.join(SPORTS).upper()}) ===")
     print(f"=== last {SINCE_HOURS}h, ranked by L10 hit-rate (tie: L20, L5, vision) ===\n")
 
-    # Section 1: ranked summary
+    def _odds(d, key):
+        ly = d.get(key) or {}
+        v = ly.get("odds")
+        if v is None:
+            return "—"
+        return f"{int(v):+d}" if isinstance(v, (int, float)) else str(v)
+
+    # Section 1: ranked summary with inline per-book odds
     print(f"{'#':<3} {'Sport':<4} {'Player':<22} {'Stat':<22} {'L':<5} {'Side':<5} "
           f"{'HR_L5':>6} {'HR_L10':>7} {'HR_L20':>7} {'CV':>6} {'VS':>6} {'TP%':>6} "
-          f"{'FairP':>6} {'Edge':>7} {'μ':>6} {'σ':>5} {'P̂':>6} {'Books':>6}")
-    print("-" * 165)
+          f"{'FairP':>6} {'Edge':>6} {'μ':>6} {'σ':>5} {'P̂':>6} "
+          f"{'DK':>6} {'FD':>6} {'EB':>6} {'HRB':>6} {'CSR':>6} {'MGM':>6} "
+          f"{'BRV':>6} {'PRX':>6} {'BLY':>6} {'FLF':>6} {'PP':>6}")
+    print("-" * 257)
     for i, d in enumerate(top, 1):
         line = d.get("line")
         line_s = f"{line:.1f}" if line is not None else "—"
@@ -89,11 +98,21 @@ def main():
             f"{_f(d.get('vision_score'),1):>6} "
             f"{_f(d.get('tp'),1):>6} "
             f"{_f(d.get('fair_prob'),3):>6} "
-            f"{_f(d.get('total_edge'),3):>7} "
+            f"{_f(d.get('total_edge'),3):>6} "
             f"{_f(d.get('model_projection'),2):>6} "
             f"{_f(d.get('model_sigma'),2):>5} "
             f"{_f(p_true,3):>6} "
-            f"{str(d.get('book_count') or '—'):>6}"
+            f"{_odds(d,'dk_layer'):>6} "
+            f"{_odds(d,'fd_layer'):>6} "
+            f"{_odds(d,'eb_layer'):>6} "
+            f"{_odds(d,'hrb_layer'):>6} "
+            f"{_odds(d,'csr_layer'):>6} "
+            f"{_odds(d,'mgm_layer'):>6} "
+            f"{_odds(d,'brv_layer'):>6} "
+            f"{_odds(d,'prx_layer'):>6} "
+            f"{_odds(d,'bly_layer'):>6} "
+            f"{_odds(d,'flf_layer'):>6} "
+            f"{_odds(d,'pp_layer'):>6}"
         )
 
     # Section 2: detailed per-row breakdown
