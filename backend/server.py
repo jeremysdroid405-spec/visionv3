@@ -1680,6 +1680,12 @@ async def startup_event():
         from routes import admin_odds_audit as _admin_odds_audit
         _admin_odds_audit.set_db(db)
         app.include_router(_admin_odds_audit.router)
+        # 2026-05-16 operational PR C — Statcast ingest heartbeat /
+        # zero-row alerting surface. See routes/admin_mlb_statcast.py
+        # and services/scheduled/statcast_heartbeat.py.
+        from routes import admin_mlb_statcast as _admin_mlb_statcast
+        _admin_mlb_statcast.set_db(db)
+        app.include_router(_admin_mlb_statcast.router)
         # 2026-05-15 — system-wide ephemeral data cleanup utility.
         # See services/cleanup/ephemeral_cleanup.py.
         from routes import admin_ephemeral_cleanup as _admin_ephemeral

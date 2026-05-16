@@ -149,9 +149,20 @@ async def _step_lineup_monitor(db) -> Dict[str, Any]:
 
 async def _step_statcast_ingest(db, *, start: str, end: str) -> Dict[str, Any]:
     from scripts.mlb_statcast_ingest import ingest_range
+    from services.scheduled.statcast_heartbeat import record_heartbeat
     res = await ingest_range(db, start=start, end=end, dry_run=False, chunk_days=7)
     logger.info("[MLB_JOB] statcast_ingest %s..%s -> %s", start, end, res)
-    return {"statcast_ingest": res}
+    # 2026-05-16 — operational PR C: emit a heartbeat row that
+    # classifies scanned==0-in-season as warning (or error on the
+    # second consecutive miss). The ingest itself is unchanged.
+    heartbeat = await record_heartbeat(
+        db, start=start, end=end,
+        scanned=int(res.get("scanned") or 0),
+        inserted=int(res.get("inserted") or 0),
+        updated=int(res.get("updated") or 0),
+        errors=int(res.get("errors") or 0),
+    )
+    return {"statcast_ingest": res, "heartbeat": heartbeat}
 
 
 async def _step_build_batter_features(db) -> Dict[str, Any]:
