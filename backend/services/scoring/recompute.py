@@ -14,6 +14,7 @@ Constraints enforced:
  - Scoring-stack fields live ONLY in {sport}_prop_scores
  - Sport-specific ScoringAdapter provides the ScoringContext
 """
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -421,35 +422,107 @@ async def recompute_sport(
     # leaving the rest of the prop intact. Props where every alt
     # book quote was ejected are dropped from the batch entirely
     # (caller-supplied path covered by the same call below).
-    try:
-        from services.scoring.book_quote_integrity_filter import (
-            apply_to_prop_list as _apply_integrity_filter,
+    #
+    # 2026-05-17 (DISABLE FOLLOW-UP) — Forensic comparison vs the
+    # live Odds-API canonical feed confirmed that DK/FD/HRB
+    # alternate markets are pricing the previously-flagged tuples
+    # correctly in the -180..-350 range. The anomalous
+    # +700/+1500/+2500 prices originated from DK/ESPN consumer
+    # product surfaces (featured / SGP / promo / mislabeled UI) —
+    # NOT the canonical Odds-API market layer. Filter is now
+    # gated behind the `ENABLE_BOOK_QUOTE_INTEGRITY_FILTER` env
+    # flag (default FALSE) so ejection is skipped end-to-end while
+    # the module / schema fields / audit logging / tests stay
+    # intact for any future targeted re-enable.
+    _integrity_enabled = (
+        os.environ.get("ENABLE_BOOK_QUOTE_INTEGRITY_FILTER", "false")
+        .strip().lower() in ("1", "true", "yes", "on")
+    )
+    if not _integrity_enabled:
+        logger.info(
+            "[RECOMPUTE:%s] integrity_filter SKIPPED — "
+            "ENABLE_BOOK_QUOTE_INTEGRITY_FILTER is disabled "
+            "(canonical Odds-API pricing trusted; no quote "
+            "ejection, no prop drop, pre-filter aggregation "
+            "behavior restored). Infrastructure intact: module / "
+            "schema fields / audit logging / tests preserved.",
+            sport,
         )
-        _pre_filter_count = len(props)
-        props, _integrity_stats = _apply_integrity_filter(props)
-        if (
-            _integrity_stats.get("mutated", 0)
-            or _integrity_stats.get("rejected", 0)
-        ):
-            logger.info(
-                "[RECOMPUTE:%s] integrity_filter scanned=%d eligible=%d "
-                "mutated=%d rejected=%d total_quotes_ejected=%d "
-                "rule=%s (pre_count=%d post_count=%d)",
-                sport,
-                _integrity_stats.get("scanned"),
-                _integrity_stats.get("eligible"),
-                _integrity_stats.get("mutated"),
-                _integrity_stats.get("rejected"),
-                _integrity_stats.get("total_quotes_ejected"),
-                _integrity_stats.get("rule"),
-                _pre_filter_count,
-                len(props),
+    else:
+        try:
+            from services.scoring.book_quote_integrity_filter import (
+                apply_to_prop_list as _apply_integrity_filter,
             )
-    except Exception as _intg_exc:  # noqa: BLE001 — never abort recompute
-        logger.warning(
-            "[RECOMPUTE:%s] integrity_filter failed (%s); continuing "
-            "with unfiltered props — investigate ASAP.",
-            sport, _intg_exc,
+            _pre_filter_count = len(props)
+            props, _integrity_stats = _apply_integrity_filter(props)
+            if (
+                _integrity_stats.get("mutated", 0)
+                or _integrity_stats.get("rejected", 0)
+            ):
+                logger.info(
+                    "[RECOMPUTE:%s] integrity_filter scanned=%d eligible=%d "
+                    "mutated=%d rejected=%d total_quotes_ejected=%d "
+                    "rule=%s (pre_count=%d post_count=%d)",
+                    sport,
+                    _integrity_stats.get("scanned"),
+                    _integrity_stats.get("eligible"),
+                    _integrity_stats.get("mutated"),
+                    _integrity_stats.get("rejected"),
+                    _integrity_stats.get("total_quotes_ejected"),
+                    _integrity_stats.get("rule"),
+                    _pre_filter_count,
+                    len(props),
+                )
+        except Exception as _intg_exc:  # noqa: BLE001 — never abort recompute
+            logger.warning(
+                "[RECOMPUTE:%s] integrity_filter failed (%s); continuing "
+                "with unfiltered props — investigate ASAP.",
+                sport, _intg_exc,
+            )
+
+    # 2026-05-17 — PEER-DISAGREEMENT INTEGRITY FILTER (replaces the
+    # flat +500 cutoff above). For each MLB alternate-market prop,
+    # eject any individual real-sportsbook quote where
+    #
+    #     book_odds - median(other_real_books) >= +200
+    #
+    # (with ≥2 non-PP sportsbook quotes available). Prop is never
+    # dropped. PrizePicks is never in the peer set. Class-pure
+    # (alternate only). Gated by ENABLE_PEER_DISAGREEMENT_FILTER
+    # (default TRUE) — fully reversible.
+    _peer_filter_enabled = (
+        os.environ.get("ENABLE_PEER_DISAGREEMENT_FILTER", "true")
+        .strip().lower() in ("1", "true", "yes", "on")
+    )
+    if _peer_filter_enabled:
+        try:
+            from services.scoring.peer_disagreement_filter import (
+                apply_to_prop_list as _apply_peer_filter,
+            )
+            props, _peer_stats = _apply_peer_filter(props)
+            if _peer_stats.get("mutated", 0):
+                logger.info(
+                    "[RECOMPUTE:%s] peer_disagreement_filter scanned=%d "
+                    "eligible=%d mutated=%d total_quotes_ejected=%d "
+                    "rule=%s threshold=+%d",
+                    sport,
+                    _peer_stats.get("scanned"),
+                    _peer_stats.get("eligible"),
+                    _peer_stats.get("mutated"),
+                    _peer_stats.get("total_quotes_ejected"),
+                    _peer_stats.get("rule"),
+                    _peer_stats.get("threshold_plus"),
+                )
+        except Exception as _peer_exc:  # noqa: BLE001 — never abort recompute
+            logger.warning(
+                "[RECOMPUTE:%s] peer_disagreement_filter failed (%s); "
+                "continuing with unfiltered props — investigate ASAP.",
+                sport, _peer_exc,
+            )
+    else:
+        logger.info(
+            "[RECOMPUTE:%s] peer_disagreement_filter SKIPPED — "
+            "ENABLE_PEER_DISAGREEMENT_FILTER is disabled.", sport,
         )
 
     # Phase D2 (2026-04-21) — Delta Engine scoped-rescore filter.
