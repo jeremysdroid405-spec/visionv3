@@ -17,9 +17,9 @@ load_dotenv("/app/backend/.env")
 
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 
-SPORTS = ["mlb", "nba", "nfl"]
-LIMIT = 30
-SINCE_HOURS = 6
+SPORTS = ["mlb"]
+LIMIT = 25
+SINCE_HOURS = 2
 
 
 def _f(v, n=4):

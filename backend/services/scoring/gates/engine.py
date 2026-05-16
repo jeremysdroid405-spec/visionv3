@@ -84,15 +84,23 @@ class UniversalGateEngine:
             and window in ("default", "l20")
             and cfg.get("enforce_l5_subgate", True)
             and m.hit_rate_l5 is not None
-            and m.hit_rate_l5 < min_val
         ):
-            passed = False
-            note = (
-                f"l5_below_l20_floor: l5={m.hit_rate_l5} < min={min_val}"
-            )
+            # 2026-05-16 — `min_l5` override (operational, MLB WZ rewrite).
+            # When set, the L5 sub-gate uses its own floor (e.g. 60 for
+            # MLB WZ) decoupled from the L20 floor (70). When absent,
+            # the sub-gate keeps its historical behaviour (L5 must also
+            # clear `min_val`).
+            l5_floor = cfg.get("min_l5")
+            l5_required = float(l5_floor) if l5_floor is not None else min_val
+            if m.hit_rate_l5 < l5_required:
+                passed = False
+                note = (
+                    f"l5_below_floor: l5={m.hit_rate_l5} < min_l5={l5_required}"
+                )
         return GateDetail(
             gate_type="hit_rate_gate",
             threshold={"min": min_val, "window": window,
+                       "min_l5": cfg.get("min_l5"),
                        "l5_subgate_enforced": cfg.get(
                            "enforce_l5_subgate", True
                        )},
@@ -739,6 +747,8 @@ class UniversalGateEngine:
             and metrics.line is not None
             and float(metrics.line) == 0.5
             and "cv_gate" in cfg
+            and not (isinstance(cfg.get("cv_gate"), dict)
+                     and cfg["cv_gate"].get("suppress_binary_swap"))
         ):
             cv_cfg = cfg["cv_gate"]
             min_margin = (

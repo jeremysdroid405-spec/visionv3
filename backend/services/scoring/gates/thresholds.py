@@ -412,13 +412,55 @@ _MLB_FRONT_LINES: Dict[str, Dict[str, Any]] = {
     "_default":           {"cv_max": 0.65, "hr_min": 70.0, "edge_min": 4.0, "tp_min": 50.0},
 }
 _MLB_WAR_ZONE: Dict[str, Dict[str, Any]] = {
-    "hits":              {"ceiling_min": 35.0, "edge_min": 30.0},
-    "total_bases":       {"ceiling_min": 35.0, "edge_min": 30.0},
-    "hits_runs_rbis":    {"ceiling_min": 35.0, "edge_min": 30.0},
-    "rbis":              {"ceiling_min": 35.0, "edge_min": 30.0},
-    "runs":              {"ceiling_min": 35.0, "edge_min": 30.0},
-    "pitcher_strikeouts":{"ceiling_min": 30.0, "edge_min": 25.0},
-    "_default":          {"ceiling_min": 35.0, "edge_min": 30.0},
+    # 2026-05-16 — FULL REPLACEMENT of MLB War Zone gates per user
+    # spec. All prior WZ thresholds (`ceiling_min`, edge_min=30, etc.)
+    # are DELETED. _mlb_thresholds() short-circuits the war_zone=True
+    # branch when `__mlb_war_zone_rewrite_2026_05_16__` is present and
+    # emits the 5-gate spec directly.
+    "_default": {"__mlb_war_zone_rewrite_2026_05_16__": True},
+}
+
+
+# ────────────────────────────────────────────────────────────────────
+# MLB WAR ZONE — 2026-05-16 final gate spec (user-mandated rewrite)
+# ────────────────────────────────────────────────────────────────────
+# Source of truth: full user spec dated 2026-05-16.
+# Gates (ALL must pass):
+#   1. hr_l20 >= 70                        → hit_rate_gate(window=l20,min=70,min_l5=60)
+#   2. hr_l5  >= 60                        → same gate's L5 sub-gate
+#   3. cv     <= 1.1                       → cv_gate(max=1.1,suppress_binary_swap)
+#   4. projection > line  (strict for OVER) → direction_gate (engine strict default)
+#                            (mirrored < for UNDER)
+#   5. edge   >= 5                          → edge_gate(min=5.0)
+# NOT enforced (deliberately removed): tp_gate, ceiling_gate,
+# tp_source_gate, market_structure_gate, vision_score_gate,
+# margin_gate, regression hard-fail, all override blocks, coverage
+# floor > 1, ceiling_min, and any soft direction margin.
+# `coverage_gate` is RETAINED at `min_books: 1` strictly so the
+# engine's safety guard (`gate_config_missing` when cfg is empty)
+# isn't triggered for one-sided/PrizePicks-only props that have
+# already been filtered upstream. Removing `coverage_gate` would
+# fail-close every prop with `gate_config_missing`.
+_MLB_WAR_ZONE_OVER_2026_05_16: Dict[str, Any] = {
+    "coverage_gate":   {"min_books": 1},
+    "direction_gate":  {"applies_to_sides": ["OVER"]},
+    "hit_rate_gate":   {
+        "min": 70.0, "window": "l20",
+        "enforce_l5_subgate": True, "min_l5": 60.0,
+    },
+    "cv_gate":         {"max": 1.1, "suppress_binary_swap": True},
+    "edge_gate":       {"min": 5.0},
+}
+
+_MLB_WAR_ZONE_UNDER_2026_05_16: Dict[str, Any] = {
+    "coverage_gate":   {"min_books": 1},
+    "direction_gate":  {"applies_to_sides": ["UNDER"]},
+    "hit_rate_gate":   {
+        "min": 70.0, "window": "l20",
+        "enforce_l5_subgate": True, "min_l5": 60.0,
+    },
+    "cv_gate":         {"max": 1.1, "suppress_binary_swap": True},
+    "edge_gate":       {"min": 5.0},
 }
 
 def _mlb_thresholds(
@@ -457,14 +499,13 @@ def _mlb_thresholds(
             float(vals.get("edge_min", 0.0)), _UNIVERSAL_OVER_EDGE_FLOOR
         )
         if war_zone:
-            # 2026-05-13 — ceiling_gate REMOVED per user spec.
-            # War Zone is now: coverage + direction (OVER) + edge only.
-            # Previously rejected ~292 props/slate via ceiling_gate.
-            out[family] = {
-                "coverage_gate":  {"min_books": 1},
-                "direction_gate": _UNIVERSAL_OVER_DIRECTION,
-                "edge_gate":      {"min": family_edge_min},
-            }
+            # 2026-05-16 — FULL REPLACEMENT. Ignore family-level
+            # values entirely; emit the user-mandated 5-gate spec for
+            # every stat family, with side-specific `_default_over` /
+            # `_default_under` variants resolved by `resolve_thresholds`.
+            # No `ceiling_gate`, no `tp_gate`, no `tp_source_gate`,
+            # no margin/cushion soft logic, no overrides.
+            out[family] = dict(_MLB_WAR_ZONE_OVER_2026_05_16)
         else:
             hit_rate_block: Dict[str, Any] = {
                 "min": vals["hr_min"], "window": "default",
@@ -622,7 +663,17 @@ THRESHOLDS: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {
             },
             "_default_under": _MLB_FRONT_LINES_UNDER,
         },
-        "war_zone":    _mlb_thresholds(_MLB_WAR_ZONE, war_zone=True),
+        "war_zone":    {
+            # 2026-05-16 — FULL REPLACEMENT of MLB War Zone gates.
+            # Per-family entries all carry the OVER spec (produced by
+            # `_mlb_thresholds(..., war_zone=True)`); the
+            # `_default_under` block routes UNDER picks through the
+            # mirrored gate set. `resolve_thresholds` resolves
+            # `_default_under` before falling back to the family entry
+            # for UNDER side.
+            **_mlb_thresholds(_MLB_WAR_ZONE, war_zone=True),
+            "_default_under": _MLB_WAR_ZONE_UNDER_2026_05_16,
+        },
     },
     # Drop NFL adapter in place and start tuning here — engine works
     # as-soon-as the table is populated.
