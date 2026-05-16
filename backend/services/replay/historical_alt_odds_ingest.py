@@ -115,9 +115,11 @@ async def ensure_indexes(db) -> None:
         [("chunk_start_date", ASCENDING),
          ("chunk_end_date", ASCENDING),
          ("current_date", ASCENDING),
-         ("current_market", ASCENDING)],
+         ("current_market", ASCENDING),
+         ("snapshot_iso", ASCENDING)],
         name="status_compound_unique", unique=True,
     )
+    await db[STATUS_COLL].create_index("snapshot_hour")
     await db[STATUS_COLL].create_index("status")
     await db[STATUS_COLL].create_index("completed_at")
 
@@ -251,26 +253,33 @@ async def _flush_rows(
 
 
 # ── Status helpers ────────────────────────────────────────────────────
-def _status_filter(chunk_start: str, chunk_end: str, date: str, market: str) -> Dict[str, Any]:
+def _status_filter(chunk_start: str, chunk_end: str, date: str,
+                   market: str, snapshot_iso: str) -> Dict[str, Any]:
+    """Compound key for status rows. `snapshot_iso` is part of the key
+    so morning/afternoon/pre-lock snapshots of the same date+market
+    each get their own status row and never block each other."""
     return {"chunk_start_date": chunk_start, "chunk_end_date": chunk_end,
-            "current_date": date, "current_market": market}
+            "current_date": date, "current_market": market,
+            "snapshot_iso": snapshot_iso}
 
 
 async def _set_status(db, *, chunk_start: str, chunk_end: str,
-                      date: str, market: str, status: str, **extra) -> None:
-    doc = {"status": status, "updated_at": datetime.now(timezone.utc), **extra}
+                      date: str, market: str, snapshot_iso: str,
+                      snapshot_hour: int, status: str, **extra) -> None:
+    doc = {"status": status, "snapshot_hour": snapshot_hour,
+           "updated_at": datetime.now(timezone.utc), **extra}
     if status == "completed":
         doc["completed_at"] = datetime.now(timezone.utc)
     await db[STATUS_COLL].update_one(
-        _status_filter(chunk_start, chunk_end, date, market),
+        _status_filter(chunk_start, chunk_end, date, market, snapshot_iso),
         {"$set": doc}, upsert=True,
     )
 
 
 async def _is_completed(db, *, chunk_start: str, chunk_end: str,
-                        date: str, market: str) -> bool:
+                        date: str, market: str, snapshot_iso: str) -> bool:
     doc = await db[STATUS_COLL].find_one(
-        _status_filter(chunk_start, chunk_end, date, market),
+        _status_filter(chunk_start, chunk_end, date, market, snapshot_iso),
         projection={"_id": 0, "status": 1},
     )
     return bool(doc and doc.get("status") == "completed")
@@ -318,14 +327,16 @@ async def ingest_date(
     for market in markets:
         if not force and await _is_completed(
             db, chunk_start=chunk_start, chunk_end=chunk_end,
-            date=date, market=market,
+            date=date, market=market, snapshot_iso=snapshot_iso,
         ):
-            logger.info("[alt_odds] skip completed %s/%s", date, market)
+            logger.info("[alt_odds] skip completed %s/%s @%s",
+                        date, market, snapshot_iso)
             continue
 
         await _set_status(
             db, chunk_start=chunk_start, chunk_end=chunk_end,
-            date=date, market=market, status="in_progress",
+            date=date, market=market, snapshot_iso=snapshot_iso,
+            snapshot_hour=snapshot_hour, status="in_progress",
             events_total=len(same_day_events),
         )
 
@@ -387,7 +398,8 @@ async def ingest_date(
                 total_updated += upd
                 await _set_status(
                     db, chunk_start=chunk_start, chunk_end=chunk_end,
-                    date=date, market=market, status="memory_halt",
+                    date=date, market=market, snapshot_iso=snapshot_iso,
+                    snapshot_hour=snapshot_hour, status="memory_halt",
                     rss_mb=rss, mem_limit_mb=mem_limit_mb,
                     events_done=ev_done, events_total=len(same_day_events),
                 )
@@ -412,7 +424,8 @@ async def ingest_date(
 
         await _set_status(
             db, chunk_start=chunk_start, chunk_end=chunk_end,
-            date=date, market=market, status="completed",
+            date=date, market=market, snapshot_iso=snapshot_iso,
+            snapshot_hour=snapshot_hour, status="completed",
             events_total=len(same_day_events),
             events_with_data=ev_with_data, events_errors=ev_errors,
             rows_written=n_rows, rss_mb=round(_rss_mb(), 1),
