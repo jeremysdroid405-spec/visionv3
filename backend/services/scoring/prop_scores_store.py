@@ -183,6 +183,10 @@ _SCORE_OUTPUT_FIELDS = (
     # and MLB populate these (NBA via `_compute_cv_and_hit_rate`,
     # MLB via `_calculate_subwindow_hit_rate`).
     "hit_rate_l5", "hit_rate_l10",
+    # 2026-05-16 — Pitcher-specific HR contract diagnostics. Populated
+    # on pitcher props only by `mlb_scoring._calculate_pitcher_hit_rate_sides`;
+    # batter props carry None. See FIELD_OWNERSHIP.md::pitcher_hit_rate.
+    "pitcher_hit_rate", "pitcher_hit_rate_n", "pitcher_hit_rate_window_used",
     # 2026-05-04 — window-explicit canonical name for the L20 OVER
     # hit rate per FIELD_OWNERSHIP.md:hit_rate_l20. Written in parallel
     # with legacy `hit_rate_over` until all readers migrate.

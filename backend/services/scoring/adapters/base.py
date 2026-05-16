@@ -97,6 +97,18 @@ class ScoringContext:
     # MLB populate these; gate engine ignores L5 when sample < 4.
     hit_rate_l5: Optional[float] = None
     hit_rate_l10: Optional[float] = None
+    # 2026-05-16 — Pitcher-specific HR contract (MLB only).
+    # `mlb_tier_sorter::_calculate_pitcher_hit_rate_sides` returns
+    # HR using a 5-start minimum window for pitcher stats only.
+    # These fields surface which path was used on each score doc
+    # for audit/observability. Batter props leave them None.
+    #   pitcher_hit_rate              — mirror of hit_rate_over
+    #                                    (pitcher path only)
+    #   pitcher_hit_rate_n            — actual sample size used
+    #   pitcher_hit_rate_window_used  — "10" / "9" / "8" / "7" / "6" / "5"
+    pitcher_hit_rate: Optional[float] = None
+    pitcher_hit_rate_n: Optional[int] = None
+    pitcher_hit_rate_window_used: Optional[str] = None
     # Global Identity Rule (2026-04-23): canonical player identity
     # stamped at ingest. `bdl_player_id` is the join key for every
     # downstream stat / projection computation; `player_name` is

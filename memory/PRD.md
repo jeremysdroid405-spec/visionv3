@@ -147,6 +147,21 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 
 ## Recent Changelog
 
+### 2026-05-16 — Pitcher-specific HR sample-floor contract
+- **Problem**: The MLB HR SSOT (`mlb_tier_sorter::_calculate_hit_rate_sides`) was designed for batters — strict 20→10 fallback returns `None` when fewer than 10 games are available. Starting pitchers structurally violate this in mid-season (one start every 5-6 days = 7-9 starts by mid-May), silently killing strong-edge pitcher picks at the `hit_rate_gate` (e.g. Merrill Kelly Hits Allowed UNDER +29% edge, Kyle Freeland Pitcher K +26%).
+- **Solution**: New `_calculate_pitcher_hit_rate_sides` peer method on `MLBTierSorter`. Pitcher-only contract:
+  - `starts ≥ 10` → window=10 (newest)
+  - `starts ≥ 5` → window=n_starts (all available, variable denominator)
+  - `starts < 5` → HR unavailable (None) — preserves conservative behaviour for cold starts
+- **Scope**: Routes only when `_normalize_stat_type(stat_type) ∈ {pitcher_strikeouts, pitcher_outs, pitching_outs, earned_runs, hits_allowed, walks_allowed, pitcher_walks}`. Batter SSOT (HRR/Hits/TB/singles/runs/RBIs/batter_strikeouts/batter_walks) is **untouched** — regression-locked by `TestBatterSSOTUntouched`.
+- **Strict-denominator preservation**: missing field-value games still count as misses for OVER (mirrors batter SSOT). Only the WINDOW SELECTION rule changes.
+- **Pitcher Outs derivation**: `innings_pitched × 3` → outs, same convention as the batter SSOT.
+- **New score-doc fields**: `pitcher_hit_rate` (mirror of side rate), `pitcher_hit_rate_n` (actual sample size), `pitcher_hit_rate_window_used` (one of `"10"`/`"9"`/`"8"`/`"7"`/`"6"`/`"5"`). Wired through `ScoreContext` (`base.py`), `_SCORE_OUTPUT_FIELDS` (`prop_scores_store`), recompute mirror block (`recompute.py`), and Pydantic `ScoreDocument` schema. Batter props carry None.
+- **Tests**: `tests/test_pitcher_hit_rate_contract.py` — 18 cases covering window selection (≥10, 5-9, <5), pitcher-stat routing for both canonical and display names, Pitcher Outs `IP × 3` derivation, strict-denominator preservation, and a **mutation guard** confirming the batter HR SSOT contract was not loosened. **18/18 pass.** Broader regression: 205/205 stabilization tests green.
+- **Live validation post-recompute**: 25 active pitcher OVER props in the FL bucket — 11 use window=10 (≥10 starts available), **2 use window=7** (Merrill Kelly Pitcher Strikeouts — previously HR=None, now HR=29% with N=7), 12 remain None (mostly `Pitcher Outs` analytical-path props which don't route through this method, plus pitchers with <5 starts). Merrill Kelly's K props now fail at `direction_fail` (real model disagreement: model projects 2.4-2.6 vs lines of 3.5/4.5) instead of being silently dropped at `hit_rate_fail`.
+- **FIELD_OWNERSHIP.md**: 5 new rows documenting the dual ownership — batter HR remains owned by `_calculate_hit_rate_sides`; pitcher HR now owned by `_calculate_pitcher_hit_rate_sides`; three diagnostic fields registered as 🟢 active (2026-05-16).
+- **No changes to**: gate logic, thresholds, edge formulas, TP formulas, universal edge SSOT, UI, sportsbook routing, recompute architecture. **Pure SSOT correction.**
+
 ### 2026-05-15 — Phase 2B Session 3 — MLB_HF Pitcher Retrain DEPLOYED ✅
 - **Model version live**: `MLB_HF_v3.2_phase2b` — 4 pitcher pickles retrained and overwritten (`pitcher_strikeouts`, `pitcher_walks`, `earned_runs`, `hits_allowed`). `pitcher_outs` excluded (analytical path, no XGBoost).
 - **Calibration delta (test set)**:

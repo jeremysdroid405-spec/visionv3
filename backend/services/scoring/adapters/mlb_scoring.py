@@ -333,6 +333,8 @@ class MLBScoringAdapter(ScoringAdapter):
             ceiling_rate = None
             avg_hit_margin = None
             avg_miss_margin = None
+            pitcher_hr_window_used = None
+            is_pitcher_stat = False
         else:
             cv = stats._calculate_cv(bdl_player_id, stat_type)
             cv_status = "computed" if cv is not None else "missing_source_distribution"
@@ -347,11 +349,37 @@ class MLBScoringAdapter(ScoringAdapter):
             # `min_games=5` floor mirrors NBA `_compute_cv_and_hit_rate`
             # at `nba_scoring.py:1050`. No sample-size penalty applied
             # in the gate engine for either sport.
-            hit_rate_over, hit_rate_under, _hr_avg, hr_sample_size = (
-                stats._calculate_hit_rate_sides(
-                    bdl_player_id, stat_type, line, num_games=20, min_games=5,
-                )
+            #
+            # 2026-05-16 — Pitcher-specific HR contract.
+            # Pitcher stats route through `_calculate_pitcher_hit_rate_sides`
+            # which enforces a 5-start minimum (rather than the batter
+            # 10-game minimum). The legacy `hit_rate_over`/`under`
+            # fields are still populated so the universal gate engine
+            # consumes them without changes; the new
+            # `pitcher_hit_rate*` diagnostic fields surface which
+            # path was used. See `mlb_tier_sorter::_calculate_pitcher_hit_rate_sides`.
+            _stat_norm = stats._normalize_stat_type(stat_type)
+            is_pitcher_stat = _stat_norm in (
+                stats._PITCHER_HR_STAT_FAMILIES
             )
+            if is_pitcher_stat:
+                hit_rate_over, hit_rate_under, _hr_avg, hr_sample_size = (
+                    stats._calculate_pitcher_hit_rate_sides(
+                        bdl_player_id, stat_type, line,
+                    )
+                )
+                pitcher_hr_window_used = (
+                    str(hr_sample_size) if hr_sample_size is not None
+                    else None
+                )
+            else:
+                hit_rate_over, hit_rate_under, _hr_avg, hr_sample_size = (
+                    stats._calculate_hit_rate_sides(
+                        bdl_player_id, stat_type, line,
+                        num_games=20, min_games=5,
+                    )
+                )
+                pitcher_hr_window_used = None
             side_for_hr = (prop.get("recommendation") or "OVER").upper()
             if "UNDER" in side_for_hr:
                 hit_rate = hit_rate_under
@@ -805,6 +833,19 @@ class MLBScoringAdapter(ScoringAdapter):
             hit_rate_l5=hit_rate_l5,
             hit_rate_l10=hit_rate_l10,
             hit_rate_status=hit_rate_status,
+            # 2026-05-16 — Pitcher-specific HR contract diagnostics.
+            # Populated for pitcher props only; None for batter props.
+            # `pitcher_hit_rate` mirrors `hit_rate_over` to make the
+            # pitcher-side rate explicit in audits. The
+            # `pitcher_hit_rate_window_used` string is one of:
+            # "10" / "9" / "8" / "7" / "6" / "5".
+            pitcher_hit_rate=(
+                hit_rate_over if is_pitcher_stat else None
+            ),
+            pitcher_hit_rate_n=(
+                hr_sample_size if is_pitcher_stat else None
+            ),
+            pitcher_hit_rate_window_used=pitcher_hr_window_used,
             projection_method=projection_method,
             edge_pct=edge_pct,
             tp=tp,

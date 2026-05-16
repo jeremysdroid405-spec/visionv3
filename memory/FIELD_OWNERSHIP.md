@@ -56,6 +56,11 @@ Each field has a canonical spec in `backend/services/field_ownership/registry.py
 | `hit_rate_l5` | `prop_scores.hit_rate_l5` | `nba_scoring + mlb_scoring:score` | return_null | 🟡 locked |
 | `hit_rate_l10` | `prop_scores.hit_rate_l10` | `nba_scoring + mlb_scoring:score` | return_null | 🟡 locked |
 | `hit_rate_l20` | `prop_scores.hit_rate_l20` | `recompute:recompute_sport` (dual-write with legacy `hit_rate_over`) | return_null | 🟡 locked |
+| `hit_rate_over` (batter stats) | `prop_scores.hit_rate_over` | `mlb_tier_sorter::_calculate_hit_rate_sides` — strict 20→10 fallback; <10 → None | return_null | 🟡 locked |
+| `hit_rate_over` (pitcher stats) | `prop_scores.hit_rate_over` | `mlb_tier_sorter::_calculate_pitcher_hit_rate_sides` — **5-start minimum**: ≥10→window=10, ≥5→window=n_starts, <5→None | return_null | 🟢 active (2026-05-16) |
+| `pitcher_hit_rate` | `prop_scores.pitcher_hit_rate` | `mlb_scoring::score` (pitcher path) — mirrors `hit_rate_over` for audit clarity | return_null | 🟢 active (2026-05-16) |
+| `pitcher_hit_rate_n` | `prop_scores.pitcher_hit_rate_n` | sample size actually used (5..10) | return_null | 🟢 active (2026-05-16) |
+| `pitcher_hit_rate_window_used` | `prop_scores.pitcher_hit_rate_window_used` | which window was selected: `"10"` / `"9"` / `"8"` / `"7"` / `"6"` / `"5"` / `None` | return_null | 🟢 active (2026-05-16) |
 | `ranking_score_v2` | `prop_scores.ranking_score_v2` | `recompute:recompute_sport` | return_null | 🟡 locked |
 | `game_start_utc` | `live_props.game_start_utc` | `universal_odds_sync:_persist_prop` | return_null | 🟡 locked |
 | `photo_url` | `master_hub.photo_url` | `bdl_universal_sync:sync_players` | return_null | 🟡 locked |

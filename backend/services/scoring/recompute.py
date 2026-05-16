@@ -582,6 +582,14 @@ async def recompute_sport(
             # display recent-form alongside the L20 gate input.
             "hit_rate_l5": ctx.hit_rate_l5,
             "hit_rate_l10": ctx.hit_rate_l10,
+            # 2026-05-16 — Pitcher-specific HR contract diagnostics.
+            # Populated for pitcher props only (5-start minimum).
+            # See FIELD_OWNERSHIP.md::pitcher_hit_rate.
+            "pitcher_hit_rate": getattr(ctx, "pitcher_hit_rate", None),
+            "pitcher_hit_rate_n": getattr(ctx, "pitcher_hit_rate_n", None),
+            "pitcher_hit_rate_window_used": getattr(
+                ctx, "pitcher_hit_rate_window_used", None,
+            ),
             # Ceiling rate (PR-2, 2026-04-25). Persisted so the
             # post-vision re-eval has the exact value the first pass
             # used as input to `ceiling_gate` (MLB war_zone). Without

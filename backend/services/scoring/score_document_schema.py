@@ -214,6 +214,17 @@ class ScoreDocument(BaseModel):
     hit_rate_l5:          Optional[float] = None
     hit_rate_l10:         Optional[float] = None
     hit_rate_l20:         Optional[float] = None
+    # ── Pitcher-specific HR contract diagnostics (2026-05-16) ─────
+    # Populated for pitcher props only by
+    # `mlb_tier_sorter::_calculate_pitcher_hit_rate_sides` (5-start
+    # minimum window). Batter props leave these None. The legacy
+    # `hit_rate_over`/`under`/`hit_rate_sample_size` fields are
+    # ALSO populated from this same path for pitcher props so the
+    # universal gate engine consumes them without changes.
+    # `pitcher_hit_rate_window_used` ∈ {"10","9","8","7","6","5"}.
+    pitcher_hit_rate:              Optional[float] = None
+    pitcher_hit_rate_n:            Optional[int]   = None
+    pitcher_hit_rate_window_used:  Optional[str]   = None
 
     # ── Ranking score v2 ──────────────────────────────────────────
     ranking_score_v2: Optional[float] = None

@@ -550,6 +550,126 @@ class MLBTierSorter:
         avg = round(sum_val / valid_count, 2) if valid_count else None
         return hit_rate_over, hit_rate_under, avg, window
 
+    # =============================================================
+    # PITCHER-SPECIFIC HR CONTRACT (2026-05-16)
+    # -------------------------------------------------------------
+    # The batter HR SSOT above enforces a strict 20→10 window which
+    # is structurally too tight for starting pitchers — a starter
+    # pitches roughly every 5-6 days, so by mid-May many of them
+    # only have 7-9 starts. That returns HR=None and silently kills
+    # otherwise-valid pitcher picks at the `hit_rate_gate`.
+    #
+    # New contract — PITCHER STATS ONLY:
+    #
+    #   starts ≥ 10  →  use newest 10 starts   (multiples of 10)
+    #   starts ≥ 5   →  use ALL available      (variable denominator)
+    #   starts < 5   →  HR unavailable (None)  (preserve conservative
+    #                                            behaviour for cold starts)
+    #
+    # The batter path above is UNCHANGED. This method is consumed
+    # exclusively from `services/scoring/adapters/mlb_scoring.py`
+    # when `stat_type ∈ _PITCHER_STAT_FAMILIES`. The score doc
+    # carries three new diagnostic fields:
+    #   `pitcher_hit_rate`               — the chosen side rate
+    #   `pitcher_hit_rate_n`             — sample size actually used
+    #   `pitcher_hit_rate_window_used`   — "10" / "9" / "8" / "7" / "6" / "5"
+    # Plus the legacy `hit_rate_over`/`hit_rate_under` are populated
+    # from this path so the universal `hit_rate_gate` enforces on
+    # them without engine-side changes.
+    # =============================================================
+    _PITCHER_HR_STAT_FAMILIES = frozenset({
+        "pitcher_strikeouts",
+        "pitcher_outs", "pitching_outs",
+        "earned_runs",
+        "hits_allowed",
+        "walks_allowed", "pitcher_walks",
+    })
+
+    def _calculate_pitcher_hit_rate_sides(
+        self,
+        bdl_player_id: Optional[int],
+        stat_type: str,
+        line: float,
+    ) -> "Tuple[Optional[float], Optional[float], Optional[float], Optional[int]]":
+        """Pitcher-specific hit-rate path with 5-start minimum.
+
+        Returns:
+            (hit_rate_over, hit_rate_under, average, sample_size)
+            where `sample_size` ∈ {10, 9, 8, 7, 6, 5} on a hit, or
+            `None` when fewer than 5 starts are available.
+
+        Hit rule mirrors the batter SSOT: `stat_value > line` strict.
+        Denominator is the chosen window — never `len(valid_values)`
+        — so missing-field games count as misses for OVER. This
+        preserves the strict-denominator contract of the batter
+        path; only the WINDOW SELECTION rule changes.
+        """
+        game_logs = self._get_logs_by_id(bdl_player_id)
+        if not game_logs:
+            return None, None, None, None
+
+        stat_key = self._normalize_stat_type(stat_type)
+        if stat_key not in self._PITCHER_HR_STAT_FAMILIES:
+            # Defensive: this method should only be invoked for
+            # pitcher stats by the caller. If it isn't, fall through
+            # to the batter path so we never silently mis-route a
+            # batter prop through a more permissive window.
+            return self._calculate_hit_rate_sides(
+                bdl_player_id, stat_type, line,
+            )
+
+        # Stat-to-game-log field mapping (subset of the batter map).
+        # `pitcher_outs` is derived from `innings_pitched × 3` —
+        # mirrors the convention in the batter SSOT.
+        pitcher_field_map = {
+            "pitcher_strikeouts": "pitcher_strikeouts",
+            "pitcher_outs": "innings_pitched",
+            "pitching_outs": "innings_pitched",
+            "earned_runs": "earned_runs",
+            "hits_allowed": "hits_allowed",
+            "walks_allowed": "pitcher_walks",
+            "pitcher_walks": "pitcher_walks",
+        }
+        field = pitcher_field_map.get(stat_key)
+        if field is None:
+            return None, None, None, None
+
+        sorted_logs = sorted(
+            game_logs,
+            key=lambda x: x.get("date", "") or "",
+            reverse=True,
+        )
+
+        # Window selection — PITCHER CONTRACT.
+        n_starts = len(sorted_logs)
+        if n_starts >= 10:
+            window = 10
+        elif n_starts >= 5:
+            window = n_starts
+        else:
+            return None, None, None, None
+
+        selected = sorted_logs[:window]
+        over_hits = 0
+        sum_val = 0.0
+        valid_count = 0
+        for game in selected:
+            if field == "innings_pitched":
+                ip = game.get(field)
+                val = (ip * 3) if ip is not None else None
+            else:
+                val = game.get(field)
+            if val is not None:
+                if val > line:
+                    over_hits += 1
+                sum_val += val
+                valid_count += 1
+
+        hit_rate_over = float(round((over_hits / window) * 100))
+        hit_rate_under = 100.0 - hit_rate_over
+        avg = round(sum_val / valid_count, 2) if valid_count else None
+        return hit_rate_over, hit_rate_under, avg, window
+
     def _calculate_subwindow_hit_rate(
         self,
         bdl_player_id: Optional[int],
