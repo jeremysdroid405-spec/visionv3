@@ -97,17 +97,26 @@ def _fake_game_logs(ip_series: List[float]) -> List[Dict[str, Any]]:
     ]
 
 
-def test_hit_rate_diag_10_start_window(model):
-    """≥10 starts → window=10 with strict denominator."""
-    logs = _fake_game_logs([6.0] * 12)  # 18 outs every start
+def test_hit_rate_diag_window_caps_at_20(model):
+    """≥20 starts → window=20 with strict denominator (rolling L20)."""
+    logs = _fake_game_logs([6.0] * 25)  # 18 outs every start
     diag = model._compute_pitcher_outs_hit_rate(logs, line=17.5)
     assert diag is not None
-    assert diag["pitcher_hit_rate_n"] == 10
-    assert diag["pitcher_hit_rate_window_used"] == "10"
-    # 18 > 17.5 → all 10 OVER → 100%
+    assert diag["pitcher_hit_rate_n"] == 20
+    assert diag["pitcher_hit_rate_window_used"] == "20"
+    # 18 > 17.5 → all 20 OVER → 100%
     assert diag["pitcher_hit_rate_over"] == 100.0
     assert diag["pitcher_hit_rate_under"] == 0.0
     assert diag["pitcher_hit_rate_avg_outs"] == 18.0
+
+
+def test_hit_rate_diag_uses_all_in_growth_phase(model):
+    """12 starts → window=12 (mid-growth, 5 ≤ n < 20)."""
+    logs = _fake_game_logs([6.0] * 12)
+    diag = model._compute_pitcher_outs_hit_rate(logs, line=17.5)
+    assert diag is not None
+    assert diag["pitcher_hit_rate_n"] == 12
+    assert diag["pitcher_hit_rate_window_used"] == "12"
 
 
 def test_hit_rate_diag_5_start_minimum(model):

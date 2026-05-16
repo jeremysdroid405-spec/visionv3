@@ -559,20 +559,24 @@ class MLBTierSorter:
     # only have 7-9 starts. That returns HR=None and silently kills
     # otherwise-valid pitcher picks at the `hit_rate_gate`.
     #
-    # New contract — PITCHER STATS ONLY:
+    # 2026-05-17 — Contract upgraded to a PROGRESSIVE rolling window
+    # capped at 20 starts (replaces the 10-start ceiling). The window
+    # grows naturally from cold start until it stabilises at a rolling
+    # L20. PITCHER STATS ONLY:
     #
-    #   starts ≥ 10  →  use newest 10 starts   (multiples of 10)
-    #   starts ≥ 5   →  use ALL available      (variable denominator)
+    #   starts ≥ 20  →  use newest 20 starts   (rolling L20)
+    #   starts ≥ 5   →  use ALL available      (variable denominator
+    #                                            5..19)
     #   starts < 5   →  HR unavailable (None)  (preserve conservative
     #                                            behaviour for cold starts)
     #
     # The batter path above is UNCHANGED. This method is consumed
     # exclusively from `services/scoring/adapters/mlb_scoring.py`
     # when `stat_type ∈ _PITCHER_STAT_FAMILIES`. The score doc
-    # carries three new diagnostic fields:
+    # carries three diagnostic fields:
     #   `pitcher_hit_rate`               — the chosen side rate
     #   `pitcher_hit_rate_n`             — sample size actually used
-    #   `pitcher_hit_rate_window_used`   — "10" / "9" / "8" / "7" / "6" / "5"
+    #   `pitcher_hit_rate_window_used`   — "5".."20" (string)
     # Plus the legacy `hit_rate_over`/`hit_rate_under` are populated
     # from this path so the universal `hit_rate_gate` enforces on
     # them without engine-side changes.
@@ -585,18 +589,25 @@ class MLBTierSorter:
         "walks_allowed", "pitcher_walks",
     })
 
+    # Window contract bounds — central source so the test, the model
+    # diagnostic, and the scoring adapter all agree.
+    _PITCHER_HR_MIN_STARTS = 5
+    _PITCHER_HR_MAX_WINDOW = 20
+
     def _calculate_pitcher_hit_rate_sides(
         self,
         bdl_player_id: Optional[int],
         stat_type: str,
         line: float,
     ) -> "Tuple[Optional[float], Optional[float], Optional[float], Optional[int]]":
-        """Pitcher-specific hit-rate path with 5-start minimum.
+        """Pitcher-specific hit-rate path with progressive 5..20 window.
 
         Returns:
             (hit_rate_over, hit_rate_under, average, sample_size)
-            where `sample_size` ∈ {10, 9, 8, 7, 6, 5} on a hit, or
-            `None` when fewer than 5 starts are available.
+            where ``sample_size`` is the chosen window size:
+              • ``n_starts`` itself when 5 ≤ n_starts < 20, or
+              • 20            when n_starts ≥ 20,
+            and ``None`` when fewer than 5 starts are available.
 
         Hit rule mirrors the batter SSOT: `stat_value > line` strict.
         Denominator is the chosen window — never `len(valid_values)`
@@ -640,11 +651,14 @@ class MLBTierSorter:
             reverse=True,
         )
 
-        # Window selection — PITCHER CONTRACT.
+        # Window selection — PROGRESSIVE ROLLING contract (2026-05-17).
+        #   starts ≥ 20 → newest 20 (rolling L20)
+        #   5 ≤ starts < 20 → ALL available
+        #   starts < 5 → unavailable
         n_starts = len(sorted_logs)
-        if n_starts >= 10:
-            window = 10
-        elif n_starts >= 5:
+        if n_starts >= self._PITCHER_HR_MAX_WINDOW:
+            window = self._PITCHER_HR_MAX_WINDOW
+        elif n_starts >= self._PITCHER_HR_MIN_STARTS:
             window = n_starts
         else:
             return None, None, None, None

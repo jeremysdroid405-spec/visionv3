@@ -1279,12 +1279,18 @@ class MLBHighFrictionModel:
     ) -> Optional[Dict[str, Any]]:
         """Pitcher-outs-specific hit-rate diagnostic.
 
-        Mirrors the 10-start / 5-start sample-floor contract enforced
-        by ``mlb_tier_sorter._calculate_pitcher_hit_rate_sides`` so
-        the diagnostic reflects the same window the scoring adapter
-        will compute downstream. Outs are decoded via
-        ``_decode_innings`` (5.2 IP → 17 outs) to stay consistent
-        with this module's pitcher_outs SSOT (``_get_stat_value``).
+        Mirrors the progressive 5..20-start rolling-window contract
+        enforced by ``mlb_tier_sorter._calculate_pitcher_hit_rate_sides``
+        (2026-05-17) so the diagnostic reflects the same window the
+        scoring adapter will compute downstream:
+
+            starts ≥ 20   → newest 20  (rolling L20)
+            5 ≤ starts < 20 → ALL available
+            starts < 5    → unavailable
+
+        Outs are decoded via ``_decode_innings`` (5.2 IP → 17 outs)
+        to stay consistent with this module's pitcher_outs SSOT
+        (``_get_stat_value``).
         """
         if line is None or not game_logs:
             return None
@@ -1294,8 +1300,8 @@ class MLBHighFrictionModel:
             reverse=True,
         )
         n = len(sorted_logs)
-        if n >= 10:
-            window = 10
+        if n >= 20:
+            window = 20
         elif n >= 5:
             window = n
         else:
