@@ -69,28 +69,31 @@ def main():
     print(f"=== last {SINCE_HOURS}h, ranked by L10 hit-rate (tie: L20, L5, vision) ===\n")
 
     # Section 1: ranked summary
-    print(f"{'#':<3} {'Sport':<5} {'Player':<22} {'Stat':<22} {'L':<6} {'Side':<5} "
-          f"{'HR_L5':>6} {'HR_L10':>7} {'HR_L20':>7} {'VS':>6} {'TP%':>6} {'FairP':>6} {'Edge':>7} {'μ':>6} {'σ':>5} {'P̂':>6}")
-    print("-" * 145)
+    print(f"{'#':<3} {'Sport':<4} {'Player':<22} {'Stat':<22} {'L':<5} {'Side':<5} "
+          f"{'HR_L5':>6} {'HR_L10':>7} {'HR_L20':>7} {'CV':>6} {'VS':>6} {'TP%':>6} "
+          f"{'FairP':>6} {'Edge':>7} {'μ':>6} {'σ':>5} {'P̂':>6} {'Books':>6}")
+    print("-" * 165)
     for i, d in enumerate(top, 1):
         line = d.get("line")
         line_s = f"{line:.1f}" if line is not None else "—"
         p_true = d.get("p_true_active") or d.get("p_distribution")
         print(
-            f"{i:<3} {d.get('sport','?').upper():<5} "
+            f"{i:<3} {d.get('sport','?').upper():<4} "
             f"{(d.get('player_name') or '')[:22]:<22} "
             f"{(d.get('stat_type') or '')[:22]:<22} "
-            f"{line_s:<6} {d.get('side','—'):<5} "
+            f"{line_s:<5} {d.get('side','—'):<5} "
             f"{_f(d.get('hit_rate_l5'),1):>6} "
             f"{_f(d.get('hit_rate_l10'),1):>7} "
             f"{_f(d.get('hit_rate_l20'),1):>7} "
+            f"{_f(d.get('cv'),3):>6} "
             f"{_f(d.get('vision_score'),1):>6} "
             f"{_f(d.get('tp'),1):>6} "
             f"{_f(d.get('fair_prob'),3):>6} "
             f"{_f(d.get('total_edge'),3):>7} "
             f"{_f(d.get('model_projection'),2):>6} "
             f"{_f(d.get('model_sigma'),2):>5} "
-            f"{_f(p_true,3):>6}"
+            f"{_f(p_true,3):>6} "
+            f"{str(d.get('book_count') or '—'):>6}"
         )
 
     # Section 2: detailed per-row breakdown
@@ -112,7 +115,8 @@ def main():
         for label, layer_key in [
             ("DraftKings", "dk_layer"), ("FanDuel", "fd_layer"),
             ("ESPNBet", "eb_layer"), ("HardRock", "hrb_layer"),
-            ("WilliamHill (CSR)", "csr_layer"), ("PrizePicks", "pp_layer"),
+            ("WilliamHill (CSR)", "csr_layer"), ("BetMGM", "mgm_layer"),
+            ("Caesars", "cae_layer"), ("PrizePicks", "pp_layer"),
         ]:
             ly = d.get(layer_key)
             if ly:
