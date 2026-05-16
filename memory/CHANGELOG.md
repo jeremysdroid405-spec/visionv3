@@ -1,6 +1,46 @@
 # Changelog
 
-## 2026-05-17 — Pre-Scoring MLB Book Quote Integrity Filter (P0)
+## 2026-05-17 — Integrity-filter stats admin endpoint (read-only)
+
+**Goal**: surface last-24h pre-scoring book-quote integrity filter activity
+without touching scoring, filters, or gates.
+
+**Endpoint**: `GET /api/admin/odds/integrity-filter-stats`
+Query params: `sport` (default `mlb`), `hours` (1–168, default 24),
+`top_n` (1–200, default 25).
+
+**Response fields**:
+- `total_excluded_quotes`, `affected_props_count`, `dropped_props_count`
+- `excluded_quotes_by_sportsbook`, `excluded_quotes_by_stat_family`,
+  `excluded_quotes_by_market_class`
+- `top_excluded_quote_examples` (capped at `top_n`)
+- `dropped_prop_examples` (capped at `top_n`)
+- `rule`, `threshold_american_odds`, `window_start`, `window_end`,
+  `window_hours`, `sport`, `notes`
+
+**Sources** (read-only):
+- Affected props + excluded quote rollups: `{sport}_prop_scores`
+  rows where `integrity_filter_applied=True` AND
+  `computed_at >= window_start`. Uses the verbatim
+  `excluded_book_quotes` payload persisted alongside each row.
+- Dropped props (every alt quote ejected): `{sport}_live_props`
+  rows matching the rule's eligibility (`sport=mlb`,
+  `market_class=alternate`, `line==0.5`) where EVERY entry in
+  `all_odds_alternate` is ≥ +500 American. Rejected props are
+  never written to `{sport}_prop_scores`; `live_props` is the only
+  persisted surface that retains them.
+
+**Files**:
+- `backend/routes/admin_odds_audit.py` — appended endpoint
+- NEW `backend/tests/test_integrity_filter_stats_endpoint.py` — seeded
+  pytest that inserts 2 score fixtures + 2 live-prop fixtures,
+  calls the live endpoint, asserts every rollup bucket + top-example
+  shape + dropped-set membership, and cleans up.
+
+**Tests**: 1/1 pass (seeded round-trip). 55 adjacent filter/odds/side
+tests still pass.
+
+
 
 **Goal**: strip structurally absurd individual book quotes out of an
 MLB prop's alternate-bucket odds BEFORE `fair_prob`, `edge_vs_fair`,

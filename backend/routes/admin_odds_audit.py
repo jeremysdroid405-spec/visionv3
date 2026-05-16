@@ -210,3 +210,193 @@ def _build_field_diff(snaps, live, score) -> Dict[str, Any]:
             else None
         )
     return diff
+
+
+# ───────────────────────────────────────────────────────────────────
+# 3. Pre-scoring book-quote integrity filter — last-24h stats
+# ───────────────────────────────────────────────────────────────────
+@router.get("/integrity-filter-stats")
+async def integrity_filter_stats(
+    sport: str = Query("mlb", description="Sport scope (filter is MLB-only today)"),
+    hours: int = Query(24, ge=1, le=168,
+                       description="Lookback window in hours (default 24)"),
+    top_n: int = Query(25, ge=1, le=200,
+                       description="How many quote examples to surface"),
+) -> Dict[str, Any]:
+    """Read-only stats for the pre-scoring book-quote integrity filter.
+
+    All numbers are computed for the last ``hours`` hours from two
+    persisted-state sources — no scoring / filter / gate behaviour is
+    invoked. Sources:
+
+      * ``{sport}_prop_scores`` rows with ``integrity_filter_applied=True``
+        carry the verbatim ``excluded_book_quotes`` payload (one entry
+        per ejected book). These produce: total excluded quotes,
+        breakdown by sportsbook / stat-family / market_class, top-N
+        examples, affected prop count.
+      * ``{sport}_live_props`` rows eligible for the rule
+        (``sport==mlb`` AND ``market_class=='alternate'`` AND
+        ``line==0.5``) where EVERY entry in ``all_odds_alternate`` is
+        ≥ ``+500`` (American). These would have been fully rejected by
+        ``apply_to_prop_list`` and dropped before the score-doc writer
+        ever saw them — i.e. ``dropped_props_count``.
+    """
+    db = _require_db()
+    from datetime import datetime, timedelta, timezone
+    from services.scoring.book_quote_integrity_filter import (
+        _ABSURD_ODDS_THRESHOLD as _THRESHOLD,
+        _FILTER_RULE as _RULE,
+    )
+
+    now = datetime.now(timezone.utc)
+    cutoff_dt = now - timedelta(hours=hours)
+    # ``computed_at`` on score docs is an ISO string (see
+    # services/scoring/prop_scores_store._project_score_doc). Compare
+    # lexicographically — UTC ISO-8601 strings sort the same as their
+    # underlying instants for matching precision.
+    cutoff_iso = cutoff_dt.isoformat()
+
+    scores_coll = db[f"{sport}_prop_scores"]
+    live_coll = db[f"{sport}_live_props"]
+
+    # ── Stage A: affected props + excluded-quote rollups ────────────
+    by_book: Dict[str, int] = {}
+    by_stat_family: Dict[str, int] = {}
+    by_market_class: Dict[str, int] = {}
+    total_excluded_quotes = 0
+    affected_props_count = 0
+    top_examples: List[Dict[str, Any]] = []
+
+    cursor = scores_coll.find(
+        {
+            "integrity_filter_applied": True,
+            "computed_at": {"$gte": cutoff_iso},
+        },
+        {
+            "_id": 0,
+            "canonical_key": 1,
+            "sport": 1,
+            "player_name": 1,
+            "stat_type": 1,
+            "line": 1,
+            "market_class": 1,
+            "computed_at": 1,
+            "event_id": 1,
+            "excluded_book_quotes": 1,
+        },
+    )
+    async for doc in cursor:
+        affected_props_count += 1
+        ex_list = doc.get("excluded_book_quotes") or []
+        if not isinstance(ex_list, list):
+            continue
+        stat = doc.get("stat_type") or "unknown"
+        for q in ex_list:
+            if not isinstance(q, dict):
+                continue
+            total_excluded_quotes += 1
+            book = q.get("book") or "unknown"
+            mc = q.get("market_class") or "unknown"
+            by_book[book] = by_book.get(book, 0) + 1
+            by_stat_family[stat] = by_stat_family.get(stat, 0) + 1
+            by_market_class[mc] = by_market_class.get(mc, 0) + 1
+            if len(top_examples) < top_n:
+                top_examples.append({
+                    "canonical_key": doc.get("canonical_key"),
+                    "sport": doc.get("sport"),
+                    "event_id": doc.get("event_id"),
+                    "player_name": doc.get("player_name"),
+                    "stat_type": stat,
+                    "line": doc.get("line"),
+                    "market_class": mc,
+                    "book": book,
+                    "odds": q.get("odds"),
+                    "reason": q.get("reason"),
+                    "computed_at": doc.get("computed_at"),
+                })
+
+    # ── Stage B: would-be-dropped props (every alt quote ≥ threshold)
+    # Scan live_props for the eligible set; count those where every
+    # entry in ``all_odds_alternate`` is ≥ the threshold. Rejected
+    # props are never written to ``{sport}_prop_scores``, so the live
+    # collection is the only persisted surface that retains them.
+    dropped_props_count = 0
+    dropped_examples: List[Dict[str, Any]] = []
+    live_cursor = live_coll.find(
+        {
+            "sport": sport,
+            "market_class": "alternate",
+            "line": 0.5,
+            "all_odds_alternate": {"$exists": True, "$ne": None},
+            "fetched_at": {"$gte": cutoff_dt},
+        },
+        {
+            "_id": 0,
+            "canonical_key": 1,
+            "player_name": 1,
+            "stat_type": 1,
+            "line": 1,
+            "all_odds_alternate": 1,
+            "fetched_at": 1,
+            "event_id": 1,
+        },
+    )
+    async for ld in live_cursor:
+        alt = ld.get("all_odds_alternate") or {}
+        if not isinstance(alt, dict) or not alt:
+            continue
+        try:
+            all_bad = all(int(v) >= _THRESHOLD for v in alt.values())
+        except (TypeError, ValueError):
+            continue
+        if all_bad:
+            dropped_props_count += 1
+            if len(dropped_examples) < top_n:
+                dropped_examples.append({
+                    "canonical_key": ld.get("canonical_key"),
+                    "player_name": ld.get("player_name"),
+                    "stat_type": ld.get("stat_type"),
+                    "line": ld.get("line"),
+                    "event_id": ld.get("event_id"),
+                    "alt_book_count": len(alt),
+                    "alt_odds": alt,
+                    "fetched_at": (
+                        ld["fetched_at"].isoformat()
+                        if hasattr(ld.get("fetched_at"), "isoformat")
+                        else ld.get("fetched_at")
+                    ),
+                })
+
+    def _sort_desc(d: Dict[str, int]) -> Dict[str, int]:
+        return dict(sorted(d.items(), key=lambda kv: kv[1], reverse=True))
+
+    return {
+        "sport": sport,
+        "window_hours": hours,
+        "window_start": cutoff_iso,
+        "window_end": now.isoformat(),
+        "rule": _RULE,
+        "threshold_american_odds": _THRESHOLD,
+        "total_excluded_quotes": total_excluded_quotes,
+        "affected_props_count": affected_props_count,
+        "dropped_props_count": dropped_props_count,
+        "excluded_quotes_by_sportsbook": _sort_desc(by_book),
+        "excluded_quotes_by_stat_family": _sort_desc(by_stat_family),
+        "excluded_quotes_by_market_class": _sort_desc(by_market_class),
+        "top_excluded_quote_examples": top_examples,
+        "dropped_prop_examples": dropped_examples,
+        "notes": {
+            "affected_props_source": (
+                f"{sport}_prop_scores where integrity_filter_applied=True "
+                f"AND computed_at >= window_start"
+            ),
+            "dropped_props_source": (
+                f"{sport}_live_props rows matching the rule's eligibility "
+                f"(sport=mlb, market_class=alternate, line==0.5) where "
+                f"EVERY entry in all_odds_alternate is >= "
+                f"+{_THRESHOLD}. Rejected props are never written to "
+                f"{sport}_prop_scores; live_props is the only persisted "
+                f"surface that retains them."
+            ),
+        },
+    }
