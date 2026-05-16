@@ -97,12 +97,12 @@ def resolve_stat_family(sport: str, raw_stat: Optional[str]) -> str:
 #   4. market_structure_gate (reject alt AND tp_source=one_sided)
 # No tp_gate / edge_gate / coverage_gate / context_gate in Safe Haven.
 _NBA_SAFE_HAVEN_BASE = {
-    # ── Universal OVER-side rule (2026-04-29): proj >= line + edge > 0
-    # Applies to all OVER picks across all sports/tiers. UNDER picks
-    # bypass via `applies_to_sides=["OVER"]`.
+    # ── Universal OVER-side direction rule (2026-04-29, refactored
+    # strict-only 2026-05-15). Strict engine: passes iff
+    # projection > line (sign only). Cushion keys ignored — removed
+    # 2026-05-17 cleanup. UNDER picks bypass via `applies_to_sides`.
     "direction_gate": {
-        "applies_to_sides":          ["OVER"],
-        "min_projection_minus_line": 0.0,
+        "applies_to_sides": ["OVER"],
     },
     # 2026-05-02 — edge floor lowered to 0.0 per user spec. Any
     # non-negative edge qualifies for SH; downstream gates
@@ -220,10 +220,16 @@ _NBA_UNDER_CV_HR_RELAX = [
 ]
 
 # Direction gate config — UNDER-side only.
+# 2026-05-17 cleanup: legacy `max_projection_minus_line` / 
+# `min_line_minus_projection_ratio` keys removed. The universal
+# direction-gate refactor (2026-05-15, services/scoring/gates/engine.py
+# ::_eval_direction) is strict-only — it consults `applies_to_sides`
+# and the SIGN of `projection - line` only. Cushion/margin keys were
+# never enforced by the strict engine; carrying them in the config
+# made stored-threshold audits misleading. Other quality concerns
+# (margin, CV, edge, hit-rate) live in their OWN gates.
 _NBA_UNDER_DIRECTION_GATE = {
-    "applies_to_sides":                 ["UNDER"],
-    "max_projection_minus_line":         0.0,    # proj <= line
-    "min_line_minus_projection_ratio":   0.15,   # gap rule
+    "applies_to_sides": ["UNDER"],
 }
 
 _NBA_SAFE_HAVEN_UNDER = {
@@ -278,12 +284,11 @@ _NBA_FRONT_LINES_BASE = {
     "tp_gate":       {"min": 50.0, "under_floor": 65.0},
     "cv_gate":       {"max": 0.75},
     "edge_gate":     {"min": 5.0},
-    # ── Direction-consistency (NBA FL OVER only, 2026-04-29) ──────
-    # OVER picks must have projection >= line. UNDER picks bypass
-    # the gate (`applies_to_sides` is OVER-only).
+    # ── Direction-consistency (NBA FL OVER only, 2026-04-29; strict
+    # cleanup 2026-05-17). Strict engine: passes iff projection > line.
+    # Cushion keys removed. UNDER picks bypass via `applies_to_sides`.
     "direction_gate": {
-        "applies_to_sides":            ["OVER"],
-        "min_projection_minus_line":   0.0,
+        "applies_to_sides": ["OVER"],
     },
     # ── NBA Front Lines OVER conditional override layer ───────────
     # Spec: see services/scoring/gates/overrides.py docstring.
@@ -336,8 +341,7 @@ _NBA_WAR_ZONE_BASE = {
     # override layer so the gate config stays declarative.
     "coverage_gate": {"min_books": 1},
     "direction_gate": {
-        "applies_to_sides":              ["OVER"],
-        "min_projection_to_line_ratio":  1.00,
+        "applies_to_sides": ["OVER"],
     },
     # ── Universal OVER-side edge floor (2026-04-29): edge > 0 strict.
     # Direction is proj >= line above (relaxed to 1.00 on 2026-05-01).
@@ -437,12 +441,13 @@ def _mlb_thresholds(
     Both are added only when `front_lines=True`."""
     out: Dict[str, Dict[str, Any]] = {}
     for family, vals in per_stat.items():
-        # Universal OVER-side rule (2026-04-29): every OVER pick must
-        # have `projection >= line`. Apply to SH / FL / WZ uniformly.
-        # UNDER picks bypass the gate (`applies_to_sides=["OVER"]`).
+        # Universal OVER-side direction rule (2026-04-29, refactored
+        # strict-only 2026-05-15). The engine consults
+        # `applies_to_sides` and the SIGN of `projection - line` only;
+        # any cushion/margin key is ignored. Legacy
+        # `min_projection_minus_line` removed 2026-05-17 (cleanup).
         _UNIVERSAL_OVER_DIRECTION = {
-            "applies_to_sides":          ["OVER"],
-            "min_projection_minus_line": 0.0,
+            "applies_to_sides": ["OVER"],
         }
         # Universal OVER-side rule (2026-04-29): edge > 0 (strictly
         # positive). Per-stat `edge_min` is honoured when stricter
@@ -518,15 +523,14 @@ def _mlb_thresholds(
 
 
 # ── 2026-05-13 — MLB Front Lines UNDER (NBA-parity rebuild) ────────────
-# Mirrors `_NBA_FRONT_LINES_UNDER` exactly in STRUCTURE (gap-ratio
-# direction gate, HR-relax CV ladder, edge floor 5.0, TP gate with
-# under_floor) but uses MLB-tuned CV caps per stat family so we can
-# fine-tune by stat type without disturbing NBA.
+# Mirrors `_NBA_FRONT_LINES_UNDER` exactly in STRUCTURE (HR-relax CV
+# ladder, edge floor 5.0, TP gate with under_floor) but uses MLB-tuned
+# CV caps per stat family so we can fine-tune by stat type without
+# disturbing NBA.
+# 2026-05-17 cleanup: legacy `max_projection_minus_line` /
+# `min_line_minus_projection_ratio` keys removed (see _NBA_UNDER_DIRECTION_GATE).
 _MLB_UNDER_DIRECTION_GATE = {
-    "applies_to_sides":            ["UNDER"],
-    "max_projection_minus_line":   0.0,
-    # NBA-parity: require real downside skew, not just "proj <= line".
-    "min_line_minus_projection_ratio": 0.15,
+    "applies_to_sides": ["UNDER"],
 }
 
 _MLB_UNDER_CV_CAPS = {
@@ -712,10 +716,9 @@ elif MLB_FRONT_LINES_GATES_DISABLED:
                      ) -> Dict[str, Dict[str, Any]]:
         cfg: Dict[str, Dict[str, Any]] = {
             "coverage_gate": {"min_books": 1},
-            "direction_gate": {
-                "applies_to_sides":          ["OVER"],
-                "min_projection_minus_line": 0.0,    # proj >= line
-            },
+            # Strict-only direction (2026-05-15 refactor; 2026-05-17
+            # cleanup removed legacy cushion key).
+            "direction_gate": {"applies_to_sides": ["OVER"]},
             "edge_gate":     {"min": 0.01},          # edge > 0 (strictly positive)
             "hit_rate_gate": {"min": hr, "window": "default"},
             "cv_gate":       {"max": cv},
@@ -726,10 +729,9 @@ elif MLB_FRONT_LINES_GATES_DISABLED:
 
     _MLB_FL_UNDER_GLOBAL = {
         "coverage_gate": {"min_books": 1},
-        "direction_gate": {
-            "applies_to_sides":           ["UNDER"],
-            "max_projection_minus_line":  0.0,        # proj <= line
-        },
+        # Strict-only direction (2026-05-15 refactor; 2026-05-17
+        # cleanup removed legacy cushion keys).
+        "direction_gate": {"applies_to_sides": ["UNDER"]},
         "hit_rate_gate": {"min": 75.0, "window": "default"},
         "cv_gate":       {"max": 0.85},
     }

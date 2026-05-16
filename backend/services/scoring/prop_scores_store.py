@@ -514,6 +514,10 @@ _SCORE_OUTPUT_FIELDS = (
 _IDENTITY_FIELDS = (
     "canonical_key", "sport", "event_id", "player_name",
     "stat_type", "line", "recommendation",
+    # 2026-05-17 — `side` and `direction` are now first-class identity
+    # fields (mirror of `recommendation`), populated by
+    # `_project_score_doc` from the canonical SSOT.
+    "side", "direction",
 )
 
 # Matchup-metadata allowlist (2026-05-13 — Vision Intel diagnostic).
@@ -633,6 +637,30 @@ def _project_score_doc(
             pass
 
     doc = {k: context_out.get(k) for k in _IDENTITY_FIELDS if k in context_out}
+    # 2026-05-17 — Side/direction SSOT.
+    # `recommendation` is the canonical side label persisted by every
+    # adapter (`OVER` / `UNDER`). Downstream consumers (audits, UI,
+    # vision intel, test reports) had to parse `canonical_key`'s
+    # trailing `|OVER`/`|UNDER` suffix to discover the side because
+    # the dedicated top-level fields were never populated. Populate
+    # them here from the SSOT in priority order:
+    #     1. `recommendation` (adapter-emitted, canonical)
+    #     2. `canonical_key` suffix (fallback for legacy rows that
+    #        somehow reach the writer without `recommendation`)
+    # Always upper-cased so consumers don't need to normalise.
+    _side_raw = context_out.get("recommendation")
+    if not _side_raw:
+        ck = context_out.get("canonical_key") or ""
+        if "|" in ck:
+            _suffix = ck.rsplit("|", 1)[-1].upper()
+            if _suffix in {"OVER", "UNDER"}:
+                _side_raw = _suffix
+    if _side_raw:
+        _side_uc = str(_side_raw).upper()
+        # Mirror onto both `side` and `direction` for downstream parity
+        # (some readers grep `side`, others `direction`).
+        doc["side"] = _side_uc
+        doc["direction"] = _side_uc
     for k in _SCORE_OUTPUT_FIELDS:
         if k in context_out:
             doc[k] = context_out[k]

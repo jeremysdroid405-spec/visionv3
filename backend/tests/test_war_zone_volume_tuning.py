@@ -2,9 +2,13 @@
 
 Locks in the two changes applied to `_NBA_WAR_ZONE_BASE`:
 
-  1. `direction_gate.min_projection_to_line_ratio`: 1.05 → 1.00
-     (WZ accepts any OVER where proj ≥ line; model-edge alone is
-      sufficient for this high-variance tier).
+  1. Direction gate: was `min_projection_to_line_ratio: 1.05` →
+     loosened to `1.00`, then fully retired by the strict-only
+     direction refactor (2026-05-15) and stripped from config
+     (2026-05-17 cleanup). The gate is now sign-only — passes iff
+     `projection > line` strict. The two `_wz_direction_*` tests
+     below assert the cleaned post-cleanup config state and the
+     behavioural pass on `projection > line` slumps.
 
   2. `hit_rate_gate.enforce_l5_subgate`: False
      (WZ opts out of the universal L5 sub-gate. L5 drawdowns ARE the
@@ -23,15 +27,29 @@ def _wz_cfg():
     return resolve_thresholds("nba", "war_zone", "pts", side="OVER")
 
 
-def test_wz_direction_ratio_is_1_00():
+def test_wz_direction_gate_is_strict_sign_only():
+    """Post-2026-05-17 cleanup: WZ direction_gate carries ONLY
+    `applies_to_sides=['OVER']`. No legacy cushion keys."""
     cfg = _wz_cfg()
-    assert cfg["direction_gate"]["min_projection_to_line_ratio"] == 1.00
+    dg = cfg["direction_gate"]
+    assert dg.get("applies_to_sides") == ["OVER"]
+    # Legacy keys must be GONE from config (strict engine ignores them
+    # at runtime, but we also clean them out of the declarative config
+    # so audits don't surface misleading thresholds).
+    assert "min_projection_to_line_ratio" not in dg
+    assert "min_projection_minus_line" not in dg
+    assert "max_projection_minus_line" not in dg
+    assert "min_line_minus_projection_ratio" not in dg
 
 
-def test_wz_direction_ratio_is_not_1_05():
-    """Negative lockdown — guard against silent revert to the old floor."""
+def test_wz_direction_gate_keys_count():
+    """Negative lockdown — guard against silent re-introduction of a
+    cushion key. The clean WZ direction config carries exactly one
+    behavioural key: `applies_to_sides`."""
     cfg = _wz_cfg()
-    assert cfg["direction_gate"]["min_projection_to_line_ratio"] != 1.05
+    dg = cfg["direction_gate"]
+    # Only sign-only direction lives here now.
+    assert set(dg.keys()) == {"applies_to_sides"}
 
 
 def test_wz_disables_l5_subgate():

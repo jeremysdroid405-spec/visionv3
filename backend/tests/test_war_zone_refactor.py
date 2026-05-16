@@ -216,17 +216,24 @@ def test_sh_config_still_uses_stat_family_cv_caps():
 
 def test_sh_config_carries_universal_direction_gate():
     """Universal OVER-side rule applied to SH on 2026-04-29.
-    Post 2026-05-15 the engine uses strict-inequality semantics —
-    legacy `min_projection_minus_line` key is still present but
-    inert (engine ignores positive cushions).
+    Post 2026-05-15 the engine uses strict-inequality semantics
+    (`projection > line` only); the 2026-05-17 cleanup removed the
+    legacy `min_projection_minus_line` cushion key from the config.
     """
     dg = _NBA_SAFE_HAVEN_BASE.get("direction_gate") or {}
     assert dg.get("applies_to_sides") == ["OVER"]
+    # Cushion keys must be absent in the cleaned config.
+    assert "min_projection_minus_line" not in dg
 
 
-def test_fl_config_unchanged_direction_uses_minus_line():
+def test_fl_config_direction_is_strict_sign_only():
+    """FL OVER-side direction gate is sign-only (post-2026-05-17
+    cleanup). The strict engine consults `applies_to_sides` and the
+    sign of `projection - line` only — no cushion key in config.
+    """
     dg = _NBA_FRONT_LINES_BASE.get("direction_gate") or {}
-    assert dg.get("min_projection_minus_line") == 0.0
+    assert dg.get("applies_to_sides") == ["OVER"]
+    assert "min_projection_minus_line" not in dg
     # FL has no ratio rule
     assert "min_projection_to_line_ratio" not in dg
 

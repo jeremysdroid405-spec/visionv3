@@ -78,6 +78,13 @@ class ScoreDocument(BaseModel):
     stat_type:         str
     line:              float
     recommendation:    Optional[str] = None
+    # 2026-05-17 — Top-level side/direction (mirror of recommendation).
+    # Populated by `prop_scores_store::_project_score_doc` from the
+    # canonical SSOT (`recommendation` then canonical_key suffix).
+    # Both fields ship for downstream parity — some readers grep
+    # `side`, others `direction`. Always upper-case "OVER" or "UNDER".
+    side:              Optional[str] = None
+    direction:         Optional[str] = None
 
     # ── Versioning (required) ─────────────────────────────────────
     version_tag:  str
