@@ -1674,6 +1674,12 @@ async def startup_event():
         from routes import admin_diagnostics as _admin_diagnostics
         _admin_diagnostics.set_db(db)
         app.include_router(_admin_diagnostics.router)
+
+        # 2026-05-17 hardening — forensic odds-audit endpoints.
+        # See routes/admin_odds_audit.py.
+        from routes import admin_odds_audit as _admin_odds_audit
+        _admin_odds_audit.set_db(db)
+        app.include_router(_admin_odds_audit.router)
         # 2026-05-15 — system-wide ephemeral data cleanup utility.
         # See services/cleanup/ephemeral_cleanup.py.
         from routes import admin_ephemeral_cleanup as _admin_ephemeral

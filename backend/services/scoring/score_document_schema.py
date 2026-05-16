@@ -86,6 +86,18 @@ class ScoreDocument(BaseModel):
     side:              Optional[str] = None
     direction:         Optional[str] = None
 
+    # 2026-05-17 hardening — market-class SSOT on every score doc.
+    # `market_class` ∈ {"standard","alternate","sgp","promo","unknown"}.
+    # `source_market_key` is the verbatim odds-API market_key the
+    # anchor book emitted. `canonical_key_v2` is the augmented
+    # identity that embeds market_class as the trailing segment.
+    # Legacy `canonical_key` and `is_alternate_market` remain in the
+    # schema below; the new fields ride alongside for additive
+    # consumer migration. See `services/market_class.py`.
+    market_class:        Optional[str] = None
+    source_market_key:   Optional[str] = None
+    canonical_key_v2:    Optional[str] = None
+
     # ── Versioning (required) ─────────────────────────────────────
     version_tag:  str
     computed_at:  datetime

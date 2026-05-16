@@ -518,6 +518,11 @@ _IDENTITY_FIELDS = (
     # fields (mirror of `recommendation`), populated by
     # `_project_score_doc` from the canonical SSOT.
     "side", "direction",
+    # 2026-05-17 — market-class SSOT identity fields. Carried verbatim
+    # from the canonical record (universal_odds_sync) so consumers
+    # never have to re-classify. `canonical_key_v2` is the augmented
+    # identity with the trailing market_class segment.
+    "market_class", "source_market_key", "canonical_key_v2",
 )
 
 # Matchup-metadata allowlist (2026-05-13 — Vision Intel diagnostic).
@@ -661,6 +666,48 @@ def _project_score_doc(
         # (some readers grep `side`, others `direction`).
         doc["side"] = _side_uc
         doc["direction"] = _side_uc
+
+    # 2026-05-17 hardening — derive market_class + canonical_key_v2 if
+    # an upstream stage didn't already populate them. The
+    # `universal_odds_sync` canonical builder is the SSOT, but recompute
+    # paths that bypass it (legacy replay, manual fixtures) still need
+    # the augmented identity stamped. Pure derivation — no I/O.
+    try:
+        from services.market_class import (
+            classify_market_key as _mc_classify,
+            build_canonical_v2 as _mc_build_v2,
+        )
+        # `market_class` priority: explicit > derived from market_key
+        # > derived from legacy `is_alternate_market` > "unknown".
+        _mc = context_out.get("market_class")
+        if not _mc:
+            _src_mk = context_out.get("source_market_key") or context_out.get("market_key")
+            if _src_mk:
+                _mc = _mc_classify(_src_mk)
+            elif context_out.get("is_alternate_market") is True:
+                _mc = "alternate"
+            elif context_out.get("is_alternate_market") is False:
+                _mc = "standard"
+            else:
+                _mc = "unknown"
+        doc["market_class"] = _mc
+        # `source_market_key` persisted verbatim when present.
+        _src_mk_persist = (
+            context_out.get("source_market_key")
+            or context_out.get("market_key")
+        )
+        if _src_mk_persist is not None:
+            doc["source_market_key"] = _src_mk_persist
+        # `canonical_key_v2` — only synthesise if upstream didn't.
+        _ck_v2 = context_out.get("canonical_key_v2")
+        _ck_legacy = context_out.get("canonical_key")
+        if not _ck_v2 and _ck_legacy:
+            _ck_v2 = _mc_build_v2(_ck_legacy, _mc)
+        if _ck_v2:
+            doc["canonical_key_v2"] = _ck_v2
+    except Exception:
+        # Backstop only — never break the writer on derivation issues.
+        pass
     for k in _SCORE_OUTPUT_FIELDS:
         if k in context_out:
             doc[k] = context_out[k]

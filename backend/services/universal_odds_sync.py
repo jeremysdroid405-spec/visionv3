@@ -797,6 +797,7 @@ class UniversalOddsSyncService:
         # binding is preserved so the surrounding logic is unchanged;
         # only the source of truth has moved.
         from services.scoring.canonical_stats import market_to_stat_map
+        from services.market_class import classify_market_key, build_canonical_v2
         stat_type_map = market_to_stat_map(sport)
 
         event_id = odds_data.get("event_id") or event_info.get("id") or ""
@@ -805,10 +806,23 @@ class UniversalOddsSyncService:
         commence = event_info.get("commence_time")
         now_iso = datetime.now(timezone.utc).isoformat()
 
+        # 2026-05-17 hardening — every scrape gets a unique scrape_id
+        # so the append-only snapshot collection can group rows that
+        # belong to the same physical odds-API call. Survives across
+        # retries (one fetch_event_odds → one scrape_id).
+        import uuid as _uuid
+        scrape_id = f"{sport}|{event_id}|{now_iso}|{_uuid.uuid4().hex[:8]}"
+
         mapped = 0
         unmapped = 0
         unmapped_keys: Set[str] = set()
         rows: List[Dict[str, Any]] = []
+        # 2026-05-17 hardening — companion list of VERBATIM raw rows
+        # for the append-only `dg_raw_odds_snapshots` collection.
+        # Carries the raw market + outcome JSON so future replay /
+        # forensic-trace work can reconstruct upstream intent
+        # exactly. Never overwritten.
+        snapshot_rows: List[Dict[str, Any]] = []
 
         for bm in odds_data.get("bookmakers") or []:
             bm_key = bm.get("key")
@@ -830,6 +844,9 @@ class UniversalOddsSyncService:
                     # team-level markets use `name` for the team / side.
                     player = outcome.get("description")
                     team_or_side = outcome.get("name")
+                    # 2026-05-17 hardening — classify market class &
+                    # carry the source market_key into observability.
+                    market_class = classify_market_key(mkey)
                     rows.append({
                         "sport": sport,
                         "event_id": event_id,
@@ -845,6 +862,68 @@ class UniversalOddsSyncService:
                         "line": outcome.get("point"),
                         "price": outcome.get("price"),
                         "fetched_at": now_iso,
+                        # New observability fields. The legacy
+                        # `dg_raw_odds_markets` collection is still
+                        # overwrite-on-scrape (latest-state cache), so
+                        # these aid the in-memory join — the durable
+                        # forensic record lives in
+                        # `dg_raw_odds_snapshots` below.
+                        "market_class": market_class,
+                        "source_market_key": mkey,
+                        "is_alternate_market": market_class == "alternate",
+                    })
+                    # Append-only forensic record. We store the
+                    # outcome dict VERBATIM (deep-copied via dict()
+                    # so future mutations of `market` don't leak in)
+                    # and the parent market metadata. A composite
+                    # canonical_candidate is built so future replay
+                    # can reverse-map the snapshot back to the
+                    # canonical/v2 key without re-running
+                    # classification logic.
+                    side = "OVER" if str(team_or_side or "").lower() == "over" else (
+                        "UNDER" if str(team_or_side or "").lower() == "under" else None
+                    )
+                    line_val = outcome.get("point")
+                    if (player and stat_type_map.get(mkey)
+                            and line_val is not None and side):
+                        legacy = (
+                            f"{sport}|{event_id}|{player}|"
+                            f"{stat_type_map.get(mkey)}|{float(line_val)}|{side}"
+                        )
+                        canonical_candidate = legacy
+                        canonical_v2_candidate = build_canonical_v2(
+                            legacy, market_class)
+                    else:
+                        canonical_candidate = None
+                        canonical_v2_candidate = None
+                    snapshot_rows.append({
+                        "scrape_id": scrape_id,
+                        "fetched_at": now_iso,
+                        "sport": sport,
+                        "event_id": event_id,
+                        "commence_time": commence,
+                        "home_team": home,
+                        "away_team": away,
+                        "bookmaker": bm_key,
+                        "market_key": mkey,
+                        "market_class": market_class,
+                        "raw_market_json": {
+                            # Header-only — outcomes intentionally
+                            # elided to avoid O(N²) duplication;
+                            # they live one-per-row below.
+                            "key": market.get("key"),
+                            "last_update": market.get("last_update"),
+                            "description": market.get("description"),
+                        },
+                        "raw_outcome_json": dict(outcome),
+                        "outcome_name": team_or_side,
+                        "outcome_description": player,
+                        "outcome_point": outcome.get("point"),
+                        "outcome_price": outcome.get("price"),
+                        "canonical_candidate": canonical_candidate,
+                        "canonical_v2_candidate": canonical_v2_candidate,
+                        "source_file": "universal_odds_sync._persist_raw_markets",
+                        "ingest_version": "v1.0_2026_05_17",
                     })
 
         coll = self.db["dg_raw_odds_markets"]
@@ -858,6 +937,17 @@ class UniversalOddsSyncService:
                 await coll.insert_many(rows, ordered=False)
         except Exception as e:
             logger.warning(f"[UNIVERSAL_ODDS] raw-markets write error: {e}")
+
+        # 2026-05-17 hardening — append-only forensic snapshot store.
+        # NEVER delete. NEVER upsert. Each scrape's rows are tagged
+        # with the same `scrape_id` so the audit endpoint can group
+        # them. Failures here MUST NOT break the legacy write above.
+        snap_coll = self.db["dg_raw_odds_snapshots"]
+        try:
+            if snapshot_rows:
+                await snap_coll.insert_many(snapshot_rows, ordered=False)
+        except Exception as e:
+            logger.warning(f"[UNIVERSAL_ODDS] raw-snapshots write error: {e}")
 
         return {
             "written": len(rows),
@@ -1121,8 +1211,30 @@ class UniversalOddsSyncService:
                         continue
 
                     is_pp_anchor = (bm_key == "prizepicks")
+                    # 2026-05-17 hardening — market_class + v2 key SSOT.
+                    # `market_class` and `canonical_key_v2` ride
+                    # alongside the legacy fields so downstream
+                    # consumers can choose either identity model.
+                    # `source_market_key` is preserved verbatim from
+                    # the upstream payload for forensic traceability.
+                    from services.market_class import (
+                        classify_market_key as _classify_mc,
+                        build_canonical_v2 as _build_v2,
+                    )
+                    market_class = _classify_mc(market_key)
+                    canonical_key_v2 = _build_v2(canon_key, market_class)
                     canonical[canon_key] = {
                         "canonical_key": canon_key,
+                        # NOTE: legacy `canonical_key` is preserved
+                        # unchanged. `canonical_key_v2` is the new
+                        # market-class-aware identity. Adding a
+                        # `market_class` segment to the legacy key
+                        # would invalidate every existing join; we
+                        # ship both forms so consumers can migrate
+                        # at their own pace.
+                        "canonical_key_v2": canonical_key_v2,
+                        "market_class": market_class,
+                        "source_market_key": market_key,
                         "sport": sport,
                         "event_id": event_id,
                         "home_team": event_info.get("home_team"),
@@ -1133,8 +1245,7 @@ class UniversalOddsSyncService:
                         "market_key": market_key,
                         "line": float(line),
                         "recommendation": side,
-                        "is_alternate_market":
-                            "alternate" in market_key.lower(),
+                        "is_alternate_market": market_class == "alternate",
                         # SSOT anchor metadata (2026-04-25).
                         "source_anchor":
                             "prizepicks" if is_pp_anchor
@@ -1162,6 +1273,16 @@ class UniversalOddsSyncService:
                         "bly_layer": None,
                         "flf_layer": None,
                         "sharp_layer": None,
+                        # 2026-05-17 hardening — split-class odds
+                        # containers. The legacy `all_odds` dict
+                        # mixes standard + alternate prices at the
+                        # same (line, side); the v2 dicts keep them
+                        # rigorously separated so scoring can opt
+                        # into class-pure pricing. Filled in Pass 2.
+                        "all_odds_standard": {},
+                        "all_odds_alternate": {},
+                        "all_lines_standard": {},
+                        "all_lines_alternate": {},
                     }
 
         # --- Pass 2: attach every allowed book's price to its layer
@@ -1196,12 +1317,30 @@ class UniversalOddsSyncService:
                         f"{stat_type}|{float(line)}|{side}"
                     )
                     if canon_key in canonical:
+                        # 2026-05-17 hardening — classify this
+                        # attach's market_class. We keep the legacy
+                        # layer-attach behaviour for backward
+                        # compatibility, AND fill split containers
+                        # so future scoring passes can isolate by
+                        # class.
+                        from services.market_class import (
+                            classify_market_key as _classify_mc_p2,
+                        )
+                        attach_class = _classify_mc_p2(market_key)
                         layer = {
                             "book": bm_key,
                             "line": float(line),
                             "odds": price,
                             "fetched_at":
                                 datetime.now(timezone.utc).isoformat(),
+                            # New: per-attach market_class tag so the
+                            # layer itself records which class it
+                            # originated from. The canonical's own
+                            # `market_class` field reflects the
+                            # ANCHOR's class — individual book layers
+                            # may differ.
+                            "market_class": attach_class,
+                            "source_market_key": market_key,
                         }
                         target = canonical[canon_key]
                         if bm_key == "prizepicks":
@@ -1231,6 +1370,26 @@ class UniversalOddsSyncService:
                             target["flf_layer"] = layer
                         if is_sharp and target["sharp_layer"] is None:
                             target["sharp_layer"] = layer
+                        # 2026-05-17 — split-class odds containers.
+                        # Each book contributes ONLY to the bucket
+                        # matching its OWN attach_class — so an
+                        # alt-market price never lands in
+                        # `all_odds_standard` and vice versa.
+                        bucket_odds = (
+                            target["all_odds_alternate"]
+                            if attach_class == "alternate"
+                            else target["all_odds_standard"]
+                        )
+                        bucket_lines = (
+                            target["all_lines_alternate"]
+                            if attach_class == "alternate"
+                            else target["all_lines_standard"]
+                        )
+                        # Last-write-wins within the same class is
+                        # acceptable; cross-class is what we're
+                        # eliminating here.
+                        bucket_odds[bm_key] = price
+                        bucket_lines[bm_key] = float(line)
 
                     # Opposite-side stamp (preserves prior behaviour).
                     opp_side = "UNDER" if side == "OVER" else "OVER"
