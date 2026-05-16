@@ -611,6 +611,22 @@ class ScoreDocument(BaseModel):
     is_alternate_market:   Optional[bool] = None
     market_key:            Optional[str] = None
 
+    # ── Pre-Scoring Book Quote Integrity Filter (2026-05-17) ─────────
+    # Stamped by `services.scoring.book_quote_integrity_filter` BEFORE
+    # edge / fair_prob / best_book / tp / consensus / book_count are
+    # derived. `integrity_filter_applied=True` means ≥1 individual
+    # book quote was ejected from this prop's alternate-bucket odds
+    # because it matched the rule:
+    #     sport=='mlb' AND market_class=='alternate'
+    #     AND line==0.5 AND american_odds >= +500.
+    # `excluded_book_quotes` is the verbatim list of ejection records
+    # ({book, odds, line, market_class, reason}). The prop itself
+    # remains alive with the books that survived the filter; if ALL
+    # alt-bucket book quotes were ejected the filter rejects the prop
+    # upstream and it never reaches the score doc writer at all.
+    integrity_filter_applied: Optional[bool] = None
+    excluded_book_quotes:     Optional[List[Dict[str, Any]]] = None
+
 
 def validate_score_document(doc: Dict[str, Any]) -> Optional[str]:
     """Validate a single score doc against the strict Pydantic contract.

@@ -1,5 +1,53 @@
 # Changelog
 
+## 2026-05-17 — Pre-Scoring MLB Book Quote Integrity Filter (P0)
+
+**Goal**: strip structurally absurd individual book quotes out of an
+MLB prop's alternate-bucket odds BEFORE `fair_prob`, `edge_vs_fair`,
+`market_probability`, `best_book`, `tp`, consensus and `book_count`
+are derived — without removing the prop, the alternate market itself,
+or any standard-market price.
+
+**Rule**: `sport=="mlb"` AND `market_class=="alternate"` AND
+`line==0.5` AND `american_odds >= +500` ⇒ eject ONLY that book quote.
+
+**Behaviour**:
+- Prop stays alive on partial ejection (remaining books survive).
+- If every alternate-bucket quote is ejected → filter returns
+  `rejected=True` and the batch wrapper drops the prop entirely
+  (no score doc written).
+- `integrity_filter_applied=True` and `excluded_book_quotes` (list of
+  `{book, odds, line, market_class, reason}`) persist on the raw prop
+  and mirror onto the score doc for forensic audit.
+- Per-book `*_layer` slots are cleared ONLY when the layer itself is
+  alternate-class (cross-class safety: a parallel standard layer for
+  the same book is preserved). Flat `{prefix}_line/_odds/_odds_opp`
+  are cleared for ejected books.
+
+**Files**:
+- NEW `backend/services/scoring/book_quote_integrity_filter.py`
+- `backend/services/scoring/score_document_schema.py` — added
+  `integrity_filter_applied: Optional[bool]` and
+  `excluded_book_quotes: Optional[List[Dict[str, Any]]]`
+- `backend/services/scoring/prop_scores_store.py` — added both fields
+  to `_SCORE_OUTPUT_FIELDS` allowlist
+- `backend/services/scoring/recompute.py` — applies the filter to the
+  prop batch immediately after load (before `build_context` / scoring
+  stack / best_book / TP), logs batch stats, propagates the audit
+  fields from raw prop onto the score doc
+- NEW `backend/tests/test_book_quote_integrity_filter.py` — 10 pytest
+  cases (8 required scenarios + 2 structural checks):
+  single-book ejection, multi-book partial ejection, standard-market
+  not filtered, non-MLB sport not filtered, line!=0.5 not filtered,
+  odds<+500 not filtered, +500 boundary IS ejected, all-ejected →
+  batch drop, alt layer cleared while standard layer preserved,
+  `excluded_book_quotes` payload schema lock.
+
+**Tests**: 10/10 pass. 45 adjacent existing tests
+(`test_odds_pipeline_hardening`, `test_side_direction_cleanup`) still pass.
+
+
+
 ## 2026-05-05 — Vision Intel canonical_key pairing fix (P1)
 
 **Bug**: `master_sync._enrich_{nba,mlb}_board_vision_intel` paired Gemini results to source picks via positional `zip(tier_picks, results)`. But `analyze_tier_batch` (both NBA + MLB versions) internally `enriched_props.sort(key=composite_score)` before returning. The two orderings drifted apart, stamping the wrong narrative on the wrong canonical_key — Josh Jung getting a "Witt" narrative, Ozzie Albies getting "Judge", etc. (9/10 mis-mapped on a recent live MLB run.) Same bug existed silently on the NBA path.

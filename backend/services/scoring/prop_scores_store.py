@@ -509,6 +509,16 @@ _SCORE_OUTPUT_FIELDS = (
     # consumers (vacuum service, gating, future retrains). Live model
     # behaviour is unchanged.
     "injury_context",
+    # ── Pre-Scoring Book Quote Integrity Filter (2026-05-17) ──────
+    # Stamped onto the raw prop dict by
+    # `services.scoring.book_quote_integrity_filter` before edge /
+    # fair_prob / market_probability / best_book / tp / consensus /
+    # book_count are derived. The propagation step in
+    # `services/scoring/recompute.py` mirrors them onto the score
+    # doc so audit endpoints and forensic tests can reconstruct the
+    # decision deterministically.
+    "integrity_filter_applied",
+    "excluded_book_quotes",
 )
 
 _IDENTITY_FIELDS = (

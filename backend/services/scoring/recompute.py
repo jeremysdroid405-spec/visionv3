@@ -412,6 +412,46 @@ async def recompute_sport(
                 f"batch and coverage_gate will fail-closed"
             )
 
+    # 2026-05-17 — PRE-SCORING MLB BOOK QUOTE INTEGRITY FILTER.
+    # Runs BEFORE any edge / fair_prob / market_probability /
+    # best_book / tp / consensus / book_count derivation. Strips
+    # structurally absurd individual book quotes (mlb + alternate
+    # + line==0.5 + american_odds >= +500) from each prop's
+    # `all_odds_alternate` container and per-book layer slots,
+    # leaving the rest of the prop intact. Props where every alt
+    # book quote was ejected are dropped from the batch entirely
+    # (caller-supplied path covered by the same call below).
+    try:
+        from services.scoring.book_quote_integrity_filter import (
+            apply_to_prop_list as _apply_integrity_filter,
+        )
+        _pre_filter_count = len(props)
+        props, _integrity_stats = _apply_integrity_filter(props)
+        if (
+            _integrity_stats.get("mutated", 0)
+            or _integrity_stats.get("rejected", 0)
+        ):
+            logger.info(
+                "[RECOMPUTE:%s] integrity_filter scanned=%d eligible=%d "
+                "mutated=%d rejected=%d total_quotes_ejected=%d "
+                "rule=%s (pre_count=%d post_count=%d)",
+                sport,
+                _integrity_stats.get("scanned"),
+                _integrity_stats.get("eligible"),
+                _integrity_stats.get("mutated"),
+                _integrity_stats.get("rejected"),
+                _integrity_stats.get("total_quotes_ejected"),
+                _integrity_stats.get("rule"),
+                _pre_filter_count,
+                len(props),
+            )
+    except Exception as _intg_exc:  # noqa: BLE001 — never abort recompute
+        logger.warning(
+            "[RECOMPUTE:%s] integrity_filter failed (%s); continuing "
+            "with unfiltered props — investigate ASAP.",
+            sport, _intg_exc,
+        )
+
     # Phase D2 (2026-04-21) — Delta Engine scoped-rescore filter.
     # When a canonical-key subset is supplied, restrict the scoring pass
     # to that subset and force `upsert` mode so untouched RT docs are
@@ -907,6 +947,19 @@ async def recompute_sport(
         ):
             if _ssot_k in raw:
                 doc[_ssot_k] = raw[_ssot_k]
+
+        # Pre-Scoring Book Quote Integrity Filter audit fields
+        # (2026-05-17). Stamped on the raw prop by
+        # `services.scoring.book_quote_integrity_filter` before edge /
+        # fair_prob / best_book / tp / consensus / book_count were
+        # derived. Mirror onto the score doc so the forensic audit
+        # endpoints can reconstruct exactly which book quotes were
+        # ejected for each prop.
+        if raw.get("integrity_filter_applied"):
+            doc["integrity_filter_applied"] = True
+            _excl = raw.get("excluded_book_quotes")
+            if isinstance(_excl, list) and _excl:
+                doc["excluded_book_quotes"] = _excl
 
         score_docs.append(doc)
 
