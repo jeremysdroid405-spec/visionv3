@@ -1,0 +1,184 @@
+{
+  "audit_kind": "phase6_phase4_canonical_tp_devig_sh_parity",
+  "canonical_engine_version": "canonical_v2_phase4_2026_05_17",
+  "game_date": "2026-05-05",
+  "snapshot_iso": "2026-05-05T11:00:00Z",
+  "tier": "safe_haven",
+  "baselines": {
+    "legacy_non_canonical_universal": {
+      "serial": "MLB-PRODREPLAY-20260505-SH-1100UTC-00015",
+      "cards_displayed": 20,
+      "hit_rate_pct": 86.25,
+      "losses": 11,
+      "profit_units": 25.0757,
+      "roi_pct": 31.34,
+      "rows_qualified": 104,
+      "rows_scanned": 25431,
+      "tier": "safe_haven",
+      "wins": 69,
+      "gate_path": "universal",
+      "pushes": 0,
+      "ungraded": 24
+    },
+    "phase2_canonical_v1": {
+      "serial": "MLB-PRODREPLAY-20260505-SH-1100UTC-00073",
+      "cards_displayed": 0,
+      "hit_rate_pct": 0.0,
+      "losses": 0,
+      "profit_units": 0.0,
+      "roi_pct": 0.0,
+      "rows_qualified": 0,
+      "rows_scanned": 4672,
+      "tier": "safe_haven",
+      "wins": 0,
+      "canonical_engine_version": "canonical_v1_phase2_2026_05_17",
+      "canonical_path": true,
+      "canonical_summary": {
+        "canonical_engine_version": "canonical_v1_phase2_2026_05_17",
+        "raw_rows_collapsed_from": 25431,
+        "canonical_props_built": 3692,
+        "canonical_eval_rows": 4672
+      },
+      "gate_path": "universal",
+      "pushes": 0,
+      "ungraded": 0
+    }
+  },
+  "phase4_canonical_v2": {
+    "serial": "MLB-PRODREPLAY-20260505-SH-1100UTC-00074",
+    "sport": "mlb",
+    "game_date": "2026-05-05",
+    "snapshot_iso": "2026-05-05T11:00:00Z",
+    "tier": "safe_haven",
+    "gate_path": "universal",
+    "rows_scanned": 4672,
+    "rows_qualified": 0,
+    "cards_displayed": 0,
+    "wins": 0,
+    "losses": 0,
+    "pushes": 0,
+    "ungraded": 0,
+    "hit_rate_pct": 0.0,
+    "roi_pct": 0.0,
+    "profit_units": 0.0,
+    "stake_units": 0.0,
+    "elapsed_s": 2.79,
+    "rss_mb_peak": 685.2,
+    "production_pipeline_version": "5f35497a2f37204fc27a1f61ea6b2c6f5d99501b75793ee9dee620114a33fa5e",
+    "adapter_version": "26854957195577c9918ead9f10821a877578dffade783764d05da16e370b067f",
+    "feature_cache_version": "feature_cache_v1.0_2026_05_16",
+    "gate_config_version": "mlb_war_zone_v1_2026_05_16",
+    "scoring_config_version": "scoring_v3.1_phase2a__wz_rewrite_2026_05_16",
+    "universal_gate_cfg_versions": {
+      "mlb|safe_haven|hits|OVER": "mlb_safe_haven_universal_74c05ecffddda831",
+      "mlb|safe_haven|hits|UNDER": "mlb_safe_haven_universal_74c05ecffddda831",
+      "mlb|safe_haven|total_bases|UNDER": "mlb_safe_haven_universal_9f586e691d36c085",
+      "mlb|safe_haven|runs|UNDER": "mlb_safe_haven_universal_ca2eab45a2587b39",
+      "mlb|safe_haven|rbis|UNDER": "mlb_safe_haven_universal_ca2eab45a2587b39",
+      "mlb|safe_haven|earned_runs|OVER": "mlb_safe_haven_universal_70f7c1a3319bf653",
+      "mlb|safe_haven|batter_strikeouts|OVER": "mlb_safe_haven_universal_9e50b95b7e784f38",
+      "mlb|safe_haven|pitcher_strikeouts|OVER": "mlb_safe_haven_universal_e2d915c428818b73"
+    },
+    "canonical_path": true,
+    "canonical_engine_version": "canonical_v2_phase4_2026_05_17",
+    "canonical_summary": {
+      "canonical_engine_version": "canonical_v2_phase4_2026_05_17",
+      "raw_rows_collapsed_from": 25431,
+      "canonical_props_built": 3692,
+      "canonical_eval_rows": 4672
+    }
+  },
+  "routed_tier_distribution": {
+    "phase2": {
+      "front_lines": 1475,
+      "war_zone": 3021,
+      "safe_haven": 176
+    },
+    "phase4": {
+      "war_zone": 3021,
+      "safe_haven": 176,
+      "front_lines": 1475
+    }
+  },
+  "sh_routed_gate_failures": {
+    "phase2": [
+      {
+        "gate": "edge_gate",
+        "n": 145
+      },
+      {
+        "gate": "hit_rate_gate",
+        "n": 131
+      },
+      {
+        "gate": "tp_gate",
+        "n": 105
+      },
+      {
+        "gate": "tp_source_gate",
+        "n": 77
+      },
+      {
+        "gate": "cv_gate",
+        "n": 53
+      },
+      {
+        "gate": "margin_gate",
+        "n": 22
+      },
+      {
+        "gate": "direction_gate",
+        "n": 4
+      }
+    ],
+    "phase4": [
+      {
+        "gate": "edge_gate",
+        "n": 145
+      },
+      {
+        "gate": "hit_rate_gate",
+        "n": 131
+      },
+      {
+        "gate": "tp_gate",
+        "n": 105
+      },
+      {
+        "gate": "tp_source_gate",
+        "n": 77
+      },
+      {
+        "gate": "cv_gate",
+        "n": 53
+      },
+      {
+        "gate": "margin_gate",
+        "n": 22
+      },
+      {
+        "gate": "direction_gate",
+        "n": 4
+      }
+    ]
+  },
+  "phase4_sh_devig_method_distribution": [
+    {
+      "method": "same_book",
+      "n": 99
+    },
+    {
+      "method": "one_sided",
+      "n": 77
+    }
+  ],
+  "deltas_phase4_vs_phase2": {
+    "rows_qualified_delta": 0,
+    "wins_delta": 0,
+    "hit_rate_pct_delta": 0.0,
+    "roi_pct_delta": 0.0,
+    "profit_units_delta": 0.0
+  },
+  "newly_qualified_examples_vs_phase2": [],
+  "generated_at": "2026-05-17T20:24:35.205512+00:00"
+}

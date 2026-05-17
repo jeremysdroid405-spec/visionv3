@@ -65,8 +65,22 @@ class CanonicalProp:
     best_under_book: Optional[str] = None
     consensus_over_price: Optional[float] = None
     consensus_under_price: Optional[float] = None
+    # Selected (preferred) devig probabilities — PREFER same-book pair
+    # when one exists, else fall back to cross-book consensus.
     devig_over_probability: Optional[float] = None
     devig_under_probability: Optional[float] = None
+    # Method that produced the selected devig: "same_book" |
+    # "cross_book" | "one_sided" | None. Audit-only; consumers map
+    # this to `tp_source` (`"devig"` for same/cross book; `"one_sided"`
+    # for one-sided coverage). Phase 6 Phase 4 audit field.
+    devig_method: Optional[str] = None
+    # Per-method devig probabilities for full audit traceability.
+    same_book_devig_over_probability: Optional[float] = None
+    same_book_devig_under_probability: Optional[float] = None
+    cross_book_devig_over_probability: Optional[float] = None
+    cross_book_devig_under_probability: Optional[float] = None
+    # Books that contributed to the SELECTED devig method.
+    books_used: List[str] = field(default_factory=list)
     # Coverage metrics
     book_count_over: int = 0
     book_count_under: int = 0
@@ -74,6 +88,19 @@ class CanonicalProp:
     book_count_either_side_any_book: int = 0   # union of OVER ∪ UNDER books
     has_cross_book_devig: bool = False
     has_same_book_devig: bool = False
+    # Phase 6 Phase 4 audit aliases.
+    same_book_pair_count: int = 0   # alias of book_count_both_sides_same_book
+    # # of disjoint cross-book pairs available beyond same-book pairs
+    # = max(0, min(book_count_over, book_count_under) - same_book_pair_count).
+    cross_book_pair_count: int = 0
+
+    @property
+    def over_books(self) -> List[str]:
+        return sorted(self.over_prices.keys())
+
+    @property
+    def under_books(self) -> List[str]:
+        return sorted(self.under_prices.keys())
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -218,11 +245,22 @@ def finalize_canonical_prop(cp: CanonicalProp) -> None:
     cp.book_count_under = len(cp.under_prices)
     same_book_pairs = set(cp.over_prices) & set(cp.under_prices)
     cp.book_count_both_sides_same_book = len(same_book_pairs)
+    cp.same_book_pair_count = cp.book_count_both_sides_same_book
+    # Cross-book pair count = pairs available beyond same-book pairs.
+    # The disjoint pool is the smaller of OVER-only / UNDER-only book
+    # sets (each cross-book pair consumes 1 from each side).
+    over_only = set(cp.over_prices) - set(cp.under_prices)
+    under_only = set(cp.under_prices) - set(cp.over_prices)
+    cp.cross_book_pair_count = min(len(over_only), len(under_only))
     union = set(cp.over_prices) | set(cp.under_prices)
     cp.available_books = sorted(union)
     cp.book_count_either_side_any_book = len(union)
-    # Devig flags
+    # Devig method availability flags.
     cp.has_same_book_devig = cp.book_count_both_sides_same_book > 0
+    # `has_cross_book_devig` keeps its existing semantics: TRUE iff
+    # both sides have at least one quote (regardless of pairing).
+    # Phase 4 introduces a stricter signal via `cross_book_pair_count`
+    # for the case where same-book is unavailable but cross-book is.
     cp.has_cross_book_devig = (
         cp.book_count_over >= 1 and cp.book_count_under >= 1
     )
@@ -238,13 +276,57 @@ def finalize_canonical_prop(cp: CanonicalProp) -> None:
     cp.consensus_under_price = (
         float(_prob_to_american(mean_under)) if mean_under is not None else None
     )
-    # Devig probabilities — CROSS-BOOK supported. We devig consensus
-    # implied probabilities; this is the same math the live path uses
-    # via `_pick_reference_odds`'s DK+FD-mean consensus, generalised
-    # to all REF books and either-side cross-book.
-    cp.devig_over_probability, cp.devig_under_probability = (
-        _devig_two_side(mean_over, mean_under)
-    )
+    # ── Same-book devig (Phase 6 Phase 4) ─────────────────────────
+    # Compute devig per same-book pair, then average the resulting
+    # fair probabilities. This is the most accurate devig source
+    # because it removes book-specific vig directly from a paired
+    # quote — no cross-book vig-curve mixing.
+    if same_book_pairs:
+        sb_over_ps: List[float] = []
+        sb_under_ps: List[float] = []
+        for book in same_book_pairs:
+            p_o = _american_to_prob(cp.over_prices[book])
+            p_u = _american_to_prob(cp.under_prices[book])
+            fp_o, fp_u = _devig_two_side(p_o, p_u)
+            if fp_o is not None and fp_u is not None:
+                sb_over_ps.append(fp_o)
+                sb_under_ps.append(fp_u)
+        if sb_over_ps:
+            cp.same_book_devig_over_probability = (
+                sum(sb_over_ps) / len(sb_over_ps)
+            )
+            cp.same_book_devig_under_probability = (
+                sum(sb_under_ps) / len(sb_under_ps)
+            )
+    # ── Cross-book devig (consensus-implied) ──────────────────────
+    # Mean implied prob across ALL OVER books and ALL UNDER books,
+    # then 2-side devig. This is the only devig source when no
+    # same-book pair exists.
+    if mean_over is not None and mean_under is not None:
+        fp_o, fp_u = _devig_two_side(mean_over, mean_under)
+        cp.cross_book_devig_over_probability = fp_o
+        cp.cross_book_devig_under_probability = fp_u
+    # ── Selected (preferred) devig: same-book > cross-book > None ──
+    if cp.same_book_devig_over_probability is not None:
+        cp.devig_method = "same_book"
+        cp.devig_over_probability = cp.same_book_devig_over_probability
+        cp.devig_under_probability = cp.same_book_devig_under_probability
+        cp.books_used = sorted(same_book_pairs)
+    elif cp.cross_book_devig_over_probability is not None:
+        cp.devig_method = "cross_book"
+        cp.devig_over_probability = cp.cross_book_devig_over_probability
+        cp.devig_under_probability = cp.cross_book_devig_under_probability
+        cp.books_used = sorted(union)
+    elif union:
+        cp.devig_method = "one_sided"
+        cp.devig_over_probability = None
+        cp.devig_under_probability = None
+        cp.books_used = sorted(union)
+    else:
+        cp.devig_method = None
+        cp.devig_over_probability = None
+        cp.devig_under_probability = None
+        cp.books_used = []
 
 
 __all__ = [

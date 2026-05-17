@@ -68,7 +68,7 @@ def _layer3_row(**kw):
 
 def test_canonical_engine_version_pin_stable():
     """The version pin must NOT change without a CHANGELOG entry."""
-    assert CANONICAL_ENGINE_VERSION == "canonical_v1_phase2_2026_05_17"
+    assert CANONICAL_ENGINE_VERSION == "canonical_v2_phase4_2026_05_17"
 
 
 def test_empty_input_returns_empty():

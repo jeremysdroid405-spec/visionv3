@@ -46,8 +46,9 @@ Sport-agnostic harness that runs historical data through the **same code paths t
 - **Phase 6 Phase 1 — CanonicalProp model + market_normalizer** — DONE (2026-05-17)
 - **Phase 6 Phase 2 — Canonical engine wired into replay runner (flag-gated, `canonical_path=False` default)** — DONE (2026-05-17)
   - Validated against 2026-05-05 SH: 25,431 raw rows → 3,692 canonical props → 4,672 eval rows; 176 routed to SH vs 104 in legacy per-book-counted baseline. Confirms SH starvation is a per-book duplication artifact, not real supply. See `audits/PHASE6_PHASE2_REPORT_2026_05_17.md`.
-- **Phase 6 Phase 3 — Canonical engine wired to live serving (`compute_tier`)** — NOT STARTED
-- **Phase 6 Phase 4 — `tp_engine.compute_tp` cross-book opposite-side support** — NOT STARTED
+- **Phase 6 Phase 4 — `tp_engine.compute_tp` cross-book opposite-side support** — DONE (2026-05-17)
+  - Canonical engine now exposes explicit same-book vs cross-book devig with method preference (`same_book` > `cross_book` > `one_sided`). Audit fields: `devig_method`, `same_book_pair_count`, `cross_book_pair_count`, `books_used`, `over_books`, `under_books`, per-method devig probs. Validated on 2026-05-05 SH (run 00074): 99 same-book / 0 cross-book / 77 one-sided. 77 `tp_source_gate` failures = exactly the 77 one-sided alt-line OVERs (no UNDER quoted in ANY book — genuine market gap, NOT a wiring fix). See `audits/PHASE6_PHASE4_REPORT_2026_05_17.md`.
+- **Phase 6 Phase 3 — Canonical engine wired to live serving (`compute_tier`)** — NOT STARTED (explicitly deferred by user)
 
 ## MLB Historical Replay System (2026-05-16)
 

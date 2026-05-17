@@ -1,5 +1,73 @@
 # Changelog
 
+## 2026-05-17 — Phase 6 Phase 4: Canonical TP / devig with same-book vs cross-book preference
+
+**Goal:** Make canonical TP / devig work correctly in replay. Allow
+canonical props to compute fair probability from CONSOLIDATED
+market inventory (not per-book raw rows). Preserve same-book devig
+when available; fall back to cross-book ONLY when no same-book
+pair exists. Add audit fields for full traceability. Flag-gated
+behind `canonical_path=True`. No live serving / gate / threshold /
+NBA / routing / card builder changes.
+
+**New code:**
+- `services/canonical/canonical_prop.py`
+  - `CanonicalProp` model + `finalize_canonical_prop` extended with
+    explicit `devig_method` selector (`"same_book"` > `"cross_book"`
+    > `"one_sided"` > None) and per-method devig probs for audit:
+    `same_book_devig_over/under_probability`,
+    `cross_book_devig_over/under_probability`.
+  - New audit fields: `devig_method`, `same_book_pair_count`,
+    `cross_book_pair_count`, `books_used`, `over_books`,
+    `under_books`.
+  - Same-book devig math: per-book devig of paired quotes → mean.
+    Cross-book devig math: mean implied prob of OVER books vs UNDER
+    books → 2-side devig (unchanged from Phase 1).
+  - Legacy `devig_over_probability` / `devig_under_probability` now
+    point to the SELECTED method's probs.
+- `services/replay/production_replay_runner.py`
+  - Engine version → `canonical_v2_phase4_2026_05_17`.
+  - `tp_source` mapping refined: `same_book`/`cross_book` →
+    `"devig"`; `one_sided` → `"one_sided"`.
+  - Output docs stamped with 10 new Phase 4 audit fields.
+
+**Validation (2026-05-05 SH-only, run `MLB-PRODREPLAY-20260505-SH-1100UTC-00074`):**
+- 25,431 raw rows → 3,692 canonical props → 4,672 eval rows
+  (identical to Phase 2 — canonical universe unchanged).
+- SH-routed: 176 (unchanged).
+- **Phase 4 devig method distribution on SH-routed cohort:**
+  `same_book`: 99, `cross_book`: 0, `one_sided`: 77.
+- The 77 `tp_source_gate` failures = exactly the 77 `one_sided`
+  rows (alt-line OVERs at -1400/-2000 chalk where books don't post
+  an UNDER anywhere). NOT recoverable by ANY devig method.
+- Cross-book count 0 on this slate: every both-sides-covered prop
+  had ≥1 same-book pair. Cross-book fallback is unit-tested but
+  did not need to activate on 2026-05-05.
+- Qualified rows: 0 (unchanged). Phase 4 is observability + method
+  preference, NOT gate loosening. Same-book vs cross-book devig
+  differ by ~0.4pp on the audit rows — far below any gate boundary.
+- No newly qualified props vs Phase 2 (correct outcome).
+
+**Tests:**
+- `tests/canonical/test_canonical_devig_methods.py` — 10 pytest
+  cases covering preference order, math correctness, pair counting,
+  one-sided handling, audit-field presence. **10/10 pass.**
+- Existing 16 canonical + 10 Phase 2 wiring tests still green. **36/36 total.**
+
+**Artifacts:**
+- `audits/PHASE6_PHASE4_REPORT_2026_05_17.md`
+- `audits/phase6_phase4_canonical_sh_2026_05_05.py`
+- `audits/phase6_phase4_canonical_sh_2026_05_05.json`
+
+**Structural finding flagged for next session:**
+- The 77 one-sided alt-line OVERs are a real market-data limitation,
+  not a wiring bug. Options: PP-only TP ladder fallback in
+  `tp_engine` (already on PRD backlog), or `tp_source_gate` relax
+  for verified one-sided props (tuning — requires explicit user
+  sign-off; out of Phase 4 scope).
+
+
+
 ## 2026-05-17 — Phase 6 Phase 2: Canonical Prop Engine wired into Replay
 
 **Goal:** Collapse per-book Layer-3 raw rows into ONE canonical prop

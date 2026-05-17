@@ -118,7 +118,7 @@ logger = logging.getLogger(__name__)
 # canonical-collapse semantics change (e.g. ladder collapse,
 # additional dedup keys). The default canonical_path=False keeps
 # legacy replay byte-identical.
-CANONICAL_ENGINE_VERSION = "canonical_v1_phase2_2026_05_17"
+CANONICAL_ENGINE_VERSION = "canonical_v2_phase4_2026_05_17"
 
 _ADAPTER_REGISTRY = {
     "mlb": MLBReplayAdapter,
@@ -655,11 +655,16 @@ async def run_production_replay(
                         devig_p = cp_attached.devig_under_probability
                     tp_pp = (round(float(devig_p) * 100.0, 4)
                              if devig_p is not None else metrics.tp)
-                    tp_src = (
-                        "devig" if (cp_attached.has_cross_book_devig
-                                    or cp_attached.has_same_book_devig)
-                        else ("one_sided" if side_book_count else metrics.tp_source)
-                    )
+                    # Map canonical `devig_method` → live `tp_source`:
+                    #   same_book / cross_book → "devig"
+                    #   one_sided              → "one_sided"
+                    #   None                   → preserve metrics.tp_source
+                    if cp_attached.devig_method in ("same_book", "cross_book"):
+                        tp_src = "devig"
+                    elif cp_attached.devig_method == "one_sided":
+                        tp_src = "one_sided"
+                    else:
+                        tp_src = metrics.tp_source
                     metrics = _dc_replace(
                         metrics,
                         book_count=int(side_book_count) if side_book_count else metrics.book_count,
@@ -717,6 +722,25 @@ async def run_production_replay(
             )
             out_doc["canonical_has_same_book_devig"] = (
                 cp_attached_doc.has_same_book_devig
+            )
+            # ── Phase 6 Phase 4 audit fields ──────────────────────
+            out_doc["devig_method"] = cp_attached_doc.devig_method
+            out_doc["same_book_pair_count"] = cp_attached_doc.same_book_pair_count
+            out_doc["cross_book_pair_count"] = cp_attached_doc.cross_book_pair_count
+            out_doc["books_used"] = list(cp_attached_doc.books_used)
+            out_doc["over_books"] = cp_attached_doc.over_books
+            out_doc["under_books"] = cp_attached_doc.under_books
+            out_doc["same_book_devig_over_prob"] = (
+                cp_attached_doc.same_book_devig_over_probability
+            )
+            out_doc["same_book_devig_under_prob"] = (
+                cp_attached_doc.same_book_devig_under_probability
+            )
+            out_doc["cross_book_devig_over_prob"] = (
+                cp_attached_doc.cross_book_devig_over_probability
+            )
+            out_doc["cross_book_devig_under_prob"] = (
+                cp_attached_doc.cross_book_devig_under_probability
             )
 
         # Grade only the qualified picks (Layer 4 contract).
