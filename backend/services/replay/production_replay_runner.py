@@ -97,10 +97,14 @@ from services.replay.mlb_feature_cache import (
 # for byte-identical replay of historical runs.
 from services.scoring.tier_evaluator import evaluate_tier_with_overrides
 from services.scoring.gates.thresholds import resolve_thresholds
+from services.scoring.odds_bucket_router import (
+    get_odds_bucket, TIER_ODDS_BUCKET_FAIL,
+)
 from services.replay.replay_metrics_builder import build_metrics_from_replay_row
 from services.replay.replay_field_hydrators import (
     load_book_inventory, load_player_game_logs_as_of,
 )
+from services.replay.reference_odds_loader import load_reference_odds_for_snapshot
 import hashlib
 import json as _json
 
@@ -381,6 +385,11 @@ async def run_production_replay(
     book_inventory: Dict[Any, Any] = {}
     player_game_logs: Dict[str, Any] = {}
     universal_gate_cfg_versions: Dict[str, str] = {}
+    # ── Phase 4b — preload tier_reference_odds map for the snapshot.
+    # This mirrors the live `_pick_reference_odds(...)` chain so the
+    # universal odds-bucket router can route replay props using the
+    # SAME ref_odds live serving sees. None when `gate_path=="legacy_wz"`.
+    ref_odds_map: Dict[Any, Any] = {}
     if gate_path == "universal":
         if adapter.SPORT != "mlb":
             raise NotImplementedError(
@@ -394,10 +403,15 @@ async def run_production_replay(
         player_game_logs = await load_player_game_logs_as_of(
             db, game_date=game_date,
         )
+        ref_odds_map = await load_reference_odds_for_snapshot(
+            db, sport=adapter.SPORT,
+            game_date=game_date, snapshot_iso=snapshot_iso,
+        )
         logger.info(
             "[prod_replay_runner][phase4] hydrators loaded: "
-            "book_inventory=%d keys, player_game_logs=%d players",
-            len(book_inventory), len(player_game_logs),
+            "book_inventory=%d keys, player_game_logs=%d players, "
+            "ref_odds_map=%d (prop,side) keys",
+            len(book_inventory), len(player_game_logs), len(ref_odds_map),
         )
 
     def _resolve_universal_gate_cfg_version(stat_family: str, side: str) -> str:
@@ -450,18 +464,46 @@ async def run_production_replay(
         #     (stat_family, side) deterministically from the resolved
         #     threshold cfg SHA.
         row_gate_cfg_version = versions["gate_config_version"]
+        ref_odds_for_row: Optional[int] = None
+        ref_book_for_row: Optional[str] = None
+        routed_tier_for_row: Optional[str] = None
         if gate_path == "universal":
-            metrics = build_metrics_from_replay_row(
-                row, tier=tier, sport=adapter.SPORT,
-                book_inventory=book_inventory,
-                player_game_logs=player_game_logs,
+            # ── Phase 4b — Universal odds-bucket routing ────────────
+            # Look up the tier_reference_odds the live path WOULD have
+            # computed for this prop at this snapshot. Then call the
+            # universal router. If the row's odds-bucket does not match
+            # the tier we are evaluating, reject with
+            # `tier_odds_bucket_fail` BEFORE the gate stack fires —
+            # exactly as live serving does (scoring_stack.compute_tier,
+            # 2026-04-29 hard contract: "each pick evaluated ONLY
+            # within its routed odds tier; failing routed tier → REJECTED").
+            ref_key = (
+                str(row.get("event_id")),
+                str(row.get("player_name_normalized")),
+                str(row.get("market")),
+                float(row.get("line")) if row.get("line") is not None else None,
+                (row.get("side") or "OVER").upper(),
             )
-            gate_result = evaluate_tier_with_overrides(metrics)
-            gate_pass = bool(gate_result.passed)
-            failed = list(gate_result.failed_gates)
-            row_gate_cfg_version = _resolve_universal_gate_cfg_version(
-                metrics.stat_family, metrics.side,
-            )
+            ref_pair = ref_odds_map.get(ref_key)
+            if ref_pair:
+                ref_odds_for_row, ref_book_for_row = ref_pair
+            routed_tier_for_row = get_odds_bucket(ref_odds_for_row)
+            if routed_tier_for_row != tier:
+                gate_pass = False
+                failed = [TIER_ODDS_BUCKET_FAIL]
+                # Don't build metrics / call gate engine — short-circuit.
+            else:
+                metrics = build_metrics_from_replay_row(
+                    row, tier=tier, sport=adapter.SPORT,
+                    book_inventory=book_inventory,
+                    player_game_logs=player_game_logs,
+                )
+                gate_result = evaluate_tier_with_overrides(metrics)
+                gate_pass = bool(gate_result.passed)
+                failed = list(gate_result.failed_gates)
+                row_gate_cfg_version = _resolve_universal_gate_cfg_version(
+                    metrics.stat_family, metrics.side,
+                )
         else:
             gate_pass, failed = mlb_layer4_evaluate_gates(row) \
                 if adapter.SPORT == "mlb" else (False, ["unsupported_sport"])
@@ -472,6 +514,11 @@ async def run_production_replay(
             gate_pass=gate_pass, failed_gates=failed,
             gate_config_version=row_gate_cfg_version,
         )
+        # Stamp routing audit on the output doc (universal path only).
+        if gate_path == "universal":
+            out_doc["tier_reference_odds"] = ref_odds_for_row
+            out_doc["tier_reference_book"] = ref_book_for_row
+            out_doc["routed_tier"] = routed_tier_for_row
 
         # Grade only the qualified picks (Layer 4 contract).
         actual_val: Optional[float] = None
