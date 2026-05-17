@@ -1,0 +1,2547 @@
+{
+  "serials": [
+    "MLB-PRODREPLAY-20260501-SH-1100UTC-00018",
+    "MLB-PRODREPLAY-20260501-FL-1100UTC-00019",
+    "MLB-PRODREPLAY-20260501-WZ-1100UTC-00020",
+    "MLB-PRODREPLAY-20260502-SH-1100UTC-00021",
+    "MLB-PRODREPLAY-20260502-FL-1100UTC-00022",
+    "MLB-PRODREPLAY-20260502-WZ-1100UTC-00023",
+    "MLB-PRODREPLAY-20260503-SH-1100UTC-00024",
+    "MLB-PRODREPLAY-20260503-FL-1100UTC-00025",
+    "MLB-PRODREPLAY-20260503-WZ-1100UTC-00026",
+    "MLB-PRODREPLAY-20260504-SH-1100UTC-00027",
+    "MLB-PRODREPLAY-20260504-FL-1100UTC-00028",
+    "MLB-PRODREPLAY-20260504-WZ-1100UTC-00029",
+    "MLB-PRODREPLAY-20260505-SH-1100UTC-00030",
+    "MLB-PRODREPLAY-20260505-FL-1100UTC-00031",
+    "MLB-PRODREPLAY-20260505-WZ-1100UTC-00032",
+    "MLB-PRODREPLAY-20260506-SH-1100UTC-00033",
+    "MLB-PRODREPLAY-20260506-FL-1100UTC-00034",
+    "MLB-PRODREPLAY-20260506-WZ-1100UTC-00035"
+  ],
+  "regrade_method": "phase4_regrade_v1_2026_05_17",
+  "before": {
+    "win": 176,
+    "loss": 62,
+    "push": 0,
+    "ungraded": 100,
+    "stake": 338.0,
+    "profit": 45.45657311118222,
+    "hr_pct": 73.9496,
+    "roi_pct": 13.4487,
+    "ungraded_pct": 29.5858
+  },
+  "after": {
+    "win": 227,
+    "loss": 91,
+    "push": 0,
+    "ungraded": 20,
+    "stake": 336.0,
+    "profit": 38.9530657461866,
+    "hr_pct": 71.3836,
+    "roi_pct": 11.5932,
+    "ungraded_pct": 5.9172
+  },
+  "transitions": {
+    "ungraded->win": 56,
+    "ungraded->loss": 26,
+    "loss->win": 2,
+    "win->ungraded": 1,
+    "loss->ungraded": 1,
+    "win->loss": 6
+  },
+  "changed_count": 92,
+  "unchanged_count": 246,
+  "still_ungraded": [
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260501-FL-1100UTC-00019",
+      "player_name": "Brandon Lockridge",
+      "player_name_normalized": "brandon lockridge",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-01",
+      "commence_time": "2026-05-01T22:46:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260502-FL-1100UTC-00022",
+      "player_name": "Brandon Nimmo",
+      "player_name_normalized": "brandon nimmo",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-02",
+      "commence_time": "2026-05-02T23:16:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260502-FL-1100UTC-00022",
+      "player_name": "Nico Hoerner",
+      "player_name_normalized": "nico hoerner",
+      "stat_family": "hits",
+      "canonical_family": "hits",
+      "market": "batter_hits",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-02",
+      "commence_time": "2026-05-02T18:21:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260502-FL-1100UTC-00022",
+      "player_name": "Daniel Schneemann",
+      "player_name_normalized": "daniel schneemann",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-02",
+      "commence_time": "2026-05-02T20:06:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260502-SH-1100UTC-00021",
+      "player_name": "Nico Hoerner",
+      "player_name_normalized": "nico hoerner",
+      "stat_family": "hits",
+      "canonical_family": "hits",
+      "market": "batter_hits",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-02",
+      "commence_time": "2026-05-02T18:21:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260502-SH-1100UTC-00021",
+      "player_name": "Brandon Marsh",
+      "player_name_normalized": "brandon marsh",
+      "stat_family": "hits",
+      "canonical_family": "hits",
+      "market": "batter_hits",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-02",
+      "commence_time": "2026-05-02T20:11:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260502-SH-1100UTC-00021",
+      "player_name": "Carson Kelly",
+      "player_name_normalized": "carson kelly",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-02",
+      "commence_time": "2026-05-02T18:21:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260502-SH-1100UTC-00021",
+      "player_name": "Daniel Schneemann",
+      "player_name_normalized": "daniel schneemann",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "UNDER",
+      "game_date": "2026-05-02",
+      "commence_time": "2026-05-02T20:06:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260502-WZ-1100UTC-00023",
+      "player_name": "Royce Lewis",
+      "player_name_normalized": "royce lewis",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-02",
+      "commence_time": "2026-05-02T18:11:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260503-FL-1100UTC-00025",
+      "player_name": "Austin Hays",
+      "player_name_normalized": "austin hays",
+      "stat_family": "hits",
+      "canonical_family": "hits",
+      "market": "batter_hits",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-03",
+      "commence_time": "2026-05-03T20:11:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260503-SH-1100UTC-00024",
+      "player_name": "Austin Hays",
+      "player_name_normalized": "austin hays",
+      "stat_family": "hits",
+      "canonical_family": "hits",
+      "market": "batter_hits",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-03",
+      "commence_time": "2026-05-03T20:11:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260503-SH-1100UTC-00024",
+      "player_name": "Tyler Black",
+      "player_name_normalized": "tyler black",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-03",
+      "commence_time": "2026-05-03T17:36:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260504-FL-1100UTC-00028",
+      "player_name": "Tarik Skubal",
+      "player_name_normalized": "tarik skubal",
+      "stat_family": "earned_runs",
+      "canonical_family": "earned_runs",
+      "market": "pitcher_earned_runs",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-04",
+      "commence_time": "2026-05-04T22:41:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260504-WZ-1100UTC-00029",
+      "player_name": "Tarik Skubal",
+      "player_name_normalized": "tarik skubal",
+      "stat_family": "earned_runs",
+      "canonical_family": "earned_runs",
+      "market": "pitcher_earned_runs",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-04",
+      "commence_time": "2026-05-04T22:41:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260505-FL-1100UTC-00031",
+      "player_name": "Brandon Nimmo",
+      "player_name_normalized": "brandon nimmo",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-05",
+      "commence_time": "2026-05-05T23:06:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260505-FL-1100UTC-00031",
+      "player_name": "Colt Keith",
+      "player_name_normalized": "colt keith",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-05",
+      "commence_time": "2026-05-05T22:41:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260505-SH-1100UTC-00030",
+      "player_name": "Carson Kelly",
+      "player_name_normalized": "carson kelly",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-05",
+      "commence_time": "2026-05-05T23:40:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260505-WZ-1100UTC-00032",
+      "player_name": "Brandon Nimmo",
+      "player_name_normalized": "brandon nimmo",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-05",
+      "commence_time": "2026-05-05T23:06:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260505-WZ-1100UTC-00032",
+      "player_name": "Colt Keith",
+      "player_name_normalized": "colt keith",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-05",
+      "commence_time": "2026-05-05T22:41:00Z",
+      "had_logs": true
+    },
+    {
+      "reason": "no_log_match",
+      "replay_serial": "MLB-PRODREPLAY-20260505-WZ-1100UTC-00032",
+      "player_name": "Brayan Rocchio",
+      "player_name_normalized": "brayan rocchio",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "game_date": "2026-05-05",
+      "commence_time": "2026-05-05T23:41:00Z",
+      "had_logs": true
+    }
+  ],
+  "changes": [
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-FL-1100UTC-00019",
+      "rank": 3,
+      "player_name": "Willson Contreras",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -344,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.29069767441860467,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-FL-1100UTC-00019",
+      "rank": 4,
+      "player_name": "Jazz Chisholm Jr.",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -238,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.42016806722689076,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-FL-1100UTC-00019",
+      "rank": 5,
+      "player_name": "Brice Matthews",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -250,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.4,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-FL-1100UTC-00019",
+      "rank": 7,
+      "player_name": "Marcell Ozuna",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -282,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.3546099290780142,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-FL-1100UTC-00019",
+      "rank": 9,
+      "player_name": "Roman Anthony",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -362,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-FL-1100UTC-00019",
+      "rank": 14,
+      "player_name": "Pete Crow-Armstrong",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -187,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-WZ-1100UTC-00020",
+      "rank": 4,
+      "player_name": "TJ Friedl",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -194,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-WZ-1100UTC-00020",
+      "rank": 7,
+      "player_name": "Willson Contreras",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -344,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.29069767441860467,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-WZ-1100UTC-00020",
+      "rank": 8,
+      "player_name": "Jazz Chisholm Jr.",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -238,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.42016806722689076,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-WZ-1100UTC-00020",
+      "rank": 9,
+      "player_name": "Sal Stewart",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -190,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-WZ-1100UTC-00020",
+      "rank": 10,
+      "player_name": "Brice Matthews",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -250,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.4,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-WZ-1100UTC-00020",
+      "rank": 12,
+      "player_name": "Marcell Ozuna",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -282,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.3546099290780142,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-WZ-1100UTC-00020",
+      "rank": 14,
+      "player_name": "Roman Anthony",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -362,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260501-WZ-1100UTC-00020",
+      "rank": 16,
+      "player_name": "Michael Busch",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -173,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.5780346820809249,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-FL-1100UTC-00022",
+      "rank": 2,
+      "player_name": "Spencer Torkelson",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -212,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.4716981132075472,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-FL-1100UTC-00022",
+      "rank": 5,
+      "player_name": "Jake Burger",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -225,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.4444444444444444,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-FL-1100UTC-00022",
+      "rank": 7,
+      "player_name": "Ian Happ",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -267,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-FL-1100UTC-00022",
+      "rank": 8,
+      "player_name": "Roman Anthony",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -275,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.36363636363636365,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-FL-1100UTC-00022",
+      "rank": 10,
+      "player_name": "Jarren Duran",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -274,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.36496350364963503,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-FL-1100UTC-00022",
+      "rank": 14,
+      "player_name": "Corey Seager",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -140,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-FL-1100UTC-00022",
+      "rank": 17,
+      "player_name": "Jazz Chisholm Jr.",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -344,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-FL-1100UTC-00022",
+      "rank": 18,
+      "player_name": "Kyle Tucker",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": 105,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-SH-1100UTC-00021",
+      "rank": 6,
+      "player_name": "Kyle Tucker",
+      "stat_family": "hits",
+      "canonical_family": "hits",
+      "market": "batter_hits",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -210,
+      "before": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.47619047619047616,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-SH-1100UTC-00021",
+      "rank": 18,
+      "player_name": "Daniel Schneemann",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "UNDER",
+      "book": "espnbet",
+      "odds": 110,
+      "before": {
+        "grade_status": "win",
+        "actual_value": 0.0,
+        "profit_units": 1.1,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 0.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-WZ-1100UTC-00023",
+      "rank": 1,
+      "player_name": "Royce Lewis",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betonlineag",
+      "odds": -112,
+      "before": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 0.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-WZ-1100UTC-00023",
+      "rank": 3,
+      "player_name": "Spencer Torkelson",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -212,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.4716981132075472,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-WZ-1100UTC-00023",
+      "rank": 9,
+      "player_name": "Jake Burger",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -225,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.4444444444444444,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-WZ-1100UTC-00023",
+      "rank": 10,
+      "player_name": "Agustin Ramirez",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -140,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.7142857142857143,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-WZ-1100UTC-00023",
+      "rank": 13,
+      "player_name": "Ian Happ",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -267,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-WZ-1100UTC-00023",
+      "rank": 14,
+      "player_name": "Roman Anthony",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -275,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.36363636363636365,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-WZ-1100UTC-00023",
+      "rank": 16,
+      "player_name": "Jarren Duran",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -274,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.36496350364963503,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260502-WZ-1100UTC-00023",
+      "rank": 18,
+      "player_name": "Brandon Lowe",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -235,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-FL-1100UTC-00025",
+      "rank": 5,
+      "player_name": "Nick Kurtz",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -335,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.29850746268656714,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-FL-1100UTC-00025",
+      "rank": 6,
+      "player_name": "Jake Burger",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -255,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.39215686274509803,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-FL-1100UTC-00025",
+      "rank": 7,
+      "player_name": "Daniel Schneemann",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -259,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.3861003861003861,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-FL-1100UTC-00025",
+      "rank": 10,
+      "player_name": "Spencer Torkelson",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -216,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 3.0,
+        "profit_units": 0.46296296296296297,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-FL-1100UTC-00025",
+      "rank": 13,
+      "player_name": "Roman Anthony",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -346,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-FL-1100UTC-00025",
+      "rank": 14,
+      "player_name": "Corey Seager",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -150,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.6666666666666666,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-FL-1100UTC-00025",
+      "rank": 16,
+      "player_name": "Riley Greene",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -321,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.3115264797507788,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-FL-1100UTC-00025",
+      "rank": 17,
+      "player_name": "Ryan O'Hearn",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -190,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.5263157894736842,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-SH-1100UTC-00024",
+      "rank": 11,
+      "player_name": "Sam Antonacci",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "rebet",
+      "odds": -148,
+      "before": {
+        "grade_status": "win",
+        "actual_value": 3.0,
+        "profit_units": 0.6756756756756757,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-SH-1100UTC-00024",
+      "rank": 16,
+      "player_name": "Zach Neto",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -435,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-SH-1100UTC-00024",
+      "rank": 19,
+      "player_name": "Troy Johnston",
+      "stat_family": "hits",
+      "canonical_family": "hits",
+      "market": "batter_hits",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "espnbet",
+      "odds": -200,
+      "before": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.5,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-WZ-1100UTC-00026",
+      "rank": 6,
+      "player_name": "Nick Kurtz",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -335,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.29850746268656714,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-WZ-1100UTC-00026",
+      "rank": 8,
+      "player_name": "Jake Burger",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -255,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.39215686274509803,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-WZ-1100UTC-00026",
+      "rank": 9,
+      "player_name": "Jazz Chisholm Jr.",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -235,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-WZ-1100UTC-00026",
+      "rank": 11,
+      "player_name": "Daniel Schneemann",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -259,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.3861003861003861,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-WZ-1100UTC-00026",
+      "rank": 12,
+      "player_name": "Sal Stewart",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -220,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-WZ-1100UTC-00026",
+      "rank": 14,
+      "player_name": "Maikel Garcia",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -188,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260503-WZ-1100UTC-00026",
+      "rank": 18,
+      "player_name": "Spencer Torkelson",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -216,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 3.0,
+        "profit_units": 0.46296296296296297,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260504-FL-1100UTC-00028",
+      "rank": 6,
+      "player_name": "Spencer Torkelson",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -222,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 3.0,
+        "profit_units": 0.45045045045045046,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260504-FL-1100UTC-00028",
+      "rank": 9,
+      "player_name": "Michael Busch",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -206,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260504-FL-1100UTC-00028",
+      "rank": 17,
+      "player_name": "Daniel Schneemann",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -250,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.4,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260504-FL-1100UTC-00028",
+      "rank": 18,
+      "player_name": "Willi Castro",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -185,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.5405405405405406,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260504-FL-1100UTC-00028",
+      "rank": 20,
+      "player_name": "Hunter Goodman",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -411,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.24330900243309003,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260504-SH-1100UTC-00027",
+      "rank": 5,
+      "player_name": "Michael Busch",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -210,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260504-SH-1100UTC-00027",
+      "rank": 8,
+      "player_name": "Hunter Goodman",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -411,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.24330900243309003,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260504-WZ-1100UTC-00029",
+      "rank": 2,
+      "player_name": "Maikel Garcia",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -115,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260504-WZ-1100UTC-00029",
+      "rank": 6,
+      "player_name": "TJ Friedl",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -165,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.6060606060606061,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260504-WZ-1100UTC-00029",
+      "rank": 12,
+      "player_name": "Spencer Torkelson",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -222,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 3.0,
+        "profit_units": 0.45045045045045046,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260504-WZ-1100UTC-00029",
+      "rank": 15,
+      "player_name": "Ian Happ",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -274,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.36496350364963503,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260504-WZ-1100UTC-00029",
+      "rank": 17,
+      "player_name": "Michael Busch",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -206,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260504-WZ-1100UTC-00029",
+      "rank": 18,
+      "player_name": "Roman Anthony",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -491,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-FL-1100UTC-00031",
+      "rank": 2,
+      "player_name": "Ivan Herrera",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -190,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.5263157894736842,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-FL-1100UTC-00031",
+      "rank": 3,
+      "player_name": "Masyn Winn",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "williamhill_us",
+      "odds": -173,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-FL-1100UTC-00031",
+      "rank": 4,
+      "player_name": "Corey Seager",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -180,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.5555555555555556,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-FL-1100UTC-00031",
+      "rank": 11,
+      "player_name": "Daylen Lile",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -125,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.8,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-SH-1100UTC-00030",
+      "rank": 2,
+      "player_name": "Ivan Herrera",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -190,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.5263157894736842,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-SH-1100UTC-00030",
+      "rank": 3,
+      "player_name": "Masyn Winn",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "williamhill_us",
+      "odds": -173,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-SH-1100UTC-00030",
+      "rank": 15,
+      "player_name": "Riley Greene",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -225,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.4444444444444444,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-SH-1100UTC-00030",
+      "rank": 16,
+      "player_name": "Daniel Schneemann",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -225,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.4444444444444444,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-SH-1100UTC-00030",
+      "rank": 17,
+      "player_name": "Jordan Walker",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "UNDER",
+      "book": "betmgm",
+      "odds": 165,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 0.0,
+        "profit_units": 1.65,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-SH-1100UTC-00030",
+      "rank": 18,
+      "player_name": "Kody Clemens",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -268,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-SH-1100UTC-00030",
+      "rank": 19,
+      "player_name": "Nathan Church",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -155,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-WZ-1100UTC-00032",
+      "rank": 1,
+      "player_name": "TJ Friedl",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -157,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.6369426751592356,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-WZ-1100UTC-00032",
+      "rank": 3,
+      "player_name": "Ivan Herrera",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -190,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.5263157894736842,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-WZ-1100UTC-00032",
+      "rank": 4,
+      "player_name": "Masyn Winn",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "williamhill_us",
+      "odds": -173,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-WZ-1100UTC-00032",
+      "rank": 5,
+      "player_name": "Corey Seager",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -180,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.5555555555555556,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-WZ-1100UTC-00032",
+      "rank": 12,
+      "player_name": "Daylen Lile",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -125,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.8,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260505-WZ-1100UTC-00032",
+      "rank": 17,
+      "player_name": "Michael Busch",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -214,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.4672897196261682,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260506-FL-1100UTC-00034",
+      "rank": 2,
+      "player_name": "Matt Olson",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 1.5,
+      "side": "OVER",
+      "book": "betonlineag",
+      "odds": 115,
+      "before": {
+        "grade_status": "win",
+        "actual_value": 5.0,
+        "profit_units": 1.15,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260506-FL-1100UTC-00034",
+      "rank": 3,
+      "player_name": "Daylen Lile",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -105,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.9523809523809523,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260506-FL-1100UTC-00034",
+      "rank": 18,
+      "player_name": "Miguel Andujar",
+      "stat_family": "hits",
+      "canonical_family": "hits",
+      "market": "batter_hits_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "fanduel",
+      "odds": -220,
+      "before": {
+        "grade_status": "win",
+        "actual_value": 3.0,
+        "profit_units": 0.45454545454545453,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260506-FL-1100UTC-00034",
+      "rank": 20,
+      "player_name": "Elly De La Cruz",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -292,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 2.0,
+        "profit_units": 0.3424657534246575,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260506-SH-1100UTC-00033",
+      "rank": 2,
+      "player_name": "Matt Olson",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 1.5,
+      "side": "OVER",
+      "book": "betonlineag",
+      "odds": 115,
+      "before": {
+        "grade_status": "win",
+        "actual_value": 5.0,
+        "profit_units": 1.15,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260506-SH-1100UTC-00033",
+      "rank": 13,
+      "player_name": "Miguel Andujar",
+      "stat_family": "hits",
+      "canonical_family": "hits",
+      "market": "batter_hits",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betonlineag",
+      "odds": -233,
+      "before": {
+        "grade_status": "win",
+        "actual_value": 3.0,
+        "profit_units": 0.4291845493562232,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260506-SH-1100UTC-00033",
+      "rank": 15,
+      "player_name": "Kody Clemens",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -190,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.5263157894736842,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260506-SH-1100UTC-00033",
+      "rank": 19,
+      "player_name": "Gunnar Henderson",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts_alternate",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "draftkings",
+      "odds": -393,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 3.0,
+        "profit_units": 0.2544529262086514,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260506-WZ-1100UTC-00035",
+      "rank": 3,
+      "player_name": "Matt Olson",
+      "stat_family": "total_bases",
+      "canonical_family": "total_bases",
+      "market": "batter_total_bases",
+      "line": 1.5,
+      "side": "OVER",
+      "book": "betonlineag",
+      "odds": 115,
+      "before": {
+        "grade_status": "win",
+        "actual_value": 5.0,
+        "profit_units": 1.15,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "loss",
+        "actual_value": 0.0,
+        "profit_units": -1.0,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260506-WZ-1100UTC-00035",
+      "rank": 4,
+      "player_name": "Daylen Lile",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -105,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.9523809523809523,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260506-WZ-1100UTC-00035",
+      "rank": 12,
+      "player_name": "Andrew Benintendi",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -150,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.6666666666666666,
+        "stake_units": 1.0
+      }
+    },
+    {
+      "replay_serial": "MLB-PRODREPLAY-20260506-WZ-1100UTC-00035",
+      "rank": 16,
+      "player_name": "TJ Friedl",
+      "stat_family": "strikeouts",
+      "canonical_family": "batter_strikeouts",
+      "market": "batter_strikeouts",
+      "line": 0.5,
+      "side": "OVER",
+      "book": "betmgm",
+      "odds": -165,
+      "before": {
+        "grade_status": "ungraded",
+        "actual_value": null,
+        "profit_units": 0.0,
+        "stake_units": 1.0
+      },
+      "after": {
+        "grade_status": "win",
+        "actual_value": 1.0,
+        "profit_units": 0.6060606060606061,
+        "stake_units": 1.0
+      }
+    }
+  ]
+}
