@@ -47,7 +47,32 @@ logger = logging.getLogger(__name__)
 OUT_COLL = "mlb_replay_model_outputs"
 STATUS_COLL = "mlb_replay_model_status"
 SCORING_CONFIG_VERSION = "scoring_v3.1_phase2a__wz_rewrite_2026_05_16"
-SOURCE_VERSION = "replay_engine_v1.0_2026_05_16"
+# 2026-05-17 P0 — bump engine version after the feature-hydration fix
+# (`replay_one` now passes platoon splits, home/away splits, PA-windowed
+# Statcast, and batter handedness through `_build_friction_features`,
+# matching the live `predict()` path). See:
+# `audits/PATH_A_TASK_2_OLSON_DIVERGENCE.md` for root-cause analysis.
+SOURCE_VERSION = "replay_engine_v1.1_hydration_2026_05_17"
+
+
+def _derive_batter_hand_from_hub(hub: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Hub stores `bats_throws='Left/Right'` while `bats` itself is often
+    None. Live `predict()` is given `batter_hand` upstream by
+    `feature_hydration.py::_propagate_phase1_context`. Mirror that
+    derivation here: split on `/`, take the left side (the bats half).
+    Accepts 'L', 'R', 'S', 'Left', 'Right', 'Switch' (case-insensitive).
+    """
+    if not hub:
+        return None
+    bats = hub.get("bats")
+    if bats:
+        s = str(bats).strip().upper()
+        return s[:1] if s and s[:1] in ("L", "R", "S") else None
+    bt = hub.get("bats_throws")
+    if not bt:
+        return None
+    head = str(bt).split("/", 1)[0].strip().upper()
+    return head[:1] if head and head[:1] in ("L", "R", "S") else None
 
 DEFAULT_MEM_LIMIT_MB = 1_500
 
@@ -86,12 +111,22 @@ async def ensure_indexes(db) -> None:
     )
 
 
-def _build_player_dict(cache_row: Dict[str, Any]) -> Dict[str, Any]:
+def _build_player_dict(cache_row: Dict[str, Any],
+                       hub_extras: Optional[Dict[str, Any]] = None,
+                       ) -> Dict[str, Any]:
     """Synthesize the `player` dict shape expected by
     `_build_friction_features`. `is_in_lineup_today=True` bypasses the
     live-clock heuristic; the player WAS active on the replay date by
-    construction (a prop was priced)."""
-    return {
+    construction (a prop was priced).
+
+    2026-05-17 P0 hydration: when `hub_extras` is supplied (a snapshot
+    of additional master_hub fields the cache row doesn't store), pass
+    through the platoon and home/away split blocks the live `predict()`
+    path uses. Without these, `_build_friction_features` zeroes 27+
+    feature columns (`vs_lhp_*`, `vs_rhp_*`, `home_avg`, etc.) and
+    XGBoost over-weights remaining signals — see Olson μ=7.8 vs 2.25.
+    """
+    out = {
         "display_name": cache_row.get("player_name_canonical"),
         "player_name":  cache_row.get("player_name_canonical"),
         "team":         cache_row.get("team"),
@@ -102,6 +137,18 @@ def _build_player_dict(cache_row: Dict[str, Any]) -> Dict[str, Any]:
         "bdl_id":       cache_row.get("bdl_id"),
         "mlbam_id":     cache_row.get("player_id"),
     }
+    if hub_extras:
+        # NOTE: master_hub `vs_left/vs_right/home_splits/away_splits`
+        # are season-cumulative. This matches what live `predict()`
+        # consumes today — both paths share the same leakage profile.
+        # When an as-of-date splits feed lands, swap in those snapshots.
+        for k in ("vs_left", "vs_right",
+                   "home_splits", "away_splits",
+                   "bats_throws", "bats"):
+            v = hub_extras.get(k)
+            if v is not None:
+                out[k] = v
+    return out
 
 
 def _build_game_logs(cache_row: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -158,9 +205,26 @@ def replay_one(
     model: MLBHighFrictionModel,
     cache_row: Dict[str, Any],
     odds_row: Dict[str, Any],
+    hub_extras: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Run one (cache_row × odds_row) replay. Returns the output dict
-    or None when inference inputs are insufficient."""
+    or None when inference inputs are insufficient.
+
+    2026-05-17 P0 hydration fix:
+      - When ``hub_extras`` is supplied, platoon/home/away splits and
+        batter handedness flow into the feature vector (closes 80+
+        zeroed columns vs. live `predict()`).
+      - PA-windowed Statcast (`pa_b_*` / `pa_p_*`) is hydrated by
+        calling `model._get_pa_cache().batter_features` /
+        `.pitcher_features` with ``as_of=cache_row['game_date']``.
+      - `batter_hand` / `opp_pitcher_throws` are derived from
+        `hub_extras['bats_throws']` and `cache_row['opp_pitcher_throws']`
+        respectively, restoring the Phase-2A matchup feature block.
+
+    Without these, the model fed zeros where training expected real
+    values and produced inflated μ (Olson 7.8 vs live 2.25). See
+    `audits/PATH_A_TASK_2_OLSON_DIVERGENCE.md`.
+    """
     stat_family = cache_row["stat_family"]
     if stat_family not in model.feature_cols:
         return None
@@ -173,7 +237,7 @@ def replay_one(
     if odds is None or side not in ("OVER", "UNDER"):
         return None
 
-    player = _build_player_dict(cache_row)
+    player = _build_player_dict(cache_row, hub_extras=hub_extras)
     game_logs = _build_game_logs(cache_row)
     is_pitcher_fam = stat_family in _PITCHER_FAMILIES
     sc_self = cache_row.get("statcast_self_as_of")
@@ -182,12 +246,44 @@ def replay_one(
     )
     park_team = cache_row.get("team") if not is_away else opp
 
+    # ── PA-windowed Statcast hydration (P0 2026-05-17) ──────────────
+    # Hydrate from the model's PA cache, as-of the replay's game_date.
+    # Live `predict()` uses today's date here — we use the replay date
+    # to guarantee no future-data leakage. The cache key is mlbam_id.
+    pa_batter = None
+    pa_pitcher = None
+    try:
+        pa_cache = model._get_pa_cache()  # noqa: SLF001
+    except Exception:  # noqa: BLE001
+        pa_cache = None
+    if pa_cache is not None:
+        mlbam_id = cache_row.get("player_id")
+        if mlbam_id is not None:
+            as_of = cache_row.get("game_date") or odds_row.get("game_date")
+            try:
+                if is_pitcher_fam:
+                    pa_pitcher = pa_cache.pitcher_features(int(mlbam_id), as_of)
+                else:
+                    pa_batter = pa_cache.batter_features(int(mlbam_id), as_of)
+            except Exception as _pa_err:  # noqa: BLE001
+                logger.debug("[replay_one] pa_cache lookup failed pid=%s "
+                              "as_of=%s err=%r", mlbam_id, as_of, _pa_err)
+
+    # ── Matchup-aware feature inputs (P0 2026-05-17) ────────────────
+    batter_hand_val = _derive_batter_hand_from_hub(hub_extras)
+    opp_throws_val = cache_row.get("opp_pitcher_throws")
+
     feats = model._build_friction_features(  # noqa: SLF001
         player, game_logs, stat_family,
         opponent=opp, park_team=park_team, dk_odds=None, line=line_f,
         statcast_features=(sc_self if not is_pitcher_fam else None),
         pitcher_statcast_features=(sc_self if is_pitcher_fam else None),
-        pa_batter_features=None, pa_pitcher_features=None,
+        pa_batter_features=pa_batter,
+        pa_pitcher_features=pa_pitcher,
+        batter_hand=batter_hand_val,
+        opp_pitcher_throws=opp_throws_val,
+        opp_pitcher_features=None,
+        opposing_lineup=None,
     )
     if feats is None:
         return None
@@ -327,6 +423,34 @@ async def replay_date(
     ):
         cache_idx[(c["player_name_normalized"], c["stat_family"])] = c
 
+    # ── 2026-05-17 P0 hydration — master_hub extras index ─────────
+    # `replay_one` needs platoon/home-away splits and bats_throws,
+    # which the cache row doesn't carry. We fetch them ONCE per
+    # unique bdl_id at the top of the run instead of on every call.
+    # This restores feature parity with live `predict()` without
+    # changing the cache schema. Memory is bounded — ~750 unique
+    # players × ~1 KB ≈ < 1 MB.
+    bdl_ids = sorted({c.get("bdl_id") for c in cache_idx.values()
+                       if c.get("bdl_id") is not None})
+    hub_extras_idx: Dict[int, Dict[str, Any]] = {}
+    if bdl_ids:
+        proj = {"_id": 0, "bdl_id": 1, "vs_left": 1, "vs_right": 1,
+                 "home_splits": 1, "away_splits": 1,
+                 "bats_throws": 1, "bats": 1, "throws": 1}
+        async for h in db.mlb_master_hub_2026.find(
+            {"$or": [{"bdl_id":         {"$in": bdl_ids}},
+                       {"bdl_player_id":  {"$in": bdl_ids}}]},
+            projection=proj,
+        ):
+            bid = h.get("bdl_id")
+            if bid is None:
+                continue
+            hub_extras_idx[int(bid)] = h
+    logger.info(
+        "[replay_engine] hub_extras hydrated for %d / %d players "
+        "(date=%s)", len(hub_extras_idx), len(bdl_ids), replay_date_str,
+    )
+
     # Inference μ-memo: same (player, stat_family, line) → identical μ
     # regardless of book/side. Memoize to avoid repeat XGBoost calls.
     mu_memo: Dict[Tuple[str, str, float], Dict[str, Any]] = {}
@@ -378,7 +502,9 @@ async def replay_date(
         line_key = (o["player_name_normalized"], stat_fam, float(o["line"]))
         memo = mu_memo.get(line_key)
         if memo is None:
-            tmp = replay_one(model, cache_row, o)
+            extras = hub_extras_idx.get(int(cache_row["bdl_id"])) \
+                if cache_row.get("bdl_id") is not None else None
+            tmp = replay_one(model, cache_row, o, hub_extras=extras)
             if tmp is None:
                 no_mu += 1
                 continue

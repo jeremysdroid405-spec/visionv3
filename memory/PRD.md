@@ -17,15 +17,20 @@ Sport-agnostic harness that runs historical data through the **same code paths t
   - `services/replay/production_replay_runner.py::run_production_replay(db, *, sport, game_date, snapshot_iso, tier, dry_run=False)`
   - Wires `UniversalReplayProvider(MLBReplayAdapter)` into existing Layer-3 + Layer-4 engines
   - Persists `{sport}_production_replay_runs` + `{sport}_production_replay_outputs`
-  - Per-run audit pins: 64-char SHA `production_pipeline_version` + `adapter_version`, `git_commit_sha`, input-collection counts, `feature_cache_version`, `scoring_config_version`, `gate_config_version`
+  - Per-run audit pins: 64-char SHA `production_pipeline_version` + `adapter_version`, `git_commit_sha`, input-collection counts
   - Smoke test (8 checks) at `audits/phase2c_smoke_test.py` — passing
-  - 2026-05-05 run: 25,431 scanned / 768 qualified / 461W·93L → 83.21% HR / 24.13% ROI
-  - 2026-05-06 run: 37,691 scanned / 1,080 qualified / 561W·421L → 57.13% HR / −12.43% ROI (Train/Serve P0 signature visible here)
-  - **No live-pipeline file edits**; legacy `mlb_replay_model_outputs` not mutated
-- **Phase 3 — Card / Top-N extraction** — NOT STARTED (next)
-  - Surgically extract per-game dedup + top-N from `picks_getter_service.py` into a pure function callable by both live and replay; write `{sport}_production_replay_cards`
+- **Path A — Feature Hydration Fix (2026-05-17) — DONE**
+  - Root cause: `replay_one()` synthesized features from cache rows only and zeroed 74 trained columns (`pa_b_*`, `vs_lhp/rhp_*`, home/away splits, matchup one-hots). Net result: Olson `total_bases` μ inflated 7.90 vs live `predict()` 2.25 — same model, totally different feature vectors.
+  - Diagnosis: `audits/PATH_A_TASK_2_OLSON_DIVERGENCE.md` proved 115 of 222 features differed; raw XGBoost re-score 1.23 (live) vs 7.80 (replay).
+  - Fix: `services/replay/mlb_replay_engine.py` — added `hub_extras` parameter to `_build_player_dict` + `replay_one`, hydrates platoon/home-away splits + bats_throws from master_hub; wires `model._get_pa_cache()` for PA-windowed features; derives `batter_hand` from `bats_throws`; passes `cache.opp_pitcher_throws` through to the matchup block.
+  - Engine version bumped to `replay_engine_v1.1_hydration_2026_05_17`.
+  - Verification — unit (0/222 diff), 8-second Olson harness, slate scale rebuild for 2026-05-05 (n=8,510 total_bases rows, max μ=3.109, ZERO rows >4.5, was 1,248 pre-fix).
+- **Path A — Pod Stability (2026-05-17) — DONE**
+  - `MLBHighFrictionModel.load_models()` now applies `nthread=1` + `n_jobs=1` to every loaded XGBoost regressor by default; eliminated chronic multiprocessing-fork orphan workers (~3 GB each) that had been OOM-killing the pod.
+  - Override for training jobs: `MLB_HF_ALLOW_MULTITHREAD=1`.
+- **2026-05-06 rebuild — BLOCKED** on mongod WT cache holding ~50% pod RAM. Recommended next: cap WT cache to 4 GB (see `audits/PATH_A_FINAL_REPORT.md`).
+- **Phase 3 — Card / Top-N extraction** — NOT STARTED (gated on 05-06 + 15-day rebuild)
 - **Phase 4 — Swap gate spec to production gate engine** — NOT STARTED
-  - Replace `mlb_replay_gate_eval.evaluate_gates` call inside the runner with `evaluate_tier_with_overrides(metrics, feature_provider=...)`
 
 ## MLB Historical Replay System (2026-05-16)
 

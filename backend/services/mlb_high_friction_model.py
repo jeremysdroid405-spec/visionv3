@@ -1234,6 +1234,34 @@ class MLBHighFrictionModel:
                 f"[MLB_HF_MODEL] ACTIVE TWEEDIE VARIANTS → "
                 f"{loaded_tweedie}"
             )
+        # ── 2026-05-17 P0 — single-thread guard for inference ──────
+        # Loaded XGBoost regressors default to OpenMP-multithreaded
+        # `predict()` which spawns worker processes that copy-on-write
+        # the entire model into RSS (~200 MB per worker). On
+        # memory-constrained containers (≤16 GB), spawning many
+        # workers across 16 stat-family models triggers OOM kills.
+        # Force single-thread inference unless the explicit training
+        # env-var `MLB_HF_ALLOW_MULTITHREAD=1` is set (training jobs
+        # that load this class still get full parallelism). No
+        # behaviour change in single-thread mode — XGBoost results
+        # are deterministic w.r.t. `nthread`.
+        if os.environ.get("MLB_HF_ALLOW_MULTITHREAD") != "1":
+            single_threaded_count = 0
+            for _stat, _mdl in self.models.items():
+                try:
+                    _mdl.set_params(n_jobs=1)
+                except Exception:
+                    pass
+                try:
+                    _mdl.get_booster().set_param({"nthread": 1})
+                    single_threaded_count += 1
+                except Exception:
+                    pass
+            logger.info(
+                f"[MLB_HF_MODEL] inference single-thread guard applied "
+                f"to {single_threaded_count}/{loaded} models "
+                f"(override: MLB_HF_ALLOW_MULTITHREAD=1)"
+            )
         logger.info(f"[MLB_HF_MODEL] Loaded {loaded}/{len(self.MLB_STAT_TYPES)} models")
         return loaded
 
