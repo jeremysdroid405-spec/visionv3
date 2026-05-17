@@ -345,46 +345,34 @@ async def recompute_sport(
     if props is None:
         props = await adapter.load_live_props(db, limit=limit)
     else:
-        # 2026-05-10 — Universal decoration parity for caller-supplied
-        # props (board_engine `on_new_props` real-time path, future
-        # scoped ingest paths).
+        # 2026-05-17 — SSOT eligibility chain. The caller-supplied
+        # path bypasses `adapter.load_live_props`, so we re-run the
+        # SAME `apply_production_eligibility` SSOT function the
+        # adapter calls. This eliminates the prior inline duplication
+        # (filter_priceable + companion_map + filter_pp_playable)
+        # and guarantees caller-supplied scoring runs see byte-
+        # identical eligibility behaviour.
         #
-        # `adapter.load_live_props` runs three universal decorations
-        # that every scoring run depends on:
-        #   1. `filter_priceable`  → stamps `book_count`,
-        #      `coverage_class`, `books_anchored` on every prop
-        #      (read by `coverage_gate` + surfaced on the score doc).
-        #   2. `build_companion_map` → builds OVER↔UNDER index over
-        #      the FULL live pool for de-vig TP fallback.
-        #   3. `filter_pp_playable` → drops every prop whose exact
-        #      side PrizePicks did not list (universal contract).
-        #
-        # Callers that supply `props=` bypass the adapter entrypoint,
-        # so we re-run the same three decorations here. Without this
-        # `coverage_gate` saw `book_count=None` on every prop from
-        # the bypass path and fail-closed unconditionally — see
-        # `audit_reports/fd_anchor_p1_fix.md` for the same bug
-        # pattern in `injury_triggered_rescore`.
+        # NOTE: companion_map is built over the FULL live pool (not
+        # just the caller's subset) so UNDER-side TP de-vig still
+        # has its same-line OVER companion when only the OVER is in
+        # the caller's subset. We fetch the full pool once via a
+        # cheap projection-only cursor, then call the SSOT with the
+        # full pool to harvest the companion map, then call it again
+        # with the caller's subset to get the eligibility-filtered
+        # output. Two calls is acceptable — the inner filters are
+        # in-memory and microsecond-scale.
         try:
-            from services.scoring.coverage_filter import (
-                filter_priceable, filter_pp_playable,
+            from services.pipeline.eligibility import (
+                apply_production_eligibility,
             )
-            from services.scoring.tp_engine import build_companion_map
-            priceable, cov_stats = filter_priceable(
-                props, sport=sport,
-                run_id=f"recompute_caller_supplied_{sport}",
-            )
-            adapter.last_coverage_stats = cov_stats
-            # Companion map built over the FULL live pool (not just the
-            # caller's subset) so UNDER-side TP de-vig still has its
-            # same-line OVER companion when only the OVER is in the
-            # caller's subset. One projection-only cursor on the live
-            # collection — cheap.
+            # Companion map over the FULL pool.
             try:
                 companion_cursor = db[
                     adapter.live_props_collection
                 ].find({}, {"_id": 0}).batch_size(200)
                 full_props = await companion_cursor.to_list(length=None)
+                from services.scoring.tp_engine import build_companion_map
                 adapter._companion_map = build_companion_map(full_props)
             except Exception as comp_exc:  # noqa: BLE001
                 logger.warning(
@@ -393,18 +381,24 @@ async def recompute_sport(
                     f"({comp_exc}); falling back to subset companion "
                     f"map (UNDER-side TP de-vig may degrade)"
                 )
+                from services.scoring.tp_engine import build_companion_map
                 adapter._companion_map = build_companion_map(props)
-            pp_playable, pp_stats = filter_pp_playable(
-                priceable, sport=sport,
+            # Eligibility on the caller's subset.
+            elig = apply_production_eligibility(
+                props, sport=sport,
+                run_id=f"recompute_caller_supplied_{sport}",
+                use_pp_registry_fallback=False,
             )
-            adapter.last_pp_playable_stats = pp_stats
+            adapter.last_coverage_stats = elig.coverage_stats
+            adapter.last_pp_playable_stats = elig.pp_playable_stats
             logger.info(
                 f"[RECOMPUTE:{sport}] caller-supplied props decorated: "
-                f"input={len(props)} priceable={len(priceable)} "
-                f"pp_playable={len(pp_playable)} "
+                f"input={len(props)} "
+                f"priceable={elig.coverage_stats.get('total_props_remaining')} "
+                f"pp_playable={len(elig.props)} "
                 f"companion_map_size={len(adapter._companion_map)}"
             )
-            props = pp_playable
+            props = elig.props
         except Exception as dec_exc:  # noqa: BLE001
             logger.error(
                 f"[RECOMPUTE:{sport}] caller-supplied props decoration "

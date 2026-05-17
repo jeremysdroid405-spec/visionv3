@@ -244,32 +244,23 @@ class NBAScoringAdapter(ScoringAdapter):
         props = await cursor.to_list(length=None)
         logger.info(f"[NBA_SCORING] Loaded {len(props)} props from {self.live_props_collection}")
 
-        # 0-Book Exclusion Rule (2026-04-22): any prop with no exact-line
-        # anchor from DraftKings / FanDuel / BetMGM / BetOnline is marked
-        # pp_only and MUST NOT enter scoring, tiering, or the cached
-        # board. Applied here so every NBA scoring run — delta, master
-        # sync, recompute — goes through the same filter.
-        from services.scoring.coverage_filter import (
-            filter_priceable, filter_pp_playable,
+        # 2026-05-17 — Eligibility chain (SSOT). Identical to the MLB
+        # adapter — `apply_production_eligibility` is the single
+        # function that runs filter_priceable → build_companion_map
+        # → filter_pp_playable. Byte-identical to the prior inline
+        # chain. Regression test:
+        # tests/pipeline/test_eligibility_byte_identical.py.
+        from services.pipeline.eligibility import (
+            apply_production_eligibility,
         )
-        priceable, coverage_stats = filter_priceable(props, sport="nba")
-        self.last_coverage_stats = coverage_stats
-
-        # Multi-book de-vig TP engine companion map (2026-04-22).
-        # Built over the full props list so UNDER-side TP still has an
-        # OVER companion even when the OVER was pp_only-filtered.
-        from services.scoring.tp_engine import build_companion_map
-        self._companion_map = build_companion_map(props)
-
-        # PP Side-Aware Playability Filter (2026-05). Universal across
-        # NBA / MLB / NFL — see coverage_filter.filter_pp_playable for
-        # contract. Drops every sportsbook-fallback row whose exact
-        # side PrizePicks did not list. Identical to the MLB
-        # adapter's chokepoint so cross-sport rejection sets stay
-        # symmetric.
-        pp_playable, pp_stats = filter_pp_playable(priceable, sport="nba")
-        self.last_pp_playable_stats = pp_stats
-        return pp_playable
+        result = apply_production_eligibility(
+            props, sport="nba", run_id=None,
+            use_pp_registry_fallback=False,  # live trusts pp_layer
+        )
+        self.last_coverage_stats = result.coverage_stats
+        self._companion_map = result.companion_map
+        self.last_pp_playable_stats = result.pp_playable_stats
+        return result.props
 
     def _get_vk(self, db):
         """Lazy-load the legacy VegasKillerModel + cache stat-specific residual SDs."""

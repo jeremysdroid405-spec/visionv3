@@ -184,39 +184,26 @@ class MLBScoringAdapter(ScoringAdapter):
         props = await cursor.to_list(length=None)
         logger.info(f"[MLB_SCORING] Loaded {len(props)} live props from {self.live_props_collection}")
 
-        # 0-Book Exclusion Rule (2026-04-22): any prop with no exact-line
-        # anchor from DraftKings / FanDuel / BetMGM / BetOnline is marked
-        # pp_only and MUST NOT enter scoring, tiering, or the cached board.
-        # This is the single MLB chokepoint — every scoring run funnels
-        # through `load_live_props`, so filtering here covers delta,
-        # master-sync, and recompute paths uniformly.
-        from services.scoring.coverage_filter import (
-            filter_priceable, filter_pp_playable,
+        # 2026-05-17 — Eligibility chain (SSOT). The previous inline
+        # 3-step decoration (filter_priceable → build_companion_map
+        # → filter_pp_playable) is now encapsulated in
+        # `services.pipeline.eligibility.apply_production_eligibility`
+        # so every code path — live, recompute caller-supplied,
+        # future historical / test providers — calls the SAME
+        # function. Byte-identical behaviour to the prior inline
+        # chain (Phase A regression test:
+        # tests/pipeline/test_eligibility_byte_identical.py).
+        from services.pipeline.eligibility import (
+            apply_production_eligibility,
         )
-        priceable, coverage_stats = filter_priceable(props, sport="mlb")
-        # Attach stats for the caller (pipeline logs / sync-result JSON).
-        self.last_coverage_stats = coverage_stats
-
-        # Multi-book de-vig TP engine (2026-04-22). Build the companion
-        # (OVER ↔ UNDER) map over the FULL props list — not just the
-        # priceable subset — so UNDER picks whose OVER companion was
-        # pp_only-dropped still get their UNDER-side reference. The
-        # companion map is attached to the instance so build_context
-        # can reuse it without re-scanning live_props per prop.
-        from services.scoring.tp_engine import build_companion_map
-        self._companion_map = build_companion_map(props)
-
-        # PP Side-Aware Playability Filter (2026-05). Universal across
-        # NBA / MLB / NFL — a prop is eligible for scoring ONLY when
-        # PrizePicks itself listed THAT EXACT player + stat + line + side.
-        # Sportsbook-fallback rows (e.g., DK-only UNDER 0.5 stolen_bases
-        # when PP listed only OVER) are dropped here so they never enter
-        # tiering, rejects, or Safe Haven. Companion map above is built
-        # over the full pre-filter pool so OVER-side de-vig pairing is
-        # preserved when its UNDER twin gets dropped.
-        pp_playable, pp_stats = filter_pp_playable(priceable, sport="mlb")
-        self.last_pp_playable_stats = pp_stats
-        return pp_playable
+        result = apply_production_eligibility(
+            props, sport="mlb", run_id=None,
+            use_pp_registry_fallback=False,  # live trusts pp_layer
+        )
+        self.last_coverage_stats = result.coverage_stats
+        self._companion_map = result.companion_map
+        self.last_pp_playable_stats = result.pp_playable_stats
+        return result.props
 
     def _get_stats_cache(self, db):
         """Return the MLB stat-utility cache (hit-rate / CV / ceiling rate

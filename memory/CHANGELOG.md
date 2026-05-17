@@ -1,5 +1,81 @@
 # Changelog
 
+## 2026-05-17 — Universal Pipeline Phase A: Production eligibility SSOT
+
+**Goal:** Stop duplicating production eligibility rules between live
+and replay paths. Phase A only: extract the live 3-step decoration
+chain (`filter_priceable` + `build_companion_map` +
+`filter_pp_playable`) into ONE SSOT function and prove live remains
+byte-identical. No new runner. No new providers yet. No external API
+changes.
+
+**New code:**
+- `services/pipeline/__init__.py` (package init).
+- `services/pipeline/pp_playability_registry.py` — hardcoded fail-
+  closed `SPORT_PP_SIDE_REGISTRY` keyed by `(sport, stat_family) →
+  frozenset{sides}`. MLB: 14 families (rbis OVER-only,
+  home_runs OVER-only, doubles OVER-only, batter_strikeouts
+  OVER-only, hits/total_bases/runs/etc both-sides). NBA: 16
+  families. NFL: empty scaffold (fails closed). `is_pp_playable_side`
+  helper returns False for unknown sports, families, or sides.
+- `services/pipeline/eligibility.py` — `apply_production_eligibility(
+  props, sport, run_id, use_pp_registry_fallback)` SSOT function +
+  `EligibilityResult` dataclass. Encapsulates the exact 3-step chain
+  with optional registry fallback for Phase B+ historical/test
+  inputs (default OFF — live trusts `pp_layer`).
+
+**Refactored (byte-identical):**
+- `services/scoring/adapters/mlb_scoring.py::load_live_props` —
+  inline filter_priceable+companion_map+filter_pp_playable replaced
+  with single `apply_production_eligibility` call.
+- `services/scoring/adapters/nba_scoring.py::load_live_props` —
+  same refactor; identical contract.
+- `services/scoring/recompute.py::recompute_sport` caller-supplied
+  branch — also routed through SSOT (de-duplicates the prior inline
+  copy of the 3-step chain).
+
+**Tests:**
+- `tests/pipeline/test_eligibility_byte_identical.py` — 6 pytest
+  cases:
+  - SSOT output is bit-identical to the inline chain on a synthetic
+    cohort (both MLB and NBA).
+  - In-place mutation contract preserved (downstream code reads
+    `book_count` / `coverage_class` / `books_anchored` off survivors).
+  - Registry fallback is OFF by default (live path never invokes
+    it).
+  - Registry fallback correctly drops `rbis UNDER` while keeping
+    `hits UNDER` when flag is set.
+  - Existing `playable_on_pp` is never overridden by the registry.
+- All 6/6 pass in 0.43s.
+- Canonical suite 26/26 still pass.
+
+**Live regression (production smoke):**
+- Backend restarted clean.
+- `/api/v3/ferrari/safe-haven?sport=mlb&limit=20` → 1 pick (Ramon
+  Laureano Batter Strikeouts OVER, `playable_on_pp=True`).
+- `/api/v3/ferrari/front-lines?sport=mlb&limit=20` → 4 picks, all
+  `playable_on_pp=True`.
+- `/api/v3/ferrari/safe-haven?sport=nba&limit=20` → 9 picks.
+- `/api/v3/ferrari/front-lines?sport=nba&limit=20` → 10 picks.
+- `/api/v3/ferrari/war-zone?sport=nba&limit=20` → 4 picks.
+
+**Not done (Phase B+ scope):**
+- `services/pipeline/runner.py::run_pipeline(sport, mode, ...)`.
+- `IInputProvider` / `IOutputWriter` interfaces.
+- `LiveInputProvider`, `HistoricalInputProvider`,
+  `ProductionOutputWriter`, `TestOutputWriter`.
+- `{sport}_test_runs` / `{sport}_test_outputs` / `{sport}_test_cards`
+  collections.
+- Test-id format `{SPORT}-{MODE}-{YYYYMMDD}-{HHMMUTC}-{NNNNN}`.
+- Replay-runner wiring to the SSOT (`production_replay_runner.py`
+  still has its own bypass for now; intentionally NOT touched in
+  Phase A — Phase B will route it through the new
+  `HistoricalInputProvider`).
+- Decommission of `mlb_production_replay_*` collections (waits for
+  Phase B parity proof).
+
+
+
 ## 2026-05-17 — Phase 6 Phase 4: Canonical TP / devig with same-book vs cross-book preference
 
 **Goal:** Make canonical TP / devig work correctly in replay. Allow
