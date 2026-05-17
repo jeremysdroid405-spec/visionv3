@@ -100,8 +100,9 @@ async def ensure_indexes(db) -> None:
          ("player_name_normalized", ASCENDING),
          ("market", ASCENDING), ("line", ASCENDING),
          ("side", ASCENDING), ("book", ASCENDING),
-         ("commence_time", ASCENDING)],
-        name="alt_odds_compound_unique", unique=True,
+         ("commence_time", ASCENDING),
+         ("snapshot_iso", ASCENDING)],
+        name="alt_odds_compound_unique_v2", unique=True,
     )
     await db[RAW_COLL].create_index("game_date")
     await db[RAW_COLL].create_index("market")
@@ -220,7 +221,7 @@ def _normalize_event(
 # ── Bulk upsert ────────────────────────────────────────────────────────
 _UPSERT_KEY_FIELDS = (
     "sport", "game_date", "event_id", "player_name_normalized",
-    "market", "line", "side", "book", "commence_time",
+    "market", "line", "side", "book", "commence_time", "snapshot_iso",
 )
 
 
