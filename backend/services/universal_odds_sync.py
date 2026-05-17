@@ -938,16 +938,25 @@ class UniversalOddsSyncService:
         except Exception as e:
             logger.warning(f"[UNIVERSAL_ODDS] raw-markets write error: {e}")
 
-        # 2026-05-17 hardening — append-only forensic snapshot store.
-        # NEVER delete. NEVER upsert. Each scrape's rows are tagged
-        # with the same `scrape_id` so the audit endpoint can group
-        # them. Failures here MUST NOT break the legacy write above.
-        snap_coll = self.db["dg_raw_odds_snapshots"]
-        try:
-            if snapshot_rows:
-                await snap_coll.insert_many(snapshot_rows, ordered=False)
-        except Exception as e:
-            logger.warning(f"[UNIVERSAL_ODDS] raw-snapshots write error: {e}")
+        # 2026-05-17 — writer GATED behind `DEBUG_RAW_ODDS=true`.
+        # Originally introduced as an append-only forensic store; the
+        # collection grew to 14.6 M docs / 13.7 GB BSON (~1.56 GB on
+        # disk + 716 MB indexes) in ~36 hours of operation, blocking
+        # /app partition writes. Per stabilization decision, the
+        # collection was dropped 2026-05-17 and writes are now
+        # disabled by default. Re-enable via `DEBUG_RAW_ODDS=true` ONLY
+        # for short forensic windows. Long-term replacement: re-pull
+        # via The Odds API historical endpoint.
+        # Audit: `audits/DG_RAW_ODDS_SNAPSHOTS_DROP_2026_05_17.md`.
+        if os.environ.get("DEBUG_RAW_ODDS", "").lower() == "true":
+            snap_coll = self.db["dg_raw_odds_snapshots"]
+            try:
+                if snapshot_rows:
+                    await snap_coll.insert_many(snapshot_rows, ordered=False)
+            except Exception as e:
+                logger.warning(f"[UNIVERSAL_ODDS] raw-snapshots write error: {e}")
+        # else: writer disabled — admin audit endpoints will return
+        # empty result sets until the writer is re-enabled.
 
         return {
             "written": len(rows),
