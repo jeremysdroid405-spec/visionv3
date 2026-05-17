@@ -1,0 +1,43 @@
+{
+  "game_date": "2026-05-05",
+  "snapshot_iso": "2026-05-05T11:00:00Z",
+  "raw_rows": 30568,
+  "unknown_market_rows": 0,
+  "canonical_props": 4997,
+  "collapse_ratio": 6.1173,
+  "n_same_book_devig": 1217,
+  "n_cross_book_devig_only": 0,
+  "n_one_sided_after_cross_book": 3780,
+  "n_no_books": 0,
+  "tier_routing_canonical": {
+    "front_lines": 1127,
+    "war_zone": 3696,
+    "safe_haven": 174
+  },
+  "by_stat_family": {
+    "hits": 693,
+    "hits_runs_rbis": 1146,
+    "rbis": 705,
+    "runs": 677,
+    "batter_strikeouts": 350,
+    "total_bases": 1025,
+    "earned_runs": 79,
+    "hits_allowed": 109,
+    "pitcher_strikeouts": 179,
+    "walks_allowed": 16,
+    "pitching_outs": 18
+  },
+  "odds_bucket_distribution": {
+    "minus_heavy": 402,
+    "plus_high": 3331,
+    "minus_med": 221,
+    "deep_SH": 173,
+    "plus_med": 710,
+    "minus_low_to_med": 58,
+    "minus_xx_(SH boundary)": 102
+  },
+  "sh_routed_rows_legacy": 1250,
+  "sh_routed_canonical_over": 174,
+  "sh_routed_canonical_under": 121,
+  "unknown_markets_sample": {}
+}
