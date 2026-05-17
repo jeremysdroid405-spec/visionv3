@@ -1,13 +1,8 @@
-"""Live provider implementations — pass-through skeletons.
+"""Universal live providers — sport-agnostic via SportReplayAdapter.
 
-Phase 1 NOTE: these are skeletons. They define the methods but do NOT
-yet replace any production read. Phase 2 will wire them into the actual
-production functions.
-
-The current behavior of these methods is to delegate to the same Mongo
-queries production already performs. This guarantees that injecting
-`LiveInputProvider()` into a refactored production function in Phase 2
-produces byte-identical output to today's live behavior.
+Phase 1 NOTE: these are still skeletons. Phase 2 will wire them into
+the actual production functions. Default `feature_provider=None` in
+production callers preserves byte-identical live behavior today.
 """
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
@@ -18,72 +13,77 @@ from services.replay.providers.base import (
     IInputProvider, IOddsProvider, IFeatureProvider, IStatcastProvider,
     ILineupProvider, PipelineMode,
 )
+from services.replay.providers.sport_adapter import SportReplayAdapter
 
 
-class LiveOddsProvider(IOddsProvider):
-    def __init__(self, db: AsyncIOMotorDatabase):
+class UniversalLiveOddsProvider(IOddsProvider):
+    def __init__(self, db: AsyncIOMotorDatabase, *,
+                 adapter: SportReplayAdapter):
         self._db = db
+        self._adapter = adapter
 
     async def list_props(self, *, sport: str, game_date: str,
                           snapshot_iso: Optional[str] = None) -> List[Dict[str, Any]]:
-        # Phase 2: read from `mlb_prop_scores` matching live `recompute_sport`
-        raise NotImplementedError("LiveOddsProvider.list_props — Phase 2")
+        raise NotImplementedError("LiveOddsProvider.list_props — Phase 2c+")
 
     async def list_events(self, *, sport: str, game_date: str) -> List[Dict[str, Any]]:
-        raise NotImplementedError("LiveOddsProvider.list_events — Phase 2")
+        raise NotImplementedError("LiveOddsProvider.list_events — Phase 2c+")
 
 
-class LiveFeatureProvider(IFeatureProvider):
-    def __init__(self, db: AsyncIOMotorDatabase):
+class UniversalLiveFeatureProvider(IFeatureProvider):
+    def __init__(self, db: AsyncIOMotorDatabase, *,
+                 adapter: SportReplayAdapter):
         self._db = db
+        self._adapter = adapter
 
     async def get_player_features(self, *, player_name_normalized: str,
                                     stat_family: str,
                                     as_of_date: str) -> Optional[Dict[str, Any]]:
-        # Phase 2: build feature row from master_hub bdl_game_logs[]
-        # filtered to as_of_date.
-        raise NotImplementedError("LiveFeatureProvider.get_player_features — Phase 2")
+        raise NotImplementedError("LiveFeatureProvider — Phase 2c+")
 
     async def get_game_logs(self, *, player_name_normalized: str,
                               as_of_date: str,
                               limit: int = 30) -> List[Dict[str, Any]]:
-        raise NotImplementedError("LiveFeatureProvider.get_game_logs — Phase 2")
+        raise NotImplementedError("LiveFeatureProvider — Phase 2c+")
 
 
-class LiveStatcastProvider(IStatcastProvider):
-    def __init__(self, db: AsyncIOMotorDatabase):
+class UniversalLiveStatcastProvider(IStatcastProvider):
+    def __init__(self, db: AsyncIOMotorDatabase, *,
+                 adapter: SportReplayAdapter):
         self._db = db
+        self._adapter = adapter
 
     async def get_batter_statcast(self, *, player_id: Any,
                                     as_of_date: str) -> Optional[Dict[str, Any]]:
-        raise NotImplementedError("LiveStatcastProvider.get_batter_statcast — Phase 2")
+        raise NotImplementedError("LiveStatcastProvider — Phase 2c+")
 
     async def get_pitcher_statcast(self, *, player_id: Any,
                                      as_of_date: str) -> Optional[Dict[str, Any]]:
-        raise NotImplementedError("LiveStatcastProvider.get_pitcher_statcast — Phase 2")
+        raise NotImplementedError("LiveStatcastProvider — Phase 2c+")
 
 
-class LiveLineupProvider(ILineupProvider):
-    def __init__(self, db: AsyncIOMotorDatabase):
+class UniversalLiveLineupProvider(ILineupProvider):
+    def __init__(self, db: AsyncIOMotorDatabase, *,
+                 adapter: SportReplayAdapter):
         self._db = db
+        self._adapter = adapter
 
-    async def get_opp_pitcher(self, *, event_id: str, as_of_date: str,
-                                home_team: str, away_team: str,
-                                is_away: bool) -> Optional[Dict[str, Any]]:
-        # Phase 2: read from `mlb_live_lineup_feed`
-        raise NotImplementedError("LiveLineupProvider.get_opp_pitcher — Phase 2")
+    async def get_opp_pitcher(self, **kwargs: Any) -> Optional[Dict[str, Any]]:
+        raise NotImplementedError("LiveLineupProvider — Phase 2c+")
 
-    async def get_opposing_lineup(self, *, event_id: str, as_of_date: str,
-                                    opp_team: str) -> Optional[Dict[str, Any]]:
-        raise NotImplementedError("LiveLineupProvider.get_opposing_lineup — Phase 2")
+    async def get_opposing_lineup(self, **kwargs: Any) -> Optional[Dict[str, Any]]:
+        raise NotImplementedError("LiveLineupProvider — Phase 2c+")
 
 
-def build_live_input_provider(db: AsyncIOMotorDatabase) -> IInputProvider:
+def build_universal_live_provider(
+    db: AsyncIOMotorDatabase, *,
+    adapter: SportReplayAdapter,
+) -> IInputProvider:
     return IInputProvider(
         mode=PipelineMode.LIVE,
-        odds=LiveOddsProvider(db),
-        features=LiveFeatureProvider(db),
-        statcast=LiveStatcastProvider(db),
-        lineup=LiveLineupProvider(db),
+        odds=UniversalLiveOddsProvider(db, adapter=adapter),
+        features=UniversalLiveFeatureProvider(db, adapter=adapter),
+        statcast=UniversalLiveStatcastProvider(db, adapter=adapter),
+        lineup=UniversalLiveLineupProvider(db, adapter=adapter),
         as_of_date=None, snapshot_iso=None,
     )

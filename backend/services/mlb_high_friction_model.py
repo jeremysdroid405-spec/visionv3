@@ -1330,6 +1330,26 @@ class MLBHighFrictionModel:
             ),
         }
 
+    @staticmethod
+    def _filter_logs_before(game_logs: List[Dict[str, Any]],
+                              as_of_date: str) -> List[Dict[str, Any]]:
+        """Return only game logs strictly BEFORE `as_of_date`.
+
+        Phase 2b — Production Replay Harness leakage guard.
+        Accepts both `date` and `game_date` fields; tolerates ISO
+        timestamps by truncating to YYYY-MM-DD. Logs without a parseable
+        date are EXCLUDED (cannot prove they're in the past).
+        """
+        cutoff = (as_of_date or "")[:10]
+        if not cutoff:
+            return game_logs
+        out: List[Dict[str, Any]] = []
+        for g in game_logs:
+            d = g.get("date") or g.get("game_date") or ""
+            if isinstance(d, str) and len(d) >= 10 and d[:10] < cutoff:
+                out.append(g)
+        return out
+
     def _predict_pitcher_outs(
         self,
         player_name: Optional[str],
@@ -1339,6 +1359,7 @@ class MLBHighFrictionModel:
         park_team: Optional[str],
         dk_odds: Optional[int],
         bdl_player_id: Optional[int],
+        as_of_date: Optional[str] = None,
     ) -> Dict[str, Any]:
         # Resolve the player by ID (preferred) or name fallback.
         player = None
@@ -1363,6 +1384,9 @@ class MLBHighFrictionModel:
             return {"error": f"Player not found: {player_name}"}
 
         game_logs = player.get("bdl_game_logs", [])
+        # Phase 2b leakage guard — see `predict()` for details.
+        if as_of_date:
+            game_logs = self._filter_logs_before(game_logs, as_of_date)
         if not game_logs:
             return {"error": "No game logs"}
 
@@ -1453,6 +1477,13 @@ class MLBHighFrictionModel:
         # from `mlb_statcast_player_features`. When None or empty
         # the lineup-feature block is emitted with `*_is_imputed=1`.
         opposing_lineup: Optional[List[Dict[str, Any]]] = None,
+        # ── Phase 2b Production Replay Harness (2026-05-17) ───────
+        # When set (YYYY-MM-DD), restrict internal `bdl_game_logs[]`
+        # reads to entries strictly BEFORE this date. Closes future-
+        # data leakage in historical-mode callers. When `None`
+        # (default), behavior is byte-identical to the pre-2b live
+        # path — verified by smoke test.
+        as_of_date: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Generate High-Friction prediction.
@@ -1479,6 +1510,7 @@ class MLBHighFrictionModel:
                 player_name=player_name, stat_type=stat_type,
                 line=line, opponent_team=opponent_team, park_team=park_team,
                 dk_odds=dk_odds, bdl_player_id=bdl_player_id,
+                as_of_date=as_of_date,
             )
 
         if norm_stat not in self.models:
@@ -1514,6 +1546,13 @@ class MLBHighFrictionModel:
                 return {"error": f"Player not found: {player_name}"}
             
             game_logs = player.get('bdl_game_logs', [])
+            # ── Phase 2b leakage guard (2026-05-17) ───────────────
+            # When historical replay supplies `as_of_date`, drop any
+            # game log dated on or after the cutoff so the model
+            # cannot see future games. No-op when as_of_date is None
+            # — live behavior preserved.
+            if as_of_date:
+                game_logs = self._filter_logs_before(game_logs, as_of_date)
             if len(game_logs) < 5:
                 return {"error": f"Insufficient games: {len(game_logs)}"}
             
