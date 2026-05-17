@@ -13,25 +13,35 @@ Modular 4-layer architecture under `services/replay/` for offline backtesting of
 - **Layer 1 — Historical Alt Odds Ingest** — DONE
   - `services/replay/historical_alt_odds_ingest.py` → `mlb_historical_alt_odds_raw` (compound unique on snapshot_iso). OOM-hardened (psutil RSS guard, 1500MB cap, 500-row batches).
 - **Layer 2 — Feature Cache** — DONE
-  - `services/replay/mlb_feature_cache.py` → `mlb_replay_feature_cache`. Pre-computes per-player stat-family snapshots from `bdl_game_logs` with leakage cutoff.
 - **Layer 3 — Model Replay Outputs** — DONE
-  - `services/replay/mlb_replay_engine.py` → `mlb_replay_model_outputs`. Pure model replay: projection_mu, sigma, model/fair/implied prob, edge, hit_rate_l5/10/20, cv. No live odds, no API calls. `scoring_config_version = scoring_v3.1_phase2a__wz_rewrite_2026_05_16`.
-- **Layer 4 — Gate Evaluation + Backtest Grading (2026-05-16) — DONE**
-  - `services/replay/mlb_replay_gate_eval.py` + `scripts/mlb_replay_gate_eval.py`.
-  - Strict 5-gate WZ spec (`mlb_war_zone_v1_2026_05_16`): hr_l20≥70, hr_l5≥60, cv≤1.1, strict projection direction, edge≥0.05. ZERO model inference, ZERO external API calls — reads only `mlb_replay_model_outputs` and `mlb_master_hub_2026.bdl_game_logs[]`.
-  - Persists per-row pass/fail + grading to `mlb_replay_gate_results` (compound unique on game_date/event_id/player/market/line/side/book/snapshot_iso/scoring_config_version/gate_config_version) and summary doc to `mlb_replay_backtest_runs` with breakdowns by stat_family / book / market_type (alternate vs standard) / edge / cv / hit_rate / odds / line buckets.
-  - OOM-hardened: psutil RSS check every flush, 500-row buffer, 1500MB hard cap.
-  - **One-date validation (2026-05-05 @ 2026-05-05T11:00:00Z)**:
-    - rows_scanned 25,431 → 768 pass / 24,663 fail
-    - failed-gate breakdown: l20=23,796 · l5=19,122 · cv=14,354 · edge=13,997 · direction=15,006
-    - Qualified picks: **487W / 98L / 0P / 183 ungraded** → **HR 83.25%**, **ROI +23.97%**, units +140.25 / 585.00, avg odds −217
-    - by_market_type: alternate n=457 HR 83.2% ROI +21.7% · standard n=311 HR 83.3% ROI +27.5%
-    - by_stat_family: hits 442 (HR 85.3%, ROI +25.6%), total_bases 280 (HR 78.9%, ROI +18.9%), strikeouts 36 (HR 83.9%, ROI +21.1%)
-    - Top books by ROI: fanduel +35.4%, hardrockbet +35.1%, fliff +33.8%, hardrockbet_oh +31.1%, draftkings +29.9%
-    - Edge-bucket monotonicity check: edge_05_10 ROI −4.7% (n=92), edge_10_20 +29.7%, edge_20_30 +13.9%, edge_30p +47.2%
-    - Peak RSS 335.7MB / elapsed 4.21s
-    - 183 ungraded picks = qualified players without a `bdl_game_logs` entry for 2026-05-05 (DNP / late scratch / scheduled-but-unplayed). Not a code defect; data-coverage gap.
-  - **Status**: One-date validation complete. Awaiting user approval before multi-date sweep / admin endpoints.
+- **Layer 4 — Gate Evaluation + Backtest Grading (2026-05-16) — DONE (multi-tier)**
+
+### 15-day sweep (2026-05-01..05-15 @ 11:00:00Z snapshots) — DONE 2026-05-17
+
+- **Backfilled**: Layer 1/2/3 for 14 missing dates (2026-05-05 was the only pre-existing).
+- **Multi-tier Layer 4 framework**: `services/replay/mlb_replay_multi_tier_eval.py` + `scripts/mlb_replay_multi_tier_sweep.py` + `scripts/mlb_replay_l4_loop.py` + `scripts/mlb_replay_15d_report.py` + `scripts/mlb_replay_sweep_15d.sh`. Persists per-(date × tier × snapshot) audit rows to `mlb_replay_audit` with global atomic serial counter (`mlb_replay_serial_counter`).
+- **Audit/auditability**: All 45 audit rows carry `serial` (format `MLB-REPLAY-{YYYYMMDD}-{TIER}-{HHMMUTC}-{NNNNN}`), `pick_set_checksum`, `gate_spec_checksum`, and all four version pins (gate/scoring/replay-engine/feature-cache).
+- **Operational incidents**: MongoDB OOM'd once at disk 100% (recovered by clearing 1.5GB of supervisor logs / frontend build / model caches); pod restarted once mid-Layer-4 (OOM-killer). Both pre-existing recurrences; Layer 4 is idempotent on `(date, tier, snapshot, gate_cfg)` so re-runs resume cleanly.
+
+### 15-day window results
+
+| Window | Tier | Picks | HR | ROI | Profit u |
+|---|---|---:|---:|---:|---:|
+| 6-day graded (05-01..06) | safe_haven | 2,805 | 65.9% | **−5.7%** | −148.72 |
+| 6-day graded (05-01..06) | front_lines | 731 | 67.7% | **−5.9%** | −42.03 |
+| 6-day graded (05-01..06) | war_zone | 5,098 | 65.5% | **−4.3%** | −200.92 |
+| Single-day 2026-05-05 (was reported as headline result) | war_zone | 768 | 83.2% | +24.0% | +140.25 |
+
+### Key findings
+- **2026-05-05 was the cherry-pick outlier**. Six-day graded mean is negative across all three tiers. Any threshold tuning on single-day data would have overfit hard.
+- **edge_30p is the only consistently profitable bucket** in multi-day aggregate: WZ +6.7% (n=789), SH +1.7% (n=444). All lower edge buckets bleed.
+- **Front Lines remains the tightest tier** (731 picks across 6 days vs 2,805 SH vs 5,098 WZ) — inverted-pyramid finding from 05-05 holds on volume.
+- **Daily variance is extreme**: 2026-05-06 SH HR 41.9% / ROI −38.0% — a near-coin-flip slate that obliterated multi-day P&L.
+
+### BLOCKER (P0): Ball Don't Lie game-log backfill required
+- `mlb_master_hub_2026.bdl_game_logs` is only backfilled through 2026-05-06. 2026-05-07 has 57 entries (~10% coverage); 05-08..05-15 have **zero**.
+- 9 of 15 sweep days are therefore ungraded (picks/gates/serials valid, no Win/Loss).
+- Action: backfill BDL game logs for 2026-05-07..05-15, then re-run `python -m scripts.mlb_replay_l4_loop` (idempotent — overwrites audit rows with new grading).
 
 ## Stabilization Status
 - Phase 4B SSOT cleanup — DONE

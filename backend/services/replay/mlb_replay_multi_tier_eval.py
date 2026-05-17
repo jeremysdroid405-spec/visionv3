@@ -15,6 +15,7 @@ Persists:
   - mlb_replay_backtest_runs  (one summary doc per (date × snapshot × tier))
 """
 from __future__ import annotations
+import hashlib
 import logging
 import statistics
 from collections import Counter, defaultdict
@@ -24,11 +25,23 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import psutil
 from pymongo import ASCENDING, UpdateOne
 
+from services.replay.mlb_feature_cache import (
+    SOURCE_VERSION as FEATURE_CACHE_VERSION,
+)
+from services.replay.mlb_replay_engine import (
+    SCORING_CONFIG_VERSION,
+    SOURCE_VERSION as REPLAY_ENGINE_VERSION,
+)
 from services.replay.mlb_replay_gate_eval import (
     BACKTEST_RUNS_COLL, DEFAULT_MEM_LIMIT_MB, GATE_RESULTS_COLL,
     _actual_for, _build_actual_outcomes, _cv_bucket, _edge_bucket,
     _hr_bucket, _odds_bucket, ensure_indexes, grade_one,
 )
+
+# Audit collections (replay authentication + reproducibility).
+AUDIT_COLL = "mlb_replay_audit"
+SERIAL_COUNTER_COLL = "mlb_replay_serial_counter"
+TIER_SHORT = {"safe_haven": "SH", "front_lines": "FL", "war_zone": "WZ"}
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +216,74 @@ def _pick_key(r: Dict[str, Any]) -> Tuple:
             r["line"], r["side"], r["book"])
 
 
+# ── Audit helpers (serial, checksum, version metadata) ───────────────
+async def _ensure_audit_indexes(db) -> None:
+    await db[AUDIT_COLL].create_index(
+        [("game_date", ASCENDING), ("tier", ASCENDING),
+         ("snapshot_iso", ASCENDING),
+         ("gate_config_version", ASCENDING),
+         ("scoring_config_version", ASCENDING)],
+        name="audit_compound_unique", unique=True,
+    )
+    await db[AUDIT_COLL].create_index("serial", unique=True)
+    await db[AUDIT_COLL].create_index([("game_date", ASCENDING),
+                                        ("serial", ASCENDING)])
+
+
+async def _next_serial(db, *, date: str, tier: str, snapshot_iso: str) -> str:
+    """Atomically reserve the next global replay serial.
+
+    Format: MLB-REPLAY-{YYYYMMDD}-{TIER}-{HHMMUTC}-{NNNNN}
+    The NNNNN counter is GLOBAL across all (date × tier × snapshot)
+    invocations so every serial is unique platform-wide.
+    """
+    res = await db[SERIAL_COUNTER_COLL].find_one_and_update(
+        {"_id": "mlb_replay_global"},
+        {"$inc": {"seq": 1}},
+        upsert=True, return_document=True,
+    )
+    if res is None:  # extremely defensive — motor returns the doc on upsert
+        res = await db[SERIAL_COUNTER_COLL].find_one({"_id": "mlb_replay_global"})
+    seq = int(res["seq"])
+    yyyymmdd = date.replace("-", "")
+    hhmm = snapshot_iso[11:13] + snapshot_iso[14:16]
+    tier_short = TIER_SHORT.get(tier, tier.upper()[:2])
+    return f"MLB-REPLAY-{yyyymmdd}-{tier_short}-{hhmm}UTC-{seq:05d}"
+
+
+def _compute_pick_set_checksum(qualified_rows: List[Dict[str, Any]]) -> str:
+    """Deterministic SHA-256 of the qualified-pick set + grading outcome.
+
+    Sorts by stable identity tuple, then hashes:
+      (event_id|player_norm|market|line|side|book|odds|grade_status|round(profit_units,4))
+    """
+    parts: List[str] = []
+    rows_sorted = sorted(
+        qualified_rows,
+        key=lambda r: (str(r.get("event_id") or ""),
+                       r["player_name_normalized"], r["market"],
+                       float(r["line"]), r["side"], r["book"]),
+    )
+    for r in rows_sorted:
+        parts.append("|".join([
+            str(r.get("event_id") or ""),
+            r["player_name_normalized"],
+            r["market"], f"{float(r['line']):.4f}",
+            r["side"], r["book"], str(int(r["odds"])),
+            r.get("grade_status") or "ungraded",
+            f"{float(r.get('profit_units', 0.0)):.4f}",
+        ]))
+    h = hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+    return h
+
+
+def _compute_gate_spec_checksum(tier: str) -> str:
+    """SHA-256 over the tier's gate spec — pins the exact thresholds used."""
+    cfg = TIER_CONFIGS[tier]
+    spec_repr = repr(cfg["spec"]) + "|" + cfg["version"]
+    return hashlib.sha256(spec_repr.encode("utf-8")).hexdigest()
+
+
 # ── Main entrypoint ──────────────────────────────────────────────────
 async def run_multi_tier_for_date(
     db, game_date: str, *,
@@ -212,6 +293,7 @@ async def run_multi_tier_for_date(
     mem_limit_mb: int = DEFAULT_MEM_LIMIT_MB,
 ) -> Dict[str, Any]:
     await ensure_indexes(db)
+    await _ensure_audit_indexes(db)
     started_at = datetime.now(timezone.utc)
     rss0 = _rss_mb()
 
@@ -444,6 +526,82 @@ async def run_multi_tier_for_date(
         }
         await db[BACKTEST_RUNS_COLL].insert_one(persisted)
 
+        # ── AUDIT RECORD (serial + checksum + version pins) ──────────
+        # Idempotent: re-running the same (date, tier, snapshot, gate_cfg,
+        # scoring_cfg) tuple reuses the existing serial if present.
+        existing_audit = await db[AUDIT_COLL].find_one(
+            {"game_date": game_date, "tier": tier,
+             "snapshot_iso": snapshot_iso,
+             "gate_config_version": cfg["version"],
+             "scoring_config_version": scoring_config_version},
+            {"_id": 0, "serial": 1},
+        )
+        if existing_audit and existing_audit.get("serial"):
+            serial = existing_audit["serial"]
+            serial_reused = True
+        else:
+            serial = await _next_serial(db, date=game_date, tier=tier,
+                                         snapshot_iso=snapshot_iso)
+            serial_reused = False
+        pick_checksum = _compute_pick_set_checksum(qual_rows)
+        gate_spec_checksum = _compute_gate_spec_checksum(tier)
+        audit_doc = {
+            "serial": serial,
+            "serial_reused": serial_reused,
+            "sport": "mlb",
+            "tier": tier,
+            "game_date": game_date,
+            "snapshot_iso": snapshot_iso,
+            # Version pins (all four versions captured for reproducibility)
+            "gate_config_version":     cfg["version"],
+            "scoring_config_version":  scoring_config_version,
+            "replay_engine_version":   REPLAY_ENGINE_VERSION,
+            "feature_cache_version":   FEATURE_CACHE_VERSION,
+            # Checksums
+            "gate_spec_checksum":      gate_spec_checksum,
+            "pick_set_checksum":       pick_checksum,
+            # Execution metadata
+            "replay_timestamp_utc":    finished_at,
+            "started_at":              started_at,
+            "elapsed_s":               elapsed,
+            "rows_scanned":            seen,
+            "qualified_picks":         tier_summary["overall"]["total"],
+            "wins":                    tier_summary["overall"]["wins"],
+            "losses":                  tier_summary["overall"]["losses"],
+            "pushes":                  tier_summary["overall"]["pushes"],
+            "ungraded":                tier_summary["overall"]["ungraded"],
+            "hit_rate_pct":            tier_summary["overall"]["hit_rate_pct"],
+            "roi_pct":                 tier_summary["overall"]["roi_pct"],
+            "profit_units":            tier_summary["overall"]["profit_units"],
+            "stake_units":             tier_summary["overall"]["stake_units"],
+            "avg_odds":                tier_summary["overall"]["avg_odds"],
+            "avg_edge":                tier_summary["overall"]["avg_edge"],
+            "avg_cv":                  tier_summary["overall"]["avg_cv"],
+            "avg_mu_minus_line":       tier_summary["overall"]["avg_mu_minus_line"],
+            "rss_mb_peak":             round(rss_peak, 1),
+        }
+        await db[AUDIT_COLL].update_one(
+            {"game_date": game_date, "tier": tier,
+             "snapshot_iso": snapshot_iso,
+             "gate_config_version": cfg["version"],
+             "scoring_config_version": scoring_config_version},
+            {"$set": audit_doc},
+            upsert=True,
+        )
+        # Attach audit metadata to in-memory tier summary so the CLI can
+        # print it without re-querying the DB.
+        tier_summary["audit"] = {
+            "serial": serial,
+            "serial_reused": serial_reused,
+            "gate_config_version":   cfg["version"],
+            "scoring_config_version": scoring_config_version,
+            "replay_engine_version": REPLAY_ENGINE_VERSION,
+            "feature_cache_version": FEATURE_CACHE_VERSION,
+            "gate_spec_checksum":    gate_spec_checksum,
+            "pick_set_checksum":     pick_checksum,
+            "replay_timestamp_utc":  finished_at.isoformat(),
+        }
+
     # ── Overlap analysis on UNIQUE PICK IDENTITY (event/player/market/line/side/book) ──
     sets = {t: per_tier_qualified_keys[t] for t in tiers}
     out["overlap"] = {
@@ -472,4 +630,8 @@ async def run_multi_tier_for_date(
     return out
 
 
-__all__ = ["TIER_CONFIGS", "run_multi_tier_for_date"]
+__all__ = [
+    "TIER_CONFIGS", "run_multi_tier_for_date",
+    "AUDIT_COLL", "SERIAL_COUNTER_COLL", "TIER_SHORT",
+    "FEATURE_CACHE_VERSION", "REPLAY_ENGINE_VERSION",
+]
