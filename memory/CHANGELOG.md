@@ -1,5 +1,68 @@
 # Changelog
 
+## 2026-05-17 — Phase 4: Production gate engine in replay (universal gate path)
+
+**Goal:** Stop running directional SH/FL gate tests. Route replay gate
+decisions through the SAME `evaluate_tier_with_overrides` the live
+serving path uses. No duplicated thresholds, no copied SH/FL specs,
+no simplified gate logic.
+
+**New modules:**
+- `services/replay/replay_field_hydrators.py` — async loaders for
+  `book_count` / `tp_source` (from `mlb_historical_alt_odds_raw`
+  snapshot) and `avg_hit_margin`/`avg_miss_margin` (byte-for-byte
+  port of `MLBTierSorter._calculate_hit_margins` over
+  `mlb_master_hub_2026.bdl_game_logs[]` as-of < game_date).
+- `services/replay/replay_metrics_builder.py` — `build_metrics_from_replay_row()`
+  produces a `NormalizedMetrics` from one replay row. Stat-family
+  resolution routes through the live SSOT `canonical_stats` registry
+  (NOT the replay engine's internal alias map, which mis-routes
+  batter strikeouts → `_default` instead of `batter_strikeouts`).
+
+**Patched:**
+- `services/replay/production_replay_runner.py` adds `gate_path` kwarg.
+  Default `"legacy_wz"` preserves historical byte-identical replay;
+  `"universal"` routes through the production gate engine and stamps
+  a per-tier × per-stat-family × per-side deterministic SHA-16
+  `universal_gate_cfg_versions` map on the run doc.
+
+**Validation (2026-05-05):**
+- WZ A/B: Phase-4 universal `MLB-PRODREPLAY-20260505-WZ-1100UTC-00014`
+  vs legacy `...-00008` — **byte-identical** qualified pool (361
+  rows), identical grades, identical 20 displayed cards.
+- 3-tier production-gate replay (`audits/phase4_run_3tier_2026_05_05.py`):
+  - SH `...-00015`: 104 qualified / 86.25% HR / +31.34% ROI / +$25.08
+  - FL `...-00016`: 292 qualified / 90.25% HR / +36.79% ROI / +$86.84
+  - WZ `...-00017`: 361 qualified / 84.01% HR / +31.09% ROI / +$83.62
+- Field coverage report: 100% on every gate-required NormalizedMetrics
+  field for the qualified cohort; 99.77% on the full 25,431-row pool
+  (58 rows are 0.5-line props for players with <10 prior game logs —
+  these correctly fail-closed via `MARGIN_FAIL/margin_missing`, same
+  as live serving).
+
+**Artifacts:**
+- `/app/backend/audits/PHASE4_REPORT_2026_05_17.md`
+- `/app/backend/audits/phase4_3tier_2026-05-05.json`
+- `/app/backend/audits/phase4_field_coverage.py`
+- `/app/backend/audits/phase4_wz_validation.py`
+- `/app/backend/audits/phase4_run_3tier_2026_05_05.py`
+
+**Known SSOT bug surfaced (NOT fixed in Phase 4):**
+- The replay engine emits `stat_family="strikeouts"` for batter
+  strikeouts and `"pitcher_walks"` for walks_allowed; the live
+  `canonical_stats` registry emits `"batter_strikeouts"` and
+  `"walks_allowed"`. Phase 4 sidesteps this in the metrics builder
+  by routing through `market_to_stat_map(sport)`. The replay
+  engine's internal map (`mlb_feature_cache._STAT_FAMILY_MAP`)
+  should be reconciled with the SSOT registry as a follow-up.
+
+**Not done (per user directive):**
+- No 6-day sweep with Phase 4 (only 2026-05-05 was requested).
+- Default `gate_path` for `run_production_replay()` remains
+  `"legacy_wz"` so the existing 6-day WZ artifacts remain valid.
+
+
+
 ## 2026-05-17 — Integrity-filter stats admin endpoint (read-only)
 
 **Goal**: surface last-24h pre-scoring book-quote integrity filter activity

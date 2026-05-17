@@ -89,6 +89,20 @@ from services.replay.mlb_replay_gate_eval import (
 from services.replay.mlb_feature_cache import (
     SOURCE_VERSION as MLB_FEATURE_CACHE_V,
 )
+# Phase 4 — production-gate-engine path. When `gate_path="universal"`,
+# the runner builds NormalizedMetrics from each replay row and routes
+# through the SAME `evaluate_tier_with_overrides` that live serving
+# uses (no duplicated thresholds). The Phase 2c WZ-only spec
+# (`mlb_replay_gate_eval.evaluate_gates`) is preserved as the default
+# for byte-identical replay of historical runs.
+from services.scoring.tier_evaluator import evaluate_tier_with_overrides
+from services.scoring.gates.thresholds import resolve_thresholds
+from services.replay.replay_metrics_builder import build_metrics_from_replay_row
+from services.replay.replay_field_hydrators import (
+    load_book_inventory, load_player_game_logs_as_of,
+)
+import hashlib
+import json as _json
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +273,7 @@ async def run_production_replay(
     force_layer3: bool = False,
     dry_run: bool = False,
     notes: Optional[str] = None,
+    gate_path: str = "legacy_wz",
 ) -> Dict[str, Any]:
     """End-to-end Phase 2c orchestrator.
 
@@ -274,6 +289,10 @@ async def run_production_replay(
         force_layer3: if True, re-run Layer-3 even if `status=completed`.
         dry_run: if True, do not persist run / output docs.
         notes: free-form note pinned on the run doc.
+        gate_path: "legacy_wz" (Phase 2c default — WZ-only gate spec,
+            byte-identical to prior sweeps) or "universal" (Phase 4 —
+            routes through the production `evaluate_tier_with_overrides`
+            for any tier; required for honest SH/FL evaluation).
 
     Returns the run-summary dict (same shape as the persisted run doc
     minus heavy fields).
@@ -358,6 +377,43 @@ async def run_production_replay(
     stake_total = profit_total = 0.0
     rss_peak = rss0
 
+    # ── Phase 4 — preload field hydrators (universal gate path) ──────
+    book_inventory: Dict[Any, Any] = {}
+    player_game_logs: Dict[str, Any] = {}
+    universal_gate_cfg_versions: Dict[str, str] = {}
+    if gate_path == "universal":
+        if adapter.SPORT != "mlb":
+            raise NotImplementedError(
+                f"gate_path=universal not yet implemented for "
+                f"sport={adapter.SPORT!r}"
+            )
+        book_inventory = await load_book_inventory(
+            db, sport=adapter.SPORT,
+            game_date=game_date, snapshot_iso=snapshot_iso,
+        )
+        player_game_logs = await load_player_game_logs_as_of(
+            db, game_date=game_date,
+        )
+        logger.info(
+            "[prod_replay_runner][phase4] hydrators loaded: "
+            "book_inventory=%d keys, player_game_logs=%d players",
+            len(book_inventory), len(player_game_logs),
+        )
+
+    def _resolve_universal_gate_cfg_version(stat_family: str, side: str) -> str:
+        cache_key = f"{adapter.SPORT}|{tier}|{stat_family}|{side}"
+        cached = universal_gate_cfg_versions.get(cache_key)
+        if cached is not None:
+            return cached
+        cfg = resolve_thresholds(adapter.SPORT, tier, stat_family, side=side)
+        # Deterministic SHA — same cfg dict always produces the same
+        # version pin. Stripped to 16 chars to stay readable in run docs.
+        canonical = _json.dumps(cfg, sort_keys=True, default=str)
+        sha = hashlib.sha256(canonical.encode()).hexdigest()[:16]
+        ver = f"{adapter.SPORT}_{tier}_universal_{sha}"
+        universal_gate_cfg_versions[cache_key] = ver
+        return ver
+
     async def _flush():
         nonlocal out_buffer
         if not out_buffer or dry_run:
@@ -384,16 +440,37 @@ async def run_production_replay(
 
     async for row in cursor:
         rows_scanned += 1
-        # Run gates (Phase 2c keeps the existing Layer-4 WZ spec; Phase 4
-        # will swap to the production gate engine via NormalizedMetrics).
-        gate_pass, failed = mlb_layer4_evaluate_gates(row) \
-            if adapter.SPORT == "mlb" else (False, ["unsupported_sport"])
+        # Gate evaluation — two paths:
+        #   • "legacy_wz"  : Phase 2c default. WZ-only spec. Byte-
+        #     identical to historical runs.
+        #   • "universal"  : Phase 4. Builds NormalizedMetrics from
+        #     the replay row + hydrated context, then routes through
+        #     the SAME `evaluate_tier_with_overrides` the live serving
+        #     path uses. Per-tier `gate_config_version` is stamped per
+        #     (stat_family, side) deterministically from the resolved
+        #     threshold cfg SHA.
+        row_gate_cfg_version = versions["gate_config_version"]
+        if gate_path == "universal":
+            metrics = build_metrics_from_replay_row(
+                row, tier=tier, sport=adapter.SPORT,
+                book_inventory=book_inventory,
+                player_game_logs=player_game_logs,
+            )
+            gate_result = evaluate_tier_with_overrides(metrics)
+            gate_pass = bool(gate_result.passed)
+            failed = list(gate_result.failed_gates)
+            row_gate_cfg_version = _resolve_universal_gate_cfg_version(
+                metrics.stat_family, metrics.side,
+            )
+        else:
+            gate_pass, failed = mlb_layer4_evaluate_gates(row) \
+                if adapter.SPORT == "mlb" else (False, ["unsupported_sport"])
 
         # Project to the schema-conformant output shape.
         out_doc = _project_layer3_to_output(
             row, serial=serial, sport=adapter.SPORT, tier=tier,
             gate_pass=gate_pass, failed_gates=failed,
-            gate_config_version=versions["gate_config_version"],
+            gate_config_version=row_gate_cfg_version,
         )
 
         # Grade only the qualified picks (Layer 4 contract).
@@ -488,6 +565,7 @@ async def run_production_replay(
         "game_date": game_date,
         "snapshot_iso": snapshot_iso,
         "tier": tier,
+        "gate_path": gate_path,
         "rows_scanned": rows_scanned,
         "rows_qualified": rows_qualified,
         "cards_displayed": cards_displayed,
@@ -505,6 +583,7 @@ async def run_production_replay(
         "feature_cache_version": versions["feature_cache_version"],
         "gate_config_version": versions["gate_config_version"],
         "scoring_config_version": versions["scoring_config_version"],
+        "universal_gate_cfg_versions": dict(universal_gate_cfg_versions),
     }
 
     if not dry_run:
@@ -522,6 +601,8 @@ async def run_production_replay(
                 "hit_rate_pct": round(hit_rate_pct, 2),
                 "roi_pct": round(roi_pct, 2),
                 "profit_units": round(profit_total, 4),
+                "gate_path": gate_path,
+                "universal_gate_cfg_versions": dict(universal_gate_cfg_versions),
             }},
         )
 
