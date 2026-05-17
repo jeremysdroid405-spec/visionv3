@@ -1,5 +1,117 @@
 # Changelog
 
+## 2026-05-17 — Phase A-2: Universal Market Structure Policy (passive SSOT)
+
+**Goal:** Centralize one-sided prop handling into one SSOT module
+WITHOUT changing current behavior. No threshold tuning, no gate
+changes, no NBA/MLB behavioral drift.
+
+**Approach:** First-cut module is a PASSIVE registry + decision
+helper. Production gate code is unchanged; the module documents and
+machine-verifies the existing per-sport policy. Live-doc agreement
+tests prove the module's `decide_one_sided` returns the same
+verdict the live engine already records on every `nba_prop_scores`
++ `mlb_prop_scores` one_sided document.
+
+**New code:**
+- `services/scoring/market_structure_policy/__init__.py`
+- `services/scoring/market_structure_policy/policy.py` —
+  `OneSidedPolicy` dataclass + `EliteBinaryOverride` dataclass +
+  `OneSidedDecision` dataclass + `POLICY_REGISTRY` map
+  `{(sport, tier): OneSidedPolicy}` + `policy_for(sport, tier)` +
+  pure `decide_one_sided(metrics, policy)` + convenience
+  `should_reject_due_to_one_sided(metrics, sport, tier)`.
+  Version pin: `market_structure_policy_v1_phase_a2_2026_05_17`.
+
+**Registry mirrors live config exactly:**
+- `(nba, safe_haven)`: `reject_alt_one_sided=True`,
+  `reject_standard_one_sided=False`, no override, vision×0.5.
+- `(nba, front_lines)` / `(nba, war_zone)`: all flags False,
+  vision×0.5.
+- `(mlb, safe_haven)`: `reject_alt_one_sided=True`,
+  `reject_standard_one_sided=True`, elite-binary override active
+  (allowed families: hits, hits_runs_rbis, runs, rbis,
+  batter_strikeouts, stolen_bases, batter_walks; HR_L20≥90,
+  HR_L5≥80, edge≥5pp, CV≤0.70), vision×1.0 (MLB live doesn't
+  invoke vision_v2 today).
+- `(mlb, front_lines)` / `(mlb, war_zone)`: all flags False,
+  vision×1.0.
+- `(nfl, safe_haven)`: placeholder, all flags False.
+
+**Tests (33 total, all green in 1.4s):**
+- `tests/market_structure_policy/test_registry_mirrors_live_config.py`
+  (6 tests): Asserts registry matches live `gates/thresholds.py`,
+  `gates/engine.py`, `vision_v2.py` objects directly — any future
+  drift breaks the build.
+- `tests/market_structure_policy/test_decide_one_sided.py`
+  (17 tests): Pure-function coverage of every branch: devig pass,
+  NBA SH alt blocked, NBA SH standard allowed, NBA FL/WZ allowed,
+  MLB SH blocked without override, MLB SH elite override rescues,
+  family exclusion, alt-priority precedence, FL/WZ allow, override
+  threshold strictness sweep (7 parametrized), unknown sport
+  fallback.
+- `tests/market_structure_policy/test_live_doc_agreement.py`
+  (4 tests): Reads live `nba_prop_scores` + `mlb_prop_scores`,
+  asserts `decide_one_sided` predicts the same verdict the engine
+  recorded. Skip-not-fail when cohort empty.
+
+**Files added: 5**
+- `services/scoring/market_structure_policy/__init__.py`
+- `services/scoring/market_structure_policy/policy.py`
+- `tests/market_structure_policy/__init__.py`
+- `tests/market_structure_policy/test_registry_mirrors_live_config.py`
+- `tests/market_structure_policy/test_decide_one_sided.py`
+- `tests/market_structure_policy/test_live_doc_agreement.py`
+
+**Files changed: 0** (passive module — no production code path
+touched in Phase A-2).
+
+**Behavior-preservation proof:**
+- 23 unit tests pass (table-driven on the policy contract).
+- 4 live-doc agreement tests pass against current production
+  `nba_prop_scores` + `mlb_prop_scores` cohorts (0 disagreements
+  across all one_sided docs on either sport).
+- Live tier endpoints unchanged: `/api/v3/ferrari/safe-haven?sport=nba`
+  returns 2 picks; gate logic untouched.
+
+**Still duplicated (recommended for a later refactor phase, NOT
+applied here):**
+- `gates/engine.py::_eval_market_structure` reads `cfg["reject_when"]`
+  directly — does not yet consult `POLICY_REGISTRY`.
+- `gates/engine.py::_eval_tp_source` reads `cfg["required_source"]`
+  + `cfg["one_sided_override"]` directly — does not yet consult
+  `POLICY_REGISTRY`.
+- `vision_v2.py::_market_confidence_component` hardcodes the 0.5
+  multiplier — does not yet read
+  `policy.vision_confidence_multiplier`.
+- The MLB `_mlb_thresholds` function builds the SH `tp_source_gate`
+  inline; the elite override fields are stored both in
+  `thresholds.py` and now in `POLICY_REGISTRY` (registry mirrors,
+  test enforces match).
+- MLB SH's existing `tp_source_gate` rejects ALL one-sided
+  regardless of `is_alt`; the policy flags both
+  `reject_alt_one_sided=True` AND `reject_standard_one_sided=True`
+  to mirror that. When the future refactor swaps `tp_source_gate`
+  for `market_structure_gate` + a separate `tp_source_gate`, the
+  policy already captures the correct intent.
+
+**Recommendation for later unification (NOT applied):**
+1. Wire `_eval_market_structure` to call
+   `should_reject_due_to_one_sided(metrics, sport=cfg_sport,
+   tier=cfg_tier)` and treat `True` as a gate failure. Replace
+   the `reject_when` cfg key with a `policy_consulted: bool` flag.
+2. Wire `_eval_tp_source` the same way.
+3. Wire `vision_v2._market_confidence_component` to consult
+   `policy.vision_confidence_multiplier` instead of the hardcoded
+   `0.5`.
+4. Run a byte-identical regression sweep across a 30-day historical
+   cohort BEFORE flipping consumers. Stage gates: dual-write the
+   `gate_pass` decision from BOTH the legacy and policy paths and
+   alert on any divergence for 1 week before retiring the legacy
+   path.
+
+
+
 ## 2026-05-17 — Universal Pipeline Phase B: Runner + Providers + Writers
 
 **Goal:** Build the universal pipeline orchestrator with swappable
