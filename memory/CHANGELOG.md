@@ -1,5 +1,117 @@
 # Changelog
 
+## 2026-05-17 — Universal Pipeline Phase B: Runner + Providers + Writers
+
+**Goal:** Build the universal pipeline orchestrator with swappable
+input providers and output writers. No new replay-only logic. No
+gates / thresholds / NBA behaviour / routing changes. No live
+output changes. Production rules reused directly via the Phase A
+SSOT.
+
+**New code:**
+- `services/pipeline/providers/base.py` — `IInputProvider` /
+  `IOutputWriter` Protocol interfaces.
+- `services/pipeline/providers/live_input.py` — `LiveInputProvider`
+  delegates verbatim to `MLBScoringAdapter.load_live_props` /
+  `NBAScoringAdapter.load_live_props` (which already calls the
+  Phase A SSOT internally). Live mode is byte-identical to current
+  production.
+- `services/pipeline/providers/historical_input.py` —
+  `MLBHistoricalInputProvider`: reads `mlb_historical_alt_odds_raw`,
+  collapses per-(book × side) rows into the live-prop shape (one
+  row per `(event, player, stat_family, line, side)` with flat
+  book-price fields per `coverage_filter._BOOK_FIELDS`). Mirrors
+  the OVER-only alt rule from the live replay engine. Sets
+  `playable_on_pp = None` so the SSOT's
+  `use_pp_registry_fallback=True` stamps it from the hardcoded
+  `SPORT_PP_SIDE_REGISTRY`.
+- `services/pipeline/providers/test_writer.py` — `TestOutputWriter`
+  (namespace = `"test"`).
+- `services/pipeline/providers/production_writer.py` —
+  `ProductionOutputWriter` (namespace = `"production_replay"`,
+  back-compat shim).
+- `services/pipeline/audit_envelope.py` — `build_audit_envelope`
+  composes the structured run-doc envelope (test_id, sport, mode,
+  snapshot_time, git_sha, pipeline_version, eligibility_version,
+  routing_version, gate_version, config_hash, input_snapshot_hash,
+  source_collections, stage_counts).
+- `services/pipeline/runner.py` — `run_pipeline(sport, mode,
+  snapshot_time, output_namespace, test_id, tier, …)` orchestrator.
+  Resolves provider + writer, loads props, calls SSOT
+  `apply_production_eligibility(use_pp_registry_fallback=mode=="historical")`,
+  builds an `(event, player, stat_family, line, side)` allow-set,
+  composes the envelope, then delegates to
+  `run_production_replay(canonical_path=True, output_namespace=…,
+  eligibility_predicate=…, audit_envelope=…, serial_override=test_id)`.
+
+**Refactored:**
+- `services/replay/providers/audit.py` — `runs/outputs/cards_collection_name()`
+  helpers now accept `output_namespace="production_replay"` default
+  (back-compat). Universal pipeline passes `"test"` to route writes
+  to `{sport}_test_runs/outputs/cards`.
+- `services/replay/production_replay_runner.py::run_production_replay`
+  + 4 new optional params (back-compat; legacy callers untouched):
+  - `output_namespace` — controls which collection set runs are
+    written to.
+  - `eligibility_predicate` — `callable(row) -> bool` filter applied
+    BEFORE canonical collapse + gate evaluation. Stamps
+    `eligibility_rejects` on the run doc.
+  - `audit_envelope` — passthrough dict stamped on the run doc.
+  - `serial_override` — when set, used verbatim (universal pipeline
+    passes its own test_id format
+    `{SPORT}-{MODE}-{YYYYMMDD}-{HHMMUTC}-{NNNNN}`).
+  - `_ensure_indexes` now namespace-aware.
+
+**Validation (`MLB-HIST-20260505-1100UTC-00001` run):**
+- elapsed 4.4s; backend stopped during run for RAM headroom.
+- Stage counts:
+  - raw input rows: **6,214**
+  - normalized props: **6,214**
+  - after priceable filter: **5,700** (514 pp-only excluded)
+  - after PP playable filter: **5,262** (438 dropped — 312 UNDER,
+    126 OVER)
+  - canonical props built: **3,525**
+  - rows scanned (post-eligibility): **4,181**
+  - cards written: 0
+- Invalid SH UNDER props removed by eligibility:
+  - **rbis UNDER**: 827 raw rows → **0 in test_outputs** ✅
+  - **batter_strikeouts UNDER**: 111 raw rows → **0 in test_outputs** ✅
+  - home_runs UNDER: 0 raw rows → 0 in test_outputs ✅
+- Proof production eligibility was called:
+  - `envelope.eligibility_version = apply_production_eligibility_v1_phase_a`
+  - `input_provider.ssot_function = apply_production_eligibility`
+  - `input_provider.use_pp_registry_fallback = True`
+  - 6,214 props stamped via registry fallback (every historical
+    prop, by design — historical raw rows carry no `pp_layer`)
+- Comparison vs prior `MLB-PRODREPLAY-20260505-SH-1100UTC-00074`:
+  - rows_scanned: 4,672 → **4,181** (491 PP-illegal rows blocked)
+  - canonical props: 3,692 → **3,525** (167 invalid canonicals
+    never built)
+- Output collections written:
+  - `mlb_test_runs`: 1 doc
+  - `mlb_test_outputs`: 4,181 docs
+  - `mlb_test_cards`: 0 docs
+- Backend restarted clean post-run.
+
+**Test ID format**: `MLB-HIST-20260505-1100UTC-00001` —
+`{SPORT}-{MODE}-{YYYYMMDD}-{HHMMUTC}-{NNNNN}` per directive.
+
+**Artifacts:**
+- `audits/phase_b_validation_2026_05_05.py` (executable script)
+- `audits/phase_b_validation_2026_05_05.json` (machine-readable)
+
+**Not done (Phase C+ scope):**
+- Production-writer wiring for `mode="live"` (live serving still
+  uses the existing tier endpoints; universal pipeline live mode
+  needs Phase C to replace those callers).
+- Decommission `mlb_production_replay_*` collections (waits for
+  parity proof + a few weeks of dual-writes).
+- HistoricalInputProvider for NBA / NFL.
+- Per-slate `pp_eligibility_history` snapshots (registry fallback
+  is currently the only source for historical PP playability).
+
+
+
 ## 2026-05-17 — Universal Pipeline Phase A: Production eligibility SSOT
 
 **Goal:** Stop duplicating production eligibility rules between live

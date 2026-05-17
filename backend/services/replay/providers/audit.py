@@ -108,17 +108,29 @@ def utc_now() -> datetime:
 
 # ─────────────────────────────────────────────────────────────────────
 # Collection name resolution (sport-prefixed)
+#
+# 2026-05-17 (Phase B) — `output_namespace` parameter added so the
+# Universal Pipeline Runner can route the SAME run logic to either:
+#   • `production_replay` (default, back-compat — current replay path)
+#   • `test`              (new test-output collections used by
+#                          mode="historical" + output_namespace="test")
+# Callers that don't pass `output_namespace` continue to write to
+# `{sport}_production_replay_{runs,outputs,cards}` — byte-identical
+# behaviour. NO existing call site touched.
 # ─────────────────────────────────────────────────────────────────────
-def runs_collection_name(adapter: SportReplayAdapter) -> str:
-    return f"{adapter.SPORT}_production_replay_runs"
+def runs_collection_name(adapter: SportReplayAdapter,
+                           output_namespace: str = "production_replay") -> str:
+    return f"{adapter.SPORT}_{output_namespace}_runs"
 
 
-def outputs_collection_name(adapter: SportReplayAdapter) -> str:
-    return f"{adapter.SPORT}_production_replay_outputs"
+def outputs_collection_name(adapter: SportReplayAdapter,
+                              output_namespace: str = "production_replay") -> str:
+    return f"{adapter.SPORT}_{output_namespace}_outputs"
 
 
-def cards_collection_name(adapter: SportReplayAdapter) -> str:
-    return f"{adapter.SPORT}_production_replay_cards"
+def cards_collection_name(adapter: SportReplayAdapter,
+                            output_namespace: str = "production_replay") -> str:
+    return f"{adapter.SPORT}_{output_namespace}_cards"
 
 
 def serial_counter_collection_name(adapter: SportReplayAdapter,

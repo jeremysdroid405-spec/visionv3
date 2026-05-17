@@ -260,8 +260,9 @@ def _layer3_outputs_collection_name(adapter: SportReplayAdapter) -> str:
     raise NotImplementedError(adapter.SPORT)
 
 
-async def _ensure_indexes(db, *, adapter: SportReplayAdapter) -> None:
-    out_coll = outputs_collection_name(adapter)
+async def _ensure_indexes(db, *, adapter: SportReplayAdapter,
+                            output_namespace: str = "production_replay") -> None:
+    out_coll = outputs_collection_name(adapter, output_namespace=output_namespace)
     await db[out_coll].create_index(
         [("replay_serial", ASCENDING),
          ("event_id", ASCENDING),
@@ -270,13 +271,13 @@ async def _ensure_indexes(db, *, adapter: SportReplayAdapter) -> None:
          ("line", ASCENDING),
          ("side", ASCENDING),
          ("book", ASCENDING)],
-        name="prod_replay_outputs_compound_unique", unique=True,
+        name=f"{output_namespace}_outputs_compound_unique", unique=True,
     )
     await db[out_coll].create_index("replay_serial")
     await db[out_coll].create_index([("sport", ASCENDING),
                                       ("game_date", ASCENDING)])
 
-    runs_coll = runs_collection_name(adapter)
+    runs_coll = runs_collection_name(adapter, output_namespace=output_namespace)
     await db[runs_coll].create_index("serial", unique=True)
     await db[runs_coll].create_index([("sport", ASCENDING),
                                        ("game_date", ASCENDING),
@@ -284,10 +285,10 @@ async def _ensure_indexes(db, *, adapter: SportReplayAdapter) -> None:
 
     # Phase 3 — card collection. `replay_serial + rank` is the only
     # natural unique key; cards are write-once per run.
-    cards_coll = cards_collection_name(adapter)
+    cards_coll = cards_collection_name(adapter, output_namespace=output_namespace)
     await db[cards_coll].create_index(
         [("replay_serial", ASCENDING), ("rank", ASCENDING)],
-        name="prod_replay_cards_serial_rank_unique", unique=True,
+        name=f"{output_namespace}_cards_serial_rank_unique", unique=True,
     )
     await db[cards_coll].create_index("replay_serial")
     await db[cards_coll].create_index([("sport", ASCENDING),
@@ -362,6 +363,10 @@ async def run_production_replay(
     notes: Optional[str] = None,
     gate_path: str = "legacy_wz",
     canonical_path: bool = False,
+    output_namespace: str = "production_replay",
+    eligibility_predicate: Optional[Any] = None,
+    audit_envelope: Optional[Dict[str, Any]] = None,
+    serial_override: Optional[str] = None,
 ) -> Dict[str, Any]:
     """End-to-end Phase 2c orchestrator.
 
@@ -389,6 +394,31 @@ async def run_production_replay(
             fragmented per-book rows. Implies `gate_path="universal"`
             (the only valid combination — legacy WZ gate spec cannot
             consume canonical metrics).
+        output_namespace: Universal Pipeline Phase B (2026-05-17). When
+            set to anything other than the default
+            `"production_replay"`, runs are written to
+            `{sport}_{output_namespace}_{runs,outputs,cards}`
+            collections instead of the historical replay collections.
+            Used by the universal runner's `mode="historical"` +
+            `output_namespace="test"` combination to route test
+            outputs to `{sport}_test_runs/outputs/cards`. The default
+            keeps every legacy replay caller byte-identical.
+        eligibility_predicate: Phase B. Optional `callable(row) -> bool`
+            invoked on every raw Layer-3 row BEFORE canonical collapse
+            and BEFORE gate evaluation. Rows where the predicate
+            returns False are skipped entirely (counted in
+            `eligibility_rejects`). Used by the universal runner to
+            enforce production eligibility (filter_pp_playable etc.)
+            on historical inputs.
+        audit_envelope: Phase B. Optional dict of pipeline-version /
+            git_sha / config_hash / source_collections / etc.
+            stamped on the run doc as `audit_envelope`. Caller is
+            expected to supply this; the runner does not synthesize.
+        serial_override: Phase B. Optional explicit serial — when
+            present, used verbatim instead of incrementing the
+            sport-prefixed counter. Used by the universal runner to
+            pass through its own test-id format
+            (`{SPORT}-{MODE}-{YYYYMMDD}-{HHMMUTC}-{NNNNN}`).
 
     Returns the run-summary dict (same shape as the persisted run doc
     minus heavy fields).
@@ -405,10 +435,13 @@ async def run_production_replay(
     rss0 = _rss_mb()
 
     # ── Audit pins ──────────────────────────────────────────────────
-    serial = await next_replay_serial(
-        db, adapter=adapter,
-        date=game_date, tier=tier, snapshot_iso=snapshot_iso,
-    )
+    if serial_override is not None:
+        serial = serial_override
+    else:
+        serial = await next_replay_serial(
+            db, adapter=adapter,
+            date=game_date, tier=tier, snapshot_iso=snapshot_iso,
+        )
     pipeline_ver = compute_production_pipeline_version(adapter)
     adapter_ver = adapter.adapter_version()
     versions = _resolve_scoring_versions(adapter)
@@ -438,11 +471,18 @@ async def run_production_replay(
         mode="historical", dry_run=dry_run, notes=notes,
     ).model_dump()
     run_doc_in["input_collection_versions"] = input_pins
+    # ── Phase B audit envelope passthrough ──────────────────────────
+    if audit_envelope is not None:
+        run_doc_in["audit_envelope"] = audit_envelope
+    run_doc_in["output_namespace"] = output_namespace
 
     # ── Persist initial run doc ─────────────────────────────────────
     if not dry_run:
-        await _ensure_indexes(db, adapter=adapter)
-        await db[runs_collection_name(adapter)].update_one(
+        await _ensure_indexes(db, adapter=adapter,
+                                 output_namespace=output_namespace)
+        await db[runs_collection_name(
+            adapter, output_namespace=output_namespace,
+        )].update_one(
             {"serial": serial}, {"$set": run_doc_in}, upsert=True,
         )
 
@@ -469,10 +509,11 @@ async def run_production_replay(
         projection={"_id": 0},
     )
 
-    out_coll = outputs_collection_name(adapter)
+    out_coll = outputs_collection_name(adapter, output_namespace=output_namespace)
     out_buffer: List[Dict[str, Any]] = []
     rows_scanned = 0
     rows_qualified = 0
+    eligibility_rejects = 0
     wins = losses = pushes = ungraded = 0
     stake_total = profit_total = 0.0
     rss_peak = rss0
@@ -561,17 +602,32 @@ async def run_production_replay(
     if canonical_path:
         raw_rows_buffer: List[Dict[str, Any]] = []
         async for r in cursor:
+            # Phase B — eligibility filter at the ingest seam. The
+            # predicate is called on every raw Layer-3 row BEFORE
+            # canonical collapse so the canonical universe is only
+            # built from production-eligible rows (PP-playable etc.).
+            if eligibility_predicate is not None:
+                if not eligibility_predicate(r):
+                    eligibility_rejects += 1
+                    continue
             raw_rows_buffer.append(r)
         canonical_eval_rows, canonical_summary = _build_canonical_eval_rows(
             raw_rows_buffer, sport=adapter.SPORT,
         )
         logger.info(
-            "[prod_replay_runner][canonical_v1] collapsed %d raw rows "
-            "→ %d canonical props → %d eval rows (1 per cp × side)",
+            "[prod_replay_runner][canonical_v1] eligibility_rejects=%d "
+            "collapsed %d raw rows → %d canonical props → %d eval rows "
+            "(1 per cp × side)",
+            eligibility_rejects,
             canonical_summary["raw_rows_collapsed_from"],
             canonical_summary["canonical_props_built"],
             canonical_summary["canonical_eval_rows"],
         )
+
+    # Closure-state for non-canonical eligibility rejects (legacy WZ
+    # path counts here; canonical path increments `eligibility_rejects`
+    # in its build loop above).
+    _legacy_rejects: List[int] = []
 
     async def _row_iter():
         if canonical_path:
@@ -579,6 +635,12 @@ async def run_production_replay(
                 yield r
         else:
             async for r in cursor:
+                # Phase B — eligibility filter (non-canonical path).
+                # Same contract as the canonical-path branch above.
+                if eligibility_predicate is not None:
+                    if not eligibility_predicate(r):
+                        _legacy_rejects.append(1)
+                        continue
                 yield r
 
     async for row in _row_iter():
@@ -783,6 +845,11 @@ async def run_production_replay(
 
     await _flush()
 
+    # Reconcile non-canonical eligibility rejects into the counter
+    # (canonical path already accumulated in its build loop).
+    if not canonical_path and _legacy_rejects:
+        eligibility_rejects += len(_legacy_rejects)
+
     # ── Phase 3 — Build & persist displayed cards ───────────────────
     # Pure builder; sport-agnostic; deterministic. Reads back the rows
     # we just wrote (lets the function operate on what's persisted, so
@@ -811,7 +878,9 @@ async def run_production_replay(
         # one bad row should crash the run, not silently corrupt cards.
         validated = [ProductionReplayCard(**c).model_dump() for c in card_docs]
         if validated:
-            cards_coll = cards_collection_name(adapter)
+            cards_coll = cards_collection_name(
+                adapter, output_namespace=output_namespace,
+            )
             # Idempotent rewrite — drop prior cards for this serial first
             await db[cards_coll].delete_many({"replay_serial": serial})
             await db[cards_coll].insert_many(validated, ordered=False)
@@ -836,8 +905,10 @@ async def run_production_replay(
         "snapshot_iso": snapshot_iso,
         "tier": tier,
         "gate_path": gate_path,
+        "output_namespace": output_namespace,
         "rows_scanned": rows_scanned,
         "rows_qualified": rows_qualified,
+        "eligibility_rejects": eligibility_rejects,
         "cards_displayed": cards_displayed,
         "wins": wins, "losses": losses, "pushes": pushes,
         "ungraded": ungraded,
@@ -859,10 +930,13 @@ async def run_production_replay(
             CANONICAL_ENGINE_VERSION if canonical_path else None
         ),
         "canonical_summary": canonical_summary if canonical_path else None,
+        "audit_envelope": audit_envelope,
     }
 
     if not dry_run:
-        await db[runs_collection_name(adapter)].update_one(
+        await db[runs_collection_name(
+            adapter, output_namespace=output_namespace,
+        )].update_one(
             {"serial": serial},
             {"$set": {
                 "replay_completed_at": finished_at,
@@ -870,6 +944,7 @@ async def run_production_replay(
                 "rss_mb_peak": round(rss_peak, 1),
                 "rows_scanned": rows_scanned,
                 "rows_qualified": rows_qualified,
+                "eligibility_rejects": eligibility_rejects,
                 "cards_displayed": cards_displayed,
                 "wins": wins, "losses": losses, "pushes": pushes,
                 "ungraded": ungraded,
@@ -883,6 +958,7 @@ async def run_production_replay(
                     CANONICAL_ENGINE_VERSION if canonical_path else None
                 ),
                 "canonical_summary": canonical_summary if canonical_path else None,
+                "audit_envelope": audit_envelope,
             }},
         )
 
