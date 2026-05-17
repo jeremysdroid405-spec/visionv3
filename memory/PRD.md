@@ -42,7 +42,12 @@ Sport-agnostic harness that runs historical data through the **same code paths t
   - Wired into `production_replay_runner.run_production_replay`: after writing outputs, runs the card builder and writes to `{sport}_production_replay_cards` (compound unique index on `replay_serial+rank`).
   - 14 pytest unit tests at `tests/replay/test_card_builder.py` — all passing in 0.05s.
   - End-to-end validated: 05-05 run produced 20 displayed cards from 361 qualified picks; top cards correspond to Spencer Steer 0.5 OVER, Pete Crow-Armstrong, Witt Jr., etc.
-- **Phase 4 — Swap gate spec to production gate engine** — NOT STARTED
+- **Phase 4 — Swap gate spec to production gate engine** — DONE (2026-05-17)
+- **Phase 6 Phase 1 — CanonicalProp model + market_normalizer** — DONE (2026-05-17)
+- **Phase 6 Phase 2 — Canonical engine wired into replay runner (flag-gated, `canonical_path=False` default)** — DONE (2026-05-17)
+  - Validated against 2026-05-05 SH: 25,431 raw rows → 3,692 canonical props → 4,672 eval rows; 176 routed to SH vs 104 in legacy per-book-counted baseline. Confirms SH starvation is a per-book duplication artifact, not real supply. See `audits/PHASE6_PHASE2_REPORT_2026_05_17.md`.
+- **Phase 6 Phase 3 — Canonical engine wired to live serving (`compute_tier`)** — NOT STARTED
+- **Phase 6 Phase 4 — `tp_engine.compute_tp` cross-book opposite-side support** — NOT STARTED
 
 ## MLB Historical Replay System (2026-05-16)
 

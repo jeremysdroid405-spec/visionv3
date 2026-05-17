@@ -1,5 +1,68 @@
 # Changelog
 
+## 2026-05-17 — Phase 6 Phase 2: Canonical Prop Engine wired into Replay
+
+**Goal:** Collapse per-book Layer-3 raw rows into ONE canonical prop
+per `(event, player, stat_family, canonical_line)` before gate
+evaluation, so replay sees the same canonical playable universe
+live serving sees. Flag-gated behind `canonical_path=False`; legacy
+replay artifacts byte-identical when flag is off.
+
+**New code:**
+- `services/replay/production_replay_runner.py`
+  - `_build_canonical_eval_rows(raw_rows, sport)` — pure helper.
+    Collapses raw book rows to ONE eval row per `(canonical_prop ×
+    side)`. Promotes best-book price and attaches the CanonicalProp
+    on the row dict.
+  - `canonical_path: bool = False` parameter on
+    `run_production_replay`. When True: forces
+    `gate_path="universal"`, replaces per-row cursor iteration with
+    per-canonical-prop × side iteration, overrides `book_count` /
+    `tp` / `tp_source` on `NormalizedMetrics` with canonical
+    aggregates (cross-book devig consensus, union of OVER ∪ UNDER
+    books), routes via the same universal odds-bucket router live
+    serving uses (anchored on canonical best price), stamps 15
+    canonical audit fields on each output doc and 3 on the run doc.
+  - `CANONICAL_ENGINE_VERSION = "canonical_v1_phase2_2026_05_17"`.
+
+**Validation (2026-05-05 SH-only):**
+- Baseline `MLB-PRODREPLAY-20260505-SH-1100UTC-00015` (legacy
+  universal, non-canonical): 104 qualified / 86.25% HR / +31.34%
+  ROI / +$25.08.
+- Canonical `MLB-PRODREPLAY-20260505-SH-1100UTC-00073`
+  (`canonical_path=True`): **25,431 raw rows → 3,692 canonical
+  props → 4,672 eval rows (1 per cp × side)**. Routed distribution:
+  SH 176 / FL 1,475 / WZ 3,021. SH-routed gate failures: edge_gate
+  145, hit_rate_gate 131, tp_gate 105, tp_source_gate 77, cv_gate
+  53, margin_gate 22, direction_gate 4. **0 qualified.**
+- Interpretation: baseline's 104 SH picks were ~25 distinct
+  canonical props each counted 4-5× per book. Canonical collapse
+  surfaces the true SH supply (176 routed) and the genuine
+  signal-level failure modes — exactly the "Safe Haven starvation
+  / false one-sided metrics" structural fingerprint the user
+  flagged. Wiring is correct; downstream tuning is Phase 4 scope
+  (tp_engine cross-book opposite-side support).
+- Elapsed 2.78s, peak RSS 668.5 MB. Pod stable.
+
+**Tests:**
+- `tests/replay/test_canonical_path_wiring.py` — 10 pytest unit
+  tests; 10/10 pass in 0.11s.
+- Pre-existing canonical (16) + replay (37) test suites still
+  green — no regression.
+
+**Artifacts:**
+- `audits/PHASE6_PHASE2_REPORT_2026_05_17.md`
+- `audits/phase6_canonical_sh_2026_05_05.py`
+- `audits/phase6_canonical_sh_2026_05_05.json`
+
+**Not done (Phase 3+ scope):**
+- Live serving wiring (`compute_tier`).
+- `tp_engine.compute_tp` cross-book opposite-side support.
+- 6-day canonical sweep (per user directive — Phase 2 was
+  2026-05-05 SH-only).
+
+
+
 ## 2026-05-17 — Phase 4: Production gate engine in replay (universal gate path)
 
 **Goal:** Stop running directional SH/FL gate tests. Route replay gate

@@ -105,10 +105,20 @@ from services.replay.replay_field_hydrators import (
     load_book_inventory, load_player_game_logs_as_of,
 )
 from services.replay.reference_odds_loader import load_reference_odds_for_snapshot
+from services.canonical.canonical_prop import build_canonical_props
+from services.canonical.market_normalizer import normalize_market
+from dataclasses import replace as _dc_replace
 import hashlib
 import json as _json
 
 logger = logging.getLogger(__name__)
+
+
+# Canonical Prop Engine version pin. Bumped only when the
+# canonical-collapse semantics change (e.g. ladder collapse,
+# additional dedup keys). The default canonical_path=False keeps
+# legacy replay byte-identical.
+CANONICAL_ENGINE_VERSION = "canonical_v1_phase2_2026_05_17"
 
 _ADAPTER_REGISTRY = {
     "mlb": MLBReplayAdapter,
@@ -153,6 +163,79 @@ def _resolve_model_versions(adapter: SportReplayAdapter) -> Dict[str, str]:
     if adapter.SPORT == "mlb":
         return {"mlb_high_friction_model": adapter.adapter_version()}
     return {}
+
+
+def _build_canonical_eval_rows(
+    raw_rows: List[Dict[str, Any]], *, sport: str,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Phase 6 Phase 2 — Collapse Layer-3 raw book rows into one
+    `canonical evaluation row` per (canonical_prop × side).
+
+    Pure (no DB / no mutation of `raw_rows`). Returns
+    `(eval_rows, summary)` where `summary` carries the canonical-engine
+    audit counters. Each eval row carries `__canonical_prop__` attached
+    (CanonicalProp instance) which the runner consumes downstream to
+    override `book_count` + `tp` + `tp_source` on NormalizedMetrics and
+    stamp canonical audit fields on the persisted output doc.
+
+    Caller is responsible for filtering `__canonical_prop__` from any
+    schema-validated output projection.
+    """
+    cps = build_canonical_props(raw_rows, sport=sport)
+    rows_by_canonical: Dict[
+        Tuple[str, str, str, float], List[Dict[str, Any]]
+    ] = {}
+    for r in raw_rows:
+        fam, _root, _alt = normalize_market(sport, r.get("market"))
+        if fam is None or r.get("line") is None:
+            continue
+        try:
+            ln = round(float(r["line"]), 2)
+        except (TypeError, ValueError):
+            continue
+        k = (str(r.get("event_id") or ""),
+             str(r.get("player_name_normalized") or ""),
+             fam, ln)
+        rows_by_canonical.setdefault(k, []).append(r)
+    eval_rows: List[Dict[str, Any]] = []
+    for cp in cps:
+        key = (cp.event_id, cp.player_name_normalized,
+               cp.stat_family, cp.canonical_line)
+        candidate_rows = rows_by_canonical.get(key, [])
+        for side, prices, best_price, best_book in (
+            ("OVER", cp.over_prices, cp.best_over_price, cp.best_over_book),
+            ("UNDER", cp.under_prices, cp.best_under_price, cp.best_under_book),
+        ):
+            if not prices or best_price is None or best_book is None:
+                continue
+            rep: Optional[Dict[str, Any]] = None
+            for cand in candidate_rows:
+                if ((cand.get("side") or "").upper() == side and
+                        (cand.get("book") or "").lower() == best_book):
+                    rep = cand
+                    break
+            if rep is None:
+                for cand in candidate_rows:
+                    if (cand.get("side") or "").upper() == side:
+                        rep = cand
+                        break
+            if rep is None:
+                continue
+            ev = dict(rep)
+            ev["market"] = cp.canonical_market_key
+            ev["is_alternate"] = False
+            ev["book"] = best_book
+            ev["odds"] = int(best_price)
+            ev["side"] = side
+            ev["__canonical_prop__"] = cp
+            eval_rows.append(ev)
+    summary = {
+        "canonical_engine_version": CANONICAL_ENGINE_VERSION,
+        "raw_rows_collapsed_from": len(raw_rows),
+        "canonical_props_built": len(cps),
+        "canonical_eval_rows": len(eval_rows),
+    }
+    return eval_rows, summary
 
 
 async def _run_layer3(adapter: SportReplayAdapter, db, *,
@@ -278,6 +361,7 @@ async def run_production_replay(
     dry_run: bool = False,
     notes: Optional[str] = None,
     gate_path: str = "legacy_wz",
+    canonical_path: bool = False,
 ) -> Dict[str, Any]:
     """End-to-end Phase 2c orchestrator.
 
@@ -297,10 +381,22 @@ async def run_production_replay(
             byte-identical to prior sweeps) or "universal" (Phase 4 —
             routes through the production `evaluate_tier_with_overrides`
             for any tier; required for honest SH/FL evaluation).
+        canonical_path: Phase 6 Phase 2 (default False). When True,
+            collapse Layer-3 raw book rows into ONE CanonicalProp per
+            (event, player, stat_family, canonical_line), then evaluate
+            each canonical prop ONCE per side (OVER/UNDER) instead of
+            once per raw book row. Eliminates SH starvation caused by
+            fragmented per-book rows. Implies `gate_path="universal"`
+            (the only valid combination — legacy WZ gate spec cannot
+            consume canonical metrics).
 
     Returns the run-summary dict (same shape as the persisted run doc
     minus heavy fields).
     """
+    # Canonical path implies the universal gate engine. Legacy WZ-only
+    # spec is row-based and cannot consume collapsed canonical metrics.
+    if canonical_path and gate_path != "universal":
+        gate_path = "universal"
     adapter = _resolve_adapter(db, sport)
     if snapshot_iso is None:
         snapshot_iso = f"{game_date}T11:00:00Z"
@@ -452,7 +548,40 @@ async def run_production_replay(
                           exc)
         out_buffer.clear()
 
-    async for row in cursor:
+    # ── Phase 6 Phase 2 — Canonical Prop Engine (flag-gated) ────────
+    # When `canonical_path=True`, collapse raw Layer-3 book rows into
+    # ONE CanonicalProp per (event, player, stat_family, canonical_line),
+    # then evaluate each canonical prop ONCE per side (OVER/UNDER) using
+    # the best-book price and aggregated cross-book book_count + devig.
+    # Replaces the per-book-row iteration; downstream loop body is
+    # unchanged so the universal gate path runs verbatim on the
+    # canonical-derived rows.
+    canonical_summary: Dict[str, Any] = {}
+    canonical_eval_rows: List[Dict[str, Any]] = []
+    if canonical_path:
+        raw_rows_buffer: List[Dict[str, Any]] = []
+        async for r in cursor:
+            raw_rows_buffer.append(r)
+        canonical_eval_rows, canonical_summary = _build_canonical_eval_rows(
+            raw_rows_buffer, sport=adapter.SPORT,
+        )
+        logger.info(
+            "[prod_replay_runner][canonical_v1] collapsed %d raw rows "
+            "→ %d canonical props → %d eval rows (1 per cp × side)",
+            canonical_summary["raw_rows_collapsed_from"],
+            canonical_summary["canonical_props_built"],
+            canonical_summary["canonical_eval_rows"],
+        )
+
+    async def _row_iter():
+        if canonical_path:
+            for r in canonical_eval_rows:
+                yield r
+        else:
+            async for r in cursor:
+                yield r
+
+    async for row in _row_iter():
         rows_scanned += 1
         # Gate evaluation — two paths:
         #   • "legacy_wz"  : Phase 2c default. WZ-only spec. Byte-
@@ -477,16 +606,28 @@ async def run_production_replay(
             # exactly as live serving does (scoring_stack.compute_tier,
             # 2026-04-29 hard contract: "each pick evaluated ONLY
             # within its routed odds tier; failing routed tier → REJECTED").
-            ref_key = (
-                str(row.get("event_id")),
-                str(row.get("player_name_normalized")),
-                str(row.get("market")),
-                float(row.get("line")) if row.get("line") is not None else None,
-                (row.get("side") or "OVER").upper(),
-            )
-            ref_pair = ref_odds_map.get(ref_key)
-            if ref_pair:
-                ref_odds_for_row, ref_book_for_row = ref_pair
+            cp_for_routing = row.get("__canonical_prop__")
+            if cp_for_routing is not None:
+                # Canonical path: route on the canonical best price for
+                # this side. ref_book is the best-book the canonical
+                # engine picked; ref_odds is its American price.
+                if (row.get("side") or "OVER").upper() == "OVER":
+                    ref_odds_for_row = cp_for_routing.best_over_price
+                    ref_book_for_row = cp_for_routing.best_over_book
+                else:
+                    ref_odds_for_row = cp_for_routing.best_under_price
+                    ref_book_for_row = cp_for_routing.best_under_book
+            else:
+                ref_key = (
+                    str(row.get("event_id")),
+                    str(row.get("player_name_normalized")),
+                    str(row.get("market")),
+                    float(row.get("line")) if row.get("line") is not None else None,
+                    (row.get("side") or "OVER").upper(),
+                )
+                ref_pair = ref_odds_map.get(ref_key)
+                if ref_pair:
+                    ref_odds_for_row, ref_book_for_row = ref_pair
             routed_tier_for_row = get_odds_bucket(ref_odds_for_row)
             if routed_tier_for_row != tier:
                 gate_pass = False
@@ -498,6 +639,33 @@ async def run_production_replay(
                     book_inventory=book_inventory,
                     player_game_logs=player_game_logs,
                 )
+                # ── Canonical override: when canonical_path=True the
+                # row carries an attached CanonicalProp; we override
+                # book_count + tp + tp_source on the metrics so the
+                # universal gate engine sees the same aggregated
+                # market view live serving sees per canonical prop
+                # (NOT the fragmented per-book inventory).
+                cp_attached = row.get("__canonical_prop__")
+                if cp_attached is not None:
+                    if (row.get("side") or "").upper() == "OVER":
+                        side_book_count = cp_attached.book_count_over
+                        devig_p = cp_attached.devig_over_probability
+                    else:
+                        side_book_count = cp_attached.book_count_under
+                        devig_p = cp_attached.devig_under_probability
+                    tp_pp = (round(float(devig_p) * 100.0, 4)
+                             if devig_p is not None else metrics.tp)
+                    tp_src = (
+                        "devig" if (cp_attached.has_cross_book_devig
+                                    or cp_attached.has_same_book_devig)
+                        else ("one_sided" if side_book_count else metrics.tp_source)
+                    )
+                    metrics = _dc_replace(
+                        metrics,
+                        book_count=int(side_book_count) if side_book_count else metrics.book_count,
+                        tp=tp_pp,
+                        tp_source=tp_src,
+                    )
                 gate_result = evaluate_tier_with_overrides(metrics)
                 gate_pass = bool(gate_result.passed)
                 failed = list(gate_result.failed_gates)
@@ -519,6 +687,37 @@ async def run_production_replay(
             out_doc["tier_reference_odds"] = ref_odds_for_row
             out_doc["tier_reference_book"] = ref_book_for_row
             out_doc["routed_tier"] = routed_tier_for_row
+        # Stamp canonical-prop audit on the output doc (canonical path).
+        cp_attached_doc = row.get("__canonical_prop__")
+        if cp_attached_doc is not None:
+            out_doc["canonical_path"] = True
+            out_doc["canonical_engine_version"] = CANONICAL_ENGINE_VERSION
+            out_doc["canonical_market_key"] = cp_attached_doc.canonical_market_key
+            out_doc["canonical_source_rows"] = cp_attached_doc.source_rows_count
+            out_doc["canonical_source_market_keys"] = list(
+                cp_attached_doc.source_market_keys
+            )
+            out_doc["canonical_book_count_over"] = cp_attached_doc.book_count_over
+            out_doc["canonical_book_count_under"] = cp_attached_doc.book_count_under
+            out_doc["canonical_book_count_either_side"] = (
+                cp_attached_doc.book_count_either_side_any_book
+            )
+            out_doc["canonical_best_over_price"] = cp_attached_doc.best_over_price
+            out_doc["canonical_best_over_book"] = cp_attached_doc.best_over_book
+            out_doc["canonical_best_under_price"] = cp_attached_doc.best_under_price
+            out_doc["canonical_best_under_book"] = cp_attached_doc.best_under_book
+            out_doc["canonical_devig_over_prob"] = (
+                cp_attached_doc.devig_over_probability
+            )
+            out_doc["canonical_devig_under_prob"] = (
+                cp_attached_doc.devig_under_probability
+            )
+            out_doc["canonical_has_cross_book_devig"] = (
+                cp_attached_doc.has_cross_book_devig
+            )
+            out_doc["canonical_has_same_book_devig"] = (
+                cp_attached_doc.has_same_book_devig
+            )
 
         # Grade only the qualified picks (Layer 4 contract).
         actual_val: Optional[float] = None
@@ -631,6 +830,11 @@ async def run_production_replay(
         "gate_config_version": versions["gate_config_version"],
         "scoring_config_version": versions["scoring_config_version"],
         "universal_gate_cfg_versions": dict(universal_gate_cfg_versions),
+        "canonical_path": bool(canonical_path),
+        "canonical_engine_version": (
+            CANONICAL_ENGINE_VERSION if canonical_path else None
+        ),
+        "canonical_summary": canonical_summary if canonical_path else None,
     }
 
     if not dry_run:
@@ -650,10 +854,19 @@ async def run_production_replay(
                 "profit_units": round(profit_total, 4),
                 "gate_path": gate_path,
                 "universal_gate_cfg_versions": dict(universal_gate_cfg_versions),
+                "canonical_path": bool(canonical_path),
+                "canonical_engine_version": (
+                    CANONICAL_ENGINE_VERSION if canonical_path else None
+                ),
+                "canonical_summary": canonical_summary if canonical_path else None,
             }},
         )
 
     return summary
 
 
-__all__ = ["run_production_replay"]
+__all__ = [
+    "run_production_replay",
+    "_build_canonical_eval_rows",
+    "CANONICAL_ENGINE_VERSION",
+]
