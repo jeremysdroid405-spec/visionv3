@@ -870,18 +870,19 @@ def resolve_thresholds(
 #     ref_odds >= +150          → war_zone    (longshot)
 #     ref_odds is None          → unqualified (no reference market)
 #
-# ── Universal Tier Routing Boundaries (2026-04-29) ─────────────────
-# New odds buckets per FINAL tier-routing spec:
-#   Safe Haven  : ref_odds <= -300   (heavy chalk)
-#   Front Lines : -299 <= ref_odds <= +149
+# ── Universal Tier Routing Boundaries ─────────────────────────────────
+# Per the 2026-05-17 directive, restored to the canonical NBA values:
+#   Safe Haven  : ref_odds <= -240   (heavy chalk)
+#   Front Lines : -239 <= ref_odds <= +149
 #   War Zone    : ref_odds >= +150
 #
-# Hard contract change (2026-04-29): a prop is no longer locked to its
-# routed tier. If it fails the SH gate block, it is RE-EVALUATED under
-# the FL gate block. If it fails FL, it is re-evaluated under WZ. Only
-# props that fail ALL applicable gate blocks are rejected. Implemented
-# by `compute_tier` cascade — see `services/scoring/scoring_stack.py`.
-UNIVERSAL_SAFE_HAVEN_MAX: int = -300
+# History note: a transitional `-300` value was present in source from
+# 2026-04-29 through 2026-05-17 and has been reverted to the original
+# `-240` per direct user instruction (2026-05-17). The 2026-04-29
+# "cascade re-evaluation" wording referenced earlier in this file is
+# NOT active in code today — `resolve_target_tier` returns exactly one
+# tier and `compute_tier` enforces "NEVER cross-tier promotion".
+UNIVERSAL_SAFE_HAVEN_MAX: int = -240
 UNIVERSAL_WAR_ZONE_MIN: int = 150
 
 # Per-sport ODDS_BUCKETS retained as a thin alias on the universal
