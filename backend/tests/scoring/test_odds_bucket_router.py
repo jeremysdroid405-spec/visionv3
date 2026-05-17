@@ -37,11 +37,10 @@ from services.scoring.odds_bucket_router import (
 # ── (1) Live NBA contract — boundary values, unchanged ────────────────
 @pytest.mark.parametrize("odds,expected", [
     (-1000, "safe_haven"),
-    (-300, "safe_haven"),     # well inside SH after revert to -240
-    (-250, "safe_haven"),     # also inside SH (was FL pre-2026-05-17 revert)
-    (-241, "safe_haven"),
-    (-240, "safe_haven"),     # inclusive on chalk side
-    (-239, "front_lines"),    # exclusive crossover
+    (-301, "safe_haven"),
+    (-300, "safe_haven"),     # inclusive on chalk side
+    (-299, "front_lines"),    # exclusive crossover
+    (-250, "front_lines"),
     (-200, "front_lines"),
     (-150, "front_lines"),
     (-149, "front_lines"),
@@ -110,9 +109,9 @@ def test_sport_buckets_all_equal_universal():
     (-400, "safe_haven", True),
     (-400, "front_lines", False),
     (-400, "war_zone", False),
-    (-239, "safe_haven", False),
-    (-239, "front_lines", True),
-    (-239, "war_zone", False),
+    (-299, "safe_haven", False),
+    (-299, "front_lines", True),
+    (-299, "war_zone", False),
     (+149, "front_lines", True),
     (+150, "war_zone", True),
     (+150, "front_lines", False),

@@ -871,18 +871,20 @@ def resolve_thresholds(
 #     ref_odds is None          → unqualified (no reference market)
 #
 # ── Universal Tier Routing Boundaries ─────────────────────────────────
-# Per the 2026-05-17 directive, restored to the canonical NBA values:
-#   Safe Haven  : ref_odds <= -240   (heavy chalk)
-#   Front Lines : -239 <= ref_odds <= +149
+# Per the 2026-05-17 directive (revert of revert), the SH ceiling is
+# restored to -300:
+#   Safe Haven  : ref_odds <= -300   (heavy chalk)
+#   Front Lines : -299 <= ref_odds <= +149
 #   War Zone    : ref_odds >= +150
 #
-# History note: a transitional `-300` value was present in source from
-# 2026-04-29 through 2026-05-17 and has been reverted to the original
-# `-240` per direct user instruction (2026-05-17). The 2026-04-29
-# "cascade re-evaluation" wording referenced earlier in this file is
-# NOT active in code today — `resolve_target_tier` returns exactly one
-# tier and `compute_tier` enforces "NEVER cross-tier promotion".
-UNIVERSAL_SAFE_HAVEN_MAX: int = -240
+# Boundary history:
+#   pre-2026-04-22 : -250 / +150  (NBA original)
+#   2026-04-22..29 : -240 / +150  (universal cutover)
+#   2026-04-29..   : -300 / +150  (current)
+#   2026-05-17     : briefly reverted to -240, then restored to -300
+#                    same day per user instruction.
+# `compute_tier` enforces "NEVER cross-tier promotion" — no cascade.
+UNIVERSAL_SAFE_HAVEN_MAX: int = -300
 UNIVERSAL_WAR_ZONE_MIN: int = 150
 
 # Per-sport ODDS_BUCKETS retained as a thin alias on the universal
