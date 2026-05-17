@@ -1,0 +1,21 @@
+{
+  "master_hub_data": {
+    "vs_left": true,
+    "vs_right": true,
+    "home_splits": true,
+    "away_splits": true,
+    "bats": null,
+    "bats_throws": "Left/Right",
+    "throws": null
+  },
+  "live_predict": {
+    "projection": null,
+    "raw_model_projection": null,
+    "projection_method": null,
+    "park_factor": null,
+    "prob_over": 83.7,
+    "std_dev": 1.8738,
+    "cv": null
+  },
+  "replay_mu": 7.9019
+}
