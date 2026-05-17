@@ -6,6 +6,27 @@ Restructure React/FastAPI betting app to a 100% Local-First Database Model with 
 **ACTIVE DIRECTIVE: PROP VISION STABILIZATION PLAN**
 Freeze all feature/UI work until the system is permanently stabilized via the 6-phase plan.
 
+## Universal Production Replay Harness (2026-05-17)
+
+Sport-agnostic harness that runs historical data through the **same code paths the live production pipeline uses**, with provider-injected inputs to make every read deterministic and audit-pinned.
+
+- **Phase 1** — Scaffolding: `SportReplayAdapter`, `UniversalReplayProvider`, audit/serial helpers, schemas (`ProductionReplayRun/Output/Card`). DONE.
+- **Phase 2a** — `tier_evaluator.evaluate_tier_with_overrides(metrics, feature_provider=None)` seam injected. Byte-identical live regression. DONE.
+- **Phase 2b** — `MLBHighFrictionModel.predict(..., as_of_date=None)` seam injected + internal `_filter_logs_before` for `bdl_game_logs` leakage protection. Byte-identical live regression. DONE.
+- **Phase 2c — Orchestrator (2026-05-17) — DONE**
+  - `services/replay/production_replay_runner.py::run_production_replay(db, *, sport, game_date, snapshot_iso, tier, dry_run=False)`
+  - Wires `UniversalReplayProvider(MLBReplayAdapter)` into existing Layer-3 + Layer-4 engines
+  - Persists `{sport}_production_replay_runs` + `{sport}_production_replay_outputs`
+  - Per-run audit pins: 64-char SHA `production_pipeline_version` + `adapter_version`, `git_commit_sha`, input-collection counts, `feature_cache_version`, `scoring_config_version`, `gate_config_version`
+  - Smoke test (8 checks) at `audits/phase2c_smoke_test.py` — passing
+  - 2026-05-05 run: 25,431 scanned / 768 qualified / 461W·93L → 83.21% HR / 24.13% ROI
+  - 2026-05-06 run: 37,691 scanned / 1,080 qualified / 561W·421L → 57.13% HR / −12.43% ROI (Train/Serve P0 signature visible here)
+  - **No live-pipeline file edits**; legacy `mlb_replay_model_outputs` not mutated
+- **Phase 3 — Card / Top-N extraction** — NOT STARTED (next)
+  - Surgically extract per-game dedup + top-N from `picks_getter_service.py` into a pure function callable by both live and replay; write `{sport}_production_replay_cards`
+- **Phase 4 — Swap gate spec to production gate engine** — NOT STARTED
+  - Replace `mlb_replay_gate_eval.evaluate_gates` call inside the runner with `evaluate_tier_with_overrides(metrics, feature_provider=...)`
+
 ## MLB Historical Replay System (2026-05-16)
 
 Modular 4-layer architecture under `services/replay/` for offline backtesting of MLB props against actual outcomes. No live API calls during replay execution; each layer reads only the prior layer's persisted output.
