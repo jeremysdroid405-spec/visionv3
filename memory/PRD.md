@@ -28,8 +28,20 @@ Sport-agnostic harness that runs historical data through the **same code paths t
 - **Path A — Pod Stability (2026-05-17) — DONE**
   - `MLBHighFrictionModel.load_models()` now applies `nthread=1` + `n_jobs=1` to every loaded XGBoost regressor by default; eliminated chronic multiprocessing-fork orphan workers (~3 GB each) that had been OOM-killing the pod.
   - Override for training jobs: `MLB_HF_ALLOW_MULTITHREAD=1`.
-- **2026-05-06 rebuild — BLOCKED** on mongod WT cache holding ~50% pod RAM. Recommended next: cap WT cache to 4 GB (see `audits/PATH_A_FINAL_REPORT.md`).
-- **Phase 3 — Card / Top-N extraction** — NOT STARTED (gated on 05-06 + 15-day rebuild)
+- **Disk Crisis (2026-05-17) — DONE**
+  - Dropped `dg_raw_odds_snapshots` (14.6 M docs / 1.56 GB on disk + 716 MB indexes). Writer now gated behind `DEBUG_RAW_ODDS=true`. Disk freed: 339 MB → 2.6 GB available.
+  - Audit: `audits/DG_RAW_ODDS_SNAPSHOTS_DROP_2026_05_17.md`.
+- **Tier 1/2 Testing Infrastructure (2026-05-17) — DONE**
+  - `tests/replay/` — 13 pytest canaries (predict↔replay parity, hydration assertions, single-thread guard, feature-vector hash lock). 13 passed, 1 skipped.
+  - `audits/replay_mu_canaries.json` + `audits/run_replay_canaries.py` — 8 known-μ canaries, 8/8 pass after re-blessing.
+- **Replay A/B Compare CLI (2026-05-17) — DONE**
+  - `scripts/replay_compare.py --sport mlb --serial-a … --serial-b …` produces 14-dimension diff report (HR/ROI/profit deltas, Jaccard overlap, added/removed/changed picks, by-odds/edge/stat/book buckets, top winning added/lost). JSON artifact written.
+  - Validated against idempotency pair (00005 vs 00006): 100% Jaccard overlap, 0 deltas, ⚪ tie verdict.
+- **Phase 3 — Production card extraction (2026-05-17) — DONE**
+  - `services/picks/card_builder.py` — pure, sport-agnostic functions: `select_best_book`, `dedupe_by_keys`, `per_game_top_n`, `final_card_order`, `build_production_cards`. Defaults match live `get_war_zone()` (one pick per player, slate top-20, no per-game cap, edge-then-μ ordering).
+  - Wired into `production_replay_runner.run_production_replay`: after writing outputs, runs the card builder and writes to `{sport}_production_replay_cards` (compound unique index on `replay_serial+rank`).
+  - 14 pytest unit tests at `tests/replay/test_card_builder.py` — all passing in 0.05s.
+  - End-to-end validated: 05-05 run produced 20 displayed cards from 361 qualified picks; top cards correspond to Spencer Steer 0.5 OVER, Pete Crow-Armstrong, Witt Jr., etc.
 - **Phase 4 — Swap gate spec to production gate engine** — NOT STARTED
 
 ## MLB Historical Replay System (2026-05-16)

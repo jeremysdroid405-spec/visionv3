@@ -65,8 +65,15 @@ from services.replay.providers import (
     runs_collection_name,
     outputs_collection_name,
 )
+from services.replay.providers.audit import cards_collection_name
 from services.replay.providers.schemas import (
     ProductionReplayRun, ProductionReplayOutput, InputCollectionPin,
+    ProductionReplayCard,
+)
+from services.picks.card_builder import (
+    build_production_cards,
+    DEFAULT_DEDUPE_KEYS, DEFAULT_ORDER_BY,
+    DEFAULT_SLATE_TOP_K, DEFAULT_PER_GAME_TOP_N,
 )
 from services.replay.mlb_replay_engine import (
     replay_date as mlb_layer3_replay_date,
@@ -173,6 +180,17 @@ async def _ensure_indexes(db, *, adapter: SportReplayAdapter) -> None:
     await db[runs_coll].create_index([("sport", ASCENDING),
                                        ("game_date", ASCENDING),
                                        ("tier", ASCENDING)])
+
+    # Phase 3 — card collection. `replay_serial + rank` is the only
+    # natural unique key; cards are write-once per run.
+    cards_coll = cards_collection_name(adapter)
+    await db[cards_coll].create_index(
+        [("replay_serial", ASCENDING), ("rank", ASCENDING)],
+        name="prod_replay_cards_serial_rank_unique", unique=True,
+    )
+    await db[cards_coll].create_index("replay_serial")
+    await db[cards_coll].create_index([("sport", ASCENDING),
+                                        ("tier", ASCENDING)])
 
 
 def _project_layer3_to_output(
@@ -418,6 +436,45 @@ async def run_production_replay(
 
     await _flush()
 
+    # ── Phase 3 — Build & persist displayed cards ───────────────────
+    # Pure builder; sport-agnostic; deterministic. Reads back the rows
+    # we just wrote (lets the function operate on what's persisted, so
+    # idempotent re-runs produce identical cards).
+    card_docs: List[Dict[str, Any]] = []
+    cards_displayed = 0
+    if not dry_run:
+        out_rows_for_cards: List[Dict[str, Any]] = []
+        async for r in db[out_coll].find(
+            {"replay_serial": serial, "gate_pass": True},
+            projection={"_id": 0},
+        ):
+            out_rows_for_cards.append(r)
+        card_docs = build_production_cards(
+            out_rows_for_cards,
+            tier=tier,
+            replay_serial=serial,
+            sport=adapter.SPORT,
+            per_game_top_n_value=DEFAULT_PER_GAME_TOP_N,
+            slate_top_k=DEFAULT_SLATE_TOP_K,
+            dedupe_keys=DEFAULT_DEDUPE_KEYS,
+            order_by=DEFAULT_ORDER_BY,
+            require_gate_pass=True,
+        )
+        # Validate each card against the Pydantic schema before write —
+        # one bad row should crash the run, not silently corrupt cards.
+        validated = [ProductionReplayCard(**c).model_dump() for c in card_docs]
+        if validated:
+            cards_coll = cards_collection_name(adapter)
+            # Idempotent rewrite — drop prior cards for this serial first
+            await db[cards_coll].delete_many({"replay_serial": serial})
+            await db[cards_coll].insert_many(validated, ordered=False)
+        cards_displayed = len(validated)
+        logger.info(
+            "[prod_replay_runner] cards built: %d displayed "
+            "(qualified pool=%d) serial=%s",
+            cards_displayed, len(out_rows_for_cards), serial,
+        )
+
     # ── Finalise run doc ────────────────────────────────────────────
     finished_at = utc_now()
     elapsed = (finished_at - started_at).total_seconds()
@@ -433,6 +490,7 @@ async def run_production_replay(
         "tier": tier,
         "rows_scanned": rows_scanned,
         "rows_qualified": rows_qualified,
+        "cards_displayed": cards_displayed,
         "wins": wins, "losses": losses, "pushes": pushes,
         "ungraded": ungraded,
         "hit_rate_pct": round(hit_rate_pct, 2),
@@ -458,6 +516,7 @@ async def run_production_replay(
                 "rss_mb_peak": round(rss_peak, 1),
                 "rows_scanned": rows_scanned,
                 "rows_qualified": rows_qualified,
+                "cards_displayed": cards_displayed,
                 "wins": wins, "losses": losses, "pushes": pushes,
                 "ungraded": ungraded,
                 "hit_rate_pct": round(hit_rate_pct, 2),
