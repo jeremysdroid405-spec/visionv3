@@ -6,6 +6,33 @@ Restructure React/FastAPI betting app to a 100% Local-First Database Model with 
 **ACTIVE DIRECTIVE: PROP VISION STABILIZATION PLAN**
 Freeze all feature/UI work until the system is permanently stabilized via the 6-phase plan.
 
+## MLB Historical Replay System (2026-05-16)
+
+Modular 4-layer architecture under `services/replay/` for offline backtesting of MLB props against actual outcomes. No live API calls during replay execution; each layer reads only the prior layer's persisted output.
+
+- **Layer 1 — Historical Alt Odds Ingest** — DONE
+  - `services/replay/historical_alt_odds_ingest.py` → `mlb_historical_alt_odds_raw` (compound unique on snapshot_iso). OOM-hardened (psutil RSS guard, 1500MB cap, 500-row batches).
+- **Layer 2 — Feature Cache** — DONE
+  - `services/replay/mlb_feature_cache.py` → `mlb_replay_feature_cache`. Pre-computes per-player stat-family snapshots from `bdl_game_logs` with leakage cutoff.
+- **Layer 3 — Model Replay Outputs** — DONE
+  - `services/replay/mlb_replay_engine.py` → `mlb_replay_model_outputs`. Pure model replay: projection_mu, sigma, model/fair/implied prob, edge, hit_rate_l5/10/20, cv. No live odds, no API calls. `scoring_config_version = scoring_v3.1_phase2a__wz_rewrite_2026_05_16`.
+- **Layer 4 — Gate Evaluation + Backtest Grading (2026-05-16) — DONE**
+  - `services/replay/mlb_replay_gate_eval.py` + `scripts/mlb_replay_gate_eval.py`.
+  - Strict 5-gate WZ spec (`mlb_war_zone_v1_2026_05_16`): hr_l20≥70, hr_l5≥60, cv≤1.1, strict projection direction, edge≥0.05. ZERO model inference, ZERO external API calls — reads only `mlb_replay_model_outputs` and `mlb_master_hub_2026.bdl_game_logs[]`.
+  - Persists per-row pass/fail + grading to `mlb_replay_gate_results` (compound unique on game_date/event_id/player/market/line/side/book/snapshot_iso/scoring_config_version/gate_config_version) and summary doc to `mlb_replay_backtest_runs` with breakdowns by stat_family / book / market_type (alternate vs standard) / edge / cv / hit_rate / odds / line buckets.
+  - OOM-hardened: psutil RSS check every flush, 500-row buffer, 1500MB hard cap.
+  - **One-date validation (2026-05-05 @ 2026-05-05T11:00:00Z)**:
+    - rows_scanned 25,431 → 768 pass / 24,663 fail
+    - failed-gate breakdown: l20=23,796 · l5=19,122 · cv=14,354 · edge=13,997 · direction=15,006
+    - Qualified picks: **487W / 98L / 0P / 183 ungraded** → **HR 83.25%**, **ROI +23.97%**, units +140.25 / 585.00, avg odds −217
+    - by_market_type: alternate n=457 HR 83.2% ROI +21.7% · standard n=311 HR 83.3% ROI +27.5%
+    - by_stat_family: hits 442 (HR 85.3%, ROI +25.6%), total_bases 280 (HR 78.9%, ROI +18.9%), strikeouts 36 (HR 83.9%, ROI +21.1%)
+    - Top books by ROI: fanduel +35.4%, hardrockbet +35.1%, fliff +33.8%, hardrockbet_oh +31.1%, draftkings +29.9%
+    - Edge-bucket monotonicity check: edge_05_10 ROI −4.7% (n=92), edge_10_20 +29.7%, edge_20_30 +13.9%, edge_30p +47.2%
+    - Peak RSS 335.7MB / elapsed 4.21s
+    - 183 ungraded picks = qualified players without a `bdl_game_logs` entry for 2026-05-05 (DNP / late scratch / scheduled-but-unplayed). Not a code defect; data-coverage gap.
+  - **Status**: One-date validation complete. Awaiting user approval before multi-date sweep / admin endpoints.
+
 ## Stabilization Status
 - Phase 4B SSOT cleanup — DONE
 - §3 Tier freshness stamping (`board_freshness.py`) — DONE
