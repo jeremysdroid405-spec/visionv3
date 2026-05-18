@@ -825,7 +825,7 @@ async def run_production_replay(
                 # All other gates remain authoritative.
                 tp_gate_override_applied_row = False
                 if (sh_tp_gate_min_override is not None
-                        and tier == "safe_haven"
+                        and tier in ("safe_haven", "front_lines", "war_zone")
                         and "tp_gate" in failed
                         and gate_result is not None):
                     tp_detail = gate_result.gate_details.get("tp_gate")
@@ -841,7 +841,7 @@ async def run_production_replay(
                 # Lower `edge_gate.min` floor. Drop edge_gate from
                 # `failed` when actual edge_pct >= override.
                 if (sh_edge_gate_min_override is not None
-                        and tier == "safe_haven"
+                        and tier in ("safe_haven", "front_lines", "war_zone")
                         and "edge_gate" in failed
                         and gate_result is not None):
                     e_detail = gate_result.gate_details.get("edge_gate")
@@ -857,7 +857,7 @@ async def run_production_replay(
                 # Lower hit-rate floor. Drop hit_rate_gate when actual
                 # hit rate (in pp) meets the override floor.
                 if (sh_hit_rate_gate_min_override is not None
-                        and tier == "safe_haven"
+                        and tier in ("safe_haven", "front_lines", "war_zone")
                         and "hit_rate_gate" in failed
                         and gate_result is not None):
                     hr_detail = gate_result.gate_details.get(
@@ -879,7 +879,7 @@ async def run_production_replay(
                 # left alone — that's a binary-line construct, not a
                 # CV ceiling).
                 if (sh_cv_gate_max_override is not None
-                        and tier == "safe_haven"
+                        and tier in ("safe_haven", "front_lines", "war_zone")
                         and "cv_gate" in failed
                         and gate_result is not None):
                     cv_detail = gate_result.gate_details.get("cv_gate")
