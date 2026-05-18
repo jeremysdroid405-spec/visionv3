@@ -58,6 +58,7 @@ import itertools
 import json
 import math
 import os
+import random
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field, asdict
@@ -299,21 +300,76 @@ def _passes_combo(c: Candidate, k: Combo) -> bool:
 
 
 # ──────────────────────────────────────────────────────────────────
+def _wilson_ci(wins: int, n_decided: int, z: float = 1.96
+               ) -> Tuple[Optional[float], Optional[float]]:
+    """95 % Wilson score interval for a proportion. Returns
+    `(low_pct, high_pct)` in percentage points, or `(None, None)`
+    when n=0."""
+    if n_decided <= 0:
+        return (None, None)
+    p = wins / n_decided
+    denom = 1 + z * z / n_decided
+    centre = (p + z * z / (2 * n_decided)) / denom
+    half = (z * math.sqrt(p * (1 - p) / n_decided
+                          + z * z / (4 * n_decided * n_decided))) / denom
+    return (round(100.0 * (centre - half), 2),
+            round(100.0 * (centre + half), 2))
+
+
+def _bootstrap_roi_ci(unit_pnls: List[float],
+                       n_resamples: int = 1000,
+                       seed: int = 42,
+                       confidence: float = 0.95,
+                       ) -> Tuple[Optional[float], Optional[float]]:
+    """Percentile bootstrap CI for ROI %, computed over a list of
+    per-pick profit-per-1u-stake values (push = 0.0, exclude
+    ungraded). Returns `(low_pct, high_pct)` or `(None, None)` when
+    the list is empty.
+
+    Stake is implicitly 1u per graded pick — matches the existing
+    runner contract (`stake_units` is always 1.0 when gate_pass=True
+    and grade_status != ungraded).
+    """
+    if not unit_pnls:
+        return (None, None)
+    rng = random.Random(seed)
+    n = len(unit_pnls)
+    rois: List[float] = []
+    for _ in range(n_resamples):
+        sample = [unit_pnls[rng.randrange(n)] for _ in range(n)]
+        rois.append(100.0 * sum(sample) / n)  # stake=1u/pick
+    rois.sort()
+    alpha = (1.0 - confidence) / 2.0
+    low_idx = int(alpha * n_resamples)
+    high_idx = int((1.0 - alpha) * n_resamples) - 1
+    return (round(rois[low_idx], 2), round(rois[high_idx], 2))
+
+
 def _aggregate(passing: List[Candidate]) -> Dict[str, Any]:
-    """Aggregate W/L/P/HR/ROI/avg metrics for a list of passing rows."""
+    """Aggregate W/L/P/HR/ROI/avg metrics for a list of passing rows.
+
+    Adds 95 % Wilson CI for hit-rate and 95 % bootstrap CI for ROI%.
+    `n_total` = every row that passed the combo (regardless of grade).
+    `n_graded` = wins+losses+pushes. `n_ungraded` surfaced separately
+    so the leaderboard can never silently use ungraded rows.
+    """
     wins = losses = pushes = ungraded = 0
     stake = profit = 0.0
     odds_vals: List[int] = []
     tps: List[float] = []; cvs: List[float] = []
     hr20s: List[float] = []; hr10s: List[float] = []; hr5s: List[float] = []
+    pnls_graded: List[float] = []  # only graded picks for CI
     for c in passing:
         st = c.grade_status
         if st == "win":
             wins += 1
+            pnls_graded.append(c.profit_units)
         elif st == "loss":
             losses += 1
+            pnls_graded.append(c.profit_units)
         elif st == "push":
             pushes += 1
+            pnls_graded.append(c.profit_units)
         else:
             ungraded += 1
         stake += c.stake_units
@@ -326,17 +382,28 @@ def _aggregate(passing: List[Candidate]) -> Dict[str, Any]:
         if c.hit_rate_l10 is not None: hr10s.append(c.hit_rate_l10)
         if c.hit_rate_l5  is not None: hr5s.append(c.hit_rate_l5)
     decided = wins + losses
+    graded = decided + pushes
     hr_pct = (100.0 * wins / decided) if decided else None
     roi_pct = (100.0 * profit / stake) if stake else None
+    hr_lo, hr_hi = _wilson_ci(wins, decided)
+    roi_lo, roi_hi = _bootstrap_roi_ci(pnls_graded)
     def _mean(xs: List[float]) -> Optional[float]:
         return round(sum(xs) / len(xs), 3) if xs else None
     return {
+        "n_total": len(passing),
+        "n_graded": graded,
+        "n_ungraded": ungraded,
+        # Legacy aliases kept so existing leaderboards keep working.
         "n": len(passing),
-        "graded": decided + pushes,
+        "graded": graded,
         "wins": wins, "losses": losses, "pushes": pushes,
         "ungraded": ungraded,
         "hit_rate_pct": round(hr_pct, 2) if hr_pct is not None else None,
+        "hit_rate_ci95_low": hr_lo,
+        "hit_rate_ci95_high": hr_hi,
         "roi_pct": round(roi_pct, 2) if roi_pct is not None else None,
+        "roi_ci95_low": roi_lo,
+        "roi_ci95_high": roi_hi,
         "profit_units": round(profit, 4),
         "stake_units": round(stake, 4),
         "avg_odds": _mean([float(x) for x in odds_vals]),
@@ -774,22 +841,42 @@ async def grid_search(
         f"{sport}_{tier}_{date_start}_{date_end}_{stamp}.json"
     )
     csv_cols = [
-        "combo_label", "n", "graded", "wins", "losses", "pushes",
-        "ungraded", "hit_rate_pct", "roi_pct", "profit_units",
-        "stake_units", "avg_odds", "avg_tp", "avg_cv",
-        "avg_hr_l20", "balanced_score",
+        "combo_label", "n_total", "n_graded", "n_ungraded",
+        "wins", "losses", "pushes",
+        "hit_rate_pct", "hit_rate_ci95_low", "hit_rate_ci95_high",
+        "roi_pct", "roi_ci95_low", "roi_ci95_high",
+        "profit_units", "stake_units",
+        "avg_odds", "avg_tp", "avg_cv", "avg_hr_l20",
+        "devig_n_graded", "devig_hr", "devig_roi",
+        "onesided_std_n_graded", "onesided_std_hr", "onesided_std_roi",
+        "onesided_alt_n_graded", "onesided_alt_hr", "onesided_alt_roi",
+        "balanced_score",
     ]
     with csv_path.open("w", newline="") as f:
         w = csv.writer(f)
         w.writerow(csv_cols)
         for r in [baseline_row] + rows_out:
             ovr = r["overall"]
+            bb = r["by_bucket"]
+            dv = bb.get("devig", {})
+            os_std = bb.get("one_sided_std", {})
+            os_alt = bb.get("one_sided_alt", {})
             w.writerow([
-                r["combo_label"], ovr["n"], ovr["graded"], ovr["wins"],
-                ovr["losses"], ovr["pushes"], ovr["ungraded"],
-                ovr["hit_rate_pct"], ovr["roi_pct"], ovr["profit_units"],
-                ovr["stake_units"], ovr["avg_odds"], ovr["avg_tp"],
-                ovr["avg_cv"], ovr["avg_hr_l20"], r["balanced_score"],
+                r["combo_label"], ovr["n_total"], ovr["n_graded"],
+                ovr["n_ungraded"], ovr["wins"], ovr["losses"], ovr["pushes"],
+                ovr["hit_rate_pct"], ovr["hit_rate_ci95_low"],
+                ovr["hit_rate_ci95_high"],
+                ovr["roi_pct"], ovr["roi_ci95_low"], ovr["roi_ci95_high"],
+                ovr["profit_units"], ovr["stake_units"],
+                ovr["avg_odds"], ovr["avg_tp"], ovr["avg_cv"],
+                ovr["avg_hr_l20"],
+                dv.get("n_graded"), dv.get("hit_rate_pct"),
+                dv.get("roi_pct"),
+                os_std.get("n_graded"), os_std.get("hit_rate_pct"),
+                os_std.get("roi_pct"),
+                os_alt.get("n_graded"), os_alt.get("hit_rate_pct"),
+                os_alt.get("roi_pct"),
+                r["balanced_score"],
             ])
 
     payload = {
@@ -831,36 +918,87 @@ async def grid_search(
     json_path.write_text(json.dumps(payload, indent=2, default=str))
 
     # ── Console report ────────────────────────────────────────────
-    print(f"\n{'='*82}")
-    print("  TOP 20 by BALANCED SCORE (HR 50 % + ROI 30 % + Volume 20 %)")
-    print(f"{'='*82}")
-    print(f"  {'rank':>4s} {'label':<46s} "
-          f"{'n':>4s} {'grd':>4s} {'HR':>6s} {'ROI':>7s} "
-          f"{'P&L':>8s} {'BAL':>5s}")
-    for i, r in enumerate(leaderboards["by_balanced_score"], 1):
-        ovr = r["overall"]
-        print(f"  {i:>4d} {r['combo_label'][:46]:<46s} "
-              f"{ovr['n']:>4d} {ovr['graded']:>4d} "
-              f"{str(ovr['hit_rate_pct']):>6s} "
-              f"{str(ovr['roi_pct']):>7s} "
-              f"{ovr['profit_units']:>8.3f} "
-              f"{r['balanced_score']:>5.3f}")
+    def _print_lb(title: str, rows: List[Dict[str, Any]]):
+        print(f"\n{'='*120}")
+        print(f"  {title}")
+        print(f"{'='*120}")
+        print(f"  {'rank':>4s} {'label':<32s} "
+              f"{'tot':>4s} {'grd':>4s} {'ung':>4s} "
+              f"{'HR':>5s} {'HRci95':>13s} "
+              f"{'ROI':>6s} {'ROIci95':>14s} "
+              f"{'P&L':>8s} {'BAL':>5s} "
+              f"{'devig_g':>7s} {'os_std_g':>8s}")
+        for i, r in enumerate(rows, 1):
+            ovr = r["overall"]
+            bb = r["by_bucket"]
+            hr_ci = (f"[{ovr['hit_rate_ci95_low']},"
+                     f"{ovr['hit_rate_ci95_high']}]"
+                     if ovr['hit_rate_ci95_low'] is not None else "—")
+            roi_ci = (f"[{ovr['roi_ci95_low']},"
+                      f"{ovr['roi_ci95_high']}]"
+                      if ovr['roi_ci95_low'] is not None else "—")
+            bal = (f"{r['balanced_score']:>5.3f}"
+                   if r['balanced_score'] is not None else "  —  ")
+            print(
+                f"  {i:>4d} {r['combo_label'][:32]:<32s} "
+                f"{ovr['n_total']:>4d} {ovr['n_graded']:>4d} "
+                f"{ovr['n_ungraded']:>4d} "
+                f"{str(ovr['hit_rate_pct']):>5s} "
+                f"{hr_ci:>13s} "
+                f"{str(ovr['roi_pct']):>6s} "
+                f"{roi_ci:>14s} "
+                f"{ovr['profit_units']:>8.3f} {bal} "
+                f"{bb['devig'].get('n_graded',0):>7d} "
+                f"{bb['one_sided_std'].get('n_graded',0):>8d}"
+            )
 
+    _print_lb("TOP 20 by BALANCED SCORE (HR 50 % + ROI 30 % + Vol 20 %)",
+               leaderboards["by_balanced_score"])
+    _print_lb("TOP 20 by HIT-RATE",       leaderboards["by_hit_rate"])
+    _print_lb("TOP 20 by ROI",            leaderboards["by_roi"])
+    _print_lb("TOP 20 by PROFIT UNITS",   leaderboards["by_profit_units"])
+    _print_lb("WORST 20 by ROI",          leaderboards["worst_by_roi"])
+
+    bo = baseline_row["overall"]
+    bb = baseline_row["by_bucket"]
     print(f"\n[baseline] PROD_BASELINE_TYPICAL → "
-          f"n={baseline_row['overall']['n']} "
-          f"grd={baseline_row['overall']['graded']} "
-          f"HR={baseline_row['overall']['hit_rate_pct']} "
-          f"ROI={baseline_row['overall']['roi_pct']} "
-          f"P&L={baseline_row['overall']['profit_units']}")
+          f"tot={bo['n_total']} grd={bo['n_graded']} ung={bo['n_ungraded']} "
+          f"HR={bo['hit_rate_pct']} "
+          f"[{bo['hit_rate_ci95_low']},{bo['hit_rate_ci95_high']}] "
+          f"ROI={bo['roi_pct']} "
+          f"[{bo['roi_ci95_low']},{bo['roi_ci95_high']}] "
+          f"P&L={bo['profit_units']}")
+    print(f"  devig_only:        n_grd={bb['devig']['n_graded']} "
+          f"HR={bb['devig']['hit_rate_pct']} "
+          f"ROI={bb['devig']['roi_pct']}")
+    print(f"  one_sided_std:     n_grd={bb['one_sided_std']['n_graded']} "
+          f"HR={bb['one_sided_std']['hit_rate_pct']} "
+          f"ROI={bb['one_sided_std']['roi_pct']}")
 
     print(f"\n[artifact-json] {json_path}")
     print(f"[artifact-csv]  {csv_path}")
     if recommended:
-        print(f"\n[recommended] {recommended['combo_label']}")
         ovr = recommended["overall"]
-        print(f"  → n={ovr['n']} grd={ovr['graded']} "
-              f"HR={ovr['hit_rate_pct']} ROI={ovr['roi_pct']} "
-              f"P&L={ovr['profit_units']} balanced={recommended['balanced_score']}")
+        bb = recommended["by_bucket"]
+        print(f"\n[recommended] {recommended['combo_label']}")
+        print(f"  combo = {recommended['combo']}")
+        print(f"  overall: tot={ovr['n_total']} grd={ovr['n_graded']} "
+              f"ung={ovr['n_ungraded']} "
+              f"HR={ovr['hit_rate_pct']} "
+              f"[CI {ovr['hit_rate_ci95_low']},{ovr['hit_rate_ci95_high']}] "
+              f"ROI={ovr['roi_pct']} "
+              f"[CI {ovr['roi_ci95_low']},{ovr['roi_ci95_high']}] "
+              f"P&L={ovr['profit_units']} "
+              f"balanced={recommended['balanced_score']}")
+        print(f"  devig_only:    n_grd={bb['devig'].get('n_graded')} "
+              f"HR={bb['devig'].get('hit_rate_pct')} "
+              f"ROI={bb['devig'].get('roi_pct')}")
+        print(f"  one_sided_std: n_grd={bb['one_sided_std'].get('n_graded')} "
+              f"HR={bb['one_sided_std'].get('hit_rate_pct')} "
+              f"ROI={bb['one_sided_std'].get('roi_pct')}")
+        print(f"  one_sided_alt: n_grd={bb['one_sided_alt'].get('n_graded')} "
+              f"HR={bb['one_sided_alt'].get('hit_rate_pct')} "
+              f"ROI={bb['one_sided_alt'].get('roi_pct')}")
     print(f"\n[rerun] {payload['rerun_command']}")
 
     client.close()
