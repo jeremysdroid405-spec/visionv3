@@ -1,0 +1,13 @@
+tier,stat_family,status,recommended_combo,n_pool,graded_n,ungraded_n,wins,losses,pushes,HR,HR_ci95_low,HR_ci95_high,ROI,ROI_ci95_low,ROI_ci95_high,P_and_L,balanced_score,devig_grd,devig_roi,onesided_std_grd,onesided_std_roi,over_grd,over_roi,under_grd,under_roi,daily_consistency_score,daily_graded_days,outlier_top1_pct_of_net,outlier_top5_pct_of_net,is_outlier_dependent,corr_hr20_vs_profit,corr_edge_vs_profit,corr_cv_vs_profit,corr_tp_vs_profit,artifact_json
+front_lines,hits,insufficient_graded,,4223,3555,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+front_lines,hits_runs_rbis,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+front_lines,total_bases,insufficient_graded,,6734,5736,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+front_lines,runs,insufficient_graded,,3699,3191,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+front_lines,rbis,insufficient_graded,,132,120,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+front_lines,batter_strikeouts,insufficient_graded,,2100,1802,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+front_lines,pitcher_strikeouts,insufficient_graded,,772,700,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+front_lines,earned_runs,insufficient_graded,,609,557,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+front_lines,pitcher_hits_allowed,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+front_lines,pitcher_walks,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+front_lines,stolen_bases,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+front_lines,batter_walks,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
