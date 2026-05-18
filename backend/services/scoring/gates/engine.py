@@ -666,6 +666,43 @@ class UniversalGateEngine:
             note=f"direction_check_{side_uc}",
         )
 
+    @staticmethod
+    def _eval_odds_floor(cfg: Dict[str, Any], m: NormalizedMetrics) -> GateDetail:
+        """Universal `odds_floor_gate` — reject props whose tier-reference
+        price is BELOW (more negative than) the configured floor.
+
+        Sport/tier/family-agnostic. Reads `cfg["min"]` as the
+        most-negative allowed American price. For Safe Haven the bucket
+        router already enforces an upper bound (≤-300); this gate adds
+        the lower bound (e.g. `min=-499` admits `-300 .. -499` but
+        rejects `-500` and deeper).
+
+        Missing `reference_odds` or missing `cfg["min"]` → skip (pass).
+        Stays consistent with every other universal gate that returns
+        `passed=True` when the comparand is absent.
+        """
+        threshold = cfg.get("min")
+        if threshold is None:
+            return GateDetail(
+                gate_type="odds_floor_gate", threshold=None, actual=None,
+                passed=True, comparator=">=", reason_code=None,
+                note="odds_floor_missing_skipped",
+            )
+        threshold = float(threshold)
+        odds = _py(m.reference_odds)
+        if odds is None:
+            return GateDetail(
+                gate_type="odds_floor_gate", threshold=threshold,
+                actual=None, passed=True, comparator=">=",
+                reason_code=None, note="reference_odds_missing_skipped",
+            )
+        passed = bool(float(odds) >= threshold)
+        return GateDetail(
+            gate_type="odds_floor_gate", threshold=threshold,
+            actual=float(odds), passed=passed, comparator=">=",
+            reason_code=None if passed else "odds_floor_fail",
+        )
+
     _GATE_DISPATCH = {
         "coverage_gate":         _eval_coverage,
         "hit_rate_gate":         _eval_hit_rate,
@@ -680,6 +717,7 @@ class UniversalGateEngine:
         "market_trap_gate":      _eval_market_trap,
         "market_structure_gate": _eval_market_structure,
         "direction_gate":        _eval_direction,
+        "odds_floor_gate":       _eval_odds_floor,
     }
 
     # ------------------------------------------------------------------

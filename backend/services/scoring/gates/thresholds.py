@@ -373,18 +373,44 @@ _NBA_WAR_ZONE_BASE = {
 }
 
 
-# MLB safe-haven per-stat gates (updated 2026-04-29 — user-calibrated for hits/HRRBI/Ks)
+# MLB Safe Haven per-stat gates — 2026-05-18 VOLUME-FIRST PROMOTION
+#
+# Source: forensic Safe Haven audit on 2026-05-03 → 2026-05-15 window.
+# Audit established that only `hits` + `pitcher_strikeouts` produce a
+# durable profitable SH bucket once the −500+ deep-favorite trap is
+# excluded. The audited Volume-First config produced:
+#   43 graded · 40W/3L · 93.0% HR · +18.05% ROI · +7.76u
+# (see CHANGELOG entry 2026-05-18 for the full audit trail and the
+# rejected configurations.)
+#
+# This dict now keeps ONLY the two profitable families. Every other
+# stat family falls through to `_default` which sets unreachable
+# floors → they cannot pass SH gates and route to FL / WZ as their
+# canonical price dictates. Front Lines and War Zone tier dicts are
+# completely unchanged.
 _MLB_SAFE_HAVEN: Dict[str, Dict[str, Any]] = {
-    "hits":              {"cv_max": 0.90, "hr_min": 70.0, "edge_min": 5.0, "tp_min": 74.0, "min_margin": 0.50},
-    "total_bases":       {"cv_max": 0.75, "hr_min": 70.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 1.00},
-    "hits_runs_rbis":    {"cv_max": 0.90, "hr_min": 80.0, "edge_min": 4.0, "tp_min": 80.0, "min_margin": 1.00},
-    "rbis":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
-    "runs":              {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
-    "pitching_outs":     {"cv_max": 0.30, "hr_min": 85.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
-    "pitcher_strikeouts":{"cv_max": 0.45, "hr_min": 70.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
-    "batter_strikeouts": {"cv_max": 0.80, "hr_min": 80.0, "edge_min": 4.0, "tp_min": 78.0, "min_margin": 0.50},
-    "earned_runs":       {"cv_max": 0.40, "hr_min": 70.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
-    "_default":          {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 0.0, "tp_min": 50.0, "min_margin": 0.75},
+    "hits": {
+        # Audit-derived thresholds (HR≥60, EDGE≥-2.5, μ-line≥0.5,
+        # CV uncapped, TP uncapped, odds floor -499).
+        "cv_max": 999.0, "hr_min": 60.0, "edge_min": -2.5,
+        "tp_min": 0.0, "min_margin": 0.50, "odds_min": -499.0,
+        "_disable_universal_edge_floor": True,
+        "_disable_tp_source_gate": True,
+    },
+    "pitcher_strikeouts": {
+        "cv_max": 999.0, "hr_min": 60.0, "edge_min": -2.5,
+        "tp_min": 0.0, "min_margin": 0.50, "odds_min": -499.0,
+        "_disable_universal_edge_floor": True,
+        "_disable_tp_source_gate": True,
+    },
+    # Unreachable floors → blocks every family not explicitly listed
+    # above from passing the SH gate stack. Direction / coverage
+    # gates still emitted by `_mlb_thresholds`, but the soft gates
+    # (hit_rate, edge, tp, cv) fail on every realistic prop.
+    "_default": {
+        "cv_max": 0.0, "hr_min": 999.0, "edge_min": 999.0,
+        "tp_min": 999.0, "min_margin": 999.0,
+    },
 }
 _MLB_FRONT_LINES: Dict[str, Dict[str, Any]] = {
     # 2026-05-13 — NBA-parity rebuild (un-frozen from audit mode).
@@ -494,10 +520,20 @@ def _mlb_thresholds(
         # Universal OVER-side rule (2026-04-29): edge > 0 (strictly
         # positive). Per-stat `edge_min` is honoured when stricter
         # than 0.01; otherwise the universal floor takes over.
+        #
+        # 2026-05-18 — opt-out: per-family
+        # `_disable_universal_edge_floor=True` makes the engine use
+        # `vals["edge_min"]` VERBATIM (so e.g. -2.5 stays -2.5). Added
+        # for the audited Safe Haven `hits` + `pitcher_strikeouts`
+        # configuration where the historical sweep proved a negative
+        # edge floor preserves volume without ROI loss.
         _UNIVERSAL_OVER_EDGE_FLOOR = 0.01
-        family_edge_min = max(
-            float(vals.get("edge_min", 0.0)), _UNIVERSAL_OVER_EDGE_FLOOR
-        )
+        if vals.get("_disable_universal_edge_floor"):
+            family_edge_min = float(vals.get("edge_min", 0.0))
+        else:
+            family_edge_min = max(
+                float(vals.get("edge_min", 0.0)), _UNIVERSAL_OVER_EDGE_FLOOR
+            )
         if war_zone:
             # 2026-05-16 — FULL REPLACEMENT. Ignore family-level
             # values entirely; emit the user-mandated 5-gate spec for
@@ -529,6 +565,14 @@ def _mlb_thresholds(
                 "edge_gate":      {"min": family_edge_min},
                 "tp_gate":        tp_block,
             }
+            # 2026-05-18 — universal `odds_floor_gate`. When a family
+            # carries an `odds_min` key, emit the gate so anything more
+            # negative than the floor is rejected by the engine
+            # (complements the bucket router's upper bound).
+            # Sport/tier/family-agnostic — works for NBA/NFL/NHL too
+            # once their threshold dicts opt-in by setting `odds_min`.
+            if vals.get("odds_min") is not None:
+                gate_block["odds_floor_gate"] = {"min": float(vals["odds_min"])}
             if not front_lines:
                 # 2026-05-13 — Safe Haven only: reject `tp_source=one_sided`
                 # props. User audit of HRR 0.5 OVER rejects showed the
@@ -546,19 +590,29 @@ def _mlb_thresholds(
                 # the one-sided structure reflects real heavy chalk,
                 # not an inflation artefact). Pitcher counting stats
                 # and continuous markets remain hard-rejected.
-                gate_block["tp_source_gate"] = {
-                    "required_source": "devig",
-                    "one_sided_override": {
-                        "allowed_stat_families": [
-                            "hits", "hits_runs_rbis", "runs", "rbis",
-                            "batter_strikeouts", "stolen_bases", "batter_walks",
-                        ],
-                        "hr_l20_min": 90.0,
-                        "hr_l5_min":  80.0,
-                        "min_edge_pp": 5.0,  # fair_prob - implied_prob ≥ 0.05
-                        "cv_max":      0.70,
-                    },
-                }
+                #
+                # 2026-05-18 — opt-out flag `_disable_tp_source_gate`
+                # introduced for the audited SH Volume-First config
+                # (hits + pitcher_strikeouts). The audit confirmed
+                # one_sided pitcher_strikeouts at -300 to -499 produce
+                # +14% ROI / 90% HR — the structural one_sided rejection
+                # rule is over-restrictive for these two families at the
+                # newly tightened odds floor.
+                if not vals.get("_disable_tp_source_gate"):
+                    gate_block["tp_source_gate"] = {
+                        "required_source": "devig",
+                        "one_sided_override": {
+                            "allowed_stat_families": [
+                                "hits", "hits_runs_rbis", "runs", "rbis",
+                                "batter_strikeouts", "stolen_bases",
+                                "batter_walks",
+                            ],
+                            "hr_l20_min": 90.0,
+                            "hr_l5_min":  80.0,
+                            "min_edge_pp": 5.0,  # fair_prob - implied_prob ≥ 0.05
+                            "cv_max":      0.70,
+                        },
+                    }
             out[family] = gate_block
     return out
 

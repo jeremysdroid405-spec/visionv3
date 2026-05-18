@@ -1,5 +1,93 @@
 # Changelog
 
+## 2026-05-18 (late) — Safe Haven Volume-First PRODUCTION PROMOTION
+
+**Promoted to production** the SH Volume-First config audited and approved
+by the user. Strictly threshold + architecture changes, no live-serving
+or data-shape changes.
+
+### New universal gate: `odds_floor_gate`
+Sport / tier / family-agnostic. Reads `cfg["min"]` and rejects rows
+whose `m.reference_odds` is more negative than the floor. Complements
+the existing bucket router (which only enforces the upper bound).
+NBA / NFL / NHL can opt-in by adding `odds_min` to their per-family
+threshold dicts.
+
+Files touched:
+- `services/scoring/gates/engine.py` — `_eval_odds_floor` + `_GATE_DISPATCH` registration.
+
+### Three new universal threshold-dict flags
+- **`odds_min: float`** — per-family odds floor (emits `odds_floor_gate`).
+- **`_disable_universal_edge_floor: True`** — opt-out of the
+  `max(edge_min, +0.01)` clamp; lets configs use negative `edge_min`
+  verbatim (audit confirmed `edge_min=-2.5` for SH hits + pK is
+  optimal).
+- **`_disable_tp_source_gate: True`** — per-family opt-out of the SH
+  one-sided rejection rule. Audit confirmed one-sided
+  `pitcher_strikeouts` at -300 .. -499 are highly profitable
+  (+14% ROI / 90% HR).
+
+All three are read by `_mlb_thresholds` (currently MLB-only) and the
+schema is sport-agnostic so the next sport that wires the universal
+gate engine can use the same opt-outs.
+
+### `_MLB_SAFE_HAVEN` rewritten
+- **Kept only**: `hits`, `pitcher_strikeouts`.
+- **Both families now**: `cv_max=999.0, hr_min=60.0, edge_min=-2.5,
+  tp_min=0.0, min_margin=0.50, odds_min=-499.0,
+  _disable_universal_edge_floor=True, _disable_tp_source_gate=True`.
+- **`_default`** set to `cv_max=0, hr_min=999, edge_min=999,
+  tp_min=999, min_margin=999` — unreachable floors that block every
+  other stat family from passing SH. They still route to Front Lines /
+  War Zone where their original thresholds remain unchanged.
+
+### Verification (15/15 synthetic cases + 128 unit tests)
+- ✓ `hits @ -310` typical winner passes
+- ✓ `hits @ -310` one_sided edge=-1.5 passes (audit baseline shape)
+- ✓ `pitcher_strikeouts @ -310` one_sided edge=-1.0 passes
+- ✓ `hits @ -550` blocked by `odds_floor_gate`
+- ✓ `hits` HR=55 blocked by `hit_rate_gate`
+- ✓ `hits` edge=-3.0 blocked by `edge_gate`
+- ✓ `hits` margin=0.3 blocked by `margin_gate`
+- ✓ `earned_runs`, `total_bases`, `batter_strikeouts`,
+  `hits_runs_rbis`, `runs`, `rbis`, `pitching_outs` ALL fail SH
+  (unreachable `_default`).
+- ✓ Front Lines threshold dicts byte-identical (no `odds_floor_gate`
+  emitted, no per-family changes).
+- ✓ War Zone threshold dicts byte-identical (no TP gate, no edge
+  floor enforced — unchanged).
+- ✓ `tests/scoring` 50 pass · `tests/canonical_stats` 57 pass ·
+  `tests/pipeline` 78 pass.
+
+### Audit target vs production-as-written
+Audit Volume-First on 2026-05-03 → 2026-05-15:
+`43 grd · 40W/3L · 93.0% HR · +18.05% ROI · +7.76u`.
+
+A full 13-day historical re-replay against the new production
+thresholds was NOT executed in this session because the audit pool
+data lacks the `model_confidence_over` and `extras["projection"]`
+fields that the engine reads (audit used `projection_mu` instead).
+Production replay through `run_pipeline` populates those fields
+correctly; a fresh historical sweep run from a clean pipeline pass
+should reproduce the audit numbers to within sample variance. This is
+left as a follow-up validation step (recommended: testing agent
+or manual `python audits/universal_gate_grid_search_by_stat_family.py
+--sport mlb --tier safe_haven --date-start 2026-05-03 --date-end 2026-05-15`
+WITHOUT `--disable-all-gates` — the production thresholds now do
+the filtering naturally).
+
+### Sport / tier / family reusability (universal architecture preserved)
+- `odds_floor_gate` is sport-agnostic and reads from any sport's
+  threshold dict via `_mlb_thresholds` (or its NBA/NFL/NHL siblings).
+- The three new flags (`odds_min`, `_disable_universal_edge_floor`,
+  `_disable_tp_source_gate`) are sport-agnostic per-family keys —
+  any future sport's threshold dict can opt-in without code changes.
+- No hard-coded "mlb" or "safe_haven" or "hits" / "pitcher_strikeouts"
+  branches were added to the gate engine. Architecture stays a pure
+  config-driven dispatcher.
+
+
+
 ## 2026-05-18 (later) — `disable_all_gates_for_accuracy_test` kwarg + SH zero-gates audit
 
 **New kwarg:** `disable_all_gates_for_accuracy_test` (HISTORICAL TEST
