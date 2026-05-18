@@ -1,5 +1,92 @@
 # Changelog
 
+## 2026-05-18 (later) — Canonicalisation P0 follow-up: 0 graded `batter_strikeouts` in historical sweeps
+
+**Problem.** After the stat-family canonicalisation refactor (entry
+above), the segmented grid-search reported **0 graded picks for
+`batter_strikeouts`** (and `walks_allowed` / `hits_allowed`) across
+every replay date — even on days with full `mlb_master_hub_2026`
+actuals coverage.
+
+**Root cause — three independent legacy/canonical mismatches** stacked
+along the pipeline, all in read-side compatibility shims that the
+canonicalisation refactor missed:
+
+1. **Eligibility predicate** (`services/pipeline/runner._make_eligibility_predicate`)
+   matched the row's raw `stat_family` against the allow-set keys. The
+   allow-set is built from `historical_input.load_props` which emits
+   **canonical** family names (`batter_strikeouts`, `walks_allowed`)
+   via `market_to_stat_family`. But Layer-3 rows in
+   `mlb_replay_model_outputs` (written before the refactor and not
+   re-generated due to the resume short-circuit in `replay_date`)
+   carry **legacy** tokens (`strikeouts`, `pitcher_walks`). Every such
+   row was silently rejected, never reaching gate evaluation.
+
+2. **Layer-3 feature cache index** (`services/replay/mlb_replay_engine.replay_date`)
+   built `cache_idx[(player, c["stat_family"])]` from the persisted
+   `mlb_replay_feature_cache` whose rows still carry legacy family
+   tokens. Downstream lookup uses
+   `market_to_stat_family(o["market"])` which returns canonical names.
+   Result: cache miss for every batter strikeouts / pitcher walks
+   prop on a fresh Layer-3 run.
+
+3. **PP playability registry** (`services/pipeline/pp_playability_registry.SPORT_PP_SIDE_REGISTRY`)
+   only registered legacy keys (`pitcher_walks`, `pitcher_hits_allowed`,
+   `pitcher_outs`). The eligibility fail-closed fallback called
+   `is_pp_playable_side("mlb", "walks_allowed", side)` → `False` →
+   every pitcher walks / hits allowed / pitching outs prop was dropped
+   at `filter_pp_playable`.
+
+**Fix (read-side only — NO production threshold / gate / model changes):**
+
+1. `_make_eligibility_predicate` now normalises the row's
+   `stat_family` via `canonical_stats.canonical_family` before
+   matching the allow-set key. Idempotent for canonical inputs;
+   rescues every legacy row.
+
+2. `mlb_replay_engine.replay_date` canonicalises `c["stat_family"]`
+   on the cache_idx key AND stamps the canonical token back onto the
+   `cache_row` so every downstream consumer sees ONE SSOT name (the
+   existing `replay_one` already canonicalised on read; this closes
+   the loop earlier so the model lookup, hit-rate panel, and
+   game-log builder all agree without per-callsite shims).
+
+3. `pp_playability_registry.SPORT_PP_SIDE_REGISTRY["mlb"]` now
+   registers both canonical (`walks_allowed`, `hits_allowed`,
+   `pitching_outs`) and legacy (`pitcher_walks`,
+   `pitcher_hits_allowed`, `pitcher_outs`) keys → the fail-closed
+   fallback is alias-insensitive.
+
+**Verification.**
+- New regression tests: `tests/pipeline/test_eligibility_predicate_canonical.py` (5 cases, all pass).
+- Full canonicalisation suite: 57 tests pass.
+- Pipeline / replay / scoring pytest packs: 103 tests pass.
+- End-to-end audit on 2026-05-03 → 2026-05-05 SH:
+   • `batter_strikeouts`: 89 candidates → 76 graded (HR 87.2%, ROI +9.0%).
+   • `pitcher_strikeouts`: 123 candidates → 104 graded (HR 100%, ROI +6.75%).
+   • Previously: 0 graded for both. Sweep now produces actual
+     per-family threshold recommendations.
+
+**Files touched.**
+- `services/pipeline/runner.py` (eligibility predicate canonicalisation)
+- `services/replay/mlb_replay_engine.py` (cache_idx canonicalisation)
+- `services/pipeline/pp_playability_registry.py` (canonical + legacy aliases)
+- `tests/pipeline/test_eligibility_predicate_canonical.py` (new)
+
+**Known still-open (separate concerns):**
+- `mlb_replay_feature_cache` and `mlb_replay_model_outputs` collections
+  retain legacy `stat_family` tokens. Read-side normalisation handles
+  this transparently, but a future backfill (`stat_family: "strikeouts"
+  → "batter_strikeouts"` etc.) would let us delete the compatibility
+  shims entirely.
+- `pitcher_outs` / `hits_allowed` families have no `mlb_replay_feature_cache`
+  rows for the audited dates → Layer-3 never produces them. Separate
+  feature-cache backfill task (not blocking the segmented grid sweep
+  for the families that DO have cache coverage).
+- P1 actuals backfill 2026-05-08 → 05-15 still outstanding.
+
+
+
 ## 2026-05-18 — Stat-family canonicalisation across the universal pipeline
 
 **Problem:** Three separate registries were emitting different

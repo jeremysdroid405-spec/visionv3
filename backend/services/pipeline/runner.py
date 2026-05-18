@@ -129,15 +129,26 @@ def _build_allow_set(
 def _make_eligibility_predicate(
     allow_set: Set[Tuple[str, str, str, float, str]],
 ) -> Callable[[Dict[str, Any]], bool]:
+    # 2026-05-18 — canonicalise the row's stat_family before key lookup.
+    # Legacy `mlb_replay_model_outputs` rows still carry the pre-refactor
+    # family token (`"strikeouts"` / `"pitcher_walks"`) while the
+    # eligible_props (from `historical_input.load_props`) emit canonical
+    # tokens (`"batter_strikeouts"` / `"walks_allowed"`). Without this
+    # read-side normalisation every batter_strikeouts / walks_allowed
+    # row would be silently rejected.
+    from services.scoring.canonical_stats import canonical_family
+
     def _pred(row: Dict[str, Any]) -> bool:
         try:
             line = round(float(row.get("line") or 0.0), 2)
         except (TypeError, ValueError):
             return False
+        sport_lc = (row.get("sport") or "mlb").lower()
+        canon_fam = canonical_family(sport_lc, row.get("stat_family"))
         key = (
             str(row.get("event_id") or ""),
             str(row.get("player_name_normalized") or ""),
-            str(row.get("stat_family") or ""),
+            str(canon_fam or ""),
             line,
             (row.get("side") or "").upper(),
         )

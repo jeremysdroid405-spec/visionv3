@@ -63,9 +63,19 @@ SPORT_PP_SIDE_REGISTRY: Dict[str, Dict[str, FrozenSet[str]]] = {
         # registry is the structural baseline only — actual
         # per-snapshot playability is enforced by the live
         # `pp_layer` field when available.
+        # 2026-05-18 — canonical SSOT family names. Legacy aliases
+        # (`pitcher_walks`, `pitcher_hits_allowed`, `pitcher_outs`)
+        # are also registered so the historical fallback resolver
+        # is alias-insensitive — matches the
+        # `canonical_stats._FAMILY_ALIAS` round-trip semantics.
         "pitcher_strikeouts": frozenset({"OVER", "UNDER"}),
-        "pitcher_walks":      frozenset({"OVER", "UNDER"}),
+        "walks_allowed":      frozenset({"OVER", "UNDER"}),
+        "pitcher_walks":      frozenset({"OVER", "UNDER"}),  # legacy alias
+        "hits_allowed":       frozenset({"OVER", "UNDER"}),
+        "pitcher_hits_allowed": frozenset({"OVER", "UNDER"}),  # legacy alias
         "earned_runs":        frozenset({"OVER", "UNDER"}),
+        "pitching_outs":      frozenset({"OVER", "UNDER"}),
+        "pitcher_outs":       frozenset({"OVER", "UNDER"}),  # legacy alias
     },
     "nba": {
         # NBA: PP lists both sides for all of the standard stat

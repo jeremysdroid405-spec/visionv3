@@ -431,13 +431,23 @@ async def replay_date(
     )
 
     # Build {(player, stat_family) → cache_row} for this date
+    # 2026-05-18 — canonicalise the stat_family on the index key so
+    # legacy cache rows written before the canonicalisation refactor
+    # (`stat_family="strikeouts"` / `"pitcher_walks"`) align with the
+    # canonical names emitted by `market_to_stat_family` downstream
+    # (`"batter_strikeouts"` / `"walks_allowed"`). Also stamp the
+    # canonical family back onto the cache_row so every consumer
+    # downstream sees a single SSOT name.
+    from services.scoring.canonical_stats import canonical_family
     cache_idx: Dict[Tuple[str, str], Dict[str, Any]] = {}
     async for c in db.mlb_replay_feature_cache.find(
         {"game_date": replay_date_str,
          "source_version": FEATURE_CACHE_VERSION},
         projection={"_id": 0},
     ):
-        cache_idx[(c["player_name_normalized"], c["stat_family"])] = c
+        canon_fam = canonical_family("mlb", c.get("stat_family"))
+        c["stat_family"] = canon_fam
+        cache_idx[(c["player_name_normalized"], canon_fam)] = c
 
     # ── 2026-05-17 P0 hydration — master_hub extras index ─────────
     # `replay_one` needs platoon/home-away splits and bats_throws,
