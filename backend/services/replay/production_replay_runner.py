@@ -369,6 +369,9 @@ async def run_production_replay(
     serial_override: Optional[str] = None,
     allow_one_sided_for_accuracy_test: bool = False,
     sh_tp_gate_min_override: Optional[float] = None,
+    sh_edge_gate_min_override: Optional[float] = None,
+    sh_hit_rate_gate_min_override: Optional[float] = None,
+    sh_cv_gate_max_override: Optional[float] = None,
 ) -> Dict[str, Any]:
     """End-to-end Phase 2c orchestrator.
 
@@ -530,6 +533,9 @@ async def run_production_replay(
     # threshold dict is NOT mutated; this lowers `tp_gate` post-eval
     # only when caller explicitly supplies the override value.
     tp_gate_override_count = 0
+    edge_gate_override_count = 0
+    hit_rate_gate_override_count = 0
+    cv_gate_override_count = 0
 
     # ── Phase 4 — preload field hydrators (universal gate path) ──────
     book_inventory: Dict[Any, Any] = {}
@@ -685,6 +691,9 @@ async def run_production_replay(
         # SH tp_gate override telemetry per row — defaults to False so
         # the audit stamp is consistent across every code path.
         tp_gate_override_applied_row = False
+        edge_gate_override_applied_row = False
+        hit_rate_gate_override_applied_row = False
+        cv_gate_override_applied_row = False
         if gate_path == "universal":
             # ── Phase 4b — Universal odds-bucket routing ────────────
             # Look up the tier_reference_odds the live path WOULD have
@@ -828,6 +837,60 @@ async def run_production_replay(
                         tp_gate_override_applied_row = True
                         tp_gate_override_count += 1
                         gate_pass = (len(failed) == 0)
+                # ── SH edge_gate min override (HISTORICAL TEST ONLY) ──
+                # Lower `edge_gate.min` floor. Drop edge_gate from
+                # `failed` when actual edge_pct >= override.
+                if (sh_edge_gate_min_override is not None
+                        and tier == "safe_haven"
+                        and "edge_gate" in failed
+                        and gate_result is not None):
+                    e_detail = gate_result.gate_details.get("edge_gate")
+                    if (e_detail is not None
+                            and e_detail.actual is not None
+                            and float(e_detail.actual)
+                                >= float(sh_edge_gate_min_override)):
+                        failed.remove("edge_gate")
+                        edge_gate_override_applied_row = True
+                        edge_gate_override_count += 1
+                        gate_pass = (len(failed) == 0)
+                # ── SH hit_rate_gate min override (TEST ONLY) ──
+                # Lower hit-rate floor. Drop hit_rate_gate when actual
+                # hit rate (in pp) meets the override floor.
+                if (sh_hit_rate_gate_min_override is not None
+                        and tier == "safe_haven"
+                        and "hit_rate_gate" in failed
+                        and gate_result is not None):
+                    hr_detail = gate_result.gate_details.get(
+                        "hit_rate_gate"
+                    )
+                    if (hr_detail is not None
+                            and hr_detail.actual is not None
+                            and float(hr_detail.actual)
+                                >= float(sh_hit_rate_gate_min_override)):
+                        failed.remove("hit_rate_gate")
+                        hit_rate_gate_override_applied_row = True
+                        hit_rate_gate_override_count += 1
+                        gate_pass = (len(failed) == 0)
+                # ── SH cv_gate max override (TEST ONLY) ──
+                # Raise the CV ceiling. Drop cv_gate when actual cv
+                # is at or below the override cap. NOTE: when the
+                # engine swapped cv_gate → margin_gate (line == 0.5),
+                # this knob does NOT apply (margin_gate failures are
+                # left alone — that's a binary-line construct, not a
+                # CV ceiling).
+                if (sh_cv_gate_max_override is not None
+                        and tier == "safe_haven"
+                        and "cv_gate" in failed
+                        and gate_result is not None):
+                    cv_detail = gate_result.gate_details.get("cv_gate")
+                    if (cv_detail is not None
+                            and cv_detail.actual is not None
+                            and float(cv_detail.actual)
+                                <= float(sh_cv_gate_max_override)):
+                        failed.remove("cv_gate")
+                        cv_gate_override_applied_row = True
+                        cv_gate_override_count += 1
+                        gate_pass = (len(failed) == 0)
                 row_gate_cfg_version = _resolve_universal_gate_cfg_version(
                     metrics.stat_family, metrics.side,
                 )
@@ -914,6 +977,28 @@ async def run_production_replay(
         )
         out_doc["tp_gate_override_applied"] = bool(
             tp_gate_override_applied_row
+        )
+        # SH edge / hit_rate / cv override audit fields (test-only).
+        out_doc["edge_gate_override_value"] = (
+            float(sh_edge_gate_min_override)
+            if sh_edge_gate_min_override is not None else None
+        )
+        out_doc["edge_gate_override_applied"] = bool(
+            edge_gate_override_applied_row
+        )
+        out_doc["hit_rate_gate_override_value"] = (
+            float(sh_hit_rate_gate_min_override)
+            if sh_hit_rate_gate_min_override is not None else None
+        )
+        out_doc["hit_rate_gate_override_applied"] = bool(
+            hit_rate_gate_override_applied_row
+        )
+        out_doc["cv_gate_override_value"] = (
+            float(sh_cv_gate_max_override)
+            if sh_cv_gate_max_override is not None else None
+        )
+        out_doc["cv_gate_override_applied"] = bool(
+            cv_gate_override_applied_row
         )
         # Stamp canonical-prop audit on the output doc (canonical path).
         cp_attached_doc = row.get("__canonical_prop__")
@@ -1102,6 +1187,21 @@ async def run_production_replay(
             if sh_tp_gate_min_override is not None else None
         ),
         "tp_gate_override_count": tp_gate_override_count,
+        "sh_edge_gate_min_override": (
+            float(sh_edge_gate_min_override)
+            if sh_edge_gate_min_override is not None else None
+        ),
+        "edge_gate_override_count": edge_gate_override_count,
+        "sh_hit_rate_gate_min_override": (
+            float(sh_hit_rate_gate_min_override)
+            if sh_hit_rate_gate_min_override is not None else None
+        ),
+        "hit_rate_gate_override_count": hit_rate_gate_override_count,
+        "sh_cv_gate_max_override": (
+            float(sh_cv_gate_max_override)
+            if sh_cv_gate_max_override is not None else None
+        ),
+        "cv_gate_override_count": cv_gate_override_count,
         "audit_envelope": audit_envelope,
     }
 
