@@ -368,6 +368,7 @@ async def run_production_replay(
     audit_envelope: Optional[Dict[str, Any]] = None,
     serial_override: Optional[str] = None,
     allow_one_sided_for_accuracy_test: bool = False,
+    sh_tp_gate_min_override: Optional[float] = None,
 ) -> Dict[str, Any]:
     """End-to-end Phase 2c orchestrator.
 
@@ -525,6 +526,10 @@ async def run_production_replay(
     accuracy_bypass_total = 0
     accuracy_bypass_tp_source = 0
     accuracy_bypass_market_structure = 0
+    # SH tp_gate min override telemetry — test-only knob. Production
+    # threshold dict is NOT mutated; this lowers `tp_gate` post-eval
+    # only when caller explicitly supplies the override value.
+    tp_gate_override_count = 0
 
     # ── Phase 4 — preload field hydrators (universal gate path) ──────
     book_inventory: Dict[Any, Any] = {}
@@ -677,6 +682,9 @@ async def run_production_replay(
         # Accuracy-test bypass telemetry per row — empty when no bypass
         # fired (the default for all production code paths).
         accuracy_bypass_gates: List[str] = []
+        # SH tp_gate override telemetry per row — defaults to False so
+        # the audit stamp is consistent across every code path.
+        tp_gate_override_applied_row = False
         if gate_path == "universal":
             # ── Phase 4b — Universal odds-bucket routing ────────────
             # Look up the tier_reference_odds the live path WOULD have
@@ -798,6 +806,28 @@ async def run_production_replay(
                             accuracy_bypass_tp_source += 1
                         if "market_structure_gate" in accuracy_bypass_gates:
                             accuracy_bypass_market_structure += 1
+                # ── SH tp_gate min override (HISTORICAL TEST ONLY) ──
+                # Production threshold dict is NEVER mutated. After the
+                # gate engine evaluates the canonical `tp_gate.min` floor,
+                # if the caller supplied `sh_tp_gate_min_override` AND
+                # we are on the safe_haven tier AND the gate detail's
+                # actual `p_model_pct` clears the override floor, drop
+                # `tp_gate` from `failed` and recompute `gate_pass`.
+                # All other gates remain authoritative.
+                tp_gate_override_applied_row = False
+                if (sh_tp_gate_min_override is not None
+                        and tier == "safe_haven"
+                        and "tp_gate" in failed
+                        and gate_result is not None):
+                    tp_detail = gate_result.gate_details.get("tp_gate")
+                    if (tp_detail is not None
+                            and tp_detail.actual is not None
+                            and float(tp_detail.actual)
+                                >= float(sh_tp_gate_min_override)):
+                        failed.remove("tp_gate")
+                        tp_gate_override_applied_row = True
+                        tp_gate_override_count += 1
+                        gate_pass = (len(failed) == 0)
                 row_gate_cfg_version = _resolve_universal_gate_cfg_version(
                     metrics.stat_family, metrics.side,
                 )
@@ -877,6 +907,14 @@ async def run_production_replay(
         )
         out_doc["accuracy_test_bypass_applied"] = bool(accuracy_bypass_gates)
         out_doc["accuracy_test_bypass_gates"] = list(accuracy_bypass_gates)
+        # SH tp_gate min override audit (test-only).
+        out_doc["tp_gate_override_value"] = (
+            float(sh_tp_gate_min_override)
+            if sh_tp_gate_min_override is not None else None
+        )
+        out_doc["tp_gate_override_applied"] = bool(
+            tp_gate_override_applied_row
+        )
         # Stamp canonical-prop audit on the output doc (canonical path).
         cp_attached_doc = row.get("__canonical_prop__")
         if cp_attached_doc is not None:
@@ -1059,6 +1097,11 @@ async def run_production_replay(
         "accuracy_test_bypass_market_structure_gate": (
             accuracy_bypass_market_structure
         ),
+        "sh_tp_gate_min_override": (
+            float(sh_tp_gate_min_override)
+            if sh_tp_gate_min_override is not None else None
+        ),
+        "tp_gate_override_count": tp_gate_override_count,
         "audit_envelope": audit_envelope,
     }
 

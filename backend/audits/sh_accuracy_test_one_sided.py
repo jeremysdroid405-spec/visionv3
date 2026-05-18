@@ -57,9 +57,12 @@ from services.pipeline import run_pipeline, PIPELINE_VERSION
 
 SPORT = "mlb"
 SNAPSHOT = "2026-05-05T11:00:00Z"
-BASELINE_ID = "MLB-HIST-20260505-1100UTC-00003"
-ACCURACY_ID  = "MLB-HIST-20260505-1100UTC-00004"
+BASELINE_ID = "MLB-HIST-20260505-1100UTC-00005"
+ACCURACY_ID  = "MLB-HIST-20260505-1100UTC-00006"
 TIER = "safe_haven"
+# Test-only SH tp_gate min override (model-probability floor in pp).
+# Production thresholds unchanged. Applied only to the accuracy run.
+SH_TP_GATE_MIN_OVERRIDE = 50.0
 ARTIFACT_PATH = Path(
     "/app/backend/audits/sh_accuracy_test_one_sided.json"
 )
@@ -259,7 +262,7 @@ async def main():
           f"elig_rej={baseline['eligibility_rejects']} "
           f"bypass_total={baseline.get('accuracy_test_bypass_total', 0)}")
 
-    # ── Run accuracy test (one-sided allowed) ──────────────────────
+    # ── Run accuracy test (one-sided allowed + SH tp_gate to 50) ──
     t0 = datetime.now(timezone.utc)
     accuracy = await run_pipeline(
         db, sport=SPORT, mode="historical",
@@ -267,8 +270,10 @@ async def main():
         output_namespace="test",
         test_id=ACCURACY_ID,
         tier=TIER,
-        notes="SH accuracy test — ACCURACY MODE (one-sided allowed)",
+        notes=("SH accuracy test — ACCURACY MODE "
+               "(one-sided allowed; sh_tp_gate_min=50)"),
         allow_one_sided_for_accuracy_test=True,
+        sh_tp_gate_min_override=SH_TP_GATE_MIN_OVERRIDE,
     )
     t_accuracy = (datetime.now(timezone.utc) - t0).total_seconds()
     print(f"[accuracy] done in {t_accuracy:.1f}s — "
@@ -278,7 +283,9 @@ async def main():
           f"elig_rej={accuracy['eligibility_rejects']} "
           f"bypass_total={accuracy.get('accuracy_test_bypass_total', 0)} "
           f"(tp_source={accuracy.get('accuracy_test_bypass_tp_source_gate', 0)}, "
-          f"market_structure={accuracy.get('accuracy_test_bypass_market_structure_gate', 0)})")
+          f"market_structure={accuracy.get('accuracy_test_bypass_market_structure_gate', 0)}) "
+          f"tp_gate_overrides={accuracy.get('tp_gate_override_count', 0)} "
+          f"(sh_tp_gate_min={accuracy.get('sh_tp_gate_min_override')})")
 
     # ── Load both serials' outputs and grade ───────────────────────
     baseline_rows = await _load_outputs(db, baseline["serial"])
@@ -375,6 +382,7 @@ async def main():
         },
         "accuracy": {
             "serial": accuracy["serial"],
+            "sh_tp_gate_min_override_applied": SH_TP_GATE_MIN_OVERRIDE,
             "run_summary": {
                 k: accuracy.get(k) for k in (
                     "rows_scanned", "rows_qualified",
@@ -386,6 +394,8 @@ async def main():
                     "accuracy_test_bypass_total",
                     "accuracy_test_bypass_tp_source_gate",
                     "accuracy_test_bypass_market_structure_gate",
+                    "sh_tp_gate_min_override",
+                    "tp_gate_override_count",
                 )
             },
             "cards_in_db": accuracy_card_n,

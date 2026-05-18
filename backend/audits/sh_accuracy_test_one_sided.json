@@ -1,13 +1,13 @@
 {
   "audit_kind": "sh_accuracy_test_one_sided",
-  "generated_at_iso": "2026-05-18T03:16:59.200309+00:00",
+  "generated_at_iso": "2026-05-18T03:35:43.687399+00:00",
   "snapshot": "2026-05-05T11:00:00Z",
   "tier": "safe_haven",
   "pipeline_version": "universal_pipeline_v1_phase_b_2026_05_17",
-  "elapsed_s_baseline": 3.14,
-  "elapsed_s_accuracy": 2.97,
+  "elapsed_s_baseline": 3.09,
+  "elapsed_s_accuracy": 2.95,
   "baseline": {
-    "serial": "MLB-HIST-20260505-1100UTC-00003",
+    "serial": "MLB-HIST-20260505-1100UTC-00005",
     "run_summary": {
       "rows_scanned": 4181,
       "rows_qualified": 0,
@@ -100,7 +100,8 @@
     }
   },
   "accuracy": {
-    "serial": "MLB-HIST-20260505-1100UTC-00004",
+    "serial": "MLB-HIST-20260505-1100UTC-00006",
+    "sh_tp_gate_min_override_applied": 50.0,
     "run_summary": {
       "rows_scanned": 4181,
       "rows_qualified": 8,
@@ -117,7 +118,9 @@
       "accuracy_test_mode_active": true,
       "accuracy_test_bypass_total": 73,
       "accuracy_test_bypass_tp_source_gate": 73,
-      "accuracy_test_bypass_market_structure_gate": 0
+      "accuracy_test_bypass_market_structure_gate": 0,
+      "sh_tp_gate_min_override": 50.0,
+      "tp_gate_override_count": 15
     },
     "cards_in_db": 7,
     "breakdown": {
