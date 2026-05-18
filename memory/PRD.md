@@ -6,6 +6,24 @@ Restructure React/FastAPI betting app to a 100% Local-First Database Model with 
 **ACTIVE DIRECTIVE: PROP VISION STABILIZATION PLAN**
 Freeze all feature/UI work until the system is permanently stabilized via the 6-phase plan.
 
+
+## Latest Status (2026-05-17)
+- ✅ Fix 1 DONE: `strikeouts → batter_strikeouts` alias normalized in `_MLB_STAT_TO_FAMILY` (`canonical_stats.py`) so elite-binary override fires on the correct stat family.
+- ✅ Fix 2 DONE: `production_replay_runner._project_layer3_to_output` call-site now stamps the 7 missing SSOT fields onto every `mlb_test_outputs` doc (`tp`, `tp_source`, `edge_pct`, `is_alternate_market`, `devig_method`, `canonical_edge`, `gate_failed_reasons`). 100 % coverage for the always-known fields; canonical-derived TP fields populate on every row the gate engine actually evaluated (correctly None on `tier_odds_bucket_fail` short-circuits). No threshold/gate behaviour changed.
+
+## P0 backlog (in order)
+1. **Phase C — Universal Pipeline live-mode byte-identical regression** vs current production tier endpoints.
+2. **Admin Endpoints for Replay** — trigger universal runner from UI; no Python scripts.
+3. **Google/Apple OAuth** (Emergent-managed) — frozen, awaits user go-ahead.
+4. **Stripe payments** — frozen, awaits user go-ahead.
+
+## P1 backlog
+- Retire legacy NBA replay (`vk2_historical.py`, `engine.py`) via `NBAReplayAdapter` on the universal runner.
+- NFL config scaffold for universal pipeline.
+- Decompose `Dashboard.jsx` (2,000+ lines).
+- Propagate `event_id` / `commence_time` / `game_date` onto replay cards.
+
+
 ## Universal Production Replay Harness (2026-05-17)
 
 Sport-agnostic harness that runs historical data through the **same code paths the live production pipeline uses**, with provider-injected inputs to make every read deterministic and audit-pinned.

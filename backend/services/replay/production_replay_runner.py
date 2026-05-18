@@ -658,6 +658,14 @@ async def run_production_replay(
         ref_odds_for_row: Optional[int] = None
         ref_book_for_row: Optional[str] = None
         routed_tier_for_row: Optional[str] = None
+        # Fix 2 (2026-05-17): pre-declare so the post-projection stamp
+        # block can safely reference these on every code path (legacy_wz,
+        # routing short-circuit, universal-pass). `metrics` and
+        # `gate_result` remain None when no gate engine ran (e.g.
+        # tier_odds_bucket_fail short-circuit), in which case the audit
+        # stamp leaves the relevant fields None.
+        metrics = None
+        gate_result = None
         if gate_path == "universal":
             # ── Phase 4b — Universal odds-bucket routing ────────────
             # Look up the tier_reference_odds the live path WOULD have
@@ -754,6 +762,60 @@ async def run_production_replay(
             out_doc["tier_reference_odds"] = ref_odds_for_row
             out_doc["tier_reference_book"] = ref_book_for_row
             out_doc["routed_tier"] = routed_tier_for_row
+        # Fix 2 (2026-05-17) — Stamp the SSOT decision metrics on every
+        # output doc so post-hoc audits don't see `None` for fields the
+        # gate engine actually evaluated against. NO threshold or gate
+        # behavior changes — this is a pure output-mapping fix.
+        #   • tp                 — pp scale (0-100), post-canonical override
+        #   • tp_source          — "devig" | "one_sided" | None
+        #   • edge_pct           — pp scale (0-100), as seen by gates
+        #   • is_alternate_market — bool, mirrors metrics.is_alt
+        #   • devig_method        — canonical devig method ("same_book" |
+        #                           "cross_book" | "one_sided" | None)
+        #   • canonical_edge      — pp edge using the canonical TP
+        #                           (metrics.tp − implied_pp), only when
+        #                           canonical_path attached the prop
+        #   • gate_failed_reasons — {gate_type: reason_code} for every
+        #                           gate that failed (from gate_details)
+        if metrics is not None:
+            out_doc["tp"] = metrics.tp
+            out_doc["tp_source"] = metrics.tp_source
+            out_doc["edge_pct"] = metrics.edge_pct
+            out_doc["is_alternate_market"] = (
+                bool(metrics.is_alt) if metrics.is_alt is not None
+                else bool(row.get("is_alternate"))
+            )
+        else:
+            out_doc["tp"] = None
+            out_doc["tp_source"] = None
+            out_doc["edge_pct"] = None
+            out_doc["is_alternate_market"] = bool(row.get("is_alternate"))
+        # devig_method default (None for non-canonical); overwritten in
+        # the canonical block below when cp_attached_doc is present.
+        out_doc["devig_method"] = None
+        # canonical_edge — only meaningful when canonical path computed
+        # the canonical TP into metrics.tp.
+        out_doc["canonical_edge"] = None
+        if (metrics is not None
+                and row.get("__canonical_prop__") is not None
+                and metrics.tp is not None
+                and row.get("odds") is not None):
+            implied_pp = _american_to_implied(int(row["odds"])) * 100.0
+            out_doc["canonical_edge"] = round(
+                float(metrics.tp) - float(implied_pp), 4
+            )
+        # gate_failed_reasons — {gate_type: reason_code} per failed gate.
+        if gate_result is not None:
+            out_doc["gate_failed_reasons"] = {
+                gt: (d.reason_code if d is not None else None)
+                for gt, d in gate_result.gate_details.items()
+                if d is not None and not d.passed
+            }
+        else:
+            # legacy_wz path or short-circuit: surface the failed gate
+            # names as keys with None reason codes so the schema field
+            # is always present in audits.
+            out_doc["gate_failed_reasons"] = {gt: None for gt in failed}
         # Stamp canonical-prop audit on the output doc (canonical path).
         cp_attached_doc = row.get("__canonical_prop__")
         if cp_attached_doc is not None:

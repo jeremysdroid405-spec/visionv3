@@ -1,5 +1,50 @@
 # Changelog
 
+## 2026-05-17 — Fix 2: Test output field mappings (production_replay_runner)
+
+**Goal:** Stop SSOT decision metrics from showing `None` in
+`mlb_test_outputs` for rows the gate engine actually evaluated.
+Pure output-mapping change. **No gate/threshold behaviour modified.**
+
+**Change:**
+- `services/replay/production_replay_runner.py` —
+  pre-declared `metrics = None` / `gate_result = None` so every
+  code path (legacy_wz, universal-pass, tier_odds_bucket short-circuit)
+  reaches the same stamp block. Added a single deterministic stamp
+  block after `_project_layer3_to_output` that persists:
+    • `tp`                   ← `metrics.tp` (post canonical override)
+    • `tp_source`            ← `metrics.tp_source`
+    • `edge_pct`             ← `metrics.edge_pct`
+    • `is_alternate_market`  ← `metrics.is_alt` (falls back to row flag)
+    • `devig_method`         ← `None`, overwritten by canonical block
+    • `canonical_edge`       ← `metrics.tp − implied_pp` (canonical only)
+    • `gate_failed_reasons`  ← `{gate_type: reason_code}` for every
+                                failed gate via `gate_result.gate_details`
+- Rows short-circuited via `tier_odds_bucket_fail` correctly carry
+  `tp/tp_source/edge_pct/canonical_edge = None` (no metrics built).
+- `gate_failed_reasons` is always a dict (non-canonical / legacy_wz
+  rows use `{gt: None for gt in failed}` so the schema field
+  is never absent in audits).
+
+**Verification — Phase B 3-tier sweep on `MLB-HIST-20260505-1100UTC-00002`:**
+- Total SH outputs: 4181
+- `is_alternate_market` populated: 100 %
+- `devig_method` populated:        100 % (canonical attaches every row)
+- `gate_failed_reasons` populated: 100 %
+- `tp / tp_source / edge_pct / canonical_edge` populated: 2.5 %
+  (103 / 4181 — exactly the rows that passed the tier-bucket router
+  and reached the gate engine; the other 4078 short-circuited via
+  `tier_odds_bucket_fail` BEFORE metric build — correct behaviour).
+- SH passing count: 0 (unchanged from pre-fix — Fix 2 is mapping-only).
+- FL passing count: 37 (unchanged) — 20 cards displayed.
+- WZ passing count: 1 (unchanged) — 1 card displayed.
+
+**Audit artifacts:**
+- `/app/backend/audits/phase_b_finalize_3tier_2026_05_05.json`
+- `/app/backend/audits/fix2_verify_output_mapping.py`
+
+
+
 ## 2026-05-17 — Phase B Finalisation: multi-tier runner + pytest coverage + NBA scaffold
 
 **Goal:** Close the Phase B universal runner gaps without touching
