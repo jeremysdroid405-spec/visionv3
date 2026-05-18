@@ -147,6 +147,12 @@ def _actual_for(
     pdoc = actuals.get(player_norm)
     if not pdoc:
         return None
+    # 2026-05-18 — read-side normalisation: legacy rows can carry
+    # `stat_family="strikeouts"` / `"pitcher_walks"` from before the
+    # canonical-name fix. Resolve via the SSOT before the field
+    # lookup so old + new data behave identically.
+    from services.scoring.canonical_stats import canonical_family
+    stat_family = canonical_family("mlb", stat_family)
     field = _STAT_FIELD_MAP.get(stat_family, stat_family)
     if field in pdoc:
         return pdoc[field]

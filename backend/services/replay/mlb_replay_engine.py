@@ -39,7 +39,7 @@ from services.mlb_high_friction_model import MLBHighFrictionModel
 from services.replay.mlb_feature_cache import (
     SOURCE_VERSION as FEATURE_CACHE_VERSION,
     _STAT_FIELD_MAP, _PITCHER_FAMILIES,
-    market_to_stat_family,
+    market_to_stat_family, family_to_model_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -152,7 +152,13 @@ def _build_player_dict(cache_row: Dict[str, Any],
 
 
 def _build_game_logs(cache_row: Dict[str, Any]) -> List[Dict[str, Any]]:
-    field = _STAT_FIELD_MAP[cache_row["stat_family"]]
+    # 2026-05-18 — normalize legacy stat_family strings (e.g.
+    # `"strikeouts"` → `"batter_strikeouts"`) before the lookup.
+    # Fresh cache writes already emit canonical names; this protects
+    # legacy `mlb_replay_feature_cache` rows from pre-fix runs.
+    from services.scoring.canonical_stats import canonical_family
+    fam = canonical_family("mlb", cache_row["stat_family"])
+    field = _STAT_FIELD_MAP.get(fam, fam)
     logs = []
     stat_vals = cache_row.get("stat_values") or []
     pa_vals = cache_row.get("pa_values") or []
@@ -225,8 +231,18 @@ def replay_one(
     values and produced inflated μ (Olson 7.8 vs live 2.25). See
     `audits/PATH_A_TASK_2_OLSON_DIVERGENCE.md`.
     """
-    stat_family = cache_row["stat_family"]
-    if stat_family not in model.feature_cols:
+    # 2026-05-18 — read-side normalisation for legacy cache rows.
+    from services.scoring.canonical_stats import canonical_family
+    stat_family = canonical_family("mlb", cache_row["stat_family"])
+    # 2026-05-18 — translate canonical family → model artifact key.
+    # The MLB-HF model pkl was trained with legacy family keys
+    # (`strikeouts`, `pitcher_walks`, `hits_allowed`, `hits+runs+rbis`).
+    # `_STAT_FAMILY_MAP` now emits canonical tokens downstream so the
+    # audit / gate / output layer sees ONE consistent name. This
+    # translator is the ONLY place where the legacy keys still
+    # surface, and only for the duration of model lookups.
+    model_family = family_to_model_key(stat_family)
+    if model_family not in model.feature_cols:
         return None
     line = odds_row.get("line")
     if line is None:
@@ -274,7 +290,7 @@ def replay_one(
     opp_throws_val = cache_row.get("opp_pitcher_throws")
 
     feats = model._build_friction_features(  # noqa: SLF001
-        player, game_logs, stat_family,
+        player, game_logs, model_family,
         opponent=opp, park_team=park_team, dk_odds=None, line=line_f,
         statcast_features=(sc_self if not is_pitcher_fam else None),
         pitcher_statcast_features=(sc_self if is_pitcher_fam else None),
@@ -288,14 +304,14 @@ def replay_one(
     if feats is None:
         return None
 
-    cols = model.feature_cols[stat_family]
+    cols = model.feature_cols[model_family]
     X = pd.DataFrame([feats])
     for c in cols:
         if c not in X.columns:
             X[c] = 0
     X = X[cols].fillna(0)
-    Xs = model.scalers[stat_family].transform(X)
-    raw_pred = float(model.models[stat_family].predict(Xs)[0])
+    Xs = model.scalers[model_family].transform(X)
+    raw_pred = float(model.models[model_family].predict(Xs)[0])
     park_factor = float(feats.get("park_factor", 1.0))
     mu = raw_pred * park_factor
     sigma = float(feats.get("std_dev_l10", 0.0))

@@ -1,5 +1,101 @@
 # Changelog
 
+## 2026-05-18 — Stat-family canonicalisation across the universal pipeline
+
+**Problem:** Three separate registries were emitting different
+`stat_family` tokens for the same market:
+  • `services/replay/mlb_feature_cache._STAT_FAMILY_MAP` wrote
+    `"strikeouts"`, `"pitcher_walks"`, `"pitcher_hits_allowed"`,
+    `"pitcher_outs"` (raw market-key derivations).
+  • `services/scoring/canonical_stats` SSOT had the canonical names
+    `"batter_strikeouts"`, `"walks_allowed"`, `"hits_allowed"`,
+    `"pitching_outs"`.
+  • `scripts/odds_api_backfill/sport_markets._MLB_FAMILY` used
+    uppercase tokens (`HITS`, `K`, `WALKS`) — a third namespace.
+
+Downstream consequence: `mlb_test_outputs` rows carried legacy
+family names so the stat-family-segmented grid search reported
+several spec families as `"no_pool"`. Gate-override allow-lists
+and audit tools had to compensate per call site.
+
+**Fix (pure plumbing — NO production threshold / live gate changes):**
+
+1. `services/scoring/canonical_stats.py` — added two public helpers:
+   - `market_to_family(sport, market_key)` — single resolver:
+     `market_key` → canonical family token. Composes
+     `canonical_stat_type` + `stat_family`, idempotent on
+     already-canonical input, strips `_alternate` suffix.
+   - `canonical_family(sport, family_or_alias)` — read-side
+     normaliser used by every downstream caller that reads
+     `stat_family` from DB rows that may predate this fix.
+   - Internal `_FAMILY_ALIAS` table rebuilt on every
+     `register_sport(...)` so adding a registry alias automatically
+     propagates to every consumer. Aliases registered: `"strikeouts"`
+     → `"batter_strikeouts"`; `"pitcher_walks"` → `"walks_allowed"`.
+
+2. `services/replay/mlb_feature_cache.py` — `_STAT_FAMILY_MAP` now
+   emits the canonical SSOT tokens:
+     • `batter_strikeouts → batter_strikeouts` (was `strikeouts`)
+     • `pitcher_walks    → walks_allowed`     (was `pitcher_walks`)
+     • `pitcher_hits_allowed → hits_allowed`  (was `pitcher_hits_allowed`)
+     • `pitcher_outs        → pitching_outs`  (was `pitcher_outs`)
+   `_STAT_FIELD_MAP` and `_PITCHER_FAMILIES` rebuilt with matching
+   canonical keys.
+
+3. **Model-boundary translator** —
+   `mlb_feature_cache.family_to_model_key(family)` translates the
+   canonical token to the legacy key the MLB-HF model pkl expects
+   (the trained artifact still has `feature_cols` keyed by
+   `"strikeouts"`, `"pitcher_walks"`, `"hits_allowed"`,
+   `"hits+runs+rbis"`, `"pitcher_outs"`). This is the ONLY place
+   legacy keys still surface, and only for the duration of model
+   `.feature_cols[...] / .scalers[...] / .models[...]` lookups.
+   `services/replay/mlb_replay_engine.py` updated to call
+   `family_to_model_key(stat_family)` before every model index.
+
+4. **Read-side rescue for legacy DB rows** —
+   `mlb_replay_engine._build_game_logs`, `_predict_one`, and
+   `mlb_replay_gate_eval._actual_for` all call
+   `canonical_family("mlb", stat_family)` so legacy cached rows
+   resolve to the same code paths fresh canonical rows take. The
+   grid-search tool's `Candidate` loader does the same on read.
+
+**Regression tests** — `tests/canonical_stats/test_canonicalisation.py`
+(57 tests, all passing):
+  - `canonical_family` alias resolution incl. case-insensitive, empty,
+    strict-mode raise, unknown-sport pass-through.
+  - `market_to_family` per-market parametric coverage incl.
+    `_alternate` suffix, idempotency, legacy alias rescue, unknown
+    market → `_default`.
+  - `_STAT_FAMILY_MAP` / `_STAT_FIELD_MAP` / `_PITCHER_FAMILIES`
+    use canonical names only (drift detector).
+  - `family_to_model_key` round-trips legacy keys; canonical →
+    legacy translation per family.
+  - SSOT-consistency test: `market_to_family` and the cache layer's
+    `market_to_stat_family` MUST agree for every input.
+  - End-to-end legacy-row rescue: `_actual_for` and
+    `_build_game_logs` correctly resolve `stat_family="strikeouts"`
+    and `"pitcher_walks"`.
+  - Sport-agnostic guard: unknown sports pass through without raise.
+
+**Existing test suites** — `tests/pipeline/` (43) +
+`tests/market_structure_policy/` — all still pass. **Total: 100/100.**
+
+**Smoke test** — re-ran MLB SH on 2026-05-05T11:00Z post-fix:
+scanned=3829, qualified=6, cards=5, W/L=5/0, ROI=11.3 % — **byte-
+identical** to the pre-fix SH run. No behavioural drift.
+
+**Out of scope (intentional, separate task):**
+- `scripts/odds_api_backfill/sport_markets._MLB_FAMILY` (third
+  registry, uppercase) — only used by the offline odds-API backfill
+  job, not the replay/test write path. Worth consolidating but doesn't
+  affect the audit/grid pipeline.
+- Backfill of existing `mlb_test_outputs` rows to canonical names —
+  legacy rows continue to resolve correctly via `canonical_family`
+  on read; explicit DB backfill is optional.
+
+
+
 ## 2026-05-17 — Historical accuracy-test flag: `allow_one_sided_for_accuracy_test`
 
 **Scope:** Historical replay / test runs ONLY. **No production-serving

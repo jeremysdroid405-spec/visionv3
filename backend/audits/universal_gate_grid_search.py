@@ -232,12 +232,18 @@ def _row_to_candidate(r: Dict[str, Any], *,
     book_count = (cp_over if side == "OVER" else cp_under)
     if book_count is None:
         book_count = r.get("canonical_book_count_either_side")
+    # 2026-05-18 — canonicalise stat_family on read so legacy DB rows
+    # (`"strikeouts"` / `"pitcher_walks"`) align with fresh canonical
+    # writes (`"batter_strikeouts"` / `"walks_allowed"`).
+    from services.scoring.canonical_stats import canonical_family
+    stat_fam_raw = str(r.get("stat_family") or "")
+    stat_fam = canonical_family(sport, stat_fam_raw) if stat_fam_raw else ""
     return Candidate(
         test_id=test_id, sport=sport, snapshot_iso=snapshot_iso,
         game_date=str(r.get("game_date") or "")[:10],
         event_id=str(r.get("event_id") or ""),
         player=str(r.get("player_name_normalized") or ""),
-        stat_family=str(r.get("stat_family") or ""),
+        stat_family=stat_fam,
         side=side,
         market=str(r.get("market") or ""),
         line=float(line) if isinstance(line, (int, float)) else 0.0,

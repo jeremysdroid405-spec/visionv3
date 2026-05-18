@@ -66,6 +66,15 @@ _REGISTRY: Dict[str, SportStatRegistry] = {}
 _REGISTRY_LOCK = RLock()
 _MISS_COUNTERS: Dict[str, int] = defaultdict(int)
 
+# Read-side family-alias normalization. When historical/legacy rows emit
+# `stat_family="strikeouts"` or `"pitcher_walks"`, downstream callers
+# (gate engine, grid-search audits, output writers) should still resolve
+# these to the same canonical family that fresh writes emit. The
+# registry is the source of truth; this mapping is rebuilt on every
+# `register_sport(...)` from `stat_to_family` so any alias added to
+# the registry automatically propagates.
+_FAMILY_ALIAS: Dict[str, Dict[str, str]] = {}  # sport -> alias -> canonical
+
 
 def _norm(s: Optional[str]) -> str:
     return (s or "").strip().lower()
@@ -111,12 +120,39 @@ def register_sport(
 
     with _REGISTRY_LOCK:
         _REGISTRY[sport_key] = reg
+        # Rebuild family alias table: every unique canonical family in
+        # `stat_to_family.values()` maps to itself, and every alias key
+        # in `stat_to_family.keys()` whose value differs from the key
+        # is recorded as `alias -> canonical`. This is the single
+        # source of read-side normalization (`canonical_family()`).
+        _FAMILY_ALIAS[sport_key] = _build_family_alias(reg)
     logger.info(
         f"[STAT_REGISTRY] registered sport={sport_key!r} "
         f"markets={len(reg.market_to_stat)} families={len(reg.stat_to_family)} "
         f"models={len(reg.stat_to_model)} displays={len(reg.stat_to_display)}"
     )
     return reg
+
+
+def _build_family_alias(reg: SportStatRegistry) -> Dict[str, str]:
+    """Build alias→canonical map from the registered `stat_to_family`.
+
+    Each canonical family value (e.g. `"batter_strikeouts"`) maps to
+    itself. Each `stat_to_family` key whose value is the canonical
+    becomes an alias for it (e.g. `"strikeouts"` →
+    `"batter_strikeouts"`). The mechanically-normalised form (lowercase
+    + spaces→underscores) of every key also points to the same
+    canonical, so legacy lowercase rows resolve correctly.
+    """
+    out: Dict[str, str] = {}
+    for fam in set(reg.stat_to_family.values()):
+        out[_norm(fam)] = fam
+    for key, fam in reg.stat_to_family.items():
+        norm_key = _norm(key)
+        mech = norm_key.replace(" ", "_")
+        out.setdefault(norm_key, fam)
+        out.setdefault(mech, fam)
+    return out
 
 
 # ----------------------------------------------------------------------
@@ -190,6 +226,91 @@ def stat_family(
         raise StatFamilyMissError(f"{sport}:{stat_type}")
     logger.error(msg)
     return "_default"
+
+
+def market_to_family(
+    sport: str, market_key: Optional[str], *, strict: bool = False
+) -> str:
+    """One-shot resolver — market_key → canonical stat family.
+
+    Composes `canonical_stat_type` + `stat_family` so callers never
+    have to do it themselves. THIS is the function every writer
+    (normalizer, feature cache, replay engine, output projector)
+    should call to stamp `stat_family` on a row.
+
+    Idempotent: handing in an already-canonical family also returns
+    the same family (via the alias table).
+    """
+    if not market_key:
+        return "_default"
+    sport_key = _norm(sport)
+    # 1) market_key → canonical stat_type (handles `_alternate` suffix
+    #    via the registry's market list which carries both variants).
+    stat_t = canonical_stat_type(sport, market_key)
+    # 2) canonical stat_type → family.
+    fam = stat_family(sport, stat_t, strict=False)
+    if fam != "_default":
+        return fam
+    # 3) Legacy fallback: the input might already BE a family name
+    #    (or an alias of one). Read-side normalization rescues it.
+    alias = _FAMILY_ALIAS.get(sport_key, {}).get(_norm(market_key))
+    if alias is not None:
+        return alias
+    # 4) Strip `_alternate` suffix and retry mechanically — matches
+    #    the legacy `scripts/odds_api_backfill/sport_markets.py`
+    #    contract. Idempotent for anything already canonical.
+    raw = _norm(market_key)
+    if raw.endswith("_alternate"):
+        raw = raw[: -len("_alternate")]
+    rescued = _FAMILY_ALIAS.get(sport_key, {}).get(raw)
+    if rescued is not None:
+        return rescued
+    _MISS_COUNTERS[sport_key] += 1
+    msg = (
+        f"[STAT_REGISTRY_MISS] market_to_family sport={sport!r} "
+        f"market_key={market_key!r} — no family resolved; "
+        f"returning _default"
+    )
+    if strict:
+        logger.error(msg)
+        raise StatFamilyMissError(f"{sport}:{market_key}")
+    logger.error(msg)
+    return "_default"
+
+
+def canonical_family(
+    sport: str, family_or_alias: Optional[str], *, strict: bool = False
+) -> str:
+    """Resolve a (possibly legacy / aliased) stat-family value to its
+    canonical form for THIS sport.
+
+    Use this at READ time anywhere downstream consumes a stored
+    `stat_family` value that might predate the canonicalisation fix.
+    Examples handled:
+      • `"strikeouts"`     → `"batter_strikeouts"` (MLB)
+      • `"pitcher_walks"`  → `"walks_allowed"`     (MLB)
+      • `"Hits"` / `"hits"` / `"HITS"` → `"hits"`  (case-insensitive)
+      • Already-canonical input → returned unchanged.
+
+    Falls back to the input (preserving caller casing) when the sport
+    isn't registered. Never raises unless `strict=True` and the
+    family is unrecognised.
+    """
+    if not family_or_alias:
+        return family_or_alias or ""
+    aliases = _FAMILY_ALIAS.get(_norm(sport))
+    if aliases is None:
+        return family_or_alias
+    norm = _norm(family_or_alias)
+    if norm in aliases:
+        return aliases[norm]
+    mech = norm.replace(" ", "_")
+    if mech in aliases:
+        return aliases[mech]
+    if strict:
+        raise StatFamilyMissError(f"{sport}:{family_or_alias}")
+    return family_or_alias
+
 
 
 def model_key(sport: str, stat_type: Optional[str]) -> Optional[str]:
@@ -465,6 +586,12 @@ _MLB_STAT_TO_FAMILY: Dict[str, str] = {
     # patches. `pitcher_strikeouts` is intentionally NOT aliased; it
     # is a structurally distinct family.
     "strikeouts":         "batter_strikeouts",
+    # 2026-05-18 — Bare-name alias for the pitcher walks-allowed family.
+    # Historical replay rows emit `stat_family="pitcher_walks"` (the
+    # raw Odds API market key), but the canonical family token is
+    # `walks_allowed`. Registering the alias here lets `canonical_family`
+    # normalize old-data reads consistently.
+    "pitcher_walks":      "walks_allowed",
     "pitcher strikeouts": "pitcher_strikeouts",
     "walks allowed":      "walks_allowed",
     "hits allowed":       "hits_allowed",
@@ -509,6 +636,8 @@ __all__ = [
     "register_sport",
     "canonical_stat_type",
     "stat_family",
+    "market_to_family",
+    "canonical_family",
     "model_key",
     "display_label",
     "markets_for_sport",

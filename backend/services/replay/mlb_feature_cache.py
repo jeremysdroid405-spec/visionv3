@@ -61,19 +61,25 @@ DEFAULT_MEM_LIMIT_MB = 1_500
 WINDOW_DEPTH = 30  # cache 30 most-recent games for any stat family
 
 
-# ── Market → stat-family map (mirrors production canonical_stats) ─────
+# ── Market → stat-family map (mirrors canonical_stats SSOT) ─────────
+# 2026-05-18: canonical names ONLY. `batter_strikeouts` and
+# `walks_allowed` here match the canonical_stats registry so the
+# entire downstream pipeline (gate engine, audit tools, output writer)
+# sees ONE family token per stat. Legacy values stored in
+# `mlb_replay_feature_cache` from before this fix should be backfilled
+# OR normalized on read via `canonical_stats.canonical_family`.
 _STAT_FAMILY_MAP: Dict[str, str] = {
     "batter_hits":              "hits",
     "batter_total_bases":       "total_bases",
     "batter_runs_scored":       "runs",
     "batter_rbis":              "rbis",
     "batter_hits_runs_rbis":    "hits_runs_rbis",
-    "batter_strikeouts":        "strikeouts",
+    "batter_strikeouts":        "batter_strikeouts",  # ← was "strikeouts"
     "pitcher_strikeouts":       "pitcher_strikeouts",
-    "pitcher_hits_allowed":     "pitcher_hits_allowed",
-    "pitcher_walks":            "pitcher_walks",
+    "pitcher_hits_allowed":     "hits_allowed",       # ← matches SSOT
+    "pitcher_walks":            "walks_allowed",      # ← was "pitcher_walks"
     "pitcher_earned_runs":      "earned_runs",
-    "pitcher_outs":             "pitcher_outs",
+    "pitcher_outs":             "pitching_outs",     # ← matches SSOT
 }
 
 
@@ -84,28 +90,58 @@ def market_to_stat_family(market: str) -> Optional[str]:
     return _STAT_FAMILY_MAP.get(market)
 
 
-# Statcast field name lookup for hit-rate computation. Mirrors the
-# production model's `STAT_FIELD_MAP`.
+# Statcast field name lookup for hit-rate computation. Keys MUST match
+# canonical family tokens emitted by `_STAT_FAMILY_MAP` above so the
+# replay engine's `cache_row["stat_family"]` lookup hits without a
+# second translation step.
 _STAT_FIELD_MAP: Dict[str, str] = {
     "hits": "hits",
     "total_bases": "total_bases",
     "runs": "runs",
     "rbis": "rbis",
     "hits_runs_rbis": "hits_runs_rbis",
-    "strikeouts": "strikeouts",
+    "batter_strikeouts": "strikeouts",        # ← key renamed
     "pitcher_strikeouts": "pitcher_strikeouts",
-    "pitcher_hits_allowed": "pitcher_hits_allowed",
-    "pitcher_walks": "pitcher_walks",
+    "hits_allowed": "pitcher_hits_allowed",   # ← SSOT family name
+    "walks_allowed": "pitcher_walks",         # ← key renamed; statcast col stays
     "earned_runs": "earned_runs",
-    "pitcher_outs": "outs_recorded",  # MLB box: pitcher_outs is "outs"
+    "pitching_outs": "outs_recorded",  # MLB box: pitching_outs is "outs"
 }
 
 
 # Pitcher families derived from pitcher rows, not batter logs.
+# 2026-05-18 — names match canonical family tokens (SSOT registry).
 _PITCHER_FAMILIES = {
-    "pitcher_strikeouts", "pitcher_hits_allowed", "pitcher_walks",
-    "earned_runs", "pitcher_outs",
+    "pitcher_strikeouts", "hits_allowed", "walks_allowed",
+    "earned_runs", "pitching_outs",
 }
+
+
+# ── Canonical family → MLB-HF model artifact key ───────────────────
+# The trained model pkl was indexed under legacy keys (`strikeouts`,
+# `pitcher_walks`, `hits_allowed`, `hits+runs+rbis`). The
+# `_STAT_FAMILY_MAP` above now emits canonical family tokens
+# downstream. THIS map ONLY translates at the model-call boundary
+# (replay engine → `model.feature_cols[<key>]` / `model.models[<key>]` /
+# `model.scalers[<key>]`). It is NOT used for any audit/test path.
+# The day the model is re-trained with canonical keys this map can
+# go away.
+_CANONICAL_FAMILY_TO_MODEL_KEY: Dict[str, str] = {
+    "batter_strikeouts": "strikeouts",
+    "walks_allowed":     "pitcher_walks",
+    "hits_allowed":      "hits_allowed",
+    "hits_runs_rbis":    "hits+runs+rbis",
+    "pitching_outs":     "pitcher_outs",
+    # All other canonical families are byte-identical to model keys.
+}
+
+
+def family_to_model_key(family: Optional[str]) -> Optional[str]:
+    """Translate a canonical family token to the legacy key the MLB-HF
+    model artifact expects. Idempotent: legacy keys round-trip."""
+    if not family:
+        return family
+    return _CANONICAL_FAMILY_TO_MODEL_KEY.get(family, family)
 
 
 _PUNCT_RE = re.compile(r"[^a-z0-9 ]")
