@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026-05-18 (later) — `disable_all_gates_for_accuracy_test` kwarg + SH zero-gates audit
+
+**New kwarg:** `disable_all_gates_for_accuracy_test` (HISTORICAL TEST
+ONLY) threaded through `run_pipeline` → `run_production_replay`.
+When True, after the gate engine evaluates, EVERY gate failure is
+dropped from `failed` and `gate_pass` is forced True. Each bypassed
+gate is stamped on the output doc's `accuracy_test_bypass_gates`
+for audit. The `tier_odds_bucket_fail` short-circuit (BEFORE the
+gate engine) is NOT affected — tier-routing remains the only
+filter so "Safe Haven candidate pool" still means "props whose
+canonical best price ≤ -300". Production thresholds untouched.
+
+**CLI:** `audits/universal_gate_grid_search_by_stat_family.py
+--disable-all-gates`.
+
+**Safe Haven zero-gates audit (2026-05-03 → 2026-05-15).**
+- Full prop list dumped to
+  `audits/sh_no_gates_full_prop_list_2026-05-03_2026-05-15_*.csv`
+  — **1,883 SH-routed props** across 13 days.
+- Per stat-family: pitcher_strikeouts=565, batter_strikeouts=421,
+  total_bases=350, hits=296, runs=130, earned_runs=121
+  (`hits_runs_rbis`, `rbis`, `pitcher_hits_allowed`, `pitcher_walks`,
+  `stolen_bases`, `batter_walks` remain `no_pool` — separate
+  feature-cache backfill task).
+- Per-date counts range 41-251 (2026-05-11 thin day = 41 props;
+  2026-05-14 fat day = 251 props).
+- Gate-filtering delta vs the previous gated SH sweep:
+  • `batter_strikeouts` graded 367 → **382** (+15)
+  • `pitcher_strikeouts` graded 493 → **522** (+29)
+  • `earned_runs` graded 91 → **112** (+21)
+  • `hits` / `total_bases` / `runs` unchanged.
+  → ~65 props across 3 families were being rejected by structural
+  gates (`direction`, `market_structure`, `book_count`, `market_trap`).
+- Recommended-combo ROI/HR essentially unchanged because the
+  combos key off HR20/CV/TP, not `gate_pass`.
+
+
+
 ## 2026-05-18 (afternoon) — P1: MLB actuals backfill + universal grid sweep 2026-05-03 → 05-15
 
 **Backfill (P1).**

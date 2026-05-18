@@ -218,6 +218,7 @@ def _side_compare(rows: List[Candidate]) -> Dict[str, Any]:
 async def _build_tier_pool(
         db, *, sport: str, tier: str,
         dates: List[str], snapshot_time: str,
+        disable_all_gates_for_accuracy_test: bool = False,
 ) -> Tuple[List[Candidate], List[Dict[str, Any]]]:
     """Build the WHOLE-tier candidate pool across all dates. One
     pipeline pass per (date) via the existing base-tool builder."""
@@ -232,6 +233,9 @@ async def _build_tier_pool(
                 test_id=(f"GSS-{sport.upper()}-"
                           f"{d_iso.replace('-','')}-"
                           f"{tier.upper()[:4]}-POOL"),
+                disable_all_gates_for_accuracy_test=(
+                    disable_all_gates_for_accuracy_test
+                ),
             )
         except Exception as exc:  # noqa: BLE001
             print(f"  [pool][{tier}][{d_iso}][ERROR] {exc!r}")
@@ -321,6 +325,7 @@ async def run_sweep(
         allow_one_sided: bool = True,
         min_graded_sample_size: int = 50,
         max_combinations: int = 250,
+        disable_all_gates_for_accuracy_test: bool = False,
         artifact_dir: Path = Path("/app/backend/audits"),
 ) -> Dict[str, Any]:
     client = AsyncIOMotorClient(os.environ["MONGO_URL"])
@@ -336,6 +341,7 @@ async def run_sweep(
     print(f"  snapshot={snapshot_time}  allow_one_sided={allow_one_sided}")
     print(f"  min_graded={min_graded_sample_size}  "
           f"max_combos={max_combinations} (per stat-family)")
+    print(f"  disable_all_gates={disable_all_gates_for_accuracy_test}")
     print(f"  pipeline={PIPELINE_VERSION}")
     print(f"{'='*82}")
 
@@ -347,6 +353,9 @@ async def run_sweep(
         pool, summaries = await _build_tier_pool(
             db, sport=sport, tier=tier,
             dates=dates, snapshot_time=snapshot_time,
+            disable_all_gates_for_accuracy_test=(
+                disable_all_gates_for_accuracy_test
+            ),
         )
         pool_by_tier[tier] = pool
         pool_summaries[tier] = summaries
@@ -667,6 +676,13 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--allow-one-sided", action="store_true", default=True)
     p.add_argument("--min-graded-sample-size", type=int, default=50)
     p.add_argument("--max-combinations", type=int, default=250)
+    p.add_argument("--disable-all-gates", action="store_true",
+                    default=False,
+                    help=("TEST ONLY: drop EVERY gate failure after the "
+                          "engine eval and force gate_pass=True. The "
+                          "tier_odds_bucket_fail routing short-circuit "
+                          "still applies — pool stays scoped to the "
+                          "target tier."))
     return p.parse_args()
 
 
@@ -681,6 +697,7 @@ async def _main():
         allow_one_sided=args.allow_one_sided,
         min_graded_sample_size=args.min_graded_sample_size,
         max_combinations=args.max_combinations,
+        disable_all_gates_for_accuracy_test=args.disable_all_gates,
     )
 
 

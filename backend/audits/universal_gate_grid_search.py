@@ -595,6 +595,7 @@ async def _build_candidate_pool(
         sport: str, tier: str,
         snapshot_iso: str, game_date: str,
         test_id: str,
+        disable_all_gates_for_accuracy_test: bool = False,
 ) -> Tuple[List[Candidate], Dict[str, Any]]:
     """Run ONE permissive pipeline pass and read back the rows.
 
@@ -602,9 +603,15 @@ async def _build_candidate_pool(
     to admit every eligible canonical row that survives structural
     gates. `allow_one_sided_for_accuracy_test=True` so one-sided
     props enter the pool. Production thresholds are NOT mutated.
+
+    When `disable_all_gates_for_accuracy_test=True`, EVERY gate
+    failure is dropped after the engine eval and `gate_pass` is
+    forced to True. The `tier_odds_bucket_fail` short-circuit is
+    NOT affected — rows that route to a different tier still get
+    rejected (otherwise "Safe Haven candidate pool" would be
+    meaningless). Used to enumerate the complete set of props
+    within the tier's odds bucket with zero gate filtering.
     """
-    # Permissive values — broad enough to clear any real candidate
-    # while still requiring the actual signed metric to exist.
     summary = await run_pipeline(
         db, sport=sport, mode="historical",
         snapshot_time=snapshot_iso,
@@ -617,6 +624,9 @@ async def _build_candidate_pool(
         sh_edge_gate_min_override=-1000.0,
         sh_hit_rate_gate_min_override=0.0,
         sh_cv_gate_max_override=1000.0,
+        disable_all_gates_for_accuracy_test=(
+            disable_all_gates_for_accuracy_test
+        ),
     )
     serial = summary["serial"]
     rows: List[Candidate] = []

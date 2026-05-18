@@ -1,0 +1,12 @@
+tier,stat_family,status,recommended_combo,n_pool,graded_n,ungraded_n,wins,losses,pushes,HR,HR_ci95_low,HR_ci95_high,ROI,ROI_ci95_low,ROI_ci95_high,P_and_L,balanced_score,devig_grd,devig_roi,onesided_std_grd,onesided_std_roi,over_grd,over_roi,under_grd,under_roi,daily_consistency_score,daily_graded_days,outlier_top1_pct_of_net,outlier_top5_pct_of_net,is_outlier_dependent,corr_hr20_vs_profit,corr_edge_vs_profit,corr_cv_vs_profit,corr_tp_vs_profit,artifact_json
+safe_haven,pitcher_strikeouts,ok,HR20=90 TP=65,565,159,16,152,7,0,95.6,91.19,97.85,2.0,-1.83,5.18,3.1796,0.87,0,,159,2.0,159,2.0,0,,0.667,12,9.68,42.84,False,0.025,0.1702,-0.0094,0.0791,/app/backend/audits/gss_mlb_safe_haven_pitcher_strikeouts_2026-05-03_2026-05-15_20260518T163429.json
+safe_haven,batter_strikeouts,ok,HR20=85 CV<==1.0,421,75,10,61,14,0,81.33,71.07,88.54,1.09,-10.46,11.02,0.8164,0.7104,0,,75,1.09,75,1.09,0,,0.615,13,38.64,190.01,True,0.0022,0.0627,0.0879,0.03,/app/backend/audits/gss_mlb_safe_haven_batter_strikeouts_2026-05-03_2026-05-15_20260518T163429.json
+safe_haven,hits,ok,HR20=70 TP=65,296,23,3,19,4,0,82.61,62.86,93.02,6.91,-15.44,24.06,1.5888,0.6975,0,,23,6.91,23,6.91,0,,0.5,8,20.98,104.9,True,0.0035,0.0445,0.0075,0.1266,/app/backend/audits/gss_mlb_safe_haven_hits_2026-05-03_2026-05-15_20260518T163429.json
+safe_haven,total_bases,ok,HR20=75 TP=70,350,21,3,15,6,0,71.43,50.04,86.19,-6.97,-32.06,17.98,-1.4644,0.4057,0,,21,-6.97,21,-6.97,0,,0.444,9,-22.76,-112.85,False,-0.0876,0.0174,0.0952,0.1176,/app/backend/audits/gss_mlb_safe_haven_total_bases_2026-05-03_2026-05-15_20260518T163429.json
+safe_haven,earned_runs,ok,HR20=50 CV<==1.0,121,68,6,43,25,0,63.24,51.36,73.7,-22.1,-36.45,-7.86,-15.0284,0.3655,0,,68,-22.1,68,-22.1,0,,0.25,12,-2.13,-10.38,False,-0.0271,0.0525,-0.0921,0.0192,/app/backend/audits/gss_mlb_safe_haven_earned_runs_2026-05-03_2026-05-15_20260518T163429.json
+safe_haven,hits_runs_rbis,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+safe_haven,rbis,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+safe_haven,pitcher_hits_allowed,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+safe_haven,pitcher_walks,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+safe_haven,stolen_bases,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+safe_haven,batter_walks,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

@@ -372,6 +372,7 @@ async def run_production_replay(
     sh_edge_gate_min_override: Optional[float] = None,
     sh_hit_rate_gate_min_override: Optional[float] = None,
     sh_cv_gate_max_override: Optional[float] = None,
+    disable_all_gates_for_accuracy_test: bool = False,
 ) -> Dict[str, Any]:
     """End-to-end Phase 2c orchestrator.
 
@@ -894,6 +895,27 @@ async def run_production_replay(
                 row_gate_cfg_version = _resolve_universal_gate_cfg_version(
                     metrics.stat_family, metrics.side,
                 )
+                # ── ALL-GATES bypass (HISTORICAL TEST ONLY) ────────
+                # When `disable_all_gates_for_accuracy_test=True`, drop
+                # EVERY gate failure from `failed` (after the engine
+                # has already populated `gate_result.gate_details` for
+                # audit) and force `gate_pass=True`. The `tier_odds_bucket_fail`
+                # short-circuit ABOVE this block is NOT affected —
+                # rows that route to a different tier still get
+                # rejected (otherwise "Safe Haven candidate pool"
+                # would be meaningless). Used to enumerate the
+                # complete set of props within the tier's odds
+                # bucket with zero gate filtering.
+                if disable_all_gates_for_accuracy_test:
+                    if failed:
+                        # stamp every failure on accuracy_bypass_gates
+                        # so the output doc audit shows exactly which
+                        # gates were bypassed for this row.
+                        for g in list(failed):
+                            if g not in accuracy_bypass_gates:
+                                accuracy_bypass_gates.append(g)
+                        failed = []
+                    gate_pass = True
         else:
             gate_pass, failed = mlb_layer4_evaluate_gates(row) \
                 if adapter.SPORT == "mlb" else (False, ["unsupported_sport"])
