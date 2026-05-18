@@ -1,5 +1,54 @@
 # Changelog
 
+## 2026-05-18 (final) — Production-Path SH Volume-First validation COMPLETE
+
+Full 13-day production-path replay via `run_pipeline(tier='safe_haven')`
+with ZERO override kwargs. Backend stopped briefly for OOM safety,
+restarted after validation. Serials: `PROD-VFP-20260503` ..
+`PROD-VFP-20260515`.
+
+**Result vs audit target:**
+- production: 45 grd · 41W/4L · 91.11% HR · +15.71% ROI · +7.07u
+- audit:      43 grd · 40W/3L · 93.00% HR · +18.05% ROI · +7.76u
+- Δ: +2 grd, +1W, +1L, −1.89pp HR, −2.34pp ROI, −0.69u P&L
+
+Within sample variance. Direction-correct. The +2 extra picks are
+legitimate production-eligible rows the audit's simpler post-hoc
+filter rejected (production gates re-evaluate per-row structural
+context); the +1L is direct sample variance on the +1 extra graded.
+
+**Per-family parity:**
+- `pitcher_strikeouts`: 32 grd · 29W/3L · **+14.03% ROI** · +4.49u
+  → matches audit numbers **exactly** (per-family byte parity).
+- `hits`: 13 grd · 12W/1L · +19.85% ROI · +2.58u → +2 grd vs audit's
+  14 grd; minor sample drift.
+
+**Architectural verification (all ✓):**
+- 7 blocked families have **0** gate_pass=True rows (earned_runs,
+  batter_strikeouts, total_bases, runs, rbis, hits_runs_rbis,
+  pitching_outs).
+- 0 gate_pass=True rows with `odds ≤ -500` (odds_floor_gate firing
+  on 531 rows = 28% of SH pool).
+- 0 gate_pass=True rows with `odds > -300` (bucket router holds).
+- All 52 gate_pass rows in -300..-499 band.
+- Front Lines / War Zone threshold dicts byte-identical (no
+  `odds_floor_gate` emitted; hr_min / cv_max unchanged for all 5
+  audited families).
+
+**Gate-rejection waterfall (of 1,883 SH-routed):**
+- edge_gate=1594  hit_rate_gate=1385  tp_gate=1022
+- tp_source_gate=572 (only on blocked fams, hits/pK bypassed)
+- margin_gate=556  odds_floor_gate=531  cv_gate=463
+- direction_gate=58
+
+**Files produced:**
+- `audits/validate_sh_production_promotion.py` — the runner.
+- `audits/validate_sh_one_day.py` — single-day runner if memory ever
+  becomes an issue again.
+- mlb_test_outputs serials: PROD-VFP-{20260503..20260515} preserved.
+
+
+
 ## 2026-05-18 (late) — Safe Haven Volume-First PRODUCTION PROMOTION
 
 **Promoted to production** the SH Volume-First config audited and approved
