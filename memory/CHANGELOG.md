@@ -1,5 +1,92 @@
 # Changelog
 
+## 2026-05-17 — Historical accuracy-test flag: `allow_one_sided_for_accuracy_test`
+
+**Scope:** Historical replay / test runs ONLY. **No production-serving
+behaviour touched.** No live gates touched. No routing changes.
+No threshold tuning. Sportsbook ROI settlement unchanged (per-row
+American odds still drive `grade_outcome`).
+
+**New parameter (wired through both layers):**
+- `services/replay/production_replay_runner.run_production_replay(..., allow_one_sided_for_accuracy_test: bool = False)`
+- `services/pipeline/runner.run_pipeline(..., allow_one_sided_for_accuracy_test: bool = False)`
+  (passed through to both single-tier and multi-tier paths)
+
+**Behaviour when `True`:**
+After `evaluate_tier_with_overrides(metrics)` returns, IF
+`metrics.tp_source == "one_sided"`, the runner drops the following
+from `gate_result.failed_gates` (and recomputes `gate_pass`):
+  1. `tp_source_gate` — purpose: enforce `tp_source == "devig"`.
+  2. `market_structure_gate` — ONLY when its threshold rules
+     include `{"tp_source": "one_sided"}` (i.e. the alt
+     one-sided structural reject). Inspected via
+     `gate_details["market_structure_gate"].threshold.reject_when`
+     so PP-illegal / other structural rules added later won't be
+     accidentally bypassed.
+
+What is **NOT** bypassed:
+  • `apply_production_eligibility` (PP-illegal sides, non-playable
+    props, missing-odds rejections) — still runs in full.
+  • `hit_rate_gate`, `cv_gate`, `tp_gate`, `edge_gate`,
+    `direction_gate`, `margin_gate`, `projection_gate`,
+    `market_trap_gate`, `vision_score_gate` — all still active.
+  • Routing — `tier_odds_bucket_fail` short-circuit still fires.
+  • Canonical engine — best-price routing, devig, book counts
+    unchanged.
+  • Card builder + grading — unchanged.
+
+**Output-doc audit fields (always stamped):**
+  • `accuracy_test_mode_active` — bool, mirrors the flag.
+  • `accuracy_test_bypass_applied` — bool, true only when this
+    row's bypass actually fired.
+  • `accuracy_test_bypass_gates`  — list of gate names bypassed
+    (subset of `{"tp_source_gate", "market_structure_gate"}`).
+
+**Summary-doc counters:**
+  • `accuracy_test_bypass_total`
+  • `accuracy_test_bypass_tp_source_gate`
+  • `accuracy_test_bypass_market_structure_gate`
+
+**Audit harness `audits/sh_accuracy_test_one_sided.py`:**
+Runs BASELINE + ACCURACY on the same snapshot back-to-back, then
+produces a JSON breakdown:
+  1. SH candidates before/after
+  2. SH qualified before/after
+  3. displayed cards
+  4. W/L/P
+  5. Hit-rate %
+  6. ROI % (using per-row sportsbook American odds)
+  7. Per-bucket performance: `devig` / `one_sided` /
+     `one_sided_std` / `one_sided_alt`
+  8. Top-10 losing archetypes by `(stat_family, side)`
+  9. JSON artifact: `audits/sh_accuracy_test_one_sided.json`
+
+**First-run results — `MLB-HIST-20260505-1100UTC-00003 vs 00004`:**
+
+| Metric | Baseline | Accuracy | Δ |
+|---|---|---|---|
+| SH candidates | 103 | 103 | 0 |
+| SH qualified | 0 | 8 | +8 |
+| Cards | 0 | 7 | +7 |
+| W/L/P | 0/0/0 | 5/0/0 (3 ungraded) | — |
+| Hit-rate | — | 100.0 % | — |
+| ROI (actual odds) | — | +11.3 % | — |
+| `tp_source_gate` bypasses | 0 | 73 | — |
+| `market_structure_gate` bypasses | 0 | 0 | — |
+
+- All 8 qualified rows = `one_sided_std`; 0 alt one-sided present.
+- `devig` bucket: 30 cand, 0 qual in BOTH runs — production policy
+  is NOT the reason devig fails on this slate (other gates are).
+- Per-archetype on accuracy run:
+    `pitcher_strikeouts OVER` 4 W, +0.4048 u (ROI 10.12 %)
+    `earned_runs OVER`        1 W, +0.16 u  (ROI 16.0 %)
+    `strikeouts OVER`         3 ungraded — actuals lookup miss
+                              (likely a stat-family name mismatch in
+                              the actuals dict; needs a follow-up
+                              audit, decoupled from this fix).
+
+
+
 ## 2026-05-17 — Fix 2: Test output field mappings (production_replay_runner)
 
 **Goal:** Stop SSOT decision metrics from showing `None` in

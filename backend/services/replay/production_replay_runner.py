@@ -367,6 +367,7 @@ async def run_production_replay(
     eligibility_predicate: Optional[Any] = None,
     audit_envelope: Optional[Dict[str, Any]] = None,
     serial_override: Optional[str] = None,
+    allow_one_sided_for_accuracy_test: bool = False,
 ) -> Dict[str, Any]:
     """End-to-end Phase 2c orchestrator.
 
@@ -517,6 +518,13 @@ async def run_production_replay(
     wins = losses = pushes = ungraded = 0
     stake_total = profit_total = 0.0
     rss_peak = rss0
+    # Accuracy-test telemetry — counts per bypass type. Only populated
+    # when `allow_one_sided_for_accuracy_test=True`. Stamped on the
+    # summary so the caller can audit how many rows actually had a
+    # bypass applied without re-querying the outputs collection.
+    accuracy_bypass_total = 0
+    accuracy_bypass_tp_source = 0
+    accuracy_bypass_market_structure = 0
 
     # ── Phase 4 — preload field hydrators (universal gate path) ──────
     book_inventory: Dict[Any, Any] = {}
@@ -666,6 +674,9 @@ async def run_production_replay(
         # stamp leaves the relevant fields None.
         metrics = None
         gate_result = None
+        # Accuracy-test bypass telemetry per row — empty when no bypass
+        # fired (the default for all production code paths).
+        accuracy_bypass_gates: List[str] = []
         if gate_path == "universal":
             # ── Phase 4b — Universal odds-bucket routing ────────────
             # Look up the tier_reference_odds the live path WOULD have
@@ -744,6 +755,49 @@ async def run_production_replay(
                 gate_result = evaluate_tier_with_overrides(metrics)
                 gate_pass = bool(gate_result.passed)
                 failed = list(gate_result.failed_gates)
+                # ── Accuracy-test bypass (HISTORICAL ONLY) ───────────
+                # When the caller explicitly sets
+                # `allow_one_sided_for_accuracy_test=True`, drop the
+                # gates whose entire purpose is to enforce "must have
+                # devig / must not be one_sided alt" from `failed`,
+                # so we can measure raw model accuracy on one-sided
+                # props. PP-illegality, non-playable, missing-odds
+                # rejections happen UPSTREAM in `apply_production_eligibility`
+                # — they are NOT affected by this flag. All other gates
+                # (hit_rate, cv, edge, tp, direction, margin, projection,
+                # market_trap, vision_score) remain active.
+                if (allow_one_sided_for_accuracy_test
+                        and metrics.tp_source == "one_sided"):
+                    if "tp_source_gate" in failed:
+                        failed.remove("tp_source_gate")
+                        accuracy_bypass_gates.append("tp_source_gate")
+                    # `market_structure_gate` can hold multiple
+                    # reject rules. Only bypass when this run's
+                    # rejection was specifically the one_sided rule
+                    # (inspected via the gate detail's threshold dict).
+                    ms_detail = gate_result.gate_details.get(
+                        "market_structure_gate"
+                    )
+                    if (ms_detail is not None
+                            and not ms_detail.passed
+                            and "market_structure_gate" in failed):
+                        thr = ms_detail.threshold or {}
+                        rules = (
+                            thr.get("reject_when")
+                            if isinstance(thr, dict) else None
+                        ) or {}
+                        if rules.get("tp_source") == "one_sided":
+                            failed.remove("market_structure_gate")
+                            accuracy_bypass_gates.append(
+                                "market_structure_gate"
+                            )
+                    if accuracy_bypass_gates:
+                        gate_pass = (len(failed) == 0)
+                        accuracy_bypass_total += 1
+                        if "tp_source_gate" in accuracy_bypass_gates:
+                            accuracy_bypass_tp_source += 1
+                        if "market_structure_gate" in accuracy_bypass_gates:
+                            accuracy_bypass_market_structure += 1
                 row_gate_cfg_version = _resolve_universal_gate_cfg_version(
                     metrics.stat_family, metrics.side,
                 )
@@ -816,6 +870,13 @@ async def run_production_replay(
             # names as keys with None reason codes so the schema field
             # is always present in audits.
             out_doc["gate_failed_reasons"] = {gt: None for gt in failed}
+        # Accuracy-test mode audit fields — always stamped so callers
+        # can filter outputs by mode without re-querying the run doc.
+        out_doc["accuracy_test_mode_active"] = bool(
+            allow_one_sided_for_accuracy_test
+        )
+        out_doc["accuracy_test_bypass_applied"] = bool(accuracy_bypass_gates)
+        out_doc["accuracy_test_bypass_gates"] = list(accuracy_bypass_gates)
         # Stamp canonical-prop audit on the output doc (canonical path).
         cp_attached_doc = row.get("__canonical_prop__")
         if cp_attached_doc is not None:
@@ -992,6 +1053,12 @@ async def run_production_replay(
             CANONICAL_ENGINE_VERSION if canonical_path else None
         ),
         "canonical_summary": canonical_summary if canonical_path else None,
+        "accuracy_test_mode_active": bool(allow_one_sided_for_accuracy_test),
+        "accuracy_test_bypass_total": accuracy_bypass_total,
+        "accuracy_test_bypass_tp_source_gate": accuracy_bypass_tp_source,
+        "accuracy_test_bypass_market_structure_gate": (
+            accuracy_bypass_market_structure
+        ),
         "audit_envelope": audit_envelope,
     }
 

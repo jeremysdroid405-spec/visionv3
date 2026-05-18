@@ -1,0 +1,237 @@
+{
+  "audit_kind": "sh_accuracy_test_one_sided",
+  "generated_at_iso": "2026-05-18T03:16:59.200309+00:00",
+  "snapshot": "2026-05-05T11:00:00Z",
+  "tier": "safe_haven",
+  "pipeline_version": "universal_pipeline_v1_phase_b_2026_05_17",
+  "elapsed_s_baseline": 3.14,
+  "elapsed_s_accuracy": 2.97,
+  "baseline": {
+    "serial": "MLB-HIST-20260505-1100UTC-00003",
+    "run_summary": {
+      "rows_scanned": 4181,
+      "rows_qualified": 0,
+      "eligibility_rejects": 1185,
+      "cards_displayed": 0,
+      "wins": 0,
+      "losses": 0,
+      "pushes": 0,
+      "ungraded": 0,
+      "hit_rate_pct": 0.0,
+      "roi_pct": 0.0,
+      "profit_units": 0.0,
+      "stake_units": 0.0,
+      "accuracy_test_mode_active": false,
+      "accuracy_test_bypass_total": 0,
+      "accuracy_test_bypass_tp_source_gate": 0,
+      "accuracy_test_bypass_market_structure_gate": 0
+    },
+    "cards_in_db": 0,
+    "breakdown": {
+      "accuracy_mode": false,
+      "sh_candidates": 103,
+      "sh_qualified": 0,
+      "overall": {
+        "n": 0,
+        "wins": 0,
+        "losses": 0,
+        "pushes": 0,
+        "ungraded": 0,
+        "hit_rate_pct": null,
+        "roi_pct": null,
+        "profit_units": 0.0,
+        "stake_units": 0.0
+      },
+      "by_bucket": {
+        "devig": {
+          "candidates": 30,
+          "qualified": 0,
+          "n": 0,
+          "wins": 0,
+          "losses": 0,
+          "pushes": 0,
+          "ungraded": 0,
+          "hit_rate_pct": null,
+          "roi_pct": null,
+          "profit_units": 0.0,
+          "stake_units": 0.0
+        },
+        "one_sided": {
+          "candidates": 73,
+          "qualified": 0,
+          "n": 0,
+          "wins": 0,
+          "losses": 0,
+          "pushes": 0,
+          "ungraded": 0,
+          "hit_rate_pct": null,
+          "roi_pct": null,
+          "profit_units": 0.0,
+          "stake_units": 0.0
+        },
+        "one_sided_std": {
+          "candidates": 73,
+          "qualified": 0,
+          "n": 0,
+          "wins": 0,
+          "losses": 0,
+          "pushes": 0,
+          "ungraded": 0,
+          "hit_rate_pct": null,
+          "roi_pct": null,
+          "profit_units": 0.0,
+          "stake_units": 0.0
+        },
+        "one_sided_alt": {
+          "candidates": 0,
+          "qualified": 0,
+          "n": 0,
+          "wins": 0,
+          "losses": 0,
+          "pushes": 0,
+          "ungraded": 0,
+          "hit_rate_pct": null,
+          "roi_pct": null,
+          "profit_units": 0.0,
+          "stake_units": 0.0
+        }
+      },
+      "top_losing_archetypes": []
+    }
+  },
+  "accuracy": {
+    "serial": "MLB-HIST-20260505-1100UTC-00004",
+    "run_summary": {
+      "rows_scanned": 4181,
+      "rows_qualified": 8,
+      "eligibility_rejects": 1185,
+      "cards_displayed": 7,
+      "wins": 5,
+      "losses": 0,
+      "pushes": 0,
+      "ungraded": 3,
+      "hit_rate_pct": 100.0,
+      "roi_pct": 11.3,
+      "profit_units": 0.5648,
+      "stake_units": 5.0,
+      "accuracy_test_mode_active": true,
+      "accuracy_test_bypass_total": 73,
+      "accuracy_test_bypass_tp_source_gate": 73,
+      "accuracy_test_bypass_market_structure_gate": 0
+    },
+    "cards_in_db": 7,
+    "breakdown": {
+      "accuracy_mode": true,
+      "sh_candidates": 103,
+      "sh_qualified": 8,
+      "overall": {
+        "n": 8,
+        "wins": 5,
+        "losses": 0,
+        "pushes": 0,
+        "ungraded": 3,
+        "hit_rate_pct": 100.0,
+        "roi_pct": 11.3,
+        "profit_units": 0.5648,
+        "stake_units": 5.0
+      },
+      "by_bucket": {
+        "devig": {
+          "candidates": 30,
+          "qualified": 0,
+          "n": 0,
+          "wins": 0,
+          "losses": 0,
+          "pushes": 0,
+          "ungraded": 0,
+          "hit_rate_pct": null,
+          "roi_pct": null,
+          "profit_units": 0.0,
+          "stake_units": 0.0
+        },
+        "one_sided": {
+          "candidates": 73,
+          "qualified": 8,
+          "n": 8,
+          "wins": 5,
+          "losses": 0,
+          "pushes": 0,
+          "ungraded": 3,
+          "hit_rate_pct": 100.0,
+          "roi_pct": 11.3,
+          "profit_units": 0.5648,
+          "stake_units": 5.0
+        },
+        "one_sided_std": {
+          "candidates": 73,
+          "qualified": 8,
+          "n": 8,
+          "wins": 5,
+          "losses": 0,
+          "pushes": 0,
+          "ungraded": 3,
+          "hit_rate_pct": 100.0,
+          "roi_pct": 11.3,
+          "profit_units": 0.5648,
+          "stake_units": 5.0
+        },
+        "one_sided_alt": {
+          "candidates": 0,
+          "qualified": 0,
+          "n": 0,
+          "wins": 0,
+          "losses": 0,
+          "pushes": 0,
+          "ungraded": 0,
+          "hit_rate_pct": null,
+          "roi_pct": null,
+          "profit_units": 0.0,
+          "stake_units": 0.0
+        }
+      },
+      "top_losing_archetypes": [
+        {
+          "stat_family": "strikeouts",
+          "side": "OVER",
+          "wins": 0,
+          "losses": 0,
+          "pushes": 0,
+          "decided": 0,
+          "hit_rate_pct": null,
+          "profit_units": 0.0,
+          "stake_units": 0.0,
+          "roi_pct": null
+        },
+        {
+          "stat_family": "earned_runs",
+          "side": "OVER",
+          "wins": 1,
+          "losses": 0,
+          "pushes": 0,
+          "decided": 1,
+          "hit_rate_pct": 100.0,
+          "profit_units": 0.16,
+          "stake_units": 1.0,
+          "roi_pct": 16.0
+        },
+        {
+          "stat_family": "pitcher_strikeouts",
+          "side": "OVER",
+          "wins": 4,
+          "losses": 0,
+          "pushes": 0,
+          "decided": 4,
+          "hit_rate_pct": 100.0,
+          "profit_units": 0.4048,
+          "stake_units": 4.0,
+          "roi_pct": 10.12
+        }
+      ]
+    }
+  },
+  "deltas": {
+    "sh_candidates": 0,
+    "sh_qualified": 8,
+    "cards": 7
+  }
+}

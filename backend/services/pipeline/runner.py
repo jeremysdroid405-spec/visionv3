@@ -158,6 +158,7 @@ async def run_pipeline(
     canonical_path: bool = True,
     dry_run: bool = False,
     notes: Optional[str] = None,
+    allow_one_sided_for_accuracy_test: bool = False,
 ) -> Dict[str, Any]:
     """Run one universal pipeline pass.
 
@@ -212,6 +213,9 @@ async def run_pipeline(
             game_date=game_date,
             canonical_path=canonical_path,
             dry_run=dry_run, notes=notes,
+            allow_one_sided_for_accuracy_test=(
+                allow_one_sided_for_accuracy_test
+            ),
         )
 
     # ── Multi-tier path: provider + eligibility computed ONCE ───
@@ -283,6 +287,9 @@ async def run_pipeline(
             serial_override=per_tier_test_id,
             dry_run=dry_run,
             notes=notes or f"Universal pipeline run {per_tier_test_id}",
+            allow_one_sided_for_accuracy_test=(
+                allow_one_sided_for_accuracy_test
+            ),
         )
         envelope["stage_counts"]["cards_written"] = summary.get(
             "cards_displayed", 0
@@ -318,6 +325,7 @@ def _tier_code(tier: str) -> str:
 async def _run_one_tier(
     db, *, sport, mode, snapshot_time, output_namespace, test_id,
     tier, game_date, canonical_path, dry_run, notes,
+    allow_one_sided_for_accuracy_test: bool = False,
 ) -> Dict[str, Any]:
     """Pre-existing single-tier orchestrator (verbatim — keeps Phase
     B validation byte-identical). The new multi-tier path above
@@ -422,6 +430,7 @@ async def _run_one_tier(
         serial_override=test_id,
         dry_run=dry_run,
         notes=notes or f"Universal pipeline run {test_id}",
+        allow_one_sided_for_accuracy_test=allow_one_sided_for_accuracy_test,
     )
 
     # Stamp final card_count back into the envelope for completeness.
