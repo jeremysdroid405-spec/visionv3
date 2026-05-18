@@ -219,6 +219,10 @@ async def _build_tier_pool(
         db, *, sport: str, tier: str,
         dates: List[str], snapshot_time: str,
         disable_all_gates_for_accuracy_test: bool = False,
+        sh_tp_gate_min_override: float = 0.0,
+        sh_edge_gate_min_override: float = -1000.0,
+        sh_hit_rate_gate_min_override: float = 0.0,
+        sh_cv_gate_max_override: float = 1000.0,
 ) -> Tuple[List[Candidate], List[Dict[str, Any]]]:
     """Build the WHOLE-tier candidate pool across all dates. One
     pipeline pass per (date) via the existing base-tool builder."""
@@ -236,6 +240,12 @@ async def _build_tier_pool(
                 disable_all_gates_for_accuracy_test=(
                     disable_all_gates_for_accuracy_test
                 ),
+                sh_tp_gate_min_override=sh_tp_gate_min_override,
+                sh_edge_gate_min_override=sh_edge_gate_min_override,
+                sh_hit_rate_gate_min_override=(
+                    sh_hit_rate_gate_min_override
+                ),
+                sh_cv_gate_max_override=sh_cv_gate_max_override,
             )
         except Exception as exc:  # noqa: BLE001
             print(f"  [pool][{tier}][{d_iso}][ERROR] {exc!r}")
@@ -326,6 +336,10 @@ async def run_sweep(
         min_graded_sample_size: int = 50,
         max_combinations: int = 250,
         disable_all_gates_for_accuracy_test: bool = False,
+        sh_tp_gate_min_override: float = 0.0,
+        sh_edge_gate_min_override: float = -1000.0,
+        sh_hit_rate_gate_min_override: float = 0.0,
+        sh_cv_gate_max_override: float = 1000.0,
         artifact_dir: Path = Path("/app/backend/audits"),
 ) -> Dict[str, Any]:
     client = AsyncIOMotorClient(os.environ["MONGO_URL"])
@@ -342,6 +356,10 @@ async def run_sweep(
     print(f"  min_graded={min_graded_sample_size}  "
           f"max_combos={max_combinations} (per stat-family)")
     print(f"  disable_all_gates={disable_all_gates_for_accuracy_test}")
+    print(f"  sh_tp_min={sh_tp_gate_min_override}  "
+          f"sh_edge_min={sh_edge_gate_min_override}  "
+          f"sh_hr_min={sh_hit_rate_gate_min_override}  "
+          f"sh_cv_max={sh_cv_gate_max_override}")
     print(f"  pipeline={PIPELINE_VERSION}")
     print(f"{'='*82}")
 
@@ -356,6 +374,12 @@ async def run_sweep(
             disable_all_gates_for_accuracy_test=(
                 disable_all_gates_for_accuracy_test
             ),
+            sh_tp_gate_min_override=sh_tp_gate_min_override,
+            sh_edge_gate_min_override=sh_edge_gate_min_override,
+            sh_hit_rate_gate_min_override=(
+                sh_hit_rate_gate_min_override
+            ),
+            sh_cv_gate_max_override=sh_cv_gate_max_override,
         )
         pool_by_tier[tier] = pool
         pool_summaries[tier] = summaries
@@ -683,6 +707,14 @@ def _parse_args() -> argparse.Namespace:
                           "tier_odds_bucket_fail routing short-circuit "
                           "still applies — pool stays scoped to the "
                           "target tier."))
+    p.add_argument("--sh-tp-gate-min", type=float, default=0.0,
+                    help="SH TP-gate floor (default 0.0 = bypassed).")
+    p.add_argument("--sh-edge-gate-min", type=float, default=-1000.0,
+                    help="SH edge-gate floor pp (default -1000 = bypassed).")
+    p.add_argument("--sh-hit-rate-gate-min", type=float, default=0.0,
+                    help="SH hit-rate-gate floor pct 0-100 (default 0 = bypassed).")
+    p.add_argument("--sh-cv-gate-max", type=float, default=1000.0,
+                    help="SH CV-gate ceiling (default 1000 = bypassed).")
     return p.parse_args()
 
 
@@ -698,6 +730,10 @@ async def _main():
         min_graded_sample_size=args.min_graded_sample_size,
         max_combinations=args.max_combinations,
         disable_all_gates_for_accuracy_test=args.disable_all_gates,
+        sh_tp_gate_min_override=args.sh_tp_gate_min,
+        sh_edge_gate_min_override=args.sh_edge_gate_min,
+        sh_hit_rate_gate_min_override=args.sh_hit_rate_gate_min,
+        sh_cv_gate_max_override=args.sh_cv_gate_max,
     )
 
 

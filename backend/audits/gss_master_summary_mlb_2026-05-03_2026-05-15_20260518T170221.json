@@ -1,0 +1,363 @@
+{
+  "audit_kind": "stat_family_grid_search_master",
+  "generated_at_iso": "2026-05-18T17:03:25.729519+00:00",
+  "sport": "mlb",
+  "tiers": [
+    "safe_haven"
+  ],
+  "stat_families_requested": [
+    "hits",
+    "hits_runs_rbis",
+    "total_bases",
+    "runs",
+    "rbis",
+    "batter_strikeouts",
+    "pitcher_strikeouts",
+    "earned_runs",
+    "pitcher_hits_allowed",
+    "pitcher_walks",
+    "stolen_bases",
+    "batter_walks"
+  ],
+  "date_start": "2026-05-03",
+  "date_end": "2026-05-15",
+  "snapshot_time": "11:00:00Z",
+  "allow_one_sided": true,
+  "min_graded_sample_size": 20,
+  "max_combinations": 100,
+  "pipeline_version": "universal_pipeline_v1_phase_b_2026_05_17",
+  "pool_summaries": {
+    "safe_haven": [
+      {
+        "date": "2026-05-03",
+        "serial": "GSS-MLB-20260503-SAFE-POOL",
+        "rows_scanned": 6771,
+        "candidates_kept": 189
+      },
+      {
+        "date": "2026-05-04",
+        "serial": "GSS-MLB-20260504-SAFE-POOL",
+        "rows_scanned": 3597,
+        "candidates_kept": 89
+      },
+      {
+        "date": "2026-05-05",
+        "serial": "GSS-MLB-20260505-SAFE-POOL",
+        "rows_scanned": 4181,
+        "candidates_kept": 103
+      },
+      {
+        "date": "2026-05-06",
+        "serial": "GSS-MLB-20260506-SAFE-POOL",
+        "rows_scanned": 6149,
+        "candidates_kept": 191
+      },
+      {
+        "date": "2026-05-07",
+        "serial": "GSS-MLB-20260507-SAFE-POOL",
+        "rows_scanned": 4430,
+        "candidates_kept": 89
+      },
+      {
+        "date": "2026-05-08",
+        "serial": "GSS-MLB-20260508-SAFE-POOL",
+        "rows_scanned": 4945,
+        "candidates_kept": 170
+      },
+      {
+        "date": "2026-05-09",
+        "serial": "GSS-MLB-20260509-SAFE-POOL",
+        "rows_scanned": 6212,
+        "candidates_kept": 136
+      },
+      {
+        "date": "2026-05-10",
+        "serial": "GSS-MLB-20260510-SAFE-POOL",
+        "rows_scanned": 6983,
+        "candidates_kept": 186
+      },
+      {
+        "date": "2026-05-11",
+        "serial": "GSS-MLB-20260511-SAFE-POOL",
+        "rows_scanned": 1470,
+        "candidates_kept": 41
+      },
+      {
+        "date": "2026-05-12",
+        "serial": "GSS-MLB-20260512-SAFE-POOL",
+        "rows_scanned": 5127,
+        "candidates_kept": 127
+      },
+      {
+        "date": "2026-05-13",
+        "serial": "GSS-MLB-20260513-SAFE-POOL",
+        "rows_scanned": 5477,
+        "candidates_kept": 204
+      },
+      {
+        "date": "2026-05-14",
+        "serial": "GSS-MLB-20260514-SAFE-POOL",
+        "rows_scanned": 5087,
+        "candidates_kept": 251
+      },
+      {
+        "date": "2026-05-15",
+        "serial": "GSS-MLB-20260515-SAFE-POOL",
+        "rows_scanned": 4216,
+        "candidates_kept": 107
+      }
+    ]
+  },
+  "master_rows": [
+    {
+      "tier": "safe_haven",
+      "stat_family": "hits",
+      "status": "insufficient_graded",
+      "n_pool": 296,
+      "graded_n": 14
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "hits_runs_rbis",
+      "status": "no_pool",
+      "n_pool": 0,
+      "graded_n": 0
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "total_bases",
+      "status": "ok",
+      "recommended_combo": "HR20=70 TP=70",
+      "recommended_combo_dict": {
+        "hit_rate_l20_min": 70,
+        "tp_min": 70
+      },
+      "n_pool": 350,
+      "graded_n": 21,
+      "ungraded_n": 6,
+      "wins": 17,
+      "losses": 4,
+      "pushes": 0,
+      "HR": 80.95,
+      "HR_ci95_low": 60.0,
+      "HR_ci95_high": 92.33,
+      "ROI": 5.1,
+      "ROI_ci95_low": -19.49,
+      "ROI_ci95_high": 24.25,
+      "P_and_L": 1.0703,
+      "balanced_score": 0.7879,
+      "devig_grd": 0,
+      "devig_roi": null,
+      "onesided_std_grd": 21,
+      "onesided_std_roi": 5.1,
+      "over_grd": 21,
+      "over_roi": 5.1,
+      "under_grd": 0,
+      "under_roi": null,
+      "daily_consistency_score": 0.667,
+      "daily_graded_days": 9,
+      "outlier_top1_pct_of_net": 31.14,
+      "outlier_top5_pct_of_net": 154.41,
+      "is_outlier_dependent": true,
+      "corr_hr20_vs_profit": 0.003,
+      "corr_edge_vs_profit": 0.169,
+      "corr_cv_vs_profit": -0.1559,
+      "corr_tp_vs_profit": 0.2165,
+      "artifact_json": "/app/backend/audits/gss_mlb_safe_haven_total_bases_2026-05-03_2026-05-15_20260518T170221.json"
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "runs",
+      "status": "insufficient_graded",
+      "n_pool": 130,
+      "graded_n": 0
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "rbis",
+      "status": "no_pool",
+      "n_pool": 0,
+      "graded_n": 0
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "batter_strikeouts",
+      "status": "ok",
+      "recommended_combo": "HR20=90 CV<==0.7",
+      "recommended_combo_dict": {
+        "hit_rate_l20_min": 90,
+        "cv_max": 0.7
+      },
+      "n_pool": 421,
+      "graded_n": 24,
+      "ungraded_n": 15,
+      "wins": 21,
+      "losses": 3,
+      "pushes": 0,
+      "HR": 87.5,
+      "HR_ci95_low": 69.0,
+      "HR_ci95_high": 95.66,
+      "ROI": 7.51,
+      "ROI_ci95_low": -9.12,
+      "ROI_ci95_high": 22.75,
+      "P_and_L": 1.8031,
+      "balanced_score": 0.7844,
+      "devig_grd": 0,
+      "devig_roi": null,
+      "onesided_std_grd": 24,
+      "onesided_std_roi": 7.51,
+      "over_grd": 24,
+      "over_roi": 7.51,
+      "under_grd": 0,
+      "under_roi": null,
+      "daily_consistency_score": 0.75,
+      "daily_graded_days": 12,
+      "outlier_top1_pct_of_net": 16.96,
+      "outlier_top5_pct_of_net": 79.41,
+      "is_outlier_dependent": true,
+      "corr_hr20_vs_profit": -0.0215,
+      "corr_edge_vs_profit": -0.0341,
+      "corr_cv_vs_profit": 0.1268,
+      "corr_tp_vs_profit": -0.1019,
+      "artifact_json": "/app/backend/audits/gss_mlb_safe_haven_batter_strikeouts_2026-05-03_2026-05-15_20260518T170221.json"
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "pitcher_strikeouts",
+      "status": "ok",
+      "recommended_combo": "HR20=75 CV<==0.4",
+      "recommended_combo_dict": {
+        "hit_rate_l20_min": 75,
+        "cv_max": 0.4
+      },
+      "n_pool": 565,
+      "graded_n": 63,
+      "ungraded_n": 92,
+      "wins": 61,
+      "losses": 2,
+      "pushes": 0,
+      "HR": 96.83,
+      "HR_ci95_low": 89.14,
+      "HR_ci95_high": 99.13,
+      "ROI": 6.64,
+      "ROI_ci95_low": 1.16,
+      "ROI_ci95_high": 11.11,
+      "P_and_L": 4.1826,
+      "balanced_score": 0.9164,
+      "devig_grd": 0,
+      "devig_roi": null,
+      "onesided_std_grd": 63,
+      "onesided_std_roi": 6.64,
+      "over_grd": 63,
+      "over_roi": 6.64,
+      "under_grd": 0,
+      "under_roi": null,
+      "daily_consistency_score": 0.818,
+      "daily_graded_days": 11,
+      "outlier_top1_pct_of_net": 7.36,
+      "outlier_top5_pct_of_net": 33.31,
+      "is_outlier_dependent": false,
+      "corr_hr20_vs_profit": 0.0537,
+      "corr_edge_vs_profit": 0.0761,
+      "corr_cv_vs_profit": -0.0622,
+      "corr_tp_vs_profit": -0.0368,
+      "artifact_json": "/app/backend/audits/gss_mlb_safe_haven_pitcher_strikeouts_2026-05-03_2026-05-15_20260518T170221.json"
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "earned_runs",
+      "status": "ok",
+      "recommended_combo": "HR20=60 CV<==1.0",
+      "recommended_combo_dict": {
+        "hit_rate_l20_min": 60,
+        "cv_max": 1.0
+      },
+      "n_pool": 121,
+      "graded_n": 24,
+      "ungraded_n": 34,
+      "wins": 16,
+      "losses": 8,
+      "pushes": 0,
+      "HR": 66.67,
+      "HR_ci95_low": 46.71,
+      "HR_ci95_high": 82.03,
+      "ROI": -18.5,
+      "ROI_ci95_low": -40.13,
+      "ROI_ci95_high": 4.09,
+      "P_and_L": -4.4392,
+      "balanced_score": 0.4084,
+      "devig_grd": 0,
+      "devig_roi": null,
+      "onesided_std_grd": 24,
+      "onesided_std_roi": -18.5,
+      "over_grd": 24,
+      "over_roi": -18.5,
+      "under_grd": 0,
+      "under_roi": null,
+      "daily_consistency_score": 0.5,
+      "daily_graded_days": 12,
+      "outlier_top1_pct_of_net": -7.22,
+      "outlier_top5_pct_of_net": -34.02,
+      "is_outlier_dependent": false,
+      "corr_hr20_vs_profit": -0.2439,
+      "corr_edge_vs_profit": -0.2696,
+      "corr_cv_vs_profit": 0.4051,
+      "corr_tp_vs_profit": -0.1647,
+      "artifact_json": "/app/backend/audits/gss_mlb_safe_haven_earned_runs_2026-05-03_2026-05-15_20260518T170221.json"
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "pitcher_hits_allowed",
+      "status": "no_pool",
+      "n_pool": 0,
+      "graded_n": 0
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "pitcher_walks",
+      "status": "no_pool",
+      "n_pool": 0,
+      "graded_n": 0
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "stolen_bases",
+      "status": "no_pool",
+      "n_pool": 0,
+      "graded_n": 0
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "batter_walks",
+      "status": "no_pool",
+      "n_pool": 0,
+      "graded_n": 0
+    }
+  ],
+  "per_sf_artifacts": [
+    {
+      "tier": "safe_haven",
+      "stat_family": "total_bases",
+      "json": "/app/backend/audits/gss_mlb_safe_haven_total_bases_2026-05-03_2026-05-15_20260518T170221.json",
+      "csv": "/app/backend/audits/gss_mlb_safe_haven_total_bases_2026-05-03_2026-05-15_20260518T170221.csv"
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "batter_strikeouts",
+      "json": "/app/backend/audits/gss_mlb_safe_haven_batter_strikeouts_2026-05-03_2026-05-15_20260518T170221.json",
+      "csv": "/app/backend/audits/gss_mlb_safe_haven_batter_strikeouts_2026-05-03_2026-05-15_20260518T170221.csv"
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "pitcher_strikeouts",
+      "json": "/app/backend/audits/gss_mlb_safe_haven_pitcher_strikeouts_2026-05-03_2026-05-15_20260518T170221.json",
+      "csv": "/app/backend/audits/gss_mlb_safe_haven_pitcher_strikeouts_2026-05-03_2026-05-15_20260518T170221.csv"
+    },
+    {
+      "tier": "safe_haven",
+      "stat_family": "earned_runs",
+      "json": "/app/backend/audits/gss_mlb_safe_haven_earned_runs_2026-05-03_2026-05-15_20260518T170221.json",
+      "csv": "/app/backend/audits/gss_mlb_safe_haven_earned_runs_2026-05-03_2026-05-15_20260518T170221.csv"
+    }
+  ]
+}
