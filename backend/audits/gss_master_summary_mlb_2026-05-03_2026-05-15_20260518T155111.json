@@ -1,0 +1,319 @@
+{
+  "audit_kind": "stat_family_grid_search_master",
+  "generated_at_iso": "2026-05-18T15:52:02.388288+00:00",
+  "sport": "mlb",
+  "tiers": [
+    "war_zone"
+  ],
+  "stat_families_requested": [
+    "hits",
+    "hits_runs_rbis",
+    "total_bases",
+    "runs",
+    "rbis",
+    "batter_strikeouts",
+    "pitcher_strikeouts",
+    "earned_runs",
+    "pitcher_hits_allowed",
+    "pitcher_walks",
+    "stolen_bases",
+    "batter_walks"
+  ],
+  "date_start": "2026-05-03",
+  "date_end": "2026-05-15",
+  "snapshot_time": "11:00:00Z",
+  "allow_one_sided": true,
+  "min_graded_sample_size": 20,
+  "max_combinations": 100,
+  "pipeline_version": "universal_pipeline_v1_phase_b_2026_05_17",
+  "pool_summaries": {
+    "war_zone": [
+      {
+        "date": "2026-05-03",
+        "serial": "GSS-MLB-20260503-WAR_-POOL",
+        "rows_scanned": 6771,
+        "candidates_kept": 4556
+      },
+      {
+        "date": "2026-05-04",
+        "serial": "GSS-MLB-20260504-WAR_-POOL",
+        "rows_scanned": 3597,
+        "candidates_kept": 2477
+      },
+      {
+        "date": "2026-05-05",
+        "serial": "GSS-MLB-20260505-WAR_-POOL",
+        "rows_scanned": 4181,
+        "candidates_kept": 2860
+      },
+      {
+        "date": "2026-05-06",
+        "serial": "GSS-MLB-20260506-WAR_-POOL",
+        "rows_scanned": 6149,
+        "candidates_kept": 4237
+      },
+      {
+        "date": "2026-05-07",
+        "serial": "GSS-MLB-20260507-WAR_-POOL",
+        "rows_scanned": 4430,
+        "candidates_kept": 3048
+      },
+      {
+        "date": "2026-05-08",
+        "serial": "GSS-MLB-20260508-WAR_-POOL",
+        "rows_scanned": 4945,
+        "candidates_kept": 3416
+      },
+      {
+        "date": "2026-05-09",
+        "serial": "GSS-MLB-20260509-WAR_-POOL",
+        "rows_scanned": 6212,
+        "candidates_kept": 4306
+      },
+      {
+        "date": "2026-05-10",
+        "serial": "GSS-MLB-20260510-WAR_-POOL",
+        "rows_scanned": 6983,
+        "candidates_kept": 4813
+      },
+      {
+        "date": "2026-05-11",
+        "serial": "GSS-MLB-20260511-WAR_-POOL",
+        "rows_scanned": 1470,
+        "candidates_kept": 1021
+      },
+      {
+        "date": "2026-05-12",
+        "serial": "GSS-MLB-20260512-WAR_-POOL",
+        "rows_scanned": 5127,
+        "candidates_kept": 3527
+      },
+      {
+        "date": "2026-05-13",
+        "serial": "GSS-MLB-20260513-WAR_-POOL",
+        "rows_scanned": 5477,
+        "candidates_kept": 3755
+      },
+      {
+        "date": "2026-05-14",
+        "serial": "GSS-MLB-20260514-WAR_-POOL",
+        "rows_scanned": 5087,
+        "candidates_kept": 3430
+      },
+      {
+        "date": "2026-05-15",
+        "serial": "GSS-MLB-20260515-WAR_-POOL",
+        "rows_scanned": 4216,
+        "candidates_kept": 2929
+      }
+    ]
+  },
+  "master_rows": [
+    {
+      "tier": "war_zone",
+      "stat_family": "hits_runs_rbis",
+      "status": "no_pool",
+      "n_pool": 0,
+      "graded_n": 0
+    },
+    {
+      "tier": "war_zone",
+      "stat_family": "total_bases",
+      "status": "ok",
+      "recommended_combo": "HR20=50 CV<==1.0",
+      "recommended_combo_dict": {
+        "hit_rate_l20_min": 50,
+        "cv_max": 1.0
+      },
+      "n_pool": 11181,
+      "graded_n": 58,
+      "ungraded_n": 102,
+      "wins": 23,
+      "losses": 35,
+      "pushes": 0,
+      "HR": 39.66,
+      "HR_ci95_low": 28.09,
+      "HR_ci95_high": 52.51,
+      "ROI": 12.0,
+      "ROI_ci95_low": -21.31,
+      "ROI_ci95_high": 50.5,
+      "P_and_L": 6.96,
+      "balanced_score": 0.301,
+      "devig_grd": 42,
+      "devig_roi": 16.86,
+      "onesided_std_grd": 16,
+      "onesided_std_roi": -0.75,
+      "over_grd": 58,
+      "over_roi": 12.0,
+      "under_grd": 0,
+      "under_roi": null,
+      "daily_consistency_score": 0.583,
+      "daily_graded_days": 12,
+      "outlier_top1_pct_of_net": 38.07,
+      "outlier_top5_pct_of_net": 162.36,
+      "is_outlier_dependent": true,
+      "corr_hr20_vs_profit": 0.035,
+      "corr_edge_vs_profit": 0.0212,
+      "corr_cv_vs_profit": 0.0368,
+      "corr_tp_vs_profit": 0.0005,
+      "artifact_json": "/app/backend/audits/gss_mlb_war_zone_total_bases_2026-05-03_2026-05-15_20260518T155111.json"
+    },
+    {
+      "tier": "war_zone",
+      "stat_family": "runs",
+      "status": "ok",
+      "recommended_combo": "HR20=50 CV<==1.0",
+      "recommended_combo_dict": {
+        "hit_rate_l20_min": 50,
+        "cv_max": 1.0
+      },
+      "n_pool": 8398,
+      "graded_n": 27,
+      "ungraded_n": 17,
+      "wins": 9,
+      "losses": 18,
+      "pushes": 0,
+      "HR": 33.33,
+      "HR_ci95_low": 18.64,
+      "HR_ci95_high": 52.18,
+      "ROI": -7.52,
+      "ROI_ci95_low": -57.7,
+      "ROI_ci95_high": 43.48,
+      "P_and_L": -2.03,
+      "balanced_score": 0.1167,
+      "devig_grd": 27,
+      "devig_roi": -7.52,
+      "onesided_std_grd": 0,
+      "onesided_std_roi": null,
+      "over_grd": 27,
+      "over_roi": -7.52,
+      "under_grd": 0,
+      "under_roi": null,
+      "daily_consistency_score": 0.444,
+      "daily_graded_days": 9,
+      "outlier_top1_pct_of_net": -108.37,
+      "outlier_top5_pct_of_net": -480.3,
+      "is_outlier_dependent": false,
+      "corr_hr20_vs_profit": -0.0099,
+      "corr_edge_vs_profit": 0.0145,
+      "corr_cv_vs_profit": 0.041,
+      "corr_tp_vs_profit": -0.0872,
+      "artifact_json": "/app/backend/audits/gss_mlb_war_zone_runs_2026-05-03_2026-05-15_20260518T155111.json"
+    },
+    {
+      "tier": "war_zone",
+      "stat_family": "rbis",
+      "status": "ok",
+      "recommended_combo": "HR20=50 CV<==1.1",
+      "recommended_combo_dict": {
+        "hit_rate_l20_min": 50,
+        "cv_max": 1.1
+      },
+      "n_pool": 11332,
+      "graded_n": 28,
+      "ungraded_n": 31,
+      "wins": 9,
+      "losses": 19,
+      "pushes": 0,
+      "HR": 32.14,
+      "HR_ci95_low": 17.93,
+      "HR_ci95_high": 50.66,
+      "ROI": -9.29,
+      "ROI_ci95_low": -57.32,
+      "ROI_ci95_high": 41.61,
+      "P_and_L": -2.6,
+      "balanced_score": 0.0702,
+      "devig_grd": 0,
+      "devig_roi": null,
+      "onesided_std_grd": 28,
+      "onesided_std_roi": -9.29,
+      "over_grd": 28,
+      "over_roi": -9.29,
+      "under_grd": 0,
+      "under_roi": null,
+      "daily_consistency_score": 0.5,
+      "daily_graded_days": 12,
+      "outlier_top1_pct_of_net": -84.62,
+      "outlier_top5_pct_of_net": -376.92,
+      "is_outlier_dependent": false,
+      "corr_hr20_vs_profit": 0.0411,
+      "corr_edge_vs_profit": -0.0176,
+      "corr_cv_vs_profit": -0.0185,
+      "corr_tp_vs_profit": 0.0085,
+      "artifact_json": "/app/backend/audits/gss_mlb_war_zone_rbis_2026-05-03_2026-05-15_20260518T155111.json"
+    },
+    {
+      "tier": "war_zone",
+      "stat_family": "earned_runs",
+      "status": "insufficient_graded",
+      "n_pool": 574,
+      "graded_n": 18
+    },
+    {
+      "tier": "war_zone",
+      "stat_family": "pitcher_hits_allowed",
+      "status": "no_pool",
+      "n_pool": 0,
+      "graded_n": 0
+    },
+    {
+      "tier": "war_zone",
+      "stat_family": "pitcher_walks",
+      "status": "no_pool",
+      "n_pool": 0,
+      "graded_n": 0
+    },
+    {
+      "tier": "war_zone",
+      "stat_family": "stolen_bases",
+      "status": "no_pool",
+      "n_pool": 0,
+      "graded_n": 0
+    },
+    {
+      "tier": "war_zone",
+      "stat_family": "batter_walks",
+      "status": "no_pool",
+      "n_pool": 0,
+      "graded_n": 0
+    }
+  ],
+  "per_sf_artifacts": [
+    {
+      "tier": "war_zone",
+      "stat_family": "hits",
+      "json": "/app/backend/audits/gss_mlb_war_zone_hits_2026-05-03_2026-05-15_20260518T155111.json",
+      "csv": "/app/backend/audits/gss_mlb_war_zone_hits_2026-05-03_2026-05-15_20260518T155111.csv"
+    },
+    {
+      "tier": "war_zone",
+      "stat_family": "total_bases",
+      "json": "/app/backend/audits/gss_mlb_war_zone_total_bases_2026-05-03_2026-05-15_20260518T155111.json",
+      "csv": "/app/backend/audits/gss_mlb_war_zone_total_bases_2026-05-03_2026-05-15_20260518T155111.csv"
+    },
+    {
+      "tier": "war_zone",
+      "stat_family": "runs",
+      "json": "/app/backend/audits/gss_mlb_war_zone_runs_2026-05-03_2026-05-15_20260518T155111.json",
+      "csv": "/app/backend/audits/gss_mlb_war_zone_runs_2026-05-03_2026-05-15_20260518T155111.csv"
+    },
+    {
+      "tier": "war_zone",
+      "stat_family": "rbis",
+      "json": "/app/backend/audits/gss_mlb_war_zone_rbis_2026-05-03_2026-05-15_20260518T155111.json",
+      "csv": "/app/backend/audits/gss_mlb_war_zone_rbis_2026-05-03_2026-05-15_20260518T155111.csv"
+    },
+    {
+      "tier": "war_zone",
+      "stat_family": "batter_strikeouts",
+      "json": "/app/backend/audits/gss_mlb_war_zone_batter_strikeouts_2026-05-03_2026-05-15_20260518T155111.json",
+      "csv": "/app/backend/audits/gss_mlb_war_zone_batter_strikeouts_2026-05-03_2026-05-15_20260518T155111.csv"
+    },
+    {
+      "tier": "war_zone",
+      "stat_family": "pitcher_strikeouts",
+      "json": "/app/backend/audits/gss_mlb_war_zone_pitcher_strikeouts_2026-05-03_2026-05-15_20260518T155111.json",
+      "csv": "/app/backend/audits/gss_mlb_war_zone_pitcher_strikeouts_2026-05-03_2026-05-15_20260518T155111.csv"
+    }
+  ]
+}

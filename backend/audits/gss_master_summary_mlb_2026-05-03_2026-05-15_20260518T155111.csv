@@ -1,0 +1,10 @@
+tier,stat_family,status,recommended_combo,n_pool,graded_n,ungraded_n,wins,losses,pushes,HR,HR_ci95_low,HR_ci95_high,ROI,ROI_ci95_low,ROI_ci95_high,P_and_L,balanced_score,devig_grd,devig_roi,onesided_std_grd,onesided_std_roi,over_grd,over_roi,under_grd,under_roi,daily_consistency_score,daily_graded_days,outlier_top1_pct_of_net,outlier_top5_pct_of_net,is_outlier_dependent,corr_hr20_vs_profit,corr_edge_vs_profit,corr_cv_vs_profit,corr_tp_vs_profit,artifact_json
+war_zone,total_bases,ok,HR20=50 CV<==1.0,11181,58,102,23,35,0,39.66,28.09,52.51,12.0,-21.31,50.5,6.96,0.301,42,16.86,16,-0.75,58,12.0,0,,0.583,12,38.07,162.36,True,0.035,0.0212,0.0368,0.0005,/app/backend/audits/gss_mlb_war_zone_total_bases_2026-05-03_2026-05-15_20260518T155111.json
+war_zone,runs,ok,HR20=50 CV<==1.0,8398,27,17,9,18,0,33.33,18.64,52.18,-7.52,-57.7,43.48,-2.03,0.1167,27,-7.52,0,,27,-7.52,0,,0.444,9,-108.37,-480.3,False,-0.0099,0.0145,0.041,-0.0872,/app/backend/audits/gss_mlb_war_zone_runs_2026-05-03_2026-05-15_20260518T155111.json
+war_zone,rbis,ok,HR20=50 CV<==1.1,11332,28,31,9,19,0,32.14,17.93,50.66,-9.29,-57.32,41.61,-2.6,0.0702,0,,28,-9.29,28,-9.29,0,,0.5,12,-84.62,-376.92,False,0.0411,-0.0176,-0.0185,0.0085,/app/backend/audits/gss_mlb_war_zone_rbis_2026-05-03_2026-05-15_20260518T155111.json
+war_zone,hits_runs_rbis,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+war_zone,earned_runs,insufficient_graded,,574,18,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+war_zone,pitcher_hits_allowed,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+war_zone,pitcher_walks,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+war_zone,stolen_bases,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+war_zone,batter_walks,no_pool,,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

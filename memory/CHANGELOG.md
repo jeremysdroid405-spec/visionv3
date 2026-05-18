@@ -1,5 +1,52 @@
 # Changelog
 
+## 2026-05-18 (afternoon) — P1: MLB actuals backfill + universal grid sweep 2026-05-03 → 05-15
+
+**Backfill (P1).**
+- New `audits/backfill_mlb_actuals_2026_05_08_to_15.py` pulls BDL
+  `/mlb/v1/stats?game_ids[]=...` (NOT `dates[]=...` — that filter
+  silently returns the whole season slate, see script docstring) for
+  every game in the 2026-05-08 → 05-15 window.
+- Reuses the universal sync's `_transform_stat_to_game_log` so the
+  on-disk schema stays byte-identical to the existing `bdl_game_logs`
+  shape.
+- **Merges** per-player into `mlb_master_hub_2026.bdl_game_logs`
+  (dedup by `game_id`) instead of the universal sync's
+  `$set: bdl_game_logs=...` overwrite — running a partial-window
+  backfill must NEVER wipe pre-existing logs.
+- Result: 2,972 stat rows pulled across 102 games, 812 player docs
+  updated. Per-date actuals after backfill:
+  `05-08:323p, 05-09:448p, 05-10:464p, 05-11:88p, 05-12:419p,
+   05-13:441p, 05-14:362p, 05-15:294p`.
+
+**Universal grid sweep (P1).**
+- Ran `audits/universal_gate_grid_search_by_stat_family.py` across
+  the full 13-day window 2026-05-03 → 05-15 for all three tiers
+  (`safe_haven`, `front_lines`, `war_zone`) × 12 spec stat families.
+- Combined master summary:
+  `audits/gss_master_summary_mlb_2026-05-03_2026-05-15_UNIFIED.csv`
+  (+ 21 per-(tier × family) JSON/CSV artefacts).
+- Top recommended-combo ROIs (HISTORICAL TEST ONLY — no production
+  threshold changes):
+  • **Front Lines** is the standout profitable tier across all
+    families: `pitcher_strikeouts` ROI +15.0% (n=104, CI [-0.28,
+    +30.27]), `earned_runs` +13.7% (n=49), `batter_strikeouts` +7.4%
+    (n=194), `runs` +7.2% (n=96), `hits` +5.7% (n=172), `total_bases`
+    +3.9% (n=222) — all with daily_consistency ≥ 0.62.
+  • **Safe Haven**: extremely high HR but tiny edge — `hits` +6.9%
+    (n=23), `pitcher_strikeouts` +2.0% (n=159, HR 95.6%),
+    `batter_strikeouts` +1.1% (n=75). `earned_runs` loses heavily
+    here (-19.6%, n=46).
+  • **War Zone**: only `total_bases` profitable (+12% ROI, n=58)
+    with a wide CI; `runs`/`rbis` lose.
+  • 16/36 (tier × family) cells came back `no_pool` — `hits_runs_rbis`,
+    `pitcher_hits_allowed`, `stolen_bases`, `batter_walks` have no
+    Layer-3 cache coverage; `pitcher_walks` (canonical
+    `walks_allowed`) has ≤2 rows per tier. Separate feature-cache
+    backfill task (P1).
+
+
+
 ## 2026-05-18 (later) — Canonicalisation P0 follow-up: 0 graded `batter_strikeouts` in historical sweeps
 
 **Problem.** After the stat-family canonicalisation refactor (entry
