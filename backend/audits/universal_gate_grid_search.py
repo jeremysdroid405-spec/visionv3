@@ -690,7 +690,7 @@ async def grid_search(
     pool_summaries: List[Dict[str, Any]] = []
     for d_iso, snap_iso in zip(dates, snapshot_isos):
         test_id = (f"GRID-{sport.upper()}-"
-                   f"{d_iso.replace('-','')}-CANDPOOL")
+                   f"{d_iso.replace('-','')}-{tier.upper()[:4]}-CANDPOOL")
         print(f"\n[pool] {d_iso} {snap_iso} test_id={test_id}")
         try:
             day_pool, day_summary = await _build_candidate_pool(
@@ -825,6 +825,33 @@ async def grid_search(
         "worst_by_roi": _bottom(20, "roi_pct"),
     }
 
+    # ── Side-aware analysis (OVER vs UNDER) ────────────────────────
+    # Re-aggregate each combo against side-restricted candidate pools
+    # so we can directly answer: does adding UNDERs change HR / ROI /
+    # P&L? This does NOT re-run the pipeline — it's an in-memory
+    # filter applied to the cached pool.
+    pool_over  = [c for c in pool if c.side == "OVER"]
+    pool_under = [c for c in pool if c.side == "UNDER"]
+    side_compare_rows: List[Dict[str, Any]] = []
+    # Pick the top-K combos by balanced score (≥ min_sample on
+    # the full pool) and report each one's OVER-only / UNDER-only /
+    # combined performance.
+    top_combos_for_side = leaderboards["by_balanced_score"][:10]
+    for r in top_combos_for_side:
+        # Rebuild the Combo dataclass from the dict so we can re-filter.
+        combo = Combo(**{k: v for k, v in r["combo"].items()
+                          if k in Combo.__dataclass_fields__})
+        over_pass = [c for c in pool_over if _passes_combo(c, combo)]
+        under_pass = [c for c in pool_under if _passes_combo(c, combo)]
+        all_pass = [c for c in pool if _passes_combo(c, combo)]
+        side_compare_rows.append({
+            "combo_label": r["combo_label"],
+            "combo": r["combo"],
+            "over_only":   _aggregate(over_pass),
+            "under_only":  _aggregate(under_pass),
+            "combined":    _aggregate(all_pass),
+        })
+
     # Recommended combo = top-balanced
     recommended = (leaderboards["by_balanced_score"][0]
                    if leaderboards["by_balanced_score"] else None)
@@ -902,6 +929,9 @@ async def grid_search(
         "production_baseline": baseline_row,
         "all_rows": rows_out,
         "leaderboards": leaderboards,
+        "side_compare_top10": side_compare_rows,
+        "pool_over_n": len(pool_over),
+        "pool_under_n": len(pool_under),
         "recommended_combo": recommended,
         "csv_leaderboard": str(csv_path),
         "rerun_command": (
@@ -974,6 +1004,27 @@ async def grid_search(
     print(f"  one_sided_std:     n_grd={bb['one_sided_std']['n_graded']} "
           f"HR={bb['one_sided_std']['hit_rate_pct']} "
           f"ROI={bb['one_sided_std']['roi_pct']}")
+
+    # ── Side comparison (OVER-only vs UNDER-only vs combined) ─────
+    print(f"\n{'='*132}")
+    print("  SIDE COMPARISON — Top-10 balanced combos, OVER-only vs UNDER-only vs combined")
+    print(f"  Pool composition: OVER={len(pool_over)}  UNDER={len(pool_under)}")
+    print(f"{'='*132}")
+    print(f"  {'combo':<28s}  {'side':<6s}  {'tot':>4s} {'grd':>4s} "
+          f"{'HR':>5s} {'HRci95':>13s} {'ROI':>6s} {'ROIci95':>14s} {'P&L':>8s}")
+    for r in side_compare_rows:
+        for tag in ("over_only", "under_only", "combined"):
+            a = r[tag]
+            label_side = tag.replace("_only", "")
+            hr_ci = (f"[{a['hit_rate_ci95_low']},{a['hit_rate_ci95_high']}]"
+                     if a['hit_rate_ci95_low'] is not None else "—")
+            roi_ci = (f"[{a['roi_ci95_low']},{a['roi_ci95_high']}]"
+                      if a['roi_ci95_low'] is not None else "—")
+            print(f"  {r['combo_label'][:28]:<28s}  {label_side:<6s}  "
+                  f"{a['n_total']:>4d} {a['n_graded']:>4d} "
+                  f"{str(a['hit_rate_pct']):>5s} {hr_ci:>13s} "
+                  f"{str(a['roi_pct']):>6s} {roi_ci:>14s} "
+                  f"{a['profit_units']:>8.3f}")
 
     print(f"\n[artifact-json] {json_path}")
     print(f"[artifact-csv]  {csv_path}")
