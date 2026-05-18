@@ -144,19 +144,35 @@ def _actual_for(
     player_norm: str,
     stat_family: str,
 ) -> Optional[float]:
+    """Resolve the realised stat for a player + family.
+
+    Actuals dict contract (from `MLBReplayAdapter.fetch_actuals`):
+    keyed by canonical family name, e.g.
+    `{"batter_strikeouts": 2.0, "walks_allowed": 1.0, "hits": 3.0, ...}`.
+
+    Lookup order:
+      1. Canonical family key directly (covers fresh canonical writes
+         AND legacy actuals dicts that happened to use the same name).
+      2. Statcast-column fallback (`_STAT_FIELD_MAP`) for any legacy
+         actuals dict that pre-dated the family-keyed contract.
+      3. `outs_recorded` / `pitcher_outs` historical alias.
+    """
     pdoc = actuals.get(player_norm)
     if not pdoc:
         return None
     # 2026-05-18 — read-side normalisation: legacy rows can carry
     # `stat_family="strikeouts"` / `"pitcher_walks"` from before the
-    # canonical-name fix. Resolve via the SSOT before the field
-    # lookup so old + new data behave identically.
+    # canonical-name fix. Resolve via the SSOT before lookup.
     from services.scoring.canonical_stats import canonical_family
-    stat_family = canonical_family("mlb", stat_family)
-    field = _STAT_FIELD_MAP.get(stat_family, stat_family)
+    fam = canonical_family("mlb", stat_family)
+    # Path 1: canonical family key (the adapter's `fetch_actuals` contract).
+    if fam in pdoc:
+        return pdoc[fam]
+    # Path 2: statcast-column fallback for legacy actuals shapes.
+    field = _STAT_FIELD_MAP.get(fam, fam)
     if field in pdoc:
         return pdoc[field]
-    # Fallback: outs_recorded may be stored under `pitcher_outs`
+    # Path 3: outs_recorded compat.
     if field == "outs_recorded" and "pitcher_outs" in pdoc:
         return pdoc["pitcher_outs"]
     return None

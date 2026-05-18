@@ -1031,6 +1031,12 @@ async def run_production_replay(
             out_doc["canonical_has_same_book_devig"] = (
                 cp_attached_doc.has_same_book_devig
             )
+        # 2026-05-18 — canonicalise `stat_family` on every output doc
+        # so audits and downstream consumers always read SSOT names.
+        from services.scoring.canonical_stats import canonical_family
+        out_doc["stat_family"] = canonical_family(
+            "mlb", out_doc.get("stat_family"))
+        if cp_attached_doc is not None:
             # ── Phase 6 Phase 4 audit fields ──────────────────────
             out_doc["devig_method"] = cp_attached_doc.devig_method
             out_doc["same_book_pair_count"] = cp_attached_doc.same_book_pair_count
@@ -1057,8 +1063,17 @@ async def run_production_replay(
         if gate_pass:
             rows_qualified += 1
             pdoc = actuals.get(row["player_name_normalized"]) or {}
-            stat_fam = row["stat_family"]
-            actual_val = pdoc.get(stat_fam)
+            # 2026-05-18 — canonicalise the family AND fall back through
+            # both family-key and statcast-field-key actuals shapes so
+            # batter_strikeouts / walks_allowed grade correctly.
+            from services.scoring.canonical_stats import canonical_family
+            from services.replay.mlb_feature_cache import _STAT_FIELD_MAP
+            stat_fam = canonical_family("mlb", row["stat_family"])
+            if stat_fam in pdoc:
+                actual_val = pdoc[stat_fam]
+            else:
+                _fld = _STAT_FIELD_MAP.get(stat_fam, stat_fam)
+                actual_val = pdoc.get(_fld)
             grade = adapter.grade_outcome(
                 actual=actual_val,
                 line=float(row["line"]),

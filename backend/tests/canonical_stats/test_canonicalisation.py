@@ -207,18 +207,27 @@ class TestNoDownstreamDriftFromLegacy:
 
     def test_actual_for_handles_legacy_stat_family(self):
         from services.replay.mlb_replay_gate_eval import _actual_for
-        # Sim'd actuals dict keyed by the STATCAST column name.
-        actuals = {
-            "p1": {"strikeouts": 2.0, "pitcher_walks": 1.0,
+        # Path 1 — adapter contract: actuals dict keyed by family name.
+        actuals_by_family = {
+            "p1": {"batter_strikeouts": 2.0, "walks_allowed": 1.0,
                    "hits": 3.0},
         }
-        # Legacy alias on input must resolve.
-        assert _actual_for(actuals, "p1", "strikeouts") == 2.0
-        assert _actual_for(actuals, "p1", "pitcher_walks") == 1.0
-        # Canonical input also works.
-        assert _actual_for(actuals, "p1", "batter_strikeouts") == 2.0
-        assert _actual_for(actuals, "p1", "walks_allowed") == 1.0
-        assert _actual_for(actuals, "p1", "hits") == 3.0
+        # Both legacy and canonical inputs resolve.
+        assert _actual_for(actuals_by_family, "p1", "strikeouts") == 2.0
+        assert _actual_for(actuals_by_family, "p1", "pitcher_walks") == 1.0
+        assert _actual_for(actuals_by_family, "p1", "batter_strikeouts") == 2.0
+        assert _actual_for(actuals_by_family, "p1", "walks_allowed") == 1.0
+        assert _actual_for(actuals_by_family, "p1", "hits") == 3.0
+        # Path 2 — legacy statcast-column-keyed actuals dict still
+        # resolves via the fallback chain.
+        actuals_by_field = {
+            "p2": {"strikeouts": 2.0, "pitcher_walks": 1.0, "hits": 3.0},
+        }
+        assert _actual_for(actuals_by_field, "p2", "strikeouts") == 2.0
+        assert _actual_for(actuals_by_field, "p2", "batter_strikeouts") == 2.0
+        assert _actual_for(actuals_by_field, "p2", "pitcher_walks") == 1.0
+        assert _actual_for(actuals_by_field, "p2", "walks_allowed") == 1.0
+        assert _actual_for(actuals_by_field, "p2", "hits") == 3.0
 
     def test_build_game_logs_handles_legacy_stat_family(self):
         from services.replay.mlb_replay_engine import _build_game_logs
