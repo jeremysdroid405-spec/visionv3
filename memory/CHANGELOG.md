@@ -1,5 +1,69 @@
 # Changelog
 
+## 2026-05-17 — Phase B Finalisation: multi-tier runner + pytest coverage + NBA scaffold
+
+**Goal:** Close the Phase B universal runner gaps without touching
+live serving. No threshold tuning. No NBA / MLB behaviour changes.
+
+**New code:**
+- `services/pipeline/runner.py` extended:
+  - `tier` parameter now accepts: a single tier name (back-compat),
+    a list of tier names, or the literal `"all"` (runs SH+FL+WZ).
+  - Multi-tier path loads the input provider + runs eligibility
+    ONCE, then loops over tiers. Provider's `load_props` is called
+    exactly once for a 3-tier run (test-enforced).
+  - Per-tier serial format: `{parent_test_id}-{SH|FL|WZ}`.
+  - Single-tier return shape preserved byte-identical
+    (back-compat with prior Phase B SH validation).
+  - NBA + NFL historical providers fail closed with explicit
+    `NotImplementedError("…Phase D scope")`.
+
+**Tests (`tests/pipeline/test_runner.py` — 10 cases, 1.3s):**
+- single-tier dispatches one `run_production_replay` call with
+  correct args.
+- multi-tier (`tier="all"`) dispatches three calls with per-tier
+  serial suffixes (SH/FL/WZ).
+- multi-tier loads the provider ONCE (`load_props` counted).
+- list-form `tier=[...]` accepted.
+- historical mode triggers SSOT eligibility; predicate rejects
+  `rbis UNDER` registry keys, passes `total_bases OVER`.
+- live mode SKIPS runner-side eligibility (adapter already ran
+  it inside `load_live_props`).
+- NBA historical raises `NotImplementedError`.
+- missing `snapshot_time` for historical raises `ValueError`.
+- `_resolve_output_writer` validates namespace.
+- Pipeline / eligibility / routing / gate version pins assertable.
+
+**Validation (`MLB-HIST-20260505-1100UTC-00002`, tier="all"):**
+
+| tier | serial | scanned | qualified | cards | elig_rej |
+|---|---|---:|---:|---:|---:|
+| safe_haven | …-00002-SH | 4,181 | 0 | 0 | 1,185 |
+| front_lines | …-00002-FL | 4,181 | 37 | **20** | 1,185 |
+| war_zone | …-00002-WZ | 4,181 | 1 | **1** | 1,185 |
+
+- Elapsed 10.9s for all 3 tiers from one provider load.
+- All three runs persisted to `mlb_test_runs` (3 docs),
+  `mlb_test_outputs` (12,543 = 3 × 4,181 docs),
+  `mlb_test_cards` (21 docs).
+- Same `eligibility_rejects` count (1,185) across all 3 tiers —
+  proves eligibility shared single source-of-truth.
+
+**Artifacts:**
+- `audits/phase_b_finalize_3tier_2026_05_05.py`
+- `audits/phase_b_finalize_3tier_2026_05_05.json`
+
+**Files added (3) / changed (1):**
+- ADDED: `tests/pipeline/test_runner.py`,
+  `audits/phase_b_finalize_3tier_2026_05_05.py`,
+  `audits/phase_b_finalize_3tier_2026_05_05.json`
+- CHANGED: `services/pipeline/runner.py` (multi-tier + NBA scaffold)
+
+**Phase B status: COMPLETE.** Live wiring is Phase C scope and
+explicitly out-of-scope here.
+
+
+
 ## 2026-05-17 — Phase A-2: Universal Market Structure Policy (passive SSOT)
 
 **Goal:** Centralize one-sided prop handling into one SSOT module

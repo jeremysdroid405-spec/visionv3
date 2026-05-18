@@ -46,6 +46,9 @@ logger = logging.getLogger(__name__)
 
 
 # ── Provider / writer registries ───────────────────────────────────
+SUPPORTED_TIERS: Tuple[str, ...] = ("safe_haven", "front_lines", "war_zone")
+
+
 def _resolve_input_provider(sport: str, mode: str, *,
                               game_date: Optional[str] = None,
                               snapshot_time: Optional[str] = None):
@@ -59,10 +62,25 @@ def _resolve_input_provider(sport: str, mode: str, *,
             return MLBHistoricalInputProvider(
                 game_date=game_date, snapshot_iso=snapshot_time,
             )
-        raise NotImplementedError(
-            f"HistoricalInputProvider for sport={sport!r} not yet "
-            f"implemented (Phase D scope)."
-        )
+        if sport == "nba":
+            # Scaffold — fail closed with an actionable message.
+            # NBA historical replay already exists at
+            # `services/replay/nba/...` but its output shape doesn't
+            # match the live-prop contract this provider must return.
+            # Wire-up is Phase D scope; the registry deliberately
+            # exposes the gap rather than silently falling back to
+            # MLB or live.
+            raise NotImplementedError(
+                "NBAHistoricalInputProvider not implemented (Phase D "
+                "scope). To wire NBA historical mode, port the NBA "
+                "replay engine's normalised prop output to the "
+                "live-prop schema expected by "
+                "`apply_production_eligibility` and register it here."
+            )
+        if sport == "nfl":
+            raise NotImplementedError(
+                "NFL historical mode not implemented (scaffold only)."
+            )
     raise ValueError(f"Unknown mode: {mode!r}")
 
 
@@ -135,7 +153,7 @@ async def run_pipeline(
     snapshot_time: Optional[str] = None,
     output_namespace: str = "test",
     test_id: str,
-    tier: str = "safe_haven",
+    tier: Any = "safe_haven",
     game_date: Optional[str] = None,
     canonical_path: bool = True,
     dry_run: bool = False,
@@ -151,16 +169,160 @@ async def run_pipeline(
         output_namespace: "test" | "production" | "production_replay".
         test_id: Audit identifier. Format
             `{SPORT}-{MODE}-{YYYYMMDD}-{HHMMUTC}-{NNNNN}`.
-        tier: tier name (default safe_haven).
+            For multi-tier runs the runner appends a `-{TIER_CODE}`
+            suffix per-tier so each tier writes its own run doc.
+        tier: tier name ("safe_haven" / "front_lines" / "war_zone"),
+            the literal string "all" (runs all three tiers), or a
+            list of tier names.
         game_date: ISO YYYY-MM-DD. If None, derived from snapshot_time.
         canonical_path: Phase 6 canonical engine (default True for
             the universal pipeline — replay parity).
         dry_run: when True, no persistence.
         notes: free-form note on the run doc.
 
-    Returns: run summary dict (the same shape `run_production_replay`
-    returns, plus `audit_envelope`).
+    Returns:
+        Single-tier call → run summary dict (same shape
+            `run_production_replay` returns + `audit_envelope`).
+        Multi-tier call → `{"multi_tier": True, "tiers": [...],
+            "summaries": {tier: summary}}` where each summary has
+            its own audit_envelope.
     """
+    # ── Resolve tier(s) to run ────────────────────────────────────
+    if tier == "all":
+        tiers_to_run: List[str] = list(SUPPORTED_TIERS)
+    elif isinstance(tier, (list, tuple)):
+        tiers_to_run = [str(t) for t in tier]
+    else:
+        tiers_to_run = [str(tier)]
+
+    if mode == "historical" and snapshot_time is None:
+        raise ValueError("snapshot_time required for mode=historical")
+    if game_date is None and snapshot_time is not None:
+        game_date = snapshot_time[:10]
+
+    # Single-tier path — fast-path keeps existing return shape
+    # byte-identical so existing callers (Phase B SH validation,
+    # tests) are unaffected.
+    if len(tiers_to_run) == 1:
+        return await _run_one_tier(
+            db, sport=sport, mode=mode,
+            snapshot_time=snapshot_time,
+            output_namespace=output_namespace,
+            test_id=test_id, tier=tiers_to_run[0],
+            game_date=game_date,
+            canonical_path=canonical_path,
+            dry_run=dry_run, notes=notes,
+        )
+
+    # ── Multi-tier path: provider + eligibility computed ONCE ───
+    # The provider load + eligibility chain are tier-agnostic;
+    # only the tier-spec evaluation differs. We run them once and
+    # invoke `_run_one_tier_with_preloaded` per tier so we don't
+    # hit the input source 3× for the same snapshot.
+    provider = _resolve_input_provider(
+        sport, mode,
+        game_date=game_date, snapshot_time=snapshot_time,
+    )
+    writer = _resolve_output_writer(output_namespace)
+    props = await provider.load_props(db)
+    raw_count = len(props)
+
+    if mode == "live":
+        eligible_props = props
+        coverage_stats: Dict[str, Any] = {
+            "note": "skipped — adapter applied SSOT inside load_live_props"
+        }
+        pp_stats: Dict[str, Any] = {"note": "skipped — see coverage_stats"}
+        after_priceable = raw_count
+        registry_n = 0
+    else:
+        elig = apply_production_eligibility(
+            props, sport=sport, run_id=test_id,
+            use_pp_registry_fallback=(mode == "historical"),
+        )
+        eligible_props = elig.props
+        coverage_stats = elig.coverage_stats
+        pp_stats = elig.pp_playable_stats
+        after_priceable = coverage_stats.get("total_props_remaining")
+        registry_n = elig.pp_registry_fallback_applied
+
+    allow_set = _build_allow_set(eligible_props)
+    eligibility_predicate = _make_eligibility_predicate(allow_set)
+    provider_describe = provider.describe_source()
+    writer_describe = writer.describe()
+
+    summaries: Dict[str, Dict[str, Any]] = {}
+    for t in tiers_to_run:
+        per_tier_test_id = f"{test_id}-{_tier_code(t)}"
+        envelope = build_audit_envelope(
+            test_id=per_tier_test_id,
+            sport=sport, mode=mode,
+            snapshot_time=snapshot_time or "",
+            output_namespace=output_namespace,
+            input_provider_describe=provider_describe,
+            output_writer_describe=writer_describe,
+            raw_row_count=raw_count,
+            normalized_prop_count=raw_count,
+            after_priceable_count=after_priceable,
+            after_pp_playable_count=len(eligible_props),
+            extra={
+                "eligibility_allow_set_size": len(allow_set),
+                "coverage_stats": coverage_stats,
+                "pp_playable_stats": pp_stats,
+                "pp_registry_fallback_stamped": registry_n,
+                "multi_tier_parent_test_id": test_id,
+            },
+        )
+        summary = await run_production_replay(
+            db, sport=sport, game_date=game_date or "",
+            snapshot_iso=snapshot_time, tier=t,
+            canonical_path=canonical_path,
+            output_namespace=writer.output_namespace,
+            eligibility_predicate=eligibility_predicate,
+            audit_envelope=envelope,
+            serial_override=per_tier_test_id,
+            dry_run=dry_run,
+            notes=notes or f"Universal pipeline run {per_tier_test_id}",
+        )
+        envelope["stage_counts"]["cards_written"] = summary.get(
+            "cards_displayed", 0
+        )
+        envelope["stage_counts"]["canonical_props"] = (
+            (summary.get("canonical_summary") or {}).get(
+                "canonical_props_built"
+            )
+            if summary.get("canonical_summary") else None
+        )
+        summary["audit_envelope"] = envelope
+        summaries[t] = summary
+
+    return {
+        "multi_tier": True,
+        "test_id_root": test_id,
+        "tiers": tiers_to_run,
+        "summaries": summaries,
+    }
+
+
+_TIER_CODE = {
+    "safe_haven":  "SH",
+    "front_lines": "FL",
+    "war_zone":    "WZ",
+}
+
+
+def _tier_code(tier: str) -> str:
+    return _TIER_CODE.get(tier, tier.upper()[:3])
+
+
+async def _run_one_tier(
+    db, *, sport, mode, snapshot_time, output_namespace, test_id,
+    tier, game_date, canonical_path, dry_run, notes,
+) -> Dict[str, Any]:
+    """Pre-existing single-tier orchestrator (verbatim — keeps Phase
+    B validation byte-identical). The new multi-tier path above
+    duplicates the meat of this function inline so it can share
+    the provider load + eligibility across tiers."""
     if mode == "historical" and snapshot_time is None:
         raise ValueError("snapshot_time required for mode=historical")
     if game_date is None and snapshot_time is not None:
