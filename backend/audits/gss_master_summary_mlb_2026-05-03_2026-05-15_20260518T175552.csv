@@ -1,0 +1,2 @@
+tier,stat_family,status,recommended_combo,n_pool,graded_n,ungraded_n,wins,losses,pushes,HR,HR_ci95_low,HR_ci95_high,ROI,ROI_ci95_low,ROI_ci95_high,P_and_L,balanced_score,devig_grd,devig_roi,onesided_std_grd,onesided_std_roi,over_grd,over_roi,under_grd,under_roi,daily_consistency_score,daily_graded_days,outlier_top1_pct_of_net,outlier_top5_pct_of_net,is_outlier_dependent,corr_hr20_vs_profit,corr_edge_vs_profit,corr_cv_vs_profit,corr_tp_vs_profit,artifact_json
+safe_haven,earned_runs,insufficient_graded,,121,112,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
