@@ -455,6 +455,16 @@ _MLB_STAT_TO_FAMILY: Dict[str, str] = {
     "triples":            "triples",
     "batter walks":       "batter_walks",
     "batter strikeouts":  "batter_strikeouts",
+    # 2026-05-17 — Bare-name alias for the MLB batter-K family.
+    # Historical / canonical replay rows can emit `stat_family="strikeouts"`
+    # (legacy market_to_stat_family output), but the universal gate
+    # engine + one-sided override allow-list keys off
+    # `batter_strikeouts`. Registering the alias HERE in the canonical
+    # SSOT makes every downstream resolver — gate override, vision_v2,
+    # pp registry — see the canonical family without per-call-site
+    # patches. `pitcher_strikeouts` is intentionally NOT aliased; it
+    # is a structurally distinct family.
+    "strikeouts":         "batter_strikeouts",
     "pitcher strikeouts": "pitcher_strikeouts",
     "walks allowed":      "walks_allowed",
     "hits allowed":       "hits_allowed",
