@@ -69,12 +69,19 @@ logging.basicConfig(
 
 # ─────────────────────────────────────────────────────────────── env helpers
 def _api_key() -> str:
-    k = os.environ.get("SGO_API_KEY", "").strip()
-    if not k:
-        print("ERROR: SGO_API_KEY missing from /app/backend/.env",
-              file=sys.stderr)
-        sys.exit(2)
-    return k
+    """Resolve the SGO API key, preferring the production env-var name.
+
+    Priority:
+      1. SPORTSGAMEODDS_API_KEY (canonical / production)
+      2. SGO_API_KEY            (legacy scaffold-time fallback)
+    """
+    for name in ("SPORTSGAMEODDS_API_KEY", "SGO_API_KEY"):
+        v = os.environ.get(name, "").strip()
+        if v:
+            return v
+    print("ERROR: neither SPORTSGAMEODDS_API_KEY nor SGO_API_KEY is set "
+          "in /app/backend/.env", file=sys.stderr)
+    sys.exit(2)
 
 
 def _mongo_db():
