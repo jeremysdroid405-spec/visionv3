@@ -105,16 +105,19 @@ STAT_RESOLVERS: Dict[str, Callable[[Dict[str, Any]], Optional[float]]] = {
     "batting_doubles":       lambda s: _num(_g(s, "doubles", "2B")),
     "batting_triples":       lambda s: _num(_g(s, "triples", "3B")),
     # ─── MLB pitching ───
-    "pitcher_strikeouts":    lambda s: _num(_g(s, "pitcher_strikeouts",
-                                                "pitching_strikeouts",
+    "pitcher_strikeouts":    lambda s: _num(_g(s, "pitching_strikeouts",
+                                                "pitcher_strikeouts",
                                                 "strikeoutsPitched", "SO")),
-    "pitcher_hits_allowed":  lambda s: _num(_g(s, "pitcher_hits_allowed",
+    "pitcher_hits_allowed":  lambda s: _num(_g(s, "pitching_hits",
+                                                "pitcher_hits_allowed",
                                                 "hitsAllowed", "hits_allowed")),
     "pitching_outs":         lambda s: _num(_g(s, "pitching_outs", "outs",
                                                 "outsPitched")),
-    "pitcher_earned_runs":   lambda s: _num(_g(s, "earnedRuns", "earned_runs",
+    "pitcher_earned_runs":   lambda s: _num(_g(s, "pitching_earnedRuns",
+                                                "earnedRuns", "earned_runs",
                                                 "ER", "pitcher_earned_runs")),
-    "pitcher_walks":         lambda s: _num(_g(s, "pitcher_walks",
+    "pitcher_walks":         lambda s: _num(_g(s, "pitching_basesOnBalls",
+                                                "pitcher_walks",
                                                 "walksAllowed", "walks_allowed")),
     # ─── MLB composites ───
     "hits_runs_rbis":        lambda s: _sum_or_none(
@@ -150,6 +153,62 @@ STAT_RESOLVERS: Dict[str, Callable[[Dict[str, Any]], Optional[float]]] = {
         _num(_g(s, "assists", "AST"))),
 }
 
+# ─── SGO canonical statID aliases ───
+# SGO statIDs are the source-of-truth keys we receive in event.results.stats
+# (e.g. "pitching_strikeouts", "batting_basesOnBalls", "points+rebounds+assists").
+# Map them onto existing resolvers so the outcomes pipeline grades them
+# without per-aliasing each one.
+_SGO_ALIASES = {
+    # MLB
+    # batting_basesOnBalls falls through direct-lookup; we override below
+    # with an explicit resolver so it doesn't go through batting_walks.
+    "batting_hits+runs+rbi": "hits_runs_rbis",
+    "pitching_strikeouts":   "pitcher_strikeouts",
+    "pitching_hits":         "pitcher_hits_allowed",
+    "pitching_earnedRuns":   "pitcher_earned_runs",
+    "pitching_pitchesThrown": None,   # explicit resolver below
+    # NBA
+    "points+rebounds+assists": "pts_reb_ast",
+    "points+rebounds":         "pts_reb",
+    "points+assists":          "pts_ast",
+    "rebounds+assists":        "reb_ast",
+    "blocks+steals":           None,  # explicit resolver below
+    "minutesPlayed":           None,  # explicit resolver below
+}
+for _alias, _target in _SGO_ALIASES.items():
+    if _target and _target in STAT_RESOLVERS and _alias not in STAT_RESOLVERS:
+        STAT_RESOLVERS[_alias] = STAT_RESOLVERS[_target]
+
+# Explicit SGO-statID resolvers that look up the exact SGO key first.
+STAT_RESOLVERS["batting_basesOnBalls"] = lambda s: _num(
+    _g(s, "batting_basesOnBalls", "batting_walks", "walks",
+        "baseOnBalls", "BB"))
+STAT_RESOLVERS["batting_RBI"] = lambda s: _num(
+    _g(s, "batting_RBI", "batting_rbi", "rbi", "RBI"))
+
+# Add resolver for blocks+steals composite (not in original NBA registry)
+if "blocks+steals" not in STAT_RESOLVERS:
+    STAT_RESOLVERS["blocks+steals"] = lambda s: _sum_or_none(
+        _num(_g(s, "blocks", "BLK")),
+        _num(_g(s, "steals", "STL")))
+
+# Add resolver for raw pitches thrown
+if "pitching_pitchesThrown" not in STAT_RESOLVERS:
+    STAT_RESOLVERS["pitching_pitchesThrown"] = lambda s: _num(
+        _g(s, "pitching_pitchesThrown", "pitches_thrown",
+            "numberOfPitches", "pitchCount"))
+
+# Add resolver for minutes
+if "minutesPlayed" not in STAT_RESOLVERS:
+    def _mins_resolver(s):
+        v = _g(s, "minutesPlayed", "minutes", "min", "MIN")
+        if isinstance(v, str) and ":" in v:
+            try:
+                m, sec = v.split(":"); return float(m) + float(sec)/60
+            except (TypeError, ValueError): return None
+        return _num(v)
+    STAT_RESOLVERS["minutesPlayed"] = _mins_resolver
+
 # stat_family bucket (for telemetry / coverage reports)
 STAT_FAMILY: Dict[str, str] = {
     "batting_hits": "hits", "batting_runs": "runs", "batting_rbi": "rbi",
@@ -169,6 +228,20 @@ STAT_FAMILY: Dict[str, str] = {
     "threePointersMade": "threes_made",
     "pts_reb_ast": "pra", "pts_reb": "pts_reb", "pts_ast": "pts_ast",
     "reb_ast": "reb_ast",
+    # SGO canonical statIDs (alongside our internal ones)
+    "batting_basesOnBalls":  "batting_walks",
+    "batting_hits+runs+rbi": "hits_runs_rbis",
+    "pitching_strikeouts":   "pitcher_strikeouts",
+    "pitching_hits":         "pitcher_hits_allowed",
+    "pitching_earnedRuns":   "pitcher_earned_runs",
+    "pitching_pitchesThrown": "pitches_thrown",
+    "points+rebounds+assists": "pra",
+    "points+rebounds":         "pts_reb",
+    "points+assists":          "pts_ast",
+    "rebounds+assists":        "reb_ast",
+    "blocks+steals":           "blocks_steals",
+    "minutesPlayed":           "minutes",
+    "batting_RBI":             "rbi",
 }
 
 
@@ -309,15 +382,28 @@ async def process_date(
     db: AsyncIOMotorDatabase, *, league: Optional[str], game_date: str,
     dry_run: bool, resume: bool,
 ) -> Dict[str, Any]:
-    # Load stats for this date into {(event_id, player_id): stats_dict}
+    # Load stats for this date into multiple lookup maps for fallback joins:
+    #   stats_map           : (event_id, player_id) → stats_dict   (primary)
+    #   stats_map_by_entity : (event_id, stat_entity_id) → stats_dict
+    #   stats_map_by_name   : (event_id, lower(player_name)) → stats_dict
     stat_match: Dict[str, Any] = {"game_date": game_date}
     if league:
         stat_match["league_id"] = league
     stats_map: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    stats_map_by_entity: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    stats_map_by_name: Dict[Tuple[str, str], Dict[str, Any]] = {}
     async for s in db[STATS_COLL].find(stat_match, {"_id": 0}):
-        k = (s.get("event_id"), s.get("player_id"))
-        if k[0] and k[1]:
-            stats_map[k] = s.get("stats") or {}
+        eid = s.get("event_id")
+        stats = s.get("stats") or {}
+        pid = s.get("player_id")
+        if eid and pid and stats:
+            stats_map[(eid, pid)] = stats
+        ent = s.get("stat_entity_id")
+        if eid and ent and stats:
+            stats_map_by_entity[(eid, ent)] = stats
+        nm = (s.get("player_name") or "").strip().lower()
+        if eid and nm and stats:
+            stats_map_by_name[(eid, nm)] = stats
 
     # Optional --resume set
     already_done: set = set()
@@ -359,7 +445,16 @@ async def process_date(
             skipped += 1
             continue
 
-        stats_dict = stats_map.get((doc.get("event_id"), doc.get("player_id")))
+        eid = doc.get("event_id")
+        pid = doc.get("player_id")
+        # Multi-tier join: player_id → stat_entity_id → player_name (lowercase)
+        stats_dict = stats_map.get((eid, pid))
+        if stats_dict is None and pid is not None:
+            stats_dict = stats_map_by_entity.get((eid, pid))
+        if stats_dict is None:
+            nm = (doc.get("player_name") or "").strip().lower()
+            if eid and nm:
+                stats_dict = stats_map_by_name.get((eid, nm))
         if stats_dict is None:
             no_player_stats += 1
             actual = None

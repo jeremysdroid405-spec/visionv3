@@ -140,6 +140,82 @@ class SGOClient:
     async def get_events(self, **params: Any) -> Dict[str, Any]:
         return await self.request("/events", params=params)
 
+    async def get_event_with_results(self, event_id: str,
+                                       expand_results: bool = True,
+                                       include_alt_lines: bool = False
+                                       ) -> Optional[Dict[str, Any]]:
+        """Fetch ONE event including its `results` object (player + team stat
+        values). Returns the event dict or None if not found.
+
+        SGO returns player/team stats inline inside `event.results` only when
+        `expandResults=true` is passed.  This is the canonical SGO endpoint
+        for historical player box-score values (there is no separate
+        /v2/stats endpoint that returns per-player results).
+        """
+        data = await self.request(
+            "/events",
+            params={"eventID": event_id,
+                     "expandResults": "true" if expand_results else "false",
+                     "includeAltLines": "true" if include_alt_lines else "false"})
+        events = (data.get("data") or data.get("events") or [])
+        return events[0] if events else None
+
+    async def iter_finalized_events_with_results(
+        self,
+        league_id: str,
+        starts_after: Optional[str] = None,
+        starts_before: Optional[str] = None,
+        page_size: int = 50,
+        max_pages: int = 4000,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream finalized events for a league with `expandResults=true`.
+
+        Use this for the historical-stats ingest path: every yielded event
+        carries a populated `results` object that we extract player stats from.
+        """
+        cursor: Optional[str] = None
+        page = 0
+        while page < max_pages:
+            page += 1
+            params: Dict[str, Any] = {
+                "leagueID": league_id,
+                "limit": page_size,
+                "expandResults": "true",
+                "finalized": "true",
+                "includeAltLines": "false",
+            }
+            if starts_after:  params["startsAfter"]  = starts_after
+            if starts_before: params["startsBefore"] = starts_before
+            if cursor:        params["cursor"]       = cursor
+            data = await self.get_events(**params)
+            events = (data.get("data") or data.get("events") or [])
+            if not events:
+                break
+            for ev in events:
+                yield ev
+            cursor = data.get("nextCursor") or (
+                (data.get("meta") or {}).get("nextCursor"))
+            if not cursor:
+                break
+
+    async def get_stats_taxonomy(self, sport_id: Optional[str] = None,
+                                    stat_id: Optional[str] = None,
+                                    stat_level: Optional[str] = None
+                                    ) -> Dict[str, Any]:
+        """SGO /v2/stats endpoint — returns the STAT TAXONOMY (metadata
+        about supported statIDs), NOT per-event/per-player values.
+
+        Params:
+            sportID    "BASEBALL" | "BASKETBALL" | ...
+            statID     specific statID to lookup
+            statLevel  "all" | "player" | "team"
+        """
+        params: Dict[str, Any] = {}
+        if sport_id:   params["sportID"]   = sport_id
+        if stat_id:    params["statID"]    = stat_id
+        if stat_level: params["statLevel"] = stat_level
+        return await self.request("/stats", params=params)
+
     async def get_teams(self, **params: Any) -> Dict[str, Any]:
         return await self.request("/teams", params=params)
 

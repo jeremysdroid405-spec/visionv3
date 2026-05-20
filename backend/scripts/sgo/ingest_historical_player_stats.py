@@ -119,12 +119,14 @@ def normalize_stats(raw: Dict[str, Any], *, league: Optional[str] = None
 
 
 def _normalize_mlb_stats(raw: Dict[str, Any]) -> Dict[str, Any]:
-    hits      = _num(_g(raw, "hits", "H"))
-    singles   = _num(_g(raw, "singles", "1B"))
-    doubles   = _num(_g(raw, "doubles", "2B"))
-    triples   = _num(_g(raw, "triples", "3B"))
-    hr        = _num(_g(raw, "homeRuns", "home_runs", "HR"))
-    tb        = _num(_g(raw, "totalBases", "total_bases", "TB"))
+    hits      = _num(_g(raw, "batting_hits", "hits", "H"))
+    singles   = _num(_g(raw, "batting_singles", "singles", "1B"))
+    doubles   = _num(_g(raw, "batting_doubles", "doubles", "2B"))
+    triples   = _num(_g(raw, "batting_triples", "triples", "3B"))
+    hr        = _num(_g(raw, "batting_homeRuns", "homeRuns",
+                          "home_runs", "HR"))
+    tb        = _num(_g(raw, "batting_totalBases", "totalBases",
+                          "total_bases", "TB"))
     if tb is None and hits is not None:
         # Derive TB if all components present: TB = 1B + 2*2B + 3*3B + 4*HR
         if all(v is not None for v in (singles, doubles, triples, hr)):
@@ -136,27 +138,33 @@ def _normalize_mlb_stats(raw: Dict[str, Any]) -> Dict[str, Any]:
         "triples":               triples,
         "home_runs":             hr,
         "total_bases":           tb,
-        "runs":                  _num(_g(raw, "runs", "R")),
-        "rbi":                   _num(_g(raw, "rbi", "RBI")),
-        "walks":                 _num(_g(raw, "walks", "baseOnBalls",
-                                          "base_on_balls", "BB")),
-        "strikeouts":            _num(_g(raw, "strikeouts", "K",
-                                          "batting_strikeouts", "SO")),
-        "stolen_bases":          _num(_g(raw, "stolenBases", "stolen_bases",
-                                          "SB")),
-        "pitcher_strikeouts":    _num(_g(raw, "pitcher_strikeouts",
-                                          "pitching_strikeouts",
+        "runs":                  _num(_g(raw, "batting_runs", "runs", "R")),
+        "rbi":                   _num(_g(raw, "batting_RBI", "batting_rbi",
+                                          "rbi", "RBI")),
+        "walks":                 _num(_g(raw, "batting_basesOnBalls",
+                                          "batting_walks", "walks",
+                                          "baseOnBalls", "base_on_balls", "BB")),
+        "strikeouts":            _num(_g(raw, "batting_strikeouts",
+                                          "strikeouts", "K", "SO")),
+        "stolen_bases":          _num(_g(raw, "batting_stolenBases",
+                                          "stolenBases", "stolen_bases", "SB")),
+        "pitcher_strikeouts":    _num(_g(raw, "pitching_strikeouts",
+                                          "pitcher_strikeouts",
                                           "strikeOutsPitched",
                                           "strikeoutsPitched")),
         "pitching_outs":         _num(_g(raw, "pitching_outs", "outs",
                                           "outsPitched")),
-        "pitching_hits_allowed": _num(_g(raw, "hitsAllowed", "hits_allowed",
+        "pitching_hits_allowed": _num(_g(raw, "pitching_hits", "hitsAllowed",
+                                          "hits_allowed",
                                           "pitching_hits_allowed")),
-        "pitching_earned_runs":  _num(_g(raw, "earnedRuns", "earned_runs",
-                                          "ER", "pitching_earned_runs")),
-        "pitching_walks":        _num(_g(raw, "pitcher_walks", "walksAllowed",
-                                          "walks_allowed", "pitching_walks")),
-        "pitches_thrown":        _num(_g(raw, "pitchesThrown", "pitches_thrown",
+        "pitching_earned_runs":  _num(_g(raw, "pitching_earnedRuns",
+                                          "earnedRuns", "earned_runs", "ER",
+                                          "pitching_earned_runs")),
+        "pitching_walks":        _num(_g(raw, "pitching_basesOnBalls",
+                                          "pitching_walks", "pitcher_walks",
+                                          "walksAllowed", "walks_allowed")),
+        "pitches_thrown":        _num(_g(raw, "pitching_pitchesThrown",
+                                          "pitchesThrown", "pitches_thrown",
                                           "numberOfPitches", "pitchCount")),
         "fantasy_score":         _num(_g(raw, "fantasyScore", "fantasy_score",
                                           "fantasyPoints")),
@@ -788,6 +796,219 @@ async def ingest_from_bdl(
     }
 
 
+# ───────────────────────────── source: SGO API (expandResults) ────────────
+def _extract_results_to_player_rows(
+    ev: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Walk an SGO event's `results` object (returned ONLY when
+    expandResults=true) → flat list of {player_id, stat_entity_id, stats_raw, ...}.
+
+    Defensive against multiple shapes since SGO doesn't publish an exact
+    schema for the results object. We probe in order:
+      1. event.results.byEventEntity[entity_id].stats    (canonical when
+         entities are players)
+      2. event.results.players[]  (legacy/alt shape)
+      3. event.results.byPlayer / event.results.playerStats
+    """
+    results = ev.get("results") or {}
+    out: List[Dict[str, Any]] = []
+    teams = ev.get("teams") or {}
+    home_team = (teams.get("home") or {}).get("names") or {}
+    away_team = (teams.get("away") or {}).get("names") or {}
+    home_team_name = (home_team.get("long") or home_team.get("medium")
+                       if isinstance(home_team, dict) else None)
+    away_team_name = (away_team.get("long") or away_team.get("medium")
+                       if isinstance(away_team, dict) else None)
+
+    def _team_for(tid: Any) -> Optional[str]:
+        if not tid: return None
+        if tid == (teams.get("home") or {}).get("teamID"): return home_team_name
+        if tid == (teams.get("away") or {}).get("teamID"): return away_team_name
+        return None
+
+    def _opp_for(team_name: Optional[str]) -> Optional[str]:
+        if team_name == home_team_name and home_team_name: return away_team_name
+        if team_name == away_team_name and away_team_name: return home_team_name
+        return None
+
+    # Shape 1: results.byEventEntity = {entity_id: {stats: {statID: val},
+    #                                                playerID, teamID, ...}}
+    by_entity = (results.get("byEventEntity") or results.get("entities") or {})
+    if isinstance(by_entity, dict) and by_entity:
+        for entity_id, blob in by_entity.items():
+            if not isinstance(blob, dict):
+                continue
+            stats_raw = blob.get("stats") or blob.get("values") or {}
+            if not stats_raw:
+                continue
+            pid = blob.get("playerID") or blob.get("player_id")
+            tid = blob.get("teamID")   or blob.get("team_id")
+            # Skip team-level aggregate entities ("home"/"away") — those go
+            # to team_stats, not player_stats.
+            if pid is None and entity_id in ("home", "away"):
+                continue
+            team_name = _team_for(tid)
+            out.append({
+                "player_id":      pid or entity_id,
+                "stat_entity_id": entity_id,
+                "player_name":    blob.get("playerName") or blob.get("name"),
+                "team_id":        tid,
+                "team":           team_name,
+                "opponent":       _opp_for(team_name),
+                "stats_raw":      stats_raw,
+            })
+        if out:
+            return out
+
+    # Shape 2: results.players = [{playerID, name, stats: {...}, teamID}]
+    players_arr = (results.get("players") or results.get("byPlayer")
+                    or results.get("playerStats") or [])
+    if isinstance(players_arr, list) and players_arr:
+        for p in players_arr:
+            if not isinstance(p, dict):
+                continue
+            stats_raw = p.get("stats") or p.get("values") or {}
+            if not stats_raw:
+                continue
+            pid = p.get("playerID") or p.get("player_id") or p.get("id")
+            tid = p.get("teamID")   or p.get("team_id")
+            team_name = _team_for(tid)
+            out.append({
+                "player_id":      pid,
+                "stat_entity_id": pid,
+                "player_name":    p.get("playerName") or p.get("name"),
+                "team_id":        tid,
+                "team":           team_name,
+                "opponent":       _opp_for(team_name),
+                "stats_raw":      stats_raw,
+            })
+    return out
+
+
+async def ingest_from_sgo_api(
+    db: AsyncIOMotorDatabase, *, league: str,
+    start: Optional[str], end: Optional[str], dry_run: bool, resume: bool,
+    rpm: int = 250, only_event_ids: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Re-fetch each driver event from SGO with expandResults=true and
+    extract player stats from event.results. Canonical SGO path.
+    """
+    api_key = os.environ.get("SGO_API_KEY", "")
+    if not api_key:
+        return {"source": "sgo_api",
+                 "error": "SGO_API_KEY not set in env",
+                 "events_scanned": 0, "events_with_zero": 0,
+                 "rows_emitted": 0, "coverage": {}, "sample_docs": []}
+
+    from scripts.sgo.client import SGOClient  # lazy import
+
+    if only_event_ids is not None:
+        event_ids = list(only_event_ids)
+    else:
+        match: Dict[str, Any] = {"league_id": league}
+        if start or end:
+            gd: Dict[str, Any] = {}
+            if start: gd["$gte"] = start
+            if end:   gd["$lte"] = end
+            match["game_date"] = gd
+        event_ids = []
+        async for r in db[DRIVER_COLL].aggregate(
+            [{"$match": match}, {"$group": {"_id": "$event_id"}},
+              {"$sort": {"_id": 1}}], allowDiskUse=True):
+            if r.get("_id"): event_ids.append(r["_id"])
+
+    print(f"  [sgo_api] {len(event_ids)} distinct event_ids to fetch "
+          f"with expandResults=true")
+    if not event_ids:
+        return {"source": "sgo_api", "events_scanned": 0,
+                 "events_with_zero": 0, "rows_emitted": 0, "coverage": {},
+                 "sample_docs": []}
+
+    coverage: Dict[str, int] = {}
+    sample_docs: List[Dict[str, Any]] = []
+    upserts: List[UpdateOne] = []
+    events_scanned = 0
+    events_with_zero = 0
+    rows_emitted = 0
+    api_failures = 0
+    log_every = max(50, len(event_ids) // 20)
+    next_log = log_every
+
+    async with SGOClient(api_key=api_key, max_rpm=rpm) as cli:
+        for eid in event_ids:
+            events_scanned += 1
+            try:
+                ev = await cli.get_event_with_results(eid)
+            except Exception as e:
+                api_failures += 1
+                if api_failures <= 5:
+                    print(f"  [sgo_api] {eid} fail: {e!r}")
+                continue
+            if not ev:
+                events_with_zero += 1
+                continue
+            player_rows = _extract_results_to_player_rows(ev)
+            if not player_rows:
+                events_with_zero += 1
+                continue
+            league_id = _g(ev, "leagueID", "league_id") or league
+            sport_id = _g(ev, "sportID", "sport_id")
+            gd_val = _g(ev.get("status") or {}, "startsAt") or \
+                       _g(ev, "startTime", "commenceTime", "commence_time")
+            game_date = gd_val[:10] if isinstance(gd_val, str) else None
+            for pr in player_rows:
+                stats = normalize_stats(pr["stats_raw"] or {}, league=league_id)
+                for k, v in stats.items():
+                    if v is not None:
+                        coverage[k] = coverage.get(k, 0) + 1
+                doc = {
+                    "event_id":      eid,
+                    "league_id":     league_id,
+                    "sport_id":      sport_id,
+                    "game_date":     game_date,
+                    "player_id":     pr["player_id"],
+                    "stat_entity_id": pr.get("stat_entity_id"),
+                    "player_name":   pr.get("player_name"),
+                    "team_id":       pr.get("team_id"),
+                    "team":          pr.get("team"),
+                    "opponent":      pr.get("opponent"),
+                    "stats":         stats,
+                    "stats_sgo_canonical": pr["stats_raw"],
+                    "raw_source":    {"sgo_event_results": pr["stats_raw"]},
+                    "source":        "sgo_api",
+                    "ingest_version": INGEST_VERSION,
+                    "ingested_at":   datetime.now(timezone.utc),
+                }
+                if len(sample_docs) < 2 and any(v is not None
+                                                  for v in stats.values()):
+                    sample_docs.append(doc)
+                rows_emitted += 1
+                filt = {"event_id": eid, "player_id": pr["player_id"]}
+                upserts.append(UpdateOne(filt, {"$set": doc}, upsert=True))
+                if len(upserts) >= 1000 and not dry_run:
+                    await db[OUT_COLL].bulk_write(upserts, ordered=False)
+                    upserts = []
+            if events_scanned >= next_log:
+                print(f"  [sgo_api] processed={events_scanned:,}/"
+                      f"{len(event_ids):,}  rows_total={rows_emitted:,}  "
+                      f"zero={events_with_zero}  fail={api_failures}")
+                next_log += log_every
+        if upserts and not dry_run:
+            await db[OUT_COLL].bulk_write(upserts, ordered=False)
+        api_telemetry = cli.stats()
+    print(f"  [sgo_api] api_calls={api_telemetry}")
+    return {
+        "source":           "sgo_api",
+        "events_scanned":   events_scanned,
+        "events_with_zero": events_with_zero,
+        "rows_emitted":     rows_emitted,
+        "api_failures":     api_failures,
+        "api_telemetry":    api_telemetry,
+        "coverage":         coverage,
+        "sample_docs":      sample_docs,
+    }
+
+
 # ───────────────────────────── indexes ────────────────────────────────────
 async def ensure_out_indexes(db: AsyncIOMotorDatabase) -> None:
     c = db[OUT_COLL]
@@ -832,6 +1053,8 @@ async def amain(args: argparse.Namespace) -> int:
     await ensure_out_indexes(db)
 
     results: List[Dict[str, Any]] = []
+    gap_event_ids_mlb: Optional[List[str]] = None
+    gap_event_ids_nba: Optional[List[str]] = None
     gap_dates_mlb: Optional[List[str]] = None
     gap_dates_nba: Optional[List[str]] = None
 
@@ -839,6 +1062,25 @@ async def amain(args: argparse.Namespace) -> int:
     if source == "both":
         source = "auto"  # backwards-compat alias
 
+    # ── Step 1: SGO API (canonical, primary) ─────────────────────────────
+    if source in ("sgo_api", "auto"):
+        leagues_to_run = ([args.league] if args.league
+                            else ["MLB", "NBA"])
+        for lg in leagues_to_run:
+            r = await ingest_from_sgo_api(
+                db, league=lg, start=args.start, end=args.end,
+                dry_run=args.dry_run, resume=args.resume,
+                rpm=args.sgo_rpm)
+            results.append(r)
+            if r.get("error"):
+                print(f"  [sgo_api/{lg}] SKIPPED: {r['error']}")
+            else:
+                print(f"  [sgo_api/{lg}] events_scanned={r['events_scanned']:,}  "
+                      f"events_with_zero={r['events_with_zero']:,}  "
+                      f"rows_emitted={r['rows_emitted']:,}  "
+                      f"api_failures={r.get('api_failures',0)}")
+
+    # ── Step 2: SGO re-extract from sgo_events.raw (free, secondary) ─────
     if source in ("sgo", "auto"):
         r = await ingest_from_sgo(
             db, league=args.league, start=args.start, end=args.end,
@@ -848,47 +1090,45 @@ async def amain(args: argparse.Namespace) -> int:
               f"events_with_zero_playerStats={r['events_with_zero']:,}  "
               f"rows_emitted={r['rows_emitted']:,}")
 
-        # For auto: identify dates that still produced no rows per league
-        if source == "auto":
-            async def _gap_dates(lg: str) -> List[str]:
-                match: Dict[str, Any] = {"league_id": lg}
-                if args.start or args.end:
-                    gd: Dict[str, Any] = {}
-                    if args.start: gd["$gte"] = args.start
-                    if args.end:   gd["$lte"] = args.end
-                    match["game_date"] = gd
-                all_d = set()
-                async for d in db[DRIVER_COLL].aggregate(
-                    [{"$match": match}, {"$group": {"_id": "$game_date"}}],
-                    allowDiskUse=True):
-                    if d.get("_id"): all_d.add(d["_id"])
-                stats_d = set()
-                async for d in db[OUT_COLL].aggregate(
-                    [{"$match": {"league_id": lg,
-                                  **({"game_date": match.get("game_date")}
-                                     if "game_date" in match else {})}},
-                      {"$group": {"_id": "$game_date"}}], allowDiskUse=True):
-                    if d.get("_id"): stats_d.add(d["_id"])
-                return sorted(all_d - stats_d)
+    # ── Gap detection for emergency fallback (auto only) ─────────────────
+    if source == "auto":
+        async def _gap_dates(lg: str) -> List[str]:
+            match: Dict[str, Any] = {"league_id": lg}
+            if args.start or args.end:
+                gd: Dict[str, Any] = {}
+                if args.start: gd["$gte"] = args.start
+                if args.end:   gd["$lte"] = args.end
+                match["game_date"] = gd
+            all_d = set()
+            async for d in db[DRIVER_COLL].aggregate(
+                [{"$match": match}, {"$group": {"_id": "$game_date"}}],
+                allowDiskUse=True):
+                if d.get("_id"): all_d.add(d["_id"])
+            stats_d = set()
+            stats_match = {"league_id": lg}
+            if "game_date" in match:
+                stats_match["game_date"] = match["game_date"]
+            async for d in db[OUT_COLL].aggregate(
+                [{"$match": stats_match},
+                  {"$group": {"_id": "$game_date"}}], allowDiskUse=True):
+                if d.get("_id"): stats_d.add(d["_id"])
+            return sorted(all_d - stats_d)
 
-            if args.league in (None, "MLB"):
-                gap_dates_mlb = await _gap_dates("MLB")
-                if gap_dates_mlb:
-                    print(f"  [gap-detect/MLB] {len(gap_dates_mlb)} dates "
-                          f"need mlbstatsapi backfill")
-            if args.league in (None, "NBA"):
-                gap_dates_nba = await _gap_dates("NBA")
-                if gap_dates_nba:
-                    print(f"  [gap-detect/NBA] {len(gap_dates_nba)} dates "
-                          f"need bdl backfill")
+        if args.league in (None, "MLB"):
+            gap_dates_mlb = await _gap_dates("MLB")
+            if gap_dates_mlb:
+                print(f"  [gap-detect/MLB] {len(gap_dates_mlb)} dates still "
+                      f"missing — mlbstatsapi emergency fallback will run")
+        if args.league in (None, "NBA"):
+            gap_dates_nba = await _gap_dates("NBA")
+            if gap_dates_nba:
+                print(f"  [gap-detect/NBA] {len(gap_dates_nba)} dates still "
+                      f"missing — bdl emergency fallback will run")
 
+    # ── Emergency fallback: MLB Stats API ────────────────────────────────
     run_mlb_api = (source == "mlbstatsapi" or
                     (source == "auto" and args.league in (None, "MLB")
-                     and (gap_dates_mlb is None or len(gap_dates_mlb) > 0)))
-    run_bdl     = (source == "bdl" or
-                    (source == "auto" and args.league in (None, "NBA")
-                     and (gap_dates_nba is None or len(gap_dates_nba) > 0)))
-
+                     and gap_dates_mlb))
     if run_mlb_api:
         r = await ingest_from_mlbstatsapi(
             db, league="MLB", start=args.start, end=args.end,
@@ -901,6 +1141,10 @@ async def amain(args: argparse.Namespace) -> int:
               f"rows_emitted={r['rows_emitted']:,}  "
               f"unmapped_names={r.get('unmapped_count', 0):,}")
 
+    # ── Emergency fallback: BallDontLie (NBA) ────────────────────────────
+    run_bdl = (source == "bdl" or
+                (source == "auto" and args.league in (None, "NBA")
+                 and gap_dates_nba))
     if run_bdl:
         r = await ingest_from_bdl(
             db, start=args.start, end=args.end,
@@ -938,6 +1182,17 @@ async def amain(args: argparse.Namespace) -> int:
             print(f"    events_scanned:        {r['events_scanned']:,}")
             print(f"    events_w/_zero_stats:  {r['events_with_zero']:,}")
             print(f"    rows_emitted:          {r['rows_emitted']:,}")
+        elif r["source"] == "sgo_api":
+            print(f"  [sgo_api]")
+            if r.get("error"):
+                print(f"    SKIPPED: {r['error']}")
+            else:
+                print(f"    events_scanned:        {r['events_scanned']:,}")
+                print(f"    events_w/_zero_stats:  {r['events_with_zero']:,}")
+                print(f"    rows_emitted:          {r['rows_emitted']:,}")
+                print(f"    api_failures:          {r.get('api_failures', 0):,}")
+                if r.get("api_telemetry"):
+                    print(f"    api_telemetry:         {r['api_telemetry']}")
         elif r["source"] == "mlbstatsapi":
             print(f"  [mlbstatsapi]")
             print(f"    dates:                 {r['dates']:,}")
@@ -995,10 +1250,17 @@ def main() -> int:
     p.add_argument("--start", default=None, help="YYYY-MM-DD inclusive")
     p.add_argument("--end",   default=None, help="YYYY-MM-DD inclusive")
     p.add_argument("--source", default="auto",
-                    choices=["sgo", "mlbstatsapi", "bdl", "auto", "both"],
-                    help="sgo | mlbstatsapi (MLB) | bdl (NBA) | "
-                         "auto = sgo + league-appropriate fallback (default) | "
-                         "both = legacy alias for auto")
+                    choices=["sgo_api", "sgo", "mlbstatsapi", "bdl",
+                              "auto", "both"],
+                    help="sgo_api = primary SGO /v2/events?expandResults=true | "
+                         "sgo = re-extract from sgo_events.raw (free) | "
+                         "mlbstatsapi (MLB emergency fallback) | "
+                         "bdl (NBA emergency fallback) | "
+                         "auto = sgo_api + sgo + emergency fallbacks "
+                         "(default) | both = legacy alias for auto")
+    p.add_argument("--sgo-rpm", type=int, default=250,
+                    help="SGO API rate limit (req/min); default 250 (under "
+                         "300 rpm trial cap). Requires SGO_API_KEY env var.")
     p.add_argument("--mlb-rpm", type=int, default=30,
                     help="MLB stats API rate limit (req/min); default 30")
     p.add_argument("--bdl-rpm", type=int, default=30,
