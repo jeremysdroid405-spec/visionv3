@@ -174,15 +174,16 @@ async def build_month(
             if oid and oid not in odd_ids_to_try:
                 odd_ids_to_try.append(oid)
         if odd_ids_to_try:
-            async for c in db.sgo_book_consensus.find(
+            cons_cursor = db.sgo_book_consensus.find(
                 {"event_id": eid, "odd_id": {"$in": odd_ids_to_try}},
                 projection={"_id": 0, "fair_odds": 1, "book_odds": 1,
                              "consensus_probability": 1, "snapshot_time": 1,
                              "odd_id": 1}
-            ).sort([("snapshot_time", -1)]).limit(1).to_list(None):
-                consensus_doc = c
+            ).sort([("snapshot_time", -1)]).limit(1)
+            cons_rows = await cons_cursor.to_list(length=1)
+            if cons_rows:
+                consensus_doc = cons_rows[0]
                 cons_attached += 1
-                break
 
         doc = {
             "event_id":   eid,
