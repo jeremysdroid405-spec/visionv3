@@ -8,7 +8,7 @@ re-fetching from the API.
 """
 from __future__ import annotations
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Iterable
+from typing import Any, Dict, List, Iterable, Optional
 
 
 def _get(d: Dict[str, Any], *keys: str, default: Any = None) -> Any:
@@ -79,6 +79,50 @@ def _iter_outcomes(book: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
             book.get("sides") or [])
 
 
+def _resolve_line(market: Dict[str, Any],
+                   book: Optional[Dict[str, Any]] = None) -> Optional[float]:
+    """Resolve a numeric line value for an SGO odds market.
+
+    Priority (first non-null wins):
+      1. book.bookOverUnder        ← per-book live OU line (canonical for alt lines)
+      2. book.fairOverUnder        ← per-book fair OU line
+      3. book.closeBookOverUnder   ← per-book closing OU line
+      4. book.closeFairOverUnder   ← per-book closing fair OU line
+      5. market.bookOverUnder      ← market-level OU line (fallback)
+      6. market.fairOverUnder
+      7. market.closeBookOverUnder
+      8. market.closeFairOverUnder
+      9. market.line / lineValue / value      ← legacy fallback
+
+    Non-OU markets typically have all OU fields absent, so we return None
+    and the caller stores line=None — unchanged behavior.
+
+    Strings like "0.5", "1.5" are coerced to float.
+    """
+    for src in (book, market):
+        if not src:
+            continue
+        for k in ("bookOverUnder", "fairOverUnder",
+                  "closeBookOverUnder", "closeFairOverUnder"):
+            v = src.get(k)
+            if v is None or v == "":
+                continue
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                continue
+    # Legacy fallback for any source that already populated a line directly
+    for k in ("line", "lineValue", "value"):
+        v = market.get(k)
+        if v is None or v == "":
+            continue
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def extract_props_and_outcomes(
     ev: Dict[str, Any], *, snapshot_time: str
 ) -> Dict[str, List[Dict[str, Any]]]:
@@ -102,7 +146,7 @@ def extract_props_and_outcomes(
         period_id= _get(m, "periodID", "period_id")
         bet_type = _get(m, "betTypeID", "bet_type_id")
         side_id  = _get(m, "sideID", "side_id")
-        line     = _get(m, "line", "lineValue", "value")
+        market_line = _resolve_line(m, None)   # market-level fallback
         # consensus
         cons = m.get("consensus") or {}
         fair_odds   = _get(cons, "fairOdds", "fair_odds")
@@ -121,10 +165,18 @@ def extract_props_and_outcomes(
         # per-book odds
         for b in _iter_books(m):
             book_id = _get(b, "bookmakerID", "bookmaker_id", "book_id", "id")
+            # Per-book line first (alt lines differ across books) → fall back
+            # to market-level if missing.
+            book_line = _resolve_line(m, b)
+            if book_line is None:
+                book_line = market_line
             for o in _iter_outcomes(b):
                 price  = _get(o, "price", "odds", "americanOdds", "american_odds")
                 sel_id = _get(o, "selectionID", "selection_id", "outcomeID")
                 side   = _get(o, "side", "name", "sideID")
+                # outcome-level line override (rare, but some books stamp it)
+                outcome_line = _resolve_line(o, None)
+                line = outcome_line if outcome_line is not None else book_line
                 row = {
                     "event_id":      eid,
                     "league_id":     league_id,
