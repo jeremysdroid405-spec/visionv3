@@ -197,6 +197,14 @@ async def build(
             "opp_present_rate":  (a["opp_present"]/a["rows"]) if a["rows"] else None,
             "alt_groups_total":  a["alt_groups_total"],
             "alt_groups_multi":  a["alt_groups_multi"],
+            # Renamed from alt_line_rate → strict_same_stat_alt_line_rate.
+            # This rate only counts SAME-stat multi-line groups
+            # (e.g. FanDuel batting_hits 1.5/2.5). Cross-stat ladders
+            # (hits/singles/HR/totalBases/fantasyScore per player) are NOT
+            # counted here — see scripts/sgo/sgo_market_depth_analysis.py.
+            "strict_same_stat_alt_line_rate":
+                                 (a["alt_groups_multi"]/a["alt_groups_total"]
+                                  if a["alt_groups_total"] else None),
             "alt_line_rate":     (a["alt_groups_multi"]/a["alt_groups_total"]
                                   if a["alt_groups_total"] else None),
         })
@@ -223,7 +231,8 @@ def emit(rep: Dict[str, Any]) -> tuple[str, str]:
               "odds_bucket", "rows", "fair_odds_avail", "fair_odds_rate",
               "book_odds_avail", "book_odds_rate", "cons_prob_avail",
               "cons_prob_rate", "opp_present", "opp_present_rate",
-              "alt_groups_total", "alt_groups_multi", "alt_line_rate"]
+              "alt_groups_total", "alt_groups_multi",
+              "strict_same_stat_alt_line_rate", "alt_line_rate"]
     csv_rows = [[r.get(h) for h in header] for r in rep["rows"]]
     write_csv(csv_path, header, csv_rows)
     write_json(json_path, rep)
@@ -237,7 +246,7 @@ def pretty(rep: Dict[str, Any], top_n: int = 30) -> None:
     print("=" * 100)
     hdr = (f"  {'league':<6s} {'stat':<26s} {'side':<6s} {'book':<14s} "
            f"{'bucket':<14s} {'rows':>7s} {'fair%':>7s} {'cons%':>7s} "
-           f"{'opp%':>7s} {'alt%':>7s}")
+           f"{'opp%':>7s} {'strict_alt%':>11s}")
     print(hdr)
     for r in rep["rows"][:top_n]:
         print(f"  {r['league_id'] or '-':<6s} {str(r['stat_id'])[:26]:<26s} "
@@ -246,7 +255,7 @@ def pretty(rep: Dict[str, Any], top_n: int = 30) -> None:
               f"{fmt_pct(r['fair_odds_rate']):>7s} "
               f"{fmt_pct(r['cons_prob_rate']):>7s} "
               f"{fmt_pct(r['opp_present_rate']):>7s} "
-              f"{fmt_pct(r['alt_line_rate']):>7s}")
+              f"{fmt_pct(r['strict_same_stat_alt_line_rate']):>11s}")
     if len(rep["rows"]) > top_n:
         print(f"  ... and {len(rep['rows']) - top_n} more rows in CSV")
 

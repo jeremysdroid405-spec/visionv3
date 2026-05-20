@@ -169,15 +169,24 @@ async def build_report(
     rep["props_by_book"] = sorted(
         props_by_book.most_common(), key=lambda x: -x[1])
 
-    # ── Alt-line group rate ─────────────────────────────────────────────
+    # ── Strict same-stat alt-line group rate ──────────────────────────────
+    # "Strict" = same (event, player|entity, stat_id, side, book, period)
+    # with more than one distinct LINE value. This misses ladders that SGO
+    # encodes across DIFFERENT stat_ids (hits 1.5 / singles 0.5 / HR 0.5 /
+    # total_bases 1.5 / fantasy_score 7 …). For those, see
+    # scripts/sgo/sgo_market_depth_analysis.py.
     total_alt_groups = len(alt_group)
     multi_line_groups = sum(1 for v in alt_group.values() if len(v) > 1)
-    rep["alt_line_total_groups"] = total_alt_groups
-    rep["alt_line_groups"] = multi_line_groups
-    rep["alt_line_rate"] = (
+    rep["strict_alt_line_total_groups"] = total_alt_groups
+    rep["strict_alt_line_groups"]       = multi_line_groups
+    rep["strict_same_stat_alt_line_rate"] = (
         round(multi_line_groups / total_alt_groups, 4)
         if total_alt_groups else None
     )
+    # Backwards-compatible aliases (will be removed once consumers migrate)
+    rep["alt_line_total_groups"] = total_alt_groups
+    rep["alt_line_groups"]       = multi_line_groups
+    rep["alt_line_rate"]         = rep["strict_same_stat_alt_line_rate"]
 
     # ── Both-sided pair rate (uses opposing_odd_id) ─────────────────────
     n_candidates = len(pair_candidates)
@@ -326,11 +335,14 @@ def pretty_print(rep: Dict[str, Any]) -> None:
     print(f"    candidates: {rep['both_sided_pair_candidates']}   "
           f"present: {rep['both_sided_pairs_present']}   "
           f"rate: {rep['both_sided_rate']!s}")
-    print(f"\n• Alt-line group rate "
+    print(f"\n• Strict same-stat alt-line group rate "
           f"(event × player/entity × stat × side × book × period):")
-    print(f"    groups: {rep['alt_line_total_groups']}   "
-          f"multi-line groups: {rep['alt_line_groups']}   "
-          f"rate: {rep['alt_line_rate']!s}")
+    print(f"    groups: {rep['strict_alt_line_total_groups']}   "
+          f"multi-line groups: {rep['strict_alt_line_groups']}   "
+          f"rate: {rep['strict_same_stat_alt_line_rate']!s}")
+    print(f"    [NB] this metric does NOT count cross-stat ladders "
+          f"(hits/singles/HR/total_bases/fantasy_score for same player). "
+          f"Run scripts/sgo/sgo_market_depth_analysis.py for those.")
     print(f"\n• Consensus rows:         {rep['consensus_rows']:>10d}  "
           f"(fair_odds={rep['consensus_fair_odds_rows']}, "
           f"book_odds={rep['consensus_book_odds_rows']})")

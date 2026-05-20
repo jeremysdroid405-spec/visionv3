@@ -1,3 +1,0 @@
-league_id,sport_id,stat_id,rows,distinct_players,distinct_events,distinct_books,avg_books_per_player_event,avg_lines_per_player_event,avg_distinct_lines_per_pebs,consensus_avail,consensus_rate,pair_candidates,pair_present,pair_rate,top5_books,top5_player_ids
-MLB,BASEBALL,batting_hits,4,1,1,2,2.0,2.0,1.3333333333333333,3,0.75,2,2,1.0,"[('fanduel', 3), ('draftkings', 1)]",['JOSE_RAMIREZ_1_MLB']
-MLB,BASEBALL,pitching_strikeouts,2,1,1,1,1.0,1.0,1.0,2,1.0,2,2,1.0,"[('fanduel', 2)]",['SHOHEI_OHTANI_1_MLB']

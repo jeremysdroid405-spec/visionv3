@@ -178,7 +178,7 @@ async def verify(db) -> Dict[str, Any]:
                            "n_distinct_lines": d["n_lines"],
                            "sample_lines": d["sample"]})
     rep["top_stats_by_lines"] = top_stats
-    # (c) alt-line group rate
+    # (c) strict same-stat alt-line group rate
     pipe = [
         {"$match": {"line": {"$ne": None}}},
         {"$group": {"_id": {
@@ -198,7 +198,7 @@ async def verify(db) -> Dict[str, Any]:
         alt["multi_line_groups"] = d["multi_line_groups"]
         alt["rate"] = (round(d["multi_line_groups"] / d["total_groups"], 4)
                        if d["total_groups"] else None)
-    rep["alt_line_groups"] = alt
+    rep["strict_same_stat_alt_line_groups"] = alt
     # (d) duplicates
     dup_pipe = [
         {"$group": {"_id": {"event_id": "$event_id", "odd_id": "$odd_id",
@@ -234,11 +234,12 @@ async def discover_months(db) -> List[str]:
 
 
 async def run_analyses_for_month(month: str) -> Dict[str, Any]:
-    """Invoke the 4 analysis modules for a single month."""
+    """Invoke the 5 analysis modules for a single month."""
     from scripts.sgo.sgo_bucket_analysis import build as bld_bucket
     from scripts.sgo.sgo_book_coverage import build as bld_book
     from scripts.sgo.sgo_consensus_devig_analysis import build as bld_devig
     from scripts.sgo.sgo_player_prop_market_summary import build as bld_pp
+    from scripts.sgo.sgo_market_depth_analysis import build as bld_depth
     start = f"{month}-01"
     end   = f"{month}-31"
     summary: Dict[str, Any] = {"month": month}
@@ -246,17 +247,30 @@ async def run_analyses_for_month(month: str) -> Dict[str, Any]:
     book   = await bld_book(start_date=start, end_date=end)
     devig  = await bld_devig(start_date=start, end_date=end)
     pp     = await bld_pp(start_date=start, end_date=end)
+    depth  = await bld_depth(start_date=start, end_date=end)
     summary["bucket_total_rows"] = sum(r["rows"] for r in bucket["rows"])
     summary["bucket_breakdowns"]   = len(bucket["rows"])
-    summary["alt_line_rate_avg"]   = (
-        round(sum((r.get("alt_line_rate") or 0) for r in bucket["rows"])
-              / max(len([r for r in bucket["rows"] if r.get("alt_line_rate") is not None]), 1), 4))
+    summary["strict_alt_line_rate_avg"] = (
+        round(sum((r.get("strict_same_stat_alt_line_rate") or 0)
+                   for r in bucket["rows"])
+              / max(len([r for r in bucket["rows"]
+                          if r.get("strict_same_stat_alt_line_rate") is not None]),
+                     1), 4))
     summary["books"]               = len(book["books"])
     summary["devig_markets"]       = devig["summary"]["markets_with_consensus"]
     summary["devig_twoway_pairs"]  = devig["summary"]["twoway_pairs"]
     summary["devig_anomalies"]     = devig["summary"]["anomaly_count_ge_5pp"]
     summary["player_prop_rows"]    = pp["total_props"]
     summary["distinct_player_prop_markets"] = len(pp["rows"])
+    # Market-depth headline numbers (cross-stat ladder visibility)
+    by_name = {d["name"]: d for d in depth["distributions"]}
+    pe_market = by_name.get("player_event_market_depth", {})
+    pe_line   = by_name.get("player_event_line_depth", {})
+    summary["pe_market_depth_median"] = pe_market.get("median")
+    summary["pe_market_depth_p90"]    = pe_market.get("p90")
+    summary["pe_market_depth_ge3_rate"] = pe_market.get("ge_3_rate")
+    summary["pe_line_depth_median"]   = pe_line.get("median")
+    summary["pe_line_depth_ge3_rate"] = pe_line.get("ge_3_rate")
     return summary
 
 
@@ -295,10 +309,16 @@ def print_summary(pre_ok: bool, bf: Optional[Dict[str, Any]],
     cov = ver["line_coverage"]
     print(f"    line populated:        {cov['has_line']}/{cov['total']}  "
           f"({(cov['rate'] or 0)*100:.1f}%)")
-    alt = ver["alt_line_groups"]
+    alt = ver["strict_same_stat_alt_line_groups"]
     rate = (alt["rate"] or 0) * 100
-    print(f"    alt-line groups:       {alt['multi_line_groups']} multi-line "
-          f"of {alt['total_groups']} total  ({rate:.2f}%)")
+    print(f"    strict same-stat alt-line groups: "
+          f"{alt['multi_line_groups']} multi-line of {alt['total_groups']} "
+          f"total  ({rate:.2f}%)")
+    print(f"    [NB] This metric ONLY counts the same stat on the same book "
+          f"having multiple lines (e.g. FanDuel batting_hits 1.5+2.5). "
+          f"Cross-stat ladders (hits/HR/totalBases/fantasyScore per player) "
+          f"are not counted here — see Monthly Analysis below for "
+          f"market-depth metrics.")
     print(f"    duplicate rows (by PK): {ver['duplicates']['props_raw_dup_groups']}")
     print()
     print("    Distinct lines on well-known alt markets:")
@@ -311,18 +331,32 @@ def print_summary(pre_ok: bool, bf: Optional[Dict[str, Any]],
     if monthly:
         print("• Monthly analysis runs:")
         print(f"    {'month':<10s} {'props':>9s} {'markets':>8s} "
-              f"{'alt%':>6s} {'books':>6s} {'devig_pairs':>11s} "
-              f"{'pp_rows':>9s}")
+              f"{'strict_alt%':>11s} {'pe_market_med':>13s} "
+              f"{'pe_market_p90':>13s} {'pe_market_ge3':>13s} "
+              f"{'pe_line_med':>11s} {'books':>6s} "
+              f"{'twoway':>7s} {'pp_rows':>9s}")
         for m in monthly:
+            ge3 = (m.get('pe_market_depth_ge3_rate') or 0) * 100
             print(f"    {m['month']:<10s} "
                   f"{m['bucket_total_rows']:>9d} "
                   f"{m['bucket_breakdowns']:>8d} "
-                  f"{m['alt_line_rate_avg']*100:>5.2f}% "
+                  f"{m['strict_alt_line_rate_avg']*100:>10.2f}% "
+                  f"{(m.get('pe_market_depth_median') or 0):>13.1f} "
+                  f"{(m.get('pe_market_depth_p90') or 0):>13.1f} "
+                  f"{ge3:>12.1f}% "
+                  f"{(m.get('pe_line_depth_median') or 0):>11.1f} "
                   f"{m['books']:>6d} "
-                  f"{m['devig_twoway_pairs']:>11d} "
+                  f"{m['devig_twoway_pairs']:>7d} "
                   f"{m['player_prop_rows']:>9d}")
+        print()
+        print("    Legend:")
+        print("      strict_alt%   = strict same-stat alt-line rate (FanDuel batting_hits 1.5+2.5)")
+        print("      pe_market_*   = distinct stat_ids per (player,event,side) — CROSS-STAT ladder depth")
+        print("      pe_line_med   = distinct lines per (player,event,side) — combined ladder depth")
+        print("      pe_market_ge3 = share of (player,event,side) with ≥3 distinct stat markets")
     print()
     # Verdict
+    alt = ver["strict_same_stat_alt_line_groups"]
     healthy = (alt["rate"] is not None and alt["rate"] > 0.05 and
                cov["rate"] is not None and cov["rate"] > 0.5 and
                ver["duplicates"]["props_raw_dup_groups"] == 0)
@@ -334,8 +368,12 @@ def print_summary(pre_ok: bool, bf: Optional[Dict[str, Any]],
                        "rows due to a (event,odd,book,side,snapshot_time) "
                        "mismatch between props_raw and sgo_events.raw")
         if alt["rate"] is None or alt["rate"] <= 0.05:
-            msg.append("alt-line group rate still ≤ 5% — only one line per group "
-                       "in the data, or the per-book line wasn't applied")
+            msg.append("strict same-stat alt-line rate ≤ 5% — this is "
+                       "EXPECTED if your books primarily encode ladders "
+                       "across stat_ids (not as multiple lines per stat). "
+                       "Check the Monthly Analysis market-depth columns "
+                       "(pe_market_med, pe_market_p90) for the real "
+                       "ladder visibility.")
         if ver["duplicates"]["props_raw_dup_groups"] > 0:
             msg.append(f"{ver['duplicates']['props_raw_dup_groups']} duplicate "
                        f"groups detected — index may be missing or unique key drifted")
@@ -374,8 +412,8 @@ async def amain(args: argparse.Namespace) -> int:
     ver = await verify(db)
     print(f"  line populated: "
           f"{ver['line_coverage']['has_line']}/{ver['line_coverage']['total']}")
-    print(f"  alt-line group rate: "
-          f"{(ver['alt_line_groups']['rate'] or 0)*100:.2f}%")
+    print(f"  strict same-stat alt-line group rate: "
+          f"{(ver['strict_same_stat_alt_line_groups']['rate'] or 0)*100:.2f}%")
 
     # Step 4 — monthly analyses
     monthly: List[Dict[str, Any]] = []
@@ -394,7 +432,9 @@ async def amain(args: argparse.Namespace) -> int:
                 row = await run_analyses_for_month(mo)
                 monthly.append(row)
                 print(f"  {mo}  props={row['bucket_total_rows']}  "
-                      f"alt%={row['alt_line_rate_avg']*100:.2f}  "
+                      f"strict_alt%={row['strict_alt_line_rate_avg']*100:.2f}  "
+                      f"pe_market_med={row.get('pe_market_depth_median') or '-'}  "
+                      f"pe_market_p90={row.get('pe_market_depth_p90') or '-'}  "
                       f"books={row['books']}  twoway={row['devig_twoway_pairs']}")
             except Exception as e:
                 print(f"  {mo}  ANALYSIS FAILED: {e!r}")
