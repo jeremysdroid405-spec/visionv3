@@ -1,0 +1,88 @@
+{
+  "generated_at": "2026-05-20T03:16:56.799667+00:00",
+  "filter": {
+    "league": "MLB",
+    "sport": null,
+    "start_date": "2025-06-15",
+    "end_date": "2025-06-15"
+  },
+  "total_props": 6,
+  "rows": [
+    {
+      "league_id": "MLB",
+      "sport_id": "BASEBALL",
+      "stat_id": "batting_hits",
+      "rows": 4,
+      "distinct_players": 1,
+      "distinct_events": 1,
+      "distinct_books": 2,
+      "avg_books_per_player_event": 2.0,
+      "avg_lines_per_player_event": 2.0,
+      "avg_distinct_lines_per_pebs": 1.3333333333333333,
+      "consensus_avail": 3,
+      "consensus_rate": 0.75,
+      "pair_candidates": 2,
+      "pair_present": 2,
+      "pair_rate": 1.0,
+      "top5_books": [
+        [
+          "fanduel",
+          3
+        ],
+        [
+          "draftkings",
+          1
+        ]
+      ],
+      "top5_player_ids": [
+        "JOSE_RAMIREZ_1_MLB"
+      ]
+    },
+    {
+      "league_id": "MLB",
+      "sport_id": "BASEBALL",
+      "stat_id": "pitching_strikeouts",
+      "rows": 2,
+      "distinct_players": 1,
+      "distinct_events": 1,
+      "distinct_books": 1,
+      "avg_books_per_player_event": 1.0,
+      "avg_lines_per_player_event": 1.0,
+      "avg_distinct_lines_per_pebs": 1.0,
+      "consensus_avail": 2,
+      "consensus_rate": 1.0,
+      "pair_candidates": 2,
+      "pair_present": 2,
+      "pair_rate": 1.0,
+      "top5_books": [
+        [
+          "fanduel",
+          2
+        ]
+      ],
+      "top5_player_ids": [
+        "SHOHEI_OHTANI_1_MLB"
+      ]
+    }
+  ],
+  "top_players": [
+    {
+      "player_id": "JOSE_RAMIREZ_1_MLB",
+      "player_name": "Jose Ramirez",
+      "rows": 4,
+      "distinct_events": 1,
+      "distinct_books": 2,
+      "distinct_stats": 1,
+      "distinct_lines": 2
+    },
+    {
+      "player_id": "SHOHEI_OHTANI_1_MLB",
+      "player_name": "Shohei Ohtani",
+      "rows": 2,
+      "distinct_events": 1,
+      "distinct_books": 1,
+      "distinct_stats": 1,
+      "distinct_lines": 1
+    }
+  ]
+}

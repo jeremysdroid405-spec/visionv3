@@ -1,0 +1,3 @@
+book_id,rows,distinct_events,distinct_stats,distinct_players,consensus_avail,consensus_rate,pair_candidates,pair_present,pair_rate,max_snapshot,leagues
+fanduel,6,2,3,3,5,0.8333333333333334,4,4,1.0,S1,{'MLB': 6}
+draftkings,1,1,1,1,0,0.0,0,0,,S1,{'MLB': 1}

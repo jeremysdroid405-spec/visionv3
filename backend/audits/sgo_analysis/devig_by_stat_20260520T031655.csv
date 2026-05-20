@@ -1,0 +1,3 @@
+key,rows,mean_spread_pp,median_spread_pp,p10_pp,p90_pp,max_abs_pp,min_pp
+batting_hits,3,1.157,1.01,0.794,1.667,1.667,0.794
+pitching_strikeouts,2,0.907,0.907,-1.22,3.033,3.033,-1.22

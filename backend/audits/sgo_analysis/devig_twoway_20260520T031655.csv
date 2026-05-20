@@ -1,0 +1,3 @@
+event_id,stat_id,book_id,line,yes_side,no_side,yes_book_prob,no_book_prob,yes_devig_prob,no_devig_prob,yes_fair_prob,no_fair_prob,yes_fair_vs_devig_pp,vig_pp
+E2,pitching_strikeouts,fanduel,6.5,over,under,0.4878,0.56522,0.46324,0.53676,0.5,0.53488,3.676,5.302
+E1,batting_hits,fanduel,1.5,over,under,0.6,0.45455,0.56897,0.43103,0.58333,0.44444,1.437,5.455
