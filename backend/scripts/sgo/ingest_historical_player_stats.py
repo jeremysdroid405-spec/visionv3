@@ -83,7 +83,7 @@ def _num(v: Any) -> Optional[float]:
 
 
 def _g(d: Optional[Dict[str, Any]], *keys: str) -> Any:
-    if not d: return None
+    if not isinstance(d, dict): return None
     for k in keys:
         if k in d and d[k] is not None:
             return d[k]
@@ -805,10 +805,13 @@ def _extract_results_to_player_rows(
 
     Defensive against multiple shapes since SGO doesn't publish an exact
     schema for the results object. We probe in order:
-      1. event.results.byEventEntity[entity_id].stats    (canonical when
-         entities are players)
-      2. event.results.players[]  (legacy/alt shape)
-      3. event.results.byPlayer / event.results.playerStats
+      1. event.results.game = {stat_entity_id: {stat_id: value, ...}, ...}
+         (the actual SGO production shape — keys include "home"/"away"
+          for team aggregates which we skip; player entity IDs look like
+          "SHOHEI_OHTANI_1_MLB" / "FIRSTNAME_LASTNAME_<n>_<LEAGUE>")
+      2. event.results.byEventEntity[entity_id].stats
+      3. event.results.players[]
+      4. event.results.byPlayer / event.results.playerStats
     """
     results = ev.get("results") or {}
     out: List[Dict[str, Any]] = []
@@ -831,7 +834,55 @@ def _extract_results_to_player_rows(
         if team_name == away_team_name and away_team_name: return home_team_name
         return None
 
-    # Shape 1: results.byEventEntity = {entity_id: {stats: {statID: val},
+    def _player_name_from_entity_id(entity_id: str) -> Optional[str]:
+        """SHOHEI_OHTANI_1_MLB → 'Shohei Ohtani'. Defensive against weird IDs."""
+        if not entity_id or not isinstance(entity_id, str):
+            return None
+        # Strip trailing _<n>_<LEAGUE> if present
+        parts = entity_id.split("_")
+        # Find first numeric segment from the end; treat everything before as name.
+        cut = len(parts)
+        for i in range(len(parts) - 1, -1, -1):
+            if parts[i].isdigit():
+                cut = i
+                break
+        name_parts = parts[:cut]
+        if not name_parts:
+            return None
+        return " ".join(p.capitalize() for p in name_parts)
+
+    # Shape 1: results.game (the ACTUAL SGO production shape)
+    #   results.game = {
+    #     "SHOHEI_OHTANI_1_MLB": {"batting_hits": 2, ...},
+    #     "home": {...team aggregates — SKIP...},
+    #     "away": {...team aggregates — SKIP...},
+    #     "team": {...},  "event": {...}  ← also SKIP
+    #   }
+    SKIP_KEYS = {"home", "away", "team", "event", "homeTeam", "awayTeam"}
+    game_map = results.get("game")
+    if isinstance(game_map, dict) and game_map:
+        for entity_id, stats_blob in game_map.items():
+            if entity_id in SKIP_KEYS:
+                continue
+            if not isinstance(stats_blob, dict):
+                continue
+            if not stats_blob:  # empty stats dict
+                continue
+            # In this shape, the stats blob IS the value-by-statID map itself
+            # (no nested .stats key). Each k:v pair is a stat.
+            out.append({
+                "player_id":      entity_id,
+                "stat_entity_id": entity_id,
+                "player_name":    _player_name_from_entity_id(entity_id),
+                "team_id":        None,
+                "team":           None,
+                "opponent":       None,
+                "stats_raw":      stats_blob,
+            })
+        if out:
+            return out
+
+    # Shape 2: results.byEventEntity = {entity_id: {stats: {statID: val}, ...}}
     #                                                playerID, teamID, ...}}
     by_entity = (results.get("byEventEntity") or results.get("entities") or {})
     if isinstance(by_entity, dict) and by_entity:
@@ -860,7 +911,7 @@ def _extract_results_to_player_rows(
         if out:
             return out
 
-    # Shape 2: results.players = [{playerID, name, stats: {...}, teamID}]
+    # Shape 3: results.players = [{playerID, name, stats: {...}, teamID}]
     players_arr = (results.get("players") or results.get("byPlayer")
                     or results.get("playerStats") or [])
     if isinstance(players_arr, list) and players_arr:
@@ -1063,6 +1114,7 @@ async def amain(args: argparse.Namespace) -> int:
         source = "auto"  # backwards-compat alias
 
     # ── Step 1: SGO API (canonical, primary) ─────────────────────────────
+    sgo_api_extractor_mismatch = False
     if source in ("sgo_api", "auto"):
         leagues_to_run = ([args.league] if args.league
                             else ["MLB", "NBA"])
@@ -1075,13 +1127,35 @@ async def amain(args: argparse.Namespace) -> int:
             if r.get("error"):
                 print(f"  [sgo_api/{lg}] SKIPPED: {r['error']}")
             else:
-                print(f"  [sgo_api/{lg}] events_scanned={r['events_scanned']:,}  "
-                      f"events_with_zero={r['events_with_zero']:,}  "
-                      f"rows_emitted={r['rows_emitted']:,}  "
-                      f"api_failures={r.get('api_failures',0)}")
+                scanned = r['events_scanned']
+                zero    = r['events_with_zero']
+                emitted = r['rows_emitted']
+                fails   = r.get('api_failures', 0)
+                print(f"  [sgo_api/{lg}] events_scanned={scanned:,}  "
+                      f"events_with_zero={zero:,}  "
+                      f"rows_emitted={emitted:,}  api_failures={fails}")
+                # Hard warning: 2xx events fetched (scanned > failures) but
+                # 0 rows emitted → almost certainly an extractor schema
+                # mismatch. Do NOT silently fall back to legacy SGO raw or
+                # external APIs since the source actually DOES have data.
+                if scanned > 0 and scanned - fails > 0 and emitted == 0:
+                    sgo_api_extractor_mismatch = True
+                    print(f"  ╔══════════════════════════════════════════════════════════")
+                    print(f"  ║ ⚠ HARD WARNING [{lg}]: SGO API returned "
+                          f"{scanned - fails} successful events but the")
+                    print(f"  ║   extractor emitted 0 player rows. This means the")
+                    print(f"  ║   `event.results` schema doesn't match any of the")
+                    print(f"  ║   probed shapes (results.game / .byEventEntity /")
+                    print(f"  ║   .players[]).  Inspect one event with:")
+                    print(f"  ║     python -c \"...; ev = await c.get_event_with_results(EID); print(ev['results'])\"")
+                    print(f"  ║   and paste the dict structure so we can extend the extractor.")
+                    print(f"  ║   FALLBACKS WILL BE SKIPPED for this league to avoid masking the bug.")
+                    print(f"  ╚══════════════════════════════════════════════════════════")
 
     # ── Step 2: SGO re-extract from sgo_events.raw (free, secondary) ─────
-    if source in ("sgo", "auto"):
+    # SKIP if sgo_api had an extractor mismatch — we don't want to silently
+    # mask a real schema problem with a legacy fallback.
+    if source in ("sgo", "auto") and not sgo_api_extractor_mismatch:
         r = await ingest_from_sgo(
             db, league=args.league, start=args.start, end=args.end,
             dry_run=args.dry_run, resume=args.resume)
@@ -1089,6 +1163,9 @@ async def amain(args: argparse.Namespace) -> int:
         print(f"  [sgo] events_scanned={r['events_scanned']:,}  "
               f"events_with_zero_playerStats={r['events_with_zero']:,}  "
               f"rows_emitted={r['rows_emitted']:,}")
+    elif source in ("sgo", "auto") and sgo_api_extractor_mismatch:
+        print(f"  [sgo] SKIPPED — sgo_api had extractor mismatch; "
+              f"refusing to silently fall back.")
 
     # ── Gap detection for emergency fallback (auto only) ─────────────────
     if source == "auto":
@@ -1128,7 +1205,8 @@ async def amain(args: argparse.Namespace) -> int:
     # ── Emergency fallback: MLB Stats API ────────────────────────────────
     run_mlb_api = (source == "mlbstatsapi" or
                     (source == "auto" and args.league in (None, "MLB")
-                     and gap_dates_mlb))
+                     and gap_dates_mlb
+                     and not sgo_api_extractor_mismatch))
     if run_mlb_api:
         r = await ingest_from_mlbstatsapi(
             db, league="MLB", start=args.start, end=args.end,
@@ -1144,7 +1222,8 @@ async def amain(args: argparse.Namespace) -> int:
     # ── Emergency fallback: BallDontLie (NBA) ────────────────────────────
     run_bdl = (source == "bdl" or
                 (source == "auto" and args.league in (None, "NBA")
-                 and gap_dates_nba))
+                 and gap_dates_nba
+                 and not sgo_api_extractor_mismatch))
     if run_bdl:
         r = await ingest_from_bdl(
             db, start=args.start, end=args.end,
