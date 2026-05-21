@@ -8,6 +8,18 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 
 
 ## Latest Status (2026-05-21)
+- ✅ **Cache-first historical stats ingest DONE (2026-05-21)** — external SGO API calls no longer happen on every replay.
+  - **Backend** `scripts/sgo/ingest_historical_player_stats.py`:
+    - Cache-first filter added at the top of `ingest_from_sgo_api`: queries `sgo_player_stats` for `{league_id, event_id ∈ window}` and **subtracts already-cached events** from the fetch list. Logs: `[sgo_api/cache] 2/3 events already in sgo_player_stats (2 rows) — SKIPPED (use --force to refetch)`.
+    - New `--force` flag bypasses the cache filter when intentional re-fetch is needed.
+    - New summary counters in the return payload: `events_total`, `events_cached_skipped`, `events_fetched`, `rows_existing`, `rows_written`, `api_calls_saved`.
+    - Two new indexes on `sgo_player_stats` (`ensure_out_indexes`):
+      - `league_date_event` on `(league_id, game_date, event_id)`
+      - `league_date_event_player` on `(league_id, game_date, event_id, player_id)`
+    - Verified end-to-end via seed test: 3 events queued, 2 cached → 2 skipped, 1 sent to API, `api_calls_saved=2`.
+  - **Policy** `routes/emergent_admin/policy.py`: allowlist updated with `--force`; label rewritten to advertise cache-first default.
+  - **Frontend** Workflow tab now reads coverage and **overrides the step label** on `ingest_stats` / `build_features` / `score_model` / `full_replay` when the corresponding warehouse layer is 100% cached. Shows green-accented `✓ Using cached historical stats (12,345 rows · 0 API calls)` instead of `Pulls historical player stats from SGO API.`
+  - Lint clean, `yarn build` clean (238.79 kB main bundle).
 - ✅ **Job runner logging — FULLY DEBUGGED & WIRED (2026-05-21)** — silent-failure bug fixed across the whole stack.
   - **Backend** `routes/emergent_admin/jobs.py` rewritten:
     - `python -u` + `PYTHONUNBUFFERED=1` for unbuffered subprocess output

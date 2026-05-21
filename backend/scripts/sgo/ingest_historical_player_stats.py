@@ -940,9 +940,15 @@ async def ingest_from_sgo_api(
     db: AsyncIOMotorDatabase, *, league: str,
     start: Optional[str], end: Optional[str], dry_run: bool, resume: bool,
     rpm: int = 250, only_event_ids: Optional[List[str]] = None,
+    force: bool = False,
 ) -> Dict[str, Any]:
     """Re-fetch each driver event from SGO with expandResults=true and
     extract player stats from event.results. Canonical SGO path.
+
+    Cache-first (2026-05-21): events that already have rows in
+    `sgo_player_stats` for (league_id, game_date, event_id) are SKIPPED
+    unless `force=True`. This is the default — historical stats never
+    re-fetch unless explicitly forced.
     """
     api_key = os.environ.get("SGO_API_KEY", "")
     if not api_key:
@@ -968,12 +974,45 @@ async def ingest_from_sgo_api(
               {"$sort": {"_id": 1}}], allowDiskUse=True):
             if r.get("_id"): event_ids.append(r["_id"])
 
-    print(f"  [sgo_api] {len(event_ids)} distinct event_ids to fetch "
-          f"with expandResults=true")
+    events_total = len(event_ids)
+
+    # ── Cache-first filter ───────────────────────────────────────────
+    events_cached_skipped = 0
+    rows_existing = 0
+    if events_total and not force:
+        cached_ids: set = set()
+        cache_query: Dict[str, Any] = {"league_id": league,
+                                            "event_id": {"$in": event_ids}}
+        async for r in db[OUT_COLL].aggregate([
+            {"$match": cache_query},
+            {"$group": {"_id": "$event_id", "n": {"$sum": 1}}},
+        ], allowDiskUse=True):
+            cached_ids.add(r["_id"])
+            rows_existing += int(r.get("n", 0))
+        if cached_ids:
+            event_ids = [e for e in event_ids if e not in cached_ids]
+            events_cached_skipped = len(cached_ids)
+            print(f"  [sgo_api/cache] {events_cached_skipped}/{events_total} "
+                    f"events already in {OUT_COLL} ({rows_existing} rows) — "
+                    f"SKIPPED (use --force to refetch)")
+    elif force:
+        print(f"  [sgo_api/cache] --force set, ignoring cache "
+                f"({events_total} events will be re-fetched)")
+
+    print(f"  [sgo_api] {len(event_ids)}/{events_total} events to fetch "
+          f"from SGO (with expandResults=true)")
     if not event_ids:
-        return {"source": "sgo_api", "events_scanned": 0,
-                 "events_with_zero": 0, "rows_emitted": 0, "coverage": {},
-                 "sample_docs": []}
+        return {"source": "sgo_api",
+                 "events_total":         events_total,
+                 "events_cached_skipped": events_cached_skipped,
+                 "rows_existing":        rows_existing,
+                 "events_fetched":       0,
+                 "events_scanned":       0,
+                 "events_with_zero":     0,
+                 "rows_emitted":         0,
+                 "rows_written":         0,
+                 "api_calls_saved":      events_cached_skipped,
+                 "coverage":             {}, "sample_docs": []}
 
     coverage: Dict[str, int] = {}
     sample_docs: List[Dict[str, Any]] = []
@@ -1050,9 +1089,15 @@ async def ingest_from_sgo_api(
     print(f"  [sgo_api] api_calls={api_telemetry}")
     return {
         "source":           "sgo_api",
+        "events_total":     events_total,
+        "events_cached_skipped": events_cached_skipped,
+        "rows_existing":    rows_existing,
+        "events_fetched":   events_scanned,
         "events_scanned":   events_scanned,
         "events_with_zero": events_with_zero,
         "rows_emitted":     rows_emitted,
+        "rows_written":     rows_emitted,
+        "api_calls_saved":  events_cached_skipped,
         "api_failures":     api_failures,
         "api_telemetry":    api_telemetry,
         "coverage":         coverage,
@@ -1070,6 +1115,13 @@ async def ensure_out_indexes(db: AsyncIOMotorDatabase) -> None:
     await c.create_index([("league_id", ASCENDING), ("event_id", ASCENDING),
                             ("player_id", ASCENDING)],
                            name="league_event_player")
+    # 2026-05-21 — cache-first hot lookups
+    await c.create_index([("league_id", ASCENDING), ("game_date", ASCENDING),
+                            ("event_id", ASCENDING)],
+                           name="league_date_event")
+    await c.create_index([("league_id", ASCENDING), ("game_date", ASCENDING),
+                            ("event_id", ASCENDING), ("player_id", ASCENDING)],
+                           name="league_date_event_player")
     await c.create_index([("player_name", ASCENDING),
                             ("game_date", ASCENDING)])
     # Upsert keys
@@ -1122,7 +1174,7 @@ async def amain(args: argparse.Namespace) -> int:
             r = await ingest_from_sgo_api(
                 db, league=lg, start=args.start, end=args.end,
                 dry_run=args.dry_run, resume=args.resume,
-                rpm=args.sgo_rpm)
+                rpm=args.sgo_rpm, force=getattr(args, "force", False))
             results.append(r)
             if r.get("error"):
                 print(f"  [sgo_api/{lg}] SKIPPED: {r['error']}")
@@ -1352,6 +1404,11 @@ def main() -> int:
     p.add_argument("--resume", action="store_true",
                     help="Skip rows already upserted (currently no-op; "
                          "upserts are idempotent regardless)")
+    p.add_argument("--force", action="store_true",
+                    help="Bypass the cache-first event-skip and re-fetch "
+                         "every event in the window. Default behavior is "
+                         "cache-first: events already in sgo_player_stats "
+                         "are skipped and no API call is made.")
     return asyncio.run(amain(p.parse_args()))
 
 

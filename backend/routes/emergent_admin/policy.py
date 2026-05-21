@@ -133,12 +133,14 @@ ALLOWED_JOBS: Dict[str, Dict] = {
                   "--feature-keys", "--dry-run", "--resume"],
     },
     "scripts.sgo.ingest_historical_player_stats": {
-        "label": "Re-ingest player stats from SGO API "
-                   "(approved research pipeline job)",
+        "label": "Cache-first ingest of historical player stats. "
+                   "Skips events already in sgo_player_stats; uses SGO API "
+                   "ONLY for gaps. --force bypasses cache.",
         "writes_to": "sgo_player_stats (research-controlled writable)",
         "enabled": True,
         "args": ["--league", "--start", "--end", "--source", "--dry-run",
-                  "--resume", "--limit", "--debug-unresolved"],
+                  "--resume", "--force", "--limit", "--debug-unresolved",
+                  "--sgo-rpm"],
     },
     "scripts.sgo.verify_sgo_player_stats_coverage": {
         "label": "Read-only coverage report (safe)",

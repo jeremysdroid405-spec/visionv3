@@ -325,7 +325,25 @@ function WorkflowTab({ token, onPipelineFinished }) {
   });
   const [pipeline, setPipeline] = useState(loadPipeline());
   const [tail, setTail] = useState([]);
+  const [coverage, setCoverage] = useState(null);
   const pollRef = useRef(null);
+
+  // Pull coverage when dates change so the step grid can show
+  // "Using cached stats" instead of "Pulling historical player stats".
+  useEffect(() => {
+    if (!token || !config.start || !config.end) { setCoverage(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await apiFetch(token,
+          `/coverage/?sport=${encodeURIComponent(config.sport)}&start=${config.start}&end=${config.end}`);
+        if (!cancelled) setCoverage(r);
+      } catch (e) {
+        if (!cancelled) setCoverage(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token, config.sport, config.start, config.end]);
 
   useEffect(() => { savePipeline(pipeline); }, [pipeline]);
 
@@ -582,10 +600,29 @@ function WorkflowTab({ token, onPipelineFinished }) {
                 : ['running','queued'].includes(st.status) ? ACCENT
                 : ['failed','errored','cancelled'].includes(st.status) ? BAD
                 : st.status === 'skipped' ? DIM : MUTED;
+              // Coverage-aware label override — when the corresponding
+              // warehouse layer is 100% cached and the step was skipped,
+              // surface "Using cached …" instead of the fetch-y purpose.
+              const layerKey = {
+                ingest_stats:   'stats',
+                build_features: 'features',
+                score_model:    'predictions',
+                full_replay:    'replay',
+              }[s.key];
+              const layerCov = layerKey && coverage?.by_collection?.[layerKey];
+              const fullyCached = layerCov && layerCov.coverage_pct >= 100
+                                                  && layerCov.days_missing === 0;
+              const showCached = fullyCached
+                && (st.status === 'skipped' || st.status === 'pending');
+              const displayPurpose = showCached
+                ? `Using cached ${layerCov.label.toLowerCase()} (${fmtInt(layerCov.row_count)} rows · 0 API calls)`
+                : (st.status === 'succeeded' ? s.next : s.purpose);
               return (
                 <div key={s.key} data-testid={`pipe-step-${s.key}`} style={{
-                  background: SURFACE_2, border: `1px solid ${c === MUTED ? BORDER : c}`,
-                  borderLeft: `3px solid ${c}`, borderRadius: 6, padding: 8,
+                  background: SURFACE_2,
+                  border: `1px solid ${c === MUTED ? BORDER : c}`,
+                  borderLeft: `3px solid ${showCached ? ACCENT_2 : c}`,
+                  borderRadius: 6, padding: 8,
                 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: c, textTransform: 'uppercase' }}>{st.status}</div>
                   <div style={{ fontSize: 11, color: TEXT, fontWeight: 600, marginTop: 4 }}>{s.label}</div>
@@ -593,8 +630,8 @@ function WorkflowTab({ token, onPipelineFinished }) {
                     {st.job_id ? `${st.job_id.slice(0,8)} · ${fmtDur(st.started_at, st.finished_at)}` :
                       st.status === 'skipped' ? '(skipped)' : ''}
                   </div>
-                  <div style={{ fontSize: 10, color: c === ACCENT ? ACCENT : MUTED, marginTop: 4, lineHeight: 1.3 }}>
-                    {st.status === 'succeeded' ? s.next : s.purpose}
+                  <div style={{ fontSize: 10, color: showCached ? ACCENT_2 : (c === ACCENT ? ACCENT : MUTED), marginTop: 4, lineHeight: 1.3 }}>
+                    {showCached ? '✓ ' : ''}{displayPurpose}
                   </div>
                   {st.error && <div style={{ fontSize: 10, color: BAD, marginTop: 4 }}>{String(st.error).slice(0, 100)}</div>}
                   {st.tail_preview && st.tail_preview.length > 0
