@@ -174,6 +174,71 @@ async def _load_outcomes_enriched(
     return rows
 
 
+_STAT_FIELD_MAP = {
+    "hits": "hits", "total_bases": "total_bases",
+    "runs": "runs", "rbis": "rbis",
+    "batter_strikeouts": "strikeouts", "batting_strikeouts": "strikeouts",
+    "pitcher_strikeouts": "pitcher_strikeouts",
+    "pitcher_walks": "pitcher_walks", "walks_allowed": "pitcher_walks",
+    "pitching_basesOnBalls": "pitcher_walks",
+    "earned_runs": "earned_runs",
+    "pitcher_outs": "pitcher_outs", "pitching_outs": "pitcher_outs",
+    "home_runs": "home_runs",
+    "hits_runs_rbis": "hits+runs+rbis",
+    "hits_allowed": "hits_allowed", "pitcher_hits_allowed": "hits_allowed",
+    "singles": "singles", "doubles": "doubles",
+    "batting_walks": "walks",
+}
+
+
+def _hit_rate_panels(stat_vals: List[float], line: float
+                       ) -> Dict[str, Optional[float]]:
+    """Mirrors `services.replay.mlb_replay_engine._hit_rate_panels`.
+    Inputs: stat_vals sorted MOST-RECENT-FIRST. Returns percentages 0..100."""
+    out: Dict[str, Optional[float]] = {
+        "hit_rate_l5": None, "hit_rate_l10": None, "hit_rate_l20": None,
+    }
+    for n, key in ((5, "hit_rate_l5"), (10, "hit_rate_l10"),
+                     (20, "hit_rate_l20")):
+        sub = stat_vals[:n]
+        if len(sub) >= max(1, min(n, 3)):
+            wins = sum(1 for v in sub if v > line)
+            out[key] = 100.0 * wins / len(sub)
+    return out
+
+
+def _extract_stat_vals_from_game_logs(
+    game_logs: List[Dict[str, Any]],
+    stat_family: str,
+    as_of_date: Optional[str],
+) -> List[float]:
+    """Pull values for the relevant stat field from merged game_logs,
+    strictly before `as_of_date`, sorted most-recent-first.  Leakage-safe."""
+    field = _STAT_FIELD_MAP.get(stat_family, stat_family)
+    rows: List[Tuple[Any, float]] = []
+    for g in game_logs or []:
+        d = g.get("date") or g.get("game_date") or g.get("game_dt")
+        if as_of_date and d and str(d) >= str(as_of_date):
+            continue  # leakage guard
+        if field == "hits+runs+rbis":
+            h = g.get("hits"); r = g.get("runs"); rbi = g.get("rbis")
+            try:
+                if h is None or r is None or rbi is None: continue
+                val = float(h) + float(r) + float(rbi)
+            except (TypeError, ValueError):
+                continue
+        else:
+            v = g.get(field)
+            if v is None: continue
+            try:
+                val = float(v)
+            except (TypeError, ValueError):
+                continue
+        rows.append((d or "", val))
+    rows.sort(key=lambda kv: kv[0], reverse=True)
+    return [v for _, v in rows]
+
+
 # ── Inlined gate evaluator (mirrors services.replay.mlb_replay_multi_tier_eval)
 # Inlined to avoid pulling in psutil + the rest of that module's deps when
 # this script runs under the Admin API job runner.
@@ -503,6 +568,33 @@ async def _run(args: argparse.Namespace) -> int:
         edge_v   = (float(model_p) - fair_p) if (model_p is not None and fair_p is not None) else None
         trends   = (result.get("friction_audit") or {}).get("trends") or {}
 
+        # 2026-05-21 — compute hit_rate_l5/l10/l20 from the MERGED
+        # `bdl_game_logs[]` (which includes mlb_historical_logs.game_logs
+        # after the merger monkey-patch). The live `predict()` only
+        # emits L5/L10; L20 is computed downstream in the production
+        # pipeline. We replicate that step here so the gate evaluators
+        # (which require hit_rate_l20) can run unmodified.
+        hub_with_logs = _merged_find_one({"bdl_player_id": int(bdl_pid)},
+                                              {"_id": 0, "bdl_player_id": 1,
+                                               "bdl_id": 1, "bdl_game_logs": 1})
+        merged_logs = (hub_with_logs or {}).get("bdl_game_logs") or []
+        stat_vals = _extract_stat_vals_from_game_logs(
+            merged_logs,
+            doc.get("stat_family") or "",
+            doc.get("game_date"),
+        )
+        panels = _hit_rate_panels(stat_vals, float(doc.get("line") or 0))
+        hr5  = panels["hit_rate_l5"]  if panels["hit_rate_l5"]  is not None else trends.get("hit_rate_l5")
+        hr10 = panels["hit_rate_l10"] if panels["hit_rate_l10"] is not None else trends.get("hit_rate_l10")
+        hr20 = panels["hit_rate_l20"]
+
+        # For UNDER props the live engine inverts hit_rate (so hr_l5
+        # measures "how often UNDER hit"). Mirror that.
+        if side == "UNDER":
+            if hr5  is not None: hr5  = 100.0 - hr5
+            if hr10 is not None: hr10 = 100.0 - hr10
+            if hr20 is not None: hr20 = 100.0 - hr20
+
         replay_row = {
             "event_id": doc["event_id"],
             "player_id": doc["player_id"],
@@ -531,12 +623,9 @@ async def _run(args: argparse.Namespace) -> int:
             "edge":              edge_v,
             "projection_margin": _margin(mu, doc.get("line"), doc.get("side")),
 
-            "hit_rate_l5":  (result.get("hit_rate_l5") or
-                                trends.get("hit_rate_l5")),
-            "hit_rate_l10": (result.get("hit_rate_l10") or
-                                trends.get("hit_rate_l10")),
-            "hit_rate_l20": (result.get("hit_rate_l20") or
-                                trends.get("hit_rate_l20")),
+            "hit_rate_l5":  hr5,
+            "hit_rate_l10": hr10,
+            "hit_rate_l20": hr20,
 
             "outcome_resolved": True,
             "outcome_numeric":  doc.get("outcome_numeric"),
