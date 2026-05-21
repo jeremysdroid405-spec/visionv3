@@ -416,8 +416,10 @@ async def _run(args: argparse.Namespace) -> int:
         doc = _orig_find_one(query, projection, **kw)
         if not doc:
             return doc
-        # Resolve player_id for the historical lookup
-        pid = doc.get("bdl_player_id") or doc.get("bdl_id")
+        # master_hub stores the player id under `bdl_id` (also `player_id`);
+        # historical_logs stores it under `player_id`. We try all three.
+        pid = (doc.get("bdl_player_id") or doc.get("bdl_id")
+                or doc.get("player_id"))
         if pid is None:
             return doc
         try:
@@ -427,7 +429,8 @@ async def _run(args: argparse.Namespace) -> int:
         if pid_int not in _hist_cache:
             hist = _hist.find_one(
                 {"$or": [{"player_id": pid_int},
-                          {"bdl_player_id": pid_int}]},
+                          {"bdl_player_id": pid_int},
+                          {"bdl_id": pid_int}]},
                 {"_id": 0, "game_logs": 1},
             )
             _hist_cache[pid_int] = (hist or {}).get("game_logs") or []
@@ -574,9 +577,12 @@ async def _run(args: argparse.Namespace) -> int:
         # emits L5/L10; L20 is computed downstream in the production
         # pipeline. We replicate that step here so the gate evaluators
         # (which require hit_rate_l20) can run unmodified.
-        hub_with_logs = _merged_find_one({"bdl_player_id": int(bdl_pid)},
-                                              {"_id": 0, "bdl_player_id": 1,
-                                               "bdl_id": 1, "bdl_game_logs": 1})
+        hub_with_logs = _merged_find_one(
+            {"$or": [{"bdl_player_id": int(bdl_pid)},
+                       {"bdl_id": int(bdl_pid)},
+                       {"player_id": int(bdl_pid)}]},
+            {"_id": 0, "bdl_player_id": 1,
+              "bdl_id": 1, "player_id": 1, "bdl_game_logs": 1})
         merged_logs = (hub_with_logs or {}).get("bdl_game_logs") or []
         stat_vals = _extract_stat_vals_from_game_logs(
             merged_logs,
