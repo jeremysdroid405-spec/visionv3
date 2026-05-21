@@ -12,6 +12,7 @@ import NBADashboard from './pages/NBADashboard';
 import MLBDashboard from './pages/MLBDashboard';
 import AdminPRAAudit from './pages/AdminPRAAudit';
 import AdminIdentityStatus from './pages/AdminIdentityStatus';
+import AdminTesting from './pages/AdminTesting';
 import { Toaster } from 'sonner';
 
 // Demo mode wrappers - passes isDemoMode prop to dashboards
@@ -84,6 +85,10 @@ function App() {
 
                 {/* Admin — Global Identity Rule observability (token-protected) */}
                 <Route path="/admin/identity-status" element={<AdminIdentityStatus />} />
+
+                {/* Admin — Private Universal Historical Testing Command Center
+                    (unlinked, token-protected via X-Admin-Token) */}
+                <Route path="/admin/testing" element={<AdminTesting />} />
 
                 {/* Demo pages - public for testing */}
                 <Route path="/demo" element={<DemoModeWrapper />} />
