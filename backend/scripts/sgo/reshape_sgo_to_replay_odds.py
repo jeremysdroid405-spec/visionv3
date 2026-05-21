@@ -37,6 +37,7 @@ for env_path in ("/var/www/app/backend/.env", "/app/backend/.env"):
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import UpdateOne, ASCENDING
+from pymongo.errors import OperationFailure, BulkWriteError
 
 SRC  = "sgo_pp_research_core_enriched"
 DEST = "sgo_replay_alt_odds_raw"
@@ -77,21 +78,81 @@ _STAT_FAMILY_TO_MARKET = {
 }
 
 
+def _safe_int_odds(raw: Any) -> Optional[int]:
+    """Coerce odds to int; return None if not coercible (NaN, strings, etc).
+    Caller decides whether to skip the row or use a default."""
+    if raw is None: return None
+    try:
+        f = float(raw)
+        if f != f:  # NaN check
+            return None
+        return int(f)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_float_line(raw: Any) -> Optional[float]:
+    if raw is None: return None
+    try:
+        f = float(raw)
+        if f != f:
+            return None
+        return f
+    except (TypeError, ValueError):
+        return None
+
+
 async def _ensure_indexes(db) -> None:
-    await db[DEST].create_index(
-        [("sport", ASCENDING),
-         ("game_date", ASCENDING),
-         ("event_id", ASCENDING),
-         ("player_name_normalized", ASCENDING),
-         ("market", ASCENDING), ("line", ASCENDING),
-         ("side", ASCENDING), ("book", ASCENDING),
-         ("snapshot_iso", ASCENDING)],
-        name="alt_odds_compound_unique_v2", unique=True,
-        background=True,
-    )
-    await db[DEST].create_index("game_date",   background=True)
-    await db[DEST].create_index("event_id",    background=True)
-    await db[DEST].create_index("snapshot_iso", background=True)
+    """Idempotent index creation. If a legacy unique index on the same keys
+    already exists under a different name, log and continue — the existing
+    one is good enough. If a NAMED index exists with conflicting options,
+    drop and recreate."""
+    desired_keys = [
+        ("sport", ASCENDING),
+        ("game_date", ASCENDING),
+        ("event_id", ASCENDING),
+        ("player_name_normalized", ASCENDING),
+        ("market", ASCENDING), ("line", ASCENDING),
+        ("side", ASCENDING), ("book", ASCENDING),
+        ("snapshot_iso", ASCENDING),
+    ]
+    try:
+        await db[DEST].create_index(
+            desired_keys,
+            name="alt_odds_compound_unique_v2", unique=True,
+            background=True,
+        )
+    except OperationFailure as e:
+        # codes: 85 IndexOptionsConflict, 86 IndexKeySpecsConflict, 11000 dup key
+        print(f"  ! create_index failed (code={getattr(e, 'code', '?')}): "
+                  f"{e!r}", flush=True)
+        # Inspect existing indexes; if any covers our key set as unique,
+        # we're done. Otherwise rethrow.
+        existing = await db[DEST].index_information()
+        for name, info in existing.items():
+            keys = info.get("key") or []
+            if list(keys) == desired_keys and info.get("unique"):
+                print(f"  ✓ existing unique index '{name}' covers the same "
+                          f"key set — continuing.", flush=True)
+                return
+        # Last-resort: try non-unique (still good enough for the replay
+        # pipeline; upserts make duplicates impossible by construction).
+        print("  ! falling back to non-unique compound index "
+                  "(upsert key keeps rows deduped logically).", flush=True)
+        try:
+            await db[DEST].create_index(
+                desired_keys,
+                name="alt_odds_compound_v2_nonunique",
+                background=True,
+            )
+        except OperationFailure as e2:
+            print(f"  ! fallback index also failed: {e2!r}", flush=True)
+    # Secondary indexes — these are best-effort; never fatal.
+    for k in ("game_date", "event_id", "snapshot_iso"):
+        try:
+            await db[DEST].create_index(k, background=True)
+        except OperationFailure as e:
+            print(f"  ! secondary index '{k}' skipped: {e!r}", flush=True)
 
 
 async def _run(args: argparse.Namespace) -> int:
@@ -110,9 +171,28 @@ async def _run(args: argparse.Namespace) -> int:
     print("=" * 72)
 
     n_seen = n_skip = n_upsert = 0
-    n_no_market = n_no_book = 0
+    n_no_market = n_bad_odds = n_bad_line = n_bulk_err = 0
     buf: List[UpdateOne] = []
     now = datetime.now(timezone.utc)
+
+    async def _flush_buf():
+        nonlocal n_upsert, n_bulk_err
+        if not buf: return
+        try:
+            r = await db[DEST].bulk_write(buf, ordered=False)
+            n_upsert += (r.upserted_count + r.modified_count)
+        except BulkWriteError as bwe:
+            # Some rows duplicated against the unique index — still credit
+            # the ones that landed and surface a count.
+            wr = bwe.details or {}
+            n_upsert += int(wr.get("nUpserted", 0)) + int(wr.get("nModified", 0))
+            n_bulk_err += len(wr.get("writeErrors") or [])
+            # Surface the FIRST error so prod failures are diagnosable.
+            errs = wr.get("writeErrors") or []
+            if errs:
+                first = errs[0]
+                print(f"  ! bulk_write partial failure: code={first.get('code')} "
+                          f"msg={first.get('errmsg','')[:200]}", flush=True)
 
     # SGO enriched usually has ONE row per (event, player, stat, side, line)
     # carrying the best-book-derived edge fields. We don't have per-book
@@ -127,73 +207,85 @@ async def _run(args: argparse.Namespace) -> int:
 
     async for d in cur:
         n_seen += 1
-        sf = d.get("stat_family")
-        market = _STAT_FAMILY_TO_MARKET.get(sf) or d.get("market") or None
-        if not market:
-            n_no_market += 1; continue
-        line = d.get("line")
-        side = (d.get("side") or "").upper()
-        if side not in ("OVER", "UNDER"):
-            n_skip += 1; continue
-        odds = d.get("best_book_odds") or d.get("odds") or -110
-        book = d.get("best_book_id") or d.get("book") or "sgo_consensus"
-        snapshot_iso = f"{d.get('game_date')}T{SNAPSHOT_HOUR_UTC:02d}:00:00Z"
-        commence_time = (d.get("commence_time")
-                            or f"{d.get('game_date')}T22:00:00Z")
-        pname = d.get("player_name") or ""
-        if not pname:
-            n_skip += 1; continue
+        try:
+            sf = d.get("stat_family")
+            market = _STAT_FAMILY_TO_MARKET.get(sf) or d.get("market") or None
+            if not market:
+                n_no_market += 1; continue
+            line = _safe_float_line(d.get("line"))
+            if line is None:
+                n_bad_line += 1; continue
+            side = (d.get("side") or "").upper()
+            if side not in ("OVER", "UNDER"):
+                n_skip += 1; continue
+            odds = _safe_int_odds(d.get("best_book_odds"))
+            if odds is None:
+                odds = _safe_int_odds(d.get("odds"))
+            if odds is None:
+                odds = -110
+                n_bad_odds += 1
+            book = d.get("best_book_id") or d.get("book") or "sgo_consensus"
+            snapshot_iso = f"{d.get('game_date')}T{SNAPSHOT_HOUR_UTC:02d}:00:00Z"
+            commence_time = (d.get("commence_time")
+                                or f"{d.get('game_date')}T22:00:00Z")
+            pname = d.get("player_name") or ""
+            if not pname:
+                n_skip += 1; continue
 
-        row = {
-            "sport": "mlb",
-            "sport_key": "baseball_mlb",
-            "game_date": d.get("game_date"),
-            "event_id": d.get("event_id"),
-            "home_team": d.get("home_team"),
-            "away_team": d.get("away_team"),
-            "commence_time": commence_time,
-            "market": market,
-            "stat": market,
-            "is_alternate": bool(d.get("is_alternate")),
-            "player_name": pname,
-            "player_name_normalized": _normalize_player_name(pname),
-            "line": float(line) if line is not None else None,
-            "side": side,
-            "book": book,
-            "odds": int(odds),
-            "book_last_update": now.isoformat(),
-            "snapshot_iso": snapshot_iso,
-            "ingested_at": now,
+            row = {
+                "sport": "mlb",
+                "sport_key": "baseball_mlb",
+                "game_date": d.get("game_date"),
+                "event_id": d.get("event_id"),
+                "home_team": d.get("home_team"),
+                "away_team": d.get("away_team"),
+                "commence_time": commence_time,
+                "market": market,
+                "stat": market,
+                "is_alternate": bool(d.get("is_alternate")),
+                "player_name": pname,
+                "player_name_normalized": _normalize_player_name(pname),
+                "line": line,
+                "side": side,
+                "book": book,
+                "odds": odds,
+                "book_last_update": now.isoformat(),
+                "snapshot_iso": snapshot_iso,
+                "ingested_at": now,
+                "_source": "sgo_pp_research_core_enriched",
+                "_sgo_consensus_probability":
+                    d.get("consensus_probability"),
+                "_sgo_best_book_probability":
+                    d.get("best_book_probability"),
+            }
 
-            # bonus passthrough — useful for diagnostics; ignored by replay
-            "_source": "sgo_pp_research_core_enriched",
-            "_sgo_consensus_probability":
-                d.get("consensus_probability"),
-            "_sgo_best_book_probability":
-                d.get("best_book_probability"),
-        }
-
-        flt = {k: row[k] for k in
-                ("sport", "game_date", "event_id", "player_name_normalized",
-                 "market", "line", "side", "book", "snapshot_iso")}
-        buf.append(UpdateOne(flt, {"$set": row}, upsert=True))
+            flt = {k: row[k] for k in
+                    ("sport", "game_date", "event_id", "player_name_normalized",
+                     "market", "line", "side", "book", "snapshot_iso")}
+            buf.append(UpdateOne(flt, {"$set": row}, upsert=True))
+        except Exception as row_exc:
+            n_skip += 1
+            if n_skip <= 5:   # Don't flood logs — first 5 are enough to diagnose.
+                print(f"  ! row #{n_seen} skipped: {row_exc!r}", flush=True)
+            continue
 
         if len(buf) >= 1000:
-            r = await db[DEST].bulk_write(buf, ordered=False)
-            n_upsert += (r.upserted_count + r.modified_count)
+            await _flush_buf()
             buf = []
-            if n_upsert % 5000 == 0:
-                print(f"  progress: scanned={n_seen} upserted~{n_upsert}")
+            if n_upsert and n_upsert % 5000 == 0:
+                print(f"  progress: scanned={n_seen} upserted~{n_upsert}", flush=True)
 
     if buf:
-        r = await db[DEST].bulk_write(buf, ordered=False)
-        n_upsert += (r.upserted_count + r.modified_count)
+        await _flush_buf()
 
     print()
     print(f"  scanned        {n_seen}")
     print(f"  upserted ~     {n_upsert}")
     print(f"  no_market      {n_no_market}")
+    print(f"  bad_line       {n_bad_line}")
+    print(f"  bad_odds       {n_bad_odds}")
     print(f"  skipped        {n_skip}")
+    print(f"  bulk_errs      {n_bulk_err}")
     print(f"  → {DEST}")
     return 0
 

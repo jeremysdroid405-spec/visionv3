@@ -2164,6 +2164,7 @@ function DiagnosticsTab({ token }) {
   const [pf, setPf] = useState(null);
   const [busy, setBusy] = useState(false);
   const [fixing, setFixing] = useState(null);
+  const [expanded, setExpanded] = useState({});       // { job_id: { loading, log } }
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -2173,6 +2174,27 @@ function DiagnosticsTab({ token }) {
     finally { setBusy(false); }
   }, [token]);
   useEffect(() => { load(); }, [load]);
+
+  const toggleJob = useCallback(async (jobId) => {
+    setExpanded(prev => {
+      if (prev[jobId]) {
+        const { [jobId]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [jobId]: { loading: true, log: null } };
+    });
+    // Only fetch if we are opening (state already updated above)
+    if (expanded[jobId]) return;
+    try {
+      const lg = await apiFetch(token, `/jobs/${jobId}/log?tail=200`);
+      setExpanded(prev => ({ ...prev, [jobId]: { loading: false, log: lg } }));
+    } catch (e) {
+      setExpanded(prev => ({ ...prev, [jobId]: {
+        loading: false,
+        log: { error: e.message, lines: [], tail_preview: [] },
+      } }));
+    }
+  }, [token, expanded]);
 
   const runFix = async (w) => {
     if (!w.fix_job) { toast.error('No fix-job available'); return; }
@@ -2285,22 +2307,113 @@ function DiagnosticsTab({ token }) {
 
           {/* Recent jobs */}
           <div style={{ background: SURFACE_2, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
-            <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase', padding: '8px 12px', borderBottom: `1px solid ${BORDER}` }}>Recent Jobs (last 10)</div>
+            <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase', padding: '8px 12px', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between' }}>
+              <span>Recent Jobs (last {(pf.recent_jobs || []).length})</span>
+              <span style={{ fontSize: 10, color: DIM, textTransform: 'none' }}>
+                click any failed row to inspect the captured stdout/traceback
+              </span>
+            </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
               <thead><tr style={{ background: SURFACE_3, color: DIM, fontSize: 10, textTransform: 'uppercase' }}>
+                <th style={th}></th>
                 <th style={th}>job_id</th><th style={th}>module</th><th style={th}>status</th>
+                <th style={th}>exit</th>
                 <th style={th}>queued</th><th style={th}>finished</th>
               </tr></thead>
               <tbody>
-                {(pf.recent_jobs || []).map(j => (
-                  <tr key={j.job_id} style={{ borderTop: `1px solid ${BORDER}` }}>
-                    <td style={{ ...td, fontFamily: 'monospace' }}>{j.job_id?.slice(0,8)}</td>
-                    <td style={{ ...td, fontFamily: 'monospace', fontSize: 10 }}>{j.module}</td>
-                    <td style={td}><Badge color={j.status === 'succeeded' ? ACCENT_2 : ['failed','errored','cancelled'].includes(j.status) ? BAD : ACCENT}>{j.status}</Badge></td>
-                    <td style={{ ...td, fontSize: 10, color: DIM }}>{fmtTs(j.queued_at)}</td>
-                    <td style={{ ...td, fontSize: 10, color: DIM }}>{fmtTs(j.finished_at)}</td>
-                  </tr>
-                ))}
+                {(pf.recent_jobs || []).map(j => {
+                  const isFailed = ['failed','errored','cancelled'].includes(j.status);
+                  const isOpen = !!expanded[j.job_id];
+                  const detail = expanded[j.job_id];
+                  return (
+                    <React.Fragment key={j.job_id}>
+                      <tr
+                        data-testid={`diag-job-row-${j.job_id?.slice(0,8)}`}
+                        onClick={() => toggleJob(j.job_id)}
+                        style={{
+                          borderTop: `1px solid ${BORDER}`,
+                          cursor: 'pointer',
+                          background: isOpen ? SURFACE_3 : 'transparent',
+                        }}
+                      >
+                        <td style={{ ...td, color: DIM, width: 18, textAlign: 'center' }}>
+                          {isOpen ? '▾' : '▸'}
+                        </td>
+                        <td style={{ ...td, fontFamily: 'monospace' }}>{j.job_id?.slice(0,8)}</td>
+                        <td style={{ ...td, fontFamily: 'monospace', fontSize: 10 }}>{j.module}</td>
+                        <td style={td}>
+                          <Badge color={j.status === 'succeeded' ? ACCENT_2 : isFailed ? BAD : ACCENT}>{j.status}</Badge>
+                        </td>
+                        <td style={{ ...td, color: j.exit_code === 0 ? ACCENT_2 : j.exit_code !== undefined && j.exit_code !== null ? BAD : DIM }}>
+                          {j.exit_code !== undefined && j.exit_code !== null ? j.exit_code : '—'}
+                        </td>
+                        <td style={{ ...td, fontSize: 10, color: DIM }}>{fmtTs(j.queued_at)}</td>
+                        <td style={{ ...td, fontSize: 10, color: DIM }}>{fmtTs(j.finished_at)}</td>
+                      </tr>
+                      {isOpen && (
+                        <tr data-testid={`diag-job-detail-${j.job_id?.slice(0,8)}`}>
+                          <td colSpan={7} style={{ padding: 0, background: '#000' }}>
+                            {detail?.loading ? (
+                              <div style={{ padding: 12, color: DIM, fontSize: 11, fontFamily: 'monospace' }}>
+                                fetching /jobs/{j.job_id?.slice(0,8)}/log…
+                              </div>
+                            ) : detail?.log ? (
+                              <div style={{ padding: '8px 12px' }}>
+                                {detail.log.error && (
+                                  <div style={{ color: BAD, fontSize: 11, fontFamily: 'monospace', marginBottom: 6, fontWeight: 600 }}>
+                                    error: {detail.log.error}
+                                  </div>
+                                )}
+                                {/* args, if present, help re-run */}
+                                {j.args && j.args.length > 0 && (
+                                  <div style={{ color: DIM, fontSize: 10, fontFamily: 'monospace', marginBottom: 6 }}>
+                                    args: {j.args.join(' ')}
+                                  </div>
+                                )}
+                                <pre style={{
+                                  margin: 0, padding: 10,
+                                  background: '#111', border: `1px solid ${isFailed ? BAD : BORDER}`,
+                                  borderRadius: 4, color: '#E4E4E7',
+                                  fontSize: 10, fontFamily: 'ui-monospace, monospace',
+                                  maxHeight: 360, overflow: 'auto',
+                                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                                }}>
+                                  {((detail.log.lines && detail.log.lines.length)
+                                    ? detail.log.lines
+                                    : (detail.log.tail_preview || [])
+                                  ).slice(-200).join('') || '(no output captured)'}
+                                </pre>
+                                {detail.log.traceback && (
+                                  <details open style={{ marginTop: 6 }}>
+                                    <summary style={{ fontSize: 10, color: BAD, cursor: 'pointer', fontWeight: 600 }}>
+                                      ▾ runner traceback
+                                    </summary>
+                                    <pre style={{
+                                      margin: '4px 0 0', padding: 8,
+                                      background: '#111', border: `1px solid ${BAD}`,
+                                      borderRadius: 4, color: '#FCA5A5',
+                                      fontSize: 10, fontFamily: 'ui-monospace, monospace',
+                                      maxHeight: 200, overflow: 'auto',
+                                      whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                                    }}>{detail.log.traceback}</pre>
+                                  </details>
+                                )}
+                                <div style={{
+                                  fontSize: 10, color: DIM, marginTop: 6, fontFamily: 'monospace',
+                                  display: 'flex', gap: 12, flexWrap: 'wrap',
+                                }}>
+                                  <span>total_lines: {detail.log.total_lines ?? 0}</span>
+                                  <span>exit_code: {detail.log.exit_code ?? '—'}</span>
+                                  <span>status: {detail.log.status}</span>
+                                </div>
+                              </div>
+                            ) : null}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

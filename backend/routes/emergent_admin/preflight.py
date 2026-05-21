@@ -198,10 +198,12 @@ async def preflight(request: Request, auth=Depends(require_admin_token)):
     models = {league: _scan_model_dir(paths)
                 for league, paths in MODEL_DIRS.items()}
 
-    # Recent jobs (just headers)
+    # Recent jobs (just headers, plus error/traceback/tail_preview fields
+    # which the Diagnostics UI uses to inline-render failures without an
+    # extra /jobs/{id} round-trip).
     recent_jobs: List[Dict[str, Any]] = []
     cur = db["emergent_admin_jobs"].find(
-        {}, {"_id": 0, "log": 0}).sort([("queued_at", -1)]).limit(10)
+        {}, {"_id": 0, "log": 0}).sort([("queued_at", -1)]).limit(25)
     async for d in cur:
         recent_jobs.append(d)
 
