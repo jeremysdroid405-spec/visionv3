@@ -51,6 +51,12 @@ WRITABLE_COLLECTIONS: Set[str] = {
     "candidate_thresholds",
     "candidate_model_configs",
     "feature_pipeline_runs",
+    # 2026-05-21 — SGO model predictions are research output, not the
+    # raw SGO archive (which lives in `sgo_events`, `sgo_props_raw`,
+    # `sgo_player_stats`). Allowing writes so historical scoring runs
+    # invoked through the Admin API can populate this collection.
+    "sgo_pp_research_model_features",
+    "sgo_pp_research_model_predictions",
 }
 
 # Read-only allowed (in addition to protected ones, which are read-only too)
@@ -112,8 +118,19 @@ ALLOWED_JOBS: Dict[str, Dict] = {
         "enabled": True,
         "args": ["--league", "--start", "--end"],
     },
-    # NFL master-hub maintenance hooks (user-allowed)
-    "scripts.nfl.refresh_master_hub": {
+    # 2026-05-21 — Live MLB-HF scorer driven over SGO historical features.
+    # Writes the production gate-required row schema (μ, σ, TP, CV,
+    # edge, projection_margin, hit_rates) into sgo_pp_research_model_predictions
+    # so SH/FL/WZ gate replays evaluate the EXACT model output the live
+    # pipeline emits. Has --probe mode for cheap dependency verification.
+    "scripts.sgo.score_historical_with_live_mlb_hf": {
+        "label": "Score SGO features with the live MLB-HF model",
+        "writes_to": "sgo_pp_research_model_predictions (writable on prod)",
+        "enabled": True,
+        "args": ["--league", "--start", "--end", "--probe", "--limit",
+                  "--force", "--dry-run"],
+    },
+    # NFL master-hub maintenance hooks (user-allowed)    "scripts.nfl.refresh_master_hub": {
         "label": "Refresh nfl_master_hub_data + cache",
         "writes_to": "nfl_master_hub_data, nfl_master_hub_cache (writable)",
         "enabled": True,
