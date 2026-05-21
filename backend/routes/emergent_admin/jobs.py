@@ -64,6 +64,13 @@ def _running_pids() -> Dict[str, int]:
     return _running_pids._reg  # type: ignore[attr-defined]
 
 
+# Strong references to background runner tasks — without this,
+# Python's asyncio is permitted to garbage-collect the task before it
+# completes, which would leave the job stuck in "queued" forever.
+# (Bit us once in prod; documented at docs.python.org/3/library/asyncio-task.html#asyncio.create_task)
+_RUNNER_TASKS: set = set()
+
+
 # ── Models ────────────────────────────────────────────────────────────────
 class RunBody(BaseModel):
     module: str = Field(..., description="One of policy.ALLOWED_JOBS")
@@ -259,8 +266,11 @@ async def run_job(body: RunBody, request: Request,
                       response_summary={"job_id": job_id}, **auth)
     logger.info("[job %s] queued module=%s args=%s by=%s",
                   job_id, body.module, body.args, auth.get("agent_id"))
-    # Kick off in background — survives request lifecycle via asyncio task
-    asyncio.create_task(_run_job(job_id, body.module, body.args))
+    # Kick off in background — hold a STRONG reference so the asyncio
+    # runtime cannot garbage-collect the task mid-execution.
+    task = asyncio.create_task(_run_job(job_id, body.module, body.args))
+    _RUNNER_TASKS.add(task)
+    task.add_done_callback(_RUNNER_TASKS.discard)
     return {"ok": True, "job_id": job_id, "status": "queued"}
 
 

@@ -8,6 +8,10 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 
 
 ## Latest Status (2026-05-21)
+- ✅ **Stuck-in-queued root cause + defense-in-depth (2026-05-21)** — diagnostic identified the user's reported "jobs queued but never execute" as a **stale prod bundle** (local backend correctly transitions queued→running→succeeded in <2s). Added belt-and-suspenders fix anyway to eliminate the possibility:
+  - **`routes/emergent_admin/jobs.py`** now holds **strong references** to background runner tasks in module-level `_RUNNER_TASKS: set`. Without this, Python's asyncio is explicitly permitted to garbage-collect the task before it runs (`docs.python.org/3/library/asyncio-task.html#asyncio.create_task`). Tasks are auto-removed via `add_done_callback`.
+  - Same fix applied to `routes/emergent_admin/optimizer.py` (`_OPT_TASKS: set`).
+  - Verified end-to-end after restart: job submitted → status=succeeded with rc=0 + pid populated in 3s.
 - ✅ **Cache-first historical stats ingest DONE (2026-05-21)** — external SGO API calls no longer happen on every replay.
   - **Backend** `scripts/sgo/ingest_historical_player_stats.py`:
     - Cache-first filter added at the top of `ingest_from_sgo_api`: queries `sgo_player_stats` for `{league_id, event_id ∈ window}` and **subtracts already-cached events** from the fetch list. Logs: `[sgo_api/cache] 2/3 events already in sgo_player_stats (2 rows) — SKIPPED (use --force to refetch)`.

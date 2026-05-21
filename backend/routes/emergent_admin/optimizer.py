@@ -76,6 +76,8 @@ DEFAULT_ODDS_BUCKETS  = [
 
 # In-process state — survives across requests as long as backend stays up.
 _RUNS: Dict[str, Dict[str, Any]] = {}
+# Strong references to background tasks (prevents asyncio GC mid-run).
+_OPT_TASKS: set = set()
 
 
 # ── Request / response models ──────────────────────────────────────
@@ -524,7 +526,11 @@ async def run_optimizer(body: OptimizerRunBody, request: Request,
         "agent_id": auth["agent_id"],
     }
     _RUNS[run_id] = state
-    asyncio.create_task(_run_optimizer(run_id, body))
+    # Strong reference to prevent the asyncio task from being garbage-
+    # collected before it finishes. Same fix as jobs.py.
+    _t = asyncio.create_task(_run_optimizer(run_id, body))
+    _OPT_TASKS.add(_t)
+    _t.add_done_callback(_OPT_TASKS.discard)
     await audit_log(request, action="optimizer_run",
                       params={"run_id": run_id, "sport": body.sport,
                                   "start": body.start, "end": body.end,
