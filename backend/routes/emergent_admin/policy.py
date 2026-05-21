@@ -60,6 +60,10 @@ WRITABLE_COLLECTIONS: Set[str] = {
     # 2026-05-21 — full-pipeline replay output (exact production
     # pipeline replay over historical SGO outcomes).
     "sgo_propvision_full_pipeline_replay",
+    # 2026-05-21 — SGO reshape destination (mirrors mlb_historical_alt_odds_raw
+    # schema) + the actual production-pipeline outputs.
+    "sgo_replay_alt_odds_raw",
+    "mlb_sgo_replay_runs", "mlb_sgo_replay_outputs", "mlb_sgo_replay_cards",
 }
 
 # Read-only allowed (in addition to protected ones, which are read-only too)
@@ -165,6 +169,24 @@ ALLOWED_JOBS: Dict[str, Dict] = {
                        "candidate_gate_configs (writable)",
         "enabled": True,
         "args": ["--league", "--start", "--end", "--min-bets", "--dry-run"],
+    },
+    # 2026-05-21 — reshape SGO enriched offers into the schema
+    # expected by `mlb_historical_alt_odds_raw`, so the EXISTING
+    # production replay pipeline can be driven over SGO data.
+    "scripts.sgo.reshape_sgo_to_replay_odds": {
+        "label": "Reshape SGO enriched → mlb_historical_alt_odds_raw shape",
+        "writes_to": "sgo_replay_alt_odds_raw (writable)",
+        "enabled": True,
+        "args": ["--league", "--start", "--end", "--limit"],
+    },
+    # 2026-05-21 — invoke the existing production replay pipeline
+    # against the SGO-derived odds, writing to the `sgo_replay` namespace.
+    "scripts.sgo.run_sgo_production_replay": {
+        "label": "Run the live production replay pipeline against SGO odds",
+        "writes_to": "mlb_sgo_replay_runs/outputs/cards (writable)",
+        "enabled": True,
+        "args": ["--start", "--end", "--tier", "--gate-path",
+                  "--canonical-path", "--limit-dates", "--dry-run"],
     },
     # NFL master-hub maintenance hooks (user-allowed)
     "scripts.nfl.refresh_master_hub": {
