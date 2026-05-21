@@ -13,6 +13,7 @@ import MLBDashboard from './pages/MLBDashboard';
 import AdminPRAAudit from './pages/AdminPRAAudit';
 import AdminIdentityStatus from './pages/AdminIdentityStatus';
 import AdminTesting from './pages/AdminTesting';
+import { AdminTestingErrorBoundary } from './pages/AdminTestingErrorBoundary';
 import { Toaster } from 'sonner';
 
 // Demo mode wrappers - passes isDemoMode prop to dashboards
@@ -87,8 +88,14 @@ function App() {
                 <Route path="/admin/identity-status" element={<AdminIdentityStatus />} />
 
                 {/* Admin — Private Universal Historical Testing Command Center
-                    (unlinked, token-protected via X-Admin-Token) */}
-                <Route path="/admin/testing" element={<AdminTesting />} />
+                    (unlinked, token-protected via X-Admin-Token, wrapped in
+                    a hard error boundary so a child crash never produces a
+                    blank screen on production) */}
+                <Route path="/admin/testing" element={
+                  <AdminTestingErrorBoundary>
+                    <AdminTesting />
+                  </AdminTestingErrorBoundary>
+                } />
 
                 {/* Demo pages - public for testing */}
                 <Route path="/demo" element={<DemoModeWrapper />} />

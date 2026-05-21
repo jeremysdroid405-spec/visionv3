@@ -8,6 +8,11 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 
 
 ## Latest Status (2026-05-21)
+- 🟥 **Prod black-screen RCA + defense-in-depth (2026-05-21)** — investigation: production console showed `'No routes matched location "/admin/testing"'` → root cause is a **stale production bundle**, not a JS crash. The latest `App.js` (route registration) and `AdminTesting.jsx` are in the repo but production hasn't pulled them yet. **Action required**: deploy. `/api/emergent-admin/deploy/pull-and-restart` handles the backend; the frontend static bundle needs `yarn build` on the prod host (separate from the admin deploy endpoint).
+- ✅ **Defense-in-depth ADDED (2026-05-21)** so this can never produce a blank screen again:
+  - New `AdminTestingErrorBoundary` component (`/app/frontend/src/pages/AdminTestingErrorBoundary.jsx`). Catches any child crash, renders a fail-safe panel with the error message, stack trace, Retry / Clear-cached-state / Home buttons. Wired into the route in `App.js`.
+  - Fail-safe audit pass on `AdminTesting.jsx` — `res.job_id?.slice`, `pf.warnings?.length`, `pf.collections || {}`, etc. — verified across 2 toast calls and 3 array accesses that could see missing data.
+  - `yarn build` verified clean (`237.72 kB main.f962478c.js`).
 - ✅ **SSOT Audit UI DONE (2026-05-21)** — `/admin/testing` now exposes the SSOT diff harness end-to-end.
   - **Workflow tab**: green-accented "SSOT Audit" control panel with `sampleDiffEnabled` (default **ON**), `sampleDiffSize` (default **200**), and `gatePath` (default `universal`). These wire into `buildStepArgs` for the replay step and translate to `--sample-diff 200 [--gate-path …]` on the runner CLI.
   - **Policy update**: `routes/emergent_admin/policy.py` allowlist now accepts `--sample-diff`, `--continue-on-error`, `--tiers`, `--gate-path`, `--canonical-path`, `--snapshot-hour`, `--limit-dates`, `--no-mirror-to-legacy` for `scripts.sgo.historical_full_pipeline_replay`. Three new readable collections: `sgo_propvision_full_pipeline_replay_diff`, `mlb_propvision_full_pipeline_runs`, `mlb_propvision_full_pipeline_outputs`.

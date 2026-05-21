@@ -385,8 +385,7 @@ function WorkflowTab({ token, onPipelineFinished }) {
           toast.error(`Step failed: ${e.message}`);
         }
         return;
-      }
-      // poll active
+      }      // poll active
       const active = pipeline.steps[cur];
       if (!active.job_id) return;
       try {
@@ -675,7 +674,7 @@ function SweepTab({ token }) {
       const grid = SPORT_ADAPTERS[draft.sport].steps.grid;
       if (!grid) { toast.error(`No grid job adapter for ${draft.sport}`); setBusy(false); return; }
       const res = await apiFetch(token, '/jobs/run', { method: 'POST', body: JSON.stringify({ module: grid.module, args }) });
-      toast.success(`Grid sweep queued · ${res.job_id.slice(0,8)}`);
+      toast.success(`Grid sweep queued · ${(res.job_id || '').slice(0,8)}`);
     } catch (e) { toast.error(`Sweep failed: ${e.message}`); }
     finally { setBusy(false); }
   };
@@ -1827,7 +1826,7 @@ function DiagnosticsTab({ token }) {
     try {
       const res = await apiFetch(token, '/jobs/run', { method: 'POST',
         body: JSON.stringify({ module: w.fix_job, args: w.fix_args || [] }) });
-      toast.success(`Queued fix · ${res.job_id.slice(0,8)}`);
+      toast.success(`Queued fix · ${(res.job_id || '').slice(0,8)}`);
       setTimeout(load, 3000);
     } catch (e) { toast.error(`Fix failed: ${e.message}`); }
     finally { setFixing(null); }
