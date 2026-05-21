@@ -365,9 +365,16 @@ async def _run(args, db) -> int:
             errored += 1
             if errored <= 5:
                 print(f"  predict() error for {pname}/{hf_stat}: {e!r}")
+            elif errored == 6:
+                print("  (further predict() errors suppressed; see counts)")
             continue
         if isinstance(result, dict) and "error" in result:
             errored += 1
+            if errored <= 10:
+                print(f"  predict() returned error for {pname}/{hf_stat}: "
+                        f"{result.get('error')!r}")
+            elif errored == 11:
+                print("  (further predict() error-dicts suppressed)")
             continue
 
         # Extract gate-required fields

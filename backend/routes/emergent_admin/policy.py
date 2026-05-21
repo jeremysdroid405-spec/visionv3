@@ -87,9 +87,10 @@ ALLOWED_JOBS: Dict[str, Dict] = {
     },
     "scripts.sgo.build_historical_outcomes": {
         "label": "Grade enriched anchors vs player stats",
-        "writes_to": "sgo_pp_research_outcomes (PROTECTED) — locked OFF",
-        "enabled": False,
-        "args": [],
+        "writes_to": "sgo_pp_research_outcomes (research, writable)",
+        "enabled": True,
+        "args": ["--league", "--start", "--end", "--dry-run", "--resume",
+                  "--debug-unresolved", "--limit"],
     },
     "scripts.sgo.build_historical_model_features": {
         "label": "Build pre-game features for the model",
@@ -107,10 +108,12 @@ ALLOWED_JOBS: Dict[str, Dict] = {
                   "--feature-keys", "--dry-run", "--resume"],
     },
     "scripts.sgo.ingest_historical_player_stats": {
-        "label": "Re-ingest player stats from SGO API",
-        "writes_to": "sgo_player_stats (PROTECTED on this server) — locked OFF",
-        "enabled": False,
-        "args": [],
+        "label": "Re-ingest player stats from SGO API "
+                   "(approved research pipeline job)",
+        "writes_to": "sgo_player_stats (research-controlled writable)",
+        "enabled": True,
+        "args": ["--league", "--start", "--end", "--source", "--dry-run",
+                  "--resume", "--limit", "--debug-unresolved"],
     },
     "scripts.sgo.verify_sgo_player_stats_coverage": {
         "label": "Read-only coverage report (safe)",
