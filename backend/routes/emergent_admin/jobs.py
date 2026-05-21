@@ -50,11 +50,28 @@ router = APIRouter()
 
 
 def _backend_cwd() -> str:
-    """Locked cwd for subprocesses."""
+    """Locked cwd for subprocesses.
+
+    Tries known install paths first, then `BACKEND_DIR` env override, then
+    the directory of `backend/server.py` discovered via this module's
+    location. Worst case falls back to `os.getcwd()` so the runner NEVER
+    raises before reaching the DB update — silent failures were leaving
+    jobs stuck in `queued` forever.
+    """
     for p in ("/var/www/app/backend", "/app/backend"):
         if os.path.isdir(p):
             return p
-    raise RuntimeError("backend cwd not found")
+    env_override = os.environ.get("BACKEND_DIR") or os.environ.get("APP_BACKEND_DIR")
+    if env_override and os.path.isdir(env_override):
+        return env_override
+    # Discover relative to this file: routes/emergent_admin/jobs.py → backend/
+    here = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(3):
+        candidate = os.path.dirname(here)
+        if os.path.isfile(os.path.join(candidate, "server.py")):
+            return candidate
+        here = candidate
+    return os.getcwd()
 
 
 def _running_pids() -> Dict[str, int]:
@@ -93,6 +110,34 @@ async def _flush(db, job_id: str, lines: List[str]) -> None:
 
 
 async def _run_job(job_id: str, module: str, args: List[str]) -> None:
+    """Top-level dispatcher. Wraps _run_job_impl with an outer try/except
+    so that ANY exception — including pre-spawn errors like missing cwd,
+    bad PYTHONPATH, Mongo down — surfaces on the job doc as `status="errored"`
+    instead of leaving it silently stuck in `queued`.
+    """
+    try:
+        await _run_job_impl(job_id, module, args)
+    except Exception as outer:
+        tb = traceback.format_exc()
+        logger.exception("[job %s] top-level dispatch failed (pre-spawn)", job_id)
+        # Best-effort write — if Mongo itself is the failure, this will
+        # also fail and the supervisor log line above is the only record.
+        try:
+            await _get_db()[JOBS_COLL].update_one(
+                {"job_id": job_id},
+                {"$set": {
+                    "status": "errored",
+                    "error": repr(outer),
+                    "traceback": tb,
+                    "tail_preview": tb.splitlines()[-TAIL_PREVIEW_LINES:],
+                    "finished_at": datetime.now(timezone.utc),
+                }})
+        except Exception as inner:
+            logger.exception("[job %s] also failed to record the outer "
+                                "failure: %r", job_id, inner)
+
+
+async def _run_job_impl(job_id: str, module: str, args: List[str]) -> None:
     db = _get_db()
     started = datetime.now(timezone.utc)
     cmd = [sys.executable, "-u", "-m", module, *args]   # -u for unbuffered stdout
@@ -358,3 +403,95 @@ async def cancel_job(job_id: str, body: CancelBody, request: Request,
                       params={"job_id": job_id, "pid": pid}, **auth)
     logger.info("[job %s] cancelled via SIGTERM pid=%s", job_id, pid)
     return {"ok": True, "job_id": job_id, "killed_pid": pid}
+
+
+@router.post("/_self_test")
+async def runner_self_test(request: Request,
+                                auth=Depends(require_admin_token)):
+    """Diagnose the job runner WITHOUT going through the allowlist —
+    inspects the host's runtime environment so silent-failure causes
+    (missing cwd, no python executable, no scripts dir, Mongo down) are
+    surfaced immediately.
+
+    NO subprocess is actually spawned by this endpoint. Read-only.
+    """
+    import shutil
+    db = _get_db()
+    cwd = _backend_cwd()
+    py = sys.executable
+    py_exists = os.path.isfile(py)
+    scripts_dir = os.path.join(cwd, "scripts")
+    scripts_pkg = os.path.isdir(scripts_dir)
+    sgo_pkg = os.path.isdir(os.path.join(scripts_dir, "sgo"))
+    # Active-job registry health
+    active_tasks = len(_RUNNER_TASKS)
+    active_pids  = len(_running_pids())
+    # Mongo connectivity
+    try:
+        mongo_ok = (await db.command("ping")).get("ok") == 1
+    except Exception as e:
+        mongo_ok = False
+        mongo_err = repr(e)
+    else:
+        mongo_err = None
+    # Stuck-queued count
+    stuck_q = await db[JOBS_COLL].count_documents({"status": "queued"})
+    payload = {
+        "ok": all([py_exists, scripts_pkg, sgo_pkg, mongo_ok]),
+        "cwd": cwd,
+        "cwd_exists": os.path.isdir(cwd),
+        "python_executable": py,
+        "python_exists": py_exists,
+        "scripts_pkg_present": scripts_pkg,
+        "scripts_sgo_pkg_present": sgo_pkg,
+        "active_tasks_in_memory": active_tasks,
+        "active_pids_in_memory": active_pids,
+        "mongo_ok": mongo_ok,
+        "mongo_err": mongo_err,
+        "queued_jobs_count": stuck_q,
+        "shell_python": shutil.which("python") or shutil.which("python3"),
+        "env_pythonpath": os.environ.get("PYTHONPATH", ""),
+        "env_path": os.environ.get("PATH", "")[:200],
+        "ts": datetime.now(timezone.utc),
+    }
+    await audit_log(request, action="job_self_test",
+                       params={}, response_summary={"ok": payload["ok"]}, **auth)
+    return payload
+
+
+class ReconcileBody(BaseModel):
+    older_than_seconds: int = Field(default=120, ge=10, le=86400)
+
+
+@router.post("/_reconcile_stuck")
+async def reconcile_stuck(body: ReconcileBody, request: Request,
+                                auth=Depends(require_admin_token)):
+    """Mark all `status=queued` jobs older than N seconds as errored.
+    Useful after a backend OOM/restart that lost in-flight tasks.
+    Does NOT touch jobs currently running — those have a pid registered
+    in memory."""
+    cutoff = datetime.now(timezone.utc) - \
+                 __import__("datetime").timedelta(seconds=body.older_than_seconds)
+    db = _get_db()
+    # Refuse to clobber currently-active jobs even if they show queued.
+    in_mem_ids = list(_RUNNER_TASKS) and []  # _RUNNER_TASKS is a set of Task objs, not ids
+    # We can't extract job_id from Task objects safely. So we filter on
+    # the active-pids registry instead — those are definitely live.
+    live_pid_ids = list(_running_pids().keys())
+    result = await db[JOBS_COLL].update_many(
+        {"status": "queued",
+          "queued_at": {"$lt": cutoff},
+          "job_id": {"$nin": live_pid_ids}},
+        {"$set": {"status": "errored",
+                    "error": "Task lost — backend restart or pre-spawn crash. "
+                                "Check supervisor logs.",
+                    "finished_at": datetime.now(timezone.utc),
+                    "reconciled": True}})
+    await audit_log(request, action="job_reconcile_stuck",
+                       params={"older_than_seconds": body.older_than_seconds},
+                       response_summary={"matched": result.matched_count,
+                                              "modified": result.modified_count},
+                       **auth)
+    return {"ok": True, "matched": result.matched_count,
+              "modified": result.modified_count,
+              "live_pid_ids_protected": live_pid_ids}
