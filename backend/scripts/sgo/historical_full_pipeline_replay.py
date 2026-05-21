@@ -174,14 +174,136 @@ async def _load_outcomes_enriched(
     return rows
 
 
-# Lazy-import the live engine + gate evaluators
+# ── Inlined gate evaluator (mirrors services.replay.mlb_replay_multi_tier_eval)
+# Inlined to avoid pulling in psutil + the rest of that module's deps when
+# this script runs under the Admin API job runner.
+_SH_SPEC: Dict[str, Dict[str, float]] = {
+    "hits":               {"cv_max": 0.90, "hr_min": 70.0, "edge_min": 0.05, "tp_min": 0.74, "min_margin": 0.50},
+    "total_bases":        {"cv_max": 0.75, "hr_min": 70.0, "edge_min": 0.01, "tp_min": 0.50, "min_margin": 1.00},
+    "hits_runs_rbis":     {"cv_max": 0.90, "hr_min": 80.0, "edge_min": 0.04, "tp_min": 0.80, "min_margin": 1.00},
+    "rbis":               {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 0.01, "tp_min": 0.50, "min_margin": 0.75},
+    "runs":               {"cv_max": 0.55, "hr_min": 80.0, "edge_min": 0.01, "tp_min": 0.50, "min_margin": 0.75},
+    "pitcher_strikeouts": {"cv_max": 0.45, "hr_min": 70.0, "edge_min": 0.01, "tp_min": 0.50, "min_margin": 0.75},
+    "batter_strikeouts":  {"cv_max": 0.80, "hr_min": 80.0, "edge_min": 0.04, "tp_min": 0.78, "min_margin": 0.50},
+    "earned_runs":        {"cv_max": 0.40, "hr_min": 70.0, "edge_min": 0.01, "tp_min": 0.50, "min_margin": 0.75},
+    "_default":           {"cv_max": 0.60, "hr_min": 80.0, "edge_min": 0.01, "tp_min": 0.50, "min_margin": 0.75},
+}
+_FL_SPEC: Dict[str, Dict[str, float]] = {
+    "hits":               {"cv_max": 0.55, "hr_min": 70.0, "hr_l5_min": 70.0, "edge_min": 0.04, "tp_min": 0.50},
+    "total_bases":        {"cv_max": 0.70, "hr_min": 70.0, "hr_l5_min": 70.0, "edge_min": 0.04, "tp_min": 0.50},
+    "hits_runs_rbis":     {"cv_max": 0.75, "hr_min": 70.0, "hr_l5_min": 70.0, "edge_min": 0.04, "tp_min": 0.50},
+    "rbis":               {"cv_max": 0.55, "hr_min": 70.0, "hr_l5_min": 70.0, "edge_min": 0.04, "tp_min": 0.50},
+    "runs":               {"cv_max": 0.55, "hr_min": 70.0, "hr_l5_min": 70.0, "edge_min": 0.04, "tp_min": 0.50},
+    "pitcher_outs":       {"cv_max": 0.40, "hr_min": 70.0, "hr_l5_min": 70.0, "edge_min": 0.04, "tp_min": 0.50},
+    "pitcher_strikeouts": {"cv_max": 0.50, "hr_min": 70.0, "hr_l5_min": 70.0, "edge_min": 0.04, "tp_min": 0.50},
+    "batter_strikeouts":  {"cv_max": 0.65, "hr_min": 70.0, "hr_l5_min": 70.0, "edge_min": 0.04, "tp_min": 0.50},
+    "earned_runs":        {"cv_max": 0.50, "hr_min": 70.0, "hr_l5_min": 70.0, "edge_min": 0.04, "tp_min": 0.50},
+    "walks_allowed":      {"cv_max": 0.60, "hr_min": 70.0, "hr_l5_min": 70.0, "edge_min": 0.04, "tp_min": 0.50},
+    "_default":           {"cv_max": 0.65, "hr_min": 70.0, "hr_l5_min": 70.0, "edge_min": 0.04, "tp_min": 0.50},
+}
+_WZ_SPEC: Dict[str, float] = {
+    "hr_l20_min": 70.0, "hr_l5_min": 60.0, "cv_max": 1.10, "edge_min": 0.05,
+}
+
+
+def _resolve_family(market: Optional[str], stat_family: Optional[str]) -> str:
+    m = (market or "").lower()
+    sf = (stat_family or "").lower()
+    if sf == "strikeouts":
+        return "pitcher_strikeouts" if "pitcher" in m else "batter_strikeouts"
+    if sf == "pitcher_walks":
+        return "walks_allowed"
+    return sf
+
+
+def _lookup(spec: Dict[str, Dict[str, float]], fam: str) -> Dict[str, float]:
+    return spec.get(fam) or spec["_default"]
+
+
+def _direction_ok(row: Dict[str, Any]) -> bool:
+    mu = row.get("projection_mu"); ln = row.get("line")
+    if mu is None or ln is None:
+        return False
+    if row.get("side") == "OVER":
+        return mu > ln
+    return mu < ln
+
+
+def eval_safe_haven(row: Dict[str, Any]):
+    fam = _resolve_family(row.get("market"), row.get("stat_family"))
+    s = _lookup(_SH_SPEC, fam)
+    failed: List[str] = []
+    if not _direction_ok(row):
+        failed.append("direction_fail")
+    mu, ln, side = row.get("projection_mu"), row.get("line"), row.get("side")
+    if mu is not None and ln is not None:
+        gap = (mu - ln) if side == "OVER" else (ln - mu)
+        if gap < s["min_margin"]:
+            failed.append("margin_fail")
+    hr20 = row.get("hit_rate_l20")
+    if hr20 is None or hr20 < s["hr_min"]:
+        failed.append("hit_rate_l20_fail")
+    cv = row.get("cv")
+    if cv is None or cv > s["cv_max"]:
+        failed.append("cv_fail")
+    edge = row.get("edge")
+    if edge is None or edge < s["edge_min"]:
+        failed.append("edge_fail")
+    mp = row.get("model_probability")
+    if mp is None or mp < s["tp_min"]:
+        failed.append("tp_fail")
+    return (not failed), failed
+
+
+def eval_front_lines(row: Dict[str, Any]):
+    fam = _resolve_family(row.get("market"), row.get("stat_family"))
+    s = _lookup(_FL_SPEC, fam)
+    failed: List[str] = []
+    if not _direction_ok(row):
+        failed.append("direction_fail")
+    hr20 = row.get("hit_rate_l20")
+    if hr20 is None or hr20 < s["hr_min"]:
+        failed.append("hit_rate_l20_fail")
+    hr5 = row.get("hit_rate_l5")
+    if hr5 is None or hr5 < s["hr_l5_min"]:
+        failed.append("hit_rate_l5_fail")
+    cv = row.get("cv")
+    if cv is None or cv > s["cv_max"]:
+        failed.append("cv_fail")
+    edge = row.get("edge")
+    if edge is None or edge < s["edge_min"]:
+        failed.append("edge_fail")
+    mp = row.get("model_probability")
+    if mp is None or mp < s["tp_min"]:
+        failed.append("tp_fail")
+    return (not failed), failed
+
+
+def eval_war_zone(row: Dict[str, Any]):
+    failed: List[str] = []
+    if not _direction_ok(row):
+        failed.append("direction_fail")
+    hr20 = row.get("hit_rate_l20")
+    if hr20 is None or hr20 < _WZ_SPEC["hr_l20_min"]:
+        failed.append("hit_rate_l20_fail")
+    hr5 = row.get("hit_rate_l5")
+    if hr5 is None or hr5 < _WZ_SPEC["hr_l5_min"]:
+        failed.append("hit_rate_l5_fail")
+    cv = row.get("cv")
+    if cv is None or cv > _WZ_SPEC["cv_max"]:
+        failed.append("cv_fail")
+    edge = row.get("edge")
+    if edge is None or edge < _WZ_SPEC["edge_min"]:
+        failed.append("edge_fail")
+    return (not failed), failed
+
+
+# Lazy-import the live engine
 def _import_live():
     from services.mlb_high_friction_model import MLBHighFrictionModel
-    from services.replay.mlb_replay_multi_tier_eval import (
-        eval_safe_haven, eval_front_lines, eval_war_zone, _resolve_family,
-    )
     return (MLBHighFrictionModel,
-              eval_safe_haven, eval_front_lines, eval_war_zone, _resolve_family)
+              eval_safe_haven, eval_front_lines, eval_war_zone,
+              _resolve_family)
 
 
 async def _resume_set(db, *, league: str, start: str, end: str) -> set:
