@@ -101,6 +101,12 @@ class ProductionReplayCard(BaseModel):
     game_id: str
     rank: int
 
+    # 2026-05-21 — propagate event/game metadata onto the card so
+    # downstream regraders / analytics never need to re-join to outputs.
+    event_id: Optional[str] = None
+    commence_time: Optional[str] = None
+    game_date: Optional[str] = None
+
     player_name: str
     player_name_normalized: str
     stat_family: str

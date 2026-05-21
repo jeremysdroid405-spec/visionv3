@@ -150,6 +150,11 @@ def _build_card_record(row: Dict[str, Any], *, rank: int,
         "tier": tier,
         "game_id": row.get("event_id") or "",
         "rank": rank,
+        # 2026-05-21 — propagate event/game metadata directly onto the card
+        # so downstream regraders/analytics don't need to re-join outputs.
+        "event_id": row.get("event_id"),
+        "commence_time": row.get("commence_time"),
+        "game_date": row.get("game_date"),
         "player_name": row.get("player_name") or row.get("player_name_normalized"),
         "player_name_normalized": row.get("player_name_normalized") or "",
         "stat_family": row.get("stat_family") or "",

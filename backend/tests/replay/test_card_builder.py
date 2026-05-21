@@ -213,3 +213,38 @@ def test_build_cards_per_game_top_n_with_dedupe_disabled():
         by_event.setdefault(c["game_id"], []).append(c)
     assert len(by_event["A"]) == 2
     assert len(by_event["B"]) == 2
+
+
+
+# ── 2026-05-21 — event/game metadata propagation onto cards ─────────
+def test_build_cards_propagates_event_metadata():
+    """Regression: event_id, commence_time, game_date must land on
+    each card so analytics doesn't have to re-join `*_outputs`."""
+    rows = [
+        _row(event_id="evt-A", commence_time="2026-05-05T19:05:00Z",
+             game_date="2026-05-05",
+             player_name_normalized=f"p{i}", edge=0.1 + i * 0.01)
+        for i in range(3)
+    ]
+    cards = build_production_cards(
+        rows, tier="war_zone", replay_serial="X", sport="mlb")
+    assert len(cards) == 3
+    for c in cards:
+        assert c["event_id"] == "evt-A"
+        assert c["commence_time"] == "2026-05-05T19:05:00Z"
+        assert c["game_date"] == "2026-05-05"
+        # game_id remains backwards-compatible with the old event_id alias
+        assert c["game_id"] == "evt-A"
+
+
+def test_build_cards_metadata_nullable():
+    """If the source row is missing metadata (older outputs), card must
+    still build with None for those fields (not crash, not '' coerced)."""
+    rows = [_row(event_id=None, commence_time=None, game_date=None)]
+    cards = build_production_cards(
+        rows, tier="war_zone", replay_serial="X", sport="mlb")
+    assert len(cards) == 1
+    c = cards[0]
+    assert c["event_id"] is None
+    assert c["commence_time"] is None
+    assert c["game_date"] is None

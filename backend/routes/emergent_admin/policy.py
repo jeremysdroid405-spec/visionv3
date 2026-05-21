@@ -126,6 +126,19 @@ ALLOWED_JOBS: Dict[str, Dict] = {
         "enabled": True,
         "args": ["--league", "--start", "--end", "--config", "--dry-run"],
     },
+    # 2026-05-21 — canonical-name backfill for legacy stat_family values.
+    # Writes to mlb_replay_feature_cache / mlb_replay_model_outputs, which
+    # are PROTECTED. Default --dry-run is safe; --commit is gated behind
+    # the same admin token. Re-runs are idempotent (already-canonical rows
+    # are skipped). Operators must whitelist this explicitly per-run.
+    "scripts.research.backfill_stat_family_canonical": {
+        "label": "Backfill canonical stat_family on legacy replay rows",
+        "writes_to": "mlb_replay_feature_cache, mlb_replay_model_outputs "
+                       "(idempotent; --dry-run is the default)",
+        "enabled": True,
+        "args": ["--collection", "--league", "--commit", "--dry-run",
+                  "--chunk-size", "--sample-limit"],
+    },
 }
 
 
