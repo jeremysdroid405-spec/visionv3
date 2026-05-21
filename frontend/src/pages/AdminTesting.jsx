@@ -639,6 +639,48 @@ function defaultSweep(sport) {
 function SweepTab({ token }) {
   const [draft, setDraft] = useState(() => loadSweep() || defaultSweep('MLB'));
   const [busy, setBusy] = useState(false);
+
+  // On first mount, ask the backend if a "testing default" preset was
+  // promoted from the Auto-Optimizer. If so, apply its best thresholds
+  // as the universal default in the per-family grid (user can still
+  // toggle individual families on/off and tweak).
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(token, '/optimizer/_meta/testing_default');
+        if (cancelled || !res?.doc?.best) return;
+        const b = res.doc.best;
+        // Seed every family's threshold row with the optimizer's best
+        // values. Non-destructive: existing localStorage draft wins.
+        setDraft(p => {
+          if (Object.values(p.families).some(f => f.enabled)) return p;
+          const families = { ...p.families };
+          for (const fam of Object.keys(families)) {
+            families[fam] = {
+              ...families[fam],
+              thresholds: {
+                ...families[fam].thresholds,
+                hr_l20_min: b.hr_l20_min ?? families[fam].thresholds.hr_l20_min,
+                hr_l10_min: b.hr_l10_min ?? families[fam].thresholds.hr_l10_min,
+                hr_l5_min:  b.hr_l5_min  ?? families[fam].thresholds.hr_l5_min,
+                cv_max:     b.cv_max     ?? families[fam].thresholds.cv_max,
+                edge_min:   b.edge_min   ?? families[fam].thresholds.edge_min,
+                tp_min:     b.tp_min     ?? families[fam].thresholds.tp_min,
+              },
+            };
+          }
+          return { ...p, families };
+        });
+        toast.info(`Sweep defaults preloaded from optimizer run ${res.doc.source_run_id?.slice?.(0, 12) || ''}`);
+      } catch (e) {
+        // soft-fail — no preset is fine
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token]);
+
   useEffect(() => { localStorage.setItem(SWEEP_KEY, JSON.stringify(draft)); }, [draft]);
 
   const setSport = (sport) => setDraft(defaultSweep(sport));
@@ -1961,9 +2003,455 @@ function DiagnosticsTab({ token }) {
   );
 }
 
+// ── Auto-Optimizer tab ─────────────────────────────────────────────
+const OPTIMIZER_GOALS = [
+  { value: 'balanced',    label: 'Balanced (recommended)' },
+  { value: 'hit_rate',    label: 'Highest hit rate' },
+  { value: 'roi',         label: 'Highest ROI / EV' },
+  { value: 'calibration', label: 'Best calibration (|Δcal|→0)' },
+  { value: 'stability',   label: 'Best stability (high consistency, low DD)' },
+];
+
+const OPTIMIZER_AXES = [
+  { key: 'hr_l20_min', label: 'HR L20 min', default: '0.55, 0.65, 0.70, 0.75, 0.80' },
+  { key: 'hr_l10_min', label: 'HR L10 min', default: '0.55, 0.65, 0.70' },
+  { key: 'hr_l5_min',  label: 'HR L5 min',  default: '0.50, 0.60, 0.70' },
+  { key: 'cv_max',     label: 'CV max',     default: '0.50, 0.70, 0.90, 1.10' },
+  { key: 'edge_min',   label: 'Edge min',   default: '0.02, 0.05, 0.08, 0.10' },
+  { key: 'tp_min',     label: 'TP min',     default: '0.50, 0.55, 0.60, 0.65' },
+];
+
+const OPTIMIZER_FILTERS = [
+  { key: 'vision_score_min',           label: 'Vision score min',     ph: '60' },
+  { key: 'sharp_book_count_min',       label: 'Sharp books min',      ph: '2' },
+  { key: 'devig_book_count_min',       label: 'Devig books min',      ph: '3' },
+  { key: 'market_width_max',           label: 'Market width max',     ph: '0.20' },
+  { key: 'consensus_disagreement_max', label: 'Consensus disag max',  ph: '0.15' },
+  { key: 'projection_margin_min',      label: 'Proj margin min',      ph: '0.50' },
+];
+
+function parseAxisList(s) {
+  if (!s || !s.trim()) return null;
+  const vals = s.split(',').map(x => parseFloat(x.trim())).filter(x => !Number.isNaN(x));
+  return vals.length ? vals : null;
+}
+
+function OptimizerTab({ token }) {
+  const [form, setForm] = useState({
+    sport: 'MLB', start: '', end: '',
+    tiers: { safe_haven: true, front_lines: true, war_zone: true },
+    stat_families: '',   // empty = all (discovered server-side)
+    odds_buckets: '',    // empty = all
+    sides: { OVER: true, UNDER: true },
+    min_bets: 30,
+    max_configs_per_cell: 500,
+    optimization_goal: 'balanced',
+    worker_limit: 4,
+    grid: Object.fromEntries(OPTIMIZER_AXES.map(a => [a.key, a.default])),
+    filters: Object.fromEntries(OPTIMIZER_FILTERS.map(f => [f.key, ''])),
+  });
+  const [runId, setRunId] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [results, setResults] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const pollRef = useRef(null);
+
+  const launch = async () => {
+    if (!form.start || !form.end) { toast.error('Start and end required'); return; }
+    setBusy(true); setResults(null);
+    try {
+      const body = {
+        sport: form.sport, start: form.start, end: form.end,
+        tiers: Object.entries(form.tiers).filter(([, v]) => v).map(([k]) => k),
+        stat_families: form.stat_families.trim()
+          ? form.stat_families.split(',').map(s => s.trim()).filter(Boolean) : null,
+        odds_buckets: form.odds_buckets.trim()
+          ? form.odds_buckets.split(',').map(s => s.trim()).filter(Boolean) : null,
+        sides: Object.entries(form.sides).filter(([, v]) => v).map(([k]) => k),
+        min_bets: parseInt(form.min_bets, 10) || 30,
+        max_configs_per_cell: parseInt(form.max_configs_per_cell, 10) || 500,
+        optimization_goal: form.optimization_goal,
+        worker_limit: parseInt(form.worker_limit, 10) || 4,
+        grid: Object.fromEntries(OPTIMIZER_AXES.map(a => [a.key, parseAxisList(form.grid[a.key])])
+          .filter(([, v]) => v)),
+        filters: Object.fromEntries(OPTIMIZER_FILTERS
+          .map(f => [f.key, form.filters[f.key] ? parseFloat(form.filters[f.key]) : null])
+          .filter(([, v]) => v !== null && !Number.isNaN(v))),
+      };
+      const res = await apiFetch(token, '/optimizer/run', {
+        method: 'POST', body: JSON.stringify(body),
+      });
+      setRunId(res.run_id); setStatus(null); setResults(null);
+      toast.success(`Optimizer started · ${res.run_id} · ${fmtInt(res.replay_rows_in_window)} replay rows in window`);
+    } catch (e) {
+      toast.error(`Launch failed: ${e.message}`);
+    } finally { setBusy(false); }
+  };
+
+  // Status polling
+  useEffect(() => {
+    if (!runId || !token) return;
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const r = await apiFetch(token, `/optimizer/${runId}`);
+        if (stopped) return;
+        setStatus(r.state);
+        if (r.state?.status === 'succeeded' || r.state?.status === 'cancelled' || r.state?.status === 'failed') {
+          if (pollRef.current) clearInterval(pollRef.current);
+          if (r.state.status === 'succeeded') {
+            // auto-load results
+            try {
+              const rr = await apiFetch(token, `/optimizer/${runId}/results?limit=25`);
+              setResults(rr);
+            } catch (e) { /* ignore */ }
+          }
+        }
+      } catch (e) {
+        if (e.status === 404) {
+          // not ready yet — keep polling
+        } else {
+          console.error('[optimizer] poll', e.message);
+        }
+      }
+    };
+    poll();
+    pollRef.current = setInterval(poll, 2000);
+    return () => { stopped = true; if (pollRef.current) clearInterval(pollRef.current); };
+  }, [runId, token]);
+
+  const cancel = async () => {
+    if (!runId) return;
+    try { await apiFetch(token, `/optimizer/${runId}/cancel`, { method: 'POST' });
+      toast.success('Cancel signal sent'); }
+    catch (e) { toast.error(`Cancel failed: ${e.message}`); }
+  };
+
+  const saveAsCandidates = async () => {
+    const k = parseInt(window.prompt('Save top-K configs as candidates:', '10'), 10);
+    if (!k || k < 1) return;
+    try {
+      const res = await apiFetch(token, `/optimizer/${runId}/save_as_candidates`, {
+        method: 'POST', body: JSON.stringify({ top_k: k, note: 'Saved from /admin/testing' }),
+      });
+      toast.success(`Saved ${res.saved} candidates → candidate_thresholds`);
+    } catch (e) { toast.error(`Save failed: ${e.message}`); }
+  };
+
+  const setTestingDefault = async () => {
+    try {
+      const res = await apiFetch(token, `/optimizer/${runId}/set_testing_default`, { method: 'POST' });
+      toast.success(`Set as testing default · best score ${fmtNum(res.doc?.best?.score, 2)}`);
+    } catch (e) { toast.error(`Set default failed: ${e.message}`); }
+  };
+
+  const exportJson = () => {
+    if (!results) return;
+    const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url;
+    a.download = `optimizer-${runId}-${new Date().toISOString().slice(0,10)}.json`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  const progressPct = status?.total_combos
+    ? Math.min(100, (status.combos_tested || 0) * 100 / status.total_combos)
+    : 0;
+
+  return (
+    <Section testId="optimizer-section" accent={ACCENT}
+      title="Auto-Optimizer"
+      subtitle="Sweeps hundreds-to-thousands of threshold combos per (tier × stat_family × odds_bucket) cell over the cached SSOT replay rows. Runs in parallel, ranks by your chosen goal, persists candidates."
+      right={runId && status?.status === 'running' && (
+        <Btn variant="danger" onClick={cancel} testId="optimizer-cancel">Cancel</Btn>
+      )}>
+      {/* Config form */}
+      <div style={{
+        background: SURFACE_2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 12, marginBottom: 14,
+      }}>
+        <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 8 }}>Scope</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginBottom: 12 }}>
+          <Field label="Sport"><Select testId="opt-sport" value={form.sport}
+            onChange={(e) => setForm({ ...form, sport: e.target.value })} options={['MLB','NBA','NFL']} /></Field>
+          <Field label="Start"><Input testId="opt-start" value={form.start}
+            onChange={(e) => setForm({ ...form, start: e.target.value })} placeholder="YYYY-MM-DD" /></Field>
+          <Field label="End"><Input testId="opt-end" value={form.end}
+            onChange={(e) => setForm({ ...form, end: e.target.value })} placeholder="YYYY-MM-DD" /></Field>
+          <Field label="Min bets / cell"><Input testId="opt-minbets" type="number" value={form.min_bets}
+            onChange={(e) => setForm({ ...form, min_bets: e.target.value })} /></Field>
+          <Field label="Max configs / cell"><Input testId="opt-maxconfigs" type="number" value={form.max_configs_per_cell}
+            onChange={(e) => setForm({ ...form, max_configs_per_cell: e.target.value })} /></Field>
+          <Field label="Parallel workers"><Input testId="opt-workers" type="number" value={form.worker_limit}
+            onChange={(e) => setForm({ ...form, worker_limit: e.target.value })} /></Field>
+          <Field label="Goal"><Select testId="opt-goal" value={form.optimization_goal}
+            onChange={(e) => setForm({ ...form, optimization_goal: e.target.value })}
+            options={OPTIMIZER_GOALS} /></Field>
+        </div>
+
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Tiers</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {['safe_haven','front_lines','war_zone'].map(t => (
+                <label key={t} data-testid={`opt-tier-${t}`} style={{
+                  background: form.tiers[t] ? `${ACCENT}22` : SURFACE_3,
+                  border: `1px solid ${form.tiers[t] ? ACCENT : BORDER}`,
+                  color: form.tiers[t] ? ACCENT : MUTED,
+                  borderRadius: 999, padding: '5px 12px', fontSize: 11, cursor: 'pointer',
+                }}>
+                  <input type="checkbox" checked={!!form.tiers[t]}
+                    onChange={(e) => setForm({ ...form, tiers: { ...form.tiers, [t]: e.target.checked } })}
+                    style={{ display: 'none' }} />
+                  {t.replace('_', ' ')}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Sides</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {['OVER','UNDER'].map(s => (
+                <label key={s} data-testid={`opt-side-${s}`} style={{
+                  background: form.sides[s] ? `${ACCENT_3}22` : SURFACE_3,
+                  border: `1px solid ${form.sides[s] ? ACCENT_3 : BORDER}`,
+                  color: form.sides[s] ? ACCENT_3 : MUTED,
+                  borderRadius: 999, padding: '5px 12px', fontSize: 11, cursor: 'pointer',
+                }}>
+                  <input type="checkbox" checked={!!form.sides[s]}
+                    onChange={(e) => setForm({ ...form, sides: { ...form.sides, [s]: e.target.checked } })}
+                    style={{ display: 'none' }} />
+                  {s}
+                </label>
+              ))}
+            </div>
+          </div>
+          <Field label="Stat families (comma — empty = all)">
+            <Input testId="opt-families" value={form.stat_families}
+              onChange={(e) => setForm({ ...form, stat_families: e.target.value })}
+              placeholder="empty = discovered from replay cache" style={{ minWidth: 280 }} />
+          </Field>
+          <Field label="Odds buckets (comma — empty = all)">
+            <Input testId="opt-buckets" value={form.odds_buckets}
+              onChange={(e) => setForm({ ...form, odds_buckets: e.target.value })}
+              placeholder="odds_-200_-100, odds_-100_-0, …" style={{ minWidth: 240 }} />
+          </Field>
+        </div>
+
+        <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Grid axes (comma-separated values per axis)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8, marginBottom: 12 }}>
+          {OPTIMIZER_AXES.map(ax => (
+            <Field key={ax.key} label={ax.label}>
+              <Input testId={`opt-axis-${ax.key}`} value={form.grid[ax.key]}
+                onChange={(e) => setForm({ ...form, grid: { ...form.grid, [ax.key]: e.target.value } })} />
+            </Field>
+          ))}
+        </div>
+
+        <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Required filters (single value, empty = ignored)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8, marginBottom: 12 }}>
+          {OPTIMIZER_FILTERS.map(f => (
+            <Field key={f.key} label={f.label}>
+              <Input testId={`opt-filter-${f.key}`} value={form.filters[f.key]}
+                onChange={(e) => setForm({ ...form, filters: { ...form.filters, [f.key]: e.target.value } })}
+                placeholder={f.ph} />
+            </Field>
+          ))}
+        </div>
+
+        <Btn variant="primary" onClick={launch} testId="opt-launch-btn" disabled={busy || !token}>
+          {busy ? 'Launching…' : '▶ Run Auto-Optimizer'}
+        </Btn>
+      </div>
+
+      {/* Progress */}
+      {status && (
+        <div data-testid="opt-progress" style={{
+          background: SURFACE_2, border: `1px solid ${status.status === 'running' ? ACCENT : status.status === 'succeeded' ? ACCENT_2 : status.status === 'failed' ? BAD : BORDER}`,
+          borderRadius: 8, padding: 14, marginBottom: 14,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase' }}>
+              Run {status.run_id} · <Badge color={statusColor(status.status)}>{status.status}</Badge>
+            </div>
+            <div style={{ fontSize: 11, color: DIM, fontFamily: 'monospace' }}>
+              elapsed {status.elapsed_s ? fmtNum(status.elapsed_s, 1) : '—'}s
+              {status.eta_s ? ` · ETA ${fmtNum(status.eta_s, 1)}s` : ''}
+            </div>
+          </div>
+          <div style={{ background: SURFACE_3, height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 10 }}>
+            <div data-testid="opt-progress-bar" style={{
+              background: status.status === 'failed' ? BAD : ACCENT,
+              width: `${progressPct}%`, height: '100%',
+              transition: 'width 300ms ease',
+            }} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
+            <StatCard testId="opt-stat-tested" label="Combos tested"
+              value={`${fmtInt(status.combos_tested)} / ${fmtInt(status.total_combos)}`} color={ACCENT} />
+            <StatCard testId="opt-stat-cells" label="Cells done"
+              value={`${fmtInt(status.cells_done)} / ${fmtInt(status.cells_total)}`} color={ACCENT_3} />
+            <StatCard testId="opt-stat-skipped" label="Skipped low-sample"
+              value={fmtInt(status.combos_skipped_low_sample)} color={WARN} />
+            <StatCard testId="opt-stat-empty" label="Empty cells"
+              value={fmtInt(status.cells_skipped_empty)} color={DIM} />
+            <StatCard testId="opt-stat-failures" label="Failures"
+              value={fmtInt(status.failures?.length)} color={(status.failures?.length || 0) > 0 ? BAD : ACCENT_2} />
+          </div>
+          {status.best && (
+            <div style={{ marginTop: 10, fontSize: 12, color: TEXT }}>
+              <span style={{ color: MUTED }}>best so far: </span>
+              <code style={{ color: ACCENT }}>{status.best.tier} · {status.best.stat_family} · {status.best.odds_bucket}</code>
+              {' → '}
+              <strong style={{ color: ACCENT_2 }}>HR={fmtPct(status.best.hit_rate)}</strong> ·
+              ROI={fmtPct(status.best.roi)} · n={fmtInt(status.best.n_bets)} · score={fmtNum(status.best.score, 2)}
+            </div>
+          )}
+          {status.error && (
+            <div style={{ marginTop: 10, fontSize: 11, color: BAD, fontFamily: 'monospace' }}>error: {status.error}</div>
+          )}
+        </div>
+      )}
+
+      {/* Results */}
+      {results && (
+        <div data-testid="opt-results" style={{
+          background: SURFACE_2, border: `1px solid ${ACCENT_2}`, borderRadius: 8, padding: 14,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: ACCENT_2, textTransform: 'uppercase' }}>
+              Results · {fmtInt(results.n_results)} configs ranked
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <Btn variant="success" onClick={saveAsCandidates} testId="opt-save-candidates">Save top-K → candidate_thresholds</Btn>
+              <Btn variant="primary" onClick={setTestingDefault} testId="opt-set-default">Set as Testing Default</Btn>
+              <Btn variant="ghost" onClick={exportJson} testId="opt-export">Export JSON</Btn>
+            </div>
+          </div>
+
+          {/* Best by tier */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Best Config by Tier</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+              {Object.entries(results.best_by_tier || {}).map(([tier, r]) => (
+                <div key={tier} style={{
+                  background: SURFACE_3, border: `1px solid ${BORDER}`,
+                  borderLeft: `3px solid ${tier === 'safe_haven' ? ACCENT_2 : tier === 'front_lines' ? ACCENT_3 : WARN}`,
+                  borderRadius: 6, padding: 10,
+                }}>
+                  <Badge color={tier === 'safe_haven' ? ACCENT_2 : tier === 'front_lines' ? ACCENT_3 : WARN}>{tier}</Badge>
+                  <div style={{ fontSize: 12, marginTop: 6 }}>
+                    <code style={{ color: ACCENT }}>{r?.stat_family}</code> · {r?.odds_bucket}
+                  </div>
+                  <div style={{ fontSize: 11, color: TEXT, marginTop: 4 }}>
+                    HR=<strong style={{ color: ACCENT_2 }}>{fmtPct(r?.hit_rate)}</strong> · ROI={fmtPct(r?.roi)} · Δcal={fmtPct(r?.calibration_delta, 2)} · n={fmtInt(r?.n_bets)} · score={fmtNum(r?.score, 2)}
+                  </div>
+                  <div style={{ fontSize: 10, color: DIM, marginTop: 4, fontFamily: 'monospace' }}>
+                    hr_l20≥{fmtPct(r?.thresholds?.hr_l20_min)} · cv≤{fmtNum(r?.thresholds?.cv_max)} · edge≥{fmtPct(r?.thresholds?.edge_min)} · tp≥{fmtPct(r?.thresholds?.tp_min)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Top 25 table */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Top 25 by Score</div>
+            <ResultsRankTable rows={results.top || []} testId="opt-top-table" accent={ACCENT_2} />
+          </div>
+
+          {/* Best by family + bucket */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+            <div data-testid="opt-best-by-family" style={{ background: SURFACE_3, border: `1px solid ${BORDER}`, borderRadius: 6, padding: 10, maxHeight: 320, overflowY: 'auto' }}>
+              <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Best by Stat Family</div>
+              {Object.entries(results.best_by_stat_family || {})
+                .sort(([, a], [, b]) => (b.score || 0) - (a.score || 0))
+                .map(([fam, r]) => (
+                <div key={fam} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderTop: `1px solid ${BORDER}`, fontSize: 11 }}>
+                  <code style={{ color: ACCENT }}>{fam}</code>
+                  <span style={{ color: TEXT }}>HR={fmtPct(r.hit_rate)} · n={fmtInt(r.n_bets)} · {r.tier}</span>
+                </div>
+              ))}
+            </div>
+            <div data-testid="opt-best-by-bucket" style={{ background: SURFACE_3, border: `1px solid ${BORDER}`, borderRadius: 6, padding: 10, maxHeight: 320, overflowY: 'auto' }}>
+              <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Best by Odds Bucket</div>
+              {Object.entries(results.best_by_odds_bucket || {})
+                .sort(([, a], [, b]) => (b.score || 0) - (a.score || 0))
+                .map(([bk, r]) => (
+                <div key={bk} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderTop: `1px solid ${BORDER}`, fontSize: 11 }}>
+                  <code style={{ color: ACCENT_3, fontFamily: 'monospace' }}>{bk}</code>
+                  <span style={{ color: TEXT }}>ROI={fmtPct(r.roi)} · HR={fmtPct(r.hit_rate)} · {r.tier}/{r.stat_family}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Overfit warnings */}
+          {results.overfit_warnings?.length > 0 && (
+            <div data-testid="opt-overfit-warnings" style={{
+              background: `${WARN}14`, border: `1px solid ${WARN}`, borderRadius: 6, padding: 10, marginBottom: 14, fontSize: 12, color: WARN,
+            }}>
+              ⚠ {results.overfit_warnings.length} top-25 entries flagged as <strong>likely overfit</strong> (small sample). Inspect before saving as candidates.
+            </div>
+          )}
+
+          {/* Worst */}
+          <div>
+            <div style={{ fontSize: 10, color: BAD, textTransform: 'uppercase', marginBottom: 6 }}>Worst configs (DO NOT USE)</div>
+            <ResultsRankTable rows={results.worst || []} testId="opt-worst-table" accent={BAD} />
+          </div>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function ResultsRankTable({ rows, testId, accent }) {
+  return (
+    <div data-testid={testId} style={{
+      background: SURFACE_3, border: `1px solid ${BORDER}`, borderLeft: `3px solid ${accent}`,
+      borderRadius: 6, overflow: 'hidden',
+    }}>
+      <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <thead><tr style={{ background: SURFACE_2, color: DIM, fontSize: 10, textTransform: 'uppercase' }}>
+            <th style={th}>tier</th><th style={th}>family</th><th style={th}>bucket</th>
+            <th style={th}>n</th><th style={th}>HR</th><th style={th}>ROI</th>
+            <th style={th}>Δcal</th><th style={th}>cons.</th><th style={th}>DD</th>
+            <th style={th}>thresholds</th><th style={th}>score</th>
+          </tr></thead>
+          <tbody>
+            {rows.length === 0 ? <tr><td colSpan={11} style={{ padding: 18, textAlign: 'center', color: DIM }}>—</td></tr> :
+              rows.map((r, i) => (
+                <tr key={i} style={{
+                  borderTop: `1px solid ${BORDER}`,
+                  background: r.overfit_flag ? `${WARN}08` : 'transparent',
+                }}>
+                  <td style={td}>{r.tier}</td>
+                  <td style={{ ...td, color: ACCENT }}>{r.stat_family}</td>
+                  <td style={{ ...td, fontSize: 10 }}>{r.odds_bucket}</td>
+                  <td style={td}>{fmtInt(r.n_bets)}{r.overfit_flag && <span style={{ color: WARN, marginLeft: 4 }}>⚠</span>}</td>
+                  <td style={{ ...td, color: (r.hit_rate || 0) > 0.6 ? ACCENT_2 : (r.hit_rate || 0) < 0.5 ? BAD : TEXT, fontWeight: 600 }}>{fmtPct(r.hit_rate)}</td>
+                  <td style={{ ...td, color: (r.roi || 0) > 0 ? ACCENT_2 : BAD }}>{fmtPct(r.roi)}</td>
+                  <td style={td}>{fmtPct(r.calibration_delta, 2)}</td>
+                  <td style={td}>{fmtNum(r.daily_consistency, 2)}</td>
+                  <td style={td}>{fmtNum(r.max_drawdown_units, 1)}u</td>
+                  <td style={{ ...td, fontSize: 10, color: DIM }}>
+                    hr_l20≥{fmtPct(r.thresholds?.hr_l20_min)} · cv≤{fmtNum(r.thresholds?.cv_max)} · edge≥{fmtPct(r.thresholds?.edge_min)} · tp≥{fmtPct(r.thresholds?.tp_min)}
+                  </td>
+                  <td style={{ ...td, color: TEXT, fontWeight: 600 }}>{fmtNum(r.score, 2)}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Root ────────────────────────────────────────────────────────────
 const TABS = [
   { id: 'workflow',    label: 'Workflow' },
+  { id: 'optimizer',   label: 'Optimizer' },
   { id: 'sweep',       label: 'Sweep' },
   { id: 'results',     label: 'Results' },
   { id: 'candidates',  label: 'Candidates' },
@@ -2023,6 +2511,7 @@ export default function AdminTesting() {
             </div>
 
             {tab === 'workflow'    && <WorkflowTab token={token} onPipelineFinished={() => setRefreshKey(k => k + 1)} />}
+            {tab === 'optimizer'   && <OptimizerTab token={token} />}
             {tab === 'sweep'       && <SweepTab token={token} />}
             {tab === 'results'     && <ResultsTab token={token} refreshKey={refreshKey}
               onSaveCandidate={(c) => { setPendingCandidate(c); setTab('candidates'); }} />}

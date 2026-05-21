@@ -54,6 +54,9 @@ WRITABLE_COLLECTIONS: Set[str] = {
     # 2026-05-21 — universal model registry (research-side metadata only;
     # underlying pickles never written by this collection).
     "emergent_model_registry",
+    # 2026-05-21 — auto-optimizer state + chosen testing defaults.
+    "optimizer_runs",
+    "admin_testing_defaults",
     # 2026-05-21 — SGO model predictions are research output, not the
     # raw SGO archive (which lives in `sgo_events`, `sgo_props_raw`,
     # `sgo_player_stats`). Allowing writes so historical scoring runs

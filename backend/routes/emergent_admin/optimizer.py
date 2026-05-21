@@ -1,0 +1,711 @@
+"""
+Auto-Optimizer — large-scale threshold grid search over the cached
+`sgo_propvision_full_pipeline_replay` collection (produced by the SSOT
+historical replay pipeline).
+
+Key design choice: this module does NOT re-run the production pipeline.
+The replay cache already contains every prop's `model_probability`,
+`cv`, `edge`, `tp`, `hit_rate_l*`, plus the graded `outcome_numeric`.
+The optimizer iterates threshold combos in-process over the cached
+rows per (tier × stat_family × odds_bucket × side) cell. This makes
+hundreds of thousands of combo evaluations fast (single-digit minutes
+on a typical month-long replay window).
+
+Endpoints (all token-gated, audit-logged):
+
+    POST   /api/emergent-admin/optimizer/run
+        Start a background optimization task.
+
+    GET    /api/emergent-admin/optimizer/{run_id}
+        Poll progress + best-so-far.
+
+    GET    /api/emergent-admin/optimizer/{run_id}/results
+        Top / worst / best-by-tier / best-by-family / best-by-bucket.
+
+    POST   /api/emergent-admin/optimizer/{run_id}/save_as_default
+        Promote the top-K configs into `candidate_thresholds` with
+        `status="candidate"`. Per-cell — does NOT touch live gates.
+
+    POST   /api/emergent-admin/optimizer/{run_id}/set_testing_default
+        Mark the top config of the run as the "testing default" preset
+        the Sweep tab loads on the next page open. Live gates untouched.
+
+Concurrency: per-cell evaluation is dispatched via asyncio.gather with
+a safe worker semaphore (default 4). Progress + best-so-far are stored
+in-process and persisted to `optimizer_runs` every 5 seconds.
+"""
+from __future__ import annotations
+import asyncio
+import itertools
+import logging
+import math
+import random
+import time
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+
+from .auth import audit_log, require_admin_token, _get_db
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+REPLAY_COLL          = "sgo_propvision_full_pipeline_replay"
+CANDIDATE_THRESH     = "candidate_thresholds"
+OPTIMIZER_RUNS       = "optimizer_runs"
+TESTING_DEFAULTS     = "admin_testing_defaults"
+
+# Default grid values (used only when the request doesn't supply ranges)
+DEFAULT_GRID: Dict[str, List[float]] = {
+    "hr_l20_min": [0.55, 0.65, 0.70, 0.75, 0.80],
+    "hr_l10_min": [0.55, 0.65, 0.70],
+    "hr_l5_min":  [0.50, 0.60, 0.70],
+    "cv_max":     [0.50, 0.70, 0.90, 1.10],
+    "edge_min":   [0.02, 0.05, 0.08, 0.10],
+    "tp_min":     [0.50, 0.55, 0.60, 0.65],
+}
+
+DEFAULT_TIERS         = ["safe_haven", "front_lines", "war_zone"]
+DEFAULT_ODDS_BUCKETS  = [
+    "odds_lt_-200", "odds_-200_-100", "odds_-100_-0",
+    "odds_+0_+150", "odds_+150_+300", "odds_+300p",
+]
+
+# In-process state — survives across requests as long as backend stays up.
+_RUNS: Dict[str, Dict[str, Any]] = {}
+
+
+# ── Request / response models ──────────────────────────────────────
+class GridSpec(BaseModel):
+    hr_l20_min: Optional[List[float]] = None
+    hr_l10_min: Optional[List[float]] = None
+    hr_l5_min:  Optional[List[float]] = None
+    cv_max:     Optional[List[float]] = None
+    edge_min:   Optional[List[float]] = None
+    tp_min:     Optional[List[float]] = None
+
+
+class RequiredFilters(BaseModel):
+    """Non-swept hard requirements applied to every candidate row."""
+    vision_score_min:           Optional[float] = None
+    sharp_book_count_min:       Optional[int]   = None
+    devig_book_count_min:       Optional[int]   = None
+    market_width_max:           Optional[float] = None
+    consensus_disagreement_max: Optional[float] = None
+    projection_margin_min:      Optional[float] = None
+
+
+class OptimizerRunBody(BaseModel):
+    sport:                 str   = Field(default="MLB")
+    start:                 str
+    end:                   str
+    tiers:                 List[str] = Field(default_factory=lambda: list(DEFAULT_TIERS))
+    stat_families:         Optional[List[str]] = None    # None == all
+    odds_buckets:          Optional[List[str]] = None    # None == all
+    sides:                 List[str] = Field(default_factory=lambda: ["OVER", "UNDER"])
+    min_bets:              int   = Field(default=30, ge=1)
+    max_configs_per_cell:  int   = Field(default=500, ge=1, le=50_000)
+    optimization_goal:     str   = Field(default="balanced")
+    grid:                  GridSpec = Field(default_factory=GridSpec)
+    filters:               RequiredFilters = Field(default_factory=RequiredFilters)
+    worker_limit:          int   = Field(default=4, ge=1, le=16)
+
+
+# ── Combo generation ──────────────────────────────────────────────
+def _resolve_grid(spec: GridSpec) -> Dict[str, List[float]]:
+    out: Dict[str, List[float]] = {}
+    for axis, default in DEFAULT_GRID.items():
+        v = getattr(spec, axis, None)
+        out[axis] = list(v) if v else list(default)
+    return out
+
+
+def _enumerate_combos(grid: Dict[str, List[float]],
+                          max_per_cell: int) -> List[Dict[str, float]]:
+    axes = sorted(grid.keys())
+    spaces = [grid[a] for a in axes]
+    total = 1
+    for s in spaces:
+        total *= max(1, len(s))
+    if total <= max_per_cell:
+        return [dict(zip(axes, vals)) for vals in itertools.product(*spaces)]
+    # Random sample without replacement — bounded by max_per_cell
+    sampled: set = set()
+    out: List[Dict[str, float]] = []
+    attempts = 0
+    while len(out) < max_per_cell and attempts < max_per_cell * 4:
+        attempts += 1
+        choice = tuple(random.choice(s) for s in spaces)
+        if choice in sampled:
+            continue
+        sampled.add(choice)
+        out.append(dict(zip(axes, choice)))
+    return out
+
+
+# ── Replay-row loading per cell ────────────────────────────────────
+def _row_passes_filters(row: Dict[str, Any],
+                            f: RequiredFilters) -> bool:
+    if f.vision_score_min is not None:
+        v = row.get("vision_score")
+        if v is None or v < f.vision_score_min:
+            return False
+    if f.sharp_book_count_min is not None:
+        v = row.get("sharp_book_count")
+        if v is None or v < f.sharp_book_count_min:
+            return False
+    if f.devig_book_count_min is not None:
+        v = row.get("devig_book_count")
+        if v is None or v < f.devig_book_count_min:
+            return False
+    if f.market_width_max is not None:
+        v = row.get("market_width")
+        if v is None or v > f.market_width_max:
+            return False
+    if f.consensus_disagreement_max is not None:
+        v = row.get("consensus_disagreement")
+        if v is None or v > f.consensus_disagreement_max:
+            return False
+    if f.projection_margin_min is not None:
+        v = row.get("projection_margin")
+        if v is None or v < f.projection_margin_min:
+            return False
+    return True
+
+
+def _row_passes_combo(row: Dict[str, Any],
+                          combo: Dict[str, float]) -> bool:
+    # Direction has already been enforced by the SSOT pipeline (rows with
+    # no projection_margin direction match never reach the cache). Apply
+    # the swept thresholds only.
+    pairs = [
+        ("hit_rate_l20",      "hr_l20_min", False),
+        ("hit_rate_l10",      "hr_l10_min", False),
+        ("hit_rate_l5",       "hr_l5_min",  False),
+        ("cv",                "cv_max",     True),
+        ("edge",              "edge_min",   False),
+        ("model_probability", "tp_min",     False),
+    ]
+    for row_key, combo_key, is_max in pairs:
+        thr = combo.get(combo_key)
+        if thr is None:
+            continue
+        v = row.get(row_key)
+        if v is None:
+            return False
+        # hit_rate is stored as percentage 0-100 in the replay cache; the
+        # grid thresholds use 0-1. Normalize.
+        if row_key.startswith("hit_rate"):
+            v_norm = v / 100.0 if v > 1.0 else v
+        else:
+            v_norm = v
+        if is_max:
+            if v_norm > thr:
+                return False
+        else:
+            if v_norm < thr:
+                return False
+    return True
+
+
+def _payout_units(row: Dict[str, Any]) -> Optional[float]:
+    """American odds → win=units / lose=-1 / push=0. None when ungraded."""
+    on = row.get("outcome_numeric")
+    odds = row.get("odds")
+    if on is None or odds is None:
+        return None
+    try:
+        o = float(odds)
+        if on == 1:
+            return o / 100.0 if o > 0 else 100.0 / abs(o)
+        if on == 0.5:
+            return 0.0
+        return -1.0
+    except (TypeError, ValueError):
+        return None
+
+
+def _stddev(xs: List[float]) -> float:
+    n = len(xs)
+    if n < 2:
+        return 0.0
+    m = sum(xs) / n
+    return math.sqrt(sum((x - m) ** 2 for x in xs) / (n - 1))
+
+
+def _max_drawdown(daily_pnl: List[float]) -> float:
+    peak = cum = 0.0
+    dd = 0.0
+    for p in daily_pnl:
+        cum += p
+        if cum > peak:
+            peak = cum
+        if peak - cum > dd:
+            dd = peak - cum
+    return dd
+
+
+def _evaluate_combo(rows: List[Dict[str, Any]],
+                          combo: Dict[str, float],
+                          min_bets: int) -> Optional[Dict[str, Any]]:
+    """Returns metrics or None when sample below min_bets."""
+    qual: List[Dict[str, Any]] = []
+    for r in rows:
+        if _row_passes_combo(r, combo):
+            qual.append(r)
+    n = len(qual)
+    if n < min_bets:
+        return None
+    wins = losses = pushes = ungraded = 0
+    sum_tp = sum_cv = sum_edge = 0.0
+    cnt_tp = cnt_cv = cnt_edge = 0
+    daily: Dict[str, float] = {}
+    pnl_units = 0.0
+    for r in qual:
+        on = r.get("outcome_numeric")
+        if on == 1:
+            wins += 1
+        elif on == 0:
+            losses += 1
+        elif on == 0.5:
+            pushes += 1
+        else:
+            ungraded += 1
+        p = _payout_units(r)
+        if p is not None:
+            pnl_units += p
+            daily[r.get("game_date") or "_"] = daily.get(r.get("game_date") or "_", 0.0) + p
+        for k, sum_ref, cnt_ref in (("tp",   "sum_tp",   "cnt_tp"),
+                                          ("cv",   "sum_cv",   "cnt_cv"),
+                                          ("edge", "sum_edge", "cnt_edge")):
+            v = r.get(k)
+            if v is None and k == "tp":
+                v = r.get("model_probability")
+            if isinstance(v, (int, float)):
+                if sum_ref == "sum_tp":   sum_tp += float(v);   cnt_tp += 1
+                elif sum_ref == "sum_cv": sum_cv += float(v);   cnt_cv += 1
+                else:                     sum_edge += float(v); cnt_edge += 1
+    settled = wins + losses
+    hit_rate = (wins / settled) if settled else None
+    roi      = (pnl_units / n) if n else None
+    avg_tp   = (sum_tp / cnt_tp) if cnt_tp else None
+    avg_cv   = (sum_cv / cnt_cv) if cnt_cv else None
+    avg_edge = (sum_edge / cnt_edge) if cnt_edge else None
+    daily_vals = list(daily.values())
+    daily_consistency = (
+        1.0 - (_stddev(daily_vals) / (abs(sum(daily_vals) / len(daily_vals)) + 1e-9))
+        if len(daily_vals) >= 2 else None
+    )
+    max_dd = _max_drawdown(daily_vals)
+    # Calibration delta = realized hit_rate - avg model TP. Positive means
+    # model under-predicts; negative means model over-predicts.
+    calibration_delta = (hit_rate - avg_tp) if (hit_rate is not None and avg_tp is not None) else None
+    return {
+        "n_bets": n,
+        "wins": wins, "losses": losses, "pushes": pushes,
+        "hit_rate": hit_rate, "roi": roi,
+        "calibration_delta": calibration_delta,
+        "avg_tp": avg_tp, "avg_cv": avg_cv, "avg_edge": avg_edge,
+        "daily_consistency": daily_consistency,
+        "max_drawdown_units": max_dd,
+        "profit_units": pnl_units,
+        "n_days": len(daily_vals),
+    }
+
+
+def _score(metrics: Dict[str, Any], goal: str, baseline_n: int) -> float:
+    """Composite ranking score; higher is better."""
+    hr   = metrics.get("hit_rate") or 0.0
+    roi  = metrics.get("roi") or 0.0
+    cal  = metrics.get("calibration_delta") or 0.0
+    cons = metrics.get("daily_consistency") or 0.0
+    dd   = metrics.get("max_drawdown_units") or 0.0
+    n    = metrics.get("n_bets") or 0
+    if goal == "hit_rate":
+        return hr
+    if goal == "roi":
+        return roi
+    if goal == "calibration":
+        return -abs(cal)  # closer to zero = better-calibrated
+    if goal == "stability":
+        return cons - 0.01 * dd
+    # balanced (default) — penalize tiny samples + drawdown + inconsistency
+    hr_score    = 2.0 * max(0.0, hr - 0.55)        # only reward >55%
+    roi_score   = 5.0 * roi
+    cal_score   = -2.0 * abs(cal)
+    cons_score  = 1.5 * cons
+    dd_penalty  = -0.02 * dd
+    sample_penalty = -1.0 * max(0.0, math.log10(max(baseline_n, 1) / max(n, 1)))
+    return hr_score + roi_score + cal_score + cons_score + dd_penalty + sample_penalty
+
+
+# ── Cell-level worker ──────────────────────────────────────────────
+async def _evaluate_cell(state: Dict[str, Any], db, *,
+                              tier: str, stat_family: str, odds_bucket: str,
+                              sides: List[str], body: OptimizerRunBody,
+                              combos: List[Dict[str, float]],
+                              required: RequiredFilters,
+                              ) -> List[Dict[str, Any]]:
+    # Pull the candidate row pool ONCE per cell.
+    q: Dict[str, Any] = {
+        "league_id": body.sport,
+        "game_date": {"$gte": body.start, "$lte": body.end},
+        "stat_family": stat_family,
+        "odds_bucket": odds_bucket,
+        f"{tier}_pass": {"$exists": True},
+    }
+    if sides:
+        q["side"] = {"$in": sides}
+    rows: List[Dict[str, Any]] = []
+    async for r in db[REPLAY_COLL].find(q, projection={"_id": 0}):
+        if _row_passes_filters(r, required):
+            rows.append(r)
+    if not rows:
+        state["cells_skipped_empty"] += 1
+        return []
+    cell_results: List[Dict[str, Any]] = []
+    overfit_threshold = max(body.min_bets, 50)
+    for combo in combos:
+        if state.get("cancelled"):
+            break
+        metrics = _evaluate_combo(rows, combo, body.min_bets)
+        state["combos_tested"] += 1
+        if metrics is None:
+            state["combos_skipped_low_sample"] += 1
+            continue
+        score = _score(metrics, body.optimization_goal,
+                          baseline_n=overfit_threshold)
+        # update best-so-far
+        if (state["best"] is None or score > state["best"].get("score", -1e9)):
+            state["best"] = {
+                "score": score, "tier": tier, "stat_family": stat_family,
+                "odds_bucket": odds_bucket, **metrics, **combo,
+            }
+        cell_results.append({
+            "tier": tier, "stat_family": stat_family, "odds_bucket": odds_bucket,
+            "sides": sides, "thresholds": combo,
+            **metrics, "score": score, "score_goal": body.optimization_goal,
+            "overfit_flag": metrics["n_bets"] < overfit_threshold,
+        })
+    # Keep only top-K per cell to bound memory
+    cell_results.sort(key=lambda r: r["score"], reverse=True)
+    return cell_results[:200]
+
+
+async def _run_optimizer(run_id: str, body: OptimizerRunBody) -> None:
+    db = _get_db()
+    state = _RUNS[run_id]
+    try:
+        state["status"] = "running"
+        # Discover families + buckets if user said "all"
+        stat_families = body.stat_families
+        if not stat_families:
+            stat_families = await db[REPLAY_COLL].distinct("stat_family", {
+                "league_id": body.sport,
+                "game_date": {"$gte": body.start, "$lte": body.end},
+            })
+            stat_families = [s for s in stat_families if s]
+        odds_buckets = body.odds_buckets or DEFAULT_ODDS_BUCKETS
+        cells: List[Tuple[str, str, str]] = [
+            (t, sf, ob)
+            for t in body.tiers
+            for sf in stat_families
+            for ob in odds_buckets
+        ]
+        combos = _enumerate_combos(_resolve_grid(body.grid),
+                                          body.max_configs_per_cell)
+        total = len(cells) * len(combos)
+        state.update({
+            "cells_total": len(cells),
+            "combos_per_cell": len(combos),
+            "total_combos": total,
+            "stat_families": stat_families,
+            "odds_buckets": odds_buckets,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        })
+        # Persist initial state
+        await db[OPTIMIZER_RUNS].update_one(
+            {"run_id": run_id}, {"$set": {**state, "request": body.model_dump()}},
+            upsert=True,
+        )
+
+        sem = asyncio.Semaphore(body.worker_limit)
+        all_results: List[Dict[str, Any]] = []
+        persist_lock = asyncio.Lock()
+        last_persist = time.monotonic()
+
+        async def _worker(cell: Tuple[str, str, str]):
+            nonlocal last_persist
+            async with sem:
+                if state.get("cancelled"): return
+                t, sf, ob = cell
+                try:
+                    cell_results = await _evaluate_cell(
+                        state, db, tier=t, stat_family=sf, odds_bucket=ob,
+                        sides=body.sides, body=body, combos=combos,
+                        required=body.filters,
+                    )
+                    async with persist_lock:
+                        all_results.extend(cell_results)
+                        now = time.monotonic()
+                        if now - last_persist > 5.0:
+                            last_persist = now
+                            await db[OPTIMIZER_RUNS].update_one(
+                                {"run_id": run_id},
+                                {"$set": {
+                                    "combos_tested": state["combos_tested"],
+                                    "best": state["best"],
+                                    "cells_skipped_empty": state["cells_skipped_empty"],
+                                    "combos_skipped_low_sample": state["combos_skipped_low_sample"],
+                                    "cells_done": state["cells_done"],
+                                }},
+                            )
+                    state["cells_done"] += 1
+                except Exception as e:
+                    logger.exception("[optimizer] cell failed")
+                    state["failures"].append({
+                        "cell": cell, "error": repr(e)[:200],
+                    })
+
+        await asyncio.gather(*[_worker(c) for c in cells])
+
+        # Final ranking + persist
+        all_results.sort(key=lambda r: r["score"], reverse=True)
+        state["results"] = all_results
+        state["status"] = "succeeded" if not state.get("cancelled") else "cancelled"
+        state["finished_at"] = datetime.now(timezone.utc).isoformat()
+        await db[OPTIMIZER_RUNS].update_one(
+            {"run_id": run_id}, {"$set": {
+                "status": state["status"],
+                "finished_at": state["finished_at"],
+                "combos_tested": state["combos_tested"],
+                "best": state["best"],
+                "cells_done": state["cells_done"],
+                "failures": state["failures"],
+                "n_results": len(all_results),
+            }},
+        )
+    except Exception as e:
+        logger.exception("[optimizer] run crashed")
+        state["status"] = "failed"
+        state["error"] = repr(e)
+        await db[OPTIMIZER_RUNS].update_one(
+            {"run_id": run_id},
+            {"$set": {"status": "failed", "error": repr(e),
+                       "finished_at": datetime.now(timezone.utc).isoformat()}},
+        )
+
+
+# ── Endpoints ──────────────────────────────────────────────────────
+@router.post("/run")
+async def run_optimizer(body: OptimizerRunBody, request: Request,
+                            auth=Depends(require_admin_token)):
+    db = _get_db()
+    # Cheap sanity check — ensure replay cache has rows in window
+    n = await db[REPLAY_COLL].count_documents({
+        "league_id": body.sport.upper(),
+        "game_date": {"$gte": body.start, "$lte": body.end},
+    })
+    if n == 0:
+        raise HTTPException(409,
+            f"No rows in {REPLAY_COLL} for {body.sport} "
+            f"{body.start}..{body.end}. Run the SSOT historical "
+            "replay pipeline first.")
+    run_id = f"opt_{uuid.uuid4().hex[:10]}"
+    state: Dict[str, Any] = {
+        "run_id": run_id, "status": "queued",
+        "combos_tested": 0, "combos_skipped_low_sample": 0,
+        "cells_skipped_empty": 0, "cells_done": 0,
+        "best": None, "failures": [], "cancelled": False,
+        "results": [],
+        "agent_id": auth["agent_id"],
+    }
+    _RUNS[run_id] = state
+    asyncio.create_task(_run_optimizer(run_id, body))
+    await audit_log(request, action="optimizer_run",
+                      params={"run_id": run_id, "sport": body.sport,
+                                  "start": body.start, "end": body.end,
+                                  "tiers": body.tiers, "goal": body.optimization_goal},
+                      response_summary={"replay_rows_in_window": n},
+                      **auth)
+    return {"ok": True, "run_id": run_id, "replay_rows_in_window": n}
+
+
+@router.get("/{run_id}")
+async def get_status(run_id: str, request: Request,
+                          auth=Depends(require_admin_token)):
+    state = _RUNS.get(run_id)
+    if state is None:
+        # Try rehydrate from Mongo
+        db = _get_db()
+        doc = await db[OPTIMIZER_RUNS].find_one({"run_id": run_id}, {"_id": 0})
+        if not doc:
+            raise HTTPException(404, f"run_id not found: {run_id}")
+        return {"ok": True, "state": doc, "rehydrated": True}
+    started = state.get("started_at")
+    elapsed = None
+    eta = None
+    if started:
+        try:
+            started_ts = datetime.fromisoformat(started).timestamp()
+            elapsed = time.time() - started_ts
+            tested = max(state.get("combos_tested", 0), 1)
+            total  = max(state.get("total_combos", 1), 1)
+            if state["status"] == "running":
+                eta = max(0.0, elapsed * (total - tested) / tested)
+        except Exception:
+            pass
+    return {"ok": True, "state": {
+        "run_id": state["run_id"], "status": state["status"],
+        "combos_tested": state["combos_tested"],
+        "total_combos": state.get("total_combos"),
+        "combos_skipped_low_sample": state["combos_skipped_low_sample"],
+        "cells_total": state.get("cells_total"),
+        "cells_done": state["cells_done"],
+        "cells_skipped_empty": state["cells_skipped_empty"],
+        "best": state["best"],
+        "failures": state["failures"][-10:],
+        "started_at": state.get("started_at"),
+        "finished_at": state.get("finished_at"),
+        "elapsed_s": elapsed, "eta_s": eta,
+        "error": state.get("error"),
+    }}
+
+
+@router.post("/{run_id}/cancel")
+async def cancel_run(run_id: str, request: Request,
+                          auth=Depends(require_admin_token)):
+    state = _RUNS.get(run_id)
+    if state is None:
+        raise HTTPException(404, f"run_id not found: {run_id}")
+    state["cancelled"] = True
+    await audit_log(request, action="optimizer_cancel",
+                      params={"run_id": run_id}, **auth)
+    return {"ok": True}
+
+
+@router.get("/{run_id}/results")
+async def get_results(run_id: str, request: Request,
+                          limit: int = 25,
+                          auth=Depends(require_admin_token)):
+    state = _RUNS.get(run_id)
+    if state is None or not state.get("results"):
+        raise HTTPException(404,
+            f"results not available yet for {run_id}")
+    results = state["results"]
+    top    = results[:limit]
+    worst  = results[-limit:][::-1]
+    overfit_warnings = [r for r in top if r.get("overfit_flag")]
+    best_by_tier: Dict[str, Any] = {}
+    best_by_fam:  Dict[str, Any] = {}
+    best_by_bucket: Dict[str, Any] = {}
+    for r in results:
+        for key, bucket in (("tier", best_by_tier),
+                              ("stat_family", best_by_fam),
+                              ("odds_bucket", best_by_bucket)):
+            k = r.get(key)
+            if k is None:
+                continue
+            if k not in bucket or r["score"] > bucket[k]["score"]:
+                bucket[k] = r
+    return {
+        "ok": True, "run_id": run_id,
+        "n_results": len(results),
+        "top": top, "worst": worst,
+        "best_by_tier": best_by_tier,
+        "best_by_stat_family": best_by_fam,
+        "best_by_odds_bucket": best_by_bucket,
+        "overfit_warnings": overfit_warnings,
+    }
+
+
+class SaveBody(BaseModel):
+    top_k: int = Field(default=10, ge=1, le=200)
+    note: str = ""
+
+
+@router.post("/{run_id}/save_as_candidates")
+async def save_as_candidates(run_id: str, body: SaveBody, request: Request,
+                                  auth=Depends(require_admin_token)):
+    state = _RUNS.get(run_id)
+    if state is None or not state.get("results"):
+        raise HTTPException(404, "run results not available")
+    db = _get_db()
+    now = datetime.now(timezone.utc)
+    top = state["results"][: body.top_k]
+    docs: List[Dict[str, Any]] = []
+    for i, r in enumerate(top):
+        docs.append({
+            "candidate_id": f"{run_id}_{i:03d}",
+            "source_run_id": run_id,
+            "rank": i + 1,
+            "sport": "MLB",
+            "tier": r.get("tier"),
+            "stat_family": r.get("stat_family"),
+            "odds_bucket": r.get("odds_bucket"),
+            "side": r.get("sides"),
+            "thresholds": {k: r.get(k) for k in
+                                ("hr_l20_min", "hr_l10_min", "hr_l5_min",
+                                  "cv_max", "edge_min", "tp_min")},
+            "metrics": {k: r.get(k) for k in
+                              ("n_bets", "wins", "losses", "pushes",
+                                "hit_rate", "roi", "calibration_delta",
+                                "avg_tp", "avg_cv", "avg_edge",
+                                "daily_consistency", "max_drawdown_units",
+                                "profit_units", "n_days")},
+            "score": r.get("score"),
+            "score_goal": r.get("score_goal"),
+            "overfit_flag": r.get("overfit_flag"),
+            "status": "candidate",
+            "created_at": now,
+            "note": body.note,
+        })
+    if docs:
+        ops = []
+        from pymongo import UpdateOne
+        for d in docs:
+            ops.append(UpdateOne({"candidate_id": d["candidate_id"]},
+                                       {"$set": d}, upsert=True))
+        await db[CANDIDATE_THRESH].bulk_write(ops, ordered=False)
+    await audit_log(request, action="optimizer_save_candidates",
+                      params={"run_id": run_id, "top_k": body.top_k},
+                      response_summary={"saved": len(docs)}, **auth)
+    return {"ok": True, "saved": len(docs),
+              "candidate_ids": [d["candidate_id"] for d in docs]}
+
+
+@router.post("/{run_id}/set_testing_default")
+async def set_testing_default(run_id: str, request: Request,
+                                    auth=Depends(require_admin_token)):
+    state = _RUNS.get(run_id)
+    if state is None or not state.get("best"):
+        raise HTTPException(404, "no best config available")
+    db = _get_db()
+    now = datetime.now(timezone.utc)
+    doc = {
+        "kind": "testing_default_thresholds",
+        "source_run_id": run_id,
+        "best": state["best"],
+        "set_at": now,
+        "set_by": auth["agent_id"],
+    }
+    await db[TESTING_DEFAULTS].update_one(
+        {"kind": "testing_default_thresholds"},
+        {"$set": doc}, upsert=True,
+    )
+    await audit_log(request, action="optimizer_set_testing_default",
+                      params={"run_id": run_id},
+                      response_summary={"best": state["best"]}, **auth)
+    return {"ok": True, "doc": doc}
+
+
+@router.get("/_meta/testing_default")
+async def get_testing_default(request: Request,
+                                    auth=Depends(require_admin_token)):
+    db = _get_db()
+    doc = await db[TESTING_DEFAULTS].find_one(
+        {"kind": "testing_default_thresholds"}, projection={"_id": 0})
+    return {"ok": True, "doc": doc}
