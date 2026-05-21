@@ -17,6 +17,7 @@ from .jobs      import router as jobs_router
 from .configs   import router as configs_router
 from .services_admin import router as services_router
 from .audit     import router as audit_router
+from .deploy    import router as deploy_router
 
 router = APIRouter(prefix="/emergent-admin",
                     tags=["emergent-admin"])
@@ -27,3 +28,4 @@ router.include_router(jobs_router,        prefix="/jobs")
 router.include_router(configs_router,     prefix="/configs")
 router.include_router(services_router,    prefix="/services")
 router.include_router(audit_router,       prefix="/audit")
+router.include_router(deploy_router,      prefix="/deploy")

@@ -130,7 +130,8 @@ ALLOWED_JOBS: Dict[str, Dict] = {
         "args": ["--league", "--start", "--end", "--probe", "--limit",
                   "--force", "--dry-run"],
     },
-    # NFL master-hub maintenance hooks (user-allowed)    "scripts.nfl.refresh_master_hub": {
+    # NFL master-hub maintenance hooks (user-allowed)
+    "scripts.nfl.refresh_master_hub": {
         "label": "Refresh nfl_master_hub_data + cache",
         "writes_to": "nfl_master_hub_data, nfl_master_hub_cache (writable)",
         "enabled": True,
@@ -165,6 +166,10 @@ ALLOWED_JOBS: Dict[str, Dict] = {
 # ── 3. Service allowlist ──────────────────────────────────────────────────
 # Only these supervisor process names may be restarted via this API.
 ALLOWED_SERVICES: Set[str] = {"backend"}
+
+# 2026-05-21 — git branches the /deploy endpoint may pull. Strict allowlist;
+# typos and arbitrary refs are rejected at request time.
+ALLOWED_GIT_BRANCHES: Set[str] = {"newestbuild"}
 # Explicitly NOT allowed: mongodb, frontend, supervisord, code-server, nginx*
 
 
