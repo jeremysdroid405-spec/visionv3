@@ -1,3 +1,5 @@
+<!-- header reminder appears at top; keep section ordering -->
+
 # Production Runbook — Backfills via Emergent Admin API
 
 > All commands assume two env vars set in your shell:
@@ -196,8 +198,6 @@ curl -s -H "X-Admin-Token: $PV_ADMIN_TOKEN" \
 
 Paste both into the change ticket.
 
----
-
 ## 5. Rollback
 
 There is **no rollback** for protected-collection writes via the Admin API
@@ -221,7 +221,6 @@ Rollback options, in order of cheapness:
 ---
 
 ## 6. Cheat sheet
-
 | Need | One-liner |
 |---|---|
 | Token check | `curl -sH "X-Admin-Token: $PV_ADMIN_TOKEN" $PV_HOST/api/emergent-admin/auth/whoami` |
@@ -229,3 +228,123 @@ Rollback options, in order of cheapness:
 | Last-50 audit log | `curl -sH "X-Admin-Token: $PV_ADMIN_TOKEN" "$PV_HOST/api/emergent-admin/audit/?limit=50"` |
 | Cancel a runaway job | `curl -X POST -H "X-Admin-Token: $PV_ADMIN_TOKEN" -d '{"confirm":true}' "$PV_HOST/api/emergent-admin/jobs/$JOB/cancel"` |
 | Restart backend | `curl -X POST -H "X-Admin-Token: $PV_ADMIN_TOKEN" -H "Content-Type: application/json" -d '{"service":"backend","confirm":true}' "$PV_HOST/api/emergent-admin/services/restart"` |
+
+---
+
+## 7. Outcome-side grid sweep (`scripts.research.grid_sweep`)
+
+Built 2026-05-21. Reads `sgo_pp_research_outcomes` + joins
+`sgo_pp_research_core_enriched`. Writes `research_grid_runs`,
+`research_grid_results`, `candidate_thresholds` (all writable per policy).
+
+### 7a. Trigger the requested MLB sweep
+
+```bash
+JOB=$(curl -s -X POST \
+  -H "X-Admin-Token: $PV_ADMIN_TOKEN" \
+  -H "X-Agent-Id: jun-2025-sweep" \
+  -H "Content-Type: application/json" \
+  -d '{"module":"scripts.research.grid_sweep",
+        "args":["--league=MLB",
+                  "--start=2025-06-01",
+                  "--end=2025-06-30",
+                  "--exclude-stat-family=fantasy_score",
+                  "--min-bets=30"]}' \
+  "$PV_HOST/api/emergent-admin/jobs/run" | jq -r .job_id)
+echo "JOB=$JOB"
+```
+
+### 7b. Watch + read the run header
+
+```bash
+# poll until done
+while :; do
+  S=$(curl -s -H "X-Admin-Token: $PV_ADMIN_TOKEN" \
+       "$PV_HOST/api/emergent-admin/jobs/$JOB" | jq -r .job.status)
+  echo "[$(date +%T)] status=$S"; [[ "$S" =~ ^(succeeded|failed|errored|cancelled)$ ]] && break
+  sleep 5
+done
+
+# capture run_id from the log (last line: "saved run_id = …")
+RID=$(curl -s -H "X-Admin-Token: $PV_ADMIN_TOKEN" \
+       "$PV_HOST/api/emergent-admin/jobs/$JOB/log?tail=4000" \
+       | jq -r '.lines | map(select(test("saved run_id ="))) | last' \
+       | awk -F'= ' '{print $2}' | tr -d '[:space:]')
+echo "RID=$RID"
+```
+
+### 7c. Pull top results via the collections API
+
+```bash
+# Top 10 ROI cells (qualified)
+curl -s -X POST -H "X-Admin-Token: $PV_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"pipeline\":[
+    {\"\$match\":{\"run_id\":\"$RID\",\"slice\":\"ALL\",
+                    \"n_bets\":{\"\$gte\":30}}},
+    {\"\$sort\":{\"roi\":-1}},
+    {\"\$project\":{\"_id\":0,\"edge_min\":1,
+       \"devig_book_count_min\":1,\"sharp_book_count_min\":1,
+       \"market_width_max\":1,\"consensus_disagreement_max\":1,
+       \"n_bets\":1,\"hit_rate\":1,\"roi\":1}}],
+   \"limit\":10}" \
+  "$PV_HOST/api/emergent-admin/collections/research_grid_results/aggregate" | jq
+
+# Best ROI per stat_family
+curl -s -X POST -H "X-Admin-Token: $PV_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"pipeline\":[
+    {\"\$match\":{\"run_id\":\"$RID\",\"slice\":\"STAT_FAMILY\",
+                    \"n_bets\":{\"\$gte\":30}}},
+    {\"\$sort\":{\"roi\":-1}},
+    {\"\$group\":{\"_id\":\"\$stat_family\",
+                    \"top\":{\"\$first\":\"\$\$ROOT\"}}}
+  ],\"limit\":40}" \
+  "$PV_HOST/api/emergent-admin/collections/research_grid_results/aggregate" | jq
+
+# Pre-drafted candidate threshold configs
+curl -s -X POST -H "X-Admin-Token: $PV_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"filter\":{\"run_id\":\"$RID\"}}" \
+  "$PV_HOST/api/emergent-admin/collections/candidate_thresholds/find" | jq
+```
+
+### 7d. Customize the grid axes
+
+To override any axis, write a `grid.json` on prod and pass `--config=…`.
+Schema (all keys optional, missing keys keep the default):
+
+```json
+{
+  "edge_min":                   [0, 0.025, 0.05, 0.075, 0.10, 0.15],
+  "devig_book_count_min":       [1, 2, 3, 5, 7],
+  "sharp_book_count_min":       [0, 1, 2, 3],
+  "market_width_max":           [null, 0.05, 0.10, 0.15, 0.25],
+  "consensus_disagreement_max": [null, 0.05, 0.10, 0.15, 0.25]
+}
+```
+
+### 7e. Deployment / pre-flight (one-time)
+
+The grid_sweep script and the Admin API were built on the preview pod.
+Before the prod call above will return anything other than 404, the
+following must be true on the production host:
+
+1. `routes/emergent_admin/` is on disk in the prod backend tree.
+2. `scripts/research/grid_sweep.py` is on disk in the prod backend tree.
+3. `EMERGENT_ADMIN_TOKEN` is set in prod's `.env`.
+4. The prod backend has been restarted to pick up (1)–(3).
+5. `sgo_pp_research_outcomes` + `sgo_pp_research_core_enriched` are
+   populated for the requested window.
+
+The simplest way to confirm 1–4 in one shot:
+
+```bash
+curl -s -H "X-Admin-Token: $PV_ADMIN_TOKEN" \
+     "$PV_HOST/api/emergent-admin/policy/" \
+ | jq '.allowed_jobs["scripts.research.grid_sweep"]'
+# expects: { "label": "Outcome-side grid sweep…", "enabled": true, "args":[…] }
+```
+
+If that returns `null`, the script is not deployed.
+If the whole call returns 404, the Admin API itself is not deployed.

@@ -121,10 +121,13 @@ ALLOWED_JOBS: Dict[str, Dict] = {
     },
     # Generic grid-search runner
     "scripts.research.grid_sweep": {
-        "label": "Grid sweep for thresholds / gates",
-        "writes_to": "research_grid_runs, research_grid_results (writable)",
+        "label": "Outcome-side grid sweep over sgo_pp_research_outcomes",
+        "writes_to": "research_grid_runs, research_grid_results, "
+                       "candidate_thresholds (all writable)",
         "enabled": True,
-        "args": ["--league", "--start", "--end", "--config", "--dry-run"],
+        "args": ["--league", "--start", "--end", "--dataset",
+                  "--exclude-stat-family", "--min-bets", "--config",
+                  "--dry-run"],
     },
     # 2026-05-21 — canonical-name backfill for legacy stat_family values.
     # Writes to mlb_replay_feature_cache / mlb_replay_model_outputs, which
