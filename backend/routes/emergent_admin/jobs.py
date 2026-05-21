@@ -66,6 +66,12 @@ async def _run_job(job_id: str, module: str, args: List[str]) -> None:
     cwd = _backend_cwd()
     env = os.environ.copy()
     env["PYTHONPATH"] = cwd + ":" + env.get("PYTHONPATH", "")
+    # 2026-05-21 — ensure system binaries are visible (venv-launched python
+    # often scrubs PATH). Without /usr/bin many scripts that shell-out to
+    # git/ssh/awk/etc. would silently fail.
+    if "/usr/bin" not in env.get("PATH", "").split(":"):
+        env["PATH"] = ("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:"
+                          "/sbin:/bin:" + env.get("PATH", ""))
     await db[JOBS_COLL].update_one(
         {"job_id": job_id},
         {"$set": {"status": "running", "started_at": started, "pid": None}})

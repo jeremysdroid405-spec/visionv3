@@ -13,7 +13,24 @@ to either:
 """
 from __future__ import annotations
 import asyncio
+import os
 import shutil
+
+_FALLBACK_BIN_PATHS = ["/usr/bin/supervisorctl", "/usr/local/bin/supervisorctl",
+                          "/sbin/supervisorctl", "/usr/sbin/supervisorctl"]
+
+
+def _which_supervisorctl() -> str | None:
+    """which() honors PATH; if PATH lacks /usr/bin (venv-launched), fall back
+    to the conventional install paths so the API still functions after a
+    fresh openssh/supervisor install."""
+    p = shutil.which("supervisorctl")
+    if p:
+        return p
+    for cand in _FALLBACK_BIN_PATHS:
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    return None
 from datetime import datetime, timezone
 from typing import Any, Dict
 
@@ -37,7 +54,7 @@ async def status(service: str, request: Request,
     if service not in ALLOWED_SERVICES:
         raise HTTPException(403,
             f"service '{service}' not in allowlist {sorted(ALLOWED_SERVICES)}")
-    sctl = shutil.which("supervisorctl")
+    sctl = _which_supervisorctl()
     if not sctl:
         raise HTTPException(501, "supervisorctl not available on this host")
     proc = await asyncio.create_subprocess_exec(
@@ -61,7 +78,7 @@ async def restart(body: RestartBody, request: Request,
             f"{sorted(ALLOWED_SERVICES)}")
     if not body.confirm:
         raise HTTPException(400, "set confirm=true to restart")
-    sctl = shutil.which("supervisorctl")
+    sctl = _which_supervisorctl()
     if not sctl:
         raise HTTPException(501, "supervisorctl not available on this host")
     started = datetime.now(timezone.utc)

@@ -62,11 +62,26 @@ def _find_repo_root() -> Optional[str]:
 
 async def _run(argv: List[str], *, cwd: str, timeout: int = DEFAULT_GIT_TIMEOUT
                 ) -> Dict[str, Any]:
-    """Execute argv with fixed args, capture stdout+stderr, enforce timeout."""
+    """Execute argv with fixed args, capture stdout+stderr, enforce timeout.
+
+    2026-05-21 — explicit PATH so git/ssh/supervisorctl can be located even
+    when the parent process was launched with a scrubbed venv PATH (which
+    is the default for FastAPI services started via supervisor).
+    """
+    env = dict(os.environ)
+    env.setdefault("PATH",
+                     "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+    # If PATH is set but missing system bins, prepend them.
+    if "/usr/bin" not in env["PATH"].split(":"):
+        env["PATH"] = ("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:"
+                          "/sbin:/bin:" + env["PATH"])
+    # Force batch-mode + identity-file-friendly ssh for git fetch over SSH.
+    env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes "
+                                          "-o StrictHostKeyChecking=accept-new")
     started = datetime.now(timezone.utc)
     try:
         proc = await asyncio.create_subprocess_exec(
-            *argv, cwd=cwd,
+            *argv, cwd=cwd, env=env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
@@ -95,6 +110,15 @@ async def _run(argv: List[str], *, cwd: str, timeout: int = DEFAULT_GIT_TIMEOUT
 async def _git(args: List[str], *, cwd: str,
                 timeout: int = DEFAULT_GIT_TIMEOUT) -> Dict[str, Any]:
     git = shutil.which("git") or "/usr/bin/git"
+    # 2026-05-21 — when PATH is scrubbed, ssh needs an absolute path; otherwise
+    # `git fetch` over an SSH remote fails with "cannot run ssh".
+    if "GIT_SSH_COMMAND" not in os.environ:
+        for ssh_cand in ("/usr/bin/ssh", "/usr/local/bin/ssh"):
+            if os.path.isfile(ssh_cand):
+                os.environ["GIT_SSH_COMMAND"] = (
+                    f"{ssh_cand} -o BatchMode=yes "
+                    "-o StrictHostKeyChecking=accept-new")
+                break
     return await _run([git, *args], cwd=cwd, timeout=timeout)
 
 
@@ -121,7 +145,7 @@ async def deploy_status(request: Request, auth=Depends(require_admin_token)):
                           cwd=repo, timeout=15)
 
     # backend status (best effort)
-    sctl = shutil.which("supervisorctl")
+    sctl = _which_supervisorctl()
     if sctl and "backend" in ALLOWED_SERVICES:
         svc = await _run([sctl, "status", "backend"], cwd=repo, timeout=15)
     else:
@@ -301,7 +325,7 @@ async def pull_and_restart(body: PullBody, request: Request,
     # 8. best-effort restart
     restart_result: Dict[str, Any] = {"attempted": False}
     if body.restart_backend:
-        sctl = shutil.which("supervisorctl")
+        sctl = _which_supervisorctl()
         if not sctl:
             restart_result = {"attempted": True,
                                 "skipped": "supervisorctl_not_available"}
