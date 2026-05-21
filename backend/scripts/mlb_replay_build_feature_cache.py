@@ -42,24 +42,41 @@ async def amain(args):
     db = cli[os.environ["DB_NAME"]]
     for d in dates:
         print(f"\n=== {d} ===", flush=True)
+        print(f"  odds_collection    = {args.odds_collection}")
         try:
             s = await cache_date(
                 db, d, mem_limit_mb=args.mem_limit, force=args.force,
+                odds_collection=args.odds_collection,
             )
         except MemoryError as me:
             print(f"  HALTED: {me}", flush=True)
             break
+        except RuntimeError as rt:
+            # Hard-fail from cache_date when rows_written=0 while odds>0.
+            # Print + bail with non-zero so the workflow halts here.
+            print(f"  HARD-FAIL: {rt}", flush=True)
+            sys.exit(2)
         if s.get("skipped"):
             print("  already completed — skipped (use --force to override)")
             continue
-        print(f"  pairs_cached       = {s['pairs_cached']}")
-        print(f"  players_cached     = {s['players_cached']}")
-        print(f"  skipped_no_hub     = {s['pairs_skipped_no_hub']}")
-        print(f"  skipped_few_logs   = {s['pairs_skipped_insufficient_logs']}")
-        print(f"  rows_written       = {s['rows_written']}")
-        print(f"  rss start/peak/end = {s['rss_mb_start']}/"
+        print( "  ── coverage report ──")
+        print(f"  odds_universe_count            = {s.get('odds_rows_in_window', 0)}")
+        print(f"  distinct_player_market_pairs   = {s.get('distinct_player_market_pairs', 0)}")
+        print(f"  universe_size (post-fam-map)   = {s.get('universe_size', 0)}")
+        print(f"  feature_cache_rows_written     = {s.get('rows_written', 0)}")
+        print(f"  pairs_cached                   = {s.get('pairs_cached', 0)}")
+        print(f"  players_cached                 = {s.get('players_cached', 0)}")
+        print(f"  skipped_no_hub                 = {s.get('skipped_no_hub', 0)}")
+        print(f"  skipped_few_logs               = {s.get('skipped_few_logs', 0)}")
+        print(f"  skipped_stat_family_mismatch   = {s.get('skipped_stat_family_mismatch', 0)}")
+        print(f"  skipped_player_name_mismatch   = {s.get('skipped_player_name_mismatch', 0)}")
+        if s.get("unknown_markets_sample"):
+            print(f"  unknown_markets_sample         = {s['unknown_markets_sample']}")
+        if s.get("missed_player_sample"):
+            print(f"  missed_player_sample           = {s['missed_player_sample']}")
+        print(f"  rss start/peak/end             = {s['rss_mb_start']}/"
               f"{s['rss_mb_peak']}/{s['rss_mb_end']} MB")
-        print(f"  elapsed            = {s['elapsed_s']:.1f}s")
+        print(f"  elapsed                        = {s['elapsed_s']:.1f}s")
     cli.close()
 
 
@@ -71,6 +88,9 @@ def main():
     p.add_argument("--end")
     p.add_argument("--mem-limit", default=DEFAULT_MEM_LIMIT_MB, type=int)
     p.add_argument("--force", action="store_true")
+    p.add_argument("--odds-collection", default="mlb_historical_alt_odds_raw",
+                    help="Source odds collection for the universe scan. "
+                            "Use 'sgo_replay_alt_odds_raw' for SGO replay mode.")
     args = p.parse_args()
     if args.start and not args.end:
         p.error("--start requires --end")

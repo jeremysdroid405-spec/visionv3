@@ -44,6 +44,7 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -338,11 +339,27 @@ def _compute_hit_rate_panels(
 
 # ── Universe discovery ───────────────────────────────────────────────
 async def list_universe_for_date(
-    db, replay_date: str,
-) -> List[Tuple[str, str]]:
+    db, replay_date: str, *,
+    odds_collection: str = "mlb_historical_alt_odds_raw",
+) -> Tuple[List[Tuple[str, str]], Dict[str, Any]]:
     """Read distinct `(player_name_normalized, stat_family)` tuples
-    that had a prop priced on `replay_date`. Returns a sorted list."""
-    cursor = db.mlb_historical_alt_odds_raw.aggregate([
+    that had a prop priced on `replay_date`.
+
+    Returns (sorted_pairs, stats) where `stats` carries telemetry:
+        odds_rows_in_window
+        distinct_player_market_pairs
+        skipped_stat_family_mismatch  — markets that don't map to a family
+        unknown_markets_sample        — up to 10 unmapped market values
+        sample_players                — up to 10 normalized player names
+
+    `odds_collection` lets SGO-namespace replays read
+    `sgo_replay_alt_odds_raw` instead of the live archive — must match
+    the collection the Layer-3 engine reads (set by run_production_replay
+    `odds_collection=` kwarg).
+    """
+    n_rows = await db[odds_collection].count_documents(
+        {"game_date": replay_date})
+    cursor = db[odds_collection].aggregate([
         {"$match": {"game_date": replay_date}},
         {"$group": {
             "_id": {"player": "$player_name_normalized",
@@ -350,13 +367,31 @@ async def list_universe_for_date(
         }},
     ])
     pairs: set = set()
+    n_pair_rows = 0
+    n_no_family = 0
+    unknown_markets: Counter = Counter()
+    sample_players: set = set()
     async for r in cursor:
+        n_pair_rows += 1
         market = r["_id"]["market"]
         fam = market_to_stat_family(market)
+        player = r["_id"]["player"] or ""
+        if len(sample_players) < 10 and player:
+            sample_players.add(player)
         if fam is None:
+            n_no_family += 1
+            unknown_markets[market] += 1
             continue
-        pairs.add((r["_id"]["player"], fam))
-    return sorted(pairs)
+        pairs.add((player, fam))
+    stats = {
+        "odds_collection": odds_collection,
+        "odds_rows_in_window": n_rows,
+        "distinct_player_market_pairs": n_pair_rows,
+        "skipped_stat_family_mismatch": n_no_family,
+        "unknown_markets_sample": dict(unknown_markets.most_common(10)),
+        "sample_players": sorted(sample_players),
+    }
+    return sorted(pairs), stats
 
 
 # ── Per-date cache build ─────────────────────────────────────────────
@@ -364,8 +399,20 @@ async def cache_date(
     db, replay_date: str, *,
     mem_limit_mb: int = DEFAULT_MEM_LIMIT_MB,
     force: bool = False,
+    odds_collection: str = "mlb_historical_alt_odds_raw",
 ) -> Dict[str, Any]:
-    """Build cache for one date. Returns a summary dict."""
+    """Build cache for one date. Returns a summary dict.
+
+    `odds_collection` lets SGO-namespace replays read
+    `sgo_replay_alt_odds_raw`. MUST match the collection the Layer-3
+    engine reads (set by run_production_replay `odds_collection=` kwarg)
+    or candidates_skipped_no_cache spikes.
+
+    HARD-FAIL: raises RuntimeError when odds universe > 0 but
+    rows_written == 0. This stops the chain immediately when the cache
+    isn't covering the replay universe instead of silently letting
+    Layer-3 skip 100% of props.
+    """
     await ensure_indexes(db)
 
     # Resume short-circuit
@@ -390,19 +437,24 @@ async def cache_date(
         upsert=True,
     )
 
-    universe = await list_universe_for_date(db, replay_date)
+    universe, universe_stats = await list_universe_for_date(
+        db, replay_date, odds_collection=odds_collection,
+    )
     if not universe:
+        # Either zero odds rows in the window OR every market failed
+        # stat_family lookup. Both cases reported in universe_stats.
         await db[STATUS_COLL].update_one(
             {"game_date": replay_date, "source_version": SOURCE_VERSION},
             {"$set": {"status": "completed", "completed_at": datetime.now(timezone.utc),
                       "players": 0, "pairs": 0, "rows_written": 0,
-                      "reason": "empty_universe"}},
+                      "reason": "empty_universe", **universe_stats}},
         )
         return {"date": replay_date, "players": 0, "pairs": 0,
                 "rows_written": 0, "elapsed_s": 0,
                 "rss_mb_start": round(rss0, 1),
                 "rss_mb_peak": round(rss0, 1),
-                "rss_mb_end": round(_rss_mb(), 1)}
+                "rss_mb_end": round(_rss_mb(), 1),
+                **universe_stats}
 
     name_to_hub = await _build_name_to_hub_index(db)
     rss_peak = max(rss0, _rss_mb())
@@ -412,6 +464,7 @@ async def cache_date(
     n_pairs_cached = 0
     n_pairs_skipped_no_hub = 0
     n_pairs_skipped_no_logs = 0
+    missed_player_sample: List[str] = []   # up to 10 normalized names with no hub match
     players_seen: set = set()
 
     async def _flush() -> int:
@@ -457,6 +510,8 @@ async def cache_date(
         p = name_to_hub.get(player_norm)
         if not p:
             n_pairs_skipped_no_hub += 1
+            if len(missed_player_sample) < 10:
+                missed_player_sample.append(player_norm)
             continue
         mlbam = _resolve_mlbam_id(p)
         game_logs = p.get("bdl_game_logs", []) or []
@@ -544,8 +599,10 @@ async def cache_date(
         "date": replay_date,
         "universe_size": len(universe),
         "pairs_cached": n_pairs_cached,
-        "pairs_skipped_no_hub": n_pairs_skipped_no_hub,
-        "pairs_skipped_insufficient_logs": n_pairs_skipped_no_logs,
+        "skipped_no_hub": n_pairs_skipped_no_hub,                    # = player_name_mismatch
+        "skipped_player_name_mismatch": n_pairs_skipped_no_hub,
+        "skipped_few_logs": n_pairs_skipped_no_logs,
+        "missed_player_sample": missed_player_sample,
         "players_cached": len(players_seen),
         "rows_written": rows_written,
         "elapsed_s": elapsed,
@@ -553,16 +610,40 @@ async def cache_date(
         "rss_mb_peak": round(rss_peak, 1),
         "rss_mb_end": round(rss_end, 1),
         "source_version": SOURCE_VERSION,
+        # Universe-side telemetry from list_universe_for_date()
+        **universe_stats,
     }
     await db[STATUS_COLL].update_one(
         {"game_date": replay_date, "source_version": SOURCE_VERSION},
         {"$set": {"status": "completed", "completed_at": completed_at, **summary}},
     )
     logger.info(
-        "[feature_cache] %s done pairs=%d players=%d rows=%d rss=%.1f/%.1f/%.1fMB elapsed=%.1fs",
+        "[feature_cache] %s done pairs=%d players=%d rows=%d "
+        "no_hub=%d few_logs=%d stat_fam_miss=%d "
+        "rss=%.1f/%.1f/%.1fMB elapsed=%.1fs",
         replay_date, n_pairs_cached, len(players_seen), rows_written,
+        n_pairs_skipped_no_hub, n_pairs_skipped_no_logs,
+        universe_stats.get("skipped_stat_family_mismatch", 0),
         rss0, rss_peak, rss_end, elapsed,
     )
+    # ── HARD-FAIL: odds universe was non-empty but we wrote nothing ──
+    if rows_written == 0 and universe_stats.get("odds_rows_in_window", 0) > 0:
+        msg = (
+            f"[feature_cache] HARD-FAIL: rows_written=0 while "
+            f"odds_rows_in_window={universe_stats.get('odds_rows_in_window')} "
+            f"in {odds_collection}. universe_size={len(universe)}, "
+            f"skipped_no_hub={n_pairs_skipped_no_hub}, "
+            f"skipped_few_logs={n_pairs_skipped_no_logs}, "
+            f"skipped_stat_family_mismatch={universe_stats.get('skipped_stat_family_mismatch', 0)}. "
+            f"sample missed-name normalized values: {missed_player_sample[:5]}. "
+            f"This means Layer-3 will skip 100% of props — fix matching "
+            f"BEFORE re-running replay."
+        )
+        await db[STATUS_COLL].update_one(
+            {"game_date": replay_date, "source_version": SOURCE_VERSION},
+            {"$set": {"status": "hard_fail_zero_rows", "error": msg}},
+        )
+        raise RuntimeError(msg)
     return summary
 
 

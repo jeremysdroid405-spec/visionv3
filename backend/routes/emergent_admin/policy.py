@@ -124,6 +124,13 @@ ALLOWED_JOBS: Dict[str, Dict] = {
         "args": ["--league", "--start", "--end", "--dry-run",
                   "--resume", "--lookback-days"],
     },
+    "scripts.mlb_replay_build_feature_cache": {
+        "label": "Build MLB Layer-2 feature cache for a date window",
+        "writes_to": "mlb_replay_feature_cache (gated)",
+        "enabled": True,
+        "args": ["--date", "--start", "--end", "--mem-limit",
+                  "--force", "--odds-collection"],
+    },
     "scripts.sgo.score_historical_model": {
         "label": "Score historical features with a registered model",
         "writes_to": "sgo_pp_research_model_predictions (research, writable)",

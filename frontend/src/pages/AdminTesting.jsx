@@ -223,6 +223,7 @@ const SPORT_ADAPTERS = {
       score:    { module: 'scripts.sgo.score_historical_with_live_mlb_hf',  league: 'MLB' },
       reshape:  { module: 'scripts.sgo.reshape_sgo_to_replay_odds',         league: 'MLB' },
       outcomes: { module: 'scripts.sgo.build_historical_outcomes',          league: 'MLB' },
+      feature_cache: { module: 'scripts.mlb_replay_build_feature_cache',    league: 'MLB' },
       replay:   { module: 'scripts.sgo.historical_full_pipeline_replay',    league: 'MLB' },
       grid:     { module: 'scripts.sgo.historical_gate_replay_grid',        league: 'MLB' },
     },
@@ -280,16 +281,19 @@ const PIPELINE_STEPS = [
   { key: 'grade_outcomes',label: '5. Grade Outcomes',       stepKey: 'outcomes', skippable: true,
     purpose: 'Resolves sgo_pp_research_outcomes — required by full replay preflight.',
     next: 'Without this, full pipeline replay HARD-FAILS at preflight.' },
-  { key: 'full_replay',   label: '6. Full Pipeline Replay', stepKey: 'replay',   skippable: false,
+  { key: 'feature_cache', label: '6. Build Replay Feature Cache', stepKey: 'feature_cache', skippable: true,
+    purpose: 'Builds mlb_replay_feature_cache from sgo_replay_alt_odds_raw universe. Layer-3 hard-fails if rows_written=0 while odds>0.',
+    next: 'Without this, Layer-3 candidates_skipped_no_cache spikes.' },
+  { key: 'full_replay',   label: '7. Full Pipeline Replay', stepKey: 'replay',   skippable: false,
     purpose: 'Drives every prop through live PropVision scoring + gates.',
     next: 'Required before grid sweep.' },
-  { key: 'grid_sweep',    label: '7. Gate Grid',            stepKey: 'grid',     skippable: false,
+  { key: 'grid_sweep',    label: '8. Gate Grid',            stepKey: 'grid',     skippable: false,
     purpose: 'Per-tier × per-stat_family threshold sweep.',
     next: 'Writes research_grid_results — Results tab will auto-populate.' },
-  { key: 'view_results',  label: '8. View Results',         stepKey: null,       skippable: false,
+  { key: 'view_results',  label: '9. View Results',         stepKey: null,       skippable: false,
     purpose: 'Auto-loads from research_grid_results + replay collection.',
     next: 'Pick winning configs and save as candidates.' },
-  { key: 'save_candidate',label: '9. Save Candidate',       stepKey: null,       skippable: false,
+  { key: 'save_candidate',label: '10. Save Candidate',      stepKey: null,       skippable: false,
     purpose: 'Persist a config you want to act on.',
     next: 'Mark Ready to write to emergent_candidate_configs.' },
 ];
@@ -301,6 +305,18 @@ function buildStepArgs(sportKey, stepKey, cfg) {
   const adapter = SPORT_ADAPTERS[sportKey];
   const spec = adapter?.steps?.[stepKey];
   if (!spec) return null;
+  // The MLB replay-feature-cache builder has a different CLI surface
+  // — no --league, plus an --odds-collection it MUST receive so the
+  // cache universe matches what Layer-3 reads (the SGO mirror).
+  if (stepKey === 'feature_cache') {
+    return {
+      module: spec.module,
+      args: [
+        '--start', cfg.start, '--end', cfg.end,
+        '--odds-collection', 'sgo_replay_alt_odds_raw',
+      ],
+    };
+  }
   const a = ['--league', spec.league, '--start', cfg.start, '--end', cfg.end];
   if (stepKey === 'grid') a.push('--min-bets', String(cfg.minBets || 20));
   if (stepKey === 'replay') {
