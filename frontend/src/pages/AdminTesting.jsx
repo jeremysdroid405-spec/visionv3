@@ -221,6 +221,8 @@ const SPORT_ADAPTERS = {
       ingest:   { module: 'scripts.sgo.ingest_historical_player_stats',     league: 'MLB' },
       features: { module: 'scripts.sgo.build_historical_model_features',    league: 'MLB' },
       score:    { module: 'scripts.sgo.score_historical_with_live_mlb_hf',  league: 'MLB' },
+      reshape:  { module: 'scripts.sgo.reshape_sgo_to_replay_odds',         league: 'MLB' },
+      outcomes: { module: 'scripts.sgo.build_historical_outcomes',          league: 'MLB' },
       replay:   { module: 'scripts.sgo.historical_full_pipeline_replay',    league: 'MLB' },
       grid:     { module: 'scripts.sgo.historical_gate_replay_grid',        league: 'MLB' },
     },
@@ -272,16 +274,22 @@ const PIPELINE_STEPS = [
   { key: 'score_model',   label: '3. Score Through Model',  stepKey: 'score',    skippable: true,
     purpose: 'Runs the live model over historical features.',
     next: 'Required before pipeline replay.' },
-  { key: 'full_replay',   label: '4. Full Pipeline Replay', stepKey: 'replay',   skippable: false,
+  { key: 'reshape_odds',  label: '4. Reshape Odds (SSOT)',  stepKey: 'reshape',  skippable: true,
+    purpose: 'Populates sgo_replay_alt_odds_raw — required by full replay preflight.',
+    next: 'Without this, full pipeline replay HARD-FAILS at preflight.' },
+  { key: 'grade_outcomes',label: '5. Grade Outcomes',       stepKey: 'outcomes', skippable: true,
+    purpose: 'Resolves sgo_pp_research_outcomes — required by full replay preflight.',
+    next: 'Without this, full pipeline replay HARD-FAILS at preflight.' },
+  { key: 'full_replay',   label: '6. Full Pipeline Replay', stepKey: 'replay',   skippable: false,
     purpose: 'Drives every prop through live PropVision scoring + gates.',
     next: 'Required before grid sweep.' },
-  { key: 'grid_sweep',    label: '5. Gate Grid',            stepKey: 'grid',     skippable: false,
+  { key: 'grid_sweep',    label: '7. Gate Grid',            stepKey: 'grid',     skippable: false,
     purpose: 'Per-tier × per-stat_family threshold sweep.',
     next: 'Writes research_grid_results — Results tab will auto-populate.' },
-  { key: 'view_results',  label: '6. View Results',         stepKey: null,       skippable: false,
+  { key: 'view_results',  label: '8. View Results',         stepKey: null,       skippable: false,
     purpose: 'Auto-loads from research_grid_results + replay collection.',
     next: 'Pick winning configs and save as candidates.' },
-  { key: 'save_candidate',label: '7. Save Candidate',       stepKey: null,       skippable: false,
+  { key: 'save_candidate',label: '9. Save Candidate',       stepKey: null,       skippable: false,
     purpose: 'Persist a config you want to act on.',
     next: 'Mark Ready to write to emergent_candidate_configs.' },
 ];
@@ -439,12 +447,31 @@ function WorkflowTab({ token, onPipelineFinished }) {
           });
           toast.success(`✓ ${PIPELINE_STEPS[cur].label}`);
         } else if (['failed','errored','cancelled'].includes(job.status)) {
+          // Extract a human-readable error line from the tail when the
+          // job doc itself has no `error` field. Python scripts that
+          // sys.exit(1) after raise RuntimeError put the diagnosis in
+          // stdout (the last non-empty line of the captured traceback),
+          // not in the job doc.
+          const tail = job.tail_preview || [];
+          const lastTraceLine = [...tail].reverse()
+            .map(l => (l || '').trim())
+            .find(l => l && !l.startsWith('File "') && !l.startsWith('^'));
           setPipeline(p => {
             const steps = [...p.steps];
-            steps[cur] = { ...steps[cur], status: job.status, finished_at: new Date().toISOString(), exit_code: job.exit_code, error: job.error };
+            steps[cur] = {
+              ...steps[cur],
+              status: job.status,
+              finished_at: new Date().toISOString(),
+              exit_code: job.exit_code,
+              error: job.error || lastTraceLine || `exit ${job.exit_code}`,
+              tail_preview: steps[cur].tail_preview && steps[cur].tail_preview.length
+                ? steps[cur].tail_preview
+                : tail,
+              spawn_traceback: job.traceback || null,
+            };
             return { ...p, status: 'halted', steps };
           });
-          toast.error(`✗ ${active.key} ${job.status}`);
+          toast.error(`✗ ${active.key} ${job.status}: ${lastTraceLine || job.error || `exit ${job.exit_code}`}`);
         } else if (steps_status_changed(pipeline.steps[cur].status, job.status)) {
           setPipeline(p => {
             const steps = [...p.steps];
@@ -633,19 +660,24 @@ function WorkflowTab({ token, onPipelineFinished }) {
                   <div style={{ fontSize: 10, color: showCached ? ACCENT_2 : (c === ACCENT ? ACCENT : MUTED), marginTop: 4, lineHeight: 1.3 }}>
                     {showCached ? '✓ ' : ''}{displayPurpose}
                   </div>
-                  {st.error && <div style={{ fontSize: 10, color: BAD, marginTop: 4 }}>{String(st.error).slice(0, 100)}</div>}
+                  {st.error && <div style={{
+                    fontSize: 10, color: BAD, marginTop: 4,
+                    fontFamily: 'ui-monospace, monospace', lineHeight: 1.35,
+                    wordBreak: 'break-word',
+                  }} data-testid={`pipe-step-error-${s.key}`}>{String(st.error).slice(0, 400)}</div>}
                   {st.tail_preview && st.tail_preview.length > 0
                     && ['failed','errored','cancelled'].includes(st.status) && (
-                    <details style={{ marginTop: 6 }} data-testid={`pipe-tail-${s.key}`}>
-                      <summary style={{ fontSize: 10, color: BAD, cursor: 'pointer' }}>
-                        last {st.tail_preview.length} lines (click to expand)
+                    <details open style={{ marginTop: 6 }} data-testid={`pipe-tail-${s.key}`}>
+                      <summary style={{ fontSize: 10, color: BAD, cursor: 'pointer', fontWeight: 600 }}>
+                        ▾ full output ({st.tail_preview.length} lines)
                       </summary>
                       <pre style={{
-                        fontSize: 9, color: '#A1A1AA',
-                        background: '#000', padding: 6, borderRadius: 4,
-                        margin: '4px 0 0', maxHeight: 200, overflow: 'auto',
+                        fontSize: 9, color: '#E4E4E7',
+                        background: '#000', padding: 8, borderRadius: 4,
+                        margin: '4px 0 0', maxHeight: 320, overflow: 'auto',
                         whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                         fontFamily: 'ui-monospace, monospace',
+                        border: `1px solid ${BAD}`,
                       }}>{st.tail_preview.join('')}</pre>
                     </details>
                   )}
@@ -654,19 +686,51 @@ function WorkflowTab({ token, onPipelineFinished }) {
             })}
           </div>
 
-          {active && (
-            <div data-testid="pipeline-active-log" style={{
-              background: '#000', border: `1px solid ${BORDER}`, borderRadius: 6, overflow: 'hidden',
-            }}>
-              <div style={{ padding: '6px 10px', borderBottom: `1px solid ${BORDER}`, fontSize: 10, color: MUTED, fontFamily: 'monospace' }}>
-                ● live · {PIPELINE_STEPS.find(s => s.key === active.key).label} · {active.job_id?.slice(0,8)} · {fmtDur(active.started_at)}
+          {(() => {
+            // Show live log for an active step, or fall back to the most
+            // recently failed/cancelled step so the user still sees the
+            // last 50 lines of output after the pipeline halts.
+            const failedStep = !active && pipeline.status === 'halted'
+              ? [...pipeline.steps].reverse().find(s =>
+                  ['failed','errored','cancelled'].includes(s.status))
+              : null;
+            const panelStep = active || failedStep;
+            if (!panelStep) return null;
+            const panelLines = active ? tail
+              : (panelStep.tail_preview || []);
+            const panelLabel = PIPELINE_STEPS.find(s => s.key === panelStep.key)?.label
+              || panelStep.key;
+            const isLive = !!active;
+            return (
+              <div data-testid="pipeline-active-log" style={{
+                background: '#000',
+                border: `1px solid ${isLive ? BORDER : BAD}`,
+                borderRadius: 6, overflow: 'hidden',
+              }}>
+                <div style={{
+                  padding: '6px 10px', borderBottom: `1px solid ${BORDER}`,
+                  fontSize: 10, color: isLive ? MUTED : BAD,
+                  fontFamily: 'monospace',
+                  display: 'flex', justifyContent: 'space-between',
+                }}>
+                  <span>
+                    {isLive ? '● live · ' : '■ halted · '}
+                    {panelLabel} · {panelStep.job_id?.slice(0,8)} · {fmtDur(panelStep.started_at, panelStep.finished_at)}
+                  </span>
+                  {!isLive && panelStep.exit_code !== undefined && (
+                    <span>exit_code={panelStep.exit_code}</span>
+                  )}
+                </div>
+                <pre style={{
+                  margin: 0, padding: 10, fontSize: 10,
+                  color: isLive ? '#A1A1AA' : '#E4E4E7',
+                  fontFamily: 'ui-monospace, monospace',
+                  maxHeight: 280, overflow: 'auto',
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                }}>{panelLines.length ? panelLines.slice(-80).join('') : (isLive ? '(starting…)' : '(no output captured)')}</pre>
               </div>
-              <pre style={{
-                margin: 0, padding: 10, fontSize: 10, color: '#A1A1AA', fontFamily: 'ui-monospace, monospace',
-                maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              }}>{tail.length ? tail.slice(-50).join('') : '(starting…)'}</pre>
-            </div>
-          )}
+            );
+          })()}
 
           {pipeline.status === 'completed' && (
             <div style={{ marginTop: 12, padding: 10, background: `${ACCENT_2}1a`, border: `1px solid ${ACCENT_2}`, borderRadius: 6, fontSize: 12, color: ACCENT_2 }}>
