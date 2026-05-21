@@ -466,10 +466,29 @@ async def _run(args: argparse.Namespace) -> int:
                 err_first_examples.append(f"{pname}/{hf_stat}: {emsg!r}")
             continue
 
-        mu = result.get("projection_mu") or result.get("mu")
-        sigma = result.get("sigma")
-        model_p = result.get("model_probability") or result.get("model_prob")
-        tp_val = result.get("tp") or result.get("fair_probability")
+        mu = result.get("predicted")
+        if mu is None:
+            mu = result.get("projection_mu") or result.get("mu")
+        sigma = result.get("std_dev")
+        if sigma is None:
+            sigma = result.get("sigma")
+        prob_over_pct = result.get("prob_over")    # in PERCENT (0-100)
+        model_p = (prob_over_pct / 100.0
+                       if isinstance(prob_over_pct, (int, float))
+                       else (result.get("model_probability") or
+                              result.get("model_prob")))
+        # `tp` (true probability) doesn't exist in the live `predict()`
+        # return; the gate spec treats model_probability AS the tp gate
+        # value (see eval_safe_haven etc which check row['model_probability']
+        # against s['tp_min']). Surface model_p as tp for downstream consumers.
+        tp_val = result.get("tp") or result.get("fair_probability") or model_p
+
+        # 2026-05-21 — `prob_over` is the OVER probability. For an
+        # UNDER prop, the model probability is 1 - prob_over.
+        side = (doc.get("side") or "").upper()
+        if side == "UNDER" and model_p is not None:
+            model_p = 1.0 - float(model_p)
+            tp_val   = model_p
         if mu is None or sigma is None or model_p is None:
             err_predict += 1
             err_other += 1
@@ -481,7 +500,8 @@ async def _run(args: argparse.Namespace) -> int:
 
         consensus_p = doc.get("consensus_prob")
         fair_p   = float(consensus_p) if consensus_p is not None else None
-        edge_v   = (float(model_p) - fair_p) if fair_p is not None else None
+        edge_v   = (float(model_p) - fair_p) if (model_p is not None and fair_p is not None) else None
+        trends   = (result.get("friction_audit") or {}).get("trends") or {}
 
         replay_row = {
             "event_id": doc["event_id"],
@@ -511,9 +531,12 @@ async def _run(args: argparse.Namespace) -> int:
             "edge":              edge_v,
             "projection_margin": _margin(mu, doc.get("line"), doc.get("side")),
 
-            "hit_rate_l5":  result.get("hit_rate_l5"),
-            "hit_rate_l10": result.get("hit_rate_l10"),
-            "hit_rate_l20": result.get("hit_rate_l20"),
+            "hit_rate_l5":  (result.get("hit_rate_l5") or
+                                trends.get("hit_rate_l5")),
+            "hit_rate_l10": (result.get("hit_rate_l10") or
+                                trends.get("hit_rate_l10")),
+            "hit_rate_l20": (result.get("hit_rate_l20") or
+                                trends.get("hit_rate_l20")),
 
             "outcome_resolved": True,
             "outcome_numeric":  doc.get("outcome_numeric"),
