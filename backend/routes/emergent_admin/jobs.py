@@ -470,13 +470,12 @@ async def reconcile_stuck(body: ReconcileBody, request: Request,
     Useful after a backend OOM/restart that lost in-flight tasks.
     Does NOT touch jobs currently running — those have a pid registered
     in memory."""
-    cutoff = datetime.now(timezone.utc) - \
-                 __import__("datetime").timedelta(seconds=body.older_than_seconds)
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=body.older_than_seconds)
     db = _get_db()
-    # Refuse to clobber currently-active jobs even if they show queued.
-    in_mem_ids = list(_RUNNER_TASKS) and []  # _RUNNER_TASKS is a set of Task objs, not ids
-    # We can't extract job_id from Task objects safely. So we filter on
-    # the active-pids registry instead — those are definitely live.
+    # Refuse to clobber currently-active jobs. We can't extract job_id from
+    # Task objects safely, so we filter on the active-pids registry instead
+    # — those entries definitely correspond to live subprocesses.
     live_pid_ids = list(_running_pids().keys())
     result = await db[JOBS_COLL].update_many(
         {"status": "queued",
