@@ -57,6 +57,9 @@ WRITABLE_COLLECTIONS: Set[str] = {
     # invoked through the Admin API can populate this collection.
     "sgo_pp_research_model_features",
     "sgo_pp_research_model_predictions",
+    # 2026-05-21 — full-pipeline replay output (exact production
+    # pipeline replay over historical SGO outcomes).
+    "sgo_propvision_full_pipeline_replay",
 }
 
 # Read-only allowed (in addition to protected ones, which are read-only too)
@@ -141,6 +144,27 @@ ALLOWED_JOBS: Dict[str, Dict] = {
         "enabled": True,
         "args": ["--league", "--start", "--end", "--probe", "--limit",
                   "--force", "--dry-run"],
+    },
+    # 2026-05-21 — exact production-pipeline replay driver.
+    # SGO outcome row → live MLBHighFrictionModel.predict(as_of_date) →
+    # books-only edge → live SH/FL/WZ gate eval → tier selection →
+    # write to sgo_propvision_full_pipeline_replay.
+    "scripts.sgo.historical_full_pipeline_replay": {
+        "label": "Replay historical SGO props through the live "
+                   "PropVision scoring + gate pipeline",
+        "writes_to": "sgo_propvision_full_pipeline_replay (writable)",
+        "enabled": True,
+        "args": ["--league", "--start", "--end", "--exclude-stat-family",
+                  "--limit", "--force", "--dry-run"],
+    },
+    # 2026-05-21 — per-tier × per-stat_family threshold sweep over
+    # the sgo_propvision_full_pipeline_replay collection.
+    "scripts.sgo.historical_gate_replay_grid": {
+        "label": "Per-tier × per-stat_family threshold sweep",
+        "writes_to": "research_grid_runs, research_grid_results, "
+                       "candidate_gate_configs (writable)",
+        "enabled": True,
+        "args": ["--league", "--start", "--end", "--min-bets", "--dry-run"],
     },
     # NFL master-hub maintenance hooks (user-allowed)
     "scripts.nfl.refresh_master_hub": {
