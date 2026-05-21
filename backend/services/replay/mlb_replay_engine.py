@@ -394,6 +394,7 @@ async def replay_date(
     mem_limit_mb: int = DEFAULT_MEM_LIMIT_MB,
     force: bool = False,
     over_only_alts: bool = True,
+    odds_collection: str = "mlb_historical_alt_odds_raw",
 ) -> Dict[str, Any]:
     """Warm-replay a single date.
 
@@ -401,6 +402,12 @@ async def replay_date(
     `audits/replay_market_coverage_rule_2026_05_16.md`: alternate
     markets are OVER-only. UNDER on alt is silently skipped (the API
     doesn't carry it; we never synthesize).
+
+    `odds_collection` defaults to the live production collection
+    (`mlb_historical_alt_odds_raw`). The SSOT historical replay
+    (`scripts.sgo.historical_full_pipeline_replay`) overrides it with
+    `sgo_replay_alt_odds_raw` so SGO-namespace data drives the same
+    Layer-3 engine without polluting the production odds archive.
     """
     await ensure_indexes(db)
     if snapshot_iso is None:
@@ -489,7 +496,7 @@ async def replay_date(
     skipped_under_alt = 0
     rss_peak = rss_after_models
 
-    cursor = db.mlb_historical_alt_odds_raw.find(
+    cursor = db[odds_collection].find(
         {"game_date": replay_date_str, "snapshot_iso": snapshot_iso},
         projection={"_id": 0},
     )

@@ -240,14 +240,24 @@ def _build_canonical_eval_rows(
 
 async def _run_layer3(adapter: SportReplayAdapter, db, *,
                        game_date: str, snapshot_iso: str,
-                       mem_limit_mb: int, force: bool) -> Dict[str, Any]:
-    """Delegate to the sport's Layer-3 model-replay engine."""
+                       mem_limit_mb: int, force: bool,
+                       odds_collection: Optional[str] = None) -> Dict[str, Any]:
+    """Delegate to the sport's Layer-3 model-replay engine.
+
+    `odds_collection` lets the SSOT historical replay redirect Layer-3
+    reads to `sgo_replay_alt_odds_raw` instead of the live
+    `mlb_historical_alt_odds_raw`. Defaults to the adapter's configured
+    odds collection (which the SGO script monkey-patches at startup),
+    falling back to whatever the engine itself defaults to.
+    """
     if adapter.SPORT == "mlb":
+        oc = odds_collection or adapter.config.odds_collection
         return await mlb_layer3_replay_date(
             db, game_date,
             snapshot_iso=snapshot_iso,
             mem_limit_mb=mem_limit_mb,
             force=force,
+            odds_collection=oc,
         )
     raise NotImplementedError(
         f"Layer-3 not yet implemented for sport={adapter.SPORT!r}"
@@ -373,6 +383,7 @@ async def run_production_replay(
     sh_hit_rate_gate_min_override: Optional[float] = None,
     sh_cv_gate_max_override: Optional[float] = None,
     disable_all_gates_for_accuracy_test: bool = False,
+    odds_collection: Optional[str] = None,
 ) -> Dict[str, Any]:
     """End-to-end Phase 2c orchestrator.
 
@@ -503,6 +514,7 @@ async def run_production_replay(
         adapter, db,
         game_date=game_date, snapshot_iso=snapshot_iso,
         mem_limit_mb=mem_limit_mb, force=force_layer3,
+        odds_collection=odds_collection,
     )
 
     # ── Layer 4 — fetch actuals + gate eval + grading ───────────────

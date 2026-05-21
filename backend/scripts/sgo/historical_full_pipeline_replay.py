@@ -450,8 +450,13 @@ async def _run(args: argparse.Namespace) -> int:
     from services.replay.providers import MLBReplayAdapter
 
     # Point the adapter at the SGO odds collection. Same monkey-patch
-    # pattern as scripts.sgo.run_sgo_production_replay so we share the
-    # SSOT runner without duplicating it.
+    # pattern as scripts.sgo.run_sgo_production_replay so audit snapshots
+    # (services.replay.providers.audit.snapshot_input_collection_versions)
+    # pin the right counts. The Layer-3 engine read is plumbed separately
+    # via the `odds_collection=` kwarg on run_production_replay below —
+    # mlb_replay_engine.replay_date previously hardcoded
+    # "mlb_historical_alt_odds_raw" which silently bypassed this patch
+    # and was the cause of the 2026-05-21 "scanned=0" bug.
     _orig_init = MLBReplayAdapter.__init__
 
     def _patched(self):
@@ -484,6 +489,7 @@ async def _run(args: argparse.Namespace) -> int:
                     dry_run=bool(args.dry_run),
                     notes=f"historical_full_pipeline_replay SSOT "
                             f"{args.start}..{args.end}",
+                    odds_collection=SGO_ODDS_COLL,
                 )
             except Exception as e:
                 grand["runs_failed"] += 1
