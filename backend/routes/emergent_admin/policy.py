@@ -63,6 +63,9 @@ WRITABLE_COLLECTIONS: Set[str] = {
     # 2026-05-21 — full-pipeline replay output (exact production
     # pipeline replay over historical SGO outcomes).
     "sgo_propvision_full_pipeline_replay",
+    "sgo_propvision_full_pipeline_replay_diff",
+    "mlb_propvision_full_pipeline_runs",
+    "mlb_propvision_full_pipeline_outputs",
     # 2026-05-21 — SGO reshape destination (mirrors mlb_historical_alt_odds_raw
     # schema) + the actual production-pipeline outputs.
     "sgo_replay_alt_odds_raw",
@@ -158,11 +161,19 @@ ALLOWED_JOBS: Dict[str, Dict] = {
     # write to sgo_propvision_full_pipeline_replay.
     "scripts.sgo.historical_full_pipeline_replay": {
         "label": "Replay historical SGO props through the live "
-                   "PropVision scoring + gate pipeline",
-        "writes_to": "sgo_propvision_full_pipeline_replay (writable)",
+                   "PropVision scoring + gate pipeline (SSOT mode — "
+                   "delegates to production_replay_runner)",
+        "writes_to": "sgo_propvision_full_pipeline_replay, "
+                       "sgo_propvision_full_pipeline_replay_diff, "
+                       "mlb_propvision_full_pipeline_runs/outputs (writable)",
         "enabled": True,
         "args": ["--league", "--start", "--end", "--exclude-stat-family",
-                  "--limit", "--force", "--dry-run"],
+                  "--limit", "--force", "--dry-run",
+                  # SSOT refactor flags (2026-05-21)
+                  "--tiers", "--gate-path", "--canonical-path",
+                  "--snapshot-hour", "--limit-dates",
+                  "--no-mirror-to-legacy", "--sample-diff",
+                  "--continue-on-error"],
     },
     # 2026-05-21 — per-tier × per-stat_family threshold sweep over
     # the sgo_propvision_full_pipeline_replay collection.

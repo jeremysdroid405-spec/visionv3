@@ -30,6 +30,7 @@ const PIPELINE_KEY = 'emergentAdminPipeline';
 const CANDIDATES_KEY = 'emergentAdminCandidates';
 const SWEEP_KEY = 'emergentAdminSweepConfig';
 const REPLAY_COLL = 'sgo_propvision_full_pipeline_replay';
+const REPLAY_DIFF_COLL = 'sgo_propvision_full_pipeline_replay_diff';
 const GRID_RUNS_COLL = 'research_grid_runs';
 const GRID_RESULTS_COLL = 'research_grid_results';
 
@@ -294,8 +295,20 @@ function buildStepArgs(sportKey, stepKey, cfg) {
   if (!spec) return null;
   const a = ['--league', spec.league, '--start', cfg.start, '--end', cfg.end];
   if (stepKey === 'grid') a.push('--min-bets', String(cfg.minBets || 20));
-  if (stepKey === 'replay' && cfg.excludeFamilies)
-    a.push('--exclude-stat-family', cfg.excludeFamilies);
+  if (stepKey === 'replay') {
+    if (cfg.excludeFamilies) a.push('--exclude-stat-family', cfg.excludeFamilies);
+    // SSOT audit toggle — default ON, size 200. Each run snapshots
+    // pre-existing legacy rows and writes a per-row diff doc into
+    // sgo_propvision_full_pipeline_replay_diff so the Results tab can
+    // prove that the new run is using the production SSOT pipeline
+    // and not legacy inlined gates.
+    if (cfg.sampleDiffEnabled && cfg.sampleDiffSize > 0) {
+      a.push('--sample-diff', String(cfg.sampleDiffSize));
+    }
+    if (cfg.gatePath && cfg.gatePath !== 'universal') {
+      a.push('--gate-path', cfg.gatePath);
+    }
+  }
   return { module: spec.module, args: a };
 }
 
@@ -305,6 +318,10 @@ function WorkflowTab({ token, onPipelineFinished }) {
     sport: 'MLB', start: '', end: '', minBets: 20,
     excludeFamilies: 'fantasy_score',
     skip: { ingest_stats: true, build_features: true, score_model: true },
+    // SSOT audit defaults — diff ON, size 200, universal gate path
+    sampleDiffEnabled: true,
+    sampleDiffSize: 200,
+    gatePath: 'universal',
   });
   const [pipeline, setPipeline] = useState(loadPipeline());
   const [tail, setTail] = useState([]);
@@ -457,6 +474,48 @@ function WorkflowTab({ token, onPipelineFinished }) {
         {Object.entries(adapter.steps).map(([k, v]) => (
           <Badge key={k} color={v ? ACCENT_2 : BAD}>{k}: {v ? '✓' : '✗ no adapter'}</Badge>
         ))}
+      </div>
+
+      {/* SSOT audit controls — proves production pipeline path is in use */}
+      <div data-testid="ssot-audit-controls" style={{
+        background: SURFACE_2, border: `1px solid ${ACCENT_2}`,
+        borderLeft: `3px solid ${ACCENT_2}`,
+        borderRadius: 6, padding: 10, marginBottom: 14,
+      }}>
+        <div style={{ fontSize: 10, color: ACCENT_2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+          SSOT Audit · Replay step (default ON)
+        </div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label data-testid="ssot-diff-enable" style={{
+            display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+            fontSize: 12, color: config.sampleDiffEnabled ? ACCENT_2 : MUTED,
+          }}>
+            <input type="checkbox" checked={config.sampleDiffEnabled}
+              onChange={(e) => setConfig({ ...config, sampleDiffEnabled: e.target.checked })} />
+            Sample-diff audit
+          </label>
+          <Field label="Sample size">
+            <Input testId="ssot-diff-size" type="number" min="0" max="5000"
+              value={config.sampleDiffSize}
+              disabled={!config.sampleDiffEnabled}
+              onChange={(e) => setConfig({ ...config, sampleDiffSize: parseInt(e.target.value || '0', 10) })}
+              style={{ width: 90 }} />
+          </Field>
+          <Field label="Gate path">
+            <Select testId="ssot-gate-path" value={config.gatePath}
+              onChange={(e) => setConfig({ ...config, gatePath: e.target.value })}
+              options={[
+                { value: 'universal', label: 'universal (SH+FL+WZ via SSOT)' },
+                { value: 'legacy_wz', label: 'legacy_wz (WZ-only, byte-identical)' },
+              ]} />
+          </Field>
+          <div style={{ fontSize: 10, color: DIM, flex: 1, minWidth: 220 }}>
+            Snapshots {config.sampleDiffSize} pre-existing legacy rows BEFORE the run,
+            then writes per-row diffs (legacy decision vs SSOT decision) to
+            <code style={{ color: ACCENT_2, marginLeft: 4 }}>{REPLAY_DIFF_COLL}</code>.
+            Results tab surfaces the audit summary.
+          </div>
+        </div>
       </div>
 
       <div style={{ marginBottom: 14 }}>
@@ -738,6 +797,328 @@ function SweepTab({ token }) {
   );
 }
 
+// ── SSOT Diff Summary (Results tab) ─────────────────────────────────
+function DiffSummarySection({ token }) {
+  const [runs, setRuns] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [legacyReasons, setLegacyReasons] = useState([]);
+  const [ssotReasons, setSsotReasons] = useState([]);
+  const [examples, setExamples] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch list of diff runs
+  const fetchRuns = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await apiFetch(token, `/collections/${REPLAY_DIFF_COLL}/aggregate`, {
+        method: 'POST',
+        body: JSON.stringify({
+          pipeline: [
+            { $group: {
+                _id: '$diff_run_id',
+                n: { $sum: 1 },
+                emitted: { $max: '$diff_emitted_at' },
+                deltas: { $sum: { $cond: ['$tier_delta', 1, 0] } },
+            } },
+            { $sort: { emitted: -1 } },
+            { $limit: 30 },
+          ], limit: 30,
+        }),
+      });
+      setRuns(res.docs || []);
+      if (!selected && res.docs?.length) setSelected(res.docs[0]._id);
+    } catch (e) {
+      // soft-fail — the collection may not exist yet
+      console.warn('[diff-summary] list:', e.message);
+    }
+  }, [token, selected]);
+  useEffect(() => { fetchRuns(); }, [fetchRuns]);
+
+  // Fetch detailed stats for the selected run
+  const fetchStats = useCallback(async () => {
+    if (!token || !selected) return;
+    setLoading(true);
+    try {
+      const flip = (tier) => ({
+        $cond: [{ $ne: [
+          `$legacy_inlined_gates.${tier}_pass`,
+          `$ssot_production_runner.${tier}_pass`,
+        ] }, 1, 0],
+      });
+      const promotions = (tier) => ({
+        $cond: [{ $and: [
+          { $eq: [`$ssot_production_runner.${tier}_pass`, true] },
+          { $ne:  [`$legacy_inlined_gates.${tier}_pass`, true] },
+        ] }, 1, 0],
+      });
+      const demotions = (tier) => ({
+        $cond: [{ $and: [
+          { $eq: [`$legacy_inlined_gates.${tier}_pass`, true] },
+          { $ne:  [`$ssot_production_runner.${tier}_pass`, true] },
+        ] }, 1, 0],
+      });
+      const [statsRes, legacyReasonsRes, ssotReasonsRes, examplesRes] = await Promise.all([
+        // aggregate counts
+        apiFetch(token, `/collections/${REPLAY_DIFF_COLL}/aggregate`, {
+          method: 'POST',
+          body: JSON.stringify({
+            pipeline: [
+              { $match: { diff_run_id: selected } },
+              { $group: {
+                  _id: null,
+                  n: { $sum: 1 },
+                  tier_delta: { $sum: { $cond: ['$tier_delta', 1, 0] } },
+                  sh_flipped: { $sum: flip('safe_haven') },
+                  fl_flipped: { $sum: flip('front_lines') },
+                  wz_flipped: { $sum: flip('war_zone') },
+                  sh_promoted: { $sum: promotions('safe_haven') },
+                  fl_promoted: { $sum: promotions('front_lines') },
+                  wz_promoted: { $sum: promotions('war_zone') },
+                  sh_demoted: { $sum: demotions('safe_haven') },
+                  fl_demoted: { $sum: demotions('front_lines') },
+                  wz_demoted: { $sum: demotions('war_zone') },
+                  missing_in_ssot: { $sum: { $cond: [
+                    { $eq: ['$ssot_production_runner._missing', true] }, 1, 0,
+                  ] } },
+              } },
+            ], limit: 1,
+          }),
+        }),
+        // reason-code histogram (legacy side)
+        apiFetch(token, `/collections/${REPLAY_DIFF_COLL}/aggregate`, {
+          method: 'POST',
+          body: JSON.stringify({
+            pipeline: [
+              { $match: { diff_run_id: selected } },
+              { $project: { reasons: { $concatArrays: [
+                { $ifNull: ['$legacy_inlined_gates.safe_haven_failed_reasons', []] },
+                { $ifNull: ['$legacy_inlined_gates.front_lines_failed_reasons', []] },
+                { $ifNull: ['$legacy_inlined_gates.war_zone_failed_reasons', []] },
+              ] } } },
+              { $unwind: '$reasons' },
+              { $group: { _id: '$reasons', n: { $sum: 1 } } },
+              { $sort: { n: -1 } },
+              { $limit: 25 },
+            ], limit: 25,
+          }),
+        }),
+        // reason-code histogram (SSOT side)
+        apiFetch(token, `/collections/${REPLAY_DIFF_COLL}/aggregate`, {
+          method: 'POST',
+          body: JSON.stringify({
+            pipeline: [
+              { $match: { diff_run_id: selected } },
+              { $project: { reasons: { $concatArrays: [
+                { $ifNull: ['$ssot_production_runner.safe_haven_failed_reasons', []] },
+                { $ifNull: ['$ssot_production_runner.front_lines_failed_reasons', []] },
+                { $ifNull: ['$ssot_production_runner.war_zone_failed_reasons', []] },
+              ] } } },
+              { $unwind: '$reasons' },
+              { $group: { _id: '$reasons', n: { $sum: 1 } } },
+              { $sort: { n: -1 } },
+              { $limit: 25 },
+            ], limit: 25,
+          }),
+        }),
+        // examples of changed decisions (tier_delta=true)
+        apiFetch(token, `/collections/${REPLAY_DIFF_COLL}/find`, {
+          method: 'POST',
+          body: JSON.stringify({
+            filter: { diff_run_id: selected, tier_delta: true },
+            limit: 20,
+            sort: { 'key.game_date': -1 },
+          }),
+        }),
+      ]);
+      setStats((statsRes.docs && statsRes.docs[0]) || null);
+      setLegacyReasons(legacyReasonsRes.docs || []);
+      setSsotReasons(ssotReasonsRes.docs || []);
+      setExamples(examplesRes.docs || []);
+    } catch (e) {
+      toast.error(`Diff stats: ${e.message}`);
+    } finally { setLoading(false); }
+  }, [token, selected]);
+  useEffect(() => { fetchStats(); }, [fetchStats]);
+
+  // Build a unique-to-each side reason set for plain-English display
+  const reasonOverlay = useMemo(() => {
+    const lset = new Set(legacyReasons.map(r => r._id));
+    const sset = new Set(ssotReasons.map(r => r._id));
+    return {
+      onlyLegacy: legacyReasons.filter(r => !sset.has(r._id)),
+      onlySsot: ssotReasons.filter(r => !lset.has(r._id)),
+      shared: legacyReasons.filter(r => sset.has(r._id)),
+    };
+  }, [legacyReasons, ssotReasons]);
+
+  return (
+    <Section testId="diff-summary-section" accent={ACCENT_2}
+      title="SSOT Diff Audit"
+      subtitle="Per-row comparison between legacy inlined-gate rows and the new production-SSOT rows. Proves the historical replay is using the live pipeline."
+      right={
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Select testId="diff-run-select" value={selected || ''}
+            onChange={(e) => setSelected(e.target.value)}
+            options={[
+              { value: '', label: '— pick diff run —' },
+              ...runs.map(r => ({
+                value: r._id,
+                label: `${r._id} · n=${r.n} · Δtier=${r.deltas}`,
+              })),
+            ]} />
+          <Btn variant="ghost" onClick={() => { fetchRuns(); fetchStats(); }} testId="diff-refresh">Refresh</Btn>
+        </div>
+      }>
+      {!stats ? (
+        <div data-testid="diff-empty" style={{ padding: 20, textAlign: 'center', color: DIM, fontSize: 12 }}>
+          No diff audit runs yet. The next full pipeline replay will emit one
+          automatically (Workflow tab → SSOT Audit toggle, default ON).
+        </div>
+      ) : (
+        <>
+          <div data-testid="diff-headline" style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+            gap: 10, marginBottom: 14,
+          }}>
+            <StatCard testId="diff-total" label="Total Sampled" value={fmtInt(stats.n)} color={ACCENT_3} />
+            <StatCard testId="diff-tier-delta" label="Tier Decisions Changed"
+              value={fmtInt(stats.tier_delta)}
+              hint={`${fmtPct((stats.tier_delta || 0) / (stats.n || 1))} of sample`}
+              color={(stats.tier_delta || 0) === 0 ? ACCENT_2 : (stats.tier_delta || 0) > stats.n / 2 ? BAD : WARN} />
+            <StatCard testId="diff-sh-flipped" label="SH Pass Flipped"
+              value={fmtInt(stats.sh_flipped)}
+              hint={`+${stats.sh_promoted} promoted · -${stats.sh_demoted} demoted`}
+              color={ACCENT_2} />
+            <StatCard testId="diff-fl-flipped" label="FL Pass Flipped"
+              value={fmtInt(stats.fl_flipped)}
+              hint={`+${stats.fl_promoted} promoted · -${stats.fl_demoted} demoted`}
+              color={ACCENT_3} />
+            <StatCard testId="diff-wz-flipped" label="WZ Pass Flipped"
+              value={fmtInt(stats.wz_flipped)}
+              hint={`+${stats.wz_promoted} promoted · -${stats.wz_demoted} demoted`}
+              color={WARN} />
+            {stats.missing_in_ssot > 0 && (
+              <StatCard testId="diff-missing" label="Missing in SSOT"
+                value={fmtInt(stats.missing_in_ssot)}
+                hint="Legacy row had no SSOT counterpart"
+                color={BAD} />
+            )}
+          </div>
+
+          {/* Plain-English summary */}
+          <div data-testid="diff-plain-english" style={{
+            background: SURFACE_2, border: `1px solid ${BORDER}`, borderRadius: 8,
+            padding: 12, marginBottom: 14, fontSize: 12, lineHeight: 1.7,
+          }}>
+            <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Audit Verdict</div>
+            {stats.tier_delta === 0 ? (
+              <div style={{ color: ACCENT_2 }}>
+                ✓ All {fmtInt(stats.n)} sampled props evaluated to the <strong>same tier decision</strong> under SSOT and legacy. Confidence high that the new SSOT path is at parity with the (presumed-correct) legacy data already in the collection.
+              </div>
+            ) : (
+              <div>
+                <div style={{ color: WARN }}>
+                  ⚠ <strong>{fmtInt(stats.tier_delta)}</strong> of {fmtInt(stats.n)} sampled props ({fmtPct(stats.tier_delta / (stats.n || 1))}) changed tier decision under SSOT.
+                </div>
+                <div style={{ color: TEXT, marginTop: 6 }}>
+                  Net SH movement: <strong style={{ color: ACCENT_2 }}>+{stats.sh_promoted}</strong> promoted / <strong style={{ color: BAD }}>-{stats.sh_demoted}</strong> demoted.{' '}
+                  Net FL: <strong style={{ color: ACCENT_2 }}>+{stats.fl_promoted}</strong> / <strong style={{ color: BAD }}>-{stats.fl_demoted}</strong>.{' '}
+                  Net WZ: <strong style={{ color: ACCENT_2 }}>+{stats.wz_promoted}</strong> / <strong style={{ color: BAD }}>-{stats.wz_demoted}</strong>.
+                </div>
+                <div style={{ color: DIM, marginTop: 6, fontSize: 11 }}>
+                  Expected — old hardcoded `_SH_SPEC`/`_FL_SPEC`/`_WZ_SPEC` thresholds vs the production `evaluate_tier_with_overrides` threshold dict.
+                  Inspect the example rows below to confirm the deltas line up with the threshold differences (not a bug).
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Reason code overlap */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 14 }}>
+            <BreakdownTable title="Reasons only in LEGACY" testId="diff-reasons-legacy"
+              data={reasonOverlay.onlyLegacy}
+              cols={[
+                { key: 'code', label: 'reason', acc: (r) => r._id },
+                { key: 'n', label: 'count', acc: (r) => fmtInt(r.n) },
+              ]} />
+            <BreakdownTable title="Reasons only in SSOT" testId="diff-reasons-ssot"
+              data={reasonOverlay.onlySsot}
+              cols={[
+                { key: 'code', label: 'reason', acc: (r) => r._id },
+                { key: 'n', label: 'count', acc: (r) => fmtInt(r.n) },
+              ]} />
+            <BreakdownTable title="Shared (count delta)" testId="diff-reasons-shared"
+              data={reasonOverlay.shared.map((l) => {
+                const s = ssotReasons.find(x => x._id === l._id) || { n: 0 };
+                return { ...l, ssot_n: s.n, delta: (s.n || 0) - (l.n || 0) };
+              })}
+              cols={[
+                { key: 'code',  label: 'reason', acc: (r) => r._id },
+                { key: 'leg',   label: 'legacy', acc: (r) => fmtInt(r.n) },
+                { key: 'ssot',  label: 'ssot',   acc: (r) => fmtInt(r.ssot_n) },
+                { key: 'delta', label: 'Δ',      acc: (r) => (r.delta > 0 ? '+' : '') + r.delta,
+                  color: (r) => r.delta > 0 ? ACCENT_2 : r.delta < 0 ? BAD : MUTED },
+              ]} />
+          </div>
+
+          {/* Examples of changed decisions */}
+          {examples.length > 0 && (
+            <div data-testid="diff-examples" style={{
+              background: SURFACE_2, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: 'hidden',
+            }}>
+              <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase', padding: '8px 12px', borderBottom: `1px solid ${BORDER}` }}>
+                Examples of Changed Decisions ({examples.length})
+              </div>
+              <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead><tr style={{ background: SURFACE, color: DIM, fontSize: 10, textTransform: 'uppercase' }}>
+                    <th style={th}>date</th><th style={th}>player</th><th style={th}>family</th>
+                    <th style={th}>line/side</th><th style={th}>legacy → ssot</th>
+                    <th style={th}>legacy reasons</th><th style={th}>ssot reasons</th>
+                  </tr></thead>
+                  <tbody>
+                    {examples.map((d, i) => (
+                      <tr key={i} style={{ borderTop: `1px solid ${BORDER}` }}>
+                        <td style={td}>{d.key?.game_date}</td>
+                        <td style={{ ...td, fontWeight: 600 }}>{d.key?.player_name}</td>
+                        <td style={{ ...td, color: ACCENT }}>{d.key?.stat_family}</td>
+                        <td style={td}>{d.key?.line} / {d.key?.side}</td>
+                        <td style={td}>
+                          <span style={{ color: MUTED }}>{d.legacy_inlined_gates?.selected_tier || 'none'}</span>
+                          {' → '}
+                          <span style={{ color: d.ssot_production_runner?._missing ? BAD : ACCENT_2, fontWeight: 600 }}>
+                            {d.ssot_production_runner?._missing ? '∅ missing' : (d.ssot_production_runner?.selected_tier || 'none')}
+                          </span>
+                        </td>
+                        <td style={{ ...td, fontSize: 10, color: DIM }}>
+                          {[
+                            ...(d.legacy_inlined_gates?.safe_haven_failed_reasons || []),
+                            ...(d.legacy_inlined_gates?.front_lines_failed_reasons || []),
+                            ...(d.legacy_inlined_gates?.war_zone_failed_reasons || []),
+                          ].slice(0, 4).join(', ') || '—'}
+                        </td>
+                        <td style={{ ...td, fontSize: 10, color: DIM }}>
+                          {[
+                            ...(d.ssot_production_runner?.safe_haven_failed_reasons || []),
+                            ...(d.ssot_production_runner?.front_lines_failed_reasons || []),
+                            ...(d.ssot_production_runner?.war_zone_failed_reasons || []),
+                          ].slice(0, 4).join(', ') || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {loading && <div style={{ fontSize: 11, color: ACCENT, marginTop: 8 }}>loading…</div>}
+        </>
+      )}
+    </Section>
+  );
+}
+
 // ── Results tab ─────────────────────────────────────────────────────
 function ResultsTab({ token, refreshKey, onSaveCandidate }) {
   const [runs, setRuns] = useState([]);
@@ -901,6 +1282,8 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
   }, [dailyRoi]);
 
   return (
+    <>
+    <DiffSummarySection token={token} />
     <Section testId="results-section" accent={ACCENT_3} title="Results Dashboard"
       subtitle="research_grid_results + sgo_propvision_full_pipeline_replay aggregations · no Mongo Compass required"
       right={
@@ -1024,6 +1407,7 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
         </>
       )}
     </Section>
+    </>
   );
 }
 
