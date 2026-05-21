@@ -1731,7 +1731,24 @@ async def startup_event():
         )
     except Exception as _hs_err:  # noqa: BLE001
         logger.error(f"[ROUTES] health_sync wiring failed: {_hs_err}")
-    
+
+    # ==========================================================================
+    # EMERGENT ADMIN API — scoped backend access for E1 agents
+    # =========================================================================
+    # Mounts /api/emergent-admin/* (token-auth, allowlisted collections/jobs,
+    # full audit-log). See routes/emergent_admin/ for policy + endpoint detail.
+    # ==========================================================================
+    try:
+        from routes.emergent_admin import router as _emergent_admin_router
+        app.include_router(_emergent_admin_router, prefix="/api")
+        _token_set = bool(os.environ.get("EMERGENT_ADMIN_TOKEN"))
+        logger.info(
+            "[EMERGENT_ADMIN] mounted at /api/emergent-admin "
+            f"(token_set={_token_set})"
+        )
+    except Exception as _ea_err:  # noqa: BLE001
+        logger.error(f"[EMERGENT_ADMIN] wiring failed: {_ea_err}")
+
     # Start the adaptive sync engine (background polling)
     if ODDS_API_KEY:
         await adaptive_sync.start()

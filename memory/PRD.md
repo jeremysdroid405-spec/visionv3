@@ -7,7 +7,8 @@ Restructure React/FastAPI betting app to a 100% Local-First Database Model with 
 Freeze all feature/UI work until the system is permanently stabilized via the 6-phase plan.
 
 
-## Latest Status (2026-05-17)
+## Latest Status (2026-05-21)
+- ✅ **Emergent Admin API DONE (2026-05-21)** — `/api/emergent-admin/*` mounted in `server.py`. Token-auth (`EMERGENT_ADMIN_TOKEN`), RBAC over `policy.PROTECTED_COLLECTIONS` / `WRITABLE_COLLECTIONS`, allowlisted job runner (`policy.ALLOWED_JOBS`), scoped service restart (`policy.ALLOWED_SERVICES={"backend"}`), `emergent_admin_audit_log` write on every request, read-only `/audit` viewer. 14-step curl matrix passed: 401 unauthenticated, 401 wrong token, 200 whoami, 200 policy, 403 protected write (`users`), 200 writable insert, 200 readback, 403 unknown job module, 400 disallowed arg, 403 disabled job, 200 cfg draft, 200 cfg activate, audit list, audit summary; plus end-to-end subprocess job (`verify_sgo_player_stats_coverage`) succeeded with full log capture. Reference: `/app/memory/EMERGENT_ADMIN_API.md`. Token recorded in `/app/memory/test_credentials.md`.
 - ✅ Fix 1 DONE: `strikeouts → batter_strikeouts` alias normalized in `_MLB_STAT_TO_FAMILY` (`canonical_stats.py`) so elite-binary override fires on the correct stat family.
 - ✅ Fix 2 DONE: `production_replay_runner._project_layer3_to_output` call-site now stamps the 7 missing SSOT fields onto every `mlb_test_outputs` doc (`tp`, `tp_source`, `edge_pct`, `is_alternate_market`, `devig_method`, `canonical_edge`, `gate_failed_reasons`). 100 % coverage for the always-known fields; canonical-derived TP fields populate on every row the gate engine actually evaluated (correctly None on `tier_odds_bucket_fail` short-circuits). No threshold/gate behaviour changed.
 

@@ -23,3 +23,19 @@
     `{events_received, recomputes, last_latency_ms, last_players_patched_count, last_trigger}`.
   - Correct token + `/api/full-sync-stats` ⇒ **200** with
     `{last_full_sync_at, last_full_sync_duration_ms, last_full_sync_props_written, last_trigger}`.
+
+## Emergent Admin API Token
+- Env var: `EMERGENT_ADMIN_TOKEN`
+- Current value (in `/app/backend/.env`): `spDPgtsi_EZsg65HEZkdhDrDR3fHn-X671kS-YxIUOQSOMzZ`
+- Mounted at: `/api/emergent-admin/*`
+- Reference: `/app/memory/EMERGENT_ADMIN_API.md`
+- Smoke:
+  ```
+  curl -H "X-Admin-Token: spDPgtsi_EZsg65HEZkdhDrDR3fHn-X671kS-YxIUOQSOMzZ" \
+       http://localhost:8001/api/emergent-admin/auth/whoami
+  ```
+- Behaviour:
+  - Token unset ⇒ **503** (fail-closed).
+  - Missing/invalid ⇒ **401**.
+  - Writes to PROTECTED collections (raw SGO, users, payments, etc.) ⇒ **403**.
+  - Non-allowlisted job module ⇒ **403**; disallowed arg flag ⇒ **400**.
