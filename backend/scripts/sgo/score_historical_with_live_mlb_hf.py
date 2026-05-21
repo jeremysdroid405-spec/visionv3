@@ -173,11 +173,24 @@ async def _probe(args, db) -> int:
         from pymongo import MongoClient
         sync_db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
         model = MLBHighFrictionModel(sync_db)
+        # Make MLB-HF's MODEL_DIR match what we actually found on disk.
+        # The class default is hardcoded to /app/backend/... which is wrong
+        # on prod (/var/www/app/backend/...). Override before load_models().
+        if mhf_dir:
+            model.MODEL_DIR = mhf_dir
+        # __init__() doesn't load pickles — load_models() does.
+        try:
+            n_loaded = model.load_models()
+            print(f"  ✓ load_models() returned {n_loaded}; loaded stat_types: "
+                    f"{sorted(model.models.keys())[:10]} ({len(model.models)} total)")
+        except Exception as e:
+            failures.append(f"load_models() raised: {e!r}")
+            traceback.print_exc()
+            print(f"  ❌ load_models() raised: {e!r}")
+            return 2
         loaded = list(getattr(model, "models", {}).keys())
-        print(f"  ✓ MLB-HF instantiated; loaded stat_types: "
-                f"{sorted(loaded)[:8]}… ({len(loaded)} total)")
         if not loaded:
-            failures.append("MLBHighFrictionModel has no loaded models")
+            failures.append("MLBHighFrictionModel.load_models() loaded 0 models")
     except Exception as e:
         failures.append(f"MLBHighFrictionModel(db) failed: {e!r}")
         traceback.print_exc()
@@ -271,6 +284,18 @@ async def _run(args, db) -> int:
     from pymongo import MongoClient
     sync_db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
     model = MLBHighFrictionModel(sync_db)
+    # Resolve MODEL_DIR to the path that actually exists.
+    for p in ("/var/www/app/backend/models/mlb_hf",
+               "/app/backend/models/mlb_hf"):
+        if os.path.isdir(p):
+            model.MODEL_DIR = p
+            break
+    n_loaded = model.load_models()
+    print(f"  load_models() → {n_loaded}; "
+            f"loaded stat_types: {sorted(model.models.keys())}")
+    if not model.models:
+        print("  ❌ no models loaded; aborting.")
+        return 2
 
     match: Dict[str, Any] = {"feature_ready": True}
     if args.league:           match["league_id"]  = args.league
