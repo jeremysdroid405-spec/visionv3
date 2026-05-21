@@ -21,6 +21,7 @@ from .deploy    import router as deploy_router
 from .preflight import router as preflight_router
 from .models    import router as models_router
 from .optimizer import router as optimizer_router
+from .coverage  import router as coverage_router
 
 router = APIRouter(prefix="/emergent-admin",
                     tags=["emergent-admin"])
@@ -35,3 +36,4 @@ router.include_router(deploy_router,      prefix="/deploy")
 router.include_router(preflight_router,   prefix="/preflight")
 router.include_router(models_router,      prefix="/models")
 router.include_router(optimizer_router,   prefix="/optimizer")
+router.include_router(coverage_router,    prefix="/coverage")

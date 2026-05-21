@@ -537,7 +537,17 @@ function WorkflowTab({ token, onPipelineFinished }) {
       </div>
 
       {!pipeline && (
-        <Btn variant="primary" testId="pipeline-start" onClick={start}>▶ Run Full {config.sport} Replay Pipeline</Btn>
+        <>
+          {/* Live coverage check — auto-loaded when start/end set */}
+          {config.start && config.end && (
+            <WarehouseCoverage token={token}
+              defaultSport={config.sport}
+              defaultStart={config.start}
+              defaultEnd={config.end}
+              compact />
+          )}
+          <Btn variant="primary" testId="pipeline-start" onClick={start}>▶ Run Full {config.sport} Replay Pipeline</Btn>
+        </>
       )}
 
       {pipeline && (
@@ -1846,6 +1856,172 @@ function ModelsTab({ token }) {
   );
 }
 
+// ── Warehouse Coverage panel (Diagnostics tab) ──────────────────────
+function WarehouseCoverage({ token, defaultStart, defaultEnd, defaultSport, compact }) {
+  const [q, setQ] = useState({
+    sport: defaultSport || 'MLB',
+    start: defaultStart || '',
+    end:   defaultEnd   || '',
+  });
+  const [cov, setCov] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!token || !q.start || !q.end) return;
+    setBusy(true);
+    try {
+      const r = await apiFetch(token,
+        `/coverage/?sport=${encodeURIComponent(q.sport)}&start=${q.start}&end=${q.end}`);
+      setCov(r);
+    } catch (e) { toast.error(`Coverage: ${e.message}`); }
+    finally { setBusy(false); }
+  }, [token, q.sport, q.start, q.end]);
+
+  // Auto-load on prop change (compact mode in Workflow)
+  useEffect(() => {
+    if (compact) load();
+  }, [compact, load]);
+
+  const runFix = async (entry) => {
+    if (!entry?.fix_job) return;
+    if (!window.confirm(`Run ${entry.fix_job} for ${q.sport} ${q.start}..${q.end}?`)) return;
+    try {
+      const res = await apiFetch(token, '/jobs/run', {
+        method: 'POST',
+        body: JSON.stringify({
+          module: entry.fix_job,
+          args: ['--league', q.sport, '--start', q.start, '--end', q.end],
+        }),
+      });
+      toast.success(`Queued ${entry.fix_job.split('.').pop()} · ${(res.job_id || '').slice(0,8)}`);
+    } catch (e) { toast.error(`Fix failed: ${e.message}`); }
+  };
+
+  const offline = cov?.offline_mode_available;
+
+  return (
+    <Section testId="warehouse-coverage-section" accent={offline ? ACCENT_2 : WARN}
+      title={compact ? 'Local Replay Warehouse Coverage' : 'Local Replay Warehouse'}
+      subtitle={compact
+        ? 'Cache-first architecture — once green, the pipeline runs entirely from local DB. No SGO API calls.'
+        : 'Per-collection coverage % across the local replay warehouse. Use Run Fix to backfill missing windows once.'}
+      right={
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {!compact && (
+            <>
+              <Select testId="cov-sport" value={q.sport} onChange={(e) => setQ({ ...q, sport: e.target.value })}
+                options={['MLB','NBA','NFL']} />
+              <Input testId="cov-start" value={q.start} placeholder="YYYY-MM-DD"
+                onChange={(e) => setQ({ ...q, start: e.target.value })} style={{ width: 130 }} />
+              <Input testId="cov-end" value={q.end} placeholder="YYYY-MM-DD"
+                onChange={(e) => setQ({ ...q, end: e.target.value })} style={{ width: 130 }} />
+            </>
+          )}
+          <Btn variant="ghost" onClick={load} testId="cov-refresh" disabled={busy}>
+            {busy ? 'Loading…' : 'Refresh'}
+          </Btn>
+        </div>
+      }>
+      {!cov ? (
+        <div style={{ padding: 16, color: DIM, fontSize: 12, textAlign: 'center' }}>
+          {q.start && q.end ? '—' : 'Pick a window above to load coverage.'}
+        </div>
+      ) : (
+        <>
+          {/* Offline-mode banner */}
+          <div data-testid="cov-offline-banner" style={{
+            padding: 10, marginBottom: 12, borderRadius: 6, fontSize: 12, fontWeight: 600,
+            background: offline ? `${ACCENT_2}1a` : `${WARN}14`,
+            border: `1px solid ${offline ? ACCENT_2 : WARN}`,
+            color: offline ? ACCENT_2 : WARN,
+          }}>
+            {offline
+              ? `✓ OFFLINE-MODE READY — all ${cov.days_in_window} days fully cached. Replay/optimizer/grid will run from local DB only. No SGO calls.`
+              : `⚠ Replay-ready: ${cov.replay_ready_pct}% (${cov.replay_ready_days}/${cov.days_in_window} days). Some layers need backfill — see per-collection cards below.`}
+          </div>
+
+          {/* Per-collection cards */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+            gap: 10, marginBottom: 12,
+          }}>
+            {Object.values(cov.by_collection || {}).map(c => {
+              const pct = c.coverage_pct || 0;
+              const color = pct >= 100 ? ACCENT_2 : pct >= 80 ? ACCENT_3 : pct >= 50 ? WARN : BAD;
+              return (
+                <div key={c.key} data-testid={`cov-card-${c.key}`} style={{
+                  background: SURFACE_2, border: `1px solid ${BORDER}`,
+                  borderLeft: `3px solid ${color}`,
+                  borderRadius: 8, padding: 12,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, color: TEXT, fontWeight: 700 }}>{c.label}</div>
+                    <span style={{
+                      fontSize: 11, color, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+                    }}>{pct.toFixed(1)}%</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: DIM, fontFamily: 'monospace' }}>
+                    {c.collection}
+                  </div>
+                  {/* Mini bar */}
+                  <div style={{ background: SURFACE_3, height: 4, borderRadius: 2, overflow: 'hidden', margin: '8px 0' }}>
+                    <div style={{ background: color, width: `${pct}%`, height: '100%' }} />
+                  </div>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
+                    {fmtInt(c.row_count)} rows · {c.days_with_rows}/{c.days_total} days
+                    {c.days_missing > 0 && (
+                      <span style={{ color: BAD, marginLeft: 6 }}>· {c.days_missing} missing</span>
+                    )}
+                    {c.days_stale > 0 && (
+                      <span style={{ color: WARN, marginLeft: 6 }}>· {c.days_stale} stale</span>
+                    )}
+                  </div>
+                  {c.preview_missing?.length > 0 && (
+                    <details style={{ marginTop: 8 }}>
+                      <summary style={{ fontSize: 10, color: DIM, cursor: 'pointer' }}>
+                        first {c.preview_missing.length} missing
+                      </summary>
+                      <div style={{ fontSize: 10, color: DIM, fontFamily: 'monospace', marginTop: 4, lineHeight: 1.5 }}>
+                        {c.preview_missing.join(', ')}
+                      </div>
+                    </details>
+                  )}
+                  {c.days_missing > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <Btn variant="warn" testId={`cov-fix-${c.key}`} onClick={() => runFix(c)}>
+                        Run Fix → backfill once
+                      </Btn>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Unready day preview */}
+          {!offline && cov.preview_unready_days?.length > 0 && (
+            <div data-testid="cov-unready" style={{
+              background: SURFACE_2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 10,
+            }}>
+              <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>
+                First {cov.preview_unready_days.length} days needing backfill
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 4 }}>
+                {cov.preview_unready_days.map(d => (
+                  <div key={d.date} style={{ fontSize: 11, fontFamily: 'monospace', color: TEXT, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{d.date}</span>
+                    <span style={{ color: WARN, fontSize: 10 }}>{d.missing_layers.join(',')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </Section>
+  );
+}
+
 // ── Diagnostics tab ─────────────────────────────────────────────────
 function DiagnosticsTab({ token }) {
   const [pf, setPf] = useState(null);
@@ -1908,6 +2084,9 @@ function DiagnosticsTab({ token }) {
               ))}
             </div>
           )}
+
+          {/* Local warehouse coverage — primary offline-mode signal */}
+          <WarehouseCoverage token={token} />
 
           {/* Connection */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10, marginBottom: 14 }}>

@@ -8,6 +8,20 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 
 
 ## Latest Status (2026-05-21)
+- ✅ **Local Replay Warehouse / Offline-Mode Architecture DONE (2026-05-21)** — every part of the testing system now runs cache-first against local DB.
+  - **Backend** `routes/emergent_admin/coverage.py`:
+    - `GET /coverage/?sport=&start=&end=` → per-collection coverage stats across `sgo_player_stats`, `sgo_pp_research_model_features`, `sgo_pp_research_model_predictions`, `sgo_propvision_full_pipeline_replay`. Returns per-collection `coverage_pct`, `days_with_rows`, `days_missing`, `days_stale`, `preview_missing[:20]`, plus replay-readiness % (date is "ready" iff ALL FOUR layers populated) and `offline_mode_available` boolean.
+    - `GET /coverage/missing?sport=&start=&end=[&collection=]` → list of missing dates per layer with `fix_job` + `fix_args_template` so the UI can one-click backfill.
+    - Smoke-tested: returns coverage in <100ms for week-long windows.
+  - **Frontend** new `WarehouseCoverage` component used in two places:
+    1. **Diagnostics tab** (full-form) — sport/date selectors, per-collection cards with progress bars, missing/stale date previews, "Run Fix → backfill once" buttons.
+    2. **Workflow tab** (compact, auto-loaded on date change) — appears above the start button. Big green banner "✓ OFFLINE-MODE READY" when all days fully cached, or warning banner with replay-ready % otherwise. Makes the cache-first contract visible to the operator before launching.
+  - **Cache-first contract** verified across the stack:
+    - **Optimizer** already cache-only (reads `sgo_propvision_full_pipeline_replay`)
+    - **Sweep / grid_sweep** already cache-only (reads `sgo_pp_research_outcomes` + the replay collection)
+    - **Workflow** workflow already had skip-prep-steps toggles (default ON for ingest/features/score) — Coverage panel now tells you WHEN you can safely skip them
+    - **SGO ingestion jobs** stay as fix-jobs you launch explicitly via Coverage UI, never auto-invoked
+  - Lint clean, `yarn build` clean.
 - ✅ **Auto-Optimizer DONE (2026-05-21)** — large-scale threshold grid search now self-service end-to-end.
   - **Backend** `routes/emergent_admin/optimizer.py`: `POST /optimizer/run` kicks an async background task; `GET /optimizer/{id}` polls progress with elapsed/ETA; `GET /optimizer/{id}/results` returns top/worst/best-by-tier/best-by-stat_family/best-by-odds_bucket + overfit_warnings; `POST /optimizer/{id}/save_as_candidates` persists top-K to `candidate_thresholds`; `POST /optimizer/{id}/set_testing_default` writes to `admin_testing_defaults`; `GET /optimizer/_meta/testing_default` reads it back.
   - Reads cached `sgo_propvision_full_pipeline_replay` ONCE per (tier × stat_family × odds_bucket) cell, then iterates threshold combos in-process — single-digit seconds per cell on 30-day windows. Concurrent cell workers via `asyncio.Semaphore(worker_limit=4)` default.
