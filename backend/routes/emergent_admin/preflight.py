@@ -39,6 +39,7 @@ RESEARCH_DEPS: Dict[str, Dict[str, str]] = {
     "sgo_pp_research_core_enriched": {"role": "read",  "league": "ALL"},
     "sgo_pp_research_outcomes":      {"role": "read",  "league": "ALL"},
     "sgo_player_stats":              {"role": "read",  "league": "ALL"},
+    "sgo_replay_alt_odds_raw":       {"role": "read",  "league": "MLB"},
     "mlb_master_hub_2026":           {"role": "read",  "league": "MLB"},
     "mlb_historical_logs":           {"role": "read",  "league": "MLB"},
     "mlb_statcast_raw":              {"role": "read",  "league": "MLB"},
@@ -98,6 +99,18 @@ def _classify_warnings(collections: Dict[str, Dict[str, Any]],
             "message": "sgo_pp_research_outcomes is empty — no graded "
                           "outcomes available for replay/sweep.",
             "fix_job": "scripts.sgo.build_historical_outcomes",
+            "fix_args": [],
+        })
+    if collections.get("sgo_replay_alt_odds_raw", {}).get("count", 0) == 0:
+        out.append({
+            "code": "no_reshape_odds",
+            "severity": "high",
+            "message": "sgo_replay_alt_odds_raw is empty — historical "
+                          "full pipeline replay (SSOT mode) requires the "
+                          "production odds-shape reshape to have run first. "
+                          "Without it the replay script HARD-FAILS at "
+                          "preflight (no silent fallback).",
+            "fix_job": "scripts.sgo.reshape_sgo_to_replay_odds",
             "fix_args": [],
         })
     if collections.get("sgo_player_stats", {}).get("count", 0) == 0:
