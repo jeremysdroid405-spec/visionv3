@@ -64,6 +64,15 @@ READ_ONLY_ALLOWED: Set[str] = (PROTECTED_COLLECTIONS | {
     # diagnostic reads
     "emergent_admin_jobs",
     "emergent_admin_audit_log",
+    # 2026-05-21 — live MLB pipeline upstreams. READ-ONLY through the
+    # Admin API; writes still happen only via the live ingest pipeline
+    # or via the explicitly enabled backfill jobs. Researchers need
+    # these to inspect coverage before triggering backfills.
+    "mlb_master_hub_2026", "mlb_master_hub_data", "mlb_master_hub",
+    "mlb_historical_logs", "mlb_player_game_logs",
+    "mlb_statcast_player_features", "mlb_statcast_raw",
+    "mlb_player_identity_map", "mlb_lineup_resolver",
+    "mlb_live_lineup_feed",
 }) | WRITABLE_COLLECTIONS  # writable are also readable
 
 
