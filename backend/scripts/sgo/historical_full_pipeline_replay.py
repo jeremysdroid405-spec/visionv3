@@ -214,6 +214,57 @@ async def _run(args: argparse.Namespace) -> int:
         print("  ❌ no models loaded; aborting.")
         return 2
 
+    # 2026-05-21 — `master_hub.bdl_game_logs[]` on prod only holds the
+    # CURRENT season's logs (live engine reads it that way). For
+    # historical replay we need to merge pre-window logs from
+    # `mlb_historical_logs` so `predict()`'s `_filter_logs_before(...
+    # as_of_date)` has enough rows to satisfy the `len(game_logs) >= 5`
+    # gate. We monkey-patch `model.master_hub.find_one` to do this
+    # merge in-memory. The production collection is NEVER written to.
+    _orig_find_one = model.master_hub.find_one
+    _hist = sync_db.mlb_historical_logs
+    _hist_cache: Dict[int, List[Dict[str, Any]]] = {}
+
+    def _merged_find_one(query, projection=None, **kw):
+        doc = _orig_find_one(query, projection, **kw)
+        if not doc:
+            return doc
+        # Resolve player_id for the historical lookup
+        pid = doc.get("bdl_player_id") or doc.get("bdl_id")
+        if pid is None:
+            return doc
+        try:
+            pid_int = int(pid)
+        except (TypeError, ValueError):
+            return doc
+        if pid_int not in _hist_cache:
+            hist = _hist.find_one(
+                {"$or": [{"player_id": pid_int},
+                          {"bdl_player_id": pid_int}]},
+                {"_id": 0, "game_logs": 1},
+            )
+            _hist_cache[pid_int] = (hist or {}).get("game_logs") or []
+        hist_logs = _hist_cache[pid_int]
+        if not hist_logs:
+            return doc
+        # Merge — historical archive on top, current-season after.
+        # Dedupe by game_id.
+        live = doc.get("bdl_game_logs") or []
+        seen = {g.get("game_id") for g in live if g.get("game_id") is not None}
+        merged = list(live)
+        for g in hist_logs:
+            if g.get("game_id") in seen:
+                continue
+            merged.append(g)
+            if g.get("game_id") is not None:
+                seen.add(g.get("game_id"))
+        doc["bdl_game_logs"] = merged
+        return doc
+
+    model.master_hub.find_one = _merged_find_one  # type: ignore[method-assign]
+    print(f"  historical-logs merger installed "
+            f"(reads {_hist.database.name}.mlb_historical_logs)")
+
     db = AsyncIOMotorClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 
     excl = [s.strip() for s in (args.exclude_stat_family or "").split(",") if s.strip()]
