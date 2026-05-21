@@ -125,15 +125,33 @@ def _odds_bucket(odds: Optional[int]) -> str:
 
 # ── Pre-flight ────────────────────────────────────────────────────────────
 async def _preflight(db, *, league: str, start: str, end: str) -> None:
-    """HARD-FAIL pre-flight. Raises RuntimeError if SSOT inputs missing."""
+    """HARD-FAIL pre-flight. Raises RuntimeError if SSOT inputs missing.
+
+    SCHEMA NOTE: `sgo_replay_alt_odds_raw` mirrors `mlb_historical_alt_odds_raw`
+    which the production replay adapter consumes — that schema uses
+    `sport: "mlb"` (lowercase, no `league`/`league_id` field). We query on
+    `sport` here so this preflight stays in lockstep with what
+    `services.pipeline.providers.historical_input.load_props()` actually
+    reads downstream. Querying on `league: "MLB"` was a 2026-05-21 bug that
+    falsely hard-failed even when reshape had written rows.
+    """
+    sport_canonical = "mlb" if league.upper() == "MLB" else league.lower()
     n_odds = await db[SGO_ODDS_COLL].count_documents({
-        "league": league.upper(),
+        "sport": sport_canonical,
         "game_date": {"$gte": start, "$lte": end},
     })
     if n_odds == 0:
+        # Try the legacy "league" field as a fallback hint so the error
+        # message is maximally diagnostic for any older rows.
+        n_legacy = await db[SGO_ODDS_COLL].count_documents({
+            "league": league.upper(),
+            "game_date": {"$gte": start, "$lte": end},
+        })
         raise RuntimeError(
             f"[preflight] {SGO_ODDS_COLL} has 0 rows in "
-            f"{league} {start}..{end}. Run "
+            f"{league} {start}..{end} "
+            f"(queried sport='{sport_canonical}'; legacy league='{league.upper()}' "
+            f"would match {n_legacy} rows). Run "
             f"scripts.sgo.reshape_sgo_to_replay_odds first. "
             f"NO FALLBACK to inlined gates — SSOT-only.")
     n_outcomes = await db[SGO_OUTCOMES_COLL].count_documents({
@@ -146,7 +164,7 @@ async def _preflight(db, *, league: str, start: str, end: str) -> None:
             f"[preflight] {SGO_OUTCOMES_COLL} has 0 resolved rows in "
             f"{league} {start}..{end}. Run "
             f"scripts.sgo.build_historical_outcomes first.")
-    print(f"  ✓ preflight: {SGO_ODDS_COLL}={n_odds:,} rows · "
+    print(f"  ✓ preflight: {SGO_ODDS_COLL}={n_odds:,} rows (sport='{sport_canonical}') · "
           f"{SGO_OUTCOMES_COLL}={n_outcomes:,} resolved")
 
 

@@ -300,6 +300,12 @@ def reshape_row(d: Dict[str, Any], now: datetime) -> tuple[Optional[Dict[str, An
     row = {
         "sport": "mlb",
         "sport_key": "baseball_mlb",
+        # `league` mirrors the upstream sgo_pp_research_core_enriched
+        # `league_id` field. Production canonical schema doesn't use it
+        # (that uses `sport: "mlb"`), but we carry it through anyway so the
+        # collection is self-describing and joinable with grading data
+        # (sgo_pp_research_outcomes uses `league_id: "MLB"`).
+        "league": "MLB",
         "game_date": d["game_date"],
         "event_id": d["event_id"],
         "home_team": d.get("home_team"),

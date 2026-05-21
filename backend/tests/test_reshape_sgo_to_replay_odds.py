@@ -188,6 +188,21 @@ def test_upsert_key_fields_are_all_present():
         assert k in row and row[k] is not None, f"missing upsert-key field: {k}"
 
 
+def test_output_carries_sport_and_league_fields():
+    """The replay preflight queries `sport: "mlb"` (canonical) while the
+    SGO outcomes collection uses `league_id: "MLB"`. Reshape must emit
+    BOTH conventions on every output row so:
+      • production replay adapter can read `sport`
+      • any downstream joiner can read `league`
+    Regression guard against the 2026-05-21 schema mismatch where
+    preflight queried `league: "MLB"` against rows that only had
+    `sport: "mlb"`, causing falsely failed replays."""
+    row, _ = reshape_row(_base_doc(), NOW)
+    assert row["sport"] == "mlb"
+    assert row["sport_key"] == "baseball_mlb"
+    assert row["league"] == "MLB"
+
+
 def test_doc_level_best_book_odds_preferred_when_present():
     """If a future upstream job writes a doc-level `best_book_odds` we honor
     it directly instead of digging into books[]."""
