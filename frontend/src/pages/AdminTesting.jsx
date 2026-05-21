@@ -355,8 +355,26 @@ function WorkflowTab({ token, onPipelineFinished }) {
 
   useEffect(() => { savePipeline(pipeline); }, [pipeline]);
 
+  // Chain key — recomputed whenever ANY step's status changes. We use it
+  // as the orchestrator effect's dependency so the closure is rebuilt
+  // (and drive() is invoked immediately) on every step transition. This
+  // is what makes the chain auto-advance: step 1 succeeds → status array
+  // changes → effect tears down + re-runs → fresh drive() queues step 2
+  // within a tick instead of waiting on the poll interval.
+  const chainKey = useMemo(
+    () => pipeline?.steps?.map(s => `${s.status}:${s.job_id || ''}`).join('|') || '',
+    [pipeline]
+  );
+
   useEffect(() => {
-    if (!pipeline || !token) { if (pollRef.current) clearInterval(pollRef.current); return; }
+    if (!pipeline || !token) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      return;
+    }
+    if (pipeline.status === 'completed' || pipeline.status === 'halted') {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      return;
+    }
     const drive = async () => {
       const cur = pipeline.steps.findIndex(s => s.status === 'running' || s.status === 'queued');
       if (cur < 0) {
@@ -364,13 +382,13 @@ function WorkflowTab({ token, onPipelineFinished }) {
         if (next < 0) {
           setPipeline(p => p && p.status !== 'completed'
             ? { ...p, status: 'completed', finished_at: new Date().toISOString() } : p);
-          if (pollRef.current) clearInterval(pollRef.current);
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
           if (onPipelineFinished) onPipelineFinished();
           return;
         }
         const stepDef = PIPELINE_STEPS[next];
         if (!stepDef.stepKey) {
-          // virtual
+          // virtual step — mark succeeded so the next step kicks immediately
           setPipeline(p => {
             const steps = [...p.steps];
             steps[next] = { ...steps[next], status: 'succeeded', finished_at: new Date().toISOString() };
@@ -390,6 +408,7 @@ function WorkflowTab({ token, onPipelineFinished }) {
           return;
         }
         try {
+          toast.info(`▶ starting ${stepDef.label}…`);
           const res = await apiFetch(token, '/jobs/run', {
             method: 'POST', body: JSON.stringify(built),
           });
@@ -401,7 +420,6 @@ function WorkflowTab({ token, onPipelineFinished }) {
             };
             return { ...p, steps };
           });
-          toast.info(`▶ ${stepDef.label}`);
         } catch (e) {
           setPipeline(p => {
             const steps = [...p.steps];
@@ -419,9 +437,6 @@ function WorkflowTab({ token, onPipelineFinished }) {
         const job = j.job;
         try { const lg = await apiFetch(token, `/jobs/${active.job_id}/log?tail=200`);
           setTail(lg.lines || []);
-          // Surface failure context onto the active step doc so the
-          // pipeline visualization shows it even when the user is not
-          // looking at the tail panel.
           if (lg.status && lg.status !== 'running' && lg.status !== 'queued') {
             setPipeline(p => {
               if (!p) return p;
@@ -440,12 +455,16 @@ function WorkflowTab({ token, onPipelineFinished }) {
           }
         } catch {}
         if (job.status === 'succeeded') {
+          const nextDef = PIPELINE_STEPS.slice(cur + 1).find(s =>
+            !pipeline.steps[PIPELINE_STEPS.indexOf(s)]
+              || pipeline.steps[PIPELINE_STEPS.indexOf(s)].status === 'pending'
+          );
           setPipeline(p => {
             const steps = [...p.steps];
             steps[cur] = { ...steps[cur], status: 'succeeded', finished_at: new Date().toISOString(), exit_code: job.exit_code };
             return { ...p, steps };
           });
-          toast.success(`✓ ${PIPELINE_STEPS[cur].label}`);
+          toast.success(`✓ ${PIPELINE_STEPS[cur].label}${nextDef ? ` → starting ${nextDef.label}` : ''}`);
         } else if (['failed','errored','cancelled'].includes(job.status)) {
           // Extract a human-readable error line from the tail when the
           // job doc itself has no `error` field. Python scripts that
@@ -482,9 +501,9 @@ function WorkflowTab({ token, onPipelineFinished }) {
       } catch (e) { console.error('[pipe] poll', e); }
     };
     drive();
-    pollRef.current = setInterval(drive, 2500);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [pipeline?.id, pipeline?.status, token]);
+    pollRef.current = setInterval(drive, 1000);
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [chainKey, token]);
 
   const start = () => {
     if (!config.start || !config.end) { toast.error('Start and end dates required'); return; }
