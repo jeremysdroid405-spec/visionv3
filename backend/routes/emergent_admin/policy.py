@@ -196,7 +196,8 @@ ALLOWED_JOBS: Dict[str, Dict] = {
         "label": "Reshape SGO enriched → mlb_historical_alt_odds_raw shape",
         "writes_to": "sgo_replay_alt_odds_raw (writable)",
         "enabled": True,
-        "args": ["--league", "--start", "--end", "--limit", "--debug-source"],
+        "args": ["--league", "--start", "--end", "--limit",
+                  "--source", "--debug-source"],
     },
     # 2026-05-21 — invoke the existing production replay pipeline
     # against the SGO-derived odds, writing to the `sgo_replay` namespace.

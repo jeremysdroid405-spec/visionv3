@@ -53,7 +53,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import UpdateOne, ASCENDING
 from pymongo.errors import OperationFailure, BulkWriteError
 
-SRC  = "sgo_pp_research_core_enriched"
+SRC_ENRICHED = "sgo_pp_research_core_enriched"
+SRC_CORE     = "sgo_pp_research_core"
+SRC  = SRC_ENRICHED   # default; auto-falls-back to SRC_CORE if enriched empty
 DEST = "sgo_replay_alt_odds_raw"
 SNAPSHOT_HOUR_UTC = 11
 
@@ -326,39 +328,46 @@ def reshape_row(d: Dict[str, Any], now: datetime) -> tuple[Optional[Dict[str, An
 
 async def _preflight_diagnostics(db, *, league: str, start: str, end: str) -> Dict[str, Any]:
     """Run BEFORE the main loop. Counts + distinct-value sampling that
-    pinpoints the failure category if reshape ends up writing 0 rows."""
-    match: Dict[str, Any] = {
-        "league_id": league,
-        "game_date": {"$gte": start, "$lte": end},
+    pinpoints the failure category if reshape ends up writing 0 rows.
+
+    Inspects BOTH source collections (enriched + core) so the operator can
+    see whether enrichment has been built for the window or not. The main
+    `_run()` then picks whichever non-empty collection has data."""
+
+    async def _inspect(coll_name: str) -> Dict[str, Any]:
+        match = {"league_id": league,
+                 "game_date": {"$gte": start, "$lte": end}}
+        n = await db[coll_name].count_documents(match)
+        info: Dict[str, Any] = {
+            "match_count": n,
+            "total_count": await db[coll_name].estimated_document_count(),
+        }
+        if n == 0 and info["total_count"] > 0:
+            info["distinct_league_ids"] = await db[coll_name].distinct("league_id")
+            sample_dates = await db[coll_name].aggregate([
+                {"$group": {"_id": "$game_date"}},
+                {"$sort":  {"_id": -1}}, {"$limit": 30},
+            ]).to_list(length=30)
+            info["recent_game_dates"] = [r["_id"] for r in sample_dates]
+            sample = []
+            async for d in db[coll_name].find({}, {"_id": 0}).limit(2):
+                sample.append({k: (f"<{type(v).__name__} len={len(v)}>"
+                                       if isinstance(v, (list, dict)) else v)
+                                  for k, v in d.items()})
+            info["sample_docs"] = sample
+        if n > 0:
+            info["distinct_game_dates"] = await db[coll_name].distinct(
+                "game_date", match)
+            info["distinct_stat_ids"]   = await db[coll_name].distinct(
+                "stat_id", match)
+            info["distinct_sides"]      = await db[coll_name].distinct(
+                "side", match)
+        return info
+
+    return {
+        SRC_ENRICHED: await _inspect(SRC_ENRICHED),
+        SRC_CORE:     await _inspect(SRC_CORE),
     }
-    n_src = await db[SRC].count_documents(match)
-    out: Dict[str, Any] = {"source_match_count": n_src}
-
-    if n_src == 0:
-        # Source is empty for this filter. Show what the user MIGHT have meant.
-        out["source_total_count"] = await db[SRC].estimated_document_count()
-        # Distinct league_id values present in the collection at all
-        out["distinct_league_ids"] = await db[SRC].distinct("league_id")
-        # Distinct game_date values in the collection (capped)
-        sample_dates = await db[SRC].aggregate([
-            {"$group": {"_id": "$game_date"}},
-            {"$sort": {"_id": -1}}, {"$limit": 30},
-        ]).to_list(length=30)
-        out["recent_game_dates"] = [r["_id"] for r in sample_dates]
-        # Sample 3 docs irrespective of filter so user sees the actual shape
-        sample = []
-        async for d in db[SRC].find({}, {"_id": 0}).limit(3):
-            sample.append({k: (f"<{type(v).__name__} len={len(v)}>"
-                                  if isinstance(v, (list, dict)) else v)
-                            for k, v in d.items()})
-        out["sample_source_docs"] = sample
-        return out
-
-    # Source has docs in the window — measure feasibility
-    out["distinct_game_dates"] = await db[SRC].distinct("game_date", match)
-    out["distinct_stat_ids"] = await db[SRC].distinct("stat_id", match)
-    out["distinct_sides"] = await db[SRC].distinct("side", match)
-    return out
 
 
 async def _run(args: argparse.Namespace) -> int:
@@ -366,46 +375,77 @@ async def _run(args: argparse.Namespace) -> int:
     await _ensure_indexes(db)
 
     print("=" * 72)
-    print(f"  RESHAPE SGO → REPLAY ODDS  ({SRC} → {DEST})")
+    print(f"  RESHAPE SGO → REPLAY ODDS  (→ {DEST})")
     print(f"  window: {args.start}..{args.end}   league: {args.league}")
     print(f"  snapshot_hour_utc = {SNAPSHOT_HOUR_UTC:02d}")
     print("=" * 72)
 
-    # ── PREFLIGHT ────────────────────────────────────────────────────────
+    # ── PREFLIGHT — inspect BOTH possible source collections ─────────────
     pf = await _preflight_diagnostics(db, league=args.league,
                                             start=args.start, end=args.end)
-    n_src = pf["source_match_count"]
+    n_enr  = pf[SRC_ENRICHED]["match_count"]
+    n_core = pf[SRC_CORE]["match_count"]
     print()
-    print(f"[preflight] {SRC}.countDocuments({{league_id:'{args.league}', "
-              f"game_date:{{$gte:'{args.start}',$lte:'{args.end}'}}}}) = {n_src}")
+    print(f"[preflight] source-collection counts for "
+              f"league_id='{args.league}', game_date in [{args.start}..{args.end}]:")
+    print(f"             {SRC_ENRICHED}: {n_enr} matched  "
+              f"(total docs ~{pf[SRC_ENRICHED]['total_count']})")
+    print(f"             {SRC_CORE}: {n_core} matched  "
+              f"(total docs ~{pf[SRC_CORE]['total_count']})")
 
-    if n_src == 0:
-        print(f"[preflight] {SRC} has ZERO docs for the requested filter.")
-        print(f"[preflight]   total docs in {SRC}: {pf.get('source_total_count')}")
-        print(f"[preflight]   distinct league_id values present: "
-                  f"{pf.get('distinct_league_ids')}")
-        print(f"[preflight]   most recent 30 game_dates in {SRC}:")
-        for gd in (pf.get("recent_game_dates") or []):
-            print(f"                  {gd}")
-        if pf.get("sample_source_docs"):
-            print("[preflight]   sample doc fields (showing types only):")
-            for i, sd in enumerate(pf["sample_source_docs"]):
-                print(f"                  doc[{i}]: {json.dumps(sd, default=str)[:400]}")
+    # Source selection: explicit override → enriched if has data →
+    # core as fallback → fail loudly
+    chosen_src: Optional[str] = None
+    if args.source:
+        if args.source not in (SRC_ENRICHED, SRC_CORE):
+            print(f"ERROR: --source must be one of {SRC_ENRICHED} or "
+                      f"{SRC_CORE}")
+            return 0
+        chosen_src = args.source
+        print(f"[preflight] using explicit --source={chosen_src}")
+    elif n_enr > 0:
+        chosen_src = SRC_ENRICHED
+        print(f"[preflight] choosing {SRC_ENRICHED} (has {n_enr} matching rows)")
+    elif n_core > 0:
+        chosen_src = SRC_CORE
+        print(f"[preflight] {SRC_ENRICHED} is empty for this window; "
+                  f"falling back to {SRC_CORE} ({n_core} matching rows)")
+        print("[preflight]   (NOTE: core rows lack `best_book_id` / "
+                  "enrichment fields; odds will come from anchor.price "
+                  "or books[].price directly.)")
+    else:
+        # Both empty — print everything we know about both collections
         print()
-        print("Diagnosis: nothing to reshape because the source collection has "
-                  "no rows matching league_id+game_date window. Run upstream "
-                  "ingest (build_pp_research_core + "
-                  "build_historical_consensus_probabilities) for this window "
-                  "first, OR check whether league_id is stored as 'MLB' vs "
-                  "'mlb' / 'baseball_mlb' (see distinct_league_ids above).")
+        print("[preflight] BOTH source collections have ZERO rows for the "
+                  "requested filter. Diagnostic dump:")
+        for cn, info in pf.items():
+            print(f"\n  ── {cn} ──")
+            print(f"  total docs ~{info['total_count']}")
+            if info["total_count"] > 0:
+                print(f"  distinct league_id values: "
+                          f"{info.get('distinct_league_ids')}")
+                print("  most recent 30 game_date values:")
+                for gd in (info.get("recent_game_dates") or []):
+                    print(f"     {gd}")
+                if info.get("sample_docs"):
+                    print("  sample doc shape:")
+                    for i, sd in enumerate(info["sample_docs"]):
+                        print(f"     [{i}] {json.dumps(sd, default=str)[:400]}")
+        print()
+        print("Diagnosis: nothing to reshape. Either neither source collection "
+                  "has been ingested for this window, OR the storage format "
+                  "for league_id / game_date differs from the filter "
+                  "(see distinct values above).")
         return 0
 
+    # Show what's in the chosen source's window
+    chosen = pf[chosen_src]
     print(f"[preflight]   distinct game_dates in window: "
-              f"{pf.get('distinct_game_dates')}")
+              f"{chosen.get('distinct_game_dates')}")
     print(f"[preflight]   distinct stat_ids in window: "
-              f"{pf.get('distinct_stat_ids')}")
+              f"{chosen.get('distinct_stat_ids')}")
     print(f"[preflight]   distinct sides in window: "
-              f"{pf.get('distinct_sides')}")
+              f"{chosen.get('distinct_sides')}")
     print()
 
     # ── MAIN LOOP ────────────────────────────────────────────────────────
@@ -438,7 +478,7 @@ async def _run(args: argparse.Namespace) -> int:
 
     match = {"league_id": args.league,
               "game_date": {"$gte": args.start, "$lte": args.end}}
-    cur = db[SRC].find(match, projection={"_id": 0})
+    cur = db[chosen_src].find(match, projection={"_id": 0})
     if args.limit:
         cur = cur.limit(int(args.limit))
 
@@ -537,18 +577,12 @@ async def _run(args: argparse.Namespace) -> int:
         print()
         print("  SAMPLE output rows:")
         for i, r in enumerate(sample_outputs):
-            # strip the datetime to keep the print clean
-            r2 = {k: v for k, v in r.items()
-                    if not isinstance(v, datetime)}
+            r2 = {k: v for k, v in r.items() if not isinstance(v, datetime)}
             print(f"    [{i}] {json.dumps(r2, default=str)[:500]}")
     print("─" * 72)
+    print(f"  source = {chosen_src}")
     print(f"  → {DEST}")
-    return 0 if n_written > 0 or n_seen == 0 else 0
-    # Note: returning 0 even when n_written==0 is intentional — the verbose
-    # diagnostics above (especially `unmapped_stat_ids` and `skip_samples`)
-    # ARE the actionable signal. A non-zero exit would mask them inside the
-    # job runner's "failed" status. The user wants the script to RUN to
-    # completion and tell them why nothing landed.
+    return 0
 
 
 def _parse():
@@ -557,6 +591,10 @@ def _parse():
     p.add_argument("--start", required=True)
     p.add_argument("--end",   required=True)
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--source", default=None,
+                      choices=[SRC_ENRICHED, SRC_CORE],
+                      help="Force a specific source collection. Default is "
+                              "enriched with automatic fallback to core.")
     p.add_argument("--debug-source", action="store_true",
                       help="Print the first 5 source docs' field listings.")
     return p.parse_args()
