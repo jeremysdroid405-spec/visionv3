@@ -391,7 +391,28 @@ function WorkflowTab({ token, onPipelineFinished }) {
       try {
         const j = await apiFetch(token, `/jobs/${active.job_id}`);
         const job = j.job;
-        try { const lg = await apiFetch(token, `/jobs/${active.job_id}/log?tail=200`); setTail(lg.lines || []); } catch {}
+        try { const lg = await apiFetch(token, `/jobs/${active.job_id}/log?tail=200`);
+          setTail(lg.lines || []);
+          // Surface failure context onto the active step doc so the
+          // pipeline visualization shows it even when the user is not
+          // looking at the tail panel.
+          if (lg.status && lg.status !== 'running' && lg.status !== 'queued') {
+            setPipeline(p => {
+              if (!p) return p;
+              const steps = [...p.steps];
+              const idx = steps.findIndex(s => s.job_id === active.job_id);
+              if (idx >= 0 && !steps[idx].tail_preview) {
+                steps[idx] = {
+                  ...steps[idx],
+                  tail_preview: lg.tail_preview || lg.lines?.slice(-30) || [],
+                  spawn_error: lg.error || null,
+                  spawn_traceback: lg.traceback || null,
+                };
+              }
+              return { ...p, steps };
+            });
+          }
+        } catch {}
         if (job.status === 'succeeded') {
           setPipeline(p => {
             const steps = [...p.steps];
@@ -576,6 +597,21 @@ function WorkflowTab({ token, onPipelineFinished }) {
                     {st.status === 'succeeded' ? s.next : s.purpose}
                   </div>
                   {st.error && <div style={{ fontSize: 10, color: BAD, marginTop: 4 }}>{String(st.error).slice(0, 100)}</div>}
+                  {st.tail_preview && st.tail_preview.length > 0
+                    && ['failed','errored','cancelled'].includes(st.status) && (
+                    <details style={{ marginTop: 6 }} data-testid={`pipe-tail-${s.key}`}>
+                      <summary style={{ fontSize: 10, color: BAD, cursor: 'pointer' }}>
+                        last {st.tail_preview.length} lines (click to expand)
+                      </summary>
+                      <pre style={{
+                        fontSize: 9, color: '#A1A1AA',
+                        background: '#000', padding: 6, borderRadius: 4,
+                        margin: '4px 0 0', maxHeight: 200, overflow: 'auto',
+                        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                        fontFamily: 'ui-monospace, monospace',
+                      }}>{st.tail_preview.join('')}</pre>
+                    </details>
+                  )}
                 </div>
               );
             })}

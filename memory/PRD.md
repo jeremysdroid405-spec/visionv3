@@ -8,6 +8,19 @@ Freeze all feature/UI work until the system is permanently stabilized via the 6-
 
 
 ## Latest Status (2026-05-21)
+- ✅ **Job runner logging — FULLY DEBUGGED & WIRED (2026-05-21)** — silent-failure bug fixed across the whole stack.
+  - **Backend** `routes/emergent_admin/jobs.py` rewritten:
+    - `python -u` + `PYTHONUNBUFFERED=1` for unbuffered subprocess output
+    - `asyncio.wait_for(readline, timeout=1s)` driver — flushes every 25 lines OR every 1 second (was: 50 lines only — caused short-lived failures to never flush)
+    - Final drain of any bytes left in the pipe after `proc.returncode` is set
+    - Rolling 200-line `tail_preview` field on the job doc — surfaces context even without paging the full `log`
+    - Spawn-time exceptions now capture full `traceback` (was: just `repr(e)`)
+    - `logger.error("[job %s] FAILED rc=%s …")` on any non-zero exit — propagates to `supervisor` / `journalctl` (was: failures never reached backend logger)
+    - `logger.info` on queue and success too — full audit trail in supervisor logs
+    - `/log` endpoint now returns `exit_code`, `error`, `traceback`, `tail_preview` alongside `lines`
+  - **Frontend** Workflow tab — failed step cards now show an expandable "last N lines" details block with the captured tail. Pipeline state machine captures `tail_preview`, `spawn_error`, `spawn_traceback` from the log endpoint onto each step doc.
+  - **Verified end-to-end**: forced `historical_full_pipeline_replay` with bogus date → exit=1 → 32 captured log lines including full Python `RuntimeError: [preflight] sgo_replay_alt_odds_raw has 0 rows…` traceback → backend supervisor log shows `ERROR - emergent_admin.jobs - [job …] FAILED rc=1` line.
+  - Lint clean, `yarn build` clean.
 - ✅ **Local Replay Warehouse / Offline-Mode Architecture DONE (2026-05-21)** — every part of the testing system now runs cache-first against local DB.
   - **Backend** `routes/emergent_admin/coverage.py`:
     - `GET /coverage/?sport=&start=&end=` → per-collection coverage stats across `sgo_player_stats`, `sgo_pp_research_model_features`, `sgo_pp_research_model_predictions`, `sgo_propvision_full_pipeline_replay`. Returns per-collection `coverage_pct`, `days_with_rows`, `days_missing`, `days_stale`, `preview_missing[:20]`, plus replay-readiness % (date is "ready" iff ALL FOUR layers populated) and `offline_mode_available` boolean.
