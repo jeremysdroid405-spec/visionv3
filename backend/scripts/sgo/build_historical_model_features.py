@@ -133,10 +133,18 @@ except ImportError:
 # ─── side/line hit logic (matches outcomes grader) ─────────────────────────
 def _is_hit(side: str, value: Optional[float], line: float) -> Optional[bool]:
     if value is None: return None
-    if value == line: return None  # push doesn't count as hit/miss
+    # 2026-05-21 defensive coerce — `value` and `line` are sometimes
+    # written as strings by upstream ingest. Coerce here so the
+    # comparison cannot raise TypeError mid-batch (which previously
+    # killed entire dates of feature builds).
+    try:
+        v = float(value); ln = float(line)
+    except (TypeError, ValueError):
+        return None
+    if v == ln: return None  # push doesn't count as hit/miss
     s = (side or "").upper()
-    if s in ("OVER", "YES"):  return value > line
-    if s in ("UNDER", "NO"):  return value < line
+    if s in ("OVER", "YES"):  return v > ln
+    if s in ("UNDER", "NO"):  return v < ln
     return None
 
 
@@ -162,7 +170,21 @@ def compute_features(
         missing.append("no_prior_games")
         return feats, fam, missing
 
-    vals = [v for _, v in prior_values]
+    # 2026-05-21 defensive coerce — upstream `sgo_player_stats` rows
+    # occasionally carry string-typed numeric stats. Anything that
+    # can't be coerced is dropped silently so a single bad row doesn't
+    # take down the whole date's feature build.
+    _vals: List[float] = []
+    for _, _v in prior_values:
+        try:
+            _vals.append(float(_v))
+        except (TypeError, ValueError):
+            continue
+    vals = _vals
+    if not vals:
+        missing.append("no_prior_games")
+        feats["games_played_prior"] = 0
+        return feats, fam, missing
 
     def avg(window):
         sub = vals[-window:]
@@ -189,7 +211,11 @@ def compute_features(
         feats["days_since_last_game"] = None
 
     # Line-relative hit rates (skip if line is None)
-    if line is None:
+    try:
+        line_f = float(line) if line is not None else None
+    except (TypeError, ValueError):
+        line_f = None
+    if line_f is None:
         feats["line_hit_rate_last_5"]  = None
         feats["line_hit_rate_last_10"] = None
         feats["line_hit_rate_last_20"] = None
@@ -199,7 +225,7 @@ def compute_features(
         def hit_rate(window):
             sub = vals[-window:]
             if not sub: return None
-            hits = [_is_hit(side, v, line) for v in sub]
+            hits = [_is_hit(side, v, line_f) for v in sub]
             decided = [h for h in hits if h is not None]
             return (sum(1 for h in decided if h) / len(decided)) if decided else None
 
@@ -213,9 +239,9 @@ def compute_features(
             margins = []
             for v in sub10:
                 if (side or "").upper() in ("OVER", "YES"):
-                    margins.append(v - line)
+                    margins.append(v - line_f)
                 elif (side or "").upper() in ("UNDER", "NO"):
-                    margins.append(line - v)
+                    margins.append(line_f - v)
             feats["line_margin_avg_last_10"] = (
                 sum(margins) / len(margins) if margins else None)
         else:
