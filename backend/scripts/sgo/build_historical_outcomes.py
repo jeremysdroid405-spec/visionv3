@@ -245,29 +245,147 @@ STAT_FAMILY: Dict[str, str] = {
 }
 
 
+# ─── safe deterministic synthesis ─────────────────────────────────────────
+# ONLY for composite stats with universally-agreed component math. Never
+# invent formulas (e.g. fantasyScore stays unresolved without an SGO value).
+
+# {stat_id → [list of component stat_ids needed]}
+_SAFE_COMPOSITE_COMPONENTS: Dict[str, List[str]] = {
+    "batting_totalBases":     ["batting_singles", "batting_doubles",
+                                 "batting_triples", "batting_homeRuns"],
+    "batting_hits+runs+rbi":  ["batting_hits", "batting_runs", "batting_RBI"],
+    "batting_runs+rbi":       ["batting_runs", "batting_RBI"],
+}
+
+# Coefficient maps for components (default 1.0)
+_SAFE_COMPOSITE_COEFFS: Dict[str, Dict[str, float]] = {
+    "batting_totalBases": {
+        "batting_singles": 1.0, "batting_doubles": 2.0,
+        "batting_triples": 3.0, "batting_homeRuns": 4.0,
+    },
+}
+
+
+def _try_safe_synthesis(stat_id: str,
+                          canonical: Dict[str, Any]
+                          ) -> Tuple[Optional[float], Optional[List[str]]]:
+    """Synthesize composite from atomic components in `canonical`.
+
+    Returns (value, components_used) on success, (None, missing_components)
+    on failure. Caller can use the missing list for reporting.
+    """
+    components = _SAFE_COMPOSITE_COMPONENTS.get(stat_id)
+    if not components:
+        return None, None
+    coeffs = _SAFE_COMPOSITE_COEFFS.get(stat_id, {})
+    missing = []
+    total = 0.0
+    for c in components:
+        v = _num(canonical.get(c)) if isinstance(canonical, dict) else None
+        if v is None:
+            missing.append(c)
+        else:
+            total += v * coeffs.get(c, 1.0)
+    if missing:
+        return None, missing
+    return total, components
+
+
+# ─── unresolved-row classifier ────────────────────────────────────────────
+# Heuristics: which canonical key prefixes indicate which player "role"?
+_BATTING_PREFIX = "batting_"
+_PITCHING_PREFIX = "pitching_"
+
+
+def _classify_unresolved(stat_id: str,
+                            canonical: Dict[str, Any],
+                            norm: Dict[str, Any]
+                            ) -> str:
+    """Return a precise reason bucket for an unresolved row.
+
+    Buckets:
+      player_not_in_results              ← caller handles (no dict at all)
+      missing_canonical_field_but_components_available
+      missing_composite_but_components_available
+      role_mismatch
+      field_omitted_possible_zero
+      missing_field_no_components
+      canonical_value_null               ← key present but value=None
+      missing_field_no_canonical_dict    ← canonical empty, norm has nothing
+    """
+    if not isinstance(canonical, dict) or not canonical:
+        if not isinstance(norm, dict) or not norm:
+            return "player_not_in_results"
+        return "missing_field_no_canonical_dict"
+
+    # Detect role from what canonical actually carries
+    has_batting  = any(isinstance(k, str) and k.startswith(_BATTING_PREFIX)
+                         for k in canonical)
+    has_pitching = any(isinstance(k, str) and k.startswith(_PITCHING_PREFIX)
+                         for k in canonical)
+
+    if stat_id in canonical and canonical[stat_id] is None:
+        return "canonical_value_null"
+
+    # Role mismatch: requested stat's role isn't present at all in this row
+    if isinstance(stat_id, str):
+        if stat_id.startswith(_BATTING_PREFIX) and not has_batting:
+            return "role_mismatch"
+        if stat_id.startswith(_PITCHING_PREFIX) and not has_pitching:
+            return "role_mismatch"
+
+    # Composite stat? Check whether some/all components exist
+    components = _SAFE_COMPOSITE_COMPONENTS.get(stat_id)
+    if components:
+        present = sum(1 for c in components if c in canonical
+                       and canonical[c] is not None)
+        if present == len(components):
+            # All present but we still couldn't resolve → caller bug; treat as
+            # derivable (resolver should have synthesized)
+            return "missing_composite_but_components_available"
+        elif present > 0:
+            return "missing_composite_but_components_available"
+        else:
+            return "missing_field_no_components"
+
+    # Non-composite missing canonical field. Was the role correct AND the row
+    # actually carried sibling counting stats? Then the field is most likely
+    # omitted-when-zero (SGO sometimes drops zero fields).
+    if isinstance(stat_id, str):
+        if stat_id.startswith(_BATTING_PREFIX) and has_batting:
+            return "field_omitted_possible_zero"
+        if stat_id.startswith(_PITCHING_PREFIX) and has_pitching:
+            return "field_omitted_possible_zero"
+
+    return "missing_field_no_components"
+
+
 def resolve_stat_value(
     stat_id: str,
     raw_stats: Optional[Dict[str, Any]],
     canonical_stats: Optional[Dict[str, Any]] = None,
-) -> Tuple[Optional[float], str, Optional[str]]:
-    """Return (numeric_value | None, stat_family_canonical_name, reason_if_unresolved).
+) -> Tuple[Optional[float], str, Optional[str], Optional[str]]:
+    """Return (value | None, stat_family, reason | None, source | None).
 
-    Priority order:
-      1. EXACT match in canonical_stats (SGO statIDs like 'batting_totalBases',
-         'pitching_pitchesThrown', 'batting_hits+runs+rbi', 'fantasyScore' —
-         these are the exact same keys the prop's stat_id field uses).
-      2. SGO-aware family resolver against canonical_stats (handles aliases
-         like 'pts_reb_ast' ← 'points+rebounds+assists').
-      3. Family resolver against normalized stats (legacy normalized keys
-         like 'hits', 'runs', 'pitcher_strikeouts').
-      4. Direct key lookup with camel/snake variants on either dict.
-
-    `reason_if_unresolved` is None when resolved; otherwise a short tag
-    describing why (e.g. "stat_id_not_in_any_dict", "canonical_value_null").
+    `source` is set when value is resolved:
+        canonical_exact
+        canonical_composite_derived
+        canonical_family_resolver
+        normalized_family_resolver
+        direct_key_variant
+    `reason` is set when value is None:
+        canonical_value_null
+        role_mismatch
+        missing_composite_but_components_available
+        field_omitted_possible_zero
+        missing_field_no_components
+        missing_field_no_canonical_dict
+        player_not_in_results
+        no_stats_dict_passed
     """
     fam = STAT_FAMILY.get(stat_id, stat_id or "unknown")
     if raw_stats is None and canonical_stats is None:
-        return None, fam, "no_stats_dict_passed"
+        return None, fam, "no_stats_dict_passed", None
 
     canonical = canonical_stats or {}
     norm = raw_stats or {}
@@ -277,10 +395,15 @@ def resolve_stat_value(
         v = canonical[stat_id]
         n = _num(v)
         if n is not None:
-            return n, fam, None
-        # Key present but value None/empty → fall through (don't claim unresolved yet)
+            return n, fam, None, "canonical_exact"
+        # Key present but value None → fall through (don't claim unresolved yet)
 
-    # 2. SGO-aware family resolver against canonical (composites, aliases)
+    # 2. Safe deterministic synthesis from canonical components
+    syn_val, syn_components = _try_safe_synthesis(stat_id, canonical)
+    if syn_val is not None:
+        return syn_val, fam, None, "canonical_composite_derived"
+
+    # 3. SGO-aware family resolver against canonical (composites, aliases)
     fn = STAT_RESOLVERS.get(stat_id)
     if fn is not None and canonical:
         try:
@@ -288,18 +411,18 @@ def resolve_stat_value(
         except Exception:
             v = None
         if v is not None:
-            return v, fam, None
+            return v, fam, None, "canonical_family_resolver"
 
-    # 3. Family resolver against the normalized stats dict
+    # 4. Family resolver against the normalized stats dict
     if fn is not None and norm:
         try:
             v = fn(norm)
         except Exception:
             v = None
         if v is not None:
-            return v, fam, None
+            return v, fam, None, "normalized_family_resolver"
 
-    # 4. Direct key lookup with snake/camel variants on BOTH dicts
+    # 5. Direct camel/snake key variants on BOTH dicts
     if stat_id:
         variants = [stat_id, stat_id.lower(),
                      stat_id.replace("_", ""), stat_id.replace("-", "_")]
@@ -308,17 +431,10 @@ def resolve_stat_value(
                 continue
             v = _num(_g(d, *variants))
             if v is not None:
-                return v, fam, None
+                return v, fam, None, "direct_key_variant"
 
-    # Truly unresolved — diagnose why
-    if not isinstance(canonical, dict) or not canonical:
-        if not isinstance(norm, dict) or not norm:
-            return None, fam, "no_stats_dict_for_player"
-        # only norm available — stat_id not normalizable
-        return None, fam, "stat_id_not_in_normalized_only"
-    if stat_id in canonical:
-        return None, fam, "canonical_value_null"
-    return None, fam, "stat_id_not_in_any_dict"
+    # Unresolved — classify
+    return None, fam, _classify_unresolved(stat_id, canonical, norm), None
 
 
 # ───────────────────────────── grading ────────────────────────────────────
@@ -484,6 +600,8 @@ async def process_date(
     sample_docs: List[Dict[str, Any]] = []
     missing_stats = 0  # joined but stats dict didn't carry the stat
     no_player_stats = 0  # no row at all for (event, player)
+    derived_source_counts: Dict[str, int] = {}
+    reason_counts: Dict[str, int] = {}
 
     src_match: Dict[str, Any] = {"game_date": game_date}
     if league:
@@ -512,9 +630,10 @@ async def process_date(
             no_player_stats += 1
             actual = None
             fam = STAT_FAMILY.get(doc.get("stat_id"), doc.get("stat_id") or "unknown")
-            reason = "no_player_stats_row"
+            reason = "player_not_in_results"
+            derived_source = None
         else:
-            actual, fam, reason = resolve_stat_value(
+            actual, fam, reason, derived_source = resolve_stat_value(
                 doc.get("stat_id"),
                 bundle.get("stats"),
                 bundle.get("canonical"))
@@ -546,16 +665,24 @@ async def process_date(
             if outcome["outcome"] == "WIN":   wins += 1
             elif outcome["outcome"] == "LOSS": losses += 1
             elif outcome["outcome"] == "PUSH": pushes += 1
+            if derived_source:
+                derived_source_counts[derived_source] = \
+                    derived_source_counts.get(derived_source, 0) + 1
         else:
             unresolved += 1
+            r = reason or "unknown"
+            reason_counts[r] = reason_counts.get(r, 0) + 1
         fam_counts[fam] = fam_counts.get(fam, 0) + 1
 
         merged = {
             **doc,
             **outcome,
-            "stat_family":     fam,
-            "grading_version": GRADING_VERSION,
-            "resolved_at":     datetime.now(timezone.utc),
+            "stat_family":             fam,
+            "grading_version":         GRADING_VERSION,
+            "resolved_at":             datetime.now(timezone.utc),
+            "derived_value_source":    derived_source,
+            "unresolved_reason_detail": reason if not outcome["outcome_resolved"]
+                                          else None,
         }
         merged.pop("_id", None)
         if (outcome["outcome_resolved"] and len(sample_docs) < 2):
@@ -578,17 +705,19 @@ async def process_date(
         await db[OUT_COLL].bulk_write(upserts, ordered=False)
 
     return {
-        "processed":       processed,
-        "resolved":        resolved,
-        "unresolved":      unresolved,
-        "wins":            wins,
-        "losses":          losses,
-        "pushes":          pushes,
-        "skipped_resume":  skipped,
-        "no_player_stats": no_player_stats,
-        "missing_stats":   missing_stats,
-        "fam_counts":      fam_counts,
-        "sample_docs":     sample_docs,
+        "processed":            processed,
+        "resolved":             resolved,
+        "unresolved":           unresolved,
+        "wins":                 wins,
+        "losses":               losses,
+        "pushes":               pushes,
+        "skipped_resume":       skipped,
+        "no_player_stats":      no_player_stats,
+        "missing_stats":        missing_stats,
+        "fam_counts":           fam_counts,
+        "derived_source_counts": derived_source_counts,
+        "reason_counts":        reason_counts,
+        "sample_docs":          sample_docs,
     }
 
 
@@ -633,6 +762,7 @@ async def amain(args: argparse.Namespace) -> int:
         "wins": 0, "losses": 0, "pushes": 0,
         "skipped_resume": 0, "no_player_stats": 0, "missing_stats": 0,
         "fam_counts": {}, "sample_docs": [],
+        "derived_source_counts": {}, "reason_counts": {},
     }
     log_every = 10_000
     next_log = log_every
@@ -655,6 +785,11 @@ async def amain(args: argparse.Namespace) -> int:
             tot[k] += r[k]
         for fam, n in r["fam_counts"].items():
             tot["fam_counts"][fam] = tot["fam_counts"].get(fam, 0) + n
+        for src, n in r.get("derived_source_counts", {}).items():
+            tot["derived_source_counts"][src] = \
+                tot["derived_source_counts"].get(src, 0) + n
+        for rkey, n in r.get("reason_counts", {}).items():
+            tot["reason_counts"][rkey] = tot["reason_counts"].get(rkey, 0) + n
         if r.get("sample_docs") and len(tot["sample_docs"]) < 2:
             tot["sample_docs"].extend(
                 r["sample_docs"][:2 - len(tot["sample_docs"])])
@@ -688,6 +823,36 @@ async def amain(args: argparse.Namespace) -> int:
               f"{pct(tot['wins'], tot['wins']+tot['losses']):.2f}%")
     print(f"  skipped (resume):        {tot['skipped_resume']:,}")
     print(f"  runtime:                 {runtime:,.1f}s")
+
+    # Resolved-value source breakdown
+    if tot.get("derived_source_counts"):
+        print(f"\n  RESOLVED — value source breakdown")
+        print(f"  ─────────────────────────────────")
+        for src, n in sorted(tot["derived_source_counts"].items(),
+                              key=lambda kv: -kv[1]):
+            print(f"    {src:<32s}  {n:,}  "
+                  f"({pct(n, tot['resolved']):.2f}%)")
+
+    # Unresolved buckets — the new precise classification
+    if tot.get("reason_counts"):
+        print(f"\n  UNRESOLVED — bucket breakdown")
+        print(f"  ─────────────────────────────")
+        derivable = (tot["reason_counts"].get(
+            "missing_composite_but_components_available", 0))
+        truly_missing = (tot["reason_counts"].get("missing_field_no_components", 0)
+                          + tot["reason_counts"].get("canonical_value_null", 0)
+                          + tot["reason_counts"].get("missing_field_no_canonical_dict", 0))
+        non_applicable = (tot["reason_counts"].get("role_mismatch", 0)
+                           + tot["reason_counts"].get("player_not_in_results", 0))
+        omitted_zero = tot["reason_counts"].get("field_omitted_possible_zero", 0)
+        for r, n in sorted(tot["reason_counts"].items(),
+                            key=lambda kv: -kv[1]):
+            print(f"    {r:<46s}  {n:,}  "
+                  f"({pct(n, tot['unresolved']):.2f}%)")
+        print(f"\n  → derivable on next patch (components avail):   {derivable:,}")
+        print(f"  → likely non-applicable (role/no-show):         {non_applicable:,}")
+        print(f"  → field omitted (probably zero, NOT graded):    {omitted_zero:,}")
+        print(f"  → truly missing in source:                      {truly_missing:,}")
 
     # stat_family coverage breakdown (sorted descending)
     if tot["fam_counts"]:
