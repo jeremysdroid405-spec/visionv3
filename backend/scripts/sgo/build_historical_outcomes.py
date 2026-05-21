@@ -246,29 +246,79 @@ STAT_FAMILY: Dict[str, str] = {
 
 
 def resolve_stat_value(
-    stat_id: str, raw_stats: Optional[Dict[str, Any]]
-) -> Tuple[Optional[float], str]:
-    """Return (numeric_value | None, stat_family_canonical_name).
+    stat_id: str,
+    raw_stats: Optional[Dict[str, Any]],
+    canonical_stats: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[float], str, Optional[str]]:
+    """Return (numeric_value | None, stat_family_canonical_name, reason_if_unresolved).
 
-    Falls back to direct lookup by stat_id (and snake/camel variants) when
-    the registry has no entry, so unknown stat_ids still grade when the
-    stats dict happens to contain a matching key.
+    Priority order:
+      1. EXACT match in canonical_stats (SGO statIDs like 'batting_totalBases',
+         'pitching_pitchesThrown', 'batting_hits+runs+rbi', 'fantasyScore' —
+         these are the exact same keys the prop's stat_id field uses).
+      2. SGO-aware family resolver against canonical_stats (handles aliases
+         like 'pts_reb_ast' ← 'points+rebounds+assists').
+      3. Family resolver against normalized stats (legacy normalized keys
+         like 'hits', 'runs', 'pitcher_strikeouts').
+      4. Direct key lookup with camel/snake variants on either dict.
+
+    `reason_if_unresolved` is None when resolved; otherwise a short tag
+    describing why (e.g. "stat_id_not_in_any_dict", "canonical_value_null").
     """
-    if raw_stats is None:
-        return None, STAT_FAMILY.get(stat_id, stat_id or "unknown")
+    fam = STAT_FAMILY.get(stat_id, stat_id or "unknown")
+    if raw_stats is None and canonical_stats is None:
+        return None, fam, "no_stats_dict_passed"
+
+    canonical = canonical_stats or {}
+    norm = raw_stats or {}
+
+    # 1. EXACT SGO statID match in canonical → fastest, highest-fidelity path
+    if stat_id and isinstance(canonical, dict) and stat_id in canonical:
+        v = canonical[stat_id]
+        n = _num(v)
+        if n is not None:
+            return n, fam, None
+        # Key present but value None/empty → fall through (don't claim unresolved yet)
+
+    # 2. SGO-aware family resolver against canonical (composites, aliases)
     fn = STAT_RESOLVERS.get(stat_id)
-    if fn is not None:
-        return fn(raw_stats), STAT_FAMILY.get(stat_id, stat_id)
-    # Fallback: direct lookup
-    candidates = [stat_id] if stat_id else []
+    if fn is not None and canonical:
+        try:
+            v = fn(canonical)
+        except Exception:
+            v = None
+        if v is not None:
+            return v, fam, None
+
+    # 3. Family resolver against the normalized stats dict
+    if fn is not None and norm:
+        try:
+            v = fn(norm)
+        except Exception:
+            v = None
+        if v is not None:
+            return v, fam, None
+
+    # 4. Direct key lookup with snake/camel variants on BOTH dicts
     if stat_id:
-        candidates.extend([
-            stat_id.lower(),
-            stat_id.replace("_", ""),
-            stat_id.replace("-", "_"),
-        ])
-    val = _num(_g(raw_stats, *candidates))
-    return val, STAT_FAMILY.get(stat_id, stat_id or "unknown")
+        variants = [stat_id, stat_id.lower(),
+                     stat_id.replace("_", ""), stat_id.replace("-", "_")]
+        for d in (canonical, norm):
+            if not isinstance(d, dict) or not d:
+                continue
+            v = _num(_g(d, *variants))
+            if v is not None:
+                return v, fam, None
+
+    # Truly unresolved — diagnose why
+    if not isinstance(canonical, dict) or not canonical:
+        if not isinstance(norm, dict) or not norm:
+            return None, fam, "no_stats_dict_for_player"
+        # only norm available — stat_id not normalizable
+        return None, fam, "stat_id_not_in_normalized_only"
+    if stat_id in canonical:
+        return None, fam, "canonical_value_null"
+    return None, fam, "stat_id_not_in_any_dict"
 
 
 # ───────────────────────────── grading ────────────────────────────────────
@@ -381,11 +431,12 @@ async def _distinct_game_dates(
 async def process_date(
     db: AsyncIOMotorDatabase, *, league: Optional[str], game_date: str,
     dry_run: bool, resume: bool,
+    debug_unresolved: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     # Load stats for this date into multiple lookup maps for fallback joins:
-    #   stats_map           : (event_id, player_id) → stats_dict   (primary)
-    #   stats_map_by_entity : (event_id, stat_entity_id) → stats_dict
-    #   stats_map_by_name   : (event_id, lower(player_name)) → stats_dict
+    #   stats_map           : (event_id, player_id) → {stats, canonical}
+    #   stats_map_by_entity : (event_id, stat_entity_id) → {stats, canonical}
+    #   stats_map_by_name   : (event_id, lower(player_name)) → {stats, canonical}
     stat_match: Dict[str, Any] = {"game_date": game_date}
     if league:
         stat_match["league_id"] = league
@@ -395,15 +446,17 @@ async def process_date(
     async for s in db[STATS_COLL].find(stat_match, {"_id": 0}):
         eid = s.get("event_id")
         stats = s.get("stats") or {}
+        canonical = s.get("stats_sgo_canonical") or {}
+        bundle = {"stats": stats, "canonical": canonical}
         pid = s.get("player_id")
-        if eid and pid and stats:
-            stats_map[(eid, pid)] = stats
+        if eid and pid and (stats or canonical):
+            stats_map[(eid, pid)] = bundle
         ent = s.get("stat_entity_id")
-        if eid and ent and stats:
-            stats_map_by_entity[(eid, ent)] = stats
+        if eid and ent and (stats or canonical):
+            stats_map_by_entity[(eid, ent)] = bundle
         nm = (s.get("player_name") or "").strip().lower()
-        if eid and nm and stats:
-            stats_map_by_name[(eid, nm)] = stats
+        if eid and nm and (stats or canonical):
+            stats_map_by_name[(eid, nm)] = bundle
 
     # Optional --resume set
     already_done: set = set()
@@ -448,21 +501,43 @@ async def process_date(
         eid = doc.get("event_id")
         pid = doc.get("player_id")
         # Multi-tier join: player_id → stat_entity_id → player_name (lowercase)
-        stats_dict = stats_map.get((eid, pid))
-        if stats_dict is None and pid is not None:
-            stats_dict = stats_map_by_entity.get((eid, pid))
-        if stats_dict is None:
+        bundle = stats_map.get((eid, pid))
+        if bundle is None and pid is not None:
+            bundle = stats_map_by_entity.get((eid, pid))
+        if bundle is None:
             nm = (doc.get("player_name") or "").strip().lower()
             if eid and nm:
-                stats_dict = stats_map_by_name.get((eid, nm))
-        if stats_dict is None:
+                bundle = stats_map_by_name.get((eid, nm))
+        if bundle is None:
             no_player_stats += 1
             actual = None
             fam = STAT_FAMILY.get(doc.get("stat_id"), doc.get("stat_id") or "unknown")
+            reason = "no_player_stats_row"
         else:
-            actual, fam = resolve_stat_value(doc.get("stat_id"), stats_dict)
+            actual, fam, reason = resolve_stat_value(
+                doc.get("stat_id"),
+                bundle.get("stats"),
+                bundle.get("canonical"))
             if actual is None:
                 missing_stats += 1
+                # Group by reason for debug breakdown
+                if debug_unresolved is not None:
+                    key = (doc.get("stat_id"), fam, reason or "unknown")
+                    entry = debug_unresolved.setdefault(
+                        key, {"count": 0, "samples": []})
+                    entry["count"] += 1
+                    if len(entry["samples"]) < 3:
+                        canonical_keys = sorted(
+                            list((bundle.get("canonical") or {}).keys()))[:25]
+                        norm_keys = sorted(
+                            list((bundle.get("stats") or {}).keys()))[:25]
+                        entry["samples"].append({
+                            "event_id": eid, "player_id": pid,
+                            "player_name": doc.get("player_name"),
+                            "side": doc.get("side"), "line": doc.get("line"),
+                            "canonical_keys": canonical_keys,
+                            "normalized_keys": norm_keys,
+                        })
 
         outcome = grade_outcome(doc.get("side"), actual, doc.get("line"))
 
@@ -562,11 +637,15 @@ async def amain(args: argparse.Namespace) -> int:
     log_every = 10_000
     next_log = log_every
 
+    debug_unresolved: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = (
+        {} if args.debug_unresolved else None)
+
     for gd in dates:
         try:
             r = await process_date(
                 db, league=args.league, game_date=gd,
-                dry_run=args.dry_run, resume=args.resume)
+                dry_run=args.dry_run, resume=args.resume,
+                debug_unresolved=debug_unresolved)
         except Exception as e:
             print(f"    [{gd}] FAILED: {e!r}")
             continue
@@ -625,6 +704,25 @@ async def amain(args: argparse.Namespace) -> int:
             d2 = {**d, "books": (d.get("books") or [])[:2]}
             print("    " + json.dumps(d2, indent=2, default=str)
                               .replace("\n", "\n    "))
+
+    if debug_unresolved:
+        print(f"\n  UNRESOLVED BREAKDOWN (grouped by stat_id × stat_family × reason)")
+        print(f"  ───────────────────────────────────────────────────────────────")
+        sorted_groups = sorted(debug_unresolved.items(),
+                                 key=lambda kv: -kv[1]["count"])
+        for (stat_id, fam, reason), info in sorted_groups[:40]:
+            print(f"  • {info['count']:>6,}  stat_id={stat_id!r:35s}  "
+                  f"family={fam!r:20s}  reason={reason}")
+            if info["samples"]:
+                s = info["samples"][0]
+                print(f"        sample: event={s['event_id']}  "
+                      f"player={s['player_id']}  name='{s['player_name']}'")
+                if s["canonical_keys"]:
+                    print(f"        canonical_keys: {s['canonical_keys']}")
+                if s["normalized_keys"]:
+                    print(f"        normalized_keys: {s['normalized_keys']}")
+        if len(sorted_groups) > 40:
+            print(f"  ... ({len(sorted_groups)-40} more groups)")
     print("=" * 72)
     client.close()
     return 0
@@ -642,6 +740,10 @@ def main() -> int:
     p.add_argument("--resume", action="store_true",
                     help=f"Skip docs already resolved at grading_version "
                          f"{GRADING_VERSION}")
+    p.add_argument("--debug-unresolved", action="store_true",
+                    help="Print a grouped breakdown of every unresolved row "
+                         "(stat_id, stat_family, reason, sample player + "
+                         "available stats keys). Use to diagnose resolver gaps.")
     return asyncio.run(amain(p.parse_args()))
 
 

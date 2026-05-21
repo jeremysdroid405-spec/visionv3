@@ -260,7 +260,13 @@ async def load_prior_history(
         if not pid or not gd:
             continue
         for sid in (stat_ids or []):
-            val, _fam = stat_resolver(sid, stats)
+            res = stat_resolver(sid, stats)
+            # Backward-compatible unpacking: resolver may return (val, fam)
+            # or (val, fam, reason) depending on version.
+            if isinstance(res, tuple) and len(res) >= 1:
+                val = res[0]
+            else:
+                val = None
             if val is None:
                 continue
             cache.setdefault((pid, sid), []).append((gd, val))
