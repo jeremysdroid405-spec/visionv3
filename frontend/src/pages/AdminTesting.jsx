@@ -2737,7 +2737,11 @@ function OptimizerTab({ token }) {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase' }}>
-              Run {status.run_id} · <Badge color={statusColor(status.status)}>{status.status}</Badge>
+              Run {status.run_id} · <Badge color={
+                status.status === 'running' ? ACCENT
+                  : status.status === 'succeeded' ? ACCENT_2
+                  : status.status === 'failed' ? BAD : DIM
+              }>{status.status}</Badge>
             </div>
             <div style={{ fontSize: 11, color: DIM, fontFamily: 'monospace' }}>
               elapsed {status.elapsed_s ? fmtNum(status.elapsed_s, 1) : '—'}s
