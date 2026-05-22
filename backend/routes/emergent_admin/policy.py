@@ -131,6 +131,14 @@ ALLOWED_JOBS: Dict[str, Dict] = {
         "args": ["--date", "--start", "--end", "--mem-limit",
                   "--force", "--odds-collection"],
     },
+    "scripts.ingest_bdl_mlb_season": {
+        "label": "Backfill MLB season game logs from BallDontLie",
+        "writes_to": "bdl_mlb_historical_game_logs + "
+                       "mlb_master_hub_2026.bdl_game_logs (per-season merge)",
+        "enabled": True,
+        "args": ["--season", "--use-existing-roster", "--skip-stats",
+                  "--limit-players", "--force"],
+    },
     "scripts.sgo.score_historical_model": {
         "label": "Score historical features with a registered model",
         "writes_to": "sgo_pp_research_model_predictions (research, writable)",

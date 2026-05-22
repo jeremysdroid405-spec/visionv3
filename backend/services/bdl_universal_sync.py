@@ -52,6 +52,10 @@ RATE_LIMIT_DELAY = 1.0  # Seconds between batch groups
 # Circuit breaker - abort if too few results
 MIN_EXPECTED_RESULTS = 5
 
+# Persistent raw MLB historical archive (in addition to the hub array
+# mirror). Idempotent upsert keyed by (bdl_player_id, game_id).
+RAW_MLB_HISTORICAL_COLL = "bdl_mlb_historical_game_logs"
+
 
 class BDLUniversalSyncService:
     """
@@ -287,7 +291,11 @@ class BDLUniversalSyncService:
     async def sync_stats_batched(
         self,
         sport: str = "nba",
-        player_ids: List[int] = None
+        player_ids: List[int] = None,
+        season: Optional[int] = None,
+        merge_by_season: bool = False,
+        also_save_raw: bool = False,
+        skip_already_stored: bool = False,
     ) -> Dict[str, Any]:
         """
         Sync stats for all players in batches.
@@ -297,12 +305,21 @@ class BDLUniversalSyncService:
         Args:
             sport: Sport key ('nba' or 'mlb')
             player_ids: Optional list of specific player IDs
+            season: Optional explicit season override (default uses
+                    SEASONS[sport]). REQUIRED when backfilling historical
+                    seasons — `_get_season(sport)` returns the *current*
+                    season only.
+            merge_by_season: When True, _save_stats_to_master_hub will
+                    preserve existing `bdl_game_logs` for other seasons
+                    instead of replacing the whole array. Required for
+                    historical backfills into a hub that already carries
+                    current-season logs.
             
         Returns:
             Sync summary with counts and errors
         """
         sport = validate_sport(sport)
-        season = self._get_season(sport)
+        season = season if season is not None else self._get_season(sport)
         
         logger.info("=" * 70)
         logger.info(f"[BDL_SYNC] Starting {sport.upper()} Stats Sync")
@@ -343,6 +360,37 @@ class BDLUniversalSyncService:
             
             if not player_ids:
                 logger.warning(f"[BDL_SYNC] No player IDs found for {sport.upper()}")
+                return results
+
+            # ── Cache-first: skip players already fully covered ──────
+            # Players with N>=1 row already stored for the requested
+            # `season` are considered "in cache" and are skipped unless
+            # the caller passed skip_already_stored=False (the default).
+            n_skipped_cached = 0
+            if (skip_already_stored and season is not None
+                        and sport == "mlb" and player_ids):
+                raw_coll = self.db[RAW_MLB_HISTORICAL_COLL]
+                already_have = set()
+                async for d in raw_coll.aggregate([
+                    {"$match": {"season": season,
+                                "bdl_player_id": {"$in": player_ids}}},
+                    {"$group": {"_id": "$bdl_player_id"}},
+                ]):
+                    already_have.add(d["_id"])
+                if already_have:
+                    before = len(player_ids)
+                    player_ids = [p for p in player_ids if p not in already_have]
+                    n_skipped_cached = before - len(player_ids)
+                    logger.info(
+                        f"[BDL_SYNC] cache-first skipped {n_skipped_cached} "
+                        f"players already with season-{season} rows. "
+                        f"Remaining to fetch: {len(player_ids)}"
+                    )
+            results["players_skipped_cached"] = n_skipped_cached
+
+            if not player_ids:
+                logger.info(f"[BDL_SYNC] Nothing to fetch — all players "
+                                f"already cached for season {season}.")
                 return results
             
             logger.info(f"[BDL_SYNC] Processing {len(player_ids)} players in batches of {BATCH_SIZE}")
@@ -395,7 +443,12 @@ class BDLUniversalSyncService:
             
             # Save to master hub
             if all_stats:
-                await self._save_stats_to_master_hub(all_stats, sport)
+                await self._save_stats_to_master_hub(
+                    all_stats, sport,
+                    season=season,
+                    merge_by_season=merge_by_season,
+                    also_save_raw=also_save_raw,
+                )
                 logger.info(f"[BDL_SYNC] Saved {len(all_stats)} game logs to master hub")
             
             duration = (datetime.now(timezone.utc) - sync_start).total_seconds()
@@ -421,16 +474,33 @@ class BDLUniversalSyncService:
     async def _save_stats_to_master_hub(
         self,
         stats: List[Dict],
-        sport: str
+        sport: str,
+        season: Optional[int] = None,
+        merge_by_season: bool = False,
+        also_save_raw: bool = False,
     ) -> int:
         """
         Save game logs to sport-specific master_hub collection.
         
         Groups stats by player and updates the bdl_game_logs array.
+
+        When `merge_by_season=True`, removes only the logs for the given
+        `season` before pushing the new batch — preserving game logs from
+        other seasons. This is the safe mode for historical backfills:
+        without it, ingesting 2025 data would WIPE the 2026 logs already
+        in the hub.
+
+        When `also_save_raw=True` AND sport == "mlb", the raw transformed
+        logs are also upserted into `bdl_mlb_historical_game_logs` keyed
+        by `(bdl_player_id, game_id)` so the backfill remains
+        reproducible / queryable without traversing the hub array.
         
         Args:
             stats: List of stat records
             sport: Sport key
+            season: Season being written. Required when merge_by_season=True.
+            merge_by_season: Per-season replacement mode (see above).
+            also_save_raw: Mirror to `bdl_mlb_historical_game_logs`.
             
         Returns:
             Number of players updated
@@ -447,8 +517,16 @@ class BDLUniversalSyncService:
                 if player_id not in player_stats:
                     player_stats[player_id] = []
                 
-                # Transform to game log format
-                game_log = self._transform_stat_to_game_log(stat, sport)
+                # Transform to game log format (caller-supplied season
+                # gets stamped onto MLB logs since the API doesn't echo
+                # one per-row).
+                game_log = self._transform_stat_to_game_log(stat, sport,
+                                                                  season=season)
+                # Also-defence: if for any reason game_log["season"] is
+                # missing/None, stamp it now. We always want the season
+                # on every row for merge_by_season + raw indexing.
+                if season is not None and not game_log.get("season"):
+                    game_log["season"] = season
                 player_stats[player_id].append(game_log)
         
         # Sort each player's logs by date (most recent first)
@@ -457,28 +535,99 @@ class BDLUniversalSyncService:
                 key=lambda x: x.get("date") or "",
                 reverse=True
             )
+
+        # ── Optional raw-collection mirror (MLB only) ─────────────────
+        # Idempotent upsert on (bdl_player_id, game_id). Indexes ensured
+        # on first call.
+        if also_save_raw and sport == "mlb" and player_stats:
+            raw_coll = self.db[RAW_MLB_HISTORICAL_COLL]
+            try:
+                await raw_coll.create_index(
+                    [("bdl_player_id", 1), ("game_id", 1)],
+                    name="bdl_mlb_raw_pid_game_unique", unique=True,
+                    background=True,
+                )
+                await raw_coll.create_index(
+                    [("season", 1), ("date", 1)], background=True,
+                )
+            except Exception as ie:
+                logger.warning(f"[BDL_RAW] index ensure soft-failed: {ie}")
+            from pymongo import UpdateOne
+            ops: List[UpdateOne] = []
+            now_iso = datetime.now(timezone.utc).isoformat()
+            for pid, logs in player_stats.items():
+                for lg in logs:
+                    gid = lg.get("game_id")
+                    if not gid:
+                        continue
+                    raw_doc = {
+                        **lg,
+                        "bdl_player_id": pid,   # canonical key
+                        "ingested_at": now_iso,
+                    }
+                    ops.append(UpdateOne(
+                        {"bdl_player_id": pid, "game_id": gid},
+                        {"$set": raw_doc}, upsert=True,
+                    ))
+            if ops:
+                try:
+                    r = await raw_coll.bulk_write(ops, ordered=False)
+                    logger.info(
+                        f"[BDL_RAW] {RAW_MLB_HISTORICAL_COLL} upsert: "
+                        f"matched={r.matched_count} "
+                        f"upserted={r.upserted_count} "
+                        f"modified={r.modified_count} (ops={len(ops)})"
+                    )
+                except Exception as bwe:
+                    logger.error(f"[BDL_RAW] bulk_write failed: {bwe}")
         
         # Update master hub
         updated_count = 0
         for player_id, logs in player_stats.items():
-            result = await collection.update_one(
-                {"bdl_id": player_id},
-                {
-                    "$set": {
-                        "bdl_game_logs": logs,
-                        "bdl_game_logs_count": len(logs),
-                        "bdl_last_sync": datetime.now(timezone.utc).isoformat(),
-                        "sport": sport
-                    }
-                },
-                upsert=True
-            )
-            if result.modified_count > 0 or result.upserted_id:
-                updated_count += 1
+            if merge_by_season and season is not None:
+                # Two-stage upsert: (1) pull existing rows for this
+                # exact season, (2) push the new batch back in. This
+                # keeps logs from OTHER seasons intact.
+                await collection.update_one(
+                    {"bdl_id": player_id},
+                    {
+                        "$pull": {"bdl_game_logs": {"season": season}},
+                        "$set":  {"bdl_last_sync": datetime.now(timezone.utc).isoformat(),
+                                  "sport": sport},
+                    },
+                    upsert=True,
+                )
+                result = await collection.update_one(
+                    {"bdl_id": player_id},
+                    {
+                        "$push": {"bdl_game_logs": {"$each": logs}},
+                        "$inc":  {"bdl_game_logs_count": len(logs)},
+                    },
+                )
+                if result.matched_count or result.modified_count:
+                    updated_count += 1
+            else:
+                # Legacy replace-all behaviour (kept for backwards-compat
+                # with daily incremental refreshes of the current season).
+                result = await collection.update_one(
+                    {"bdl_id": player_id},
+                    {
+                        "$set": {
+                            "bdl_game_logs": logs,
+                            "bdl_game_logs_count": len(logs),
+                            "bdl_last_sync": datetime.now(timezone.utc).isoformat(),
+                            "sport": sport,
+                        }
+                    },
+                    upsert=True,
+                )
+                if result.modified_count > 0 or result.upserted_id:
+                    updated_count += 1
         
         return updated_count
     
-    def _transform_stat_to_game_log(self, stat: Dict, sport: str) -> Dict:
+    def _transform_stat_to_game_log(self, stat: Dict, sport: str,
+                                          season: Optional[int] = None) -> Dict:
         """
         Transform BDL stat object to game_log format.
         
@@ -489,6 +638,7 @@ class BDLUniversalSyncService:
         - team_name at root level (no nested team object)
         - Uses short field names: rbi, k, hr, bb, etc.
         - Requires game cache lookup for dates
+        - DOES NOT carry per-row season — caller must supply it.
         
         NBA API STRUCTURE:
         - Nested game object with id, date
@@ -508,7 +658,10 @@ class BDLUniversalSyncService:
             log = {
                 "game_id": game_id,
                 "date": game_date,  # From cache lookup
-                "season": 2026,  # MLB stats don't include season
+                # MLB stats don't include season — caller supplies it.
+                # Default 2026 kept ONLY for backward-compat with the
+                # legacy daily refresh path that doesn't pass season.
+                "season": season if season is not None else 2026,
                 "bdl_player_id": player.get("id"),
                 "player_name": player.get("full_name") or f"{player.get('first_name', '')} {player.get('last_name', '')}".strip(),
                 "team_name": team_name,
