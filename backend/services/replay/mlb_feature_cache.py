@@ -110,6 +110,32 @@ _STAT_FIELD_MAP: Dict[str, str] = {
 }
 
 
+# Canonical family → sgo_player_stats.stats key.
+# `sgo_player_stats` schema (see scripts.sgo.ingest_historical_player_stats
+# `_normalize_mlb_stats`) emits batting stats unprefixed and pitching
+# stats with the `pitching_` prefix. This map normalizes BOTH to the
+# canonical family token Layer-3 looks up downstream.
+_SGO_STAT_FIELD_MAP: Dict[str, str] = {
+    "hits":               "hits",
+    "total_bases":        "total_bases",
+    "runs":               "runs",
+    "rbis":               "rbi",                # sgo uses 'rbi' singular
+    "hits_runs_rbis":     "hits_runs_rbis",     # composite (computed below)
+    "home_runs":          "home_runs",
+    "singles":            "singles",
+    "doubles":            "doubles",
+    "triples":            "triples",
+    "batter_strikeouts":  "strikeouts",
+    "batter_walks":       "walks",
+    "stolen_bases":       "stolen_bases",
+    "pitcher_strikeouts": "pitcher_strikeouts",
+    "hits_allowed":       "pitching_hits_allowed",
+    "walks_allowed":      "pitching_walks",
+    "earned_runs":        "pitching_earned_runs",
+    "pitching_outs":      "pitching_outs",
+}
+
+
 # Pitcher families derived from pitcher rows, not batter logs.
 # 2026-05-18 — names match canonical family tokens (SSOT registry).
 _PITCHER_FAMILIES = {
@@ -337,6 +363,127 @@ def _compute_hit_rate_panels(
     return out
 
 
+# ── SGO player-stats prior-log index ─────────────────────────────────
+async def _sgo_prior_logs_for_window(
+    db, *, league: str, replay_date: str, lookback_days: int = 60,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Build an in-memory index { player_name_normalized → [game-log] }
+    of every `sgo_player_stats` row in the window
+    [replay_date - lookback_days, replay_date) for the requested league.
+
+    Each "game-log" is a flattened dict containing
+        date, game_date, player_id, player_name, team, opponent
+    plus the per-stat numbers (hits, total_bases, …) at the TOP level,
+    so the existing `_stat_values_as_of()` reader works against it
+    without further changes once we patch _STAT_FIELD_MAP lookups to go
+    through `_SGO_STAT_FIELD_MAP` instead.
+
+    `lookback_days` defaults to 60 — comfortably above the WINDOW_DEPTH
+    (=30 most-recent games) the rolling-mean computation needs.
+    """
+    from datetime import date as _date, timedelta
+    try:
+        rd = _date.fromisoformat(replay_date)
+    except ValueError as ve:
+        raise ValueError(f"replay_date {replay_date!r} not YYYY-MM-DD") from ve
+    start_date = (rd - timedelta(days=lookback_days)).isoformat()
+    cursor = db["sgo_player_stats"].find(
+        {"league_id": league.upper(),
+          "game_date": {"$gte": start_date, "$lt": replay_date}},
+        projection={"_id": 0, "raw_source": 0},
+    )
+    idx: Dict[str, List[Dict[str, Any]]] = {}
+    async for d in cursor:
+        pn = d.get("player_name")
+        if not pn:
+            continue
+        norm = normalize_player_name(pn)
+        if not norm:
+            continue
+        stats = d.get("stats") or {}
+        # Flatten so reader code can do `g.get(field)` and pull the
+        # number out, mirroring how it walks bdl_game_logs.
+        # Compute composites (hits_runs_rbis) lazily — sgo doesn't
+        # carry the composite; derive when all components present.
+        hits = stats.get("hits")
+        runs = stats.get("runs")
+        rbi  = stats.get("rbi")
+        hrr  = None
+        if all(v is not None for v in (hits, runs, rbi)):
+            try:
+                hrr = float(hits) + float(runs) + float(rbi)
+            except (TypeError, ValueError):
+                hrr = None
+        flat = {
+            "date": d.get("game_date"),
+            "game_date": d.get("game_date"),
+            "player_id": d.get("player_id"),
+            "player_name": pn,
+            "team": d.get("team"),
+            "opponent": d.get("opponent"),
+            "event_id": d.get("event_id"),
+            # batting
+            "hits": hits,
+            "total_bases": stats.get("total_bases"),
+            "runs": runs,
+            "rbi": rbi,
+            "hits_runs_rbis": hrr,
+            "home_runs": stats.get("home_runs"),
+            "singles": stats.get("singles"),
+            "doubles": stats.get("doubles"),
+            "triples": stats.get("triples"),
+            "strikeouts": stats.get("strikeouts"),
+            "walks": stats.get("walks"),
+            "stolen_bases": stats.get("stolen_bases"),
+            "plate_appearances": stats.get("plate_appearances"),
+            # pitching
+            "pitcher_strikeouts": stats.get("pitcher_strikeouts"),
+            "pitching_walks": stats.get("pitching_walks"),
+            "pitching_hits_allowed": stats.get("pitching_hits_allowed"),
+            "pitching_earned_runs": stats.get("pitching_earned_runs"),
+            "pitching_outs": stats.get("pitching_outs"),
+            "pitches_thrown": stats.get("pitches_thrown"),
+        }
+        idx.setdefault(norm, []).append(flat)
+    # Newest-first sort per player (matches the BDL hub-array convention)
+    for norm in idx:
+        idx[norm].sort(key=lambda g: g.get("date") or "", reverse=True)
+    return idx
+
+
+def _sgo_stat_values_as_of(
+    game_logs: List[Dict[str, Any]], stat_family: str, replay_date: str,
+) -> Tuple[List[float], List[Optional[float]], List[Optional[str]]]:
+    """Return (stat_values, pa_values, dates) for an SGO-sourced log list,
+    keyed via `_SGO_STAT_FIELD_MAP` instead of the BDL-shaped one."""
+    field = _SGO_STAT_FIELD_MAP.get(stat_family)
+    if not field:
+        return [], [], []
+    stat_vals: List[float] = []
+    pa_vals: List[Optional[float]] = []
+    dates: List[Optional[str]] = []
+    for g in game_logs:
+        d = (g.get("date") or g.get("game_date") or "")[:10]
+        if not d or d >= replay_date:
+            continue
+        v = g.get(field)
+        if v is None:
+            continue
+        try:
+            stat_vals.append(float(v))
+        except (TypeError, ValueError):
+            continue
+        pa = g.get("plate_appearances")
+        try:
+            pa_vals.append(float(pa) if pa is not None else None)
+        except (TypeError, ValueError):
+            pa_vals.append(None)
+        dates.append(d)
+        if len(stat_vals) >= WINDOW_DEPTH:
+            break
+    return stat_vals, pa_vals, dates
+
+
 # ── Universe discovery ───────────────────────────────────────────────
 async def list_universe_for_date(
     db, replay_date: str, *,
@@ -400,6 +547,9 @@ async def cache_date(
     mem_limit_mb: int = DEFAULT_MEM_LIMIT_MB,
     force: bool = False,
     odds_collection: str = "mlb_historical_alt_odds_raw",
+    feature_source: str = "bdl_hub",
+    league: str = "MLB",
+    sgo_lookback_days: int = 60,
 ) -> Dict[str, Any]:
     """Build cache for one date. Returns a summary dict.
 
@@ -408,11 +558,34 @@ async def cache_date(
     engine reads (set by run_production_replay `odds_collection=` kwarg)
     or candidates_skipped_no_cache spikes.
 
+    `feature_source` selects where prior game logs come from:
+      • "bdl_hub" (default, legacy)
+            mlb_master_hub_2026.bdl_game_logs[] — depends on a fully
+            backfilled hub for the season(s) being replayed.
+      • "sgo_player_stats"
+            Walks `sgo_player_stats` directly (rows already gated to
+            the right window by an upstream `ingest_historical_player_stats`
+            run). This is the path SGO historical replay should use:
+            no BDL hub backfill required, and player-name matching
+            is on `sgo_player_stats.player_name` itself (same shape as
+            the odds rows) — eliminates the "BDL roster only has current
+            year" gap that caused the 2025-05-01 replay to skip every
+            player.
+
+    `sgo_lookback_days` (default 60) — only the prior-window query into
+    `sgo_player_stats` uses this. WINDOW_DEPTH=30 still controls how
+    many of those games end up in the cached feature row.
+
     HARD-FAIL: raises RuntimeError when odds universe > 0 but
     rows_written == 0. This stops the chain immediately when the cache
     isn't covering the replay universe instead of silently letting
     Layer-3 skip 100% of props.
     """
+    if feature_source not in ("bdl_hub", "sgo_player_stats"):
+        raise ValueError(
+            f"feature_source must be 'bdl_hub' or 'sgo_player_stats' "
+            f"(got {feature_source!r})"
+        )
     await ensure_indexes(db)
 
     # Resume short-circuit
@@ -456,7 +629,20 @@ async def cache_date(
                 "rss_mb_end": round(_rss_mb(), 1),
                 **universe_stats}
 
-    name_to_hub = await _build_name_to_hub_index(db)
+    # Two data-source paths share most of the loop body. The only
+    # branch is "where do prior game logs come from for this player?".
+    #
+    #  • bdl_hub  → in-memory index of mlb_master_hub_2026 by normalized name
+    #  • sgo_player_stats → in-memory index of sgo_player_stats by normalized name
+    name_to_hub: Dict[str, Dict[str, Any]] = {}
+    sgo_logs_idx: Dict[str, List[Dict[str, Any]]] = {}
+    if feature_source == "bdl_hub":
+        name_to_hub = await _build_name_to_hub_index(db)
+    else:
+        sgo_logs_idx = await _sgo_prior_logs_for_window(
+            db, league=league, replay_date=replay_date,
+            lookback_days=sgo_lookback_days,
+        )
     rss_peak = max(rss0, _rss_mb())
 
     buffer: List[Dict[str, Any]] = []
@@ -464,7 +650,8 @@ async def cache_date(
     n_pairs_cached = 0
     n_pairs_skipped_no_hub = 0
     n_pairs_skipped_no_logs = 0
-    missed_player_sample: List[str] = []   # up to 10 normalized names with no hub match
+    n_pairs_skipped_stat_mapping = 0
+    missed_player_sample: List[str] = []   # up to 10 normalized names with no log match
     players_seen: set = set()
 
     async def _flush() -> int:
@@ -507,17 +694,50 @@ async def cache_date(
                 f"{n_pairs_cached}/{len(universe)} ({player_norm}/{stat_family})"
             )
 
-        p = name_to_hub.get(player_norm)
-        if not p:
-            n_pairs_skipped_no_hub += 1
-            if len(missed_player_sample) < 10:
-                missed_player_sample.append(player_norm)
-            continue
-        mlbam = _resolve_mlbam_id(p)
-        game_logs = p.get("bdl_game_logs", []) or []
-        stat_vals, pa_vals, dates = _stat_values_as_of(
-            game_logs, stat_family, replay_date,
-        )
+        # ── Locate prior-game-log list for this player ──────────────
+        if feature_source == "bdl_hub":
+            p = name_to_hub.get(player_norm)
+            if not p:
+                n_pairs_skipped_no_hub += 1
+                if len(missed_player_sample) < 10:
+                    missed_player_sample.append(player_norm)
+                continue
+            mlbam = _resolve_mlbam_id(p)
+            game_logs = p.get("bdl_game_logs", []) or []
+            stat_vals, pa_vals, dates = _stat_values_as_of(
+                game_logs, stat_family, replay_date,
+            )
+        else:  # feature_source == "sgo_player_stats"
+            game_logs = sgo_logs_idx.get(player_norm) or []
+            if not game_logs:
+                n_pairs_skipped_no_hub += 1
+                if len(missed_player_sample) < 10:
+                    missed_player_sample.append(player_norm)
+                continue
+            stat_vals, pa_vals, dates = _sgo_stat_values_as_of(
+                game_logs, stat_family, replay_date,
+            )
+            # If the family didn't map at all to an sgo field, that's a
+            # mapping bug — track separately so we know to extend
+            # `_SGO_STAT_FIELD_MAP` rather than chase a player-match issue.
+            if not stat_vals and stat_family not in _SGO_STAT_FIELD_MAP:
+                n_pairs_skipped_stat_mapping += 1
+                continue
+            # Build a synthetic player doc from the most-recent sgo log
+            # so the rest of the row-write logic can keep reading
+            # `p.get("...")` without a per-source branch.
+            head = game_logs[0]
+            p = {
+                "player_id":     head.get("player_id"),
+                "display_name":  head.get("player_name"),
+                "team":          head.get("team"),
+                "bdl_id":        None,
+                "position":      None,
+                "bat_side":      None,
+                "throws":        None,
+                "is_pitcher":    stat_family in _PITCHER_FAMILIES,
+            }
+            mlbam = None   # SGO doesn't carry MLBAM ids → statcast lookup skipped
         if len(stat_vals) < 5:
             n_pairs_skipped_no_logs += 1
             continue
@@ -595,13 +815,21 @@ async def cache_date(
     elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
     rss_end = _rss_mb()
     completed_at = datetime.now(timezone.utc)
+    skipped_no_prior_label = ("skipped_no_prior_sgo_stats"
+                                  if feature_source == "sgo_player_stats"
+                                  else "skipped_no_hub")
     summary = {
         "date": replay_date,
+        "feature_source": feature_source,
         "universe_size": len(universe),
         "pairs_cached": n_pairs_cached,
-        "skipped_no_hub": n_pairs_skipped_no_hub,                    # = player_name_mismatch
+        # Legacy names (always emitted for back-compat with existing dashboards)
+        "skipped_no_hub": n_pairs_skipped_no_hub,
         "skipped_player_name_mismatch": n_pairs_skipped_no_hub,
+        # SGO-mode alias for the same counter
+        skipped_no_prior_label: n_pairs_skipped_no_hub,
         "skipped_few_logs": n_pairs_skipped_no_logs,
+        "skipped_stat_mapping": n_pairs_skipped_stat_mapping,
         "missed_player_sample": missed_player_sample,
         "players_cached": len(players_seen),
         "rows_written": rows_written,
@@ -618,12 +846,12 @@ async def cache_date(
         {"$set": {"status": "completed", "completed_at": completed_at, **summary}},
     )
     logger.info(
-        "[feature_cache] %s done pairs=%d players=%d rows=%d "
-        "no_hub=%d few_logs=%d stat_fam_miss=%d "
+        "[feature_cache] %s done src=%s pairs=%d players=%d rows=%d "
+        "no_match=%d few_logs=%d stat_map_miss=%d "
         "rss=%.1f/%.1f/%.1fMB elapsed=%.1fs",
-        replay_date, n_pairs_cached, len(players_seen), rows_written,
-        n_pairs_skipped_no_hub, n_pairs_skipped_no_logs,
-        universe_stats.get("skipped_stat_family_mismatch", 0),
+        replay_date, feature_source, n_pairs_cached, len(players_seen),
+        rows_written, n_pairs_skipped_no_hub, n_pairs_skipped_no_logs,
+        n_pairs_skipped_stat_mapping,
         rss0, rss_peak, rss_end, elapsed,
     )
     # ── HARD-FAIL: odds universe was non-empty but we wrote nothing ──
@@ -631,9 +859,11 @@ async def cache_date(
         msg = (
             f"[feature_cache] HARD-FAIL: rows_written=0 while "
             f"odds_rows_in_window={universe_stats.get('odds_rows_in_window')} "
-            f"in {odds_collection}. universe_size={len(universe)}, "
-            f"skipped_no_hub={n_pairs_skipped_no_hub}, "
+            f"in {odds_collection} (feature_source={feature_source}). "
+            f"universe_size={len(universe)}, "
+            f"{skipped_no_prior_label}={n_pairs_skipped_no_hub}, "
             f"skipped_few_logs={n_pairs_skipped_no_logs}, "
+            f"skipped_stat_mapping={n_pairs_skipped_stat_mapping}, "
             f"skipped_stat_family_mismatch={universe_stats.get('skipped_stat_family_mismatch', 0)}. "
             f"sample missed-name normalized values: {missed_player_sample[:5]}. "
             f"This means Layer-3 will skip 100% of props — fix matching "

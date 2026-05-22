@@ -43,31 +43,41 @@ async def amain(args):
     for d in dates:
         print(f"\n=== {d} ===", flush=True)
         print(f"  odds_collection    = {args.odds_collection}")
+        print(f"  feature_source     = {args.feature_source}")
         try:
             s = await cache_date(
                 db, d, mem_limit_mb=args.mem_limit, force=args.force,
                 odds_collection=args.odds_collection,
+                feature_source=args.feature_source,
+                league=args.league,
+                sgo_lookback_days=args.sgo_lookback_days,
             )
         except MemoryError as me:
             print(f"  HALTED: {me}", flush=True)
             break
         except RuntimeError as rt:
             # Hard-fail from cache_date when rows_written=0 while odds>0.
-            # Print + bail with non-zero so the workflow halts here.
             print(f"  HARD-FAIL: {rt}", flush=True)
             sys.exit(2)
         if s.get("skipped"):
             print("  already completed — skipped (use --force to override)")
             continue
+        # The "no-prior-logs" counter is labelled differently depending
+        # on source so the report makes sense regardless.
+        no_prior_label = ("skipped_no_prior_sgo_stats"
+                              if args.feature_source == "sgo_player_stats"
+                              else "skipped_no_hub")
         print( "  ── coverage report ──")
+        print(f"  feature_source                 = {s.get('feature_source', args.feature_source)}")
         print(f"  odds_universe_count            = {s.get('odds_rows_in_window', 0)}")
         print(f"  distinct_player_market_pairs   = {s.get('distinct_player_market_pairs', 0)}")
         print(f"  universe_size (post-fam-map)   = {s.get('universe_size', 0)}")
         print(f"  feature_cache_rows_written     = {s.get('rows_written', 0)}")
-        print(f"  pairs_cached                   = {s.get('pairs_cached', 0)}")
+        print(f"  pairs_cached (matched players) = {s.get('pairs_cached', 0)}")
         print(f"  players_cached                 = {s.get('players_cached', 0)}")
-        print(f"  skipped_no_hub                 = {s.get('skipped_no_hub', 0)}")
+        print(f"  {no_prior_label:.<30} = {s.get(no_prior_label, 0)}")
         print(f"  skipped_few_logs               = {s.get('skipped_few_logs', 0)}")
+        print(f"  skipped_stat_mapping           = {s.get('skipped_stat_mapping', 0)}")
         print(f"  skipped_stat_family_mismatch   = {s.get('skipped_stat_family_mismatch', 0)}")
         print(f"  skipped_player_name_mismatch   = {s.get('skipped_player_name_mismatch', 0)}")
         if s.get("unknown_markets_sample"):
@@ -91,6 +101,22 @@ def main():
     p.add_argument("--odds-collection", default="mlb_historical_alt_odds_raw",
                     help="Source odds collection for the universe scan. "
                             "Use 'sgo_replay_alt_odds_raw' for SGO replay mode.")
+    p.add_argument("--feature-source",
+                      choices=["bdl_hub", "sgo_player_stats"],
+                      default="bdl_hub",
+                      help="Where prior game logs come from. "
+                            "'bdl_hub' = mlb_master_hub_2026.bdl_game_logs[] "
+                            "(legacy). 'sgo_player_stats' = SGO historical "
+                            "stats (recommended for SGO replay; no BDL "
+                            "backfill required).")
+    p.add_argument("--league", default="MLB",
+                      help="League id stored in sgo_player_stats. Only "
+                            "used when --feature-source=sgo_player_stats.")
+    p.add_argument("--sgo-lookback-days", type=int, default=60,
+                      help="Window before replay_date scanned in "
+                            "sgo_player_stats. Default 60 — well above "
+                            "WINDOW_DEPTH=30. Only used when "
+                            "--feature-source=sgo_player_stats.")
     args = p.parse_args()
     if args.start and not args.end:
         p.error("--start requires --end")

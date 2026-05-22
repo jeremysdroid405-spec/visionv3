@@ -314,6 +314,8 @@ function buildStepArgs(sportKey, stepKey, cfg) {
       args: [
         '--start', cfg.start, '--end', cfg.end,
         '--odds-collection', 'sgo_replay_alt_odds_raw',
+        '--feature-source', 'sgo_player_stats',
+        '--league', spec.league,
       ],
     };
   }
