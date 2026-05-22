@@ -64,6 +64,10 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import UpdateOne, ASCENDING
 
 OUT_COLL = "sgo_player_stats"
+# Persistent retry queue for events that failed (typically 429 exhaustion
+# or transient SGO errors). The CLI's --retry-failed mode reads from
+# this list instead of scanning the driver collection.
+RETRY_QUEUE_COLL = "sgo_ingest_retry_queue"
 EVENT_COLL = "sgo_events"
 PLAYERS_COLL = "sgo_players"
 DRIVER_COLL = "sgo_pp_research_core_enriched"
@@ -941,6 +945,9 @@ async def ingest_from_sgo_api(
     start: Optional[str], end: Optional[str], dry_run: bool, resume: bool,
     rpm: int = 250, only_event_ids: Optional[List[str]] = None,
     force: bool = False,
+    max_events: Optional[int] = None,
+    sleep_between_ms: int = 0,
+    abort_after_consecutive_429s: int = 8,
 ) -> Dict[str, Any]:
     """Re-fetch each driver event from SGO with expandResults=true and
     extract player stats from event.results. Canonical SGO path.
@@ -949,6 +956,24 @@ async def ingest_from_sgo_api(
     `sgo_player_stats` for (league_id, game_date, event_id) are SKIPPED
     unless `force=True`. This is the default — historical stats never
     re-fetch unless explicitly forced.
+
+    Rate-limit hardening (2026-05-22):
+        sleep_between_ms        Floor on inter-event sleep (in addition
+                                to the per-minute sliding window). Set
+                                to 1000 for safe trial-tier ingest.
+        abort_after_consecutive_429s
+                                Circuit breaker. After N consecutive
+                                429s with no successful interleaved
+                                request, stop the run and write
+                                remaining ids to `sgo_ingest_retry_queue`.
+                                Prevents quota exhaustion when the rate
+                                limit is actively misconfigured.
+        max_events              Smoke-test cap. Stop after N successful
+                                event fetches.
+
+    Failed event ids are upserted to `sgo_ingest_retry_queue` keyed by
+    `(league_id, event_id)` so a follow-up run with `--retry-failed`
+    can pick them up.
     """
     api_key = os.environ.get("SGO_API_KEY", "")
     if not api_key:
@@ -1021,19 +1046,65 @@ async def ingest_from_sgo_api(
     events_with_zero = 0
     rows_emitted = 0
     api_failures = 0
+    api_429_failures = 0
+    consecutive_429s = 0
+    failed_event_ids: List[Tuple[str, str]] = []   # (event_id, reason)
+    aborted_by_circuit_breaker = False
     log_every = max(50, len(event_ids) // 20)
     next_log = log_every
+    sleep_s = max(sleep_between_ms, 0) / 1000.0
+
+    print(f"  [sgo_api] rate_limit={rpm} rpm  sleep_between={sleep_between_ms}ms  "
+              f"abort_after_429={abort_after_consecutive_429s}  "
+              f"max_events={max_events or 'unlimited'}")
 
     async with SGOClient(api_key=api_key, max_rpm=rpm) as cli:
-        for eid in event_ids:
+        last_429_count = cli.calls_429
+        for idx, eid in enumerate(event_ids):
+            # Smoke-test event cap
+            if max_events is not None and events_scanned >= int(max_events):
+                print(f"  [sgo_api] reached --max-events={max_events}, stopping cleanly.")
+                break
+            # Circuit breaker BEFORE the next API call
+            if consecutive_429s >= abort_after_consecutive_429s:
+                print(f"  [sgo_api] CIRCUIT-BREAKER: {consecutive_429s} consecutive "
+                          f"429s — aborting and queuing remaining "
+                          f"{len(event_ids) - idx} events to retry queue.")
+                aborted_by_circuit_breaker = True
+                for remaining_eid in event_ids[idx:]:
+                    failed_event_ids.append((remaining_eid, "circuit_breaker_skipped"))
+                break
+
             events_scanned += 1
             try:
                 ev = await cli.get_event_with_results(eid)
+                # Successful return path — reset the 429 streak
+                new_429s = cli.calls_429 - last_429_count
+                if new_429s == 0:
+                    consecutive_429s = 0
+                last_429_count = cli.calls_429
             except Exception as e:
                 api_failures += 1
+                # Was this fail driven by 429s exhausting retry budget?
+                new_429s = cli.calls_429 - last_429_count
+                last_429_count = cli.calls_429
+                if new_429s > 0:
+                    api_429_failures += 1
+                    consecutive_429s += 1
+                    reason = f"429_exhausted_after_{new_429s}_retries"
+                else:
+                    consecutive_429s = 0
+                    reason = f"{type(e).__name__}: {str(e)[:120]}"
+                failed_event_ids.append((eid, reason))
                 if api_failures <= 5:
-                    print(f"  [sgo_api] {eid} fail: {e!r}")
+                    print(f"  [sgo_api] {eid} fail: {reason}")
+                # Adaptive cooldown after 429s — additional pause before next event
+                if new_429s > 0 and sleep_s < 5.0:
+                    await asyncio.sleep(5.0)
                 continue
+            # Inter-event sleep AFTER a successful call (slow safe mode)
+            if sleep_s > 0:
+                await asyncio.sleep(sleep_s)
             if not ev:
                 events_with_zero += 1
                 continue
@@ -1087,6 +1158,39 @@ async def ingest_from_sgo_api(
             await db[OUT_COLL].bulk_write(upserts, ordered=False)
         api_telemetry = cli.stats()
     print(f"  [sgo_api] api_calls={api_telemetry}")
+
+    # ── Persist failed events to retry queue ─────────────────────────────
+    n_queued = 0
+    if failed_event_ids and not dry_run:
+        try:
+            await db[RETRY_QUEUE_COLL].create_index(
+                [("league_id", 1), ("event_id", 1)],
+                unique=True, background=True,
+                name="retry_queue_lg_eid_unique",
+            )
+        except Exception:
+            pass
+        retry_ops = []
+        now = datetime.now(timezone.utc)
+        for eid, reason in failed_event_ids:
+            retry_ops.append(UpdateOne(
+                {"league_id": league.upper(), "event_id": eid},
+                {"$set": {"league_id": league.upper(), "event_id": eid,
+                          "last_reason": reason, "last_failed_at": now},
+                  "$inc": {"attempts": 1},
+                  "$setOnInsert": {"first_queued_at": now}},
+                upsert=True,
+            ))
+        if retry_ops:
+            try:
+                r = await db[RETRY_QUEUE_COLL].bulk_write(
+                    retry_ops, ordered=False)
+                n_queued = r.upserted_count + r.modified_count
+                print(f"  [sgo_api] queued {n_queued} failed event ids to "
+                          f"{RETRY_QUEUE_COLL} (re-run with --retry-failed)")
+            except Exception as e:
+                print(f"  [sgo_api] retry-queue write failed: {e!r}")
+
     return {
         "source":           "sgo_api",
         "events_total":     events_total,
@@ -1099,6 +1203,9 @@ async def ingest_from_sgo_api(
         "rows_written":     rows_emitted,
         "api_calls_saved":  events_cached_skipped,
         "api_failures":     api_failures,
+        "api_429_failures": api_429_failures,
+        "circuit_breaker_tripped": aborted_by_circuit_breaker,
+        "failed_event_ids_queued": n_queued,
         "api_telemetry":    api_telemetry,
         "coverage":         coverage,
         "sample_docs":      sample_docs,
@@ -1170,12 +1277,57 @@ async def amain(args: argparse.Namespace) -> int:
     if source in ("sgo_api", "auto"):
         leagues_to_run = ([args.league] if args.league
                             else ["MLB", "NBA"])
+        # --retry-failed mode: drive event ids from the persistent
+        # retry queue instead of the driver collection. Lets you rerun
+        # ONLY the ones that 429'd previously, after waiting out the
+        # rate-limit cooldown.
+        retry_event_ids: Optional[List[str]] = None
+        if getattr(args, "retry_failed", False):
+            retry_event_ids = []
+            async for d in db[RETRY_QUEUE_COLL].find(
+                {"league_id": (args.league or "MLB").upper()},
+                {"_id": 0, "event_id": 1}):
+                if d.get("event_id"):
+                    retry_event_ids.append(d["event_id"])
+            print(f"  [sgo_api] --retry-failed: {len(retry_event_ids)} "
+                      f"queued events to retry")
+            if not retry_event_ids:
+                print(f"  [sgo_api] retry queue empty — nothing to do")
+
         for lg in leagues_to_run:
             r = await ingest_from_sgo_api(
                 db, league=lg, start=args.start, end=args.end,
                 dry_run=args.dry_run, resume=args.resume,
-                rpm=args.sgo_rpm, force=getattr(args, "force", False))
+                rpm=args.sgo_rpm, force=getattr(args, "force", False),
+                only_event_ids=retry_event_ids,
+                max_events=getattr(args, "max_events", None),
+                sleep_between_ms=getattr(args, "sleep_between_requests", 0),
+                abort_after_consecutive_429s=getattr(
+                    args, "abort_after_consecutive_429s", 8),
+            )
             results.append(r)
+            # Clean up: remove successfully-fetched event ids from the
+            # retry queue. Only safe to do when we ran with the queue
+            # as the driver (--retry-failed).
+            if (retry_event_ids and not args.dry_run
+                    and r.get("rows_emitted", 0) > 0):
+                # The retry list was provided as `only_event_ids`. Every
+                # event we successfully scanned (i.e. didn't fail) should
+                # be removed. We approximate "successful" as
+                # `events_scanned - api_failures` (the count that did
+                # actually upsert rows or returned cleanly).
+                # Conservative: delete only ids that now have rows in
+                # OUT_COLL — guarantees we never lose a still-broken id.
+                kept_after = await db[OUT_COLL].distinct(
+                    "event_id",
+                    {"league_id": lg.upper(),
+                      "event_id": {"$in": retry_event_ids}})
+                if kept_after:
+                    delr = await db[RETRY_QUEUE_COLL].delete_many(
+                        {"league_id": lg.upper(),
+                          "event_id": {"$in": list(kept_after)}})
+                    print(f"  [sgo_api] cleared {delr.deleted_count} "
+                              f"event ids from {RETRY_QUEUE_COLL}")
             if r.get("error"):
                 print(f"  [sgo_api/{lg}] SKIPPED: {r['error']}")
             else:
@@ -1389,9 +1541,33 @@ def main() -> int:
                          "bdl (NBA emergency fallback) | "
                          "auto = sgo_api + sgo + emergency fallbacks "
                          "(default) | both = legacy alias for auto")
-    p.add_argument("--sgo-rpm", type=int, default=250,
-                    help="SGO API rate limit (req/min); default 250 (under "
-                         "300 rpm trial cap). Requires SGO_API_KEY env var.")
+    p.add_argument("--sgo-rpm", type=int, default=60,
+                    help="SGO API rate limit (req/min); default 60 "
+                         "(safe slow mode = ~1 req/sec). Bump this only "
+                         "if you've confirmed a higher tier with SGO. "
+                         "Requires SGO_API_KEY env var.")
+    p.add_argument("--sleep-between-requests", type=int, default=1000,
+                    dest="sleep_between_requests",
+                    help="Floor on inter-event sleep (ms) in ADDITION to "
+                         "the per-minute sliding window. Default 1000 = "
+                         "1 req/sec safe mode. Set 0 to disable.")
+    p.add_argument("--rate-limit-ms", type=int, default=None,
+                    help="Alias for --sleep-between-requests (back-compat).")
+    p.add_argument("--abort-after-consecutive-429s", type=int, default=8,
+                    dest="abort_after_consecutive_429s",
+                    help="Circuit breaker: abort the run after N "
+                         "consecutive 429s (no successful interleaved "
+                         "request). Default 8.")
+    p.add_argument("--max-events", type=int, default=None,
+                    dest="max_events",
+                    help="Smoke-test cap: stop after N successful event "
+                         "fetches. Defaults to unlimited.")
+    p.add_argument("--retry-failed", action="store_true",
+                    dest="retry_failed",
+                    help=f"Drive ONLY from {RETRY_QUEUE_COLL} (events "
+                         f"that 429'd or errored on a prior run). "
+                         f"Successfully-fetched ids are removed from "
+                         f"the queue automatically.")
     p.add_argument("--mlb-rpm", type=int, default=30,
                     help="MLB stats API rate limit (req/min); default 30")
     p.add_argument("--bdl-rpm", type=int, default=30,
@@ -1409,7 +1585,11 @@ def main() -> int:
                          "every event in the window. Default behavior is "
                          "cache-first: events already in sgo_player_stats "
                          "are skipped and no API call is made.")
-    return asyncio.run(amain(p.parse_args()))
+    args = p.parse_args()
+    # --rate-limit-ms is a back-compat alias for --sleep-between-requests
+    if getattr(args, "rate_limit_ms", None) is not None:
+        args.sleep_between_requests = args.rate_limit_ms
+    return asyncio.run(amain(args))
 
 
 if __name__ == "__main__":

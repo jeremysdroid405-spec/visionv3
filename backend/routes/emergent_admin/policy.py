@@ -156,7 +156,9 @@ ALLOWED_JOBS: Dict[str, Dict] = {
         "enabled": True,
         "args": ["--league", "--start", "--end", "--source", "--dry-run",
                   "--resume", "--force", "--limit", "--debug-unresolved",
-                  "--sgo-rpm"],
+                  "--sgo-rpm", "--sleep-between-requests", "--rate-limit-ms",
+                  "--abort-after-consecutive-429s", "--max-events",
+                  "--retry-failed"],
     },
     "scripts.sgo.verify_sgo_player_stats_coverage": {
         "label": "Read-only coverage report (safe)",
