@@ -447,22 +447,16 @@ async def _run(args: argparse.Namespace) -> int:
 
     # ── Lazy import the runner + adapter ──────────────────────────────
     from services.replay.production_replay_runner import run_production_replay
-    from services.replay.providers import MLBReplayAdapter
 
-    # Point the adapter at the SGO odds collection. Same monkey-patch
-    # pattern as scripts.sgo.run_sgo_production_replay so audit snapshots
-    # (services.replay.providers.audit.snapshot_input_collection_versions)
-    # pin the right counts. The Layer-3 engine read is plumbed separately
-    # via the `odds_collection=` kwarg on run_production_replay below —
-    # mlb_replay_engine.replay_date previously hardcoded
-    # "mlb_historical_alt_odds_raw" which silently bypassed this patch
-    # and was the cause of the 2026-05-21 "scanned=0" bug.
-    _orig_init = MLBReplayAdapter.__init__
-
-    def _patched(self):
-        _orig_init(self)
-        self.config.odds_collection = SGO_ODDS_COLL  # type: ignore[attr-defined]
-    MLBReplayAdapter.__init__ = _patched  # type: ignore[method-assign]
+    # NOTE: previously this script monkey-patched
+    # `MLBReplayAdapter.__init__` to set `self.config.odds_collection`,
+    # but `config` is a @property that constructs a fresh
+    # SportFixedConfig on every access — so the attribute assignment
+    # was dropped. The dead patch ALSO broke `_resolve_adapter(cls(db))`
+    # because the patched closure didn't accept `db` (2026-05-22
+    # TypeError). The kwarg path (`odds_collection=SGO_ODDS_COLL` to
+    # run_production_replay below) is what actually points Layer-3 and
+    # the audit-pin code at the SGO collection — no patch required.
 
     dates = list(_date_iter(args.start, args.end))
     if args.limit_dates:

@@ -466,6 +466,7 @@ async def run_production_replay(
     input_pins_raw = await snapshot_input_collection_versions(
         db, adapter=adapter,
         game_date=game_date, snapshot_iso=snapshot_iso,
+        odds_collection_override=odds_collection,
     )
     input_pins = {
         k: InputCollectionPin(**v).model_dump() for k, v in input_pins_raw.items()

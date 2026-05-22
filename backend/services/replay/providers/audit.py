@@ -47,15 +47,24 @@ async def snapshot_input_collection_versions(
     db: AsyncIOMotorDatabase, *,
     adapter: SportReplayAdapter,
     game_date: str, snapshot_iso: str,
+    odds_collection_override: Optional[str] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """Capture row-counts + max-timestamp pins for every input collection
-    the replay will read for this sport×date×snapshot."""
+    the replay will read for this sport×date×snapshot.
+
+    `odds_collection_override` lets the SSOT pipeline force the pin to
+    point at `sgo_replay_alt_odds_raw` instead of the adapter's default
+    `mlb_historical_alt_odds_raw`. Without it the audit would record
+    the wrong collection name even when Layer-3 reads from the
+    overridden one.
+    """
     out: Dict[str, Dict[str, Any]] = {}
     cfg = adapter.config
+    odds_coll = odds_collection_override or cfg.odds_collection
 
-    n = await db[cfg.odds_collection].count_documents(
+    n = await db[odds_coll].count_documents(
         {"game_date": game_date, "snapshot_iso": snapshot_iso})
-    out[cfg.odds_collection] = {
+    out[odds_coll] = {
         "count": n, "scope": {"game_date": game_date,
                                  "snapshot_iso": snapshot_iso}}
 
