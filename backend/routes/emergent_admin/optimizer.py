@@ -341,8 +341,23 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
     }
 
 
-def _score(metrics: Dict[str, Any], goal: str, baseline_n: int) -> float:
-    """Composite ranking score; higher is better."""
+def _score(metrics: Dict[str, Any], goal: str, baseline_n: int) -> Optional[float]:
+    """Composite ranking score; higher is better.
+
+    Returns None when the cell has no graded rows. Previously this
+    function silently coalesced None metrics to 0.0, which caused
+    completely-ungraded cells to score `0.0` and outrank legitimately
+    graded cells with negative scores. That produced the "Top 25 are
+    all empty" symptom in the optimizer Results panel.
+    """
+    n_graded = metrics.get("n_graded")
+    if n_graded is None:
+        # Old cell shape (pre-diagnostic-fields). Fall through to
+        # legacy behavior but treat null HR as ungradable.
+        if metrics.get("hit_rate") is None and metrics.get("roi") is None:
+            return None
+    elif n_graded < 1:
+        return None
     hr   = metrics.get("hit_rate") or 0.0
     roi  = metrics.get("roi") or 0.0
     cal  = metrics.get("calibration_delta") or 0.0
@@ -403,8 +418,13 @@ async def _evaluate_cell(state: Dict[str, Any], db, *,
             continue
         score = _score(metrics, body.optimization_goal,
                           baseline_n=overfit_threshold)
-        # update best-so-far
-        if (state["best"] is None or score > state["best"].get("score", -1e9)):
+        # Ungradable cell — emit with score=None so it survives in
+        # the results table (operator can still see the threshold +
+        # sample size) but is sorted to the bottom and never beats a
+        # real graded cell for "best-by" rankings.
+        ungradable = score is None
+        if not ungradable and (state["best"] is None
+                                       or score > state["best"].get("score", -1e9)):
             state["best"] = {
                 "score": score, "tier": tier, "stat_family": stat_family,
                 "odds_bucket": odds_bucket, **metrics, **combo,
@@ -414,9 +434,11 @@ async def _evaluate_cell(state: Dict[str, Any], db, *,
             "sides": sides, "thresholds": combo,
             **metrics, "score": score, "score_goal": body.optimization_goal,
             "overfit_flag": metrics["n_bets"] < overfit_threshold,
+            "ungradable": ungradable,
         })
-    # Keep only top-K per cell to bound memory
-    cell_results.sort(key=lambda r: r["score"], reverse=True)
+    # Keep only top-K per cell to bound memory. Sort puts ungradable
+    # (score=None) cells at the bottom regardless of their n_bets.
+    cell_results.sort(key=lambda r: (r["score"] is None, -(r["score"] or 0)))
     return cell_results[:200]
 
 
@@ -717,12 +739,15 @@ async def cancel_run(run_id: str, request: Request,
 async def get_results(run_id: str, request: Request,
                           limit: int = 25,
                           offset: int = 0,
+                          include_ungradable: bool = False,
                           auth=Depends(require_admin_token)):
     """Returns paginated, server-sorted optimizer results.
 
-    All reads come from Mongo (`optimizer_run_results`); uvicorn never
-    holds the full set in memory. `best_by_*` is computed via a small
-    aggregation that the DB can stream.
+    Ungradable cells (those with 0 graded rows → score=None) are
+    excluded by default and surfaced separately in `ungradable_count`
+    + `ungradable_top` (sorted by sample size, so the operator can
+    see WHICH high-volume slices are missing grading).
+    Pass `include_ungradable=true` to mix them back into `top`.
     """
     db = _get_db()
     run = await db[OPTIMIZER_RUNS].find_one({"run_id": run_id}, {"_id": 0})
@@ -741,24 +766,41 @@ async def get_results(run_id: str, request: Request,
                       "top": [], "worst": [],
                       "best_by_tier": {}, "best_by_stat_family": {},
                       "best_by_odds_bucket": {}, "overfit_warnings": [],
+                      "ungradable_count": 0, "ungradable_top": [],
                       "note": "no rows persisted yet"}
         raise HTTPException(404,
             f"results not available yet for {run_id}")
 
+    graded_filter: Dict[str, Any] = {"run_id": run_id}
+    if not include_ungradable:
+        graded_filter["score"] = {"$ne": None}
+    n_gradable = await db[OPTIMIZER_RESULTS].count_documents(graded_filter)
+    n_ungradable = n_total - n_gradable if not include_ungradable else 0
+
     top_cur = db[OPTIMIZER_RESULTS].find(
-        {"run_id": run_id}, {"_id": 0}
+        graded_filter, {"_id": 0}
     ).sort([("score", -1)]).skip(offset).limit(limit)
     top = [d async for d in top_cur]
 
     worst_cur = db[OPTIMIZER_RESULTS].find(
-        {"run_id": run_id}, {"_id": 0}
+        graded_filter, {"_id": 0}
     ).sort([("score", 1)]).limit(limit)
     worst = [d async for d in worst_cur]
+
+    ungradable_top: List[Dict[str, Any]] = []
+    if not include_ungradable and n_ungradable > 0:
+        cur = db[OPTIMIZER_RESULTS].find(
+            {"run_id": run_id, "score": None}, {"_id": 0}
+        ).sort([("n_bets", -1)]).limit(10)
+        ungradable_top = [d async for d in cur]
 
     async def _best_by(field: str) -> Dict[str, Any]:
         out: Dict[str, Any] = {}
         pipeline = [
-            {"$match": {"run_id": run_id, field: {"$ne": None}}},
+            # Exclude ungradable cells from "best by …" — a score=None
+            # cell with thousands of rows must never win a group.
+            {"$match": {"run_id": run_id, field: {"$ne": None},
+                            "score": {"$ne": None}}},
             {"$sort": {"score": -1}},
             {"$group": {"_id": f"${field}", "doc": {"$first": "$$ROOT"}}},
             {"$replaceRoot": {"newRoot": "$doc"}},
@@ -780,6 +822,9 @@ async def get_results(run_id: str, request: Request,
     return {
         "ok": True, "run_id": run_id,
         "n_results": n_total,
+        "n_gradable": n_gradable,
+        "ungradable_count": n_ungradable,
+        "ungradable_top": ungradable_top,
         "offset": offset, "limit": limit,
         "status": run.get("status"),
         "top": top, "worst": worst,

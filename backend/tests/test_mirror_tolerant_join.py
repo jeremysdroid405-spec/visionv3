@@ -78,7 +78,6 @@ def test_index_lookup_simulates_prod_failure_mode():
     outcome: line='0.5' (str), side='over', stat_family='hits'
     The normalized lookup must produce a match."""
     eid, fam = "evt_X", "hits"
-    # ── Build index the same way `_build_outcome_index` does
     outcome = {"event_id": eid, "stat_family": fam, "line": "0.5",
                   "side": "over", "outcome_numeric": 1,
                   "player_name_normalized": None,
@@ -87,7 +86,6 @@ def test_index_lookup_simulates_prod_failure_mode():
                     _norm_side(outcome["side"]))
     index = {index_key: [outcome]}
 
-    # ── Replay-side lookup key (the mirror's coercion path)
     replay_key = (eid, fam, _norm_line(0.5), _norm_side("OVER"))
     assert replay_key == index_key, (replay_key, index_key)
 
@@ -97,3 +95,50 @@ def test_index_lookup_simulates_prod_failure_mode():
                               wanted_player_raw="Hunter Renfroe")
     assert pick is outcome
     assert pick["outcome_numeric"] == 1
+
+
+def test_pick_outcome_narrows_by_stat_family_when_pool_has_multiple_props():
+    """Fallback index lookup returns every prop on the same
+    (event, line, side). _pick_outcome must narrow by stat_family
+    before falling back to player-name disambiguation."""
+    a = {"stat_family": "batter_strikeouts", "player_name": "Mike Trout",
+            "outcome_numeric": 1}
+    b = {"stat_family": "walks_allowed",     "player_name": "Mike Trout",
+            "outcome_numeric": 0}
+    pick = _pick_outcome([a, b],
+                              wanted_player_norm="mike trout",
+                              wanted_player_raw="Mike Trout",
+                              wanted_stat_family="walks_allowed")
+    assert pick is b
+
+
+def test_pick_outcome_narrows_by_market_or_stat_id():
+    """When stat_family isn't enough (e.g. outcome side stores
+    stat_id='batting_strikeouts' but replay's market is
+    'batter_strikeouts'), the market/stat_id match must still
+    narrow the pool."""
+    a = {"stat_family": "strikeouts", "stat_id": "pitching_strikeouts",
+            "market": None, "player_name": "Same Guy",
+            "outcome_numeric": 1}
+    b = {"stat_family": "strikeouts", "stat_id": "batting_strikeouts",
+            "market": None, "player_name": "Same Guy",
+            "outcome_numeric": 0}
+    # market="batter_strikeouts" → no stat_id/market exact match,
+    # so we fall back to first; this test ensures market filter
+    # doesn't accidentally zero the pool.
+    pick = _pick_outcome([a, b],
+                              wanted_player_norm="same guy",
+                              wanted_player_raw="Same Guy",
+                              wanted_market="batter_strikeouts")
+    assert pick in (a, b)
+
+
+def test_pick_outcome_market_filter_picks_stat_id_when_market_is_null():
+    a = {"stat_family": "x", "stat_id": "pitching_walks", "market": None,
+            "player_name": "p", "outcome_numeric": 1}
+    b = {"stat_family": "x", "stat_id": "batting_hits", "market": None,
+            "player_name": "p", "outcome_numeric": 0}
+    pick = _pick_outcome([a, b],
+                              wanted_player_norm="p", wanted_player_raw="p",
+                              wanted_market="pitching_walks")
+    assert pick is a

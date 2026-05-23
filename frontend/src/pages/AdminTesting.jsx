@@ -3397,6 +3397,45 @@ function OptimizerTab({ token }) {
             </div>
           </div>
 
+          {/* Ungradable cells banner. Surfaced separately so they
+              never out-rank legitimately-graded cells in the "Top by
+              Score" table. */}
+          {results.ungradable_count > 0 && (
+            <div data-testid="opt-ungradable-banner" style={{
+              padding: 10, marginBottom: 14, borderRadius: 6,
+              background: `${WARN}14`, border: `1px solid ${WARN}`,
+              fontSize: 11, color: WARN,
+            }}>
+              <div style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                ⚠ {fmtInt(results.ungradable_count)} cells excluded from rankings (no graded rows)
+              </div>
+              <div style={{ color: TEXT, fontSize: 11, lineHeight: 1.5 }}>
+                These cells passed the threshold filters but had zero rows
+                with a numeric outcome — they cannot be scored. They are
+                hidden so they don't out-rank actually-graded cells. Use
+                the "Diagnose join failure" button above to identify why
+                grading is missing for these stat families.
+              </div>
+              {results.ungradable_top?.length > 0 && (
+                <details style={{ marginTop: 8 }}>
+                  <summary style={{ cursor: 'pointer', fontSize: 10, color: DIM }}>
+                    Top {results.ungradable_top.length} ungradable cells by sample size
+                  </summary>
+                  <div style={{ marginTop: 6, fontFamily: 'monospace', fontSize: 10, color: TEXT, lineHeight: 1.5 }}>
+                    {results.ungradable_top.map((c, i) => (
+                      <div key={i} data-testid={`opt-ungradable-row-${i}`} style={{ padding: '2px 0' }}>
+                        <code style={{ color: ACCENT }}>{c.stat_family}</code>{' · '}
+                        <code style={{ color: ACCENT_3 }}>{c.odds_bucket}</code>{' · '}
+                        <span style={{ color: DIM }}>{c.tier}</span>{' · '}
+                        <span style={{ color: WARN }}>{fmtInt(c.n_bets)} rows / 0 graded</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
+
           {/* Top 25 table */}
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Top 25 by Score</div>

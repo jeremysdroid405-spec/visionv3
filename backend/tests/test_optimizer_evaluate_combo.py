@@ -96,3 +96,53 @@ def test_evaluate_combo_missing_odds_doesnt_break_grading():
     assert m["n_with_payout"] == 0
     assert m["hit_rate"] == 1.0
     assert m["roi"] is None     # 0 / 0 = None, NOT 0.0
+
+
+# ── _score must return None for ungradable cells ───────────────────
+# (the "Top 25 all empty" bug fix)
+from routes.emergent_admin.optimizer import _score  # noqa: E402
+
+
+def test_score_returns_none_when_no_graded_rows():
+    """The earlier bug: when every row in a cell was ungraded,
+    _evaluate_combo returned metrics with hit_rate=None and ROI=None
+    (correctly), but _score did `hr or 0.0` + `roi or 0.0` and
+    produced 0.0 for the cell, which outranked legitimately-graded
+    cells with negative scores. Fix asserts: ungraded → None."""
+    metrics = {"n_bets": 80, "n_graded": 0, "n_ungraded": 80,
+                  "wins": 0, "losses": 0, "pushes": 0,
+                  "hit_rate": None, "roi": None,
+                  "calibration_delta": None,
+                  "daily_consistency": 0, "max_drawdown_units": 0,
+                  "profit_units": 0, "n_days": 0,
+                  "avg_tp": 0.6, "avg_cv": 0.4, "avg_edge": 0.05}
+    assert _score(metrics, "balanced", baseline_n=50) is None
+    assert _score(metrics, "hit_rate", baseline_n=50) is None
+    assert _score(metrics, "roi", baseline_n=50) is None
+
+
+def test_score_is_finite_when_some_rows_graded():
+    """A real (negative or positive) score should still be returned
+    when ≥1 row is graded."""
+    metrics = {"n_bets": 80, "n_graded": 20, "n_ungraded": 60,
+                  "wins": 5, "losses": 15, "pushes": 0,
+                  "hit_rate": 0.25, "roi": -0.20,
+                  "calibration_delta": -0.10,
+                  "daily_consistency": 0.5, "max_drawdown_units": 8.0,
+                  "profit_units": -4.0, "n_days": 10,
+                  "avg_tp": 0.6, "avg_cv": 0.4, "avg_edge": 0.05,
+                  "n_with_payout": 20}
+    s = _score(metrics, "balanced", baseline_n=50)
+    assert s is not None and isinstance(s, float)
+    # And it should be NEGATIVE (bad performance) — sanity-check that
+    # the score discriminates against losing cells (i.e. they cannot
+    # be tied with ungradable score=None).
+    assert s < 0
+
+
+def test_score_returns_none_for_legacy_pre_diagnostic_shape():
+    """Backwards-compat: if a saved cell predates the `n_graded`
+    field, treat hit_rate=None AND roi=None as ungradable."""
+    metrics = {"n_bets": 80, "hit_rate": None, "roi": None,
+                  "calibration_delta": None}
+    assert _score(metrics, "balanced", baseline_n=50) is None

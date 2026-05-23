@@ -536,3 +536,99 @@ curl -sS "$API/api/emergent-admin/research/replay-outcome-coverage?sport=MLB&sta
 # 3. Re-run the optimizer — HR / ROI / Δcal will populate.
 ```
 
+
+### 2026-05-23 — Mirror join: stat_family-tolerant fallback (wave 2 fix)
+After the first tolerant-join fix, prod re-ran and the optimizer
+showed grading for `pitcher_strikeouts` (~85%) + `total_bases` (~85%)
+but `batter_strikeouts` + `walks_allowed` were STILL at 0/N graded.
+
+**Root cause:** the outcomes collection writes those two families
+under different `stat_family` names than RUNNER_OUTPUTS does (e.g.
+`batting_strikeouts` vs `batter_strikeouts`). The first fix keyed
+the index by `(event_id, stat_family, line, side)` so families that
+disagree silently missed.
+
+**Patch** (`_build_outcome_index` + `_mirror_to_legacy`):
+- `_build_outcome_index` now returns TWO indices:
+  - **primary**:  `(event_id, stat_family, line_float, side_upper)`
+  - **fallback**: `(event_id, line_float, side_upper)` — drops family.
+- The mirror tries the primary index first; on a miss it falls back
+  to the family-agnostic index and disambiguates by player + market/
+  stat_id via `_pick_outcome`.
+- `_pick_outcome` extended with `wanted_stat_family` and
+  `wanted_market` knobs so the fallback path can still narrow a
+  multi-prop pool down to the right row.
+- Mirror log line now reports `via_fallback=N` so the operator can
+  see how many rows landed on the relaxed path.
+
+**Tests:** 3 new cases pin the fallback semantics:
+- narrow-by-family when multiple props share event+line+side
+- market filter handles outcome.market=null by matching on stat_id
+- stat_id+market filter doesn't zero a viable pool
+
+Backend total: 94/94 passing.
+
+**Operator verification (prod):**
+```bash
+# Re-run replay — should bring batter_strikeouts / walks_allowed
+# coverage up to par with pitcher_strikeouts / total_bases.
+python -m scripts.sgo.historical_full_pipeline_replay \
+       --league MLB --start 2025-05-01 --end 2025-06-01 --research-mode
+
+# Look for `via_fallback=…` in the worker log — that's the new path
+# attaching the previously-missed batter_strikeouts/walks_allowed.
+
+# Then re-check coverage; pct_graded should approach n_outcomes_in_window/n_total.
+curl -sS "$API/api/emergent-admin/research/replay-outcome-coverage?sport=MLB&start=2025-05-01&end=2025-06-01" \
+     -H "X-Admin-Token: $TOK" | jq '.by_stat_family'
+```
+
+
+### 2026-05-23 — Optimizer ranking fix: ungradable cells must not win
+**Reported symptom:** even after the join fix landed 85%+ grading for
+pitcher_strikeouts / total_bases, the optimizer "Top 25 by Score"
+table was still entirely populated with ungraded `batter_strikeouts`
+rows (`n=82(0/82 graded)`, `score=0.00`).
+
+**Root cause** in `_score()` of `routes/emergent_admin/optimizer.py`:
+```python
+hr   = metrics.get("hit_rate") or 0.0   # None → 0.0
+roi  = metrics.get("roi") or 0.0        # None → 0.0
+...
+return hr_score + roi_score + cal_score + cons_score + dd_penalty + sample_penalty
+```
+For a fully-ungraded cell the entire sum was `0.0`. Legitimately
+graded losing cells had negative scores (e.g. `-5.7`). When the
+results table sorted by `score desc`, the ungraded `0.0` cells beat
+every real cell to the top. Same effect on `best_by_*` aggregations.
+
+**Patch:**
+- `_score()` now returns `None` when `n_graded < 1` (or, for legacy
+  pre-diagnostic cells, when both `hit_rate` and `roi` are None).
+- `_evaluate_cell()` writes `score: None` AND `ungradable: True` on
+  those cells so they persist in `optimizer_run_results` (for visibility)
+  but never compete for "best".
+- `GET /optimizer/{run_id}/results` now:
+  - Accepts `include_ungradable: bool = False` (default off).
+  - Filters `score: {$ne: None}` from `top` / `worst` / every
+    `best_by_*` aggregation.
+  - Surfaces `ungradable_count` and `ungradable_top` (sorted by
+    `n_bets desc`, limit 10) in the response so the operator can
+    see WHICH high-volume slices have no grading.
+
+**Frontend** (`AdminTesting.jsx`):
+- Optimizer Results panel now renders an amber "⚠ N cells excluded
+  from rankings (no graded rows)" banner above the Top 25 table when
+  `ungradable_count > 0`. An expandable details block shows the
+  highest-sample ungradable cells (family · bucket · tier · n rows).
+
+**Tests:** 3 new cases in `tests/test_optimizer_evaluate_combo.py`:
+- `test_score_returns_none_when_no_graded_rows` (the regression pin)
+- `test_score_is_finite_when_some_rows_graded`
+- `test_score_returns_none_for_legacy_pre_diagnostic_shape`
+
+Backend total: 97/97. Smoke-tested end-to-end against a seeded run:
+default response correctly excludes the score=None cell from `top` /
+`best_by_stat_family` and surfaces it in `ungradable_top`; passing
+`include_ungradable=true` restores the old behavior.
+

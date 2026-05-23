@@ -223,23 +223,27 @@ def _norm_player(x) -> Optional[str]:
 
 
 async def _build_outcome_index(db, *, event_ids: List[str]
-                                  ) -> Dict[Tuple[str, str, float, str], List[Dict[str, Any]]]:
+                                  ) -> Tuple[Dict[Tuple[str, str, float, str], List[Dict[str, Any]]],
+                                                Dict[Tuple[str, float, str],      List[Dict[str, Any]]]]:
     """Per-event tolerant outcome index.
 
-    Key = (event_id, stat_family, line_as_float, side_uppercase).
-    Outcomes from `sgo_pp_research_outcomes` were historically written
-    with several non-canonical key types (line as string, side
-    lowercase, market/player_name_normalized missing), so we coerce on
-    both the index side and the lookup side.
+    Returns two indices so the mirror can fall back when stat_family
+    names disagree between RUNNER_OUTPUTS and `sgo_pp_research_outcomes`
+    (the second-pass failure mode observed in prod: pitcher_strikeouts
+    + total_bases matched on the family-keyed index, batter_strikeouts
+    + walks_allowed missed because outcome side spells them differently
+    e.g. 'batting_strikeouts' vs 'batter_strikeouts').
 
-    Value is a *list* because the same (event, stat_family, line, side)
-    can apply to multiple players on the same game (e.g. two batters
-    with the hits 0.5 line). The mirror disambiguates by player using
-    `player_name` substring match downstream.
+      A) primary  key = (event_id, stat_family, line_float, side_upper)
+      B) fallback key = (event_id, line_float, side_upper)
+
+    Both values are *lists* — the same (event, line, side) can apply
+    to multiple players. Downstream disambiguates by player name.
     """
-    index: Dict[Tuple[str, str, float, str], List[Dict[str, Any]]] = {}
+    primary: Dict[Tuple[str, str, float, str], List[Dict[str, Any]]] = {}
+    fallback: Dict[Tuple[str, float, str], List[Dict[str, Any]]] = {}
     if not event_ids:
-        return index
+        return primary, fallback
     async for o in db[SGO_OUTCOMES_COLL].find(
         {"event_id": {"$in": event_ids}, "outcome_resolved": True},
         projection={"_id": 0, "outcome_numeric": 1, "hit": 1,
@@ -251,39 +255,57 @@ async def _build_outcome_index(db, *, event_ids: List[str]
     ):
         ln = _norm_line(o.get("line"))
         sd = _norm_side(o.get("side"))
-        fam = o.get("stat_family") or ""
         eid = o.get("event_id") or ""
         if ln is None or sd is None or not eid:
             continue
-        key = (eid, fam, ln, sd)
-        index.setdefault(key, []).append(o)
-    return index
+        fam = o.get("stat_family") or ""
+        primary.setdefault((eid, fam, ln, sd), []).append(o)
+        fallback.setdefault((eid, ln, sd), []).append(o)
+    return primary, fallback
 
 
 def _pick_outcome(candidates: List[Dict[str, Any]], *,
                        wanted_player_norm: Optional[str],
-                       wanted_player_raw: Optional[str]) -> Optional[Dict[str, Any]]:
-    """Pick the best outcome from a list of candidates that already
-    share (event_id, stat_family, line, side). Disambiguates by
-    player using normalized + raw name matches. Returns the first
-    candidate as a last resort (1-prop-per-cell case)."""
+                       wanted_player_raw: Optional[str],
+                       wanted_stat_family: Optional[str] = None,
+                       wanted_market: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Pick the best outcome from a list of candidates. Disambiguates
+    by stat_family/market FIRST (when the primary index missed and we
+    fall back to the event+line+side index, multiple props on the
+    same event/line/side may share a player), then by player name.
+    Returns the first candidate as a last resort."""
     if not candidates:
         return None
     if len(candidates) == 1:
         return candidates[0]
+    # Filter by stat_family / market when provided (only narrows the set;
+    # never returns empty unless every candidate is incompatible).
+    pool = candidates
+    if wanted_stat_family:
+        narrowed = [c for c in pool if c.get("stat_family") == wanted_stat_family]
+        if narrowed:
+            pool = narrowed
+    if wanted_market and len(pool) > 1:
+        narrowed = [c for c in pool
+                       if c.get("market") == wanted_market
+                       or c.get("stat_id") == wanted_market]
+        if narrowed:
+            pool = narrowed
+    if len(pool) == 1:
+        return pool[0]
     np = _norm_player(wanted_player_norm) or _norm_player(wanted_player_raw)
     if np:
         # Exact match on normalized name
-        for c in candidates:
+        for c in pool:
             cn = _norm_player(c.get("player_name_normalized")) or _norm_player(c.get("player_name"))
             if cn and cn == np:
                 return c
         # Substring fallback
-        for c in candidates:
+        for c in pool:
             cn = _norm_player(c.get("player_name_normalized")) or _norm_player(c.get("player_name"))
             if cn and (np in cn or cn in np):
                 return c
-    return candidates[0]
+    return pool[0]
 
 
 async def _mirror_to_legacy(db, *, replay_serials: List[str],
@@ -338,10 +360,12 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
         eid = (g.get("_id") or {}).get("event_id")
         if eid:
             event_ids_seen.add(eid)
-    outcome_index = await _build_outcome_index(db, event_ids=list(event_ids_seen))
+    outcome_index, outcome_index_fb = await _build_outcome_index(
+        db, event_ids=list(event_ids_seen))
 
     rows_mirrored = 0
     rows_with_outcome = 0
+    rows_with_outcome_fb = 0  # how many landed via the family-tolerant fallback
     buf: List[UpdateOne] = []
     for g in groups:
         k = g["_id"]
@@ -358,21 +382,37 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
                           else "war_zone" if wz_pass else None)
 
         # ── Tolerant outcome lookup ─────────────────────────────
-        # Key normalization mirrors what `_build_outcome_index` does.
-        key = (
-            k.get("event_id") or "",
-            g.get("stat_family") or "",
-            _norm_line(k.get("line")),
-            _norm_side(k.get("side")),
-        )
+        eid = k.get("event_id") or ""
+        ln  = _norm_line(k.get("line"))
+        sd  = _norm_side(k.get("side"))
+        fam = g.get("stat_family") or ""
         outcome = None
-        if key[2] is not None and key[3]:
-            candidates = outcome_index.get(key) or []
+        if ln is not None and sd and eid:
+            # 1) Primary: same stat_family on both sides
+            primary_hits = outcome_index.get((eid, fam, ln, sd)) or []
             outcome = _pick_outcome(
-                candidates,
+                primary_hits,
                 wanted_player_norm=k.get("player_name_normalized"),
                 wanted_player_raw=g.get("player_name"),
+                wanted_stat_family=fam,
+                wanted_market=k.get("market"),
             )
+            # 2) Fallback: outcomes side spells stat_family differently
+            #    (the second wave of misses observed in prod for
+            #    batter_strikeouts and walks_allowed). Match on
+            #    (event_id, line, side) and disambiguate by player +
+            #    market/stat_id afterwards.
+            if outcome is None:
+                fb_hits = outcome_index_fb.get((eid, ln, sd)) or []
+                outcome = _pick_outcome(
+                    fb_hits,
+                    wanted_player_norm=k.get("player_name_normalized"),
+                    wanted_player_raw=g.get("player_name"),
+                    wanted_stat_family=None,   # already failed family path
+                    wanted_market=k.get("market"),
+                )
+                if outcome is not None:
+                    rows_with_outcome_fb += 1
         if outcome:
             rows_with_outcome += 1
 
@@ -445,8 +485,9 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
     if buf:
         await db[LEGACY_OUT_COLL].bulk_write(buf, ordered=False)
     print(f"  [mirror] groups={len(groups)} events={len(event_ids_seen)} "
-            f"outcome_index_keys={len(outcome_index)} "
-            f"rows_mirrored={rows_mirrored} rows_with_outcome={rows_with_outcome}")
+            f"primary_idx={len(outcome_index)} fallback_idx={len(outcome_index_fb)} "
+            f"rows_mirrored={rows_mirrored} rows_with_outcome={rows_with_outcome} "
+            f"(via_fallback={rows_with_outcome_fb})")
     return (rows_mirrored, rows_with_outcome)
 
 
