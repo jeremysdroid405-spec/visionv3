@@ -14,6 +14,12 @@ Endpoints (token-gated, audit-logged):
     POST /api/emergent-admin/worker/cancel/{job_id}
         SIGTERM the worker subprocess for the named job (does not stop
         the worker daemon itself).
+
+    GET  /api/emergent-admin/worker/testing-mode
+    POST /api/emergent-admin/worker/testing-mode  body={enabled: bool}
+        Pause/resume the APScheduler in the backend pod. When enabled,
+        every periodic sync (SGO pulls, recompute, delta) is suspended
+        so memory-heavy research workloads have the pod to themselves.
 """
 from __future__ import annotations
 import logging
@@ -172,3 +178,85 @@ async def cancel(job_id: str, request: Request,
     await audit_log(request, action="worker_cancel",
                       params={"job_id": job_id, "pid": pid}, **auth)
     return {"ok": True, "job_id": job_id, "killed_pid": pid}
+
+
+# ── Testing-mode toggle (pause scheduler in the backend pod) ──────────
+@router.get("/testing-mode")
+async def get_testing_mode(request: Request,
+                                auth=Depends(require_admin_token)):
+    """Reports whether the APScheduler is paused via the in-process
+    flag. Falls back to the TESTING_MODE env var when the scheduler is
+    unavailable (e.g. early in app startup)."""
+    enabled = False
+    state = "unknown"
+    try:
+        from server import scheduler  # local import to avoid cycle at boot
+        from apscheduler.schedulers.base import (
+            STATE_RUNNING, STATE_PAUSED, STATE_STOPPED,
+        )
+        if scheduler is None:
+            state = "not-initialised"
+            enabled = os.environ.get("TESTING_MODE", "0") == "1"
+        elif scheduler.state == STATE_PAUSED:
+            state = "paused"
+            enabled = True
+        elif scheduler.state == STATE_STOPPED:
+            state = "stopped"
+            enabled = True
+        elif scheduler.state == STATE_RUNNING:
+            state = "running"
+            enabled = False
+        else:
+            state = f"state={scheduler.state}"
+    except Exception as e:  # noqa: BLE001
+        state = f"error: {type(e).__name__}"
+    return {"ok": True, "enabled": enabled, "scheduler_state": state}
+
+
+@router.post("/testing-mode")
+async def set_testing_mode(body: Dict[str, Any], request: Request,
+                                auth=Depends(require_admin_token)):
+    """Pause or resume the scheduler at runtime, no restart needed.
+
+    body = {"enabled": true|false}
+
+    When enabled=true we call `scheduler.pause()` which suspends ALL
+    jobs but keeps queued state intact. When enabled=false we call
+    `scheduler.resume()` to restore live sync. The pause is in-process
+    only — restart will re-read TESTING_MODE from the env.
+    """
+    want_enabled = bool(body.get("enabled"))
+    try:
+        from server import scheduler
+        from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"scheduler unavailable: {e!r}")
+    if scheduler is None:
+        raise HTTPException(503, "scheduler not initialised")
+    try:
+        if want_enabled:
+            if scheduler.state == STATE_RUNNING:
+                scheduler.pause()
+                action = "paused"
+            elif scheduler.state == STATE_PAUSED:
+                action = "already-paused"
+            else:
+                action = f"left at state={scheduler.state}"
+        else:
+            if scheduler.state == STATE_PAUSED:
+                scheduler.resume()
+                action = "resumed"
+            elif scheduler.state == STATE_RUNNING:
+                action = "already-running"
+            else:
+                # stopped — restart
+                scheduler.start()
+                action = "restarted"
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"toggle failed: {e!r}")
+    await audit_log(request, action="testing_mode_toggle",
+                      params={"want_enabled": want_enabled,
+                                  "scheduler_action": action}, **auth)
+    return {"ok": True, "enabled": want_enabled,
+              "scheduler_action": action,
+              "scheduler_state": scheduler.state}

@@ -226,3 +226,46 @@ python -m scripts.sgo.build_historical_outcomes \
 
 **Production safety: NFL is NOT wired into any tier and NOT on the
 production board. Research/backtest only.**
+
+### 2026-05-23 — Memory architecture fix (OOM-kill root cause)
+**Root cause confirmed:** `optimizer.py` was accumulating every cell
+result in `state["results"]` (a Python list living inside the uvicorn
+process). On a 5-month MLB sweep that's 200k+ dicts → uvicorn RSS
+ballooned to 4.3 GB, mongod's default WiredTiger cache (50% of RAM)
+fought for the same pages, kernel OOM-killer triggered.
+
+**Fixes shipped:**
+1. **Stream-to-Mongo optimizer.** Removed `state["results"]` entirely.
+   Cell rows now go straight to a new `optimizer_run_results` collection
+   via batched `insert_many` (flush at 500 rows or every 5 s).
+   Per-cell top-K cap (200) bounds total write volume. New compound
+   index `(run_id, score desc)` so reads stay $sort+$limit on the
+   server.
+2. **API endpoints read from Mongo.** `/optimizer/{run_id}/results`
+   is now paginated (`offset` + `limit`, hard-capped at 500/req) and
+   the best_by_* maps run as a Mongo aggregation. Same for
+   `/save_as_candidates`. Uvicorn never materialises the full set.
+3. **Cancel via Mongo flag.** `/optimizer/{run_id}/cancel` writes
+   `cancelled=true` on the run doc; the worker polls between cells.
+   Removes the last reason uvicorn needed `_RUNS[run_id]` populated.
+4. **Failures cap.** `state["failures"]` bounded by `MAX_INLINE_FAILURES
+   = 50` so degenerate sweeps cannot grow it without limit.
+5. **Testing-mode kill switch.**
+   - Env: `TESTING_MODE=1` keeps APScheduler from ever starting.
+   - Runtime: `POST /api/emergent-admin/worker/testing-mode {enabled}`
+     pauses/resumes APScheduler in-process — no restart needed.
+     `GET` returns current state (`running` / `paused` / `stopped`).
+   - When paused, every SGO pull, recompute, and delta job is
+     suspended; queued jobs survive intact for when you flip it back.
+6. **WiredTiger cache capped at 1 GB.** `/etc/supervisor/conf.d/
+   supervisord.conf` mongod command line now passes
+   `--wiredTigerCacheSizeGB 1`. Default on this shared pod was
+   ballooning past 4 GB.
+
+**Verified memory impact (after restart):**
+- backend uvicorn RSS:   4.3 GB → **142 MB**   (30× reduction)
+- mongod RSS:            ≈3 GB  → **1.2 GB**
+- available RAM:         8 GB   → **12 GB**
+
+**Tests:** 58/58 still pass (10 contract + 32 research/worker + 16 NFL).
+

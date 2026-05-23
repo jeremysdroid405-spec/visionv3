@@ -57,7 +57,15 @@ router = APIRouter()
 REPLAY_COLL          = "sgo_propvision_full_pipeline_replay"
 CANDIDATE_THRESH     = "candidate_thresholds"
 OPTIMIZER_RUNS       = "optimizer_runs"
+# Per-cell-config rows streamed to Mongo instead of held in uvicorn RAM.
+# Indexed (run_id, score desc) so readers can $sort + $limit on the
+# server. Bounded retention enforced via per-cell top-K (200) at write.
+OPTIMIZER_RESULTS    = "optimizer_run_results"
 TESTING_DEFAULTS     = "admin_testing_defaults"
+
+# Cap on `state["failures"]` so it can never grow unbounded inside an
+# inflight run (a degenerate sweep can otherwise log thousands of rows).
+MAX_INLINE_FAILURES = 50
 
 # Default grid values (used only when the request doesn't supply ranges)
 DEFAULT_GRID: Dict[str, List[float]] = {
@@ -436,48 +444,109 @@ async def _run_optimizer(run_id: str, body: OptimizerRunBody) -> None:
         )
 
         sem = asyncio.Semaphore(body.worker_limit)
-        all_results: List[Dict[str, Any]] = []
+        # Streaming buffer: cell_results land in Mongo via bulk_write
+        # every `flush_at` rows or every 5 s. We NEVER hold the full
+        # result set in uvicorn memory (was OOM-killing the pod).
+        write_buf: List[Dict[str, Any]] = []
+        flush_at = 500
         persist_lock = asyncio.Lock()
         last_persist = time.monotonic()
+        # Lazy index creation, idempotent.
+        try:
+            await db[OPTIMIZER_RESULTS].create_index(
+                [("run_id", 1), ("score", -1)],
+                name="run_id_score_desc", background=True)
+            await db[OPTIMIZER_RESULTS].create_index(
+                [("run_id", 1), ("tier", 1), ("stat_family", 1),
+                  ("odds_bucket", 1)],
+                name="run_id_cell", background=True)
+        except Exception:  # noqa: BLE001  — index may already exist
+            pass
+
+        async def _flush(force: bool = False) -> None:
+            nonlocal last_persist, write_buf
+            now = time.monotonic()
+            if not write_buf:
+                if force or now - last_persist > 5.0:
+                    last_persist = now
+                    await db[OPTIMIZER_RUNS].update_one(
+                        {"run_id": run_id},
+                        {"$set": {
+                            "combos_tested": state["combos_tested"],
+                            "best": state["best"],
+                            "cells_skipped_empty": state["cells_skipped_empty"],
+                            "combos_skipped_low_sample":
+                                state["combos_skipped_low_sample"],
+                            "cells_done": state["cells_done"],
+                            "n_results_persisted": state.get("n_results_persisted", 0),
+                        }},
+                    )
+                return
+            to_write = write_buf
+            write_buf = []
+            await db[OPTIMIZER_RESULTS].insert_many(
+                to_write, ordered=False)
+            state["n_results_persisted"] = (
+                state.get("n_results_persisted", 0) + len(to_write))
+            if force or now - last_persist > 5.0:
+                last_persist = now
+                await db[OPTIMIZER_RUNS].update_one(
+                    {"run_id": run_id},
+                    {"$set": {
+                        "combos_tested": state["combos_tested"],
+                        "best": state["best"],
+                        "cells_skipped_empty": state["cells_skipped_empty"],
+                        "combos_skipped_low_sample":
+                            state["combos_skipped_low_sample"],
+                        "cells_done": state["cells_done"],
+                        "n_results_persisted":
+                            state.get("n_results_persisted", 0),
+                    }},
+                )
 
         async def _worker(cell: Tuple[str, str, str]):
-            nonlocal last_persist
             async with sem:
-                if state.get("cancelled"): return
+                # Re-check cancel flag — both the local state and the
+                # Mongo-persisted flag (set by the API cancel endpoint).
+                if state.get("cancelled"):
+                    return
                 t, sf, ob = cell
+                # Cheap, every cell. The flag lives on optimizer_runs.
+                cancel_doc = await db[OPTIMIZER_RUNS].find_one(
+                    {"run_id": run_id}, {"cancelled": 1, "_id": 0})
+                if cancel_doc and cancel_doc.get("cancelled"):
+                    state["cancelled"] = True
+                    return
                 try:
                     cell_results = await _evaluate_cell(
                         state, db, tier=t, stat_family=sf, odds_bucket=ob,
                         sides=body.sides, body=body, combos=combos,
                         required=body.filters,
                     )
+                    # Tag rows with run_id so the readers can $match.
+                    for r in cell_results:
+                        r["run_id"] = run_id
                     async with persist_lock:
-                        all_results.extend(cell_results)
-                        now = time.monotonic()
-                        if now - last_persist > 5.0:
-                            last_persist = now
-                            await db[OPTIMIZER_RUNS].update_one(
-                                {"run_id": run_id},
-                                {"$set": {
-                                    "combos_tested": state["combos_tested"],
-                                    "best": state["best"],
-                                    "cells_skipped_empty": state["cells_skipped_empty"],
-                                    "combos_skipped_low_sample": state["combos_skipped_low_sample"],
-                                    "cells_done": state["cells_done"],
-                                }},
-                            )
+                        write_buf.extend(cell_results)
+                        if len(write_buf) >= flush_at:
+                            await _flush()
+                        else:
+                            # Periodic state-only flush (no row writes).
+                            await _flush(force=False)
                     state["cells_done"] += 1
                 except Exception as e:
                     logger.exception("[optimizer] cell failed")
-                    state["failures"].append({
-                        "cell": cell, "error": repr(e)[:200],
-                    })
+                    if len(state["failures"]) < MAX_INLINE_FAILURES:
+                        state["failures"].append({
+                            "cell": cell, "error": repr(e)[:200],
+                        })
 
         await asyncio.gather(*[_worker(c) for c in cells])
+        async with persist_lock:
+            await _flush(force=True)
 
-        # Final ranking + persist
-        all_results.sort(key=lambda r: r["score"], reverse=True)
-        state["results"] = all_results
+        # Final ranking is delegated to the readers (server-side $sort),
+        # so we DO NOT pull every row back into memory here.
         state["status"] = "succeeded" if not state.get("cancelled") else "cancelled"
         state["finished_at"] = datetime.now(timezone.utc).isoformat()
         await db[OPTIMIZER_RUNS].update_one(
@@ -487,8 +556,9 @@ async def _run_optimizer(run_id: str, body: OptimizerRunBody) -> None:
                 "combos_tested": state["combos_tested"],
                 "best": state["best"],
                 "cells_done": state["cells_done"],
-                "failures": state["failures"],
-                "n_results": len(all_results),
+                "failures": state["failures"][:MAX_INLINE_FAILURES],
+                "n_results": state.get("n_results_persisted", 0),
+                "n_results_persisted": state.get("n_results_persisted", 0),
             }},
         )
     except Exception as e:
@@ -523,10 +593,13 @@ async def run_optimizer(body: OptimizerRunBody, request: Request,
         "combos_tested": 0, "combos_skipped_low_sample": 0,
         "cells_skipped_empty": 0, "cells_done": 0,
         "best": None, "failures": [], "cancelled": False,
-        "results": [],
+        "n_results_persisted": 0,
         "agent_id": auth["agent_id"],
     }
-    _RUNS[run_id] = state
+    # IMPORTANT: do NOT populate `_RUNS[run_id]` from the API process.
+    # The research_worker process is the sole owner of the in-flight
+    # state. Keeping uvicorn out of `_RUNS` is critical to avoid the
+    # OOM-kill cycle.
     # Persist the full request + initial state to `optimizer_runs` so the
     # out-of-process worker can re-hydrate and run it.
     await db[OPTIMIZER_RUNS].update_one(
@@ -605,10 +678,22 @@ async def get_status(run_id: str, request: Request,
 @router.post("/{run_id}/cancel")
 async def cancel_run(run_id: str, request: Request,
                           auth=Depends(require_admin_token)):
-    state = _RUNS.get(run_id)
-    if state is None:
+    """Set the cancellation flag on the run doc. The worker process
+    polls it between cells and exits cleanly. We do NOT poke the in-
+    process `_RUNS` slot in uvicorn — that's empty by design (the run
+    lives in the worker)."""
+    db = _get_db()
+    res = await db[OPTIMIZER_RUNS].update_one(
+        {"run_id": run_id},
+        {"$set": {"cancelled": True,
+                    "cancelled_at": datetime.now(timezone.utc)}})
+    if res.matched_count == 0:
         raise HTTPException(404, f"run_id not found: {run_id}")
-    state["cancelled"] = True
+    # Keep the legacy in-process slot in sync when this happens to be
+    # the worker process (no-op in the API process).
+    state = _RUNS.get(run_id)
+    if state is not None:
+        state["cancelled"] = True
     await audit_log(request, action="optimizer_cancel",
                       params={"run_id": run_id}, **auth)
     return {"ok": True}
@@ -617,34 +702,76 @@ async def cancel_run(run_id: str, request: Request,
 @router.get("/{run_id}/results")
 async def get_results(run_id: str, request: Request,
                           limit: int = 25,
+                          offset: int = 0,
                           auth=Depends(require_admin_token)):
-    state = _RUNS.get(run_id)
-    if state is None or not state.get("results"):
+    """Returns paginated, server-sorted optimizer results.
+
+    All reads come from Mongo (`optimizer_run_results`); uvicorn never
+    holds the full set in memory. `best_by_*` is computed via a small
+    aggregation that the DB can stream.
+    """
+    db = _get_db()
+    run = await db[OPTIMIZER_RUNS].find_one({"run_id": run_id}, {"_id": 0})
+    if run is None:
+        raise HTTPException(404, f"run_id not found: {run_id}")
+    if limit < 1 or limit > 500:
+        raise HTTPException(400, "limit must be 1..500")
+    if offset < 0:
+        raise HTTPException(400, "offset must be ≥ 0")
+
+    n_total = await db[OPTIMIZER_RESULTS].count_documents({"run_id": run_id})
+    if n_total == 0:
+        if run.get("status") in ("queued", "running"):
+            return {"ok": True, "run_id": run_id, "n_results": 0,
+                      "status": run.get("status"),
+                      "top": [], "worst": [],
+                      "best_by_tier": {}, "best_by_stat_family": {},
+                      "best_by_odds_bucket": {}, "overfit_warnings": [],
+                      "note": "no rows persisted yet"}
         raise HTTPException(404,
             f"results not available yet for {run_id}")
-    results = state["results"]
-    top    = results[:limit]
-    worst  = results[-limit:][::-1]
-    overfit_warnings = [r for r in top if r.get("overfit_flag")]
-    best_by_tier: Dict[str, Any] = {}
-    best_by_fam:  Dict[str, Any] = {}
-    best_by_bucket: Dict[str, Any] = {}
-    for r in results:
-        for key, bucket in (("tier", best_by_tier),
-                              ("stat_family", best_by_fam),
-                              ("odds_bucket", best_by_bucket)):
-            k = r.get(key)
-            if k is None:
-                continue
-            if k not in bucket or r["score"] > bucket[k]["score"]:
-                bucket[k] = r
+
+    top_cur = db[OPTIMIZER_RESULTS].find(
+        {"run_id": run_id}, {"_id": 0}
+    ).sort([("score", -1)]).skip(offset).limit(limit)
+    top = [d async for d in top_cur]
+
+    worst_cur = db[OPTIMIZER_RESULTS].find(
+        {"run_id": run_id}, {"_id": 0}
+    ).sort([("score", 1)]).limit(limit)
+    worst = [d async for d in worst_cur]
+
+    async def _best_by(field: str) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        pipeline = [
+            {"$match": {"run_id": run_id, field: {"$ne": None}}},
+            {"$sort": {"score": -1}},
+            {"$group": {"_id": f"${field}", "doc": {"$first": "$$ROOT"}}},
+            {"$replaceRoot": {"newRoot": "$doc"}},
+            {"$project": {"_id": 0}},
+            {"$limit": 200},
+        ]
+        async for d in db[OPTIMIZER_RESULTS].aggregate(
+                pipeline, allowDiskUse=True):
+            k = d.get(field)
+            if k is not None and k not in out:
+                out[k] = d
+        return out
+
+    best_by_tier        = await _best_by("tier")
+    best_by_stat_family = await _best_by("stat_family")
+    best_by_odds_bucket = await _best_by("odds_bucket")
+    overfit_warnings    = [r for r in top if r.get("overfit_flag")]
+
     return {
         "ok": True, "run_id": run_id,
-        "n_results": len(results),
+        "n_results": n_total,
+        "offset": offset, "limit": limit,
+        "status": run.get("status"),
         "top": top, "worst": worst,
         "best_by_tier": best_by_tier,
-        "best_by_stat_family": best_by_fam,
-        "best_by_odds_bucket": best_by_bucket,
+        "best_by_stat_family": best_by_stat_family,
+        "best_by_odds_bucket": best_by_odds_bucket,
         "overfit_warnings": overfit_warnings,
     }
 
@@ -657,12 +784,18 @@ class SaveBody(BaseModel):
 @router.post("/{run_id}/save_as_candidates")
 async def save_as_candidates(run_id: str, body: SaveBody, request: Request,
                                   auth=Depends(require_admin_token)):
-    state = _RUNS.get(run_id)
-    if state is None or not state.get("results"):
-        raise HTTPException(404, "run results not available")
     db = _get_db()
+    run = await db[OPTIMIZER_RUNS].find_one({"run_id": run_id}, {"_id": 0})
+    if run is None:
+        raise HTTPException(404, f"run_id not found: {run_id}")
+    # Server-side sort to pull only top_k — no full materialization.
+    cur = db[OPTIMIZER_RESULTS].find(
+        {"run_id": run_id}, {"_id": 0}
+    ).sort([("score", -1)]).limit(int(body.top_k))
+    top = [d async for d in cur]
+    if not top:
+        raise HTTPException(404, "no results to save")
     now = datetime.now(timezone.utc)
-    top = state["results"][: body.top_k]
     docs: List[Dict[str, Any]] = []
     for i, r in enumerate(top):
         docs.append({

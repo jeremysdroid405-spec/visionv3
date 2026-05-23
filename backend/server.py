@@ -2286,7 +2286,21 @@ async def startup_event():
         coalesce=True,
     )
 
-    scheduler.start()
+    # 2026-05-23 — Testing-mode kill switch.
+    # When TESTING_MODE=1 we skip scheduler.start() entirely. The
+    # backend keeps serving HTTP (live board reads from Mongo straight),
+    # but NO background sync jobs run — no SGO pulls, no recompute, no
+    # delta detector. This keeps the API pod under 1 GB while research
+    # workloads run on the dedicated worker. Flip back to 0 (or unset)
+    # to restore live sync.
+    if os.environ.get("TESTING_MODE", "0") == "1":
+        logger.warning(
+            "[SCHEDULER] TESTING_MODE=1 — APScheduler NOT started. "
+            "Live sync, recompute, and delta jobs are disabled until "
+            "TESTING_MODE is cleared and the backend is restarted."
+        )
+    else:
+        scheduler.start()
 
     # Retire the legacy single-shot forward-test capture job (2026-05-08).
     # Replaced by the six per-(sport, phase) jobs above. The MongoDBJobStore
