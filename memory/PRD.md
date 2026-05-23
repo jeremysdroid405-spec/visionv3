@@ -479,3 +479,60 @@ diagnosis tells you exactly which mirror-side field is wrong;
 patch that single field in `scripts/sgo/historical_full_pipeline_replay._mirror_to_legacy`
 (or in the upstream outcomes writer), re-run replay, and ROI/HR will populate.
 
+
+### 2026-05-23 — Tolerant mirror→outcomes join (THE root-cause fix)
+The earlier diagnostic endpoint pointed at `player_name_normalized`.
+After running it against prod, the captured `sample_mismatches`
+revealed FOUR concurrent drifts (not just one):
+
+| key | replay value | outcome value |
+|---|---|---|
+| player_name_normalized | "hunter renfroe" | `null` |
+| market | "batter_hits" | `null` |
+| line | `0.5` (float) | `"0.5"` (str) |
+| side | "OVER" | "over" |
+
+The old mirror required exact equality on every key → only the rare
+rows whose outcome happened to have the right shape attached (46 of
+8,739 = 0.5%).
+
+**Fix (`scripts/sgo/historical_full_pipeline_replay._mirror_to_legacy`):**
+- Pre-fetches every outcome for the runner's event_ids in a single
+  `find()` call instead of one query per runner row (also a major
+  perf win — was N queries, now 1).
+- Builds an in-memory index keyed by
+  `(event_id, stat_family, _norm_line(line), _norm_side(side))`. Both
+  the index and the lookup coerce `line` to `float` and `side` to
+  `UPPER`, so float-vs-string + case mismatches no longer break the
+  join.
+- Per-event collisions (multiple players on the same line) are
+  disambiguated by player name with three fallback rules:
+  exact normalized → substring → first-candidate.
+- Surfaces a `[mirror] groups=… events=… outcome_index_keys=…
+  rows_mirrored=… rows_with_outcome=…` log line per call so the
+  operator can confirm the new join rate in worker logs.
+
+**New utilities** exported for tests + reuse:
+`_norm_line`, `_norm_side`, `_norm_player`, `_build_outcome_index`,
+`_pick_outcome`.
+
+**Tests:** `tests/test_mirror_tolerant_join.py` — 9 cases. Includes
+`test_index_lookup_simulates_prod_failure_mode` which seeds the EXACT
+drift pattern from the operator's prod data (line float vs string,
+side OVER vs over, player_name_normalized null on outcome side) and
+asserts the new key path yields a match. Backend total: 91/91.
+
+**Operator runbook to verify the fix on prod:**
+```bash
+# 1. Re-run the full pipeline replay for the same window (mirror is
+#    the only thing that changed; outcomes don't need re-grading):
+python -m scripts.sgo.historical_full_pipeline_replay \
+       --league MLB --start 2025-05-01 --end 2025-06-01 --research-mode
+
+# 2. Re-check coverage — should jump from 0.5% to ~95%+:
+curl -sS "$API/api/emergent-admin/research/replay-outcome-coverage?sport=MLB&start=2025-05-01&end=2025-06-01" \
+     -H "X-Admin-Token: $TOK" | jq '.pct_graded'
+
+# 3. Re-run the optimizer — HR / ROI / Δcal will populate.
+```
+

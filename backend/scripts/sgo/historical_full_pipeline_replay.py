@@ -200,12 +200,100 @@ async def _snapshot_sample_for_diff(db, *, league: str, start: str, end: str,
 
 
 # ── Mirror runner outputs → legacy collection ────────────────────────────
+def _norm_line(x) -> Optional[float]:
+    if x is None:
+        return None
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
+def _norm_side(x) -> Optional[str]:
+    if x is None:
+        return None
+    s = str(x).strip().upper()
+    return s or None
+
+
+def _norm_player(x) -> Optional[str]:
+    if x is None:
+        return None
+    return str(x).strip().lower() or None
+
+
+async def _build_outcome_index(db, *, event_ids: List[str]
+                                  ) -> Dict[Tuple[str, str, float, str], List[Dict[str, Any]]]:
+    """Per-event tolerant outcome index.
+
+    Key = (event_id, stat_family, line_as_float, side_uppercase).
+    Outcomes from `sgo_pp_research_outcomes` were historically written
+    with several non-canonical key types (line as string, side
+    lowercase, market/player_name_normalized missing), so we coerce on
+    both the index side and the lookup side.
+
+    Value is a *list* because the same (event, stat_family, line, side)
+    can apply to multiple players on the same game (e.g. two batters
+    with the hits 0.5 line). The mirror disambiguates by player using
+    `player_name` substring match downstream.
+    """
+    index: Dict[Tuple[str, str, float, str], List[Dict[str, Any]]] = {}
+    if not event_ids:
+        return index
+    async for o in db[SGO_OUTCOMES_COLL].find(
+        {"event_id": {"$in": event_ids}, "outcome_resolved": True},
+        projection={"_id": 0, "outcome_numeric": 1, "hit": 1,
+                      "actual": 1, "player_id": 1, "stat_id": 1,
+                      "period_id": 1, "league_id": 1,
+                      "event_id": 1, "stat_family": 1, "line": 1,
+                      "side": 1, "player_name": 1,
+                      "player_name_normalized": 1, "market": 1},
+    ):
+        ln = _norm_line(o.get("line"))
+        sd = _norm_side(o.get("side"))
+        fam = o.get("stat_family") or ""
+        eid = o.get("event_id") or ""
+        if ln is None or sd is None or not eid:
+            continue
+        key = (eid, fam, ln, sd)
+        index.setdefault(key, []).append(o)
+    return index
+
+
+def _pick_outcome(candidates: List[Dict[str, Any]], *,
+                       wanted_player_norm: Optional[str],
+                       wanted_player_raw: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Pick the best outcome from a list of candidates that already
+    share (event_id, stat_family, line, side). Disambiguates by
+    player using normalized + raw name matches. Returns the first
+    candidate as a last resort (1-prop-per-cell case)."""
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    np = _norm_player(wanted_player_norm) or _norm_player(wanted_player_raw)
+    if np:
+        # Exact match on normalized name
+        for c in candidates:
+            cn = _norm_player(c.get("player_name_normalized")) or _norm_player(c.get("player_name"))
+            if cn and cn == np:
+                return c
+        # Substring fallback
+        for c in candidates:
+            cn = _norm_player(c.get("player_name_normalized")) or _norm_player(c.get("player_name"))
+            if cn and (np in cn or cn in np):
+                return c
+    return candidates[0]
+
+
 async def _mirror_to_legacy(db, *, replay_serials: List[str],
                                   league: str) -> Tuple[int, int]:
     """Mirror SSOT runner outputs into the legacy collection that the UI
-    and grid_sweep read. Joins on (event_id, player, market, line, side)
-    across all three tier-runs to collapse to one row per prop, and
-    attaches outcome from sgo_pp_research_outcomes.
+    and grid_sweep read. Joins on (event_id, stat_family, line, side)
+    via a *normalized* per-event lookup table so float-vs-string,
+    upper-vs-lower, and missing-field drift between RUNNER_OUTPUTS and
+    sgo_pp_research_outcomes no longer break the attach (single
+    biggest source of HR=—/ROI=0 in the optimizer).
 
     Returns (rows_mirrored, rows_with_outcome).
     """
@@ -240,10 +328,22 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
             }},
         }},
     ]
+    # Materialize the aggregation so we can do a two-pass:
+    #   1) collect distinct event_ids → build the outcome index ONCE
+    #   2) per group → lookup using the normalized key set
+    groups: List[Dict[str, Any]] = []
+    event_ids_seen: set = set()
+    async for g in db[RUNNER_OUTPUTS].aggregate(pipe, allowDiskUse=True):
+        groups.append(g)
+        eid = (g.get("_id") or {}).get("event_id")
+        if eid:
+            event_ids_seen.add(eid)
+    outcome_index = await _build_outcome_index(db, event_ids=list(event_ids_seen))
+
     rows_mirrored = 0
     rows_with_outcome = 0
     buf: List[UpdateOne] = []
-    async for g in db[RUNNER_OUTPUTS].aggregate(pipe, allowDiskUse=True):
+    for g in groups:
         k = g["_id"]
         # Decompose tier evals
         evals = {e["tier"]: e for e in g.get("tier_evals", [])}
@@ -257,20 +357,22 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
                           else "front_lines" if fl_pass
                           else "war_zone" if wz_pass else None)
 
-        # Attach outcome — join by player_name_normalized + market + line + side + game_date
-        outcome = await db[SGO_OUTCOMES_COLL].find_one(
-            {
-                "event_id": k["event_id"],
-                "player_name_normalized": k["player_name_normalized"],
-                "market": k["market"],
-                "line": k["line"],
-                "side": k["side"],
-                "outcome_resolved": True,
-            },
-            projection={"_id": 0, "outcome_numeric": 1, "hit": 1,
-                            "actual": 1, "player_id": 1, "stat_id": 1,
-                            "period_id": 1, "league_id": 1},
+        # ── Tolerant outcome lookup ─────────────────────────────
+        # Key normalization mirrors what `_build_outcome_index` does.
+        key = (
+            k.get("event_id") or "",
+            g.get("stat_family") or "",
+            _norm_line(k.get("line")),
+            _norm_side(k.get("side")),
         )
+        outcome = None
+        if key[2] is not None and key[3]:
+            candidates = outcome_index.get(key) or []
+            outcome = _pick_outcome(
+                candidates,
+                wanted_player_norm=k.get("player_name_normalized"),
+                wanted_player_raw=g.get("player_name"),
+            )
         if outcome:
             rows_with_outcome += 1
 
@@ -342,6 +444,9 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
             buf = []
     if buf:
         await db[LEGACY_OUT_COLL].bulk_write(buf, ordered=False)
+    print(f"  [mirror] groups={len(groups)} events={len(event_ids_seen)} "
+            f"outcome_index_keys={len(outcome_index)} "
+            f"rows_mirrored={rows_mirrored} rows_with_outcome={rows_with_outcome}")
     return (rows_mirrored, rows_with_outcome)
 
 
