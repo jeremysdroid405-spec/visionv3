@@ -1,0 +1,78 @@
+{
+  "summary": "Backend testing for Unified Research Result Architecture endpoints - all 23 tests passed. Verified new research router endpoints (grid-runs, grid-results, candidate-thresholds, _meta/sort-metrics) plus edge cases and regression tests for existing emergent_admin routes.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_emergent_admin_research_endpoints.py",
+    "/app/test_reports/pytest/pytest_research_endpoints.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_emergent_admin_research_endpoints.py"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "N/A - skipped per request"
+  },
+  "seed_data_creation": "Tests use pytest fixtures that seed test data with run_ids prefixed 'test_pp_free_' and 'test_tier_fam_' into research_grid_runs, research_grid_results, and candidate_thresholds collections. Data is cleaned up after each test run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All 23 research endpoint tests pass. Added 13 new edge case tests covering: (1) high min_bets returning empty lists with n_total > 0, (2) sort_metric with no data (profit_units on PP-free run), (3) worst list ordering verification, (4) bad token auth 401, (5) best_by_tier/stat_family/side dict structure validation, (6) regression tests for optimizer/_meta/testing_default, jobs/, coverage/, and collections/{coll}/find endpoints. The research router is properly mounted at /api/emergent-admin/research/* and does not break existing routes.",
+  "tests_executed": {
+    "original_10_tests": [
+      "test_list_grid_runs",
+      "test_get_single_run",
+      "test_grid_results_sort_by_hit_rate",
+      "test_grid_results_sort_by_calibration_delta_any",
+      "test_grid_results_filter_by_slice",
+      "test_get_candidate_thresholds",
+      "test_meta_sort_metrics",
+      "test_run_not_found",
+      "test_auth_required",
+      "test_invalid_sort_metric"
+    ],
+    "new_edge_case_tests": [
+      "test_high_min_bets_excludes_all_returns_empty_lists",
+      "test_sort_metric_with_no_data_does_not_crash",
+      "test_worst_list_ordering_most_negative_first",
+      "test_auth_bad_token_returns_401",
+      "test_best_by_tier_is_dict_keyed_by_tier",
+      "test_best_by_stat_family_is_dict_keyed_by_family",
+      "test_best_by_side_keyed_by_over_under",
+      "test_existing_optimizer_endpoint_still_works",
+      "test_existing_jobs_endpoint_still_works",
+      "test_existing_coverage_endpoint_still_works",
+      "test_existing_collections_find_endpoint_still_works",
+      "test_list_candidates_endpoint",
+      "test_grid_results_404_for_unknown_run"
+    ]
+  },
+  "endpoints_verified": {
+    "new_research_endpoints": [
+      "GET /api/emergent-admin/research/grid-runs",
+      "GET /api/emergent-admin/research/grid-runs/{run_id}",
+      "GET /api/emergent-admin/research/grid-results/{run_id}",
+      "GET /api/emergent-admin/research/candidate-thresholds/{run_id}",
+      "GET /api/emergent-admin/research/candidate-thresholds",
+      "GET /api/emergent-admin/research/_meta/sort-metrics"
+    ],
+    "existing_routes_regression": [
+      "GET /api/emergent-admin/optimizer/_meta/testing_default",
+      "GET /api/emergent-admin/jobs/",
+      "GET /api/emergent-admin/coverage/",
+      "POST /api/emergent-admin/collections/{coll}/find"
+    ]
+  },
+  "schemas_tested": {
+    "market_truth_pp_free": "Tested with slice=ALL/STAT_FAMILY, calibration_delta_consensus metric",
+    "per_tier_per_stat_family": "Tested with slice=TIER_FAMILY, calibration_delta metric"
+  }
+}

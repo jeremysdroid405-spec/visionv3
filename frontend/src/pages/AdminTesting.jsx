@@ -31,8 +31,6 @@ const CANDIDATES_KEY = 'emergentAdminCandidates';
 const SWEEP_KEY = 'emergentAdminSweepConfig';
 const REPLAY_COLL = 'sgo_propvision_full_pipeline_replay';
 const REPLAY_DIFF_COLL = 'sgo_propvision_full_pipeline_replay_diff';
-const GRID_RUNS_COLL = 'research_grid_runs';
-const GRID_RESULTS_COLL = 'research_grid_results';
 
 // ── HTTP ────────────────────────────────────────────────────────────
 async function apiFetch(token, path, init = {}) {
@@ -1355,7 +1353,9 @@ function DiffSummarySection({ token }) {
 function ResultsTab({ token, refreshKey, onSaveCandidate }) {
   const [runs, setRuns] = useState([]);
   const [selectedRun, setSelectedRun] = useState(null);
-  const [cells, setCells] = useState([]);
+  const [serverResults, setServerResults] = useState(null); // /research/grid-results payload
+  const [sortMetric, setSortMetric] = useState('hit_rate');
+  const [sortMetricOptions, setSortMetricOptions] = useState([]);
   const [roiByTier, setRoiByTier] = useState([]);
   const [roiByFam, setRoiByFam] = useState([]);
   const [roiByOdds, setRoiByOdds] = useState([]);
@@ -1365,37 +1365,48 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
   const [filter, setFilter] = useState({ tier: '', stat_family: '', side: '', slice: 'TIER_FAMILY' });
   const [loading, setLoading] = useState(false);
 
+  // Pull the sort-metric catalog once (powers the dropdown per user choice "Multiple — let me pick").
+  useEffect(() => {
+    if (!token) return;
+    apiFetch(token, '/research/_meta/sort-metrics')
+      .then(r => setSortMetricOptions(r.metrics || []))
+      .catch(() => setSortMetricOptions([]));
+  }, [token]);
+
   const fetchRuns = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await apiFetch(token, `/collections/${GRID_RUNS_COLL}/find`, {
-        method: 'POST', body: JSON.stringify({ filter: {}, sort: { started_at: -1 }, limit: 30 }),
-      });
-      setRuns(res.docs || []);
-      if (!selectedRun && res.docs?.length) setSelectedRun(res.docs[0].run_id);
+      const res = await apiFetch(token, '/research/grid-runs?limit=30');
+      const docs = res.runs || [];
+      setRuns(docs);
+      if (!selectedRun && docs.length) setSelectedRun(docs[0].run_id);
     } catch (e) { toast.error(`Load runs: ${e.message}`); }
   }, [token, selectedRun]);
   useEffect(() => { fetchRuns(); }, [fetchRuns, refreshKey]);
 
   const runMeta = useMemo(() => runs.find(r => r.run_id === selectedRun), [runs, selectedRun]);
 
-  const loadCells = useCallback(async () => {
+  const loadResults = useCallback(async () => {
     if (!token || !selectedRun) return;
     setLoading(true);
     try {
-      const filt = { run_id: selectedRun };
-      if (filter.slice) filt.slice = filter.slice;
-      if (filter.tier) filt.tier = filter.tier;
-      if (filter.stat_family) filt.stat_family = filter.stat_family;
-      if (filter.side) filt.side = filter.side;
-      const res = await apiFetch(token, `/collections/${GRID_RESULTS_COLL}/find`, {
-        method: 'POST', body: JSON.stringify({ filter: filt, sort: { hit_rate: -1 }, limit: 2000 }),
-      });
-      setCells(res.docs || []);
-    } catch (e) { toast.error(`Load cells: ${e.message}`); }
+      const params = new URLSearchParams();
+      params.set('sort_metric', sortMetric);
+      params.set('top_k', '25');
+      params.set('min_bets', String(runMeta?.params?.min_bets || 20));
+      if (filter.slice)       params.set('slice', filter.slice);
+      if (filter.tier)        params.set('tier', filter.tier);
+      if (filter.stat_family) params.set('stat_family', filter.stat_family);
+      if (filter.side)        params.set('side', filter.side);
+      const res = await apiFetch(token, `/research/grid-results/${selectedRun}?${params.toString()}`);
+      setServerResults(res);
+    } catch (e) {
+      toast.error(`Load results: ${e.message}`);
+      setServerResults(null);
+    }
     finally { setLoading(false); }
-  }, [token, selectedRun, filter]);
-  useEffect(() => { loadCells(); }, [loadCells]);
+  }, [token, selectedRun, sortMetric, filter, runMeta]);
+  useEffect(() => { loadResults(); }, [loadResults]);
 
   const loadRoi = useCallback(async () => {
     if (!token || !runMeta?.params) return;
@@ -1468,39 +1479,24 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
   }, [token, runMeta]);
   useEffect(() => { loadReasons(); }, [loadReasons]);
 
-  const sortedByHr = useMemo(() => [...cells]
-    .filter(c => (c.n_bets || 0) >= (runMeta?.params?.min_bets || 20))
-    .sort((a, b) => (b.hit_rate || 0) - (a.hit_rate || 0)), [cells, runMeta]);
+  // Server now ranks for us; just slice for the UI.
+  const top   = useMemo(() => (serverResults?.top || []).slice(0, 15), [serverResults]);
+  const worst = useMemo(() => (serverResults?.worst || []).slice(0, 15), [serverResults]);
 
-  const top = sortedByHr.slice(0, 15);
-  const worst = sortedByHr.slice(-15).reverse();
-
-  const bestByTier = useMemo(() => {
-    const m = {};
-    for (const c of sortedByHr) {
-      if (c.slice !== 'TIER_FAMILY') continue;
-      if (!m[c.tier] || (c.hit_rate || 0) > (m[c.tier].hit_rate || 0)) m[c.tier] = c;
-    }
-    return m;
-  }, [sortedByHr]);
-  const bestByFam = useMemo(() => {
-    const m = {};
-    for (const c of sortedByHr) {
-      if (c.slice !== 'TIER_FAMILY') continue;
-      const k = c.stat_family;
-      if (!m[k] || (c.hit_rate || 0) > (m[k].hit_rate || 0)) m[k] = c;
-    }
-    return Object.values(m).sort((a, b) => (b.hit_rate || 0) - (a.hit_rate || 0));
-  }, [sortedByHr]);
+  const bestByTier = serverResults?.best_by_tier || {};
+  const bestByFam  = useMemo(() => {
+    const arr = Object.values(serverResults?.best_by_stat_family || {});
+    return arr.sort((a, b) => (b.hit_rate || 0) - (a.hit_rate || 0));
+  }, [serverResults]);
 
   const summary = useMemo(() => {
-    if (!cells.length) return null;
+    if (!serverResults || !(serverResults.top || []).length) return null;
     const sh = bestByTier['safe_haven']; const fl = bestByTier['front_lines']; const wz = bestByTier['war_zone'];
     const bestFam = bestByFam[0];
     const worstFam = [...bestByFam].sort((a,b) => (a.hit_rate || 0) - (b.hit_rate || 0))[0];
     const bestOdds = [...roiByOdds].sort((a,b) => (b.roi || 0) - (a.roi || 0))[0];
     return { sh, fl, wz, bestFam, worstFam, bestOdds };
-  }, [bestByTier, bestByFam, roiByOdds, cells]);
+  }, [serverResults, bestByTier, bestByFam, roiByOdds]);
 
   const maxDrawdown = useMemo(() => {
     if (!dailyRoi.length) return null;
@@ -1529,7 +1525,7 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
                 label: `${r.params?.league} ${r.params?.start}..${r.params?.end} · ${r.run_id.slice(0,8)} · ${r.status}`,
               })),
             ]} />
-          <Btn variant="ghost" onClick={() => { fetchRuns(); loadCells(); loadRoi(); loadReasons(); }} testId="results-refresh">Refresh</Btn>
+          <Btn variant="ghost" onClick={() => { fetchRuns(); loadResults(); loadRoi(); loadReasons(); }} testId="results-refresh">Refresh</Btn>
         </div>
       }>
       {!runMeta ? (
@@ -1542,8 +1538,9 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
             <span style={{ color: TEXT, fontFamily: 'monospace' }}>{runMeta.run_id}</span>
             {' · '}<span style={{ color: ACCENT_2 }}>{runMeta.params?.league}</span>
             {' · '}{runMeta.params?.start} → {runMeta.params?.end}
-            {' · '}cells={fmtInt(runMeta.n_cells_total)}
-            {' · '}qualified={fmtInt(runMeta.n_cells_qualified)}
+            {' · '}cells={fmtInt(serverResults?.n_total ?? runMeta.n_cells_total)}
+            {' · '}qualified={fmtInt(serverResults?.n_qualified ?? runMeta.n_cells_qualified)}
+            {runMeta.methodology && <>{' · '}<span style={{ color: DIM }}>{runMeta.methodology}</span></>}
           </div>
 
           <div data-testid="results-headline" style={{
@@ -1579,19 +1576,30 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
           )}
 
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase' }}>Filter</span>
+            <span style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase' }}>Sort by</span>
+            <Select testId="results-sort-metric" value={sortMetric} onChange={(e) => setSortMetric(e.target.value)}
+              options={(sortMetricOptions.length
+                  ? sortMetricOptions.map(m => ({ value: m.key, label: m.label }))
+                  : [
+                      { value: 'hit_rate',                    label: 'Hit Rate' },
+                      { value: 'calibration_delta_any',       label: 'Calibration Δ (auto)' },
+                      { value: 'calibration_delta_consensus', label: 'Calibration Δ vs Consensus' },
+                      { value: 'calibration_delta',           label: 'Calibration Δ (legacy)' },
+                      { value: 'n_bets',                      label: 'Sample Size' },
+                    ])} />
+            <span style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginLeft: 8 }}>Filter</span>
             <Select testId="results-filter-tier" value={filter.tier} onChange={(e) => setFilter({ ...filter, tier: e.target.value })}
               options={[{ value: '', label: 'all tiers' }, 'safe_haven','front_lines','war_zone'].map(x => typeof x==='string'?{value:x,label:x}:x)} />
             <Select testId="results-filter-slice" value={filter.slice} onChange={(e) => setFilter({ ...filter, slice: e.target.value })}
-              options={[{ value: 'TIER_FAMILY', label: 'tier × family' }, { value: 'TIER_FAMILY_SIDE', label: 'tier × family × side' }, { value: '', label: 'all slices' }]} />
+              options={[{ value: 'TIER_FAMILY', label: 'tier × family' }, { value: 'TIER_FAMILY_SIDE', label: 'tier × family × side' }, { value: 'ALL', label: 'ALL (PP-free)' }, { value: 'STAT_FAMILY', label: 'stat_family (PP-free)' }, { value: '', label: 'all slices' }]} />
             <Input testId="results-filter-family" placeholder="stat_family contains…" value={filter.stat_family}
               onChange={(e) => setFilter({ ...filter, stat_family: e.target.value })} style={{ width: 160 }} />
             {loading && <span style={{ color: ACCENT, fontSize: 11 }}>loading…</span>}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-            <CellTable title="Top 15 by Hit Rate" cells={top} testId="results-top-table" accent={ACCENT_2} onSave={onSaveCandidate} />
-            <CellTable title="Bottom 15 (DO NOT USE)" cells={worst} testId="results-worst-table" accent={BAD} onSave={onSaveCandidate} />
+            <CellTable title={`Top 15 by ${sortMetricOptions.find(m => m.key === sortMetric)?.label || sortMetric}`} cells={top} testId="results-top-table" accent={ACCENT_2} onSave={onSaveCandidate} sortMetric={sortMetric} />
+            <CellTable title="Bottom 15 (DO NOT USE)" cells={worst} testId="results-worst-table" accent={BAD} onSave={onSaveCandidate} sortMetric={sortMetric} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
@@ -1664,7 +1672,7 @@ function CellTable({ title, cells, testId, accent, onSave }) {
                   <td style={{ ...td, color: ACCENT }}>{c.stat_family}</td>
                   <td style={td}>{fmtInt(c.n_bets)}</td>
                   <td style={{ ...td, color: (c.hit_rate || 0) > 0.6 ? ACCENT_2 : (c.hit_rate || 0) < 0.5 ? BAD : TEXT, fontWeight: 600 }}>{fmtPct(c.hit_rate)}</td>
-                  <td style={{ ...td, color: (c.calibration_delta || 0) > 0 ? ACCENT_2 : BAD }}>{fmtPct(c.calibration_delta, 2)}</td>
+                  <td style={{ ...td, color: ((c.calibration_delta_any ?? c.calibration_delta) || 0) > 0 ? ACCENT_2 : BAD }}>{fmtPct(c.calibration_delta_any ?? c.calibration_delta, 2)}</td>
                   <td style={td}>{fmtPct(c.avg_edge, 2)}</td>
                   <td style={td}>{fmtNum(c.avg_cv)}</td>
                   <td style={td}>{fmtPct(c.avg_tp, 1)}</td>
