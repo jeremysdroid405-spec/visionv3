@@ -550,6 +550,7 @@ async def cache_date(
     feature_source: str = "bdl_hub",
     league: str = "MLB",
     sgo_lookback_days: int = 60,
+    min_prior_games: int = 5,
 ) -> Dict[str, Any]:
     """Build cache for one date. Returns a summary dict.
 
@@ -643,6 +644,31 @@ async def cache_date(
             db, league=league, replay_date=replay_date,
             lookback_days=sgo_lookback_days,
         )
+        # Print prior-stats coverage upfront so a thin window is
+        # immediately obvious. Counts events-per-player histogram so the
+        # operator can see "median player has 2 prior games but we
+        # require 5" without scrolling to the skip summary.
+        n_players_total = len(sgo_logs_idx)
+        per_player_counts = sorted((len(v) for v in sgo_logs_idx.values()))
+        if per_player_counts:
+            mid = per_player_counts[len(per_player_counts) // 2]
+            n_with_min = sum(1 for c in per_player_counts
+                             if c >= min_prior_games)
+            print(f"  [feature_cache] sgo prior-stats coverage  "
+                  f"replay_date={replay_date}  lookback={sgo_lookback_days}d  "
+                  f"min_required={min_prior_games}")
+            print(f"     players_with_any_prior_log : {n_players_total}")
+            print(f"     median_games_per_player    : {mid}")
+            print(f"     min/max games              : "
+                  f"{per_player_counts[0]} / {per_player_counts[-1]}")
+            print(f"     players_with_>={min_prior_games}_games   : "
+                  f"{n_with_min}  ({100*n_with_min/n_players_total:.0f}%)")
+            if n_with_min == 0:
+                print(f"  ⚠  ZERO players have ≥{min_prior_games} prior "
+                      f"games in the lookback window. Either ingest more "
+                      f"history via scripts.sgo.ingest_historical_player_stats "
+                      f"for an earlier date range, OR lower the threshold "
+                      f"via --min-prior-games.")
     rss_peak = max(rss0, _rss_mb())
 
     buffer: List[Dict[str, Any]] = []
@@ -738,7 +764,7 @@ async def cache_date(
                 "is_pitcher":    stat_family in _PITCHER_FAMILIES,
             }
             mlbam = None   # SGO doesn't carry MLBAM ids → statcast lookup skipped
-        if len(stat_vals) < 5:
+        if len(stat_vals) < min_prior_games:
             n_pairs_skipped_no_logs += 1
             continue
 

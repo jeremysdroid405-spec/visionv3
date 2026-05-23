@@ -51,6 +51,7 @@ async def amain(args):
                 feature_source=args.feature_source,
                 league=args.league,
                 sgo_lookback_days=args.sgo_lookback_days,
+                min_prior_games=args.min_prior_games,
             )
         except MemoryError as me:
             print(f"  HALTED: {me}", flush=True)
@@ -117,6 +118,12 @@ def main():
                             "sgo_player_stats. Default 60 — well above "
                             "WINDOW_DEPTH=30. Only used when "
                             "--feature-source=sgo_player_stats.")
+    p.add_argument("--min-prior-games", type=int, default=5,
+                      help="Minimum prior-game count required for a "
+                            "player×family pair to land in the cache. "
+                            "Default 5. Lower this when running a thin "
+                            "early-season window — every pair with fewer "
+                            "prior logs is counted under skipped_few_logs.")
     args = p.parse_args()
     if args.start and not args.end:
         p.error("--start requires --end")

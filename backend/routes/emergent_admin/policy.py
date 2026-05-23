@@ -130,7 +130,7 @@ ALLOWED_JOBS: Dict[str, Dict] = {
         "enabled": True,
         "args": ["--date", "--start", "--end", "--mem-limit",
                   "--force", "--odds-collection", "--feature-source",
-                  "--league", "--sgo-lookback-days"],
+                  "--league", "--sgo-lookback-days", "--min-prior-games"],
     },
     "scripts.ingest_bdl_mlb_season": {
         "label": "Backfill MLB season game logs from BallDontLie",
