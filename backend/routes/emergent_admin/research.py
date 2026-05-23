@@ -45,6 +45,7 @@ router = APIRouter()
 RUNS_COLL       = "research_grid_runs"
 RESULTS_COLL    = "research_grid_results"
 CANDIDATES_COLL = "candidate_thresholds"
+REPLAY_COLL     = "sgo_propvision_full_pipeline_replay"
 
 # Sort metrics permitted from the UI. Map to the actual field on the cell
 # doc; "calibration_delta_any" is a synthetic key that prefers the
@@ -307,4 +308,54 @@ async def get_sort_metrics(request: Request,
                   "profit_units / n_bets. Only populated when the "
                   "sweep computes payouts."},
         ],
+    }
+
+
+
+# ── Most-recent cached pipeline window ────────────────────────────────
+@router.get("/last-pipeline-window")
+async def last_pipeline_window(
+    request: Request,
+    sport: str = Query(default="MLB"),
+    auth=Depends(require_admin_token),
+):
+    """Returns the min/max `game_date` present in the SSOT replay cache
+    for the requested sport. The Sweep/Optimizer UI uses this to
+    autoload a window that's guaranteed to be 100% cached — so the run
+    consumes zero SGO credits.
+
+    Response shape:
+        { ok, sport, start, end, n_rows, n_distinct_dates }
+
+    `start`/`end` are `null` when the cache is empty for the sport.
+    """
+    db = _get_db()
+    league = sport.upper()
+    pipeline = [
+        {"$match": {"league_id": league}},
+        {"$group": {
+            "_id": None,
+            "min_date": {"$min": "$game_date"},
+            "max_date": {"$max": "$game_date"},
+            "n_rows":   {"$sum": 1},
+            "dates":    {"$addToSet": "$game_date"},
+        }},
+        {"$project": {
+            "_id": 0,
+            "min_date": 1, "max_date": 1, "n_rows": 1,
+            "n_distinct_dates": {"$size": "$dates"},
+        }},
+    ]
+    cur = db[REPLAY_COLL].aggregate(pipeline)
+    docs = [d async for d in cur]
+    if not docs:
+        return {"ok": True, "sport": league,
+                  "start": None, "end": None,
+                  "n_rows": 0, "n_distinct_dates": 0}
+    d = docs[0]
+    return {
+        "ok": True, "sport": league,
+        "start": d.get("min_date"), "end": d.get("max_date"),
+        "n_rows": d.get("n_rows", 0),
+        "n_distinct_dates": d.get("n_distinct_dates", 0),
     }

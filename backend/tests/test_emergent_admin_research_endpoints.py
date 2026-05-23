@@ -441,3 +441,50 @@ async def test_grid_results_404_for_unknown_run():
         r = await c.get("/api/emergent-admin/research/grid-results/nonexistent_run_xyz",
                           headers=_auth_headers())
         assert r.status_code == 404
+
+
+
+# ── last-pipeline-window endpoint ────────────────────────────────────
+@pytest.mark.asyncio
+async def test_last_pipeline_window_empty():
+    """When no MLB rows exist in replay cache, returns nulls and zero counts."""
+    # If the DB happens to have MLB rows, we just assert the response shape.
+    async with AsyncClient(base_url=BACKEND_URL, timeout=HTTP_TIMEOUT) as c:
+        r = await c.get("/api/emergent-admin/research/last-pipeline-window",
+                          headers=_auth_headers(), params={"sport": "MLB"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] is True
+        assert body["sport"] == "MLB"
+        assert "start" in body and "end" in body
+        assert "n_rows" in body and "n_distinct_dates" in body
+
+
+@pytest.mark.asyncio
+async def test_last_pipeline_window_with_seeded_rows():
+    """Seed a few MLB replay rows and confirm min/max game_date come back."""
+    client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+    db = client[os.environ["DB_NAME"]]
+    test_tag = f"test_lpw_{uuid.uuid4().hex[:6]}"
+    docs = [
+        {"_tag": test_tag, "league_id": "MLB", "game_date": "2025-04-02"},
+        {"_tag": test_tag, "league_id": "MLB", "game_date": "2025-04-15"},
+        {"_tag": test_tag, "league_id": "MLB", "game_date": "2025-04-30"},
+        {"_tag": test_tag, "league_id": "NBA", "game_date": "2025-04-10"},  # ignored
+    ]
+    await db["sgo_propvision_full_pipeline_replay"].insert_many(docs)
+    try:
+        async with AsyncClient(base_url=BACKEND_URL, timeout=HTTP_TIMEOUT) as c:
+            r = await c.get("/api/emergent-admin/research/last-pipeline-window",
+                              headers=_auth_headers(), params={"sport": "MLB"})
+            assert r.status_code == 200
+            body = r.json()
+            assert body["sport"] == "MLB"
+            # The MLB max should be at least 2025-04-30 and min ≤ 2025-04-02.
+            assert body["end"] >= "2025-04-30"
+            assert body["start"] <= "2025-04-02"
+            assert body["n_rows"] >= 3
+            assert body["n_distinct_dates"] >= 3
+    finally:
+        await db["sgo_propvision_full_pipeline_replay"].delete_many({"_tag": test_tag})
+        client.close()

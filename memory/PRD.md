@@ -63,11 +63,28 @@ best-of bucketing.
     - Server annotates `calibration_delta_any` (consensus-preferred, falls back to legacy delta)
   - `GET /research/candidate-thresholds/{run_id}` and `GET /research/candidate-thresholds`
   - `GET /research/_meta/sort-metrics` — dropdown catalog
+  - `GET /research/last-pipeline-window` — min/max game_date in the SSOT replay cache (for Sweep/Optimizer autoload)
 - **Frontend** `AdminTesting.jsx` ResultsTab rewired: removed
   `/collections/research_grid_*/find` calls, added sort-metric dropdown,
   uses server-bucketed `best_by_*` instead of recomputing client-side.
+- **Schema-tolerant rendering**: auto-detects v1 vs v2 sweep on run-select.
+  v1 (`per_tier_per_stat_family`) shows `tier × family` slice and renders
+  `tier / family / n / HR / Δcal / edge / cv / tp`; v2 (`market_truth_pp_free`)
+  defaults to the `STAT_FAMILY` slice, hides the tier filter, and renders
+  `family / slice / n / HR / mkt / Δcal`. Plain-English summary, BestByFamily,
+  BestBySide, and BestByOddsBucket also schema-tolerant (`n_bets||n`,
+  `hit_rate||hr`, `calibration_delta_consensus||calibration_delta||delta||delta_pp`,
+  `stat_family||family`, `consensus_prob_avg||market_prob||consensus_avg`).
+- **MM-DD-YYYY display** for all run date ranges (`fmtDate` helper).
+  Inputs still accept `YYYY-MM-DD` for HTML/Mongo compatibility.
+- **Optimizer autoload**: on mount/sport-change, queries
+  `/research/last-pipeline-window` and pre-fills start/end so the run
+  consumes only cached SSOT replay rows (zero SGO credit cost). A
+  "cached pipeline window" banner shows the range, distinct-date count,
+  and row count; "use this window" button re-applies it.
 - **Tests** `/app/backend/tests/test_emergent_admin_research_endpoints.py`
-  — 23 backend tests pass (10 original + 13 edge-case + regression).
+  — 25 backend tests pass (10 original + 13 edge-case/regression + 2
+  new for `last-pipeline-window`).
 - **Legacy `/optimizer` endpoints kept intact** per user preference.
 
 ## Backlog (priority order)

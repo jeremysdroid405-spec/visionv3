@@ -55,6 +55,19 @@ const fmtPct = (v, d = 1) => v == null || Number.isNaN(v) ? '—' : `${(v * 100)
 const fmtNum = (v, d = 2) => v == null || Number.isNaN(v) ? '—' : Number(v).toFixed(d);
 const fmtInt = (v) => v == null || Number.isNaN(v) ? '—' : Number(v).toLocaleString();
 const fmtTs  = (iso) => { if (!iso) return '—'; try { return new Date(iso).toLocaleString(); } catch { return String(iso); } };
+// Display dates as MM-DD-YYYY (input fields keep ISO YYYY-MM-DD for HTML/Mongo).
+const fmtDate = (s) => {
+  if (!s) return '—';
+  const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[2]}-${m[3]}-${m[1]}`;
+  try {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return String(s);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${mm}-${dd}-${d.getFullYear()}`;
+  } catch { return String(s); }
+};
 const fmtDur = (a, b) => {
   if (!a) return '—';
   const t1 = new Date(a).getTime();
@@ -1362,8 +1375,25 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
   const [roiBySide, setRoiBySide] = useState([]);
   const [reasonCounts, setReasonCounts] = useState([]);
   const [dailyRoi, setDailyRoi] = useState([]);
-  const [filter, setFilter] = useState({ tier: '', stat_family: '', side: '', slice: 'TIER_FAMILY' });
+  const [filter, setFilter] = useState({ tier: '', stat_family: '', side: '', slice: '' });
   const [loading, setLoading] = useState(false);
+
+  // Auto-detect schema → slice default whenever the selected run changes.
+  // v1 (per_tier_per_stat_family) uses TIER_FAMILY; v2 (market_truth_pp_free)
+  // uses ALL / STAT_FAMILY / SIDE — defaulting to STAT_FAMILY for the v2
+  // family-by-family breakdown.
+  const isV2 = useMemo(() => {
+    const m = runs.find(r => r.run_id === selectedRun)?.methodology || '';
+    return m === 'market_truth_pp_free';
+  }, [runs, selectedRun]);
+  useEffect(() => {
+    if (!selectedRun) return;
+    setFilter(f => ({
+      ...f,
+      slice: isV2 ? 'STAT_FAMILY' : 'TIER_FAMILY',
+      tier:  isV2 ? '' : f.tier,
+    }));
+  }, [selectedRun, isV2]);
 
   // Pull the sort-metric catalog once (powers the dropdown per user choice "Multiple — let me pick").
   useEffect(() => {
@@ -1486,14 +1516,14 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
   const bestByTier = serverResults?.best_by_tier || {};
   const bestByFam  = useMemo(() => {
     const arr = Object.values(serverResults?.best_by_stat_family || {});
-    return arr.sort((a, b) => (b.hit_rate || 0) - (a.hit_rate || 0));
+    return arr.sort((a, b) => (cHR(b) || 0) - (cHR(a) || 0));
   }, [serverResults]);
 
   const summary = useMemo(() => {
     if (!serverResults || !(serverResults.top || []).length) return null;
     const sh = bestByTier['safe_haven']; const fl = bestByTier['front_lines']; const wz = bestByTier['war_zone'];
     const bestFam = bestByFam[0];
-    const worstFam = [...bestByFam].sort((a,b) => (a.hit_rate || 0) - (b.hit_rate || 0))[0];
+    const worstFam = [...bestByFam].sort((a,b) => (cHR(a) || 0) - (cHR(b) || 0))[0];
     const bestOdds = [...roiByOdds].sort((a,b) => (b.roi || 0) - (a.roi || 0))[0];
     return { sh, fl, wz, bestFam, worstFam, bestOdds };
   }, [serverResults, bestByTier, bestByFam, roiByOdds]);
@@ -1522,7 +1552,7 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
               { value: '', label: '— pick run —' },
               ...runs.map(r => ({
                 value: r.run_id,
-                label: `${r.params?.league} ${r.params?.start}..${r.params?.end} · ${r.run_id.slice(0,8)} · ${r.status}`,
+                label: `${r.params?.league} ${fmtDate(r.params?.start)}..${fmtDate(r.params?.end)} · ${r.run_id.slice(0,8)} · ${r.status}${r.methodology === 'market_truth_pp_free' ? ' · v2' : ''}`,
               })),
             ]} />
           <Btn variant="ghost" onClick={() => { fetchRuns(); loadResults(); loadRoi(); loadReasons(); }} testId="results-refresh">Refresh</Btn>
@@ -1537,7 +1567,7 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
           <div style={{ marginBottom: 14, fontSize: 12, color: MUTED }}>
             <span style={{ color: TEXT, fontFamily: 'monospace' }}>{runMeta.run_id}</span>
             {' · '}<span style={{ color: ACCENT_2 }}>{runMeta.params?.league}</span>
-            {' · '}{runMeta.params?.start} → {runMeta.params?.end}
+            {' · '}{fmtDate(runMeta.params?.start)} → {fmtDate(runMeta.params?.end)}
             {' · '}cells={fmtInt(serverResults?.n_total ?? runMeta.n_cells_total)}
             {' · '}qualified={fmtInt(serverResults?.n_qualified ?? runMeta.n_cells_qualified)}
             {runMeta.methodology && <>{' · '}<span style={{ color: DIM }}>{runMeta.methodology}</span></>}
@@ -1566,11 +1596,12 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
               padding: 14, marginBottom: 14, fontSize: 13, lineHeight: 1.7,
             }}>
               <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>Plain-English Summary</div>
-              {summary.sh && <div><strong style={{ color: ACCENT_2 }}>Best Safe Haven:</strong> {summary.sh.stat_family} @ hr_l20≥{fmtPct(summary.sh.hr_l20_min)}, cv≤{fmtNum(summary.sh.cv_max)}, edge≥{fmtPct(summary.sh.edge_min)} → <strong>{fmtPct(summary.sh.hit_rate)}</strong> on {fmtInt(summary.sh.n_bets)} bets.</div>}
-              {summary.fl && <div><strong style={{ color: ACCENT_3 }}>Best Front Lines:</strong> {summary.fl.stat_family} @ hr_l20≥{fmtPct(summary.fl.hr_l20_min)}, hr_l5≥{fmtPct(summary.fl.hr_l5_min)} → <strong>{fmtPct(summary.fl.hit_rate)}</strong> on {fmtInt(summary.fl.n_bets)} bets.</div>}
-              {summary.wz && <div><strong style={{ color: WARN }}>Best War Zone:</strong> {summary.wz.stat_family} @ hr_l20≥{fmtPct(summary.wz.hr_l20_min)} → <strong>{fmtPct(summary.wz.hit_rate)}</strong> on {fmtInt(summary.wz.n_bets)} bets.</div>}
-              {summary.bestFam && <div><strong>Best stat family:</strong> <code style={{ color: ACCENT_2 }}>{summary.bestFam.stat_family}</code> ({fmtPct(summary.bestFam.hit_rate)} @ {summary.bestFam.tier}).</div>}
-              {summary.worstFam && summary.worstFam.stat_family !== summary.bestFam?.stat_family && <div><strong>Worst stat family (DO NOT USE):</strong> <code style={{ color: BAD }}>{summary.worstFam.stat_family}</code> ({fmtPct(summary.worstFam.hit_rate)}).</div>}
+              {!isV2 && summary.sh && <div><strong style={{ color: ACCENT_2 }}>Best Safe Haven:</strong> {cFam(summary.sh)} @ hr_l20≥{fmtPct(summary.sh.hr_l20_min)}, cv≤{fmtNum(summary.sh.cv_max)}, edge≥{fmtPct(summary.sh.edge_min)} → <strong>{fmtPct(cHR(summary.sh))}</strong> on {fmtInt(cN(summary.sh))} bets.</div>}
+              {!isV2 && summary.fl && <div><strong style={{ color: ACCENT_3 }}>Best Front Lines:</strong> {cFam(summary.fl)} @ hr_l20≥{fmtPct(summary.fl.hr_l20_min)}, hr_l5≥{fmtPct(summary.fl.hr_l5_min)} → <strong>{fmtPct(cHR(summary.fl))}</strong> on {fmtInt(cN(summary.fl))} bets.</div>}
+              {!isV2 && summary.wz && <div><strong style={{ color: WARN }}>Best War Zone:</strong> {cFam(summary.wz)} @ hr_l20≥{fmtPct(summary.wz.hr_l20_min)} → <strong>{fmtPct(cHR(summary.wz))}</strong> on {fmtInt(cN(summary.wz))} bets.</div>}
+              {isV2 && summary.bestFam && <div><strong style={{ color: ACCENT_2 }}>Best PP-free filter:</strong> {cFam(summary.bestFam)} @ cons≥{fmtPct(summary.bestFam.consensus_prob_min)}, devig≥{summary.bestFam.devig_book_count_min ?? '—'} → <strong>{fmtPct(cHR(summary.bestFam))}</strong> on {fmtInt(cN(summary.bestFam))} bets, Δ {fmtPct(cDelta(summary.bestFam), 2)}.</div>}
+              {summary.bestFam && <div><strong>Best stat family:</strong> <code style={{ color: ACCENT_2 }}>{cFam(summary.bestFam)}</code> ({fmtPct(cHR(summary.bestFam))}{summary.bestFam.tier ? ` @ ${summary.bestFam.tier}` : ''}).</div>}
+              {summary.worstFam && cFam(summary.worstFam) !== cFam(summary.bestFam) && <div><strong>Worst stat family (DO NOT USE):</strong> <code style={{ color: BAD }}>{cFam(summary.worstFam)}</code> ({fmtPct(cHR(summary.worstFam))}).</div>}
               {summary.bestOdds && <div><strong>Best odds bucket:</strong> <code style={{ color: ACCENT_2 }}>{summary.bestOdds._id?.odds_bucket}</code> (tier {summary.bestOdds._id?.tier}) ROI {fmtPct(summary.bestOdds.roi)} on {fmtInt(summary.bestOdds.n)} bets.</div>}
             </div>
           )}
@@ -1588,23 +1619,39 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
                       { value: 'n_bets',                      label: 'Sample Size' },
                     ])} />
             <span style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginLeft: 8 }}>Filter</span>
-            <Select testId="results-filter-tier" value={filter.tier} onChange={(e) => setFilter({ ...filter, tier: e.target.value })}
-              options={[{ value: '', label: 'all tiers' }, 'safe_haven','front_lines','war_zone'].map(x => typeof x==='string'?{value:x,label:x}:x)} />
+            {!isV2 && <Select testId="results-filter-tier" value={filter.tier} onChange={(e) => setFilter({ ...filter, tier: e.target.value })}
+              options={[{ value: '', label: 'all tiers' }, 'safe_haven','front_lines','war_zone'].map(x => typeof x==='string'?{value:x,label:x}:x)} />}
             <Select testId="results-filter-slice" value={filter.slice} onChange={(e) => setFilter({ ...filter, slice: e.target.value })}
-              options={[{ value: 'TIER_FAMILY', label: 'tier × family' }, { value: 'TIER_FAMILY_SIDE', label: 'tier × family × side' }, { value: 'ALL', label: 'ALL (PP-free)' }, { value: 'STAT_FAMILY', label: 'stat_family (PP-free)' }, { value: '', label: 'all slices' }]} />
+              options={isV2
+                ? [
+                    { value: 'STAT_FAMILY', label: 'stat_family (PP-free)' },
+                    { value: 'ALL',         label: 'ALL (PP-free)' },
+                    { value: 'SIDE',        label: 'side (PP-free)' },
+                    { value: '',            label: 'all slices' },
+                  ]
+                : [
+                    { value: 'TIER_FAMILY',      label: 'tier × family' },
+                    { value: 'TIER_FAMILY_SIDE', label: 'tier × family × side' },
+                    { value: '',                 label: 'all slices' },
+                  ]} />
             <Input testId="results-filter-family" placeholder="stat_family contains…" value={filter.stat_family}
               onChange={(e) => setFilter({ ...filter, stat_family: e.target.value })} style={{ width: 160 }} />
             {loading && <span style={{ color: ACCENT, fontSize: 11 }}>loading…</span>}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-            <CellTable title={`Top 15 by ${sortMetricOptions.find(m => m.key === sortMetric)?.label || sortMetric}`} cells={top} testId="results-top-table" accent={ACCENT_2} onSave={onSaveCandidate} sortMetric={sortMetric} />
-            <CellTable title="Bottom 15 (DO NOT USE)" cells={worst} testId="results-worst-table" accent={BAD} onSave={onSaveCandidate} sortMetric={sortMetric} />
+            <CellTable title={`Top 15 by ${sortMetricOptions.find(m => m.key === sortMetric)?.label || sortMetric}`} cells={top} testId="results-top-table" accent={ACCENT_2} onSave={onSaveCandidate} sortMetric={sortMetric} methodology={runMeta?.methodology} />
+            <CellTable title="Bottom 15 (DO NOT USE)" cells={worst} testId="results-worst-table" accent={BAD} onSave={onSaveCandidate} sortMetric={sortMetric} methodology={runMeta?.methodology} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: isV2 ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            {!isV2 && <BestByTier bestByTier={bestByTier} onSave={onSaveCandidate} />}
+            <BestByFamily bestByFam={bestByFam} onSave={onSaveCandidate} methodology={runMeta?.methodology} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-            <BestByTier bestByTier={bestByTier} onSave={onSaveCandidate} />
-            <BestByFamily bestByFam={bestByFam} onSave={onSaveCandidate} />
+            <BestBySide bestBySide={serverResults?.best_by_side || {}} onSave={onSaveCandidate} methodology={runMeta?.methodology} />
+            <BestByOddsBucket bestByOdds={serverResults?.best_by_odds_bucket || {}} onSave={onSaveCandidate} methodology={runMeta?.methodology} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 14 }}>
@@ -1651,7 +1698,23 @@ function ResultsTab({ token, refreshKey, onSaveCandidate }) {
   );
 }
 
-function CellTable({ title, cells, testId, accent, onSave }) {
+// Schema-tolerant cell accessors. Cells from market_truth_pp_free use
+// {n, hr, delta, ...} or v2-style {n_bets, hit_rate, calibration_delta_consensus, ...}.
+// Per-tier per-stat-family cells use {n_bets, hit_rate, calibration_delta, ...}.
+// Pick whichever field exists.
+const cN     = (c) => c?.n_bets ?? c?.n ?? null;
+const cHR    = (c) => c?.hit_rate ?? c?.hr ?? null;
+const cDelta = (c) => c?.calibration_delta_any ?? c?.calibration_delta_consensus
+                       ?? c?.calibration_delta ?? c?.delta_pp ?? c?.delta ?? null;
+const cFam   = (c) => c?.stat_family ?? c?.family ?? null;
+const cMkt   = (c) => c?.consensus_prob_avg ?? c?.market_prob
+                       ?? c?.consensus_avg ?? null;
+
+function CellTable({ title, cells, testId, accent, onSave, methodology }) {
+  const isV2 = methodology === 'market_truth_pp_free';
+  const cols = isV2
+    ? ['family', 'slice', 'n', 'HR', 'mkt', 'Δcal', '']
+    : ['tier',   'family', 'n', 'HR', 'Δcal', 'edge', 'cv', 'tp', ''];
   return (
     <div data-testid={testId} style={{
       background: SURFACE_2, border: `1px solid ${BORDER}`, borderLeft: `3px solid ${accent}`, borderRadius: 8, overflow: 'hidden',
@@ -1660,25 +1723,41 @@ function CellTable({ title, cells, testId, accent, onSave }) {
       <div style={{ maxHeight: 360, overflowY: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
           <thead><tr style={{ background: SURFACE, color: DIM, fontSize: 10, textTransform: 'uppercase' }}>
-            <th style={th}>tier</th><th style={th}>family</th><th style={th}>n</th>
-            <th style={th}>HR</th><th style={th}>Δcal</th><th style={th}>edge</th>
-            <th style={th}>cv</th><th style={th}>tp</th><th style={th}></th>
+            {cols.map(c => <th key={c} style={th}>{c}</th>)}
           </tr></thead>
           <tbody>
-            {cells.length === 0 ? <tr><td colSpan={9} style={{ padding: 18, textAlign: 'center', color: DIM }}>(no cells)</td></tr> :
-              cells.map((c, i) => (
-                <tr key={i} style={{ borderTop: `1px solid ${BORDER}` }}>
-                  <td style={td}>{c.tier}</td>
-                  <td style={{ ...td, color: ACCENT }}>{c.stat_family}</td>
-                  <td style={td}>{fmtInt(c.n_bets)}</td>
-                  <td style={{ ...td, color: (c.hit_rate || 0) > 0.6 ? ACCENT_2 : (c.hit_rate || 0) < 0.5 ? BAD : TEXT, fontWeight: 600 }}>{fmtPct(c.hit_rate)}</td>
-                  <td style={{ ...td, color: ((c.calibration_delta_any ?? c.calibration_delta) || 0) > 0 ? ACCENT_2 : BAD }}>{fmtPct(c.calibration_delta_any ?? c.calibration_delta, 2)}</td>
-                  <td style={td}>{fmtPct(c.avg_edge, 2)}</td>
-                  <td style={td}>{fmtNum(c.avg_cv)}</td>
-                  <td style={td}>{fmtPct(c.avg_tp, 1)}</td>
-                  <td style={td}><button onClick={() => onSave(c)} data-testid={`celltable-save-${i}`} style={{ background: 'transparent', border: `1px solid ${BORDER_STRONG}`, color: TEXT, borderRadius: 4, padding: '2px 6px', fontSize: 10, cursor: 'pointer' }}>save</button></td>
-                </tr>
-              ))}
+            {cells.length === 0
+              ? <tr><td colSpan={cols.length} style={{ padding: 18, textAlign: 'center', color: DIM }}>(no cells)</td></tr>
+              : cells.map((c, i) => {
+                const hr    = cHR(c);
+                const delta = cDelta(c);
+                return (
+                  <tr key={i} style={{ borderTop: `1px solid ${BORDER}` }}>
+                    {isV2 ? (
+                      <>
+                        <td style={{ ...td, color: ACCENT }}>{cFam(c) ?? <span style={{ color: DIM }}>—</span>}</td>
+                        <td style={{ ...td, color: DIM, fontSize: 10 }}>{c.slice}{c.side ? `·${c.side}` : ''}</td>
+                        <td style={td}>{fmtInt(cN(c))}</td>
+                        <td style={{ ...td, color: (hr || 0) > 0.6 ? ACCENT_2 : (hr || 0) < 0.5 ? BAD : TEXT, fontWeight: 600 }}>{fmtPct(hr)}</td>
+                        <td style={{ ...td, color: DIM }}>{fmtPct(cMkt(c))}</td>
+                        <td style={{ ...td, color: (delta || 0) > 0 ? ACCENT_2 : BAD }}>{fmtPct(delta, 2)}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td style={td}>{c.tier ?? <span style={{ color: DIM }}>—</span>}</td>
+                        <td style={{ ...td, color: ACCENT }}>{cFam(c) ?? <span style={{ color: DIM }}>—</span>}</td>
+                        <td style={td}>{fmtInt(cN(c))}</td>
+                        <td style={{ ...td, color: (hr || 0) > 0.6 ? ACCENT_2 : (hr || 0) < 0.5 ? BAD : TEXT, fontWeight: 600 }}>{fmtPct(hr)}</td>
+                        <td style={{ ...td, color: (delta || 0) > 0 ? ACCENT_2 : BAD }}>{fmtPct(delta, 2)}</td>
+                        <td style={td}>{fmtPct(c.avg_edge, 2)}</td>
+                        <td style={td}>{fmtNum(c.avg_cv)}</td>
+                        <td style={td}>{fmtPct(c.avg_tp, 1)}</td>
+                      </>
+                    )}
+                    <td style={td}><button onClick={() => onSave(c)} data-testid={`celltable-save-${i}`} style={{ background: 'transparent', border: `1px solid ${BORDER_STRONG}`, color: TEXT, borderRadius: 4, padding: '2px 6px', fontSize: 10, cursor: 'pointer' }}>save</button></td>
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
       </div>
@@ -1702,22 +1781,78 @@ function BestByTier({ bestByTier, onSave }) {
     </div>
   );
 }
-function BestByFamily({ bestByFam, onSave }) {
+function BestByFamily({ bestByFam, onSave, methodology }) {
+  const isV2 = methodology === 'market_truth_pp_free';
   return (
     <div data-testid="results-best-by-family" style={{
       background: SURFACE_2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 12, maxHeight: 320, overflowY: 'auto',
     }}>
       <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase', marginBottom: 8 }}>Best Config by Stat Family</div>
-      {bestByFam.map((c, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'center', padding: '6px 0', borderTop: `1px solid ${BORDER}` }}>
-          <div style={{ fontSize: 12 }}>
-            <code style={{ color: TEXT, fontFamily: 'monospace' }}>{c.stat_family}</code>
-            <span style={{ color: DIM, marginLeft: 8 }}>({c.tier})</span>
-          </div>
-          <span style={{ fontSize: 12, color: (c.hit_rate || 0) > 0.6 ? ACCENT_2 : MUTED, fontWeight: 600 }}>{fmtPct(c.hit_rate)}</span>
-          <Btn variant="ghost" onClick={() => onSave(c)} testId={`save-fam-${c.stat_family}`}>Save</Btn>
-        </div>
-      ))}
+      {bestByFam.length === 0
+        ? <div style={{ fontSize: 11, color: DIM, padding: '12px 0' }}>(no family rows)</div>
+        : bestByFam.map((c, i) => {
+            const hr = cHR(c); const fam = cFam(c);
+            return (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 8, alignItems: 'center', padding: '6px 0', borderTop: `1px solid ${BORDER}` }}>
+                <div style={{ fontSize: 12 }}>
+                  <code style={{ color: TEXT, fontFamily: 'monospace' }}>{fam ?? '—'}</code>
+                  {!isV2 && c.tier && <span style={{ color: DIM, marginLeft: 8 }}>({c.tier})</span>}
+                </div>
+                <span style={{ fontSize: 10, color: DIM, fontVariantNumeric: 'tabular-nums' }}>n={fmtInt(cN(c))}</span>
+                <span style={{ fontSize: 12, color: (hr || 0) > 0.6 ? ACCENT_2 : MUTED, fontWeight: 600 }}>{fmtPct(hr)}</span>
+                <Btn variant="ghost" onClick={() => onSave(c)} testId={`save-fam-${fam || i}`}>Save</Btn>
+              </div>
+            );
+          })}
+    </div>
+  );
+}
+
+function BestBySide({ bestBySide, onSave, methodology }) {
+  const entries = Object.entries(bestBySide || {});
+  return (
+    <div data-testid="results-best-by-side" style={{ background: SURFACE_2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 12 }}>
+      <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase', marginBottom: 8 }}>Best Config by Side</div>
+      {entries.length === 0
+        ? <div style={{ fontSize: 11, color: DIM, padding: '12px 0' }}>(no side rows for this run)</div>
+        : entries.map(([side, c]) => {
+            const hr = cHR(c); const delta = cDelta(c);
+            return (
+              <div key={side} style={{ display: 'grid', gridTemplateColumns: '70px 1fr auto auto auto', gap: 8, alignItems: 'center', padding: '6px 0', borderTop: `1px solid ${BORDER}` }}>
+                <Badge color={side === 'OVER' ? ACCENT_2 : ACCENT_3}>{side}</Badge>
+                <div style={{ fontSize: 12 }}>
+                  <code style={{ color: ACCENT, fontFamily: 'monospace' }}>{cFam(c) ?? '—'}</code>
+                  {methodology !== 'market_truth_pp_free' && c.tier && <span style={{ color: DIM, marginLeft: 6 }}>({c.tier})</span>}
+                </div>
+                <span style={{ fontSize: 10, color: DIM }}>n={fmtInt(cN(c))}</span>
+                <span style={{ fontSize: 12, color: (hr || 0) > 0.6 ? ACCENT_2 : TEXT, fontWeight: 600 }}>{fmtPct(hr)}</span>
+                <span style={{ fontSize: 10, color: (delta || 0) > 0 ? ACCENT_2 : BAD }}>Δ {fmtPct(delta, 2)}</span>
+              </div>
+            );
+          })}
+    </div>
+  );
+}
+
+function BestByOddsBucket({ bestByOdds, onSave, methodology }) {
+  const entries = Object.entries(bestByOdds || {});
+  return (
+    <div data-testid="results-best-by-odds-bucket" style={{ background: SURFACE_2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 12, maxHeight: 320, overflowY: 'auto' }}>
+      <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase', marginBottom: 8 }}>Best Config by Odds Bucket</div>
+      {entries.length === 0
+        ? <div style={{ fontSize: 11, color: DIM, padding: '12px 0' }}>(no odds_bucket rows for this run)</div>
+        : entries.map(([bucket, c]) => {
+            const hr = cHR(c); const delta = cDelta(c);
+            return (
+              <div key={bucket} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto auto', gap: 8, alignItems: 'center', padding: '6px 0', borderTop: `1px solid ${BORDER}` }}>
+                <code style={{ fontSize: 11, color: WARN, fontFamily: 'monospace' }}>{bucket}</code>
+                <code style={{ fontSize: 11, color: ACCENT, fontFamily: 'monospace' }}>{cFam(c) ?? '—'}</code>
+                <span style={{ fontSize: 10, color: DIM }}>n={fmtInt(cN(c))}</span>
+                <span style={{ fontSize: 12, color: (hr || 0) > 0.6 ? ACCENT_2 : TEXT, fontWeight: 600 }}>{fmtPct(hr)}</span>
+                <span style={{ fontSize: 10, color: (delta || 0) > 0 ? ACCENT_2 : BAD }}>Δ {fmtPct(delta, 2)}</span>
+              </div>
+            );
+          })}
     </div>
   );
 }
@@ -2535,7 +2670,26 @@ function OptimizerTab({ token }) {
   const [status, setStatus] = useState(null);
   const [results, setResults] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [cachedWindow, setCachedWindow] = useState(null);
+  const [windowAutofilled, setWindowAutofilled] = useState(false);
   const pollRef = useRef(null);
+
+  // Autoload last cached pipeline window so the optimizer runs off cached data.
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    apiFetch(token, `/research/last-pipeline-window?sport=${encodeURIComponent(form.sport)}`)
+      .then(r => {
+        if (cancelled) return;
+        setCachedWindow(r);
+        if (!form.start && !form.end && r.start && r.end) {
+          setForm(prev => ({ ...prev, start: r.start, end: r.end }));
+          setWindowAutofilled(true);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [token, form.sport]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const launch = async () => {
     if (!form.start || !form.end) { toast.error('Start and end required'); return; }
@@ -2651,13 +2805,36 @@ function OptimizerTab({ token }) {
         background: SURFACE_2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 12, marginBottom: 14,
       }}>
         <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 8 }}>Scope</div>
+        {cachedWindow && cachedWindow.start && cachedWindow.end && (
+          <div data-testid="opt-cached-window-banner" style={{
+            background: SURFACE_3, border: `1px solid ${BORDER}`, borderRadius: 6,
+            padding: '8px 10px', marginBottom: 10, fontSize: 11, color: MUTED,
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          }}>
+            <span style={{ color: ACCENT_2, fontWeight: 600 }}>cached pipeline window</span>
+            <code style={{ color: TEXT, fontFamily: 'monospace' }}>
+              {fmtDate(cachedWindow.start)} → {fmtDate(cachedWindow.end)}
+            </code>
+            <span style={{ color: DIM }}>
+              {fmtInt(cachedWindow.n_distinct_dates)} days · {fmtInt(cachedWindow.n_rows)} replay rows
+            </span>
+            {windowAutofilled
+              ? <span style={{ color: ACCENT_2, fontSize: 10 }}>· auto-loaded</span>
+              : <button
+                  data-testid="opt-apply-cached-window"
+                  onClick={() => { setForm(prev => ({ ...prev, start: cachedWindow.start, end: cachedWindow.end })); setWindowAutofilled(true); }}
+                  style={{ background: 'transparent', border: `1px solid ${ACCENT}`, color: ACCENT, borderRadius: 4, padding: '2px 8px', fontSize: 10, cursor: 'pointer' }}>
+                  use this window
+                </button>}
+          </div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginBottom: 12 }}>
           <Field label="Sport"><Select testId="opt-sport" value={form.sport}
-            onChange={(e) => setForm({ ...form, sport: e.target.value })} options={['MLB','NBA','NFL']} /></Field>
-          <Field label="Start"><Input testId="opt-start" value={form.start}
-            onChange={(e) => setForm({ ...form, start: e.target.value })} placeholder="YYYY-MM-DD" /></Field>
-          <Field label="End"><Input testId="opt-end" value={form.end}
-            onChange={(e) => setForm({ ...form, end: e.target.value })} placeholder="YYYY-MM-DD" /></Field>
+            onChange={(e) => { setForm({ ...form, sport: e.target.value, start: '', end: '' }); setWindowAutofilled(false); }} options={['MLB','NBA','NFL']} /></Field>
+          <Field label="Start (MM-DD-YYYY)"><Input testId="opt-start" value={form.start}
+            onChange={(e) => { setForm({ ...form, start: e.target.value }); setWindowAutofilled(false); }} placeholder="YYYY-MM-DD" /></Field>
+          <Field label="End (MM-DD-YYYY)"><Input testId="opt-end" value={form.end}
+            onChange={(e) => { setForm({ ...form, end: e.target.value }); setWindowAutofilled(false); }} placeholder="YYYY-MM-DD" /></Field>
           <Field label="Min bets / cell"><Input testId="opt-minbets" type="number" value={form.min_bets}
             onChange={(e) => setForm({ ...form, min_bets: e.target.value })} /></Field>
           <Field label="Max configs / cell"><Input testId="opt-maxconfigs" type="number" value={form.max_configs_per_cell}
