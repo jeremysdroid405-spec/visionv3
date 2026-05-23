@@ -320,6 +320,13 @@ function buildStepArgs(sportKey, stepKey, cfg) {
     };
   }
   const a = ['--league', spec.league, '--start', cfg.start, '--end', cfg.end];
+  if (stepKey === 'replay') {
+    // 2026-05-22 — SSOT historical replay runs in RESEARCH MODE by
+    // default so the grid sweep can see every scored row. Without this,
+    // ~95% of rows get short-circuited as tier_odds_bucket_fail and the
+    // grid analyzes a tiny biased subset.
+    a.push('--research-mode');
+  }
   if (stepKey === 'grid') a.push('--min-bets', String(cfg.minBets || 20));
   if (stepKey === 'replay') {
     if (cfg.excludeFamilies) a.push('--exclude-stat-family', cfg.excludeFamilies);

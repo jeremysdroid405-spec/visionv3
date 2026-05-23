@@ -484,6 +484,7 @@ async def _run(args: argparse.Namespace) -> int:
                     notes=f"historical_full_pipeline_replay SSOT "
                             f"{args.start}..{args.end}",
                     odds_collection=SGO_ODDS_COLL,
+                    research_mode=bool(args.research_mode),
                 )
             except Exception as e:
                 grand["runs_failed"] += 1
@@ -557,6 +558,16 @@ def _parse() -> argparse.Namespace:
     p.add_argument("--gate-path",       default="universal",
                       choices=VALID_GATE_PATHS)
     p.add_argument("--canonical-path",  action="store_true")
+    p.add_argument("--research-mode", action="store_true",
+                      dest="research_mode",
+                      help="Score every prop; do NOT short-circuit on "
+                              "tier_odds_bucket_fail; grade every row that "
+                              "has a known outcome (not only "
+                              "production-gate-pass rows). For grid sweep / "
+                              "candidate optimization research.")
+    p.add_argument("--skip-production-gates", action="store_true",
+                      dest="research_mode",
+                      help="Alias for --research-mode.")
     p.add_argument("--snapshot-hour",   type=int, default=11)
     p.add_argument("--limit-dates",     type=int, default=None)
     p.add_argument("--no-mirror-to-legacy", action="store_true")

@@ -384,6 +384,7 @@ async def run_production_replay(
     sh_cv_gate_max_override: Optional[float] = None,
     disable_all_gates_for_accuracy_test: bool = False,
     odds_collection: Optional[str] = None,
+    research_mode: bool = False,
 ) -> Dict[str, Any]:
     """End-to-end Phase 2c orchestrator.
 
@@ -741,7 +742,15 @@ async def run_production_replay(
                 if ref_pair:
                     ref_odds_for_row, ref_book_for_row = ref_pair
             routed_tier_for_row = get_odds_bucket(ref_odds_for_row)
-            if routed_tier_for_row != tier:
+            # 2026-05-22 RESEARCH MODE: in research_mode we never reject
+            # rows by odds-bucket routing. The bucket becomes a LABEL
+            # ({safe_haven,front_lines,war_zone,unknown_odds}_candidate)
+            # that the grid sweep uses for cohort routing, NOT a hard
+            # gate. The metrics + gate engine still fire so every
+            # downstream field (tp, edge, cv, hr_l5/10/20, gate_pass)
+            # is populated — but the row is preserved regardless of
+            # whether routed_tier == tier.
+            if (not research_mode) and routed_tier_for_row != tier:
                 gate_pass = False
                 failed = [TIER_ODDS_BUCKET_FAIL]
                 # Don't build metrics / call gate engine — short-circuit.
@@ -944,6 +953,20 @@ async def run_production_replay(
             out_doc["tier_reference_odds"] = ref_odds_for_row
             out_doc["tier_reference_book"] = ref_book_for_row
             out_doc["routed_tier"] = routed_tier_for_row
+            # 2026-05-22 RESEARCH MODE candidate label. Always stamped
+            # (research and prod), so the grid sweep can cohort rows by
+            # routed bucket regardless of whether the row passed gates.
+            # For null odds we use the explicit "odds_na" sentinel so
+            # rows are never silently dropped from cohort analysis.
+            if routed_tier_for_row:
+                out_doc["odds_bucket_candidate"] = f"{routed_tier_for_row}_candidate"
+            else:
+                out_doc["odds_bucket_candidate"] = "odds_na_candidate"
+                out_doc["odds_na_flag"] = True
+            # Researchers need to distinguish a real production-gate-pass
+            # from a research_mode-attached metric. This flag is purely
+            # advisory — gate_pass still reflects ONLY the gate outcome.
+            out_doc["research_mode"] = bool(research_mode)
         # Fix 2 (2026-05-17) — Stamp the SSOT decision metrics on every
         # output doc so post-hoc audits don't see `None` for fields the
         # gate engine actually evaluated against. NO threshold or gate
@@ -1093,10 +1116,16 @@ async def run_production_replay(
             )
 
         # Grade only the qualified picks (Layer 4 contract).
+        # 2026-05-22 RESEARCH MODE: also grade rows where research_mode
+        # is True AND we have outcomes to grade — so the grid sweep can
+        # see W/L outcomes for EVERY scored row, not only the production-
+        # gate-pass subset.
         actual_val: Optional[float] = None
         grade: Dict[str, Any]
-        if gate_pass:
-            rows_qualified += 1
+        should_grade = gate_pass or (
+            research_mode and row.get("player_name_normalized") in actuals
+        )
+        if should_grade:
             pdoc = actuals.get(row["player_name_normalized"]) or {}
             # 2026-05-18 — canonicalise the family AND fall back through
             # both family-key and statcast-field-key actuals shapes so
@@ -1121,8 +1150,15 @@ async def run_production_replay(
             elif st == "loss": losses += 1
             elif st == "push": pushes += 1
             else:              ungraded += 1
-            stake_total += float(grade["stake_units"])
-            profit_total += float(grade["profit_units"])
+            # Only count toward rows_qualified when the row actually
+            # passed the production gates (this preserves the canonical
+            # "qualified" metric definition). Research-mode-only grades
+            # are visible via grade_status but excluded from qualified-
+            # rate denominators.
+            if gate_pass:
+                rows_qualified += 1
+                stake_total += float(grade["stake_units"])
+                profit_total += float(grade["profit_units"])
             out_doc["grade_status"] = st
             out_doc["actual_value"] = grade.get("actual")
             out_doc["profit_units"] = float(grade["profit_units"])
