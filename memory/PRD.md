@@ -49,6 +49,27 @@ controlling historical replay pipelines via the Emergent Admin API.
   message from the last traceback line when `job.error` is null, and
   keeps the log panel visible after halt (showing last 80 lines).
 
+### 2026-05-23 — Unified Research Result Architecture (Option A)
+Wired the Results tab to dedicated research endpoints instead of the
+generic `/collections/{name}/find` route. The new endpoints understand
+both sweep schemas (PP-free `market_truth_pp_free` + per-tier
+`per_tier_per_stat_family`) and do server-side ranking, filtering, and
+best-of bucketing.
+- **New router** `/app/backend/routes/emergent_admin/research.py`:
+  - `GET /research/grid-runs` — list recent sweeps (sport/methodology/status filters)
+  - `GET /research/grid-runs/{run_id}` — single run metadata
+  - `GET /research/grid-results/{run_id}` — ranked top/worst + best_by_tier/stat_family/side/odds_bucket
+    - User-selectable `sort_metric` ∈ {hit_rate, calibration_delta_any, calibration_delta_consensus, calibration_delta, n_bets, profit_units, roi}
+    - Server annotates `calibration_delta_any` (consensus-preferred, falls back to legacy delta)
+  - `GET /research/candidate-thresholds/{run_id}` and `GET /research/candidate-thresholds`
+  - `GET /research/_meta/sort-metrics` — dropdown catalog
+- **Frontend** `AdminTesting.jsx` ResultsTab rewired: removed
+  `/collections/research_grid_*/find` calls, added sort-metric dropdown,
+  uses server-bucketed `best_by_*` instead of recomputing client-side.
+- **Tests** `/app/backend/tests/test_emergent_admin_research_endpoints.py`
+  — 23 backend tests pass (10 original + 13 edge-case + regression).
+- **Legacy `/optimizer` endpoints kept intact** per user preference.
+
 ## Backlog (priority order)
 ### P0 — Awaiting explicit user go-ahead
 - Google/Apple OAuth via Emergent-managed Google Auth
