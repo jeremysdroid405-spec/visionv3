@@ -2311,6 +2311,20 @@ async def startup_event():
     else:
         scheduler.start()
 
+    # 2026-05-23 — Start the live-sync reconciler. Polls the Mongo SSOT
+    # doc `system_state.live_sync` and applies its state to APScheduler.
+    # This is what makes the research_worker's auto-pause/auto-resume
+    # actually move the scheduler when a job is mid-flight.
+    try:
+        from workers.reconciler import reconciler_loop
+        asyncio.create_task(
+            reconciler_loop(lambda: db, lambda: scheduler),
+            name="live_sync_reconciler",
+        )
+        logger.info("[live-sync] reconciler scheduled")
+    except Exception:  # noqa: BLE001
+        logger.exception("[live-sync] failed to start reconciler")
+
     # Retire the legacy single-shot forward-test capture job (2026-05-08).
     # Replaced by the six per-(sport, phase) jobs above. The MongoDBJobStore
     # persists job IDs across restarts, so we explicitly drop the old ID

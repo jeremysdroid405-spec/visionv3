@@ -112,6 +112,17 @@ async def health(request: Request, auth=Depends(require_admin_token)):
     backend_pid = os.getpid()
     backend_metrics = _proc_metrics(backend_pid)
     hb_age = _heartbeat_age_s()
+
+    # Live-sync (testing-mode) coordinator state — required by the UI
+    # widget per 2026-05-23 user spec.
+    try:
+        from workers.live_sync_state import get_live_sync
+        live_sync = await get_live_sync(db)
+    except Exception:  # noqa: BLE001
+        live_sync = {"paused": False, "reason": "",
+                       "manual_override": False, "set_by": "",
+                       "active_job_id": None}
+
     return {
         "ok": True,
         "ts": datetime.now(timezone.utc),
@@ -129,6 +140,14 @@ async def health(request: Request, auth=Depends(require_admin_token)):
         "backend": {
             "pid": backend_pid,
             "metrics": backend_metrics,
+        },
+        "live_sync": {
+            "paused":          bool(live_sync.get("paused")),
+            "reason":          live_sync.get("reason", ""),
+            "manual_override": bool(live_sync.get("manual_override")),
+            "set_at":          live_sync.get("set_at"),
+            "set_by":          live_sync.get("set_by", ""),
+            "active_job_id":   live_sync.get("active_job_id"),
         },
     }
 
@@ -181,82 +200,74 @@ async def cancel(job_id: str, request: Request,
 
 
 # ── Testing-mode toggle (pause scheduler in the backend pod) ──────────
-@router.get("/testing-mode")
-async def get_testing_mode(request: Request,
-                                auth=Depends(require_admin_token)):
-    """Reports whether the APScheduler is paused via the in-process
-    flag. Falls back to the TESTING_MODE env var when the scheduler is
-    unavailable (e.g. early in app startup)."""
-    enabled = False
-    state = "unknown"
+def _scheduler_state_str(state_int: int | None) -> str:
     try:
-        from server import scheduler  # local import to avoid cycle at boot
         from apscheduler.schedulers.base import (
             STATE_RUNNING, STATE_PAUSED, STATE_STOPPED,
         )
+    except Exception:  # noqa: BLE001
+        return f"state={state_int}"
+    return {STATE_RUNNING: "running", STATE_PAUSED: "paused",
+              STATE_STOPPED: "stopped"}.get(state_int, f"state={state_int}")
+
+
+@router.get("/testing-mode")
+async def get_testing_mode(request: Request,
+                                auth=Depends(require_admin_token)):
+    """Reports the SSOT live-sync state from Mongo PLUS the actual
+    APScheduler state, so the operator can see both the *intent* and
+    the *applied* state of the system."""
+    from workers.live_sync_state import get_live_sync
+    db = _get_db()
+    live_sync_doc = await get_live_sync(db)
+    sched_state = "unknown"
+    try:
+        from server import scheduler
         if scheduler is None:
-            state = "not-initialised"
-            enabled = os.environ.get("TESTING_MODE", "0") == "1"
-        elif scheduler.state == STATE_PAUSED:
-            state = "paused"
-            enabled = True
-        elif scheduler.state == STATE_STOPPED:
-            state = "stopped"
-            enabled = True
-        elif scheduler.state == STATE_RUNNING:
-            state = "running"
-            enabled = False
+            sched_state = "not-initialised"
         else:
-            state = f"state={scheduler.state}"
+            sched_state = _scheduler_state_str(scheduler.state)
     except Exception as e:  # noqa: BLE001
-        state = f"error: {type(e).__name__}"
-    return {"ok": True, "enabled": enabled, "scheduler_state": state}
+        sched_state = f"error: {type(e).__name__}"
+    return {
+        "ok": True,
+        "enabled": bool(live_sync_doc.get("paused")),
+        "reason":           live_sync_doc.get("reason", ""),
+        "manual_override":  bool(live_sync_doc.get("manual_override")),
+        "set_at":           live_sync_doc.get("set_at"),
+        "set_by":           live_sync_doc.get("set_by", ""),
+        "active_job_id":    live_sync_doc.get("active_job_id"),
+        "scheduler_state":  sched_state,
+    }
 
 
 @router.post("/testing-mode")
 async def set_testing_mode(body: Dict[str, Any], request: Request,
                                 auth=Depends(require_admin_token)):
-    """Pause or resume the scheduler at runtime, no restart needed.
+    """Manual pause/resume — writes to the SSOT doc. The backend
+    reconciler picks it up within ~3 s and applies it to APScheduler.
 
-    body = {"enabled": true|false}
+    body = {"enabled": true|false, "reason": str (optional)}
 
-    When enabled=true we call `scheduler.pause()` which suspends ALL
-    jobs but keeps queued state intact. When enabled=false we call
-    `scheduler.resume()` to restore live sync. The pause is in-process
-    only — restart will re-read TESTING_MODE from the env.
+    `manual_override=true` is set automatically so the worker's
+    auto-resume after queue-drain WON'T undo this. To go back to
+    auto-mode, call `POST` with `enabled:false`.
     """
+    from workers.live_sync_state import manual_pause, manual_resume
     want_enabled = bool(body.get("enabled"))
-    try:
-        from server import scheduler
-        from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(500, f"scheduler unavailable: {e!r}")
-    if scheduler is None:
-        raise HTTPException(503, "scheduler not initialised")
-    try:
-        if want_enabled:
-            if scheduler.state == STATE_RUNNING:
-                scheduler.pause()
-                action = "paused"
-            elif scheduler.state == STATE_PAUSED:
-                action = "already-paused"
-            else:
-                action = f"left at state={scheduler.state}"
-        else:
-            if scheduler.state == STATE_PAUSED:
-                scheduler.resume()
-                action = "resumed"
-            elif scheduler.state == STATE_RUNNING:
-                action = "already-running"
-            else:
-                # stopped — restart
-                scheduler.start()
-                action = "restarted"
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(500, f"toggle failed: {e!r}")
+    reason       = str(body.get("reason") or "")
+    db = _get_db()
+    if want_enabled:
+        doc = await manual_pause(db, reason=reason,
+                                       agent_id=auth.get("agent_id", ""))
+        action = "manual_pause"
+    else:
+        doc = await manual_resume(db, reason=reason,
+                                        agent_id=auth.get("agent_id", ""))
+        action = "manual_resume"
     await audit_log(request, action="testing_mode_toggle",
                       params={"want_enabled": want_enabled,
-                                  "scheduler_action": action}, **auth)
-    return {"ok": True, "enabled": want_enabled,
-              "scheduler_action": action,
-              "scheduler_state": scheduler.state}
+                                  "reason": reason, "action": action},
+                      **auth)
+    return {"ok": True, "enabled": want_enabled, "action": action,
+              "doc": doc}

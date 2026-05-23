@@ -51,6 +51,9 @@ from workers.queue import (  # noqa: E402
     WORKER_ID, JOBS_COLL, db,
     atomic_claim, mark_running, finalize, append_log, queue_depth,
 )
+from workers.live_sync_state import (  # noqa: E402
+    worker_pause_for_job, worker_finish_job,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -227,6 +230,13 @@ async def _process_job(job: Dict[str, Any]) -> None:
     job_id = job["job_id"]
     logger.info("[%s] claimed (module=%s args=%s)",
                   job_id, job.get("module"), job.get("args"))
+    # ── Auto-pause live sync for the duration of this job ──────────
+    try:
+        await worker_pause_for_job(
+            db(), job_id=job_id, worker_id=WORKER_ID)
+        logger.info("[%s] live_sync paused", job_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("[%s] worker_pause_for_job failed", job_id)
     try:
         outcome = await _run_subprocess(job)
         await finalize(
@@ -248,6 +258,18 @@ async def _process_job(job: Dict[str, Any]) -> None:
             job_id, status="errored", error=repr(e), traceback_text=tb,
             tail_preview=tb.splitlines()[-TAIL_PREVIEW_LINES:],
         )
+    finally:
+        # Try to auto-resume — only fires when queue is empty AND no
+        # manual override. On crash the doc stays paused (per spec).
+        try:
+            depth = await queue_depth()
+            await worker_finish_job(
+                db(), job_id=job_id, worker_id=WORKER_ID,
+                queue_depth=depth)
+            logger.info("[%s] live_sync coordinator updated "
+                          "(queue_depth=%d)", job_id, depth)
+        except Exception:  # noqa: BLE001
+            logger.exception("[%s] worker_finish_job failed", job_id)
 
 
 async def _recover_stuck_jobs() -> None:

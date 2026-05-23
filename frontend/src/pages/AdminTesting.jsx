@@ -233,26 +233,43 @@ const fmtMB = (b) => b == null ? '—' : `${(b / 1024 / 1024).toFixed(0)} MB`;
 function WorkerHealthBar({ token }) {
   const [h, setH] = useState(null);
   const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const refresh = useCallback(async () => {
+    try {
+      const r = await apiFetch(token, '/worker/health');
+      setH(r); setErr(null);
+    } catch (e) { setErr(e.message); }
+  }, [token]);
   useEffect(() => {
     if (!token) return undefined;
     let stop = false;
-    const tick = async () => {
-      try {
-        const r = await apiFetch(token, '/worker/health');
-        if (!stop) { setH(r); setErr(null); }
-      } catch (e) { if (!stop) setErr(e.message); }
-    };
-    tick();
-    const id = setInterval(tick, 5000);
+    refresh();
+    const id = setInterval(() => { if (!stop) refresh(); }, 5000);
     return () => { stop = true; clearInterval(id); };
-  }, [token]);
+  }, [token, refresh]);
+
+  const toggleLiveSync = useCallback(async (enabled) => {
+    setBusy(true);
+    try {
+      await apiFetch(token, '/worker/testing-mode', {
+        method: 'POST',
+        body: JSON.stringify({ enabled, reason: enabled ? 'operator-paused from UI' : 'operator-resumed from UI' }),
+      });
+      toast.success(enabled ? 'Live sync paused' : 'Live sync resumed');
+      await refresh();
+    } catch (e) { toast.error(`Toggle failed: ${e.message}`); }
+    finally { setBusy(false); }
+  }, [token, refresh]);
 
   if (!h && !err) return null;
 
-  const workerOk = h?.worker?.running && !h?.worker?.stale;
+  const workerOk    = h?.worker?.running && !h?.worker?.stale;
+  const livePaused  = !!h?.live_sync?.paused;
+  const manualOvr   = !!h?.live_sync?.manual_override;
   const colorWorker = err ? BAD : workerOk ? ACCENT_2 : WARN;
   const colorQueue  = (h?.queue?.active || 0) > 0 ? ACCENT_3
                      : (h?.queue?.queued || 0) > 0 ? WARN : DIM;
+  const colorSync   = livePaused ? WARN : ACCENT_2;
   const wm = h?.worker?.metrics || {};
   const bm = h?.backend?.metrics || {};
 
@@ -278,6 +295,32 @@ function WorkerHealthBar({ token }) {
         <span data-testid="wh-active-job" style={{ color: ACCENT_3 }}>
           ▶ <code style={{ color: TEXT }}>{h.active_job.module || h.active_job.kind || h.active_job.job_id?.slice(0, 8)}</code>
         </span>
+      )}
+      <span data-testid="wh-live-sync" style={{
+          color: colorSync, fontWeight: 700, textTransform: 'uppercase',
+          letterSpacing: 0.5,
+          paddingLeft: 12, borderLeft: `1px solid ${BORDER}`,
+        }}>
+        live sync · {livePaused ? 'PAUSED' : 'ACTIVE'}
+        {manualOvr && <span style={{ color: ACCENT, marginLeft: 6 }}>(manual)</span>}
+      </span>
+      {h?.live_sync?.reason && (
+        <span data-testid="wh-live-sync-reason" style={{ color: DIM }}>
+          {h.live_sync.reason.slice(0, 60)}{h.live_sync.reason.length > 60 ? '…' : ''}
+        </span>
+      )}
+      {livePaused ? (
+        <button data-testid="wh-resume-live-sync" disabled={busy}
+          onClick={() => toggleLiveSync(false)}
+          style={{ background: 'transparent', border: `1px solid ${ACCENT_2}`, color: ACCENT_2, borderRadius: 4, padding: '2px 10px', fontSize: 10, cursor: busy ? 'wait' : 'pointer', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          Resume Live Sync
+        </button>
+      ) : (
+        <button data-testid="wh-pause-live-sync" disabled={busy}
+          onClick={() => toggleLiveSync(true)}
+          style={{ background: 'transparent', border: `1px solid ${WARN}`, color: WARN, borderRadius: 4, padding: '2px 10px', fontSize: 10, cursor: busy ? 'wait' : 'pointer', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          Pause Live Sync
+        </button>
       )}
       <span style={{ marginLeft: 'auto', color: DIM }}>
         worker {fmtMB(wm.rss_bytes)} · backend {fmtMB(bm.rss_bytes)}
