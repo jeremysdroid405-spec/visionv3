@@ -389,13 +389,19 @@ async def _evaluate_cell(state: Dict[str, Any], db, *,
                               combos: List[Dict[str, float]],
                               required: RequiredFilters,
                               ) -> List[Dict[str, Any]]:
-    # Pull the candidate row pool ONCE per cell.
+    # Pull the candidate row pool ONCE per cell. The previous filter
+    # used `{"$exists": True}` for `{tier}_pass`, which matched EVERY
+    # row that had the field — and the mirror writes the field as a
+    # bool on every row regardless of pass/fail. The result was that
+    # safe_haven, front_lines, and war_zone all queried the same
+    # superset of rows and produced identical metrics. The fix: filter
+    # to rows where the tier actually passed its gate.
     q: Dict[str, Any] = {
         "league_id": body.sport,
         "game_date": {"$gte": body.start, "$lte": body.end},
         "stat_family": stat_family,
         "odds_bucket": odds_bucket,
-        f"{tier}_pass": {"$exists": True},
+        f"{tier}_pass": True,
     }
     if sides:
         q["side"] = {"$in": sides}

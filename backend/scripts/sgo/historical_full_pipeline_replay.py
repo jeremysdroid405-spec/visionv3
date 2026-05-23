@@ -223,25 +223,24 @@ def _norm_player(x) -> Optional[str]:
 
 
 async def _build_outcome_index(db, *, event_ids: List[str]
-                                  ) -> Tuple[Dict[Tuple[str, str, float, str], List[Dict[str, Any]]],
-                                                Dict[Tuple[str, float, str],      List[Dict[str, Any]]]]:
-    """Per-event tolerant outcome index.
+                                  ) -> Tuple[Dict[Tuple[str, str, float], List[Dict[str, Any]]],
+                                                Dict[Tuple[str, float],      List[Dict[str, Any]]]]:
+    """Per-event tolerant outcome index, keyed WITHOUT side.
 
-    Returns two indices so the mirror can fall back when stat_family
-    names disagree between RUNNER_OUTPUTS and `sgo_pp_research_outcomes`
-    (the second-pass failure mode observed in prod: pitcher_strikeouts
-    + total_bases matched on the family-keyed index, batter_strikeouts
-    + walks_allowed missed because outcome side spells them differently
-    e.g. 'batting_strikeouts' vs 'batter_strikeouts').
+    Outcomes are graded per-side: a row with `side="over"` and
+    `outcome_numeric=0` means "OVER side lost" → UNDER side WON.
+    The mirror previously joined on side (after normalization), so a
+    replay UNDER row matched against an OVER outcome and inherited
+    the wrong outcome verbatim. We now strip side from the key and
+    let the mirror flip outcome_numeric when the replay row's side
+    disagrees with the outcome row's side.
 
-      A) primary  key = (event_id, stat_family, line_float, side_upper)
-      B) fallback key = (event_id, line_float, side_upper)
-
-    Both values are *lists* — the same (event, line, side) can apply
-    to multiple players. Downstream disambiguates by player name.
+    Returns:
+      A) primary  key = (event_id, stat_family, line_float)
+      B) fallback key = (event_id, line_float)
     """
-    primary: Dict[Tuple[str, str, float, str], List[Dict[str, Any]]] = {}
-    fallback: Dict[Tuple[str, float, str], List[Dict[str, Any]]] = {}
+    primary: Dict[Tuple[str, str, float], List[Dict[str, Any]]] = {}
+    fallback: Dict[Tuple[str, float], List[Dict[str, Any]]] = {}
     if not event_ids:
         return primary, fallback
     async for o in db[SGO_OUTCOMES_COLL].find(
@@ -254,14 +253,43 @@ async def _build_outcome_index(db, *, event_ids: List[str]
                       "player_name_normalized": 1, "market": 1},
     ):
         ln = _norm_line(o.get("line"))
-        sd = _norm_side(o.get("side"))
         eid = o.get("event_id") or ""
-        if ln is None or sd is None or not eid:
+        if ln is None or not eid:
             continue
         fam = o.get("stat_family") or ""
-        primary.setdefault((eid, fam, ln, sd), []).append(o)
-        fallback.setdefault((eid, ln, sd), []).append(o)
+        primary.setdefault((eid, fam, ln), []).append(o)
+        fallback.setdefault((eid, ln), []).append(o)
     return primary, fallback
+
+
+def _flip_outcome_for_opposite_side(outcome: Dict[str, Any],
+                                            replay_side: Optional[str]) -> Dict[str, Any]:
+    """If the replay row's side disagrees with the outcome row's side,
+    flip `outcome_numeric` and `hit`. PUSH (0.5) stays unchanged.
+
+    Returns a *new* dict — does not mutate the caller's outcome record
+    (which is shared across multiple replay rows in the per-event
+    index).
+    """
+    if outcome is None:
+        return outcome
+    rs = _norm_side(replay_side)
+    os_ = _norm_side(outcome.get("side"))
+    if rs and os_ and rs != os_:
+        on  = outcome.get("outcome_numeric")
+        hit = outcome.get("hit")
+        if on == 1:
+            flipped_on, flipped_hit = 0, False
+        elif on == 0:
+            flipped_on, flipped_hit = 1, True
+        else:
+            # PUSH (0.5) or None → unchanged
+            return outcome
+        return {**outcome,
+                  "outcome_numeric": flipped_on,
+                  "hit": flipped_hit,
+                  "side_flipped_from_outcome": True}
+    return outcome
 
 
 def _pick_outcome(candidates: List[Dict[str, Any]], *,
@@ -366,6 +394,7 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
     rows_mirrored = 0
     rows_with_outcome = 0
     rows_with_outcome_fb = 0  # how many landed via the family-tolerant fallback
+    rows_side_flipped = 0     # how many flipped because outcome side ≠ replay side
     buf: List[UpdateOne] = []
     for g in groups:
         k = g["_id"]
@@ -384,12 +413,12 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
         # ── Tolerant outcome lookup ─────────────────────────────
         eid = k.get("event_id") or ""
         ln  = _norm_line(k.get("line"))
-        sd  = _norm_side(k.get("side"))
+        sd  = _norm_side(k.get("side"))   # replay's side, for the flip step
         fam = g.get("stat_family") or ""
         outcome = None
-        if ln is not None and sd and eid:
-            # 1) Primary: same stat_family on both sides
-            primary_hits = outcome_index.get((eid, fam, ln, sd)) or []
+        if ln is not None and eid:
+            # 1) Primary: stat_family agrees on both sides.
+            primary_hits = outcome_index.get((eid, fam, ln)) or []
             outcome = _pick_outcome(
                 primary_hits,
                 wanted_player_norm=k.get("player_name_normalized"),
@@ -397,24 +426,31 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
                 wanted_stat_family=fam,
                 wanted_market=k.get("market"),
             )
-            # 2) Fallback: outcomes side spells stat_family differently
-            #    (the second wave of misses observed in prod for
-            #    batter_strikeouts and walks_allowed). Match on
-            #    (event_id, line, side) and disambiguate by player +
-            #    market/stat_id afterwards.
+            # 2) Fallback: family names disagree (batter_strikeouts vs
+            #    batting_strikeouts etc). Match on (event_id, line) and
+            #    disambiguate by player + market/stat_id.
             if outcome is None:
-                fb_hits = outcome_index_fb.get((eid, ln, sd)) or []
+                fb_hits = outcome_index_fb.get((eid, ln)) or []
                 outcome = _pick_outcome(
                     fb_hits,
                     wanted_player_norm=k.get("player_name_normalized"),
                     wanted_player_raw=g.get("player_name"),
-                    wanted_stat_family=None,   # already failed family path
+                    wanted_stat_family=None,
                     wanted_market=k.get("market"),
                 )
                 if outcome is not None:
                     rows_with_outcome_fb += 1
+            # 3) Side-flip: outcomes are graded per-side; if the replay
+            #    row is on the opposite side, invert outcome_numeric/hit.
+            #    Without this, UNDER bets that the runner output picked
+            #    up against an OVER-graded outcome row inherited the
+            #    OVER side's win/loss verbatim, producing wildly wrong
+            #    HR/ROI numbers (e.g. pitcher_strikeouts HR=13.9%).
+            outcome = _flip_outcome_for_opposite_side(outcome, sd)
         if outcome:
             rows_with_outcome += 1
+            if outcome.get("side_flipped_from_outcome"):
+                rows_side_flipped += 1
 
         replay_row = {
             "event_id": k["event_id"],
@@ -487,7 +523,7 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
     print(f"  [mirror] groups={len(groups)} events={len(event_ids_seen)} "
             f"primary_idx={len(outcome_index)} fallback_idx={len(outcome_index_fb)} "
             f"rows_mirrored={rows_mirrored} rows_with_outcome={rows_with_outcome} "
-            f"(via_fallback={rows_with_outcome_fb})")
+            f"(via_fallback={rows_with_outcome_fb} side_flipped={rows_side_flipped})")
     return (rows_mirrored, rows_with_outcome)
 
 

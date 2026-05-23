@@ -12,6 +12,7 @@ sys.path.insert(0, "/app/backend")
 
 from scripts.sgo.historical_full_pipeline_replay import (
     _norm_line, _norm_side, _norm_player, _pick_outcome,
+    _flip_outcome_for_opposite_side,
 )
 
 
@@ -76,18 +77,18 @@ def test_index_lookup_simulates_prod_failure_mode():
     """Reproduce the user's evidence:
     replay:  line=0.5 (float), side='OVER', stat_family='hits'
     outcome: line='0.5' (str), side='over', stat_family='hits'
-    The normalized lookup must produce a match."""
+    The normalized lookup must produce a match. Side is now NOT in
+    the key (handled by the side-flip step downstream)."""
     eid, fam = "evt_X", "hits"
     outcome = {"event_id": eid, "stat_family": fam, "line": "0.5",
                   "side": "over", "outcome_numeric": 1,
                   "player_name_normalized": None,
                   "player_name": "Hunter Renfroe", "market": None}
-    index_key = (eid, fam, _norm_line(outcome["line"]),
-                    _norm_side(outcome["side"]))
+    index_key = (eid, fam, _norm_line(outcome["line"]))
     index = {index_key: [outcome]}
 
-    replay_key = (eid, fam, _norm_line(0.5), _norm_side("OVER"))
-    assert replay_key == index_key, (replay_key, index_key)
+    replay_key = (eid, fam, _norm_line(0.5))
+    assert replay_key == index_key
 
     candidates = index.get(replay_key) or []
     pick = _pick_outcome(candidates,
@@ -95,6 +96,48 @@ def test_index_lookup_simulates_prod_failure_mode():
                               wanted_player_raw="Hunter Renfroe")
     assert pick is outcome
     assert pick["outcome_numeric"] == 1
+
+
+# ── Side-flip: outcomes are graded per-side ─────────────────────────
+def test_flip_outcome_when_replay_side_disagrees_with_outcome_side():
+    """The original prod bug behind HR=13.9% on pitcher_strikeouts:
+    outcomes are graded with side='over' regardless of which side the
+    replay row was on. When replay is UNDER and outcome is OVER, the
+    win/loss must be inverted (UNDER wins when OVER loses)."""
+    over_lost = {"side": "over", "outcome_numeric": 0, "hit": False}
+    flipped = _flip_outcome_for_opposite_side(over_lost, "UNDER")
+    assert flipped["outcome_numeric"] == 1
+    assert flipped["hit"] is True
+    assert flipped["side_flipped_from_outcome"] is True
+
+
+def test_no_flip_when_sides_agree():
+    over_won = {"side": "over", "outcome_numeric": 1, "hit": True}
+    out = _flip_outcome_for_opposite_side(over_won, "OVER")
+    assert out is over_won  # same dict, not a copy
+    assert out["outcome_numeric"] == 1
+    assert "side_flipped_from_outcome" not in out
+
+
+def test_flip_preserves_push():
+    """PUSH (0.5) outcomes are side-agnostic — the actual stat hit the
+    line exactly. Don't flip."""
+    push = {"side": "over", "outcome_numeric": 0.5, "hit": False, "push": True}
+    out = _flip_outcome_for_opposite_side(push, "UNDER")
+    assert out["outcome_numeric"] == 0.5
+
+
+def test_flip_handles_missing_outcome_gracefully():
+    assert _flip_outcome_for_opposite_side(None, "OVER") is None
+
+
+def test_flip_when_outcome_won():
+    """The other half of the inversion: if OVER won, UNDER lost."""
+    over_won = {"side": "over", "outcome_numeric": 1, "hit": True}
+    out = _flip_outcome_for_opposite_side(over_won, "UNDER")
+    assert out["outcome_numeric"] == 0
+    assert out["hit"] is False
+    assert out["side_flipped_from_outcome"] is True
 
 
 def test_pick_outcome_narrows_by_stat_family_when_pool_has_multiple_props():

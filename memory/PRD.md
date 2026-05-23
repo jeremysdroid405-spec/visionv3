@@ -632,3 +632,74 @@ default response correctly excludes the score=None cell from `top` /
 `best_by_stat_family` and surfaces it in `ungradable_top`; passing
 `include_ungradable=true` restores the old behavior.
 
+
+### 2026-05-23 — TWO MORE bugs found via the new diagnostic
+After the join + family-fallback + score-None fixes landed, the
+optimizer DID start showing grading (36/44 graded for pitcher_strikeouts)
+but every value was deeply wrong: HR=13.9%, ROI=-77.3%, and crucially
+**all three tiers (safe_haven, front_lines, war_zone) showed IDENTICAL
+metrics**. That's the smoking gun — three different gate-strictness
+levels can only produce identical numbers if they're querying the
+same row pool.
+
+**Bug #1 — tier filter never actually filtered**
+(`routes/emergent_admin/optimizer.py::_evaluate_cell`):
+```python
+f"{tier}_pass": {"$exists": True},   # ← BUG: matches every row
+```
+The mirror writes `safe_haven_pass`, `front_lines_pass`, `war_zone_pass`
+as booleans on EVERY row (True or False). `{"$exists": True}` is
+satisfied by both — so `safe_haven`, `front_lines`, and `war_zone`
+all queried the same superset. **Fix:** `f"{tier}_pass": True`.
+
+**Bug #2 — wrong outcome attached to UNDER bets**
+(`scripts/sgo/historical_full_pipeline_replay`):
+`grade_outcome()` in `build_historical_outcomes` produces ONE
+`outcome_numeric` per source-doc side. In prod the outcomes
+collection writes side="over" for nearly every row (the propvision-
+side source coll only carries the OVER side, since PrizePicks
+operates as Over/Under and "More" is treated as OVER).
+The mirror was joining replay UNDER rows to outcome OVER rows via my
+normalized join and **copying the OVER side's outcome_numeric
+verbatim**. So an OVER LOSS (`outcome_numeric=0`) was being
+attributed to the UNDER bet as a LOSS — when in fact the UNDER bet
+WON. This drove pitcher_strikeouts HR down to ~14% (it should be the
+inverse: 86%).
+
+**Fixes:**
+- Removed `side` from the outcome-index key — the index is now keyed
+  by `(event_id, stat_family, line_float)` (primary) and
+  `(event_id, line_float)` (fallback). The mirror normalizes both
+  sides to UPPER internally.
+- New helper `_flip_outcome_for_opposite_side(outcome, replay_side)`:
+  if `replay_side != outcome_side` (after upper-case norm), invert
+  `outcome_numeric` (1 ↔ 0) and `hit`, preserve PUSH (0.5). Adds a
+  `side_flipped_from_outcome: True` marker for observability.
+- `[mirror]` log line now reports `side_flipped=N` alongside
+  `via_fallback=N`.
+
+**Tests:** 5 new cases in `test_mirror_tolerant_join.py`:
+- flips when sides disagree
+- doesn't flip when sides agree (returns same dict reference)
+- preserves PUSH unchanged
+- handles None outcome
+- flips when OVER won → UNDER must lose
+Backend total: 102/102 unit tests passing (HTTP suites also pass on a
+fresh backend; transient timeouts were due to background sync churn).
+
+**Operator runbook for prod:**
+```bash
+# Re-run the replay so the mirror reattaches outcomes with the
+# side-flip semantics correct:
+python -m scripts.sgo.historical_full_pipeline_replay \
+       --league MLB --start 2025-05-01 --end 2025-06-01 --research-mode
+
+# Check the new mirror log line — expect non-zero side_flipped:
+#   [mirror] groups=N events=M primary_idx=… fallback_idx=…
+#     rows_mirrored=N rows_with_outcome=M (via_fallback=k side_flipped=j)
+
+# Re-run optimizer. Now each tier should show DISTINCT n / HR / ROI
+# (safe_haven sample shrinks as expected), and pitcher_strikeouts
+# UNDER bets should swing from ~14% HR to a sensible value.
+```
+
