@@ -578,6 +578,7 @@ async def test_paginated_cells_pagination_offsets(seeded_db):
                            headers=_auth_headers(),
                            params={"limit": 2, "offset": 0})
         r2 = await c.get(f"/api/emergent-admin/research/grid-results/{RUN_ID_B}/cells",
+
                            headers=_auth_headers(),
                            params={"limit": 2, "offset": 2})
         assert r1.status_code == 200 and r2.status_code == 200
@@ -588,4 +589,52 @@ async def test_paginated_cells_pagination_offsets(seeded_db):
         keys2 = {(c.get("tier"), c.get("stat_family")) for c in body2["cells"]}
         assert keys1.isdisjoint(keys2), (
             f"offset 0/2 returned overlapping rows: {keys1 & keys2}")
+
+
+
+@pytest.mark.asyncio
+async def test_enqueue_refused_when_no_worker_heartbeat(monkeypatch, tmp_path):
+    """`enqueue(require_worker=True)` must raise 503 when the heartbeat
+    file is missing/stale — the silent-pile-up failure mode that caused
+    the prod stall on 2026-05-23."""
+    from workers import queue as _q
+    from fastapi import HTTPException
+    monkeypatch.setattr(_q, "WORKER_HEARTBEAT_PATH",
+                            str(tmp_path / "does_not_exist"))
+    with pytest.raises(HTTPException) as exc:
+        await _q.enqueue(
+            job_id="test_orphan_1",
+            module="scripts.research.grid_sweep",
+            args=["--dry-run"],
+            require_worker=True,
+        )
+    assert exc.value.status_code == 503
+    assert "research_worker is not running" in str(exc.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_enqueue_succeeds_when_heartbeat_fresh(monkeypatch, tmp_path):
+    """A fresh heartbeat file allows the enqueue to proceed."""
+    import time as _time
+    import os as _os
+    from workers import queue as _q
+    fake = tmp_path / "heartbeat_fresh"
+    fake.write_text("x")
+    _os.utime(str(fake), (_time.time(), _time.time()))
+    monkeypatch.setattr(_q, "WORKER_HEARTBEAT_PATH", str(fake))
+    try:
+        r = await _q.enqueue(
+            job_id="test_fresh_hb_1",
+            module="scripts.research.grid_sweep",
+            args=["--dry-run"],
+            require_worker=True,
+        )
+        assert r["ok"] is True
+        assert r["status"] == "queued"
+    finally:
+        from motor.motor_asyncio import AsyncIOMotorClient
+        cli = AsyncIOMotorClient(_os.environ["MONGO_URL"])
+        await cli[_os.environ["DB_NAME"]]["emergent_admin_jobs"] \
+            .delete_one({"job_id": "test_fresh_hb_1"})
+        cli.close()
 

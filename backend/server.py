@@ -1542,8 +1542,14 @@ async def startup_event():
     
     # Initialize Game Lock Engine - Auto-cleanup on game start
     game_lock_engine = init_game_lock_engine(db)
-    await game_lock_engine.start()
-    logger.info("Game Lock Engine initialized (60s auto-cleanup)")
+    # 2026-05-23 — testing-mode skips ALL background loops, not just APScheduler.
+    # Each loop is its own asyncio.create_task and was leaking memory after Odds
+    # API exhaustion.
+    if os.environ.get("TESTING_MODE", "0") == "1":
+        logger.warning("[TESTING_MODE] skipping GameLockEngine.start()")
+    else:
+        await game_lock_engine.start()
+        logger.info("Game Lock Engine initialized (60s auto-cleanup)")
     
     # Register modular routes (from /routes/ directory)
     from services.engines.ai_context_engine import AiContextEngine
@@ -1750,7 +1756,10 @@ async def startup_event():
         logger.error(f"[EMERGENT_ADMIN] wiring failed: {_ea_err}")
 
     # Start the adaptive sync engine (background polling)
-    if ODDS_API_KEY:
+    if os.environ.get("TESTING_MODE", "0") == "1":
+        logger.warning("[TESTING_MODE] skipping AdaptiveSync.start() — "
+                          "no live odds polling")
+    elif ODDS_API_KEY:
         await adaptive_sync.start()
         logger.info("[ADAPTIVE_SYNC] Background polling STARTED")
     else:
@@ -2332,8 +2341,11 @@ async def startup_event():
     
     # AUTO-SYNC: Check if database is empty and trigger initial population
     # This runs only once when deployed to a new environment with empty DB
-    asyncio.create_task(check_and_run_initial_sync(db))
-    logger.info("[STARTUP] Initial sync check scheduled (runs in background)")
+    if os.environ.get("TESTING_MODE", "0") == "1":
+        logger.warning("[TESTING_MODE] skipping initial-sync check task")
+    else:
+        asyncio.create_task(check_and_run_initial_sync(db))
+        logger.info("[STARTUP] Initial sync check scheduled (runs in background)")
 
     # ==========================================================================
     # PHASE 1: SYNC ARCHITECTURE V2 — Foundation (Shadow Mode)
@@ -2366,20 +2378,29 @@ async def startup_event():
             sources=[BDLInjurySource(), ESPNInjurySource(), NBAOfficialInjurySource()],
             sports=["nba", "mlb"],
         )
-        await injury_sensor.start()
+        if os.environ.get("TESTING_MODE", "0") == "1":
+            logger.warning("[TESTING_MODE] skipping InjurySensor.start()")
+        else:
+            await injury_sensor.start()
 
         # Targeted injury-triggered re-score (Phase 3).
         # Subscribes to BoardEvent(injury_change) on the central event bus
         # and rescopes `nba_prop_scores` for the affected player set only
         # (rather than the hourly full-slate recompute). NBA-scoped.
         from services.injury_triggered_rescore import get_rescore_service
-        get_rescore_service().start(db)
+        if os.environ.get("TESTING_MODE", "0") == "1":
+            logger.warning("[TESTING_MODE] skipping rescore service.start()")
+        else:
+            get_rescore_service().start(db)
 
         # Game Clock + Odds Delta watchers
         game_clock_watcher = GameClockWatcher(db)
         odds_delta_watcher = OddsDeltaWatcher(db)
 
-        await game_clock_watcher.start()
+        if os.environ.get("TESTING_MODE", "0") == "1":
+            logger.warning("[TESTING_MODE] skipping GameClockWatcher.start()")
+        else:
+            await game_clock_watcher.start()
         # OddsDeltaWatcher: still in controlled mode
         # await odds_delta_watcher.start()
 

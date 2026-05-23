@@ -22,6 +22,7 @@ This module is import-safe: it ONLY uses motor + bson, no FastAPI.
 """
 from __future__ import annotations
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -29,6 +30,12 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 JOBS_COLL = "emergent_admin_jobs"
 WORKER_ID = os.environ.get("RESEARCH_WORKER_ID", "research-worker-1")
+WORKER_HEARTBEAT_PATH = os.environ.get("RW_HEARTBEAT_PATH",
+                                            "/tmp/research_worker.heartbeat")
+# A queued job becomes "orphaned" (no worker alive) when the heartbeat
+# is stale beyond this many seconds. The API refuses enqueue in that
+# state so jobs don't pile up invisibly.
+WORKER_STALE_AFTER_S = float(os.environ.get("RW_STALE_AFTER_S", "30"))
 
 # Default resource caps applied to every spawned subprocess.
 DEFAULT_RESOURCE_CAPS: Dict[str, Any] = {
@@ -86,8 +93,38 @@ async def enqueue(
     kind: str = "script",
     payload: Optional[Dict[str, Any]] = None,
     resource_caps: Optional[Dict[str, Any]] = None,
+    require_worker: bool = True,
 ) -> Dict[str, Any]:
-    """Insert a worker-routed job doc. The worker daemon picks it up."""
+    """Insert a worker-routed job doc. The worker daemon picks it up.
+
+    When `require_worker=True` (default) we refuse the enqueue if no
+    research_worker daemon has touched the heartbeat file within the
+    `WORKER_STALE_AFTER_S` window. This prevents the silent failure mode
+    where jobs pile up in `queued` forever because the worker service
+    isn't installed on the host.
+    """
+    if require_worker:
+        import os as _os
+        try:
+            st = _os.stat(WORKER_HEARTBEAT_PATH)
+            age = time.time() - st.st_mtime
+        except FileNotFoundError:
+            age = None
+        if age is None or age > WORKER_STALE_AFTER_S:
+            from fastapi import HTTPException as _HTTPException
+            raise _HTTPException(
+                503,
+                detail=(
+                    "research_worker is not running. Last heartbeat: "
+                    f"{'never' if age is None else f'{age:.0f}s ago'} "
+                    f"(stale threshold {WORKER_STALE_AFTER_S:.0f}s). "
+                    "Refusing to enqueue — jobs would pile up forever. "
+                    "Fix: `sudo supervisorctl reread && sudo supervisorctl "
+                    "update research_worker && sudo supervisorctl start "
+                    "research_worker`. If the service is missing, run "
+                    "/app/scripts/install_research_worker.sh on the host."
+                ),
+            )
     doc = {
         "job_id":        job_id,
         "module":        module,

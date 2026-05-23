@@ -269,3 +269,67 @@ fought for the same pages, kernel OOM-killer triggered.
 
 **Tests:** 58/58 still pass (10 contract + 32 research/worker + 16 NFL).
 
+
+### 2026-05-23 — Half-migrated worker stall + uvicorn growth after Odds exhaustion
+Two distinct issues bundled together:
+
+**Issue A: jobs enqueued but never consumed.**
+Root cause: the prod host never picked up `research_worker.conf`; the
+service simply wasn't installed. The API kept happily enqueueing jobs
+that nobody would ever execute, with no signal to the operator.
+
+Fixes:
+1. `workers/queue.py:enqueue(..., require_worker=True)` (default) refuses
+   to enqueue when `/tmp/research_worker.heartbeat` is missing or older
+   than `RW_STALE_AFTER_S` (30 s). Returns HTTP 503 with a fix recipe
+   pointing at the installer. No more silent pile-up.
+2. `/app/scripts/install_research_worker.sh` — idempotent one-command
+   installer. Writes the supervisor conf, runs `reread`/`update`/`start`,
+   waits up to 10 s for the heartbeat, fails loudly on timeout. Safe to
+   re-run.
+3. Two new tests pin the guard:
+   - `test_enqueue_refused_when_no_worker_heartbeat` — missing file → 503
+   - `test_enqueue_succeeds_when_heartbeat_fresh` — present + fresh → ok
+
+**Issue B: uvicorn still ballooning despite TESTING_MODE.**
+Root cause: many live-sync loops are spawned as direct
+`asyncio.create_task` outside APScheduler. `TESTING_MODE` was only
+pausing APScheduler, so these task-based loops kept hitting the Odds
+API, retrying after rate-limit, and growing memory unboundedly.
+
+Fixes (all in `server.py` startup):
+1. `GameLockEngine.start()` — gated on `TESTING_MODE`.
+2. `AdaptiveSync.start()` — gated on `TESTING_MODE`.
+3. `InjurySensor.start()` — gated on `TESTING_MODE`.
+4. `injury_triggered_rescore.get_rescore_service().start()` — gated.
+5. `GameClockWatcher.start()` — gated.
+6. `check_and_run_initial_sync` create_task — gated.
+
+Now `TESTING_MODE=1` (env) or `POST /worker/testing-mode {enabled:true}`
+(runtime) suspends EVERY background loop, not just APScheduler.
+
+**Operator runbook to bring prod back online:**
+
+```bash
+# 1. Install / repair the worker (idempotent)
+sudo bash /app/scripts/install_research_worker.sh
+
+# 2. Verify
+supervisorctl status research_worker
+curl -sS http://127.0.0.1:8001/api/emergent-admin/worker/health \
+     -H "X-Admin-Token: $EMERGENT_ADMIN_TOKEN" | jq .worker
+
+# 3. Pause live sync during heavy research
+curl -sS -X POST http://127.0.0.1:8001/api/emergent-admin/worker/testing-mode \
+     -H "X-Admin-Token: $EMERGENT_ADMIN_TOKEN" \
+     -H "Content-Type: application/json" -d '{"enabled":true}'
+
+# 4. Re-enable when done
+curl -sS -X POST http://127.0.0.1:8001/api/emergent-admin/worker/testing-mode \
+     -H "X-Admin-Token: $EMERGENT_ADMIN_TOKEN" \
+     -H "Content-Type: application/json" -d '{"enabled":false}'
+```
+
+**Tests:** 60/60 backend tests pass (10 contract + 16 NFL + 34
+research/worker + 2 new for orphan guard).
+
