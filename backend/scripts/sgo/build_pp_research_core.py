@@ -44,9 +44,22 @@ OUT_COLL = "sgo_pp_research_core"
 ANCHOR_BOOK = "prizepicks"
 
 
+def _resolve_out_coll(args: argparse.Namespace) -> str:
+    """Allow per-league override of the destination collection. Hybrid
+    layout: MLB keeps writing to `sgo_pp_research_core`; NFL writes to
+    `sgo_nfl_research_core`. Set via `--out-coll` or auto-derived from
+    `--league`."""
+    if getattr(args, "out_coll", None):
+        return str(args.out_coll)
+    league = (getattr(args, "league", None) or "").upper()
+    if league == "NFL":
+        return "sgo_nfl_research_core"
+    return OUT_COLL
+
+
 # ─── indexes (idempotent; safe to call repeatedly) ─────────────────────────
-async def ensure_out_indexes(db: AsyncIOMotorDatabase) -> None:
-    coll = db[OUT_COLL]
+async def ensure_out_indexes(db: AsyncIOMotorDatabase, out_coll: str = OUT_COLL) -> None:
+    coll = db[out_coll]
     await coll.create_index(
         [("event_id", ASCENDING), ("player_id", ASCENDING),
          ("stat_id", ASCENDING), ("side", ASCENDING),
@@ -83,6 +96,7 @@ async def build_month(
     *, league: Optional[str], month: str,
     start_iso: str, end_iso: str, dry_run: bool,
     player_name: Dict[str, str],
+    out_coll: str = OUT_COLL,
 ) -> Dict[str, Any]:
     """Build/upsert anchors for one month. Returns telemetry."""
     # 1) eligible events for this month/league
@@ -229,11 +243,11 @@ async def build_month(
         }
         upserts.append(UpdateOne(filt, {"$set": doc}, upsert=True))
         if len(upserts) >= 500 and not dry_run:
-            await db[OUT_COLL].bulk_write(upserts, ordered=False)
+            await db[out_coll].bulk_write(upserts, ordered=False)
             upserts = []
 
     if upserts and not dry_run:
-        await db[OUT_COLL].bulk_write(upserts, ordered=False)
+        await db[out_coll].bulk_write(upserts, ordered=False)
 
     return {
         "month": month,
@@ -256,24 +270,29 @@ async def amain(args: argparse.Namespace) -> int:
     client = AsyncIOMotorClient(os.environ["MONGO_URL"])
     db = client[os.environ["DB_NAME"]]
 
+    # Hybrid collection layout (2026-05-23 NFL split): MLB → sgo_pp_research_core,
+    # NFL → sgo_nfl_research_core, all other leagues default to OUT_COLL.
+    out_coll = _resolve_out_coll(args)
+
     print(f"[{datetime.now(timezone.utc).isoformat()}] "
           f"build_pp_research_core starting")
     print(f"  league={args.league or '(all)'}  "
           f"window=[{args.start or 'all'} .. {args.end or 'all'}]  "
-          f"dry_run={args.dry_run}  drop_existing={args.drop_existing}")
+          f"dry_run={args.dry_run}  drop_existing={args.drop_existing}  "
+          f"out_coll={out_coll}")
 
     # Optional drop (gated by flag — needs explicit user opt-in)
     if args.drop_existing:
-        if not dry_run_safe_drop(args):
+        if not dry_run_safe_drop(args, out_coll):
             return 2
         if not args.dry_run:
-            existing = await db[OUT_COLL].count_documents({})
-            print(f"  [drop] {OUT_COLL} currently has {existing} docs — dropping")
-            await db[OUT_COLL].drop()
+            existing = await db[out_coll].count_documents({})
+            print(f"  [drop] {out_coll} currently has {existing} docs — dropping")
+            await db[out_coll].drop()
         else:
-            print(f"  [drop] dry-run: would have dropped {OUT_COLL}")
+            print(f"  [drop] dry-run: would have dropped {out_coll}")
 
-    await ensure_out_indexes(db)
+    await ensure_out_indexes(db, out_coll)
 
     # Resolve the date window. If not supplied, auto-detect from sgo_events.
     if args.start and args.end:
@@ -311,7 +330,7 @@ async def amain(args: argparse.Namespace) -> int:
             r = await build_month(
                 db, league=args.league, month=month,
                 start_iso=m_start, end_iso=m_end, dry_run=args.dry_run,
-                player_name=player_name)
+                player_name=player_name, out_coll=out_coll)
         except Exception as e:
             print(f"    FAILED: {e!r}")
             continue
@@ -346,7 +365,7 @@ async def amain(args: argparse.Namespace) -> int:
           f"{total['upserts'] if not args.dry_run else 0}  "
           f"(dry_run={args.dry_run})")
     if not args.dry_run:
-        final_count = await db[OUT_COLL].count_documents({})
+        final_count = await db[out_coll].count_documents({})
         print(f"  {OUT_COLL} doc count: {final_count}")
     if total["sample_docs"]:
         import json
@@ -362,7 +381,7 @@ async def amain(args: argparse.Namespace) -> int:
     return 0
 
 
-def dry_run_safe_drop(args: argparse.Namespace) -> bool:
+def dry_run_safe_drop(args: argparse.Namespace, out_coll: str = OUT_COLL) -> bool:
     """Confirm --drop-existing is intentional (printed warning + checks --yes
     when not in dry-run). Returns True if drop should proceed."""
     if args.dry_run:
@@ -371,7 +390,7 @@ def dry_run_safe_drop(args: argparse.Namespace) -> bool:
         print("  [drop] --drop-existing was acknowledged with --yes")
         return True
     print(f"  [err] --drop-existing requires --yes (or --dry-run) for "
-          f"safety. Refusing to drop {OUT_COLL}.")
+          f"safety. Refusing to drop {out_coll}.")
     return False
 
 
@@ -388,6 +407,10 @@ def main() -> int:
                          f"(requires --yes when not --dry-run)")
     p.add_argument("--yes", action="store_true",
                     help="Acknowledge destructive --drop-existing")
+    p.add_argument("--out-coll", default=None,
+                    help="Override destination collection. Default: "
+                          "sgo_pp_research_core (MLB) or sgo_nfl_research_core "
+                          "when --league=NFL.")
     return asyncio.run(amain(p.parse_args()))
 
 

@@ -46,6 +46,8 @@ DEFAULT_RESOURCE_CAPS: Dict[str, Any] = {
 HEAVY_MODULES = frozenset({
     "scripts.research.grid_sweep",
     "scripts.research.run_optimizer_cli",
+    "scripts.sgo.probe_nfl_data",
+    "scripts.sgo.build_pp_research_core",
     "scripts.sgo.historical_full_pipeline_replay",
     "scripts.sgo.historical_gate_replay_grid",
     "scripts.sgo.build_historical_outcomes",

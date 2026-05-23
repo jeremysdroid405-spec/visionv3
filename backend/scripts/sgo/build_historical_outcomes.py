@@ -151,6 +151,57 @@ STAT_RESOLVERS: Dict[str, Callable[[Dict[str, Any]], Optional[float]]] = {
     "reb_ast":               lambda s: _sum_or_none(
         _num(_g(s, "rebounds", "REB", "totalRebounds")),
         _num(_g(s, "assists", "AST"))),
+    # ─── NFL passing ───
+    "pass_yards":            lambda s: _num(_g(s, "pass_yards",
+                                                  "passing_yards",
+                                                  "passingYards")),
+    "pass_attempts":         lambda s: _num(_g(s, "pass_attempts",
+                                                  "passing_attempts",
+                                                  "passingAttempts")),
+    "pass_completions":      lambda s: _num(_g(s, "pass_completions",
+                                                  "passing_completions",
+                                                  "passingCompletions")),
+    "pass_touchdowns":       lambda s: _num(_g(s, "pass_touchdowns",
+                                                  "passing_touchdowns",
+                                                  "passingTouchdowns",
+                                                  "passing_tds")),
+    "interceptions":         lambda s: _num(_g(s, "interceptions",
+                                                  "passing_interceptions",
+                                                  "passingInterceptions",
+                                                  "ints")),
+    # ─── NFL rushing ───
+    "rush_yards":            lambda s: _num(_g(s, "rush_yards",
+                                                  "rushing_yards",
+                                                  "rushingYards")),
+    "rush_attempts":         lambda s: _num(_g(s, "rush_attempts",
+                                                  "rushing_attempts",
+                                                  "rushingAttempts",
+                                                  "carries")),
+    "rush_touchdowns":       lambda s: _num(_g(s, "rush_touchdowns",
+                                                  "rushing_touchdowns",
+                                                  "rushingTouchdowns",
+                                                  "rush_tds")),
+    # ─── NFL receiving ───
+    "receptions":            lambda s: _num(_g(s, "receptions", "rec")),
+    "receiving_yards":       lambda s: _num(_g(s, "receiving_yards",
+                                                  "receivingYards",
+                                                  "rec_yards")),
+    "receiving_touchdowns":  lambda s: _num(_g(s, "receiving_touchdowns",
+                                                  "receivingTouchdowns",
+                                                  "rec_touchdowns",
+                                                  "rec_tds")),
+    "receiving_targets":     lambda s: _num(_g(s, "targets",
+                                                  "receiving_targets",
+                                                  "receivingTargets")),
+    "longest_reception":     lambda s: _num(_g(s, "longest_reception",
+                                                  "longestReception",
+                                                  "rec_longest")),
+    # ─── NFL kicking ───
+    "field_goals_made":      lambda s: _num(_g(s, "field_goals_made",
+                                                  "fieldGoalsMade", "fgm",
+                                                  "field_goals")),
+    "extra_points_made":     lambda s: _num(_g(s, "extra_points_made",
+                                                  "extraPointsMade", "xpm")),
 }
 
 # ─── SGO canonical statID aliases ───
@@ -174,6 +225,30 @@ _SGO_ALIASES = {
     "rebounds+assists":        "reb_ast",
     "blocks+steals":           None,  # explicit resolver below
     "minutesPlayed":           None,  # explicit resolver below
+    # NFL — SGO statID variants we've seen in raw payloads.
+    "passing_yards":           "pass_yards",
+    "passingYards":            "pass_yards",
+    "passing_attempts":        "pass_attempts",
+    "passingAttempts":         "pass_attempts",
+    "passing_completions":     "pass_completions",
+    "passingCompletions":      "pass_completions",
+    "passing_touchdowns":      "pass_touchdowns",
+    "passingTouchdowns":       "pass_touchdowns",
+    "passing_interceptions":   "interceptions",
+    "rushing_yards":           "rush_yards",
+    "rushingYards":            "rush_yards",
+    "rushing_attempts":        "rush_attempts",
+    "rushingAttempts":         "rush_attempts",
+    "rushing_touchdowns":      "rush_touchdowns",
+    "rushingTouchdowns":       "rush_touchdowns",
+    "receiving_yards":         "receiving_yards",
+    "receivingYards":          "receiving_yards",
+    "receiving_touchdowns":    "receiving_touchdowns",
+    "receivingTouchdowns":     "receiving_touchdowns",
+    "receiving_targets":       "receiving_targets",
+    "receivingTargets":        "receiving_targets",
+    "fieldGoalsMade":          "field_goals_made",
+    "extraPointsMade":         "extra_points_made",
 }
 for _alias, _target in _SGO_ALIASES.items():
     if _target and _target in STAT_RESOLVERS and _alias not in STAT_RESOLVERS:
@@ -501,8 +576,8 @@ def grade_outcome(
 
 
 # ───────────────────────────── indexes ────────────────────────────────────
-async def ensure_out_indexes(db: AsyncIOMotorDatabase) -> None:
-    c = db[OUT_COLL]
+async def ensure_out_indexes(db: AsyncIOMotorDatabase, out_coll: str = OUT_COLL) -> None:
+    c = db[out_coll]
     await c.create_index(
         [("event_id", ASCENDING), ("player_id", ASCENDING),
          ("stat_id", ASCENDING), ("side", ASCENDING),
@@ -577,7 +652,7 @@ async def process_date(
     # Optional --resume set
     already_done: set = set()
     if resume and not dry_run:
-        async for r in db[OUT_COLL].find(
+        async for r in db[out_coll].find(
             {"game_date": game_date,
              "grading_version": GRADING_VERSION},
             projection={"_id": 0, "event_id": 1, "player_id": 1,
@@ -607,7 +682,7 @@ async def process_date(
     if league:
         src_match["league_id"] = league
 
-    async for doc in db[SRC_COLL].find(src_match, {"_id": 0}):
+    async for doc in db[src_coll].find(src_match, {"_id": 0}):
         processed += 1
         uid = (doc.get("event_id"), doc.get("player_id"), doc.get("stat_id"),
                (doc.get("side") or "").upper(), doc.get("line"),
@@ -698,11 +773,11 @@ async def process_date(
         }
         upserts.append(UpdateOne(filt, {"$set": merged}, upsert=True))
         if len(upserts) >= 1000 and not dry_run:
-            await db[OUT_COLL].bulk_write(upserts, ordered=False)
+            await db[out_coll].bulk_write(upserts, ordered=False)
             upserts = []
 
     if upserts and not dry_run:
-        await db[OUT_COLL].bulk_write(upserts, ordered=False)
+        await db[out_coll].bulk_write(upserts, ordered=False)
 
     return {
         "processed":            processed,
@@ -726,32 +801,46 @@ async def amain(args: argparse.Namespace) -> int:
     client = AsyncIOMotorClient(os.environ["MONGO_URL"])
     db = client[os.environ["DB_NAME"]]
 
+    # Hybrid layout: NFL outcomes land in sgo_nfl_research_outcomes,
+    # and read from sgo_nfl_research_core (no enrichment step yet).
+    out_coll = args.out_coll or (
+        "sgo_nfl_research_outcomes"
+        if (args.league or "").upper() == "NFL" else OUT_COLL
+    )
+    src_coll = args.src_coll or (
+        "sgo_nfl_research_core"
+        if (args.league or "").upper() == "NFL" else SRC_COLL
+    )
+    # Some scope below still reads OUT_COLL from the module global; use the
+    # canonical name in messages.
     t0 = time.time()
     print(f"[{datetime.now(timezone.utc).isoformat()}] "
           f"build_historical_outcomes (grading={GRADING_VERSION})")
     print(f"  league={args.league or '(all)'}  "
           f"window=[{args.start or 'all'} .. {args.end or 'all'}]  "
-          f"dry_run={args.dry_run}  drop={args.drop_existing}  resume={args.resume}")
+          f"dry_run={args.dry_run}  drop={args.drop_existing}  resume={args.resume}  "
+          f"out_coll={out_coll}")
 
     if args.drop_existing:
         if not args.dry_run and not args.yes:
             print(f"  [err] --drop-existing requires --yes (or --dry-run). "
-                  f"Refusing to drop {OUT_COLL}.")
+                  f"Refusing to drop {out_coll}.")
             client.close()
             return 2
         if not args.dry_run:
-            existing = await db[OUT_COLL].count_documents({})
-            print(f"  [drop] {OUT_COLL} has {existing} docs — dropping")
-            await db[OUT_COLL].drop()
+            existing = await db[out_coll].count_documents({})
+            print(f"  [drop] {out_coll} has {existing} docs — dropping")
+            await db[out_coll].drop()
         else:
-            print(f"  [drop] dry-run: would have dropped {OUT_COLL}")
+            print(f"  [drop] dry-run: would have dropped {out_coll}")
 
-    await ensure_out_indexes(db)
+    await ensure_out_indexes(db, out_coll)
 
     dates = await _distinct_game_dates(
-        db, league=args.league, start=args.start, end=args.end)
+        db, league=args.league, start=args.start, end=args.end,
+        src_coll=src_coll)
     if not dates:
-        print(f"  [err] no anchor docs found in {SRC_COLL} for the given window")
+        print(f"  [err] no anchor docs found in {src_coll} for the given window")
         client.close()
         return 1
     print(f"  [plan] {len(dates)} game_dates to process  "
@@ -775,7 +864,8 @@ async def amain(args: argparse.Namespace) -> int:
             r = await process_date(
                 db, league=args.league, game_date=gd,
                 dry_run=args.dry_run, resume=args.resume,
-                debug_unresolved=debug_unresolved)
+                debug_unresolved=debug_unresolved,
+                out_coll=out_coll, src_coll=src_coll)
         except Exception as e:
             print(f"    [{gd}] FAILED: {e!r}")
             continue
@@ -905,6 +995,14 @@ def main() -> int:
     p.add_argument("--resume", action="store_true",
                     help=f"Skip docs already resolved at grading_version "
                          f"{GRADING_VERSION}")
+    p.add_argument("--out-coll", default=None,
+                    help="Override output collection. Defaults to "
+                          "sgo_pp_research_outcomes (MLB / NBA / generic) "
+                          "or sgo_nfl_research_outcomes when --league=NFL.")
+    p.add_argument("--src-coll", default=None,
+                    help="Override source collection of anchor rows. "
+                          "Defaults to sgo_pp_research_core_enriched (MLB) "
+                          "or sgo_nfl_research_core when --league=NFL.")
     p.add_argument("--debug-unresolved", action="store_true",
                     help="Print a grouped breakdown of every unresolved row "
                          "(stat_id, stat_family, reason, sample player + "
@@ -913,4 +1011,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    raise SystemExit(main())
+
     raise SystemExit(main())

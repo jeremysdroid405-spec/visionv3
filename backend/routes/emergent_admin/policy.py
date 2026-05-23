@@ -98,11 +98,22 @@ READ_ONLY_ALLOWED: Set[str] = (PROTECTED_COLLECTIONS | {
 # Only listed args are accepted. Any other arg is rejected.
 ALLOWED_JOBS: Dict[str, Dict] = {
     "scripts.sgo.build_pp_research_core": {
-        "label": "Build sgo_pp_research_core from raw props",
-        "writes_to": "sgo_pp_research_core (PROTECTED on this server — "
-                       "operator only) — locked OFF via API",
-        "enabled": False,   # protected destination
-        "args": [],
+        "label": "Build sgo_pp_research_core (MLB) / sgo_nfl_research_core (NFL)",
+        "writes_to": "sgo_pp_research_core OR sgo_nfl_research_core via "
+                       "--league=NFL / --out-coll",
+        "enabled": True,
+        "args": ["--league", "--start", "--end", "--dry-run",
+                  "--drop-existing", "--yes", "--out-coll"],
+    },
+    # 2026-05-23 — NFL data discovery probe. Read-only against SGO.
+    # Prints distinct (stat_id, market) pairs + sample playerStats keys,
+    # validates services.replay.nfl_stat_family_map coverage, never
+    # writes to Mongo.
+    "scripts.sgo.probe_nfl_data": {
+        "label": "Read-only NFL SGO data-discovery probe",
+        "writes_to": "(read-only)",
+        "enabled": True,
+        "args": ["--start", "--end", "--max-events", "--save-samples"],
     },
     "scripts.sgo.build_historical_consensus_probabilities": {
         "label": "Enrich PP-anchored props with consensus probabilities",
@@ -111,11 +122,14 @@ ALLOWED_JOBS: Dict[str, Dict] = {
         "args": [],
     },
     "scripts.sgo.build_historical_outcomes": {
-        "label": "Grade enriched anchors vs player stats",
-        "writes_to": "sgo_pp_research_outcomes (research, writable)",
+        "label": "Grade research-core anchors vs player stats "
+                   "(MLB → sgo_pp_research_outcomes; "
+                   "NFL → sgo_nfl_research_outcomes)",
+        "writes_to": "sgo_pp_research_outcomes / sgo_nfl_research_outcomes",
         "enabled": True,
         "args": ["--league", "--start", "--end", "--dry-run", "--resume",
-                  "--debug-unresolved", "--limit"],
+                  "--debug-unresolved", "--limit",
+                  "--out-coll", "--src-coll"],
     },
     "scripts.sgo.build_historical_model_features": {
         "label": "Build pre-game features for the model",

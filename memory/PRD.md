@@ -153,3 +153,76 @@ zero rows ever reached `bulk_write`.
   missing-field combo, σ=0, legacy-schema rejection, clamp, non-numeric
   guard, family alias coverage. 42/42 backend tests pass.
 
+
+
+### 2026-05-23 — NFL research pipeline (Phase 1 — probe + ingest + outcomes)
+NFL backtest pipeline scaffolded with the **hybrid collection layout**
+per user choice: raw ingestion stays on `sgo_*` shared collections keyed
+by `league_id`; derived outputs split into NFL-suffixed collections so
+MLB and NFL backtests stay isolated.
+
+**New / changed:**
+- `services/replay/nfl_stat_family_map.py` — canonical NFL family ↔ SGO
+  stat_id aliases + family → player_stats lookup keys. Single SSOT for
+  the NFL stat catalogue. Extend when new stat_ids show up in the probe.
+- `scripts/sgo/probe_nfl_data.py` — **NEW**, read-only. Hits SGO with
+  `expandResults=true`, dumps distinct (statID, marketName) pairs,
+  sample playerStats keys, mapping coverage vs the family map, and 3
+  sample raw player-stats dicts. Never writes Mongo.
+- `scripts/sgo/ingest_historical_player_stats.py` — added
+  `_normalize_nfl_stats()`, routed `--league=NFL` to it.
+- `scripts/sgo/build_pp_research_core.py` — `--out-coll` plus
+  auto-routing of `--league=NFL` to `sgo_nfl_research_core`. MLB path
+  unchanged. Threaded through `build_month` / `ensure_out_indexes`.
+- `scripts/sgo/build_historical_outcomes.py` — added NFL stat-family
+  resolvers + SGO statID aliases. `--out-coll` / `--src-coll` accept
+  per-league overrides; `--league=NFL` reads `sgo_nfl_research_core`
+  and writes `sgo_nfl_research_outcomes`.
+- `workers/queue.py` HEAVY_MODULES — probe + research-core builder
+  routed through the worker.
+- `routes/emergent_admin/policy.py` — `probe_nfl_data` allowed (read);
+  `build_pp_research_core` re-enabled; outcomes exposes `--out-coll` /
+  `--src-coll`.
+- `tests/test_nfl_pipeline_unit.py` — 16 tests pinning aliases, NFL
+  normalizer dispatch, every canonical family having a resolver, and
+  resolvers reading the normalized fields.
+
+**Phase 1 runbook (run on the prod host — preview pod has no SGO key):**
+
+```bash
+# 1. Probe — confirm SGO returns NFL data and our mapping covers it
+python -m scripts.sgo.probe_nfl_data \
+    --start=2025-09-04 --end=2025-09-09 \
+    --max-events=200 --save-samples=/tmp/nfl_probe.json
+
+# 2. Full SGO event ingest (writes sgo_events, sgo_props_raw,
+#    sgo_player_stats, sgo_book_consensus, etc.)
+python -m scripts.sgo.ingest --league=NFL \
+    --start=2025-09-04 --end=2025-09-09
+
+# 3. Cache-first historical player stats backfill (resumable)
+python -m scripts.sgo.ingest_historical_player_stats \
+    --league=NFL --start=2025-09-04 --end=2025-09-09 --source=auto
+
+# 4. Build NFL research core (PrizePicks-anchored)
+python -m scripts.sgo.build_pp_research_core \
+    --league=NFL --start=2025-09-04 --end=2025-09-09
+# → sgo_nfl_research_core
+
+# 5. Grade NFL outcomes
+python -m scripts.sgo.build_historical_outcomes \
+    --league=NFL --start=2025-09-04 --end=2025-09-09 --resume \
+    --debug-unresolved
+# → sgo_nfl_research_outcomes
+```
+
+**Phase 2 deferred (after row counts validated):**
+- `reshape_sgo_to_replay_odds.py` NFL support → `sgo_nfl_replay_alt_odds_raw`
+- `services/replay/nfl_feature_cache.py` (rolling priors from `sgo_player_stats`)
+- `scripts/nfl_replay_build_feature_cache.py` CLI
+- `historical_full_pipeline_replay.py` NFL branch + `sgo_nfl_full_pipeline_replay`
+- NFL model adapter / analytical baseline
+- Grid optimizer NFL wiring
+
+**Production safety: NFL is NOT wired into any tier and NOT on the
+production board. Research/backtest only.**

@@ -114,12 +114,20 @@ def normalize_stats(raw: Dict[str, Any], *, league: Optional[str] = None
         return _normalize_mlb_stats(raw)
     if lg == "NBA":
         return _normalize_nba_stats(raw)
+    if lg == "NFL":
+        return _normalize_nfl_stats(raw)
     # Auto-detect: try both, pick the one with more signal
     mlb = _normalize_mlb_stats(raw)
     nba = _normalize_nba_stats(raw)
-    mlb_signal = sum(1 for v in mlb.values() if v is not None)
-    nba_signal = sum(1 for v in nba.values() if v is not None)
-    return mlb if mlb_signal >= nba_signal else nba
+    nfl = _normalize_nfl_stats(raw)
+    candidates = [
+        ("mlb", mlb), ("nba", nba), ("nfl", nfl),
+    ]
+    candidates.sort(
+        key=lambda kv: sum(1 for v in kv[1].values() if v is not None),
+        reverse=True,
+    )
+    return candidates[0][1]
 
 
 def _normalize_mlb_stats(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -221,6 +229,79 @@ def _normalize_nba_stats(raw: Dict[str, Any]) -> Dict[str, Any]:
                                         "fantasyPoints")),
         "minutes":             mins,
     }
+
+
+def _normalize_nfl_stats(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Project raw provider stats → canonical NFL fields.
+
+    Field names below mirror `services.replay.nfl_stat_family_map.
+    NFL_FAMILY_TO_PLAYER_STATS` so build_historical_outcomes can resolve
+    `actual_value` without a second alias hop.
+
+    All variants are taken case-insensitively via `_g()`.
+    """
+    if not raw:
+        return {}
+
+    # Passing
+    pass_yards       = _num(_g(raw, "passing_yards", "passingYards",
+                                  "pass_yards", "qb_passing_yards"))
+    pass_attempts    = _num(_g(raw, "passing_attempts", "passingAttempts",
+                                  "pass_attempts"))
+    pass_completions = _num(_g(raw, "passing_completions", "passingCompletions",
+                                  "pass_completions"))
+    pass_touchdowns  = _num(_g(raw, "passing_touchdowns", "passingTouchdowns",
+                                  "pass_touchdowns", "passing_tds"))
+    interceptions    = _num(_g(raw, "passing_interceptions",
+                                  "passingInterceptions",
+                                  "interceptions", "ints"))
+
+    # Rushing
+    rush_yards       = _num(_g(raw, "rushing_yards", "rushingYards",
+                                  "rush_yards"))
+    rush_attempts    = _num(_g(raw, "rushing_attempts", "rushingAttempts",
+                                  "rush_attempts", "carries"))
+    rush_touchdowns  = _num(_g(raw, "rushing_touchdowns", "rushingTouchdowns",
+                                  "rush_touchdowns", "rush_tds"))
+
+    # Receiving
+    receptions          = _num(_g(raw, "receptions", "rec"))
+    receiving_yards     = _num(_g(raw, "receiving_yards", "receivingYards",
+                                     "rec_yards"))
+    receiving_touchdowns = _num(_g(raw, "receiving_touchdowns",
+                                      "receivingTouchdowns",
+                                      "rec_touchdowns", "rec_tds"))
+    receiving_targets   = _num(_g(raw, "targets", "receiving_targets",
+                                     "receivingTargets"))
+    longest_reception   = _num(_g(raw, "longest_reception", "longestReception",
+                                     "rec_longest", "longest_rec"))
+
+    # Kicking
+    field_goals_made    = _num(_g(raw, "field_goals_made", "fieldGoalsMade",
+                                     "fgm", "field_goals"))
+    extra_points_made   = _num(_g(raw, "extra_points_made", "extraPointsMade",
+                                     "xpm"))
+
+    return {
+        "pass_yards":           pass_yards,
+        "pass_attempts":        pass_attempts,
+        "pass_completions":     pass_completions,
+        "pass_touchdowns":      pass_touchdowns,
+        "interceptions":        interceptions,
+        "rush_yards":           rush_yards,
+        "rush_attempts":        rush_attempts,
+        "rush_touchdowns":      rush_touchdowns,
+        "receptions":           receptions,
+        "receiving_yards":      receiving_yards,
+        "receiving_touchdowns": receiving_touchdowns,
+        "receiving_targets":    receiving_targets,
+        "longest_reception":    longest_reception,
+        "field_goals_made":     field_goals_made,
+        "extra_points_made":    extra_points_made,
+        "fantasy_score":        _num(_g(raw, "fantasyScore", "fantasy_score",
+                                            "fantasyPoints")),
+    }
+
 
 
 # ───────────────────────────── source: SGO re-extract ─────────────────────
