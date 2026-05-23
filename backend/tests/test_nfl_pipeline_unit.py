@@ -173,3 +173,21 @@ def test_every_nfl_family_has_a_resolver():
     skips an NFL row."""
     for fam in NFL_FAMILIES:
         assert fam in STAT_RESOLVERS, f"missing resolver: {fam}"
+
+
+
+# ── build_historical_outcomes amain() kwarg contract ─────────────────
+def test_distinct_game_dates_accepts_src_coll_kwarg():
+    """Regression: amain() passes src_coll=... to _distinct_game_dates;
+    a removed kwarg breaks every NFL/MLB outcome run with a cryptic
+    TypeError at startup. Pin the signature so we catch it in CI."""
+    import inspect
+    sig = inspect.signature(_outcomes._distinct_game_dates)
+    assert "src_coll" in sig.parameters
+
+
+def test_process_date_accepts_out_and_src_coll_kwargs():
+    import inspect
+    sig = inspect.signature(_outcomes.process_date)
+    assert "out_coll" in sig.parameters
+    assert "src_coll" in sig.parameters

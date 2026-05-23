@@ -600,6 +600,7 @@ async def ensure_out_indexes(db: AsyncIOMotorDatabase, out_coll: str = OUT_COLL)
 async def _distinct_game_dates(
     db: AsyncIOMotorDatabase, *, league: Optional[str],
     start: Optional[str], end: Optional[str],
+    src_coll: Optional[str] = None,
 ) -> List[str]:
     match: Dict[str, Any] = {}
     if league: match["league_id"] = league
@@ -613,7 +614,8 @@ async def _distinct_game_dates(
     pipeline.append({"$group": {"_id": "$game_date"}})
     pipeline.append({"$sort": {"_id": 1}})
     dates: List[str] = []
-    async for r in db[SRC_COLL].aggregate(pipeline, allowDiskUse=True):
+    coll = src_coll or SRC_COLL
+    async for r in db[coll].aggregate(pipeline, allowDiskUse=True):
         if r.get("_id"):
             dates.append(r["_id"])
     return dates
@@ -623,7 +625,10 @@ async def process_date(
     db: AsyncIOMotorDatabase, *, league: Optional[str], game_date: str,
     dry_run: bool, resume: bool,
     debug_unresolved: Optional[Dict[Tuple[str, str, str], Dict[str, Any]]] = None,
+    out_coll: Optional[str] = None, src_coll: Optional[str] = None,
 ) -> Dict[str, Any]:
+    out_coll = out_coll or OUT_COLL
+    src_coll = src_coll or SRC_COLL
     # Load stats for this date into multiple lookup maps for fallback joins:
     #   stats_map           : (event_id, player_id) → {stats, canonical}
     #   stats_map_by_entity : (event_id, stat_entity_id) → {stats, canonical}
