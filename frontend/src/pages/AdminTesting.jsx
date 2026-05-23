@@ -2926,10 +2926,20 @@ function OptimizerTab({ token }) {
   const [runId, setRunId] = useState(null);
   const [status, setStatus] = useState(null);
   const [results, setResults] = useState(null);
+  const [outcomeCov, setOutcomeCov] = useState(null);
   const [busy, setBusy] = useState(false);
   const [cachedWindow, setCachedWindow] = useState(null);
   const [windowAutofilled, setWindowAutofilled] = useState(false);
   const pollRef = useRef(null);
+
+  const loadOutcomeCoverage = useCallback(async () => {
+    if (!token || !form.sport || !form.start || !form.end) return;
+    try {
+      const r = await apiFetch(token,
+        `/research/replay-outcome-coverage?sport=${encodeURIComponent(form.sport)}&start=${form.start}&end=${form.end}`);
+      setOutcomeCov(r);
+    } catch (e) { /* non-fatal */ }
+  }, [token, form.sport, form.start, form.end]);
 
   // Autoload last cached pipeline window so the optimizer runs off cached data.
   useEffect(() => {
@@ -2996,6 +3006,10 @@ function OptimizerTab({ token }) {
             try {
               const rr = await apiFetch(token, `/optimizer/${runId}/results?limit=25`);
               setResults(rr);
+              // Fire the outcome-coverage diagnostic so we surface the
+              // "all metrics null/zero because outcomes never joined"
+              // failure mode the moment results render.
+              loadOutcomeCoverage();
             } catch (e) { /* ignore */ }
           }
         }
@@ -3247,6 +3261,34 @@ function OptimizerTab({ token }) {
             </div>
           </div>
 
+          {/* Outcome-coverage diagnostic banner. Surfaces the
+              "metrics null/zero because outcomes never joined into
+              the replay cache" failure mode at-a-glance. */}
+          {outcomeCov && outcomeCov.n_total > 0 && (
+            <div data-testid="opt-outcome-coverage" style={{
+              padding: 10, marginBottom: 12, borderRadius: 6, fontSize: 12,
+              background: outcomeCov.pct_graded < 50
+                ? `${BAD}14` : outcomeCov.pct_graded < 95 ? `${WARN}14` : `${ACCENT_2}14`,
+              border: `1px solid ${outcomeCov.pct_graded < 50 ? BAD : outcomeCov.pct_graded < 95 ? WARN : ACCENT_2}`,
+              color: outcomeCov.pct_graded < 50 ? BAD : outcomeCov.pct_graded < 95 ? WARN : ACCENT_2,
+            }}>
+              <div style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                Replay outcome coverage · {outcomeCov.pct_graded.toFixed(1)}%
+              </div>
+              <div style={{ color: TEXT, fontSize: 11, lineHeight: 1.5 }}>
+                {fmtInt(outcomeCov.n_with_outcome_numeric)} of {fmtInt(outcomeCov.n_total)} replay rows have a graded outcome ·{' '}
+                {fmtInt(outcomeCov.n_outcome_resolved)} marked resolved ·{' '}
+                {fmtInt(outcomeCov.n_with_odds)} with odds.
+              </div>
+              <div style={{ color: outcomeCov.pct_graded < 50 ? BAD : WARN, fontSize: 11, marginTop: 6, fontFamily: 'monospace' }}>
+                {outcomeCov.diagnosis}
+              </div>
+              <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+                <Btn variant="ghost" onClick={loadOutcomeCoverage} testId="opt-outcome-cov-refresh">Refresh</Btn>
+              </div>
+            </div>
+          )}
+
           {/* Best by tier */}
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Best Config by Tier</div>
@@ -3348,7 +3390,15 @@ function ResultsRankTable({ rows, testId, accent }) {
                   <td style={td}>{r.tier}</td>
                   <td style={{ ...td, color: ACCENT }}>{r.stat_family}</td>
                   <td style={{ ...td, fontSize: 10 }}>{r.odds_bucket}</td>
-                  <td style={td}>{fmtInt(r.n_bets)}{r.overfit_flag && <span style={{ color: WARN, marginLeft: 4 }}>⚠</span>}</td>
+                  <td style={td}>
+                    {fmtInt(r.n_bets)}
+                    {r.overfit_flag && <span style={{ color: WARN, marginLeft: 4 }}>⚠</span>}
+                    {r.n_graded != null && r.n_bets > 0 && r.n_graded < r.n_bets && (
+                      <span data-testid="opt-ungraded-badge" title="Graded rows / total bets" style={{ color: BAD, marginLeft: 4, fontSize: 9 }}>
+                        ({r.n_graded}/{r.n_bets} graded)
+                      </span>
+                    )}
+                  </td>
                   <td style={{ ...td, color: (r.hit_rate || 0) > 0.6 ? ACCENT_2 : (r.hit_rate || 0) < 0.5 ? BAD : TEXT, fontWeight: 600 }}>{fmtPct(r.hit_rate)}</td>
                   <td style={{ ...td, color: (r.roi || 0) > 0 ? ACCENT_2 : BAD }}>{fmtPct(r.roi)}</td>
                   <td style={td}>{fmtPct(r.calibration_delta, 2)}</td>

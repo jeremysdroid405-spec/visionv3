@@ -271,6 +271,8 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
     if n < min_bets:
         return None
     wins = losses = pushes = ungraded = 0
+    n_with_odds = 0
+    n_with_payout = 0
     sum_tp = sum_cv = sum_edge = 0.0
     cnt_tp = cnt_cv = cnt_edge = 0
     daily: Dict[str, float] = {}
@@ -285,8 +287,11 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
             pushes += 1
         else:
             ungraded += 1
+        if r.get("odds") is not None:
+            n_with_odds += 1
         p = _payout_units(r)
         if p is not None:
+            n_with_payout += 1
             pnl_units += p
             daily[r.get("game_date") or "_"] = daily.get(r.get("game_date") or "_", 0.0) + p
         for k, sum_ref, cnt_ref in (("tp",   "sum_tp",   "cnt_tp"),
@@ -301,7 +306,12 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
                 else:                     sum_edge += float(v); cnt_edge += 1
     settled = wins + losses
     hit_rate = (wins / settled) if settled else None
-    roi      = (pnl_units / n) if n else None
+    # ROI denominator = bets we could actually grade (i.e. ones with a
+    # numeric payout). Using `n` here silently drove ROI → 0 whenever
+    # replay rows had missing outcome_numeric/odds, masking the upstream
+    # join failure. We now expose the ungraded count alongside so the
+    # operator can see the diagnosis at-a-glance.
+    roi      = (pnl_units / n_with_payout) if n_with_payout else None
     avg_tp   = (sum_tp / cnt_tp) if cnt_tp else None
     avg_cv   = (sum_cv / cnt_cv) if cnt_cv else None
     avg_edge = (sum_edge / cnt_edge) if cnt_edge else None
@@ -316,6 +326,10 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
     calibration_delta = (hit_rate - avg_tp) if (hit_rate is not None and avg_tp is not None) else None
     return {
         "n_bets": n,
+        "n_graded": settled + pushes,     # rows with outcome ∈ {1, 0, 0.5}
+        "n_ungraded": ungraded,           # rows with outcome_numeric == null
+        "n_with_odds": n_with_odds,
+        "n_with_payout": n_with_payout,
         "wins": wins, "losses": losses, "pushes": pushes,
         "hit_rate": hit_rate, "roi": roi,
         "calibration_delta": calibration_delta,

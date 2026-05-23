@@ -446,3 +446,141 @@ async def last_pipeline_window(
         "n_rows": d.get("n_rows", 0),
         "n_distinct_dates": d.get("n_distinct_dates", 0),
     }
+
+
+
+# ── Replay outcome diagnostic ────────────────────────────────────────
+@router.get("/replay-outcome-coverage")
+async def replay_outcome_coverage(
+    request: Request,
+    sport: str  = Query(...),
+    start: str  = Query(...),
+    end:   str  = Query(...),
+    sample_missing: int = Query(default=3, ge=0, le=20),
+    auth=Depends(require_admin_token),
+):
+    """Diagnoses *why* optimizer HR/ROI come back as null/zero.
+
+    The optimizer aggregates the cached replay collection. If those
+    rows are missing `outcome_numeric` (because the outcomes join in
+    `_mirror_to_legacy` silently failed), every cell reports
+    `hit_rate=None, roi=0` no matter how big the sample.
+
+    Returns:
+        n_total, n_outcome_resolved, n_with_outcome_numeric,
+        n_with_odds, n_with_payout, by_stat_family breakdown,
+        and a sample of unresolved rows for triage.
+    """
+    db = _get_db()
+    league = sport.upper()
+    match: Dict[str, Any] = {
+        "league_id": league,
+        "game_date": {"$gte": start, "$lte": end},
+    }
+    n_total = await db[REPLAY_COLL].count_documents(match)
+    if n_total == 0:
+        return {"ok": True, "sport": league, "start": start, "end": end,
+                  "n_total": 0,
+                  "diagnosis": "no rows in replay collection for this window"}
+
+    n_resolved        = await db[REPLAY_COLL].count_documents(
+        {**match, "outcome_resolved": True})
+    n_outcome_numeric = await db[REPLAY_COLL].count_documents(
+        {**match, "outcome_numeric": {"$in": [0, 1, 0.5]}})
+    n_with_odds       = await db[REPLAY_COLL].count_documents(
+        {**match, "odds": {"$ne": None, "$exists": True}})
+
+    # by stat_family
+    fam_pipeline = [
+        {"$match": match},
+        {"$group": {
+            "_id": "$stat_family",
+            "n_total": {"$sum": 1},
+            "n_resolved": {"$sum": {"$cond": [
+                {"$eq": ["$outcome_resolved", True]}, 1, 0]}},
+            "n_with_outcome_numeric": {"$sum": {"$cond": [
+                {"$in": ["$outcome_numeric", [0, 1, 0.5]]}, 1, 0]}},
+            "n_with_odds": {"$sum": {"$cond": [
+                {"$and": [
+                    {"$ne": ["$odds", None]},
+                    {"$ne": [{"$type": "$odds"}, "missing"]},
+                ]}, 1, 0]}},
+        }},
+        {"$sort": {"n_total": -1}},
+        {"$project": {"_id": 0, "stat_family": "$_id",
+                          "n_total": 1, "n_resolved": 1,
+                          "n_with_outcome_numeric": 1, "n_with_odds": 1}},
+    ]
+    by_family = [d async for d in db[REPLAY_COLL].aggregate(fam_pipeline,
+                                                                       allowDiskUse=True)]
+
+    # sample rows whose outcome is null
+    missing_match = {**match,
+                        "$or": [
+                            {"outcome_numeric": None},
+                            {"outcome_resolved": {"$ne": True}},
+                        ]}
+    sample_unresolved: List[Dict[str, Any]] = []
+    if sample_missing > 0:
+        async for r in db[REPLAY_COLL].find(
+            missing_match,
+            projection={"_id": 0, "event_id": 1, "player_id": 1,
+                          "player_name": 1, "player_name_normalized": 1,
+                          "stat_family": 1, "market": 1, "stat_id": 1,
+                          "side": 1, "line": 1, "odds": 1, "game_date": 1,
+                          "outcome_resolved": 1, "outcome_numeric": 1,
+                          "ssot_source": 1, "pipeline_version": 1}).limit(sample_missing):
+            sample_unresolved.append(r)
+
+    # Build a clear, single-line diagnosis the operator can paste into a bug.
+    diagnosis: str
+    if n_resolved == 0:
+        diagnosis = (
+            f"CRITICAL: {n_total} replay rows but 0 have outcome_resolved=true. "
+            "The mirror→outcomes join is failing. Check that "
+            "sgo_pp_research_outcomes has rows for this window AND that "
+            "the join keys (event_id, player_name_normalized, market, line, side) "
+            "match between RUNNER_OUTPUTS and the outcomes collection. "
+            "Re-run `scripts.sgo.build_historical_outcomes` then re-run "
+            "the full pipeline replay so the mirror picks up the new outcomes."
+        )
+    elif n_outcome_numeric < n_resolved:
+        diagnosis = (
+            f"{n_resolved}/{n_total} rows mark outcome_resolved=true but only "
+            f"{n_outcome_numeric} carry a numeric outcome_numeric value. "
+            "Likely a unresolved-side mismatch — re-run "
+            "build_historical_outcomes with --debug-unresolved."
+        )
+    elif n_outcome_numeric < n_total * 0.50:
+        diagnosis = (
+            f"{n_outcome_numeric}/{n_total} ({n_outcome_numeric*100.0/n_total:.1f}%) "
+            "rows have a numeric outcome. Backfill more outcomes or shrink the "
+            "window."
+        )
+    else:
+        diagnosis = (
+            f"{n_outcome_numeric}/{n_total} rows graded — looks healthy. "
+            "If the optimizer still shows null HR/ROI, the filters likely "
+            "exclude all graded rows; widen min_bets or relax thresholds."
+        )
+
+    await audit_log(request, action="replay_outcome_coverage",
+                       params={"sport": league, "start": start, "end": end},
+                       response_summary={
+                           "n_total": n_total,
+                           "n_outcome_numeric": n_outcome_numeric,
+                           "pct_graded": round(n_outcome_numeric * 100.0
+                                                   / max(n_total, 1), 2),
+                       }, **auth)
+    return {
+        "ok": True, "sport": league, "start": start, "end": end,
+        "n_total":                  n_total,
+        "n_outcome_resolved":       n_resolved,
+        "n_with_outcome_numeric":   n_outcome_numeric,
+        "n_with_odds":              n_with_odds,
+        "pct_graded":               round(n_outcome_numeric * 100.0
+                                              / max(n_total, 1), 2),
+        "by_stat_family":           by_family,
+        "sample_unresolved":        sample_unresolved,
+        "diagnosis":                diagnosis,
+    }

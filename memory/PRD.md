@@ -381,3 +381,63 @@ stale 503-style "queued/stale" warnings.
 **Tests:** `tests/test_coverage_backfill_endpoint.py` — 4 cases pin
 cache-miss enqueue, cache-hit short-circuit, force bypass, unknown
 key. Backend total: 73/73 passing (was 69/69).
+
+### 2026-05-23 — Optimizer outcome-grading diagnosis (HR=—, ROI=0.0 bug)
+**Reported symptom:** every optimizer cell came back with n_bets ≥ 30
+yet HR=—, ROI=0.0%, Δcal=—, score≈0. Threshold grouping, odds bucket
+slicing, and the worker pipeline all looked healthy — the failure
+was strictly inside outcome aggregation.
+
+**Root cause:** the replay cache (`sgo_propvision_full_pipeline_replay`)
+held rows whose `outcome_numeric` was NULL because the join in
+`_mirror_to_legacy` (which attaches outcomes from
+`sgo_pp_research_outcomes` to runner output) silently missed every row
+when one of the join keys (`event_id`, `player_name_normalized`,
+`market`, `line`, `side`) failed to align. `_evaluate_combo` then
+counted every row as `ungraded` → `wins=0, losses=0, settled=0` →
+`hit_rate=None`, and ROI was divided by total `n` instead of the
+graded count, producing the misleading `0.0%` instead of `None`.
+
+**Fixes shipped (this fork):**
+- **Backend / optimizer** (`routes/emergent_admin/optimizer.py`):
+  - `_evaluate_combo` now exposes `n_graded`, `n_ungraded`,
+    `n_with_odds`, `n_with_payout` on every cell doc written to
+    `optimizer_run_results`.
+  - ROI denominator changed from total `n` to `n_with_payout`. When
+    every row is ungraded, ROI is `None` (not `0.0`), preserving the
+    "unknown" signal so the UI no longer masks the upstream bug.
+- **Backend / research** (`routes/emergent_admin/research.py`):
+  - **New endpoint** `GET /api/emergent-admin/research/replay-outcome-coverage`
+    (sport, start, end). Returns `n_total`, `n_outcome_resolved`,
+    `n_with_outcome_numeric`, `n_with_odds`, `pct_graded`,
+    `by_stat_family[]`, `sample_unresolved[]`, plus a one-line
+    `diagnosis` string that explicitly states the failure mode
+    ("CRITICAL: N replay rows but 0 have outcome_resolved=true ...").
+- **Frontend** (`pages/AdminTesting.jsx`):
+  - Optimizer Results panel now auto-loads `/replay-outcome-coverage`
+    when results render and shows a colored banner (red < 50%,
+    amber < 95%, green otherwise) at the top of the panel. The
+    diagnosis string is rendered verbatim so the operator gets a
+    clear next-step instead of guessing.
+  - Top/Worst tables now show "n_graded/n_bets graded" badge next to
+    the sample size whenever the cell has any ungraded rows.
+
+**Tests:** `tests/test_optimizer_evaluate_combo.py` (5 cases)
+locks in the new diagnostic schema and the corrected ROI denominator.
+Backend total: 80/80 passing (was 73/73).
+
+**Operator runbook when this fires again:**
+```bash
+# 1. Identify the gap
+curl -sS "$API/api/emergent-admin/research/replay-outcome-coverage?sport=MLB&start=2025-04-01&end=2025-04-30" \
+     -H "X-Admin-Token: $TOK" | jq
+
+# 2. If outcome_resolved=true rows == 0 → grading hasn't been written yet
+python -m scripts.sgo.build_historical_outcomes --league MLB \
+       --start 2025-04-01 --end 2025-04-30 --resume --debug-unresolved
+
+# 3. If outcomes exist but mirror didn't attach them → re-run replay
+python -m scripts.sgo.historical_full_pipeline_replay --league MLB \
+       --start 2025-04-01 --end 2025-04-30 --research-mode
+```
+
