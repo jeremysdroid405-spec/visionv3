@@ -55,36 +55,52 @@ generic `/collections/{name}/find` route. The new endpoints understand
 both sweep schemas (PP-free `market_truth_pp_free` + per-tier
 `per_tier_per_stat_family`) and do server-side ranking, filtering, and
 best-of bucketing.
-- **New router** `/app/backend/routes/emergent_admin/research.py`:
-  - `GET /research/grid-runs` — list recent sweeps (sport/methodology/status filters)
-  - `GET /research/grid-runs/{run_id}` — single run metadata
-  - `GET /research/grid-results/{run_id}` — ranked top/worst + best_by_tier/stat_family/side/odds_bucket
-    - User-selectable `sort_metric` ∈ {hit_rate, calibration_delta_any, calibration_delta_consensus, calibration_delta, n_bets, profit_units, roi}
-    - Server annotates `calibration_delta_any` (consensus-preferred, falls back to legacy delta)
-  - `GET /research/candidate-thresholds/{run_id}` and `GET /research/candidate-thresholds`
-  - `GET /research/_meta/sort-metrics` — dropdown catalog
-  - `GET /research/last-pipeline-window` — min/max game_date in the SSOT replay cache (for Sweep/Optimizer autoload)
-- **Frontend** `AdminTesting.jsx` ResultsTab rewired: removed
-  `/collections/research_grid_*/find` calls, added sort-metric dropdown,
-  uses server-bucketed `best_by_*` instead of recomputing client-side.
-- **Schema-tolerant rendering**: auto-detects v1 vs v2 sweep on run-select.
-  v1 (`per_tier_per_stat_family`) shows `tier × family` slice and renders
-  `tier / family / n / HR / Δcal / edge / cv / tp`; v2 (`market_truth_pp_free`)
-  defaults to the `STAT_FAMILY` slice, hides the tier filter, and renders
-  `family / slice / n / HR / mkt / Δcal`. Plain-English summary, BestByFamily,
-  BestBySide, and BestByOddsBucket also schema-tolerant (`n_bets||n`,
-  `hit_rate||hr`, `calibration_delta_consensus||calibration_delta||delta||delta_pp`,
-  `stat_family||family`, `consensus_prob_avg||market_prob||consensus_avg`).
-- **MM-DD-YYYY display** for all run date ranges (`fmtDate` helper).
-  Inputs still accept `YYYY-MM-DD` for HTML/Mongo compatibility.
-- **Optimizer autoload**: on mount/sport-change, queries
-  `/research/last-pipeline-window` and pre-fills start/end so the run
-  consumes only cached SSOT replay rows (zero SGO credit cost). A
-  "cached pipeline window" banner shows the range, distinct-date count,
-  and row count; "use this window" button re-applies it.
-- **Tests** `/app/backend/tests/test_emergent_admin_research_endpoints.py`
-  — 25 backend tests pass (10 original + 13 edge-case/regression + 2
-  new for `last-pipeline-window`).
+- See `/app/backend/routes/emergent_admin/research.py` for full endpoint list.
+- Schema-tolerant frontend rendering; MM-DD-YYYY date display; Optimizer
+  auto-loads the cached pipeline window so sweeps consume zero SGO credits.
+- 25 backend tests passing.
+
+### 2026-05-23 — Pod split: dedicated research_worker daemon
+Heavy compute (optimizer sweeps, historical replay, grid sweeps,
+candidate generation) was running inside the FastAPI uvicorn process,
+starving live scoring and API request handling. Split now enforced:
+- **New supervisor service** `research_worker` running
+  `python -m workers.research_worker` (NOT a uvicorn worker, NOT in the
+  request lifecycle). Conf at `/etc/supervisor/conf.d/research_worker.conf`.
+- **Mongo-backed queue** on the existing `emergent_admin_jobs` collection
+  with `worker_queue=True`. Atomic `findOneAndUpdate` claim ensures
+  exactly-once execution and serves as the single max-concurrent=1 gate.
+- **HEAVY_MODULES** set in `workers/queue.py` lists modules that MUST
+  route through the worker (optimizer CLI, full-pipeline replay, grid
+  sweep, reshape, build_historical_*, ingest_historical_*, BDL ingest).
+  Light preflight/coverage modules still spawn inline.
+- **Per-job resource caps** applied to each spawned subprocess via
+  `preexec_fn`: `nice +10`, `RLIMIT_AS = 4 GB`, `oom_score_adj = +500`,
+  hard timeout 2 h. All overrideable via env vars.
+- **Optimizer migration** — `POST /optimizer/run` persists the request to
+  `optimizer_runs` then enqueues `scripts.research.run_optimizer_cli
+  --run-id`. The CLI re-hydrates the in-process state slot and calls the
+  same `_run_optimizer` logic. **Same endpoint signature**, same UI
+  polling path. The frontend doesn't need to change anything except the
+  new Worker Health bar.
+- **Real-time output** + `rss_peak_bytes` + `cpu_seconds` captured per
+  job. Crash recovery on worker restart force-finalizes orphaned claimed/
+  running jobs as `errored`.
+- **New endpoints** under `/api/emergent-admin/worker/*`:
+  - `GET /worker/health` — queue depth, active job, worker PID/RSS/CPU,
+    heartbeat age + staleness flag, backend PID/RSS/CPU for comparison.
+  - `GET /worker/queue` — list jobs (status filter optional).
+  - `POST /worker/cancel/{job_id}` — SIGTERM the in-flight child without
+    killing the worker daemon.
+- **Pagination** — `/research/grid-results/{run_id}` rewritten as a Mongo
+  `$sort + $limit` aggregation; never loads the cell set into Python
+  memory. New `/research/grid-results/{run_id}/cells` for paginated table
+  scans (offset/limit hard-capped at 500/req).
+- **Worker Health bar** in `AdminTesting.jsx` polls every 5 s. Shows
+  worker status, heartbeat age, queue depth, active job, worker/backend
+  RSS side-by-side.
+- **Tests**: 32 backend tests passing (added 7 covering worker health,
+  queue, cancel, auth, heavy-module routing, paginated cells + offsets).
 - **Legacy `/optimizer` endpoints kept intact** per user preference.
 
 ## Backlog (priority order)

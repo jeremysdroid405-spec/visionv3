@@ -49,6 +49,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .auth import audit_log, require_admin_token, _get_db
+from workers.queue import enqueue as worker_enqueue
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -526,18 +527,38 @@ async def run_optimizer(body: OptimizerRunBody, request: Request,
         "agent_id": auth["agent_id"],
     }
     _RUNS[run_id] = state
-    # Strong reference to prevent the asyncio task from being garbage-
-    # collected before it finishes. Same fix as jobs.py.
-    _t = asyncio.create_task(_run_optimizer(run_id, body))
-    _OPT_TASKS.add(_t)
-    _t.add_done_callback(_OPT_TASKS.discard)
+    # Persist the full request + initial state to `optimizer_runs` so the
+    # out-of-process worker can re-hydrate and run it.
+    await db[OPTIMIZER_RUNS].update_one(
+        {"run_id": run_id},
+        {"$set": {**state, "request": body.model_dump(),
+                    "queued_at": datetime.now(timezone.utc)}},
+        upsert=True,
+    )
+    # Hand off to the dedicated research_worker daemon. The worker runs
+    # the same `_run_optimizer` logic via scripts.research.run_optimizer_cli
+    # in a subprocess with nice +10 / RLIMIT_AS / OOM bias / 2h timeout.
+    job_id = f"job_{uuid.uuid4().hex[:12]}"
+    await worker_enqueue(
+        job_id,
+        module="scripts.research.run_optimizer_cli",
+        args=["--run-id", run_id],
+        agent_id=auth["agent_id"],
+        token_hash=auth["token_hash"],
+        kind="optimizer",
+        payload={"run_id": run_id, "sport": body.sport,
+                    "start": body.start, "end": body.end},
+    )
     await audit_log(request, action="optimizer_run",
                       params={"run_id": run_id, "sport": body.sport,
                                   "start": body.start, "end": body.end,
-                                  "tiers": body.tiers, "goal": body.optimization_goal},
-                      response_summary={"replay_rows_in_window": n},
+                                  "tiers": body.tiers, "goal": body.optimization_goal,
+                                  "job_id": job_id, "queued": True},
+                      response_summary={"replay_rows_in_window": n,
+                                            "job_id": job_id},
                       **auth)
-    return {"ok": True, "run_id": run_id, "replay_rows_in_window": n}
+    return {"ok": True, "run_id": run_id, "job_id": job_id,
+              "queued": True, "replay_rows_in_window": n}
 
 
 @router.get("/{run_id}")

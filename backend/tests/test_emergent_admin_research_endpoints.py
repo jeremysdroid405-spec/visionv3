@@ -488,3 +488,104 @@ async def test_last_pipeline_window_with_seeded_rows():
     finally:
         await db["sgo_propvision_full_pipeline_replay"].delete_many({"_tag": test_tag})
         client.close()
+
+
+# ── research_worker endpoints ─────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_worker_health_returns_psutil_snapshot():
+    async with AsyncClient(base_url=BACKEND_URL, timeout=HTTP_TIMEOUT) as c:
+        r = await c.get("/api/emergent-admin/worker/health",
+                          headers=_auth_headers())
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["ok"] is True
+        assert "queue" in body and "worker" in body and "backend" in body
+        assert "queued" in body["queue"] and "active" in body["queue"]
+        # Backend metrics always present (we're hitting it)
+        assert body["backend"]["metrics"]["pid"] > 0
+        assert body["backend"]["metrics"]["rss_bytes"] > 0
+
+
+@pytest.mark.asyncio
+async def test_worker_queue_endpoint_filters_by_status():
+    async with AsyncClient(base_url=BACKEND_URL, timeout=HTTP_TIMEOUT) as c:
+        r = await c.get("/api/emergent-admin/worker/queue",
+                          headers=_auth_headers(),
+                          params={"limit": 5})
+        assert r.status_code == 200
+        body = r.json()
+        assert "jobs" in body and isinstance(body["jobs"], list)
+        for j in body["jobs"]:
+            assert j.get("worker_queue") is True
+
+
+@pytest.mark.asyncio
+async def test_worker_cancel_404_for_unknown():
+    async with AsyncClient(base_url=BACKEND_URL, timeout=HTTP_TIMEOUT) as c:
+        r = await c.post("/api/emergent-admin/worker/cancel/nonexistent_job",
+                           headers=_auth_headers())
+        assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_worker_endpoints_auth_required():
+    async with AsyncClient(base_url=BACKEND_URL, timeout=HTTP_TIMEOUT) as c:
+        r = await c.get("/api/emergent-admin/worker/health")
+        assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_heavy_module_routes_through_worker(seeded_db):
+    """A heavy module hit through /jobs/run must come back tagged as
+    routed_to=research_worker rather than running inline."""
+    async with AsyncClient(base_url=BACKEND_URL, timeout=HTTP_TIMEOUT) as c:
+        r = await c.post("/api/emergent-admin/jobs/run",
+                           headers=_auth_headers(),
+                           json={"module": "scripts.research.grid_sweep",
+                                   "args": ["--league", "MLB",
+                                              "--start", "2025-04-01",
+                                              "--end",   "2025-04-01",
+                                              "--dry-run"]})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["routed_to"] == "research_worker"
+        assert body["status"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_paginated_cells_endpoint(seeded_db):
+    """The new paginated /grid-results/{run_id}/cells endpoint returns
+    server-sorted, server-paginated cells."""
+    async with AsyncClient(base_url=BACKEND_URL, timeout=HTTP_TIMEOUT) as c:
+        r = await c.get(f"/api/emergent-admin/research/grid-results/{RUN_ID_B}/cells",
+                          headers=_auth_headers(),
+                          params={"sort_metric": "hit_rate",
+                                    "limit": 3, "offset": 0})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["n_total"] >= 1
+        assert body["returned"] <= 3
+        assert body["limit"] == 3
+        # Sanity: rows sorted desc by hit_rate
+        hits = [c["hit_rate"] for c in body["cells"] if "hit_rate" in c]
+        assert hits == sorted(hits, reverse=True)
+
+
+@pytest.mark.asyncio
+async def test_paginated_cells_pagination_offsets(seeded_db):
+    async with AsyncClient(base_url=BACKEND_URL, timeout=HTTP_TIMEOUT) as c:
+        r1 = await c.get(f"/api/emergent-admin/research/grid-results/{RUN_ID_B}/cells",
+                           headers=_auth_headers(),
+                           params={"limit": 2, "offset": 0})
+        r2 = await c.get(f"/api/emergent-admin/research/grid-results/{RUN_ID_B}/cells",
+                           headers=_auth_headers(),
+                           params={"limit": 2, "offset": 2})
+        assert r1.status_code == 200 and r2.status_code == 200
+        body1 = r1.json(); body2 = r2.json()
+        assert body1["offset"] == 0 and body2["offset"] == 2
+        # Use (tier, stat_family) compound key — those are unique in our seed
+        keys1 = {(c.get("tier"), c.get("stat_family")) for c in body1["cells"]}
+        keys2 = {(c.get("tier"), c.get("stat_family")) for c in body2["cells"]}
+        assert keys1.isdisjoint(keys2), (
+            f"offset 0/2 returned overlapping rows: {keys1 & keys2}")
+

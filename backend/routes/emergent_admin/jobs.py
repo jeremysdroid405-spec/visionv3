@@ -38,6 +38,7 @@ from pydantic import BaseModel, Field
 
 from .auth import audit_log, require_admin_token, _get_db
 from .policy import ALLOWED_JOBS, job_allowed, job_args_allowed
+from workers.queue import enqueue as worker_enqueue, is_heavy
 
 logger = logging.getLogger("emergent_admin.jobs")
 
@@ -294,6 +295,25 @@ async def run_job(body: RunBody, request: Request,
         raise HTTPException(400, f"rejected args (not in allowlist): "
                                     f"{rejected}")
     job_id = str(uuid.uuid4())
+    # Heavy modules route through the dedicated research_worker (separate
+    # process, resource-capped). The endpoint still returns immediately
+    # with the job_id so the UI's polling path is unchanged.
+    if is_heavy(body.module):
+        await worker_enqueue(
+            job_id, module=body.module, args=body.args,
+            agent_id=auth["agent_id"], token_hash=auth["token_hash"],
+            kind="script",
+        )
+        await audit_log(request, action="job_run",
+                          params={"module": body.module, "args": body.args,
+                                    "job_id": job_id, "queued_to": "research_worker"},
+                          response_summary={"job_id": job_id,
+                                                "queued_to": "research_worker"},
+                          **auth)
+        logger.info("[job %s] queued to research_worker module=%s args=%s by=%s",
+                       job_id, body.module, body.args, auth.get("agent_id"))
+        return {"ok": True, "job_id": job_id, "status": "queued",
+                  "routed_to": "research_worker"}
     doc = {
         "job_id":      job_id,
         "module":      body.module,

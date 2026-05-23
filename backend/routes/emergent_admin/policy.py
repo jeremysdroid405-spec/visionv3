@@ -258,12 +258,22 @@ ALLOWED_JOBS: Dict[str, Dict] = {
         "args": ["--collection", "--league", "--commit", "--dry-run",
                   "--chunk-size", "--sample-limit"],
     },
+    # 2026-05-23 — out-of-process optimizer runner used by the
+    # research_worker daemon. Never invoked directly by humans; the
+    # /optimizer/run endpoint enqueues a job with --run-id pointing at a
+    # persisted optimizer_runs doc.
+    "scripts.research.run_optimizer_cli": {
+        "label": "Out-of-process optimizer executor (worker-managed)",
+        "writes_to": "optimizer_runs, candidate_thresholds (writable)",
+        "enabled": True,
+        "args": ["--run-id"],
+    },
 }
 
 
 # ── 3. Service allowlist ──────────────────────────────────────────────────
 # Only these supervisor process names may be restarted via this API.
-ALLOWED_SERVICES: Set[str] = {"backend"}
+ALLOWED_SERVICES: Set[str] = {"backend", "research_worker"}
 
 # 2026-05-21 — git branches the /deploy endpoint may pull. Strict allowlist;
 # typos and arbitrary refs are rejected at request time.

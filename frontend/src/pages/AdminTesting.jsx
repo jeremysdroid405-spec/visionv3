@@ -224,6 +224,69 @@ function WarningBanner() {
   );
 }
 
+// ── Worker Health bar ───────────────────────────────────────────────
+// Polls /worker/health every 5 s. Visible from every tab so the operator
+// always knows whether heavy jobs are isolated and the worker daemon is
+// alive. Renders nothing on first load to avoid layout jitter.
+const fmtMB = (b) => b == null ? '—' : `${(b / 1024 / 1024).toFixed(0)} MB`;
+
+function WorkerHealthBar({ token }) {
+  const [h, setH] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    if (!token) return undefined;
+    let stop = false;
+    const tick = async () => {
+      try {
+        const r = await apiFetch(token, '/worker/health');
+        if (!stop) { setH(r); setErr(null); }
+      } catch (e) { if (!stop) setErr(e.message); }
+    };
+    tick();
+    const id = setInterval(tick, 5000);
+    return () => { stop = true; clearInterval(id); };
+  }, [token]);
+
+  if (!h && !err) return null;
+
+  const workerOk = h?.worker?.running && !h?.worker?.stale;
+  const colorWorker = err ? BAD : workerOk ? ACCENT_2 : WARN;
+  const colorQueue  = (h?.queue?.active || 0) > 0 ? ACCENT_3
+                     : (h?.queue?.queued || 0) > 0 ? WARN : DIM;
+  const wm = h?.worker?.metrics || {};
+  const bm = h?.backend?.metrics || {};
+
+  return (
+    <div data-testid="worker-health-bar" style={{
+      background: SURFACE_2, border: `1px solid ${BORDER}`,
+      borderLeft: `3px solid ${colorWorker}`,
+      borderRadius: 8, padding: '8px 12px', marginBottom: 12,
+      display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+      fontSize: 11, color: MUTED, fontVariantNumeric: 'tabular-nums',
+    }}>
+      <span style={{ color: colorWorker, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {err ? 'worker · error' : workerOk ? 'worker · running' : h?.worker?.running ? 'worker · stale' : 'worker · down'}
+      </span>
+      {h?.worker?.pid && <span data-testid="wh-worker-pid">pid <code style={{ color: TEXT }}>{h.worker.pid}</code></span>}
+      {h?.worker?.heartbeat_age_s != null && (
+        <span>heartbeat <code style={{ color: workerOk ? ACCENT_2 : WARN }}>{Math.round(h.worker.heartbeat_age_s)}s</code></span>
+      )}
+      <span style={{ color: colorQueue, fontWeight: 600 }} data-testid="wh-queue-depth">
+        queue: {h?.queue?.queued ?? 0} queued · {h?.queue?.active ?? 0} active · {h?.queue?.failed_total ?? 0} failed
+      </span>
+      {h?.active_job && (
+        <span data-testid="wh-active-job" style={{ color: ACCENT_3 }}>
+          ▶ <code style={{ color: TEXT }}>{h.active_job.module || h.active_job.kind || h.active_job.job_id?.slice(0, 8)}</code>
+        </span>
+      )}
+      <span style={{ marginLeft: 'auto', color: DIM }}>
+        worker {fmtMB(wm.rss_bytes)} · backend {fmtMB(bm.rss_bytes)}
+      </span>
+      {err && <span style={{ color: BAD, fontWeight: 600 }}>· {err}</span>}
+    </div>
+  );
+}
+
 // ── Universal sport adapters ────────────────────────────────────────
 const SPORT_ADAPTERS = {
   MLB: {
@@ -3156,6 +3219,7 @@ export default function AdminTesting() {
 
         {authed && !locked ? (
           <>
+            <WorkerHealthBar token={token} />
             {/* Tab strip */}
             <div data-testid="admin-tabs" style={{
               display: 'flex', gap: 4, marginBottom: 14, borderBottom: `1px solid ${BORDER}`,

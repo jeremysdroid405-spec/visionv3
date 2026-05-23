@@ -153,68 +153,90 @@ async def get_grid_results(
 ):
     """Returns ranked top + worst cells plus best-of breakdowns.
 
-    Sorted server-side by the user-selected metric (descending for top,
-    ascending for worst). Rows missing the metric are excluded from the
-    ranked lists but still counted in `n_total` / `n_qualified`.
+    Sort + limit run server-side on the Mongo aggregation pipeline.
+    The endpoint NEVER loads the full cell set into Python memory, so
+    runs with 200k+ cells remain cheap.
     """
     db = _get_db()
-    # Confirm the run exists; gives the UI a clean 404 vs "no rows".
     run = await db[RUNS_COLL].find_one({"run_id": run_id}, {"_id": 0})
     if not run:
         raise HTTPException(404, f"run_id not found: {run_id}")
 
     metric_field = _coerce_metric_key(sort_metric)
+    is_synthetic = metric_field == "_calibration_delta_any"
 
-    q: Dict[str, Any] = {"run_id": run_id}
-    if slice_:
-        q["slice"] = slice_
-    if tier:
-        q["tier"] = tier
-    if stat_family:
-        q["stat_family"] = stat_family
-    if side:
-        q["side"] = side.upper()
+    base_match: Dict[str, Any] = {"run_id": run_id}
+    if slice_:      base_match["slice"]       = slice_
+    if tier:        base_match["tier"]        = tier
+    if stat_family: base_match["stat_family"] = stat_family
+    if side:        base_match["side"]        = side.upper()
 
-    cells: List[Dict[str, Any]] = []
-    async for c in db[RESULTS_COLL].find(q, {"_id": 0}):
-        _annotate(c)
-        cells.append(c)
-    n_total = len(cells)
+    # Counts — n_total ignores min_bets; n_qualified applies it.
+    n_total     = await db[RESULTS_COLL].count_documents(base_match)
+    qualified_match: Dict[str, Any] = dict(base_match)
+    if min_bets > 0:
+        qualified_match["n_bets"] = {"$gte": min_bets}
+    n_qualified = await db[RESULTS_COLL].count_documents(qualified_match)
 
-    qualified = [c for c in cells if (c.get("n_bets") or 0) >= min_bets]
-    n_qualified = len(qualified)
+    # The synthetic `calibration_delta_any` is computed via $ifNull so the
+    # sort happens server-side without per-document Python coercion.
+    add_fields: Dict[str, Any] = {}
+    if is_synthetic:
+        add_fields["_rank_value"] = {
+            "$ifNull": ["$calibration_delta_consensus",
+                          {"$ifNull": ["$calibration_delta", None]}],
+        }
+    else:
+        add_fields["_rank_value"] = f"${metric_field}"
+    add_fields["calibration_delta_any"] = {
+        "$ifNull": ["$calibration_delta_consensus",
+                      {"$ifNull": ["$calibration_delta", None]}],
+    }
 
-    rankable = [
-        c for c in qualified
-        if _ranking_value(c, metric_field) is not None
-    ]
-    rankable.sort(
-        key=lambda c: _ranking_value(c, metric_field) or 0.0,
-        reverse=True,
-    )
+    async def _ranked(direction: int, limit: int) -> List[Dict[str, Any]]:
+        pipeline: List[Dict[str, Any]] = [
+            {"$match": {**qualified_match,
+                          # Exclude rows where the chosen metric is null.
+                          # We can't push this into $match before $addFields
+                          # for the synthetic key, so do it after.
+                          }},
+            {"$addFields": add_fields},
+            {"$match": {"_rank_value": {"$ne": None, "$type": "number"}}},
+            {"$sort": {"_rank_value": direction, "_id": 1}},
+            {"$limit": limit},
+            {"$project": {"_id": 0}},
+        ]
+        return [d async for d in db[RESULTS_COLL].aggregate(pipeline,
+                                                                   allowDiskUse=True)]
 
-    top = rankable[:top_k]
-    worst = list(reversed(rankable[-top_k:])) if rankable else []
+    top   = await _ranked(direction=-1, limit=top_k)
+    worst = await _ranked(direction= 1, limit=top_k)
 
-    # Best by tier / stat_family / side / odds_bucket — bucketed off the
-    # tier-family slice when present, else off ALL/STAT_FAMILY slices.
-    def _bucket(key: str) -> Dict[str, Any]:
+    # "Best by X" — one aggregation per bucket. $first picks the highest
+    # ranked row per group after sorting by the chosen metric desc.
+    async def _bucket(key: str) -> Dict[str, Any]:
+        # Skip groups where the key is absent / null.
+        pipeline: List[Dict[str, Any]] = [
+            {"$match": {**qualified_match, key: {"$ne": None}}},
+            {"$addFields": add_fields},
+            {"$match": {"_rank_value": {"$ne": None, "$type": "number"}}},
+            {"$sort": {"_rank_value": -1, "_id": 1}},
+            {"$group": {"_id": f"${key}", "doc": {"$first": "$$ROOT"}}},
+            {"$replaceRoot": {"newRoot": "$doc"}},
+            {"$project": {"_id": 0}},
+            {"$limit": 200},
+        ]
         out: Dict[str, Any] = {}
-        for c in rankable:
-            k = c.get(key)
-            if k is None:
-                continue
-            v = _ranking_value(c, metric_field) or 0.0
-            cur = out.get(k)
-            cur_v = _ranking_value(cur, metric_field) if cur else None
-            if cur is None or v > (cur_v or -1e9):
-                out[k] = c
+        async for d in db[RESULTS_COLL].aggregate(pipeline, allowDiskUse=True):
+            k = d.get(key)
+            if k is not None and k not in out:
+                out[k] = d
         return out
 
-    best_by_tier        = _bucket("tier")
-    best_by_stat_family = _bucket("stat_family")
-    best_by_side        = _bucket("side")
-    best_by_odds_bucket = _bucket("odds_bucket")
+    best_by_tier        = await _bucket("tier")
+    best_by_stat_family = await _bucket("stat_family")
+    best_by_side        = await _bucket("side")
+    best_by_odds_bucket = await _bucket("odds_bucket")
 
     return {
         "ok": True,
@@ -224,7 +246,7 @@ async def get_grid_results(
         "params":       run.get("params"),
         "status":       run.get("status"),
         "started_at":   run.get("started_at"),
-        "finished_at": run.get("finished_at"),
+        "finished_at":  run.get("finished_at"),
         "n_total":      n_total,
         "n_qualified":  n_qualified,
         "min_bets":     min_bets,
@@ -235,6 +257,71 @@ async def get_grid_results(
         "best_by_stat_family": best_by_stat_family,
         "best_by_side":        best_by_side,
         "best_by_odds_bucket": best_by_odds_bucket,
+    }
+
+
+# ── Paginated raw cell scan (UI table / CSV export) ───────────────────
+@router.get("/grid-results/{run_id}/cells")
+async def list_grid_cells(
+    run_id: str, request: Request,
+    sort_metric: str = Query(default="hit_rate"),
+    direction:   int = Query(default=-1, ge=-1, le=1),
+    min_bets:    int = Query(default=0, ge=0),
+    slice_:      Optional[str] = Query(default=None, alias="slice"),
+    tier:        Optional[str] = Query(default=None),
+    stat_family: Optional[str] = Query(default=None),
+    side:        Optional[str] = Query(default=None),
+    offset:      int = Query(default=0, ge=0),
+    limit:       int = Query(default=100, ge=1, le=500),
+    auth=Depends(require_admin_token),
+):
+    """Paginated cell scan. Hard-capped at 500 rows per response so we
+    never blow the API pod's memory."""
+    db = _get_db()
+    metric_field = _coerce_metric_key(sort_metric)
+    is_synthetic = metric_field == "_calibration_delta_any"
+
+    match: Dict[str, Any] = {"run_id": run_id}
+    if slice_:      match["slice"]       = slice_
+    if tier:        match["tier"]        = tier
+    if stat_family: match["stat_family"] = stat_family
+    if side:        match["side"]        = side.upper()
+    if min_bets > 0:
+        match["n_bets"] = {"$gte": min_bets}
+
+    add_fields: Dict[str, Any] = {}
+    if is_synthetic:
+        add_fields["_rank_value"] = {
+            "$ifNull": ["$calibration_delta_consensus",
+                          {"$ifNull": ["$calibration_delta", None]}],
+        }
+    else:
+        add_fields["_rank_value"] = f"${metric_field}"
+    add_fields["calibration_delta_any"] = {
+        "$ifNull": ["$calibration_delta_consensus",
+                      {"$ifNull": ["$calibration_delta", None]}],
+    }
+
+    n_total = await db[RESULTS_COLL].count_documents(match)
+
+    pipeline: List[Dict[str, Any]] = [
+        {"$match": match},
+        {"$addFields": add_fields},
+        {"$sort": {"_rank_value": direction if direction != 0 else -1,
+                      "_id": 1}},
+        {"$skip": offset},
+        {"$limit": limit},
+        {"$project": {"_id": 0}},
+    ]
+    cells = [d async for d in db[RESULTS_COLL].aggregate(pipeline,
+                                                                 allowDiskUse=True)]
+    return {
+        "ok": True, "run_id": run_id,
+        "n_total":  n_total,
+        "offset":   offset, "limit": limit,
+        "returned": len(cells),
+        "sort_metric": sort_metric, "direction": direction,
+        "cells": cells,
     }
 
 
