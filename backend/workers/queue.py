@@ -51,6 +51,7 @@ HEAVY_MODULES = frozenset({
     "scripts.sgo.build_historical_outcomes",
     "scripts.sgo.build_historical_model_features",
     "scripts.sgo.build_historical_model_predictions",
+    "scripts.sgo.score_historical_with_live_mlb_hf",
     "scripts.sgo.ingest_historical_player_stats",
     "scripts.sgo.ingest_bdl_mlb_season",
     "scripts.sgo.reshape_sgo_to_replay_odds",

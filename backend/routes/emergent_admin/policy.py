@@ -176,7 +176,8 @@ ALLOWED_JOBS: Dict[str, Dict] = {
         "writes_to": "sgo_pp_research_model_predictions (writable on prod)",
         "enabled": True,
         "args": ["--league", "--start", "--end", "--probe", "--limit",
-                  "--force", "--dry-run"],
+                  "--force", "--dry-run",
+                  "--strict-min-scored-ratio", "--dump-predictions"],
     },
     # 2026-05-21 — exact production-pipeline replay driver.
     # SGO outcome row → live MLBHighFrictionModel.predict(as_of_date) →

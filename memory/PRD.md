@@ -124,3 +124,32 @@ starving live scoring and API request handling. Split now enforced:
 - `EMERGENT_ADMIN_TOKEN` lives in `backend/.env`.
 - New pipeline steps 4 (reshape) + 5 (grade) are `skippable: true`; they
   default to NOT skipped so they run automatically. Toggle off for re-runs.
+
+### 2026-05-23 — Scoring-layer contract drift fix (score_historical_with_live_mlb_hf)
+Root cause of 1736/2020 "predict ok but mu/sigma/model_p incomplete":
+the historical scorer read `projection_mu / sigma / model_probability`
+off the live `MLBHighFrictionModel.predict()` return — fields that have
+NEVER existed on the live response. The live model emits
+`predicted / std_dev / prob_over` (`prob_over` as **percentage 0-100**).
+The legacy keys silently returned None, the "missing" guard tripped,
+zero rows ever reached `bulk_write`.
+- **Single normalisation boundary** `_extract_live_outputs(result, side)`
+  in `scripts/sgo/score_historical_with_live_mlb_hf.py` reads the live
+  keys, converts `prob_over` → 0-1, flips for UNDER bets, clamps
+  out-of-range, rejects non-numeric, treats σ=0 as missing.
+- **Diagnostic logging on every run**: per stat_family scoreboard
+  (scored / missing / errored / no_hub / no_hf), top error messages,
+  missing-field breakdown by name, plus `--dump-predictions N` sample
+  of raw `predict()` returns. Contract drift now impossible to miss.
+- **Hard-fail mode**: `--strict-min-scored-ratio R` exits non-zero when
+  `scored / (scanned − skipped) < R`. Worker marks the job `failed`.
+  Use 0.30 in sweeps to fail fast on contract drift.
+- **Probe parity**: `--probe` reuses the extractor so its missing-fields
+  report matches the run.
+- **Worker routing**: added to `HEAVY_MODULES` so the scorer runs under
+  resource-capped worker (nice +10 / 4 GB / 2 h).
+- **Tests**: `tests/test_score_historical_live_contract.py` — 10
+  contract tests pin the extractor: happy path, UNDER flip, every
+  missing-field combo, σ=0, legacy-schema rejection, clamp, non-numeric
+  guard, family alias coverage. 42/42 backend tests pass.
+
