@@ -30,13 +30,19 @@ Performance: a single aggregation per collection over the date range. For
 30-day windows this is sub-100ms; for season-long windows under 1s.
 """
 from __future__ import annotations
-from datetime import date, timedelta
+import logging
+import uuid
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 
 from .auth import audit_log, require_admin_token, _get_db
+from .policy import job_allowed
+from workers.queue import enqueue as worker_enqueue, is_heavy
 
+logger = logging.getLogger("emergent_admin.coverage")
 router = APIRouter()
 
 # Per-collection metadata: how does it identify (sport, date), and what
@@ -241,3 +247,147 @@ async def coverage_missing(request: Request,
                            "layers_with_gaps": list(out["by_collection"].keys()),
                        }, **auth)
     return out
+
+
+
+# ── Backfill with cache-preflight ───────────────────────────────────
+JOBS_COLL = "emergent_admin_jobs"
+
+
+class BackfillBody(BaseModel):
+    """One-shot backfill request that gates on existing cache count.
+
+    Either `key` (warehouse entry key like 'stats') OR `fix_job`
+    (the python module name) must be supplied. `sport`, `start`, `end`
+    are required. If `force=False` (default), and the source collection
+    already has rows for the window, we return `status='cached_skip'`
+    without enqueueing.
+    """
+    key:      Optional[str] = Field(default=None, description="WAREHOUSE entry key, e.g. 'stats'")
+    fix_job:  Optional[str] = Field(default=None, description="Module name; resolved against WAREHOUSE")
+    sport:    str           = Field(...)
+    start:    str           = Field(...)
+    end:      str           = Field(...)
+    force:    bool          = Field(default=False)
+    extra_args: List[str]   = Field(default_factory=list)
+
+
+def _resolve_warehouse_entry(key: Optional[str], fix_job: Optional[str]) -> Dict[str, Any]:
+    if key:
+        for e in WAREHOUSE:
+            if e["key"] == key:
+                return e
+    if fix_job:
+        for e in WAREHOUSE:
+            if e["fix_job"] == fix_job:
+                return e
+    raise HTTPException(400, f"unknown warehouse entry (key={key!r} fix_job={fix_job!r})")
+
+
+@router.post("/backfill")
+async def backfill(body: BackfillBody, request: Request,
+                       auth=Depends(require_admin_token)):
+    """Cache-preflight + enqueue. Refuses to spawn a redundant worker
+    job when the source collection already holds rows for the window.
+
+    Response shape (always 200 unless validation fails):
+        {ok: true,
+         status: "cached_skip" | "queued",
+         row_count, days_with_rows, days_in_window,
+         job_id?: str, routed_to?: "research_worker"|"inline",
+         collection: str, fix_job: str}
+    """
+    entry = _resolve_warehouse_entry(body.key, body.fix_job)
+    sport = body.sport.upper()
+    db = _get_db()
+    days = _enum_dates(body.start, body.end)
+    counts = await _per_date_counts(
+        db, coll=entry["coll"],
+        league_field=entry["league_field"],
+        date_field=entry["date_field"],
+        sport=sport, start=body.start, end=body.end,
+    )
+    counts = {k: v for k, v in counts.items() if k in set(days)}
+    row_count = sum(counts.values())
+    days_with_rows = len([d for d, n in counts.items() if n >= 1])
+
+    # ── Preflight cache hit ────────────────────────────────────────
+    if not body.force and row_count > 0:
+        await audit_log(request, action="coverage_backfill_cached_skip",
+                          params={"sport": sport, "start": body.start,
+                                    "end": body.end, "key": entry["key"]},
+                          response_summary={"row_count": row_count,
+                                                "days_with_rows": days_with_rows},
+                          **auth)
+        return {
+            "ok": True, "status": "cached_skip",
+            "row_count": row_count,
+            "days_with_rows": days_with_rows,
+            "days_in_window": len(days),
+            "collection": entry["coll"],
+            "fix_job":    entry["fix_job"],
+            "message": (
+                f"{entry['coll']} already has {row_count} rows for "
+                f"{sport} {body.start}..{body.end} ({days_with_rows}/{len(days)} days). "
+                "Pass force=true to re-run."
+            ),
+        }
+
+    # ── Cache miss → enqueue ────────────────────────────────────────
+    module = entry["fix_job"]
+    if not job_allowed(module):
+        raise HTTPException(403, f"job module not allowlisted: {module}")
+    args = ["--league", sport, "--start", body.start, "--end", body.end,
+              *(body.extra_args or [])]
+    job_id = str(uuid.uuid4())
+    routed_to = "inline"
+    if is_heavy(module):
+        await worker_enqueue(
+            job_id, module=module, args=args,
+            agent_id=auth["agent_id"], token_hash=auth["token_hash"],
+            kind="script",
+        )
+        routed_to = "research_worker"
+    else:
+        # Light jobs run inline through the existing jobs path.
+        doc = {
+            "job_id":      job_id,
+            "module":      module,
+            "args":        args,
+            "status":      "queued",
+            "queued_at":   datetime.now(timezone.utc),
+            "agent_id":    auth["agent_id"],
+            "token_hash":  auth["token_hash"],
+            "log":         [],
+        }
+        await db[JOBS_COLL].insert_one(doc)
+        # Fire the inline runner (uses the same machinery as /jobs/run)
+        import asyncio
+        from .jobs import _run_job, _RUNNER_TASKS
+        task = asyncio.create_task(_run_job(job_id, module, args))
+        _RUNNER_TASKS.add(task)
+        task.add_done_callback(_RUNNER_TASKS.discard)
+
+    await audit_log(request, action="coverage_backfill_enqueue",
+                       params={"sport": sport, "start": body.start,
+                                "end": body.end, "key": entry["key"],
+                                "module": module, "args": args,
+                                "force": body.force, "job_id": job_id,
+                                "routed_to": routed_to},
+                       response_summary={"job_id": job_id,
+                                              "routed_to": routed_to,
+                                              "preflight_rows": row_count},
+                       **auth)
+    logger.info("[backfill] enqueued module=%s args=%s job_id=%s "
+                  "routed_to=%s preflight_rows=%s",
+                  module, args, job_id, routed_to, row_count)
+    return {
+        "ok": True, "status": "queued",
+        "job_id": job_id, "routed_to": routed_to,
+        "preflight_rows": row_count,
+        "preflight_days_with_rows": days_with_rows,
+        "days_in_window": len(days),
+        "collection": entry["coll"],
+        "fix_job":    module,
+        "args":       args,
+    }

@@ -1,5 +1,49 @@
 # Changelog
 
+## 2026-05-23 — Backfill polling + cache-preflight (no more stuck "queued" UI)
+
+Fixed the "UI stays stuck on queued" bug reported in the Admin Testing
+command center. Three concrete changes:
+
+**Backend** — `POST /api/emergent-admin/coverage/backfill`
+(`routes/emergent_admin/coverage.py`):
+  - New endpoint that **preflights** the source collection rowcount
+    against the requested (sport, start, end) window BEFORE enqueueing.
+  - When `row_count > 0` and `force=false` → returns
+    `{status: "cached_skip", row_count, days_with_rows, …}` without
+    touching the worker queue.
+  - Otherwise enqueues via existing `workers.queue.enqueue` path; heavy
+    modules route to `research_worker`, light ones run inline.
+  - Audit-logged, both branches.
+
+**Frontend** — `WarehouseCoverage` card (`AdminTesting.jsx`):
+  - "Run Fix" now hits `/coverage/backfill`. On `cached_skip` the card
+    shows a green "✓ Cached · skipped" pill immediately, no enqueue.
+  - On `queued`, the card polls `/jobs/{job_id}` every 2s and updates
+    a per-card status pill through queued → claimed → running →
+    succeeded / failed / errored / cancelled / timeout.
+  - "rows_emitted: 0" tail detection → succeeded shows as
+    "✓ Finished · no new rows" (succeeded_cache) so the operator knows
+    the worker ran but the source had nothing new.
+  - "Force re-run" button appears after terminal state.
+
+**Frontend** — `WorkerHealthBar`:
+  - Manual `Refresh` button (data-testid `wh-refresh`).
+  - Stale errors cleared automatically when next heartbeat lands.
+
+**Frontend** — `WorkflowTab` orchestrator:
+  - Was treating only `queued`/`running` as active, ignoring the
+    worker's `claimed` interim state. Step would then think it was
+    done and try to enqueue the next step in parallel. Now includes
+    `claimed`. Also adds `timeout` as a terminal failure mode.
+
+Tests: 4 new pytest cases in
+`backend/tests/test_coverage_backfill_endpoint.py`
+covering cache-miss enqueue, cache-hit short-circuit, force bypass,
+and unknown-key rejection. All green. Full backend pytest suite:
+73/73 passing (was 69/69).
+
+
 ## 2026-05-18 (final) — Production-Path SH Volume-First validation COMPLETE
 
 Full 13-day production-path replay via `run_pipeline(tier='safe_haven')`

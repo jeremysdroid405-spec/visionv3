@@ -234,12 +234,19 @@ function WorkerHealthBar({ token }) {
   const [h, setH] = useState(null);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const refresh = useCallback(async () => {
+    setRefreshing(true);
     try {
       const r = await apiFetch(token, '/worker/health');
-      setH(r); setErr(null);
+      setH(r);
+      // Stale 503 warnings (e.g. from earlier enqueue failures) are
+      // cleared the moment a fresh heartbeat lands.
+      if (r?.worker?.running && !r?.worker?.stale) setErr(null);
+      else if (!err) setErr(null);
     } catch (e) { setErr(e.message); }
-  }, [token]);
+    finally { setRefreshing(false); }
+  }, [token, err]);
   useEffect(() => {
     if (!token) return undefined;
     let stop = false;
@@ -325,6 +332,11 @@ function WorkerHealthBar({ token }) {
       <span style={{ marginLeft: 'auto', color: DIM }}>
         worker {fmtMB(wm.rss_bytes)} · backend {fmtMB(bm.rss_bytes)}
       </span>
+      <button data-testid="wh-refresh" disabled={refreshing}
+        onClick={refresh}
+        style={{ background: 'transparent', border: `1px solid ${BORDER_STRONG}`, color: MUTED, borderRadius: 4, padding: '2px 10px', fontSize: 10, cursor: refreshing ? 'wait' : 'pointer', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {refreshing ? '…' : 'Refresh'}
+      </button>
       {err && <span style={{ color: BAD, fontWeight: 600 }}>· {err}</span>}
     </div>
   );
@@ -518,7 +530,7 @@ function WorkflowTab({ token, onPipelineFinished }) {
       return;
     }
     const drive = async () => {
-      const cur = pipeline.steps.findIndex(s => s.status === 'running' || s.status === 'queued');
+      const cur = pipeline.steps.findIndex(s => ['running','queued','claimed'].includes(s.status));
       if (cur < 0) {
         const next = pipeline.steps.findIndex(s => s.status === 'pending');
         if (next < 0) {
@@ -579,7 +591,7 @@ function WorkflowTab({ token, onPipelineFinished }) {
         const job = j.job;
         try { const lg = await apiFetch(token, `/jobs/${active.job_id}/log?tail=200`);
           setTail(lg.lines || []);
-          if (lg.status && lg.status !== 'running' && lg.status !== 'queued') {
+          if (lg.status && !['running','queued','claimed'].includes(lg.status)) {
             setPipeline(p => {
               if (!p) return p;
               const steps = [...p.steps];
@@ -607,7 +619,7 @@ function WorkflowTab({ token, onPipelineFinished }) {
             return { ...p, steps };
           });
           toast.success(`✓ ${PIPELINE_STEPS[cur].label}${nextDef ? ` → starting ${nextDef.label}` : ''}`);
-        } else if (['failed','errored','cancelled'].includes(job.status)) {
+        } else if (['failed','errored','cancelled','timeout'].includes(job.status)) {
           // Extract a human-readable error line from the tail when the
           // job doc itself has no `error` field. Python scripts that
           // sys.exit(1) after raise RuntimeError put the diagnosis in
@@ -662,12 +674,12 @@ function WorkflowTab({ token, onPipelineFinished }) {
     setPipeline(null); setTail([]); savePipeline(null); };
   const cancel = async () => {
     if (!pipeline) return;
-    const a = pipeline.steps.find(s => s.status === 'running' || s.status === 'queued');
+    const a = pipeline.steps.find(s => ['running','queued','claimed'].includes(s.status));
     if (!a?.job_id) return;
     try { await apiFetch(token, `/jobs/${a.job_id}/cancel`, { method: 'POST', body: JSON.stringify({ confirm: true }) }); toast.success('Cancel sent'); }
     catch (e) { toast.error(`Cancel failed: ${e.message}`); }
   };
-  const active = pipeline?.steps.find(s => s.status === 'running' || s.status === 'queued');
+  const active = pipeline?.steps.find(s => ['running','queued','claimed'].includes(s.status));
   const adapter = SPORT_ADAPTERS[config.sport];
 
   return (
@@ -785,8 +797,8 @@ function WorkflowTab({ token, onPipelineFinished }) {
             {PIPELINE_STEPS.map((s, i) => {
               const st = pipeline.steps[i];
               const c = st.status === 'succeeded' ? ACCENT_2
-                : ['running','queued'].includes(st.status) ? ACCENT
-                : ['failed','errored','cancelled'].includes(st.status) ? BAD
+                : ['running','queued','claimed'].includes(st.status) ? ACCENT
+                : ['failed','errored','cancelled','timeout'].includes(st.status) ? BAD
                 : st.status === 'skipped' ? DIM : MUTED;
               // Coverage-aware label override — when the corresponding
               // warehouse layer is 100% cached and the step was skipped,
@@ -2295,6 +2307,9 @@ function WarehouseCoverage({ token, defaultStart, defaultEnd, defaultSport, comp
   });
   const [cov, setCov] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Per-card active backfill tracker: { [cardKey]: {status, job_id?, message?, exit_code?, started_at?} }
+  const [fixState, setFixState] = useState({});
+  const pollersRef = useRef({});
 
   const load = useCallback(async () => {
     if (!token || !q.start || !q.end) return;
@@ -2312,19 +2327,113 @@ function WarehouseCoverage({ token, defaultStart, defaultEnd, defaultSport, comp
     if (compact) load();
   }, [compact, load]);
 
-  const runFix = async (entry) => {
-    if (!entry?.fix_job) return;
-    if (!window.confirm(`Run ${entry.fix_job} for ${q.sport} ${q.start}..${q.end}?`)) return;
+  // Cancel all in-flight pollers on unmount
+  useEffect(() => () => {
+    Object.values(pollersRef.current).forEach((id) => clearInterval(id));
+    pollersRef.current = {};
+  }, []);
+
+  const stopPolling = (cardKey) => {
+    const id = pollersRef.current[cardKey];
+    if (id) { clearInterval(id); delete pollersRef.current[cardKey]; }
+  };
+
+  const pollJob = (cardKey, jobId) => {
+    stopPolling(cardKey);
+    const tick = async () => {
+      try {
+        const r = await apiFetch(token, `/jobs/${jobId}`);
+        const j = r.job || {};
+        const terminal = ['succeeded','failed','errored','cancelled','timeout'].includes(j.status);
+        // Detect "ran but emitted 0 rows" → label as succeeded_cache
+        let displayStatus = j.status;
+        if (j.status === 'succeeded') {
+          const tail = (j.tail_preview || []).join('\n');
+          if (/rows_emitted[: ]\s*0\b/i.test(tail) || /total rows emitted:\s*0\b/i.test(tail)) {
+            displayStatus = 'succeeded_cache';
+          }
+        }
+        setFixState((prev) => ({
+          ...prev,
+          [cardKey]: {
+            ...(prev[cardKey] || {}),
+            status: displayStatus,
+            exit_code: j.exit_code,
+            finished_at: j.finished_at,
+            tail_preview: j.tail_preview,
+            error: j.error,
+          },
+        }));
+        if (terminal) {
+          stopPolling(cardKey);
+          if (j.status === 'succeeded') {
+            toast.success(`✓ ${cardKey} ${displayStatus === 'succeeded_cache' ? 'finished (no new rows)' : 'succeeded'}`);
+            load();
+          } else {
+            toast.error(`✗ ${cardKey} ${j.status}${j.exit_code != null ? ` exit ${j.exit_code}` : ''}`);
+          }
+        }
+      } catch (e) {
+        // Network blip — keep polling, but surface error
+        setFixState((prev) => ({
+          ...prev,
+          [cardKey]: { ...(prev[cardKey] || {}), poll_error: e.message },
+        }));
+      }
+    };
+    tick();
+    pollersRef.current[cardKey] = setInterval(tick, 2000);
+  };
+
+  const runFix = async (entry, opts = {}) => {
+    if (!entry?.key) return;
+    const force = !!opts.force;
+    if (!window.confirm(`${force ? 'FORCE re-run' : 'Run'} ${entry.fix_job} for ${q.sport} ${q.start}..${q.end}?`)) return;
+    setFixState((prev) => ({
+      ...prev,
+      [entry.key]: { status: 'queueing', started_at: new Date().toISOString() },
+    }));
     try {
-      const res = await apiFetch(token, '/jobs/run', {
+      const res = await apiFetch(token, '/coverage/backfill', {
         method: 'POST',
         body: JSON.stringify({
-          module: entry.fix_job,
-          args: ['--league', q.sport, '--start', q.start, '--end', q.end],
+          key: entry.key, sport: q.sport,
+          start: q.start, end: q.end, force,
         }),
       });
-      toast.success(`Queued ${entry.fix_job.split('.').pop()} · ${(res.job_id || '').slice(0,8)}`);
-    } catch (e) { toast.error(`Fix failed: ${e.message}`); }
+      if (res.status === 'cached_skip') {
+        toast.info(`Cached · skipped (${res.row_count} rows, ${res.days_with_rows}/${res.days_in_window} days)`);
+        setFixState((prev) => ({
+          ...prev,
+          [entry.key]: {
+            status: 'cached_skip',
+            row_count: res.row_count,
+            days_with_rows: res.days_with_rows,
+            days_in_window: res.days_in_window,
+            message: res.message,
+            finished_at: new Date().toISOString(),
+          },
+        }));
+        return;
+      }
+      // res.status === 'queued' → start polling
+      toast.success(`Queued ${entry.fix_job.split('.').pop()} · ${(res.job_id || '').slice(0,8)} → ${res.routed_to}`);
+      setFixState((prev) => ({
+        ...prev,
+        [entry.key]: {
+          status: 'queued', job_id: res.job_id,
+          routed_to: res.routed_to,
+          started_at: new Date().toISOString(),
+        },
+      }));
+      pollJob(entry.key, res.job_id);
+    } catch (e) {
+      toast.error(`Fix failed: ${e.message}`);
+      setFixState((prev) => ({
+        ...prev,
+        [entry.key]: { status: 'errored', error: e.message },
+      }));
+    }
   };
 
   const offline = cov?.offline_mode_available;
@@ -2378,6 +2487,26 @@ function WarehouseCoverage({ token, defaultStart, defaultEnd, defaultSport, comp
             {Object.values(cov.by_collection || {}).map(c => {
               const pct = c.coverage_pct || 0;
               const color = pct >= 100 ? ACCENT_2 : pct >= 80 ? ACCENT_3 : pct >= 50 ? WARN : BAD;
+              const fx = fixState[c.key];
+              const fxIsActive = fx && ['queueing','queued','claimed','running'].includes(fx.status);
+              const fxTerminal = fx && ['succeeded','succeeded_cache','cached_skip','failed','errored','cancelled','timeout'].includes(fx.status);
+              const fxLabel = fx?.status === 'queueing' ? 'Submitting…'
+                : fx?.status === 'queued' ? 'Queued'
+                : fx?.status === 'claimed' ? 'Claimed'
+                : fx?.status === 'running' ? 'Running…'
+                : fx?.status === 'succeeded' ? '✓ Succeeded'
+                : fx?.status === 'succeeded_cache' ? '✓ Finished · no new rows'
+                : fx?.status === 'cached_skip' ? '✓ Cached · skipped'
+                : fx?.status === 'failed' ? '✗ Failed'
+                : fx?.status === 'errored' ? '✗ Errored'
+                : fx?.status === 'cancelled' ? 'Cancelled'
+                : fx?.status === 'timeout' ? '✗ Timeout'
+                : '';
+              const fxColor = fx?.status === 'succeeded' || fx?.status === 'succeeded_cache' || fx?.status === 'cached_skip'
+                ? ACCENT_2
+                : fx?.status === 'running' || fx?.status === 'claimed' ? ACCENT_3
+                : fx?.status === 'queued' || fx?.status === 'queueing' ? WARN
+                : fx?.status ? BAD : DIM;
               return (
                 <div key={c.key} data-testid={`cov-card-${c.key}`} style={{
                   background: SURFACE_2, border: `1px solid ${BORDER}`,
@@ -2416,11 +2545,33 @@ function WarehouseCoverage({ token, defaultStart, defaultEnd, defaultSport, comp
                       </div>
                     </details>
                   )}
-                  {c.days_missing > 0 && (
-                    <div style={{ marginTop: 8 }}>
-                      <Btn variant="warn" testId={`cov-fix-${c.key}`} onClick={() => runFix(c)}>
-                        Run Fix → backfill once
-                      </Btn>
+                  {/* Live backfill status pill — visible only when we kicked off a job from this card */}
+                  {fx && (
+                    <div data-testid={`cov-fix-status-${c.key}`} style={{
+                      marginTop: 8, padding: '6px 8px',
+                      background: `${fxColor}14`, border: `1px solid ${fxColor}`,
+                      borderRadius: 6, fontSize: 10, color: fxColor,
+                      fontFamily: 'monospace', display: 'flex',
+                      justifyContent: 'space-between', alignItems: 'center', gap: 6,
+                    }}>
+                      <span style={{ fontWeight: 700 }}>{fxLabel}</span>
+                      {fx.job_id && <span style={{ color: DIM, fontSize: 9 }}>{fx.job_id.slice(0,8)}</span>}
+                      {fx.row_count != null && <span style={{ color: DIM, fontSize: 9 }}>{fmtInt(fx.row_count)} rows · {fx.days_with_rows}/{fx.days_in_window}d</span>}
+                      {fx.poll_error && <span style={{ color: BAD, fontSize: 9 }}>poll: {fx.poll_error}</span>}
+                    </div>
+                  )}
+                  {(c.days_missing > 0 || fxTerminal) && (
+                    <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {c.days_missing > 0 && !fxIsActive && (
+                        <Btn variant="warn" testId={`cov-fix-${c.key}`} onClick={() => runFix(c)}>
+                          Run Fix → backfill once
+                        </Btn>
+                      )}
+                      {fxTerminal && (
+                        <Btn variant="ghost" testId={`cov-force-${c.key}`} onClick={() => runFix(c, { force: true })}>
+                          Force re-run
+                        </Btn>
+                      )}
                     </div>
                   )}
                 </div>

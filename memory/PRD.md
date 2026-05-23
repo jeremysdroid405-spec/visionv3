@@ -333,3 +333,51 @@ curl -sS -X POST http://127.0.0.1:8001/api/emergent-admin/worker/testing-mode \
 **Tests:** 60/60 backend tests pass (10 contract + 16 NFL + 34
 research/worker + 2 new for orphan guard).
 
+
+
+### 2026-05-23 — Backfill polling + cache-preflight (stuck-queued UI fix)
+**Reported symptom:** UI stayed on "queued" even though Mongo showed
+the job had run to completion. Worker logs healthy, exit_code=0, but
+the Admin Testing UI never updated and the worker-health bar showed
+stale 503-style "queued/stale" warnings.
+
+**Root causes:**
+1. `WarehouseCoverage.runFix` (per-card "Run Fix → backfill" button)
+   only fired a toast — it never polled the resulting `job_id`. The
+   coverage card therefore never reflected job progress or completion.
+2. The pipeline orchestrator (`WorkflowTab`) treated only `queued` and
+   `running` as active states. The worker's `claimed` interim state
+   was misread as "previous step done" and the orchestrator tried to
+   enqueue the next step in parallel.
+3. Identical fix-jobs were being enqueued back-to-back even when the
+   source collection already had the rows. No preflight gate existed.
+4. `WorkerHealthBar` had no manual refresh; stale errors required a
+   page reload to clear.
+
+**Fixes shipped:**
+- **Backend** — `POST /api/emergent-admin/coverage/backfill`
+  (new endpoint in `routes/emergent_admin/coverage.py`):
+  - Preflights the source collection row count for the (sport, start,
+    end) window. If `row_count > 0` and `force=false` → returns
+    `{status: "cached_skip", row_count, days_with_rows, …}` with NO
+    enqueue.
+  - Otherwise enqueues via existing `workers.queue.enqueue` (heavy →
+    research_worker, light → inline). Audit-logged on both branches.
+- **Frontend** — `WarehouseCoverage`:
+  - "Run Fix" now hits `/coverage/backfill`; cache-hit renders an
+    immediate green "✓ Cached · skipped" pill on the card.
+  - Cache-miss → polls `/jobs/{id}` every 2 s, updates a per-card
+    status pill across queued → claimed → running → terminal.
+  - Tail-detects `rows_emitted: 0` and labels succeeded as
+    "✓ Finished · no new rows" (succeeded_cache) so the operator
+    knows the worker ran but the source had nothing new.
+  - Adds a "Force re-run" button after terminal.
+- **Frontend** — `WorkflowTab` orchestrator now includes `claimed` in
+  every "active step" check; adds `timeout` as a terminal failure.
+- **Frontend** — `WorkerHealthBar`: manual `Refresh` button
+  (`data-testid="wh-refresh"`); stale errors clear when a fresh
+  heartbeat lands.
+
+**Tests:** `tests/test_coverage_backfill_endpoint.py` — 4 cases pin
+cache-miss enqueue, cache-hit short-circuit, force bypass, unknown
+key. Backend total: 73/73 passing (was 69/69).
