@@ -441,3 +441,41 @@ python -m scripts.sgo.historical_full_pipeline_replay --league MLB \
        --start 2025-04-01 --end 2025-04-30 --research-mode
 ```
 
+
+### 2026-05-23 — Join-key diagnostic for mirror→outcomes attach
+**Confirmed scope:** After running the full pipeline replay against
+a 30-day window, the operator now sees `8,693 / 8,739 (99.5%)` rows
+present with odds — but only `46 (0.5%)` carry a numeric outcome.
+The replay itself is healthy; the mirror→outcomes join is failing
+on one of the 5 keys (event_id / player_name_normalized / market /
+line / side).
+
+**Fix (this fork):**
+- **Backend** — new endpoint
+  `GET /api/emergent-admin/research/replay-outcome-join-diagnose`
+  (`routes/emergent_admin/research.py`).
+  Probes a configurable sample of unresolved replay rows against
+  `sgo_pp_research_outcomes` with progressively relaxed filters:
+    `K0_full → K1_no_line → K2_no_market_no_line → K3_player_only → K4_event_only`
+  A jump in match-rate between adjacent steps pinpoints the
+  offending key. Also returns 5 side-by-side replay/outcome value
+  comparisons (including each key's Python type) so float-vs-string
+  and raw-vs-canonical-market mismatches are obvious at-a-glance.
+- **Frontend** — Optimizer Results panel "Diagnose join failure"
+  button appears whenever the coverage banner shows `pct_graded < 95`.
+  Renders the 5 match-rate cells with green/amber/red shading plus
+  the verbatim diagnosis and an expandable list of mismatched pairs.
+- **Tests:** `tests/test_replay_outcome_join_diagnose.py` — 2 cases
+  pin the failure-mode detection: (a) seeds line=float vs line=str
+  and asserts diagnosis flags `line`, (b) empty outcomes window and
+  asserts K4 reports `event_id` failure. Backend total: 82/82 pass.
+
+**Operator next step (on prod):**
+```
+GET /api/emergent-admin/research/replay-outcome-join-diagnose?sport=MLB&start=…&end=…
+```
+or click "Diagnose join failure" in the Optimizer Results banner. The
+diagnosis tells you exactly which mirror-side field is wrong;
+patch that single field in `scripts/sgo/historical_full_pipeline_replay._mirror_to_legacy`
+(or in the upstream outcomes writer), re-run replay, and ROI/HR will populate.
+

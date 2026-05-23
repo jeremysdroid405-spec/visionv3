@@ -584,3 +584,193 @@ async def replay_outcome_coverage(
         "sample_unresolved":        sample_unresolved,
         "diagnosis":                diagnosis,
     }
+
+
+
+# ── Mirror→outcomes join diagnostic ──────────────────────────────────
+OUTCOMES_COLL = "sgo_pp_research_outcomes"
+
+
+@router.get("/replay-outcome-join-diagnose")
+async def replay_outcome_join_diagnose(
+    request: Request,
+    sport: str  = Query(...),
+    start: str  = Query(...),
+    end:   str  = Query(...),
+    sample_size: int = Query(default=50, ge=1, le=500),
+    auth=Depends(require_admin_token),
+):
+    """Pinpoints WHICH join key (event_id / player_name_normalized /
+    market / line / side) is breaking the mirror→outcomes attach.
+
+    For each sample of replay rows whose outcome did NOT attach
+    (`outcome_resolved!=true`), we query the outcomes collection with
+    progressively relaxed filters:
+
+        K0: event_id + player_name_normalized + market + line + side    (full key)
+        K1: event_id + player_name_normalized + market + side           (drop line)
+        K2: event_id + player_name_normalized + side                    (drop market+line)
+        K3: event_id + player_name_normalized                           (just player+game)
+        K4: event_id only                                                (just game)
+
+    A jump in match-rate between adjacent steps identifies the
+    offending key. Example: if K3 jumps from 2% to 95%, the join is
+    breaking on (market, line, side) — most often `line` type mismatch
+    (float vs string).
+
+    Also surfaces a side-by-side comparison of the join-key VALUES
+    on replay vs outcomes for the same (event_id, player) so a
+    naming-mismatch shows up as plain text.
+    """
+    db = _get_db()
+    league = sport.upper()
+    replay_match: Dict[str, Any] = {
+        "league_id": league,
+        "game_date": {"$gte": start, "$lte": end},
+        "$or": [{"outcome_resolved": {"$ne": True}},
+                  {"outcome_numeric": None}],
+    }
+    outcomes_match: Dict[str, Any] = {
+        "league_id": league,
+        "game_date": {"$gte": start, "$lte": end},
+        "outcome_resolved": True,
+    }
+    n_outcomes_in_window = await db[OUTCOMES_COLL].count_documents(outcomes_match)
+    n_replay_unresolved  = await db[REPLAY_COLL].count_documents(replay_match)
+
+    # Pull a sample of unresolved replay rows
+    sample: List[Dict[str, Any]] = []
+    async for r in db[REPLAY_COLL].find(
+        replay_match,
+        projection={"_id": 0, "event_id": 1, "player_id": 1,
+                      "player_name": 1, "player_name_normalized": 1,
+                      "stat_family": 1, "market": 1, "stat_id": 1,
+                      "side": 1, "line": 1, "game_date": 1}).limit(sample_size):
+        sample.append(r)
+
+    # Try each progressively-relaxed key for each sample row.
+    keys = [
+        ("K0_full",
+            lambda r: {"event_id": r.get("event_id"),
+                          "player_name_normalized": r.get("player_name_normalized"),
+                          "market": r.get("market"),
+                          "line":   r.get("line"),
+                          "side":   r.get("side"),
+                          "outcome_resolved": True}),
+        ("K1_no_line",
+            lambda r: {"event_id": r.get("event_id"),
+                          "player_name_normalized": r.get("player_name_normalized"),
+                          "market": r.get("market"),
+                          "side":   r.get("side"),
+                          "outcome_resolved": True}),
+        ("K2_no_market_no_line",
+            lambda r: {"event_id": r.get("event_id"),
+                          "player_name_normalized": r.get("player_name_normalized"),
+                          "side":   r.get("side"),
+                          "outcome_resolved": True}),
+        ("K3_player_only",
+            lambda r: {"event_id": r.get("event_id"),
+                          "player_name_normalized": r.get("player_name_normalized"),
+                          "outcome_resolved": True}),
+        ("K4_event_only",
+            lambda r: {"event_id": r.get("event_id"),
+                          "outcome_resolved": True}),
+    ]
+    match_counts: Dict[str, int] = {k: 0 for k, _ in keys}
+    # Capture the first (replay_row, outcome_row) pair where K0 fails
+    # but a relaxed key matches — perfect for spotting which value differs.
+    first_mismatch: List[Dict[str, Any]] = []
+    for r in sample:
+        k0_doc = None
+        for key_name, key_builder in keys:
+            try:
+                doc = await db[OUTCOMES_COLL].find_one(
+                    key_builder(r),
+                    projection={"_id": 0, "event_id": 1, "player_id": 1,
+                                  "player_name": 1, "player_name_normalized": 1,
+                                  "market": 1, "stat_id": 1,
+                                  "side": 1, "line": 1, "stat_family": 1,
+                                  "outcome_resolved": 1, "outcome_numeric": 1})
+            except Exception:  # noqa: BLE001
+                doc = None
+            if doc is not None:
+                match_counts[key_name] += 1
+                if key_name == "K0_full":
+                    k0_doc = doc
+                elif k0_doc is None and len(first_mismatch) < 5:
+                    # K0 failed but a relaxed key found something.
+                    # Capture the value side-by-side for diagnosis.
+                    first_mismatch.append({
+                        "matched_at": key_name,
+                        "replay": {
+                            "event_id": r.get("event_id"),
+                            "player_name_normalized": r.get("player_name_normalized"),
+                            "market": r.get("market"),
+                            "line":   r.get("line"),
+                            "line_type": type(r.get("line")).__name__,
+                            "side":   r.get("side"),
+                            "stat_family": r.get("stat_family"),
+                            "stat_id": r.get("stat_id"),
+                        },
+                        "outcome": {
+                            "event_id": doc.get("event_id"),
+                            "player_name_normalized": doc.get("player_name_normalized"),
+                            "market": doc.get("market"),
+                            "line":   doc.get("line"),
+                            "line_type": type(doc.get("line")).__name__,
+                            "side":   doc.get("side"),
+                            "stat_family": doc.get("stat_family"),
+                            "stat_id": doc.get("stat_id"),
+                            "outcome_numeric": doc.get("outcome_numeric"),
+                        },
+                    })
+                    break  # only need one relaxed-key match per row
+
+    # Convert to rates
+    n_sample = len(sample) or 1
+    match_rates = {k: round(v * 100.0 / n_sample, 1) for k, v in match_counts.items()}
+
+    # Build a human-readable diagnosis based on which step jumped
+    transitions = [
+        ("K0_full",            "K1_no_line",          "line"),
+        ("K1_no_line",         "K2_no_market_no_line","market"),
+        ("K2_no_market_no_line","K3_player_only",     "side"),
+        ("K3_player_only",     "K4_event_only",       "player_name_normalized"),
+    ]
+    diagnosis = "Join keys look consistent — outcomes simply don't exist in the window."
+    if match_rates["K4_event_only"] < 10:
+        diagnosis = (
+            "Join failing at event_id level — either the outcomes collection "
+            "doesn't cover this window or event_id values differ between "
+            f"sgo_propvision_full_pipeline_replay and {OUTCOMES_COLL}."
+        )
+    else:
+        for src, dst, suspect in transitions:
+            jump = match_rates[dst] - match_rates[src]
+            if jump >= 20.0:
+                diagnosis = (
+                    f"Likely culprit: `{suspect}` field mismatch. "
+                    f"Match rate jumps {match_rates[src]:.1f}% → "
+                    f"{match_rates[dst]:.1f}% when {suspect} is dropped "
+                    f"from the join. Inspect `sample_mismatches[*].replay.{suspect}` "
+                    f"vs `sample_mismatches[*].outcome.{suspect}` below for "
+                    f"the actual value drift (e.g. float vs string, "
+                    f"raw stat_id vs canonical market name)."
+                )
+                break
+
+    await audit_log(request, action="replay_outcome_join_diagnose",
+                       params={"sport": league, "start": start, "end": end,
+                                "sample_size": sample_size},
+                       response_summary={
+                           "match_rates": match_rates,
+                       }, **auth)
+    return {
+        "ok": True, "sport": league, "start": start, "end": end,
+        "n_outcomes_in_window":  n_outcomes_in_window,
+        "n_replay_unresolved":   n_replay_unresolved,
+        "sample_size":           len(sample),
+        "match_rates_pct":       match_rates,
+        "diagnosis":             diagnosis,
+        "sample_mismatches":     first_mismatch,
+    }

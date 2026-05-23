@@ -2927,6 +2927,8 @@ function OptimizerTab({ token }) {
   const [status, setStatus] = useState(null);
   const [results, setResults] = useState(null);
   const [outcomeCov, setOutcomeCov] = useState(null);
+  const [joinDiag, setJoinDiag]   = useState(null);
+  const [diagBusy, setDiagBusy]   = useState(false);
   const [busy, setBusy] = useState(false);
   const [cachedWindow, setCachedWindow] = useState(null);
   const [windowAutofilled, setWindowAutofilled] = useState(false);
@@ -2939,6 +2941,17 @@ function OptimizerTab({ token }) {
         `/research/replay-outcome-coverage?sport=${encodeURIComponent(form.sport)}&start=${form.start}&end=${form.end}`);
       setOutcomeCov(r);
     } catch (e) { /* non-fatal */ }
+  }, [token, form.sport, form.start, form.end]);
+
+  const runJoinDiagnose = useCallback(async () => {
+    if (!token || !form.sport || !form.start || !form.end) return;
+    setDiagBusy(true);
+    try {
+      const r = await apiFetch(token,
+        `/research/replay-outcome-join-diagnose?sport=${encodeURIComponent(form.sport)}&start=${form.start}&end=${form.end}&sample_size=50`);
+      setJoinDiag(r);
+    } catch (e) { toast.error(`Join diagnose failed: ${e.message}`); }
+    finally { setDiagBusy(false); }
   }, [token, form.sport, form.start, form.end]);
 
   // Autoload last cached pipeline window so the optimizer runs off cached data.
@@ -3283,9 +3296,79 @@ function OptimizerTab({ token }) {
               <div style={{ color: outcomeCov.pct_graded < 50 ? BAD : WARN, fontSize: 11, marginTop: 6, fontFamily: 'monospace' }}>
                 {outcomeCov.diagnosis}
               </div>
-              <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <Btn variant="ghost" onClick={loadOutcomeCoverage} testId="opt-outcome-cov-refresh">Refresh</Btn>
+                {outcomeCov.pct_graded < 95 && (
+                  <Btn variant="warn" onClick={runJoinDiagnose} testId="opt-join-diagnose" disabled={diagBusy}>
+                    {diagBusy ? 'Diagnosing…' : 'Diagnose join failure'}
+                  </Btn>
+                )}
               </div>
+              {joinDiag && (
+                <div data-testid="opt-join-diag-result" style={{
+                  marginTop: 10, padding: 10, background: SURFACE_3,
+                  border: `1px solid ${BORDER}`, borderRadius: 6,
+                  fontSize: 11, color: TEXT,
+                }}>
+                  <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>
+                    Mirror→outcomes join diagnostic
+                  </div>
+                  <div style={{ fontFamily: 'monospace', color: TEXT, marginBottom: 6 }}>
+                    sample n={joinDiag.sample_size} ·
+                    outcomes in window: {fmtInt(joinDiag.n_outcomes_in_window)} ·
+                    unresolved replay rows: {fmtInt(joinDiag.n_replay_unresolved)}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, marginBottom: 8 }}>
+                    {Object.entries(joinDiag.match_rates_pct || {}).map(([k, v]) => (
+                      <div key={k} style={{
+                        background: SURFACE_2, border: `1px solid ${BORDER}`,
+                        borderRadius: 4, padding: 6, textAlign: 'center',
+                      }}>
+                        <div style={{ fontSize: 9, color: DIM, textTransform: 'uppercase' }}>{k.replace(/_/g,' ')}</div>
+                        <div style={{ fontSize: 14, fontWeight: 700,
+                          color: v >= 90 ? ACCENT_2 : v >= 50 ? WARN : BAD }}>{v}%</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ color: BAD, fontWeight: 600, fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
+                    {joinDiag.diagnosis}
+                  </div>
+                  {joinDiag.sample_mismatches?.length > 0 && (
+                    <details>
+                      <summary style={{ fontSize: 10, color: DIM, cursor: 'pointer' }}>
+                        {joinDiag.sample_mismatches.length} sample mismatches (click to expand)
+                      </summary>
+                      <div style={{ marginTop: 6, maxHeight: 240, overflowY: 'auto' }}>
+                        {joinDiag.sample_mismatches.map((m, i) => (
+                          <div key={i} style={{
+                            background: SURFACE_2, border: `1px solid ${BORDER}`,
+                            borderRadius: 4, padding: 6, marginBottom: 4, fontSize: 10,
+                            fontFamily: 'monospace',
+                          }}>
+                            <div style={{ color: WARN, marginBottom: 2 }}>matched at {m.matched_at}:</div>
+                            <div style={{ color: TEXT }}>
+                              <span style={{ color: ACCENT_3 }}>replay</span> →{' '}
+                              event={String(m.replay.event_id).slice(0,12)} ·
+                              player={m.replay.player_name_normalized} ·
+                              market={m.replay.market} ·
+                              line={JSON.stringify(m.replay.line)}({m.replay.line_type}) ·
+                              side={m.replay.side}
+                            </div>
+                            <div style={{ color: TEXT }}>
+                              <span style={{ color: ACCENT }}>outcome</span> →{' '}
+                              event={String(m.outcome.event_id).slice(0,12)} ·
+                              player={m.outcome.player_name_normalized} ·
+                              market={m.outcome.market} ·
+                              line={JSON.stringify(m.outcome.line)}({m.outcome.line_type}) ·
+                              side={m.outcome.side}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
