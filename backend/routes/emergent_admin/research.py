@@ -828,6 +828,39 @@ async def market_coverage_audit(
         f for f in await db[OUTCOMES_COLL].distinct(
             "stat_family", {**window, "league_id": league}) if f)
 
+    # 2026-05-24 — Full pipeline trace. Surface what each intermediate
+    # collection contains so the operator can see EXACTLY where a
+    # family drops, instead of just seeing the final cache and guessing.
+    fc_families = sorted(
+        f for f in await db["mlb_replay_feature_cache"].distinct(
+            "stat_family", window) if f)
+    layer3_families = sorted(
+        f for f in await db["mlb_replay_model_outputs"].distinct(
+            "stat_family", window) if f)
+    runner_out_families = sorted(
+        f for f in await db["mlb_propvision_full_pipeline_outputs"].distinct(
+            "stat_family", window) if f)
+
+    # Per-family drop telemetry emitted by the engine (`replay_date`
+    # writes it to STATUS_COLL on every run). Pull the most recent
+    # status row for the window so the operator can see WHICH families
+    # the engine dropped + the reason ("model_feature_cols_miss" vs
+    # "feature_build_returned_none").
+    drop_telemetry: Dict[str, Any] = {}
+    try:
+        last_status = await db["mlb_replay_model_status"].find_one(
+            {"game_date": {"$gte": start, "$lte": end}},
+            sort=[("completed_at", -1)],
+            projection={"_id": 0,
+                            "drop_counter_by_family_and_reason": 1,
+                            "unmapped_markets_by_market": 1,
+                            "no_cache_by_family": 1,
+                            "game_date": 1, "completed_at": 1})
+        if last_status:
+            drop_telemetry = last_status
+    except Exception:  # noqa: BLE001
+        drop_telemetry = {}
+
     # What the live model supports.
     try:
         from services.mlb_high_friction_model import MLBHighFrictionModel
@@ -916,6 +949,16 @@ async def market_coverage_audit(
         "replay_cache_markets": cache_markets,
         "outcomes_families":    outcomes_families,
         "model_supported":      model_supported,
+        # Full pipeline trace — exposes WHERE in the pipeline each
+        # family disappears so the operator never has to guess.
+        "pipeline_trace": {
+            "raw_odds_markets":               raw_markets,
+            "feature_cache_families":         fc_families,
+            "layer3_model_output_families":   layer3_families,
+            "layer4_runner_output_families":  runner_out_families,
+            "ui_replay_cache_markets":        cache_markets,
+        },
+        "engine_drop_telemetry": drop_telemetry,
         "drops":                drops,
         "n_drops":              len(drops),
         "diagnosis":            diagnosis,

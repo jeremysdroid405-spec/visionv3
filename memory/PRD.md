@@ -1131,3 +1131,73 @@ python -m scripts.sgo.historical_full_pipeline_replay --league MLB \
 
 # 4. Re-run the optimizer — Top 25 should now span 10-14 families
 ```
+
+
+### 2026-05-24 — Fail-loud engine drop telemetry + full pipeline trace
+**User insight:** "is there not some default in code where we can just
+use like All-true and get all the info without filtering the ingest.
+then we can just use a UI filter to display what we want to see."
+
+**Yes — that's the correct philosophy.** Reshape already pulls all 14
+markets. The ingest, feature cache, runner, and replay cache should
+NEVER silently drop a row that has a trained model + raw odds + a
+canonical market mapping. We now make any such drop **fail loud**.
+
+**Full pipeline trace on prod (May 2025, before this fix):**
+```
+raw_odds       : 14 markets
+feature_cache  :  9 families  (lost 5: hits_runs_rbis/singles/batter_walks/HR/SB)
+layer3 outputs :  7 families  (lost 2 more: hits_allowed/pitching_outs)
+runner output  :  7 families
+replay cache   :  7 markets
+```
+
+**Shipped fixes (no architectural rewrite — just plug the leaks):**
+1. `_STAT_FAMILY_MAP` (+5 markets) and `_BASE_MARKETS` (+5) already
+   shipped earlier today — addresses the feature-cache drop of
+   hits_runs_rbis/singles/batter_walks/HR/SB (once user rebuilds
+   feature cache).
+2. **`replay_one()` drop telemetry** — new optional `drop_counter`
+   kwarg. The engine increments `f"{family}::{reason}"` on every
+   early return (`model_feature_cols_miss`, `missing_line`,
+   `missing_odds_or_side`, `feature_build_returned_none`) AND emits
+   a `[replay_one_drop]` info log. **`hits_allowed` and `pitching_outs`
+   dropping at the engine stage will now self-report which guard
+   they're failing** — no more guessing.
+3. **`replay_date()` summary** now persists 3 new structured fields:
+   `drop_counter_by_family_and_reason`,
+   `unmapped_markets_by_market`, `no_cache_by_family`. Stored on
+   the run's STATUS_COLL row.
+4. **`/research/market-coverage-audit`** extended with:
+   - `pipeline_trace`: raw_odds → feature_cache → layer3 → runner
+     output → UI cache (5 stages, families per stage)
+   - `engine_drop_telemetry`: most recent STATUS_COLL row's
+     per-family drop counters
+   The operator sees AT A GLANCE exactly where a family disappeared,
+   one stage at a time.
+
+**Operator runbook (after `git pull && systemctl restart`):**
+```bash
+TOK="17808e1c13717b0d2170f6e1f023388d93740ff66f70ae1a"
+
+# 1. Rebuild MLB feature cache for May 2025 so my new family map lands
+python -m scripts.mlb_replay_build_feature_cache \
+       --start=2025-05-01 --end=2025-05-31 --reset
+
+# 2. Re-run the production replay for the same window
+python -m scripts.sgo.historical_full_pipeline_replay \
+       --league MLB --start 2025-05-01 --end 2025-05-31 \
+       --research-mode
+
+# 3. Audit pipeline trace + drop telemetry
+curl -sS "https://propvision.bet/api/emergent-admin/research/market-coverage-audit?sport=MLB&start=2025-05-01&end=2025-05-31" \
+     -H "X-Admin-Token: $TOK" | jq
+
+# Expected after rebuild:
+# pipeline_trace.feature_cache_families: 12+ families (was 9)
+# engine_drop_telemetry.drop_counter_by_family_and_reason:
+#   { "hits_allowed::feature_build_returned_none": N,
+#     "pitching_outs::feature_build_returned_none": M, ... }
+#   — these tell us EXACTLY why the engine drops them (likely
+#   PA-statcast hydration miss for pitchers on specific dates).
+```

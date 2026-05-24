@@ -212,9 +212,21 @@ def replay_one(
     cache_row: Dict[str, Any],
     odds_row: Dict[str, Any],
     hub_extras: Optional[Dict[str, Any]] = None,
+    *,
+    drop_counter: Optional[Dict[str, int]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Run one (cache_row × odds_row) replay. Returns the output dict
     or None when inference inputs are insufficient.
+
+    `drop_counter` (optional): when supplied, increments
+    `f"{stat_family}::{reason}"` on every early return so callers can
+    audit silent-drop breakdowns per family without log-scraping. The
+    canonical reasons are:
+        - `model_feature_cols_miss` (family not in MLB-HF.feature_cols)
+        - `missing_line` / `missing_odds_or_side`
+        - `feature_build_returned_none` (model._build_friction_features
+              returned None — usually missing PA-statcast or game_logs
+              for the player on that as_of date)
 
     2026-05-17 P0 hydration fix:
       - When ``hub_extras`` is supplied, platoon/home/away splits and
@@ -231,6 +243,14 @@ def replay_one(
     values and produced inflated μ (Olson 7.8 vs live 2.25). See
     `audits/PATH_A_TASK_2_OLSON_DIVERGENCE.md`.
     """
+    def _drop(reason: str, stat_fam: str) -> None:
+        if drop_counter is None:
+            return
+        key = f"{stat_fam or 'unknown'}::{reason}"
+        drop_counter[key] = drop_counter.get(key, 0) + 1
+        logger.info("[replay_one_drop] family=%s reason=%s",
+                       stat_fam, reason)
+
     # 2026-05-18 — read-side normalisation for legacy cache rows.
     from services.scoring.canonical_stats import canonical_family
     stat_family = canonical_family("mlb", cache_row["stat_family"])
@@ -243,14 +263,17 @@ def replay_one(
     # surface, and only for the duration of model lookups.
     model_family = family_to_model_key(stat_family)
     if model_family not in model.feature_cols:
+        _drop("model_feature_cols_miss", stat_family)
         return None
     line = odds_row.get("line")
     if line is None:
+        _drop("missing_line", stat_family)
         return None
     line_f = float(line)
     side = odds_row.get("side")
     odds = odds_row.get("odds")
     if odds is None or side not in ("OVER", "UNDER"):
+        _drop("missing_odds_or_side", stat_family)
         return None
 
     player = _build_player_dict(cache_row, hub_extras=hub_extras)
@@ -302,6 +325,7 @@ def replay_one(
         opposing_lineup=None,
     )
     if feats is None:
+        _drop("feature_build_returned_none", stat_family)
         return None
 
     cols = model.feature_cols[model_family]
@@ -494,6 +518,18 @@ async def replay_date(
     no_cache = 0
     no_mu = 0
     skipped_under_alt = 0
+    unmapped_market = 0
+    # Per-(family, reason) drop counter — emitted in the run summary and
+    # persisted to the status row so the operator can audit silent
+    # drops without log-scraping. See `replay_one(drop_counter=…)`.
+    drop_counter: Dict[str, int] = {}
+    # Per-family unmapped-market counter (market_to_stat_family
+    # returned None — the raw odds market has no entry in
+    # `_STAT_FAMILY_MAP`).
+    unmapped_markets: Dict[str, int] = {}
+    # Per-family no-cache counter — feature cache had no row for
+    # (player, family) on this date.
+    no_cache_per_family: Dict[str, int] = {}
     rss_peak = rss_after_models
 
     cursor = db[odds_collection].find(
@@ -524,12 +560,16 @@ async def replay_date(
         if over_only_alts and o.get("is_alternate") and o.get("side") != "OVER":
             skipped_under_alt += 1
             continue
-        stat_fam = market_to_stat_family(o["market"])
+        market_raw = o["market"]
+        stat_fam = market_to_stat_family(market_raw)
         if stat_fam is None:
+            unmapped_market += 1
+            unmapped_markets[market_raw] = unmapped_markets.get(market_raw, 0) + 1
             continue
         cache_row = cache_idx.get((o["player_name_normalized"], stat_fam))
         if cache_row is None:
             no_cache += 1
+            no_cache_per_family[stat_fam] = no_cache_per_family.get(stat_fam, 0) + 1
             continue
 
         line_key = (o["player_name_normalized"], stat_fam, float(o["line"]))
@@ -537,7 +577,8 @@ async def replay_date(
         if memo is None:
             extras = hub_extras_idx.get(int(cache_row["bdl_id"])) \
                 if cache_row.get("bdl_id") is not None else None
-            tmp = replay_one(model, cache_row, o, hub_extras=extras)
+            tmp = replay_one(model, cache_row, o, hub_extras=extras,
+                                  drop_counter=drop_counter)
             if tmp is None:
                 no_mu += 1
                 continue
@@ -626,6 +667,13 @@ async def replay_date(
         "candidates_skipped_no_cache": no_cache,
         "candidates_skipped_inference_failed": no_mu,
         "candidates_skipped_under_alt": skipped_under_alt,
+        "candidates_skipped_unmapped_market": unmapped_market,
+        # Per-family drop telemetry — emitted so the operator can see
+        # WHICH families are dropping at which stage instead of staring
+        # at an opaque single counter. NEVER silently dropped again.
+        "drop_counter_by_family_and_reason": drop_counter,
+        "unmapped_markets_by_market":       unmapped_markets,
+        "no_cache_by_family":                no_cache_per_family,
         "unique_mu_predictions": len(mu_memo),
         "rss_mb_start": round(rss0, 1),
         "rss_mb_after_model_load": round(rss_after_models, 1),
