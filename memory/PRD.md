@@ -1023,3 +1023,40 @@ curl -sS -X POST "https://propvision.bet/api/emergent-admin/optimizer/run" \
      -H "Content-Type: application/json" -H "X-Admin-Token: $TOK" \
      -d '{"sport":"MLB","start":"2025-05-01","end":"2025-05-31"}'
 ```
+
+
+### 2026-05-24 — Optimizer thin-combo surfacing (user strategy fix)
+**Reported intent:** "we are only looking for the best of the best,
+it will naturally be a thin pool. … 11 combos that survive in one
+month, consistent month after month, is over 100 per year." The user
+hunts for thin-but-consistent edges across months — the previous
+defaults aggressively filtered them out.
+
+**Changes shipped:**
+1. `OptimizerRunBody.min_bets` default **15 → 3** (anything < 3 is
+   pure coin-flip with no statistical signal).
+2. `_score` sample penalty weight `1.0 → 0.25`, and baseline
+   floor changed from `max(min_bets, 50)` → `max(min_bets, 10)`.
+   With this combo a 5-bet @ 80%-HR combo is no longer crushed by a
+   -1.22 penalty; it only loses ~0.13 vs an n=10 combo with same
+   metrics. `daily_consistency` and `roi` now dominate ranking for
+   thin combos — exactly the signals the user wants.
+3. `overfit_threshold` (the flag, not a filter) lowered
+   `max(min_bets, 50) → max(min_bets, 25)` so it doesn't paint
+   every thin combo red.
+4. Frontend `min_bets` default 30 → 3 (`AdminTesting.jsx`).
+5. **Tests:** `tests/test_optimizer_thin_combo_surfacing.py` (5
+   cases): default min_bets, thin-winner-beats-fat-loser,
+   sample-penalty-zero-above-baseline, sample-penalty-gentle-below,
+   consistency-dominates-for-thin-combos. Backend total: **54/54**
+   across optimizer + mirror + diagnose + preflight + tier-routing
+   + thin-combo suites.
+
+**Operator runbook on prod:**
+```bash
+git pull && systemctl restart vision-backend
+# Re-run any window. Thin (n=3..14) combos with high consistency
+# will now appear in Top-25 — the next step is a cross-month
+# persistence view (planned) that highlights combos which recur
+# in the top-N of multiple monthly runs.
+```

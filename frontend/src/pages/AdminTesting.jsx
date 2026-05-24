@@ -2916,7 +2916,7 @@ function OptimizerTab({ token }) {
     stat_families: '',   // empty = all (discovered server-side)
     odds_buckets: '',    // empty = all
     sides: { OVER: true, UNDER: true },
-    min_bets: 30,
+    min_bets: 3,
     max_configs_per_cell: 500,
     optimization_goal: 'balanced',
     worker_limit: 4,
@@ -3007,7 +3007,7 @@ function OptimizerTab({ token }) {
         odds_buckets: form.odds_buckets.trim()
           ? form.odds_buckets.split(',').map(s => s.trim()).filter(Boolean) : null,
         sides: Object.entries(form.sides).filter(([, v]) => v).map(([k]) => k),
-        min_bets: parseInt(form.min_bets, 10) || 30,
+        min_bets: parseInt(form.min_bets, 10) || 3,
         max_configs_per_cell: parseInt(form.max_configs_per_cell, 10) || 500,
         optimization_goal: form.optimization_goal,
         worker_limit: parseInt(form.worker_limit, 10) || 4,

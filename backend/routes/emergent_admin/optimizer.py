@@ -166,12 +166,12 @@ class OptimizerRunBody(BaseModel):
     stat_families:         Optional[List[str]] = None    # None == all
     odds_buckets:          Optional[List[str]] = None    # None == all
     sides:                 List[str] = Field(default_factory=lambda: ["OVER", "UNDER"])
-    # The optimizer's row pool already shrinks aggressively when
-    # `enforce_tier_gates=True`. 30 was masking real families with
-    # 15-25 graded rows (e.g. earned_runs, rbis on prod MLB data).
-    # 15 is the working compromise — still filters statistical noise,
-    # but lets thin-but-real families surface.
-    min_bets:              int   = Field(default=15, ge=1)
+    # User strategy: surface thin-but-consistent combos for cross-month
+    # validation. A combo with 5-10 bets in one month that recurs month
+    # after month at high `daily_consistency` is the actual edge — we
+    # explicitly do NOT want to filter it out. Set to 3 (lowest sensible
+    # floor; 1-2 bets is pure coin-flip and produces meaningless metrics).
+    min_bets:              int   = Field(default=3, ge=1)
     max_configs_per_cell:  int   = Field(default=500, ge=1, le=50_000)
     optimization_goal:     str   = Field(default="balanced")
     grid:                  GridSpec = Field(default_factory=GridSpec)
@@ -461,7 +461,17 @@ def _score(metrics: Dict[str, Any], goal: str, baseline_n: int) -> Optional[floa
     cal_score   = -2.0 * abs(cal)
     cons_score  = 1.5 * cons
     dd_penalty  = -0.02 * dd
-    sample_penalty = -1.0 * max(0.0, math.log10(max(baseline_n, 1) / max(n, 1)))
+    # Sample-size penalty — DELIBERATELY MILD. The user's strategy is
+    # to find thin-but-consistent combos that recur across multiple
+    # monthly windows; the optimizer must NOT bury a 5-bet @ 80%-HR
+    # combo under a 50-bet @ 52%-HR combo just because the latter has
+    # more rows. We retain a gentle log-scale nudge so 5 bets isn't
+    # treated as equivalent to 50 bets, but the weight is 0.25 (was
+    # 1.0) and the baseline is `max(min_bets, 10)` (was hardcoded 50)
+    # so the penalty zeroes out as soon as `n` clears `max(min_bets, 10)`.
+    sample_penalty = -0.25 * max(0.0,
+                                            math.log10(max(baseline_n, 1)
+                                                          / max(n, 1)))
     return hr_score + roi_score + cal_score + cons_score + dd_penalty + sample_penalty
 
 
@@ -501,7 +511,14 @@ async def _evaluate_cell(state: Dict[str, Any], db, *,
         state["cells_skipped_empty"] += 1
         return []
     cell_results: List[Dict[str, Any]] = []
-    overfit_threshold = max(body.min_bets, 50)
+    # baseline = max(min_bets, 10). The `50` floor that used to live
+    # here turned every thin-but-real combo into a "tiny sample"
+    # penalty, even when the user explicitly wanted thin combos to
+    # rank. `_score` now only applies the gentle log-scale penalty
+    # when `n` is below the operator's own min_bets floor (or 10,
+    # whichever is larger). Above that the penalty is zero.
+    sample_baseline = max(body.min_bets, 10)
+    overfit_threshold = max(body.min_bets, 25)
     for combo in combos:
         if state.get("cancelled"):
             break
@@ -511,7 +528,7 @@ async def _evaluate_cell(state: Dict[str, Any], db, *,
             state["combos_skipped_low_sample"] += 1
             continue
         score = _score(metrics, body.optimization_goal,
-                          baseline_n=overfit_threshold)
+                          baseline_n=sample_baseline)
         # Ungradable cell — emit with score=None so it survives in
         # the results table (operator can still see the threshold +
         # sample size) but is sorted to the bottom and never beats a
