@@ -793,3 +793,57 @@ git pull && systemctl restart vision-backend
 # [0,1] so a single noisy cell can't pollute the ranking.
 ```
 
+
+### 2026-05-23 — DETERMINISM: kill random sampling, lock tiebreaks, add /top-per-family
+**Reported symptom:** same window run repeatedly → different Top 1
+each time. "Best by …" disagreeing with the Top 25 above it.
+
+**Three concrete sources of nondeterminism — ALL FIXED:**
+
+1. **`_enumerate_combos` used unseeded `random.choice` to subsample**
+   when `total_combos > max_per_cell`. Every run drew a DIFFERENT
+   subset of the 126,000 grid → different leaderboard. **Fix:**
+   rewritten to always return the full Cartesian product. No
+   sampling. `max_per_cell` is now a no-op (kept for backwards-compat
+   on the wire). User explicitly asked for brute-force; brute-force
+   is what we do.
+
+2. **Per-cell `cell_results[:200]` hard cap** silently dropped combos
+   beyond the top 200 in each cell. **Fix:** removed. All combos
+   that pass `min_bets` and produce a finite score are persisted.
+
+3. **Mongo `.sort([("score", -1)])` with NO tiebreak.** Cells often
+   tie on score (e.g. 50 rows at -5.17). Tied results returned in
+   insertion order, which varied because the worker writes cells in
+   parallel and finish-order is OS-scheduler dependent. **Fix:**
+   composite sort key everywhere — `(score, tier, stat_family,
+   odds_bucket, n_bets)` — applied to `/results.top`, `/results.worst`,
+   every `_best_by()` aggregation, AND `save_as_candidates`. Same
+   tiebreak in the in-memory `_evaluate_cell` sort, so the persisted
+   cell order is also stable.
+
+**New endpoint** `GET /optimizer/{run_id}/top-per-family?top_n=3&tier=…`:
+- Returns Top-N graded configs grouped by `(stat_family, odds_bucket)`.
+- Uses the IDENTICAL deterministic sort, so it can never disagree
+  with the Top-25 or Best-by views on the same run.
+- Frontend Optimizer panel now renders a "★ Top 3 per Stat Family"
+  card grid above "Best by family" — the operator's actual ask.
+
+**Tests:** `tests/test_optimizer_determinism.py` (6 cases):
+- `_enumerate_combos` byte-identical across 10 runs
+- no duplicates produced
+- `max_per_cell` does NOT decimate (still 144 combos for a 144-cell grid)
+- `/top-per-family` returns exactly N per group, score-sorted
+- `/top-per-family` byte-identical across 5 GETs
+- `/results.top` byte-identical across 5 GETs
+
+Backend total: 41/41 across optimizer + mirror + diagnose + preflight.
+
+**Operator runbook on prod:**
+```
+git pull && systemctl restart vision-backend
+# Re-run the optimizer. Then run the same window TWICE.
+# Top-25, Best-by, AND the new Top-3-per-Family card must all
+# show identical numbers run-to-run, AND must agree with each other.
+```
+

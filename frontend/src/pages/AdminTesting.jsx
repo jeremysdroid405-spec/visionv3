@@ -3043,10 +3043,15 @@ function OptimizerTab({ token }) {
             // auto-load results
             try {
               const rr = await apiFetch(token, `/optimizer/${runId}/results?limit=25`);
-              setResults(rr);
-              // Fire the outcome-coverage diagnostic so we surface the
-              // "all metrics null/zero because outcomes never joined"
-              // failure mode the moment results render.
+              // Fetch top-3-per-family in parallel — this is what the
+              // operator actually asked for ("best 3 combos per stat")
+              // and lives in a dedicated deterministic endpoint.
+              let tpf = null;
+              try {
+                const t = await apiFetch(token, `/optimizer/${runId}/top-per-family?top_n=3`);
+                tpf = t.groups || [];
+              } catch (e) { /* non-fatal */ }
+              setResults({ ...rr, top_per_family: tpf });
               loadOutcomeCoverage();
             } catch (e) { /* ignore */ }
           }
@@ -3512,6 +3517,57 @@ function OptimizerTab({ token }) {
             <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Top 25 by Score</div>
             <ResultsRankTable rows={results.top || []} testId="opt-top-table" accent={ACCENT_2} />
           </div>
+
+          {/* Top-N per stat family — surfaces THE best combo(s) for
+              each stat the user is actually testing. Mirrors the
+              backend `/top-per-family` endpoint exactly so it can
+              never disagree with the Top-25 above. */}
+          {results.top_per_family?.length > 0 && (
+            <div data-testid="opt-top-per-family" style={{
+              background: SURFACE_3, border: `1px solid ${BORDER}`,
+              borderLeft: `3px solid ${ACCENT_2}`, borderRadius: 6,
+              padding: 10, marginBottom: 14,
+            }}>
+              <div style={{ fontSize: 10, color: ACCENT_2, textTransform: 'uppercase', marginBottom: 8 }}>
+                ★ Top 3 per Stat Family (deterministic · brute-force)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 10 }}>
+                {results.top_per_family.map((g, gi) => (
+                  <div key={gi} data-testid={`opt-tpf-group-${g.stat_family}-${g.odds_bucket}`} style={{
+                    background: SURFACE_2, border: `1px solid ${BORDER}`,
+                    borderRadius: 6, padding: 8,
+                  }}>
+                    <div style={{ fontSize: 11, marginBottom: 6, fontFamily: 'monospace' }}>
+                      <code style={{ color: ACCENT }}>{g.stat_family}</code>
+                      {' · '}
+                      <code style={{ color: ACCENT_3 }}>{g.odds_bucket}</code>
+                    </div>
+                    {(g.configs || []).map((c, ci) => (
+                      <div key={ci} style={{
+                        borderTop: ci > 0 ? `1px solid ${BORDER}` : 'none',
+                        padding: '6px 0', fontSize: 10, fontFamily: 'monospace',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: ACCENT_2, fontWeight: 700 }}>#{ci + 1}</span>
+                          <span style={{ color: TEXT }}>
+                            HR={fmtPct(c.hit_rate)} · ROI={fmtPct(c.roi)} · n={fmtInt(c.n_bets)}
+                          </span>
+                          <span style={{ color: c.score >= 0 ? ACCENT_2 : BAD }}>
+                            score={fmtNum(c.score, 2)}
+                          </span>
+                        </div>
+                        <div style={{ color: DIM, marginTop: 2, fontSize: 9 }}>
+                          {Object.entries(c.thresholds || {})
+                            .map(([k, v]) => `${k}=${typeof v === 'number' ? v.toFixed(2) : v}`)
+                            .join(' · ')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Best by family + bucket */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>

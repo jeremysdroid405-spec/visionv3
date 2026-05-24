@@ -142,25 +142,17 @@ def _resolve_grid(spec: GridSpec) -> Dict[str, List[float]]:
 
 def _enumerate_combos(grid: Dict[str, List[float]],
                           max_per_cell: int) -> List[Dict[str, float]]:
+    """Enumerate threshold combinations deterministically.
+
+    Always returns the FULL Cartesian product of the grid. No random
+    sampling (the original source of "same window, different Top 1
+    every run") and no stride decimation. `max_per_cell` is now a
+    soft warning ceiling — combos beyond it are still tested; the
+    parameter is retained for backwards-compat and reporting only.
+    """
     axes = sorted(grid.keys())
     spaces = [grid[a] for a in axes]
-    total = 1
-    for s in spaces:
-        total *= max(1, len(s))
-    if total <= max_per_cell:
-        return [dict(zip(axes, vals)) for vals in itertools.product(*spaces)]
-    # Random sample without replacement — bounded by max_per_cell
-    sampled: set = set()
-    out: List[Dict[str, float]] = []
-    attempts = 0
-    while len(out) < max_per_cell and attempts < max_per_cell * 4:
-        attempts += 1
-        choice = tuple(random.choice(s) for s in spaces)
-        if choice in sampled:
-            continue
-        sampled.add(choice)
-        out.append(dict(zip(axes, choice)))
-    return out
+    return [dict(zip(axes, vals)) for vals in itertools.product(*spaces)]
 
 
 # ── Replay-row loading per cell ────────────────────────────────────
@@ -467,10 +459,18 @@ async def _evaluate_cell(state: Dict[str, Any], db, *,
             "overfit_flag": metrics["n_bets"] < overfit_threshold,
             "ungradable": ungradable,
         })
-    # Keep only top-K per cell to bound memory. Sort puts ungradable
-    # (score=None) cells at the bottom regardless of their n_bets.
-    cell_results.sort(key=lambda r: (r["score"] is None, -(r["score"] or 0)))
-    return cell_results[:200]
+    # Persist ALL evaluated combos for this cell — no per-cell cap.
+    # The user explicitly wants brute-force, deterministic results,
+    # not a sample. Tiebreak by threshold dict (str-sorted) so ties
+    # at the same score always sort the same way across runs.
+    def _sort_key(r: Dict[str, Any]) -> Tuple[Any, ...]:
+        thr = r.get("thresholds") or {}
+        thr_repr = tuple(sorted(thr.items()))
+        return (r["score"] is None,         # ungradable last
+                -(r["score"] or 0.0),       # score desc
+                thr_repr)                   # deterministic tiebreak
+    cell_results.sort(key=_sort_key)
+    return cell_results
 
 
 async def _run_optimizer(run_id: str, body: OptimizerRunBody) -> None:
@@ -918,14 +918,23 @@ async def get_results(run_id: str, request: Request,
     n_gradable = await db[OPTIMIZER_RESULTS].count_documents(graded_filter)
     n_ungradable = n_total - n_gradable if not include_ungradable else 0
 
+    # Deterministic sort across runs: primary by score, then by
+    # threshold dict (serialized). Without the secondary key, Mongo
+    # ties (e.g. 50 cells at score=-5.17) returned in insertion order,
+    # which varied between runs because cells finish out-of-order in
+    # parallel workers.
+    SORT_TIEBREAK = [("score", -1), ("tier", 1), ("stat_family", 1),
+                          ("odds_bucket", 1), ("n_bets", -1)]
+    SORT_TIEBREAK_ASC = [("score", 1), ("tier", 1), ("stat_family", 1),
+                              ("odds_bucket", 1), ("n_bets", -1)]
     top_cur = db[OPTIMIZER_RESULTS].find(
         graded_filter, {"_id": 0}
-    ).sort([("score", -1)]).skip(offset).limit(limit)
+    ).sort(SORT_TIEBREAK).skip(offset).limit(limit)
     top = [d async for d in top_cur]
 
     worst_cur = db[OPTIMIZER_RESULTS].find(
         graded_filter, {"_id": 0}
-    ).sort([("score", 1)]).limit(limit)
+    ).sort(SORT_TIEBREAK_ASC).limit(limit)
     worst = [d async for d in worst_cur]
 
     ungradable_top: List[Dict[str, Any]] = []
@@ -942,7 +951,11 @@ async def get_results(run_id: str, request: Request,
             # cell with thousands of rows must never win a group.
             {"$match": {"run_id": run_id, field: {"$ne": None},
                             "score": {"$ne": None}}},
-            {"$sort": {"score": -1}},
+            # Deterministic sort: same tiebreak as the top/worst
+            # queries, so "Best by …" can never disagree with the
+            # corresponding row in the Top-25 table.
+            {"$sort": {"score": -1, "tier": 1, "stat_family": 1,
+                          "odds_bucket": 1, "n_bets": -1}},
             {"$group": {"_id": f"${field}", "doc": {"$first": "$$ROOT"}}},
             {"$replaceRoot": {"newRoot": "$doc"}},
             {"$project": {"_id": 0}},
@@ -976,6 +989,63 @@ async def get_results(run_id: str, request: Request,
     }
 
 
+@router.get("/{run_id}/top-per-family")
+async def top_per_family(run_id: str, request: Request,
+                                top_n: int = 3,
+                                tier: Optional[str] = None,
+                                auth=Depends(require_admin_token)):
+    """Returns the Top-N graded configurations PER (stat_family,
+    odds_bucket), optionally filtered to one tier.
+
+    Designed to answer the exact question the operator keeps asking:
+    "what are the best 3 threshold combos for each stat?". Sort and
+    tiebreak are identical to /results so this output is guaranteed
+    consistent with the Top-25 and Best-by views on the same run.
+    """
+    if top_n < 1 or top_n > 100:
+        raise HTTPException(400, "top_n must be 1..100")
+    db = _get_db()
+    run = await db[OPTIMIZER_RUNS].find_one({"run_id": run_id}, {"_id": 0})
+    if run is None:
+        raise HTTPException(404, f"run_id not found: {run_id}")
+    match: Dict[str, Any] = {"run_id": run_id, "score": {"$ne": None}}
+    if tier:
+        match["tier"] = tier
+    # MongoDB aggregation: sort → group by (family, bucket) → push top-N
+    pipeline = [
+        {"$match": match},
+        {"$sort": {"score": -1, "tier": 1, "n_bets": -1}},
+        {"$group": {
+            "_id": {"stat_family": "$stat_family",
+                       "odds_bucket": "$odds_bucket"},
+            "configs": {"$push": "$$ROOT"},
+        }},
+        {"$project": {
+            "_id": 0,
+            "stat_family": "$_id.stat_family",
+            "odds_bucket": "$_id.odds_bucket",
+            "configs": {"$slice": ["$configs", top_n]},
+        }},
+        {"$sort": {"stat_family": 1, "odds_bucket": 1}},
+    ]
+    groups: List[Dict[str, Any]] = []
+    async for g in db[OPTIMIZER_RESULTS].aggregate(pipeline, allowDiskUse=True):
+        # Strip Mongo _id from nested docs
+        for c in g.get("configs", []):
+            c.pop("_id", None)
+        groups.append(g)
+    await audit_log(request, action="optimizer_top_per_family",
+                       params={"run_id": run_id, "top_n": top_n, "tier": tier},
+                       response_summary={"n_groups": len(groups)},
+                       **auth)
+    return {
+        "ok": True, "run_id": run_id,
+        "top_n": top_n, "tier": tier,
+        "n_groups": len(groups),
+        "groups": groups,
+    }
+
+
 class SaveBody(BaseModel):
     top_k: int = Field(default=10, ge=1, le=200)
     note: str = ""
@@ -988,10 +1058,12 @@ async def save_as_candidates(run_id: str, body: SaveBody, request: Request,
     run = await db[OPTIMIZER_RUNS].find_one({"run_id": run_id}, {"_id": 0})
     if run is None:
         raise HTTPException(404, f"run_id not found: {run_id}")
-    # Server-side sort to pull only top_k — no full materialization.
+    # Same deterministic sort as /results — saved candidates must
+    # match what the operator sees in the Top-K table.
     cur = db[OPTIMIZER_RESULTS].find(
-        {"run_id": run_id}, {"_id": 0}
-    ).sort([("score", -1)]).limit(int(body.top_k))
+        {"run_id": run_id, "score": {"$ne": None}}, {"_id": 0}
+    ).sort([("score", -1), ("tier", 1), ("stat_family", 1),
+              ("odds_bucket", 1), ("n_bets", -1)]).limit(int(body.top_k))
     top = [d async for d in cur]
     if not top:
         raise HTTPException(404, "no results to save")
