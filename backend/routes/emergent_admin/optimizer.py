@@ -1223,11 +1223,14 @@ async def get_results(run_id: str, request: Request,
     best_by_odds_bucket = await _best_by("odds_bucket")
     overfit_warnings    = [r for r in top if r.get("overfit_flag")]
 
-    # ── Family coverage ─────────────────────────────────────────────
-    # Surface which stat families produced graded cells vs were
-    # skipped (typically because every threshold combo left < min_bets
-    # graded rows). Answers the operator's "where are the other 9
-    # families?" question instead of silently dropping them.
+    # ── Family coverage (ALL discovered families) ───────────────────
+    # Per-family aggregate from the results collection ONLY covers
+    # families that wrote rows. The operator wants to see EVERY family
+    # the optimizer was meant to evaluate, including the ones that
+    # produced 0 cells (so they know it's a data-thinness problem,
+    # not a missing-family bug). Build a placeholder row for every
+    # family in `state.stat_families` that the aggregation didn't
+    # cover, with a structured `status` field.
     fam_cov_pipeline = [
         {"$match": {"run_id": run_id}},
         {"$group": {
@@ -1245,6 +1248,33 @@ async def get_results(run_id: str, request: Request,
     ]
     family_coverage = [d async for d in db[OPTIMIZER_RESULTS].aggregate(
         fam_cov_pipeline, allowDiskUse=True)]
+    # Surface families that were discovered but produced ZERO cells
+    # (= every cell in every (tier,bucket) combination had no rows
+    # after the tier-odds + bucket filter). These would otherwise be
+    # invisible to the operator. Mark them `status="no_rows_after_tier_filter"`.
+    seen = {f.get("stat_family") for f in family_coverage}
+    state = run.get("state") or {}
+    discovered = set(state.get("stat_families", []) or [])
+    for sf in sorted(discovered - seen):
+        family_coverage.append({
+            "stat_family":     sf,
+            "n_cells":         0,
+            "n_graded_cells":  0,
+            "best_score":      None,
+            "best_n_bets":     None,
+            "status":          "no_rows_after_tier_filter",
+        })
+    # Annotate the families that DID produce rows so the UI can flag
+    # the all-skipped-low-sample case distinctly from "no rows".
+    for fc in family_coverage:
+        if "status" in fc:
+            continue
+        if fc.get("n_graded_cells", 0) == 0 and fc.get("n_cells", 0) > 0:
+            fc["status"] = "all_skipped_low_sample"
+        elif fc.get("n_graded_cells", 0) > 0:
+            fc["status"] = "graded"
+        else:
+            fc["status"] = "unknown"
 
     return {
         "ok": True, "run_id": run_id,
@@ -1265,11 +1295,19 @@ async def get_results(run_id: str, request: Request,
 
 @router.get("/{run_id}/top-per-family")
 async def top_per_family(run_id: str, request: Request,
-                                top_n: int = 3,
+                                top_n: int = 5,
                                 tier: Optional[str] = None,
+                                include_empty: bool = True,
                                 auth=Depends(require_admin_token)):
     """Returns the Top-N graded configurations PER (stat_family,
     odds_bucket), optionally filtered to one tier.
+
+    `top_n` default raised 3 → 5 (2026-05-24) per user request:
+        "i want the top 5 combos for every stat type"
+    `include_empty=True` (default) adds placeholder groups for every
+    discovered stat_family that produced 0 graded combos in this run,
+    with `status` set so the UI can render an explanatory row instead
+    of silently omitting the family.
 
     Designed to answer the exact question the operator keeps asking:
     "what are the best 3 threshold combos for each stat?". Sort and
@@ -1320,7 +1358,30 @@ async def top_per_family(run_id: str, request: Request,
         # Strip Mongo _id from nested docs
         for c in g.get("configs", []):
             c.pop("_id", None)
+        g["status"] = "graded"
         groups.append(g)
+
+    # ── Surface discovered-but-empty families ──────────────────────
+    # If the optimizer's `state.stat_families` lists 14 families but
+    # only 2 produced rows after the tier/bucket filter, the other 12
+    # would silently disappear from this endpoint. Add a placeholder
+    # group for each missing family so the UI can render an
+    # "insufficient data for this tier" message instead of pretending
+    # the family doesn't exist.
+    if include_empty:
+        state = run.get("state") or {}
+        discovered_families = list(state.get("stat_families", []) or [])
+        seen_families = {g["stat_family"] for g in groups}
+        for sf in sorted(set(discovered_families) - seen_families):
+            groups.append({
+                "stat_family": sf,
+                "odds_bucket": None,
+                "configs":     [],
+                "status":      ("no_rows_after_tier_filter"
+                                       if tier else "no_graded_combos"),
+            })
+        groups.sort(key=lambda g: (g["stat_family"],
+                                              g.get("odds_bucket") or ""))
     await audit_log(request, action="optimizer_top_per_family",
                        params={"run_id": run_id, "top_n": top_n, "tier": tier},
                        response_summary={"n_groups": len(groups)},

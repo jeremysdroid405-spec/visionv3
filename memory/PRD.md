@@ -1247,3 +1247,57 @@ python -m scripts.sgo.historical_full_pipeline_replay \
        --league MLB --start 2025-05-01 --end 2025-06-01 \
        --research-mode --multi-tier-gates
 ```
+
+
+### 2026-05-24 — Top-5 per family + every discovered family surfaced
+**Reported symptom:** "i want the top 5 combos for every stat type
+listed ... if the optimizer doesn't return 5 top combos for every
+stat type available consider it broken and failed."
+
+**Root cause:** Three independent issues compounded —
+1. `top_per_family` defaulted `top_n=3`. User wants 5.
+2. The endpoint only returned `(family, bucket)` groups that wrote
+   rows. Families that produced 0 graded combos were silently dropped
+   from the response so the UI never even tried to render them.
+3. `family_coverage` aggregation in `/results` had the same bug —
+   only families with results showed up; the 12 unrun families were
+   invisible.
+
+User's run `opt_0bc25fdc3d` (May 2025, MLB):
+- `body.tiers = ['safe_haven']` only (1 tier, not the 3 the UI showed
+  selected — likely state desync in the form)
+- 14 stat_families discovered → 5 buckets × 1 tier = 70 cells total
+- 66 cells empty (safe_haven = odds ≤ -300, very thin window for
+  most batter/pitcher props except pitcher_strikeouts)
+- Only `pitcher_strikeouts` produced graded combos → user saw 1
+  family in Top-25 + Top-3-per-family panels.
+
+**Fixes shipped (`optimizer.py` + `AdminTesting.jsx`):**
+1. `top_per_family` default `top_n=3 → 5`.
+2. `top_per_family` accepts `include_empty: bool = True`. When True,
+   appends a placeholder group for every discovered family that
+   produced 0 graded combos, with explanatory `status` field
+   (`no_rows_after_tier_filter` or `no_graded_combos`).
+3. `/optimizer/{run_id}/results.family_coverage` now ALWAYS includes
+   every family from `state.stat_families`. Empty families get
+   `status="no_rows_after_tier_filter"`; non-empty get
+   `status` in `{graded, all_skipped_low_sample}`.
+4. Frontend `AdminTesting.jsx`:
+   - Calls `top-per-family?top_n=5&include_empty=true`.
+   - Heading "Top 3 per Stat Family" → "Top 5 per Stat Family".
+   - Empty-family cards render at 55% opacity with a yellow
+     explanatory line: "⚠ no rows in selected tier — widen tiers
+     (all 3 checked) or expand window".
+
+**Tests:** +5 in `test_optimizer_family_visibility.py` pinning
+`top_n=5` default, `include_empty=True` default, endpoint path,
+merge-of-empty-families logic, and the user's strict contract
+("every discovered family MUST be represented"). Backend total:
+**32/32** passing across 7 optimizer + market-coverage + thin-combo
++ tier-routing + orchestrator + family-visibility suites.
+
+**Operational note:** User's safe_haven-only run also exposed a
+data-thinness issue. Recommend re-running with all 3 tiers selected
+in the UI to populate front_lines (5,457 graded rows in May 2025)
+and war_zone (129) — that alone will give Top-5-per-family real
+data for ~10 of the 14 discovered families.

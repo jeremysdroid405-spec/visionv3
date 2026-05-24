@@ -3048,7 +3048,7 @@ function OptimizerTab({ token }) {
               // and lives in a dedicated deterministic endpoint.
               let tpf = null;
               try {
-                const t = await apiFetch(token, `/optimizer/${runId}/top-per-family?top_n=3`);
+                const t = await apiFetch(token, `/optimizer/${runId}/top-per-family?top_n=5&include_empty=true`);
                 tpf = t.groups || [];
               } catch (e) { /* non-fatal */ }
               setResults({ ...rr, top_per_family: tpf });
@@ -3574,21 +3574,32 @@ function OptimizerTab({ token }) {
               background: SURFACE_3, border: `1px solid ${BORDER}`,
               borderLeft: `3px solid ${ACCENT_2}`, borderRadius: 6,
               padding: 10, marginBottom: 14,
-            }}>
-              <div style={{ fontSize: 10, color: ACCENT_2, textTransform: 'uppercase', marginBottom: 8 }}>
-                ★ Top 3 per Stat Family (deterministic · brute-force)
+            }}>              <div style={{ fontSize: 10, color: ACCENT_2, textTransform: 'uppercase', marginBottom: 8 }}>
+                ★ Top 5 per Stat Family (deterministic · brute-force)
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 10 }}>
                 {results.top_per_family.map((g, gi) => (
                   <div key={gi} data-testid={`opt-tpf-group-${g.stat_family}-${g.odds_bucket}`} style={{
                     background: SURFACE_2, border: `1px solid ${BORDER}`,
                     borderRadius: 6, padding: 8,
+                    opacity: g.status && g.status !== 'graded' ? 0.55 : 1,
                   }}>
                     <div style={{ fontSize: 11, marginBottom: 6, fontFamily: 'monospace' }}>
                       <code style={{ color: ACCENT }}>{g.stat_family}</code>
                       {' · '}
-                      <code style={{ color: ACCENT_3 }}>{g.odds_bucket}</code>
+                      <code style={{ color: ACCENT_3 }}>{g.odds_bucket || '—'}</code>
                     </div>
+                    {(!g.configs || g.configs.length === 0) ? (
+                      <div data-testid={`opt-tpf-empty-${g.stat_family}`}
+                           style={{ padding: '6px 0', fontSize: 10, fontFamily: 'monospace',
+                                    color: WARN, fontStyle: 'italic' }}>
+                        {g.status === 'no_rows_after_tier_filter'
+                          ? '⚠ no rows in selected tier — widen tiers (all 3 checked) or expand window'
+                          : g.status === 'no_graded_combos'
+                          ? '⚠ rows present but no combo passed min_bets · lower min_bets in launch form'
+                          : '⚠ no graded combos for this family'}
+                      </div>
+                    ) : null}
                     {(g.configs || []).map((c, ci) => (
                       <div key={ci} style={{
                         borderTop: ci > 0 ? `1px solid ${BORDER}` : 'none',
