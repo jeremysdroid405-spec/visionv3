@@ -2929,10 +2929,34 @@ function OptimizerTab({ token }) {
   const [outcomeCov, setOutcomeCov] = useState(null);
   const [joinDiag, setJoinDiag]   = useState(null);
   const [diagBusy, setDiagBusy]   = useState(false);
+  const [preflight, setPreflight] = useState(null);
+  const [preflightBusy, setPreflightBusy] = useState(false);
+  const [enforceTierGates, setEnforceTierGates] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cachedWindow, setCachedWindow] = useState(null);
   const [windowAutofilled, setWindowAutofilled] = useState(false);
   const pollRef = useRef(null);
+
+  const runPreflight = useCallback(async () => {
+    if (!token || !form.sport || !form.start || !form.end) return;
+    setPreflightBusy(true);
+    try {
+      const r = await apiFetch(token, '/optimizer/preflight', {
+        method: 'POST',
+        body: JSON.stringify({
+          sport: form.sport, start: form.start, end: form.end,
+          enforce_tier_gates: enforceTierGates,
+        }),
+      });
+      setPreflight(r);
+    } catch (e) { toast.error(`Preflight: ${e.message}`); }
+    finally { setPreflightBusy(false); }
+  }, [token, form.sport, form.start, form.end, enforceTierGates]);
+
+  // Auto-run preflight every time the window or strict-gates toggle changes
+  useEffect(() => {
+    if (token && form.start && form.end) runPreflight();
+  }, [token, form.sport, form.start, form.end, enforceTierGates, runPreflight]);
 
   const loadOutcomeCoverage = useCallback(async () => {
     if (!token || !form.sport || !form.start || !form.end) return;
@@ -2992,6 +3016,7 @@ function OptimizerTab({ token }) {
         filters: Object.fromEntries(OPTIMIZER_FILTERS
           .map(f => [f.key, form.filters[f.key] ? parseFloat(form.filters[f.key]) : null])
           .filter(([, v]) => v !== null && !Number.isNaN(v))),
+        enforce_tier_gates: enforceTierGates,
       };
       const res = await apiFetch(token, '/optimizer/run', {
         method: 'POST', body: JSON.stringify(body),
@@ -3199,6 +3224,52 @@ function OptimizerTab({ token }) {
             </Field>
           ))}
         </div>
+
+        {/* Preflight panel — shows the operator EXACTLY what the optimizer
+            will see for this window before they hit Run. Eliminates the
+            "succeeded but no results" failure mode. */}
+        {preflight && preflight.n_total_in_window != null && (
+          <div data-testid="opt-preflight" style={{
+            marginBottom: 12, padding: 10, borderRadius: 6,
+            background: preflight.diagnosis?.startsWith('⚠') ? `${WARN}14`
+                : preflight.diagnosis?.startsWith('Healthy') ? `${ACCENT_2}14`
+                : `${BAD}14`,
+            border: `1px solid ${preflight.diagnosis?.startsWith('⚠') ? WARN
+                : preflight.diagnosis?.startsWith('Healthy') ? ACCENT_2 : BAD}`,
+            fontSize: 11,
+          }}>
+            <div style={{ fontWeight: 700, fontSize: 10, textTransform: 'uppercase',
+                            color: preflight.diagnosis?.startsWith('⚠') ? WARN
+                                : preflight.diagnosis?.startsWith('Healthy') ? ACCENT_2 : BAD,
+                            marginBottom: 4 }}>
+              Preflight · {fmtInt(preflight.n_graded)}/{fmtInt(preflight.n_total_in_window)} graded ({preflight.pct_graded}%)
+            </div>
+            <div style={{ color: TEXT, marginBottom: 6, fontFamily: 'monospace' }}>{preflight.diagnosis}</div>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label data-testid="opt-enforce-toggle" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, color: TEXT }}>
+                <input type="checkbox" checked={enforceTierGates}
+                  onChange={(e) => setEnforceTierGates(e.target.checked)} />
+                <span>enforce_tier_gates (strict: only rows where gates passed)</span>
+              </label>
+              <Btn variant="ghost" onClick={runPreflight} disabled={preflightBusy} testId="opt-preflight-refresh">
+                {preflightBusy ? '…' : 'Refresh'}
+              </Btn>
+            </div>
+            {/* Per-tier breakdown */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, marginTop: 6 }}>
+              {(preflight.by_tier || []).map((t) => (
+                <div key={t.tier} style={{ background: SURFACE_2, border: `1px solid ${BORDER}`,
+                    borderRadius: 4, padding: 6, textAlign: 'center', fontSize: 10 }}>
+                  <div style={{ color: DIM, textTransform: 'uppercase' }}>{t.tier}</div>
+                  <div style={{ color: t.n_graded >= 30 ? ACCENT_2 : t.n_graded >= 5 ? WARN : BAD,
+                      fontFamily: 'monospace', fontWeight: 700 }}>
+                    {fmtInt(t.n_graded)}/{fmtInt(t.n_rows)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <Btn variant="primary" onClick={launch} testId="opt-launch-btn" disabled={busy || !token}>
           {busy ? 'Launching…' : '▶ Run Auto-Optimizer'}

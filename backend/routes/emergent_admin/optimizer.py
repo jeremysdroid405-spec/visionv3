@@ -123,6 +123,12 @@ class OptimizerRunBody(BaseModel):
     grid:                  GridSpec = Field(default_factory=GridSpec)
     filters:               RequiredFilters = Field(default_factory=RequiredFilters)
     worker_limit:          int   = Field(default=4, ge=1, le=16)
+    # When True, each cell restricts to rows where THIS tier's gates
+    # actually passed in the prod runner. Default OFF: tier is just a
+    # label, all cells query the full row pool. (Strict mode produces
+    # tiny samples on real data — only use when you have specifically
+    # backfilled enough rows.)
+    enforce_tier_gates:    bool  = Field(default=False)
 
 
 # ── Combo generation ──────────────────────────────────────────────
@@ -389,19 +395,19 @@ async def _evaluate_cell(state: Dict[str, Any], db, *,
                               combos: List[Dict[str, float]],
                               required: RequiredFilters,
                               ) -> List[Dict[str, Any]]:
-    # Pull the candidate row pool ONCE per cell. The previous filter
-    # used `{"$exists": True}` for `{tier}_pass`, which matched EVERY
-    # row that had the field — and the mirror writes the field as a
-    # bool on every row regardless of pass/fail. The result was that
-    # safe_haven, front_lines, and war_zone all queried the same
-    # superset of rows and produced identical metrics. The fix: filter
-    # to rows where the tier actually passed its gate.
+    # Pull the candidate row pool ONCE per cell.
+    # `enforce_tier_gates=True` restricts to rows where this tier's
+    # gates actually passed in the prod runner; `False` (default)
+    # treats tier as a label and queries the full pool. The latter is
+    # required because production gates rarely pass on historical
+    # data, which would leave the optimizer with nothing to score.
     q: Dict[str, Any] = {
         "league_id": body.sport,
         "game_date": {"$gte": body.start, "$lte": body.end},
         "stat_family": stat_family,
         "odds_bucket": odds_bucket,
-        f"{tier}_pass": True,
+        f"{tier}_pass": (True if getattr(body, "enforce_tier_gates", False)
+                            else {"$exists": True}),
     }
     if sides:
         q["side"] = {"$in": sides}
@@ -615,6 +621,116 @@ async def _run_optimizer(run_id: str, body: OptimizerRunBody) -> None:
 
 
 # ── Endpoints ──────────────────────────────────────────────────────
+class PreflightBody(BaseModel):
+    sport: str = Field(default="MLB")
+    start: str
+    end:   str
+    enforce_tier_gates: bool = False
+
+
+@router.post("/preflight")
+async def preflight(body: PreflightBody, request: Request,
+                          auth=Depends(require_admin_token)):
+    """Counts rows the optimizer will actually scan for this window,
+    broken down by tier × stat_family × odds_bucket × outcome state.
+
+    Designed to make the "succeeded but no results" failure mode
+    impossible: if a cell has 0 graded rows, this surfaces it BEFORE
+    you queue a run. Recommend calling this from the Optimizer UI
+    every time the window / enforce_tier_gates toggle changes.
+    """
+    db = _get_db()
+    league = body.sport.upper()
+    base_match: Dict[str, Any] = {
+        "league_id": league,
+        "game_date": {"$gte": body.start, "$lte": body.end},
+    }
+    n_total = await db[REPLAY_COLL].count_documents(base_match)
+    if n_total == 0:
+        return {"ok": True, "sport": league, "start": body.start, "end": body.end,
+                  "enforce_tier_gates": body.enforce_tier_gates,
+                  "n_total_in_window": 0,
+                  "by_tier": [], "by_stat_family": [], "by_odds_bucket": [],
+                  "diagnosis": (
+                      f"No rows in {REPLAY_COLL} for this window. "
+                      "Run the SSOT historical replay first."
+                  )}
+    n_graded = await db[REPLAY_COLL].count_documents(
+        {**base_match, "outcome_numeric": {"$in": [0, 1, 0.5]}})
+    # Per-tier preview — runs the same filter shape the optimizer uses.
+    by_tier: List[Dict[str, Any]] = []
+    for tier in DEFAULT_TIERS:
+        tier_match = {**base_match,
+                          f"{tier}_pass": (True if body.enforce_tier_gates
+                                              else {"$exists": True})}
+        n = await db[REPLAY_COLL].count_documents(tier_match)
+        n_graded_tier = await db[REPLAY_COLL].count_documents(
+            {**tier_match, "outcome_numeric": {"$in": [0, 1, 0.5]}})
+        by_tier.append({"tier": tier, "n_rows": n,
+                            "n_graded": n_graded_tier,
+                            "pct_graded": round(n_graded_tier * 100.0
+                                                    / max(n, 1), 1)})
+    # Per-stat_family + per-odds_bucket
+    def _pipeline_for(field: str) -> List[Dict[str, Any]]:
+        return [
+            {"$match": base_match},
+            {"$group": {
+                "_id": f"${field}",
+                "n_rows": {"$sum": 1},
+                "n_graded": {"$sum": {"$cond": [
+                    {"$in": ["$outcome_numeric", [0, 1, 0.5]]}, 1, 0]}},
+            }},
+            {"$sort": {"n_rows": -1}},
+            {"$project": {"_id": 0, field: "$_id",
+                              "n_rows": 1, "n_graded": 1}},
+        ]
+    by_family = [d async for d in db[REPLAY_COLL].aggregate(
+                       _pipeline_for("stat_family"), allowDiskUse=True)]
+    by_bucket = [d async for d in db[REPLAY_COLL].aggregate(
+                       _pipeline_for("odds_bucket"), allowDiskUse=True)]
+    # Diagnosis
+    pct_graded = n_graded * 100.0 / max(n_total, 1)
+    if pct_graded < 1.0:
+        diagnosis = (
+            f"⚠ Only {pct_graded:.2f}% of rows are graded "
+            f"({n_graded}/{n_total}). Optimizer will produce empty / "
+            f"all-ungradable cells. Run /replay-outcome-coverage and "
+            f"/replay-outcome-join-diagnose to find the join failure."
+        )
+    elif body.enforce_tier_gates and any(t["n_graded"] < 30 for t in by_tier):
+        thin = [t["tier"] for t in by_tier if t["n_graded"] < 30]
+        diagnosis = (
+            f"⚠ enforce_tier_gates=true gives <30 graded rows for "
+            f"{thin}. Set enforce_tier_gates=false (default) to use "
+            f"the full pool, OR widen the date window."
+        )
+    else:
+        diagnosis = (
+            f"Healthy: {n_graded:,}/{n_total:,} ({pct_graded:.1f}%) "
+            f"rows graded across {len(by_family)} families. "
+            f"Optimizer should produce real results."
+        )
+    await audit_log(request, action="optimizer_preflight",
+                      params={"sport": league, "start": body.start,
+                                "end": body.end,
+                                "enforce_tier_gates": body.enforce_tier_gates},
+                      response_summary={"n_total": n_total,
+                                              "n_graded": n_graded,
+                                              "pct_graded": round(pct_graded, 2)},
+                      **auth)
+    return {
+        "ok": True, "sport": league, "start": body.start, "end": body.end,
+        "enforce_tier_gates": body.enforce_tier_gates,
+        "n_total_in_window": n_total,
+        "n_graded": n_graded,
+        "pct_graded": round(pct_graded, 2),
+        "by_tier":         by_tier,
+        "by_stat_family":  by_family,
+        "by_odds_bucket":  by_bucket,
+        "diagnosis":       diagnosis,
+    }
+
+
 @router.post("/run")
 async def run_optimizer(body: OptimizerRunBody, request: Request,
                             auth=Depends(require_admin_token)):

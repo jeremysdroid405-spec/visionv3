@@ -703,3 +703,42 @@ python -m scripts.sgo.historical_full_pipeline_replay \
 # UNDER bets should swing from ~14% HR to a sensible value.
 ```
 
+
+### 2026-05-23 — Reverted tier-gate strict filter + Preflight UI
+**Reported symptom:** previous fix flipped `{tier}_pass: {"$exists":True}`
+→ `True`, which is semantically correct but produced "succeeded but no
+results" because production gates rarely pass on historical data.
+
+**Decision:** treat tier as a LABEL by default. The strict gate
+behavior is opt-in via `enforce_tier_gates: bool = False` on
+`OptimizerRunBody`. This is the pragmatic choice — the user has
+been blocked on real results for days; they can flip the toggle when
+they specifically want strict-gate analysis.
+
+**Shipped:**
+- `OptimizerRunBody.enforce_tier_gates` (default False).
+- `_evaluate_cell` switches between `{"$exists":True}` and `True`
+  based on the body flag.
+- **NEW endpoint** `POST /optimizer/preflight` returning:
+  `n_total_in_window`, `n_graded`, `pct_graded`, per-tier breakdown,
+  per-stat_family breakdown, per-odds_bucket breakdown, plus a
+  `diagnosis` string that explicitly identifies whether
+  (a) the join failed → run /replay-outcome-join-diagnose,
+  (b) strict-mode gives thin samples → toggle off,
+  (c) data looks healthy.
+- **Frontend** — the Optimizer launch panel now auto-runs the
+  preflight every time the sport/start/end/enforce_tier_gates
+  changes. Renders a red/amber/green banner with per-tier sample
+  counts above the Launch button. The operator sees BEFORE running
+  whether they'll get real results.
+- **Tests:** `tests/test_optimizer_preflight.py` (4 cases) pins the
+  default vs strict semantics, empty-window diagnosis, and the
+  "join failure" warning when pct_graded < 1%.
+
+Unit tests: 66/66. Backend total: 99/99 (4 new HTTP tests).
+
+**Operator should now see real results.** Hit "Run Auto-Optimizer"
+without flipping any toggles; the preflight banner above the button
+will tell you what to expect. If the banner is green, the run will
+produce actual ranked results.
+
