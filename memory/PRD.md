@@ -888,3 +888,65 @@ git pull && systemctl restart vision-backend
 
 Backend total: 41/41 across optimizer + mirror + preflight + diagnose.
 
+
+### 2026-05-23 — Grid audit: wildcards, data-driven enumeration, min_bets default
+**Verified directly against prod data:** 14 stat families exist with
+graded rows (some with 2,488 each), 6 odds buckets present. But the
+old optimizer was only surfacing 4 families and 3 buckets.
+
+**Root causes (3 grid-mechanics bugs):**
+
+1. **No wildcard threshold.** `DEFAULT_GRID["hr_l20_min"]` started at
+   0.55. Every combo applied all 6 axes. Families like `hits` and
+   `earned_runs`, whose L20 hit rates sit mostly below 55%, had ZERO
+   combos that left ≥ min_bets graded rows → silently dropped.
+   **Fix:** every numeric axis in `DEFAULT_GRID` now includes a
+   sentinel (`float("-inf")` for min-axes, `float("+inf")` for
+   max-axes). `_row_passes_combo` short-circuits the row-value check
+   when the threshold is the wildcard — even rows with null values
+   for that axis pass. So a single sweep can ask "best combo with
+   constraints" AND "best combo ignoring this axis" at the same time.
+
+2. **Hard-coded `DEFAULT_ODDS_BUCKETS`** that may not match the data.
+   **Fix:** the optimizer now `distinct()`s odds_buckets from the
+   actual replay collection for the window — same way it already
+   discovered stat_families. `odds_na` (rows with no odds) is
+   explicitly excluded since they can't produce a graded payout.
+
+3. **`min_bets=30` default** masked thin-but-real families. Lowered
+   to 15.
+
+**New endpoint** `POST /optimizer/grid-diagnose`:
+- Per axis (`hr_l20_min`, `hr_l10_min`, `hr_l5_min`, `cv_max`,
+  `edge_min`, `tp_min`):
+  - data percentiles (p10/p25/p50/p75/p90/p99)
+  - for each grid value, n_pass and pct_pass
+  - flagged when the most-strict value passes < 30 rows
+- Returns a `diagnosis` string ("⚠ N grid axis issues detected")
+  with actionable fix suggestions for each.
+
+**Tests (6 new in `test_optimizer_grid_diagnose.py`):**
+- `DEFAULT_GRID` includes wildcards on every axis
+- `_row_passes_combo` accepts null row values when threshold is wildcard
+- `_row_passes_combo` rejects null row values when threshold is real
+- `/grid-diagnose` returns per-threshold pass counts
+- `/grid-diagnose` flags an over-strict axis when n_pass < 30
+
+Backend total: 47/47 across optimizer + mirror + diagnose suites.
+
+**Operator runbook on prod:**
+```bash
+# 1. Pull + restart
+git pull && systemctl restart vision-backend
+
+# 2. Audit the grid directly (no UI needed):
+TOK="17808e1c13717b0d2170f6e1f023388d93740ff66f70ae1a"
+curl -sS -X POST "https://propvision.bet/api/emergent-admin/optimizer/grid-diagnose" \
+     -H "Content-Type: application/json" \
+     -H "X-Admin-Token: $TOK" -H "X-Agent-Id: e1-grid" \
+     -d '{"sport":"MLB","start":"2025-05-01","end":"2025-06-01"}' | jq
+
+# 3. Re-run the optimizer with strict tier gates. With wildcards in
+# the grid + min_bets=15, you should now see ALL 14 families.
+```
+

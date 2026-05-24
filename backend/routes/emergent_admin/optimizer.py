@@ -68,19 +68,31 @@ TESTING_DEFAULTS     = "admin_testing_defaults"
 MAX_INLINE_FAILURES = 50
 
 # Default grid values (used only when the request doesn't supply ranges)
+# Each axis includes a `None` sentinel (encoded here as `-inf` for `min_`
+# axes and `+inf` for `max_` axes) meaning "don't filter on this axis".
+# This lets a single grid sweep ask both
+#   (a) "what's the best combo with this constraint" AND
+#   (b) "what happens if I relax this constraint entirely"
+# without the operator having to manually run separate sweeps.
 DEFAULT_GRID: Dict[str, List[float]] = {
-    "hr_l20_min": [0.55, 0.65, 0.70, 0.75, 0.80],
-    "hr_l10_min": [0.55, 0.65, 0.70],
-    "hr_l5_min":  [0.50, 0.60, 0.70],
-    "cv_max":     [0.50, 0.70, 0.90, 1.10],
-    "edge_min":   [0.02, 0.05, 0.08, 0.10],
-    "tp_min":     [0.50, 0.55, 0.60, 0.65],
+    "hr_l20_min": [float("-inf"), 0.40, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75],
+    "hr_l10_min": [float("-inf"), 0.40, 0.50, 0.55, 0.60, 0.65, 0.70],
+    "hr_l5_min":  [float("-inf"), 0.40, 0.50, 0.55, 0.60, 0.65, 0.70],
+    "cv_max":     [float("+inf"), 0.50, 0.70, 0.90, 1.10, 1.30, 1.50],
+    "edge_min":   [float("-inf"), 0.00, 0.02, 0.05, 0.08, 0.10, 0.15],
+    "tp_min":     [float("-inf"), 0.45, 0.50, 0.55, 0.60, 0.65, 0.70],
 }
 
 DEFAULT_TIERS         = ["safe_haven", "front_lines", "war_zone"]
+# Must MATCH `scripts/sgo/historical_full_pipeline_replay._odds_bucket`
+# verbatim — those are the literal strings the SSOT pipeline writes
+# into the replay cache, and the optimizer matches on equality.
 DEFAULT_ODDS_BUCKETS  = [
     "odds_lt_-200", "odds_-200_-100", "odds_-100_-0",
     "odds_+0_+150", "odds_+150_+300", "odds_+300p",
+    # `odds_na` exists in the data (46 rows in the prod MLB window)
+    # but represents missing odds and can never produce a graded
+    # payout, so we deliberately don't sweep it.
 ]
 
 # In-process state — survives across requests as long as backend stays up.
@@ -117,7 +129,12 @@ class OptimizerRunBody(BaseModel):
     stat_families:         Optional[List[str]] = None    # None == all
     odds_buckets:          Optional[List[str]] = None    # None == all
     sides:                 List[str] = Field(default_factory=lambda: ["OVER", "UNDER"])
-    min_bets:              int   = Field(default=30, ge=1)
+    # The optimizer's row pool already shrinks aggressively when
+    # `enforce_tier_gates=True`. 30 was masking real families with
+    # 15-25 graded rows (e.g. earned_runs, rbis on prod MLB data).
+    # 15 is the working compromise — still filters statistical noise,
+    # but lets thin-but-real families surface.
+    min_bets:              int   = Field(default=15, ge=1)
     max_configs_per_cell:  int   = Field(default=500, ge=1, le=50_000)
     optimization_goal:     str   = Field(default="balanced")
     grid:                  GridSpec = Field(default_factory=GridSpec)
@@ -201,6 +218,13 @@ def _row_passes_combo(row: Dict[str, Any],
     for row_key, combo_key, is_max in pairs:
         thr = combo.get(combo_key)
         if thr is None:
+            continue
+        # Wildcard sentinel: ±inf means "don't filter on this axis".
+        # Skip the row-value check entirely so a missing row value
+        # doesn't kill a wildcard combo.
+        if is_max and thr == float("+inf"):
+            continue
+        if (not is_max) and thr == float("-inf"):
             continue
         v = row.get(row_key)
         if v is None:
@@ -485,15 +509,28 @@ async def _run_optimizer(run_id: str, body: OptimizerRunBody) -> None:
     state = _RUNS[run_id]
     try:
         state["status"] = "running"
-        # Discover families + buckets if user said "all"
+        # Discover families + buckets from the actual data window so
+        # we never silently drop a family or bucket that exists. The
+        # operator can still narrow via `body.stat_families` /
+        # `body.odds_buckets`; an unset value means "everything that
+        # exists for this window".
+        replay_window: Dict[str, Any] = {
+            "league_id": body.sport,
+            "game_date": {"$gte": body.start, "$lte": body.end},
+        }
         stat_families = body.stat_families
         if not stat_families:
-            stat_families = await db[REPLAY_COLL].distinct("stat_family", {
-                "league_id": body.sport,
-                "game_date": {"$gte": body.start, "$lte": body.end},
-            })
-            stat_families = [s for s in stat_families if s]
-        odds_buckets = body.odds_buckets or DEFAULT_ODDS_BUCKETS
+            stat_families = await db[REPLAY_COLL].distinct(
+                "stat_family", replay_window)
+            stat_families = sorted([s for s in stat_families if s])
+        odds_buckets = body.odds_buckets
+        if not odds_buckets:
+            odds_buckets = await db[REPLAY_COLL].distinct(
+                "odds_bucket", replay_window)
+            # Always exclude `odds_na` from sweeps — those rows have
+            # no graded payout (no odds → no ROI possible).
+            odds_buckets = sorted(
+                [b for b in odds_buckets if b and b != "odds_na"])
         cells: List[Tuple[str, str, str]] = [
             (t, sf, ob)
             for t in body.tiers
@@ -646,12 +683,120 @@ async def _run_optimizer(run_id: str, body: OptimizerRunBody) -> None:
         )
 
 
-# ── Endpoints ──────────────────────────────────────────────────────
+class GridDiagnoseBody(BaseModel):
+    sport: str = Field(default="MLB")
+    start: str
+    end:   str
+    grid: Optional[GridSpec] = None
+
+
 class PreflightBody(BaseModel):
     sport: str = Field(default="MLB")
     start: str
     end:   str
     enforce_tier_gates: bool = False
+
+
+@router.post("/grid-diagnose")
+async def grid_diagnose(body: GridDiagnoseBody, request: Request,
+                              auth=Depends(require_admin_token)):
+    """Per-axis 'how many rows pass each threshold value' breakdown.
+
+    Designed to make it obvious WHY a cell ends up with 0 graded rows
+    after the grid is applied. Reports for each axis the data's
+    actual percentiles, and for each grid value how many GRADED rows
+    pass that threshold. Flags axes whose most-strict value cuts
+    too aggressively.
+    """
+    db = _get_db()
+    league = body.sport.upper()
+    base_match: Dict[str, Any] = {
+        "league_id": league,
+        "game_date": {"$gte": body.start, "$lte": body.end},
+        "outcome_numeric": {"$in": [0, 1, 0.5]},
+    }
+    n_graded = await db[REPLAY_COLL].count_documents(base_match)
+    if n_graded == 0:
+        return {"ok": True, "sport": league, "start": body.start,
+                  "end": body.end, "n_graded": 0, "axes": {},
+                  "issues": [], "diagnosis": "No graded rows in this window."}
+    grid = _resolve_grid(body.grid) if body.grid else dict(DEFAULT_GRID)
+    axes = [
+        ("hit_rate_l20", "hr_l20_min", "min"),
+        ("hit_rate_l10", "hr_l10_min", "min"),
+        ("hit_rate_l5",  "hr_l5_min",  "min"),
+        ("cv",           "cv_max",     "max"),
+        ("edge",         "edge_min",   "min"),
+        ("model_probability", "tp_min", "min"),
+    ]
+    out: Dict[str, Any] = {}
+    issues: List[str] = []
+    for row_field, axis_key, kind in axes:
+        pipe = [
+            {"$match": {**base_match, row_field: {"$ne": None}}},
+            {"$group": {"_id": None, "values": {"$push": f"${row_field}"}}},
+        ]
+        agg = await db[REPLAY_COLL].aggregate(pipe).to_list(1)
+        if not agg:
+            out[axis_key] = {"row_field": row_field, "n_with_value": 0}
+            issues.append(f"`{row_field}` is null on all {n_graded} graded rows — "
+                            f"every combo using `{axis_key}` will pass 0 rows.")
+            continue
+        vals = sorted(agg[0]["values"])
+        n = len(vals)
+        if row_field.startswith("hit_rate") and vals and vals[-1] > 1.0:
+            vals = [v / 100.0 for v in vals]
+
+        def pct(p: float) -> float:
+            i = max(0, min(n - 1, int(round((n - 1) * p))))
+            return round(vals[i], 4)
+        per_threshold = []
+        for thr in grid.get(axis_key, []):
+            if (kind == "min" and thr == float("-inf")) or \
+               (kind == "max" and thr == float("+inf")):
+                per_threshold.append({"threshold": "wildcard",
+                                            "n_pass": n,
+                                            "pct_pass": 100.0})
+                continue
+            if kind == "min":
+                npass = sum(1 for v in vals if v >= thr)
+            else:
+                npass = sum(1 for v in vals if v <= thr)
+            per_threshold.append({
+                "threshold": thr, "n_pass": npass,
+                "pct_pass": round(npass * 100.0 / max(n, 1), 1),
+            })
+        numeric = [p for p in per_threshold if p["threshold"] != "wildcard"]
+        if numeric:
+            strict = (max(numeric, key=lambda x: x["threshold"])
+                          if kind == "min"
+                          else min(numeric, key=lambda x: x["threshold"]))
+            if strict["n_pass"] < 30:
+                issues.append(
+                    f"`{axis_key}` most-strict value {strict['threshold']} "
+                    f"passes only {strict['n_pass']} rows "
+                    f"({strict['pct_pass']}%). Widen grid for this axis.")
+        out[axis_key] = {
+            "row_field": row_field, "kind": kind, "n_with_value": n,
+            "data_percentiles": {
+                "p10": pct(0.10), "p25": pct(0.25), "p50": pct(0.50),
+                "p75": pct(0.75), "p90": pct(0.90), "p99": pct(0.99),
+            },
+            "grid_values": grid.get(axis_key),
+            "per_threshold": per_threshold,
+        }
+    await audit_log(request, action="optimizer_grid_diagnose",
+                       params={"sport": league, "start": body.start,
+                                 "end": body.end},
+                       response_summary={"n_graded": n_graded,
+                                               "issues": len(issues)},
+                       **auth)
+    return {
+        "ok": True, "sport": league, "start": body.start, "end": body.end,
+        "n_graded": n_graded, "axes": out, "issues": issues,
+        "diagnosis": ("Grid looks healthy" if not issues
+                          else f"⚠ {len(issues)} grid axis issues detected"),
+    }
 
 
 @router.post("/preflight")
