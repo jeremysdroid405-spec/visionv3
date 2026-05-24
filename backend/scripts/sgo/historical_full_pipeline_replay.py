@@ -643,8 +643,27 @@ async def _run(args: argparse.Namespace) -> int:
     dates = list(_date_iter(args.start, args.end))
     if args.limit_dates:
         dates = dates[: int(args.limit_dates)]
-    print(f"  scheduling {len(dates)} dates × {len(tiers)} tiers = "
-          f"{len(dates)*len(tiers)} runner calls")
+    # 2026-05-24 — Single-pass mode (default).
+    # Tiers are now ROUTING buckets (by odds range), NOT input filters.
+    # The optimizer and downstream UI route props to tiers based on
+    # `reference_odds` — matching the live runner's `resolve_target_tier`
+    # exactly. The historical orchestrator therefore only needs to do
+    # ONE Layer-4 gate-eval per date (using the most permissive tier so
+    # the model_outputs collection is populated for every prop). Use
+    # `--multi-tier-gates` if you specifically need the legacy SH/FL/WZ
+    # tier_pass booleans on the mirror rows (every one will be False on
+    # historical data anyway because `coverage_gate` requires live
+    # `book_count` — but the flag is preserved for parity audits).
+    runner_tiers = tiers if args.multi_tier_gates else ["war_zone"]
+    if args.multi_tier_gates:
+        print(f"  scheduling {len(dates)} dates × {len(runner_tiers)} tiers = "
+              f"{len(dates)*len(runner_tiers)} runner calls "
+              f"(multi-tier mode — legacy SH/FL/WZ gate-eval)")
+    else:
+        print(f"  scheduling {len(dates)} runner calls (single-pass mode — "
+              f"tier routing happens downstream by odds-range, not by "
+              f"3× gate-eval re-runs). Use --multi-tier-gates to restore "
+              f"the legacy 3-tier scan.")
 
     all_serials: List[str] = []
     grand = {"runs_ok": 0, "runs_failed": 0,
@@ -654,7 +673,7 @@ async def _run(args: argparse.Namespace) -> int:
 
     for gd in dates:
         snapshot_iso = f"{gd}T{args.snapshot_hour:02d}:00:00Z"
-        for tier in tiers:
+        for tier in runner_tiers:
             try:
                 summary = await run_production_replay(
                     db, sport="mlb",
@@ -737,6 +756,14 @@ def _parse() -> argparse.Namespace:
     p.add_argument("--start",           required=True)
     p.add_argument("--end",             required=True)
     p.add_argument("--tiers",           default=",".join(VALID_TIERS))
+    # 2026-05-24 — Tiers are now ROUTING buckets (by odds range), not
+    # input filters. The orchestrator does ONE runner pass per date by
+    # default (single-pass mode). Set this flag to restore the legacy
+    # 3× gate-eval per date used for SH/FL/WZ tier_pass booleans.
+    p.add_argument("--multi-tier-gates", action="store_true",
+                      dest="multi_tier_gates",
+                      help="Restore the legacy 3 runner calls per date "
+                            "(one per tier). Default is single-pass.")
     p.add_argument("--gate-path",       default="universal",
                       choices=VALID_GATE_PATHS)
     p.add_argument("--canonical-path",  action="store_true")

@@ -1201,3 +1201,49 @@ curl -sS "https://propvision.bet/api/emergent-admin/research/market-coverage-aud
 #   — these tell us EXACTLY why the engine drops them (likely
 #   PA-statcast hydration miss for pitchers on specific dates).
 ```
+
+
+### 2026-05-24 — Orchestrator single-pass mode (tiers route, don't filter)
+**Reported observation:** "we are still failing props for tiers
+instead of using it for routing. why are we doing a new scan for each
+tier. one scan and routed."
+
+User saw 32 dates × 3 tiers = 96 runner calls, every tier producing
+identical `scanned`/`W/L/P` counts with `qual=0` — confirming the
+3× per-date pattern was wasted work after the optimizer was
+converted to odds-range routing.
+
+**Fix:** `scripts/sgo/historical_full_pipeline_replay.py` now runs
+**single-pass** by default — ONE `run_production_replay()` call per
+date with `tier="war_zone"` (most permissive gate config). The
+mirror tolerates missing tier_evals and writes `tier_pass=False` for
+the un-scanned tiers (which they were anyway on historical data due
+to `coverage_gate` requiring live `book_count`). Tier routing now
+happens 100% downstream in:
+- The **optimizer** (via `_tier_odds_filter` — already shipped)
+- The UI Results panel (via odds-range buckets — to be wired)
+
+**Opt-in flag:** `--multi-tier-gates` restores the legacy 3-call
+behaviour for parity audits. Default OFF.
+
+**Operational impact:** 3× speedup on historical replay runs + 3×
+reduction in `mlb_propvision_full_pipeline_runs` row writes.
+
+**Tests:** +4 in `tests/test_orchestrator_single_pass.py` pinning
+single-pass default, opt-in multi-tier flag, runner_tiers collapse,
+and three-tier preservation in multi-mode. Total backend tests:
+**21/21** in this session (60+ pre-existing).
+
+**Operator runbook (after `git pull && systemctl restart`):**
+```bash
+# Single-pass (default, 32 calls instead of 96):
+python -m scripts.sgo.historical_full_pipeline_replay \
+       --league MLB --start 2025-05-01 --end 2025-06-01 \
+       --research-mode
+
+# Restore legacy 3-tier scan (only if you specifically need the
+# SH/FL/WZ tier_pass booleans for parity audit):
+python -m scripts.sgo.historical_full_pipeline_replay \
+       --league MLB --start 2025-05-01 --end 2025-06-01 \
+       --research-mode --multi-tier-gates
+```

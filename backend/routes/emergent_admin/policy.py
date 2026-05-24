@@ -224,7 +224,9 @@ ALLOWED_JOBS: Dict[str, Dict] = {
                   "--no-mirror-to-legacy", "--sample-diff",
                   "--continue-on-error",
                   # Research mode (2026-05-22)
-                  "--research-mode", "--skip-production-gates"],
+                  "--research-mode", "--skip-production-gates",
+                  # Single-pass mode (2026-05-24) — tiers route by odds
+                  "--multi-tier-gates"],
     },
     # 2026-05-21 — per-tier × per-stat_family threshold sweep over
     # the sgo_propvision_full_pipeline_replay collection.
