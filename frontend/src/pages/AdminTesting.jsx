@@ -2931,7 +2931,7 @@ function OptimizerTab({ token }) {
   const [diagBusy, setDiagBusy]   = useState(false);
   const [preflight, setPreflight] = useState(null);
   const [preflightBusy, setPreflightBusy] = useState(false);
-  const [enforceTierGates, setEnforceTierGates] = useState(false);
+  const [enforceTierGates, setEnforceTierGates] = useState(true);
   const [busy, setBusy] = useState(false);
   const [cachedWindow, setCachedWindow] = useState(null);
   const [windowAutofilled, setWindowAutofilled] = useState(false);

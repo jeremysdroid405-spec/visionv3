@@ -742,3 +742,54 @@ without flipping any toggles; the preflight banner above the button
 will tell you what to expect. If the banner is green, the run will
 produce actual ranked results.
 
+
+### 2026-05-23 — Optimizer scoring/consistency math fix + tier default ON
+**Reported symptom:** real graded data now (89.8%), but the scoring
+was still nonsense — a 53.3% HR / -0.8% ROI cell scored -150.23 and
+ended up in "Worst configs", while the actual top scoring cell was
+also negative. Plus all three tiers showed identical metrics for
+the same combo.
+
+**Two bugs:**
+
+1. **`daily_consistency` formula exploded.** Old code:
+   `1 - stddev(daily_pnl) / |mean(daily_pnl)|`. When daily PnL
+   averages near zero (profitable days cancel losing days), the
+   denominator collapses → consistency = -99.72 → score = -150.
+   **Fix:** redefine as *proportion of days with positive net PnL*.
+   Naturally bounded in `[0, 1]`. 1 = every day profitable,
+   0 = no day profitable. Defensive clamp in `_score()` so legacy
+   cells with the broken value also can't dominate the ranking.
+
+2. **`enforce_tier_gates` default OFF made tier meaningless.** When
+   all three tiers query the same row pool, they produce identical
+   metrics — defeating the whole point of having tier dimensions.
+   Data is now healthy enough that strict mode produces real
+   samples. **Fix:** default `enforce_tier_gates=True` on both
+   backend `OptimizerRunBody` and frontend toggle.
+
+**Shipped:**
+- `_evaluate_combo`: rewritten consistency calc; preserves
+  `daily_consistency: None` semantics when n_days < 2.
+- `_score`: clamps consistency to `[0, 1]` defensively to handle
+  legacy persisted cells with the old unbounded value.
+- `OptimizerRunBody.enforce_tier_gates: bool = True` (was False).
+- `AdminTesting.jsx`: enforceTierGates checkbox now starts ON.
+
+**Tests:** 4 new cases in `tests/test_optimizer_evaluate_combo.py`:
+- consistency bounded [0, 1] for mixed wins/losses
+- consistency = 1.0 when every day profitable
+- consistency = 0.0 when no day profitable
+- `_score` clamps a legacy unbounded value (-99.72) so it can't
+  drive the score below -10.
+
+Backend optimizer suite: 12/12. Unit total: 70/70.
+
+**Operator next step on prod:**
+```bash
+git pull && systemctl restart vision-backend
+# Re-run the optimizer. With enforce_tier_gates=True (now default)
+# each tier shows distinct sample sizes. Daily consistency is now in
+# [0,1] so a single noisy cell can't pollute the ranking.
+```
+

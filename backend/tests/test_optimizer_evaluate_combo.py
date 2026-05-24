@@ -146,3 +146,52 @@ def test_score_returns_none_for_legacy_pre_diagnostic_shape():
     metrics = {"n_bets": 80, "hit_rate": None, "roi": None,
                   "calibration_delta": None}
     assert _score(metrics, "balanced", baseline_n=50) is None
+
+
+# ── Daily consistency must be bounded ─────────────────────────────
+def test_daily_consistency_is_proportion_of_profitable_days():
+    """The previous formula (1 - stddev/|mean|) blew up to ~-100 when
+    daily mean was near zero, destroying the ranking. New definition:
+    proportion of days with positive net PnL ∈ [0, 1]."""
+    # 5 wins @ +100 odds = +1u, 5 losses = -1u, spread across 4 days
+    # so days look like [+2, -1, +1, -1] — 50% profitable.
+    rows = []
+    for i in range(5):
+        rows.append(_row(1, odds=+100, game_date=f"2025-04-0{(i%4)+1}"))
+    for i in range(5):
+        rows.append(_row(0, odds=+100, game_date=f"2025-04-0{(i%4)+1}"))
+    m = _evaluate_combo(rows, _empty_combo(), min_bets=5)
+    assert m["daily_consistency"] is not None
+    assert 0.0 <= m["daily_consistency"] <= 1.0
+
+
+def test_daily_consistency_one_when_every_day_profitable():
+    rows = [_row(1, odds=+100, game_date=f"2025-04-0{(i%5)+1}") for i in range(10)]
+    m = _evaluate_combo(rows, _empty_combo(), min_bets=5)
+    assert m["daily_consistency"] == 1.0
+
+
+def test_daily_consistency_zero_when_no_day_profitable():
+    rows = [_row(0, odds=+100, game_date=f"2025-04-0{(i%5)+1}") for i in range(10)]
+    m = _evaluate_combo(rows, _empty_combo(), min_bets=5)
+    assert m["daily_consistency"] == 0.0
+
+
+def test_score_clamps_legacy_unbounded_consistency():
+    """If an old cell document with the broken consistency value
+    (e.g. -99.72) is replayed through `_score`, the clamp must
+    prevent it from dominating the ranking."""
+    legacy_metrics = {"n_bets": 32, "n_graded": 30,
+                          "wins": 16, "losses": 14, "pushes": 0,
+                          "hit_rate": 0.533, "roi": -0.008,
+                          "calibration_delta": -0.153,
+                          "daily_consistency": -99.72,   # ← legacy bad
+                          "max_drawdown_units": 6.1,
+                          "profit_units": -0.25,
+                          "n_with_payout": 30}
+    s = _score(legacy_metrics, "balanced", baseline_n=50)
+    assert s is not None
+    # Without the clamp, score would be ~ -150. With the clamp,
+    # consistency contributes 0 and the score should be small in
+    # magnitude (driven mostly by cal_score and roi_score).
+    assert -10.0 < s < 10.0, f"score {s} not clamped"

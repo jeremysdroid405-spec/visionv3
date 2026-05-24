@@ -123,12 +123,12 @@ class OptimizerRunBody(BaseModel):
     grid:                  GridSpec = Field(default_factory=GridSpec)
     filters:               RequiredFilters = Field(default_factory=RequiredFilters)
     worker_limit:          int   = Field(default=4, ge=1, le=16)
-    # When True, each cell restricts to rows where THIS tier's gates
-    # actually passed in the prod runner. Default OFF: tier is just a
-    # label, all cells query the full row pool. (Strict mode produces
-    # tiny samples on real data — only use when you have specifically
-    # backfilled enough rows.)
-    enforce_tier_gates:    bool  = Field(default=False)
+    # When True (DEFAULT), each cell restricts to rows where THIS
+    # tier's gates actually passed in the prod runner. Set False to
+    # ignore the tier dimension and use the full row pool — useful
+    # when historical data is too sparse for the strict-gate sample
+    # to be meaningful.
+    enforce_tier_gates:    bool  = Field(default=True)
 
 
 # ── Combo generation ──────────────────────────────────────────────
@@ -322,10 +322,21 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
     avg_cv   = (sum_cv / cnt_cv) if cnt_cv else None
     avg_edge = (sum_edge / cnt_edge) if cnt_edge else None
     daily_vals = list(daily.values())
-    daily_consistency = (
-        1.0 - (_stddev(daily_vals) / (abs(sum(daily_vals) / len(daily_vals)) + 1e-9))
-        if len(daily_vals) >= 2 else None
-    )
+    # ── Daily consistency ────────────────────────────────────────────
+    # Previous formula: `1 - stddev / |mean|`. Blew up to massive
+    # negative values whenever daily PnL averaged near zero (profitable
+    # days cancelling losing days), because the denominator collapsed.
+    # That single metric then dominated `_score()` and produced
+    # rankings where a 53.3% HR / -0.8% ROI config "scored" -150.
+    # New definition: proportion of days with positive net PnL. Range
+    # is naturally [0, 1] (1 = every day profitable). Returned as
+    # `None` when there are < 2 days so we don't pretend to a stat we
+    # don't have.
+    if len(daily_vals) >= 2:
+        n_profitable = sum(1 for v in daily_vals if v > 0)
+        daily_consistency = n_profitable / len(daily_vals)
+    else:
+        daily_consistency = None
     max_dd = _max_drawdown(daily_vals)
     # Calibration delta = realized hit_rate - avg model TP. Positive means
     # model under-predicts; negative means model over-predicts.
@@ -367,7 +378,15 @@ def _score(metrics: Dict[str, Any], goal: str, baseline_n: int) -> Optional[floa
     hr   = metrics.get("hit_rate") or 0.0
     roi  = metrics.get("roi") or 0.0
     cal  = metrics.get("calibration_delta") or 0.0
-    cons = metrics.get("daily_consistency") or 0.0
+    cons = metrics.get("daily_consistency")
+    # Defensive: legacy cells with the old unbounded formula could
+    # store nonsensical values like -99.72. Clamp to [0, 1] which is
+    # the well-defined range of the new "proportion profitable days"
+    # metric. None → 0.0 (no signal).
+    if cons is None or not isinstance(cons, (int, float)):
+        cons = 0.0
+    else:
+        cons = max(0.0, min(1.0, float(cons)))
     dd   = metrics.get("max_drawdown_units") or 0.0
     n    = metrics.get("n_bets") or 0
     if goal == "hit_rate":
