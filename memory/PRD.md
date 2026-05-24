@@ -847,3 +847,44 @@ git pull && systemctl restart vision-backend
 # show identical numbers run-to-run, AND must agree with each other.
 ```
 
+
+### 2026-05-23 — Top-25 dedup + missing-family visibility
+**Reported symptoms:**
+1. Top-25 had the same logical config repeated 6× with different
+   `tp_min` values — visual noise from threshold combos that filter
+   to the IDENTICAL sample.
+2. Only 4-6 of 14 stat families showing — the other 8 were silently
+   dropped because all their combos failed `min_bets`.
+
+**Fixes (architecture, not math):**
+- `_evaluate_cell` stores a `sample_sig` tuple per result row:
+  `(n_bets, wins, losses, pushes, profit_units)`. Two combos with the
+  same sig produce identical filtered samples and are mathematically
+  equivalent.
+- `/results.top` + `/results.worst` + `/top-per-family` now run a
+  dedup aggregation grouping by `(tier, family, bucket, sample_sig)`
+  with `$first` keeping the row whose threshold dict sorts first.
+  Each surviving row carries a new `n_equivalent_combos` field so
+  the operator can see "this config + 5 threshold-twins".
+- `/results` now also returns `family_coverage[]` — for every
+  stat_family that produced any cell (graded or not), reports
+  `n_cells`, `n_graded_cells`, `best_score`, `best_n_bets`. Answers
+  "where are the other 9 families?" directly.
+
+**Frontend:**
+- New "Stat Family Coverage" card grid above Top-3-per-Family.
+  Green border = family has at least one graded cell. Red border =
+  every cell was skipped (min_bets too high or no graded rows).
+  Hint text: "lower min_bets or widen the window".
+- Top-25 rows now show "+N equiv" badge next to the threshold
+  display when `n_equivalent_combos > 1`.
+
+**Tests** (2 new in `tests/test_optimizer_determinism.py`):
+- `test_top_collapses_threshold_equivalent_samples`: seed 6 cells
+  with identical sample_sig + 1 unique; verify Top collapses to 2
+  rows with `n_equivalent_combos: 6` on the first.
+- `test_results_includes_family_coverage`: verify family_coverage
+  enumerates every persisted family.
+
+Backend total: 41/41 across optimizer + mirror + preflight + diagnose.
+

@@ -3518,6 +3518,53 @@ function OptimizerTab({ token }) {
             <ResultsRankTable rows={results.top || []} testId="opt-top-table" accent={ACCENT_2} />
           </div>
 
+          {/* Stat family coverage — surface ALL families even when
+              some are skipped due to thin samples. Answers the
+              operator's "where are the other 9 families?" question. */}
+          {results.family_coverage?.length > 0 && (
+            <div data-testid="opt-family-coverage" style={{
+              background: SURFACE_3, border: `1px solid ${BORDER}`,
+              borderLeft: `3px solid ${ACCENT_3}`, borderRadius: 6,
+              padding: 10, marginBottom: 14,
+            }}>
+              <div style={{ fontSize: 10, color: ACCENT_3, textTransform: 'uppercase', marginBottom: 8 }}>
+                Stat Family Coverage — {results.family_coverage.length} families tested
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 6 }}>
+                {results.family_coverage.map((f) => {
+                  const has = f.n_graded_cells > 0;
+                  return (
+                    <div key={f.stat_family} data-testid={`opt-famcov-${f.stat_family}`} style={{
+                      background: SURFACE_2, border: `1px solid ${has ? ACCENT_2 : BAD}`,
+                      borderRadius: 4, padding: 6, fontSize: 10, fontFamily: 'monospace',
+                    }}>
+                      <div style={{ color: has ? ACCENT_2 : BAD, fontWeight: 700 }}>
+                        {f.stat_family}
+                      </div>
+                      <div style={{ color: TEXT, marginTop: 2 }}>
+                        {f.n_graded_cells}/{f.n_cells} cells graded
+                      </div>
+                      {has && (
+                        <div style={{ color: DIM, marginTop: 1, fontSize: 9 }}>
+                          best score: {fmtNum(f.best_score, 2)} · n={fmtInt(f.best_n_bets)}
+                        </div>
+                      )}
+                      {!has && (
+                        <div style={{ color: BAD, fontSize: 9 }}>
+                          all skipped (min_bets too high or no graded rows)
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: 8, fontSize: 10, color: DIM }}>
+                Families shown in red have <code>0</code> graded cells. Lower
+                <code> min_bets</code> in the launch form OR widen the date window to surface them.
+              </div>
+            </div>
+          )}
+
           {/* Top-N per stat family — surfaces THE best combo(s) for
               each stat the user is actually testing. Mirrors the
               backend `/top-per-family` endpoint exactly so it can
@@ -3655,6 +3702,12 @@ function ResultsRankTable({ rows, testId, accent }) {
                   <td style={td}>{fmtNum(r.max_drawdown_units, 1)}u</td>
                   <td style={{ ...td, fontSize: 10, color: DIM }}>
                     hr_l20≥{fmtPct(r.thresholds?.hr_l20_min)} · cv≤{fmtNum(r.thresholds?.cv_max)} · edge≥{fmtPct(r.thresholds?.edge_min)} · tp≥{fmtPct(r.thresholds?.tp_min)}
+                    {r.n_equivalent_combos > 1 && (
+                      <span data-testid="opt-equiv-badge" title="Other threshold combinations produced the IDENTICAL filtered sample"
+                            style={{ marginLeft: 6, color: ACCENT_3, fontSize: 9 }}>
+                        +{r.n_equivalent_combos - 1} equiv
+                      </span>
+                    )}
                   </td>
                   <td style={{ ...td, color: TEXT, fontWeight: 600 }}>{fmtNum(r.score, 2)}</td>
                 </tr>

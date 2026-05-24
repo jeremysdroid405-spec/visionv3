@@ -458,6 +458,13 @@ async def _evaluate_cell(state: Dict[str, Any], db, *,
             **metrics, "score": score, "score_goal": body.optimization_goal,
             "overfit_flag": metrics["n_bets"] < overfit_threshold,
             "ungradable": ungradable,
+            # Sample fingerprint: rows whose threshold combos produce
+            # the IDENTICAL filtered sample (same n_bets, wins,
+            # losses, pushes, profit) are mathematically equivalent.
+            # Stored so the results endpoint can collapse duplicates.
+            "sample_sig": (metrics.get("n_bets"), metrics.get("wins"),
+                              metrics.get("losses"), metrics.get("pushes"),
+                              round(metrics.get("profit_units") or 0.0, 4)),
         })
     # Persist ALL evaluated combos for this cell — no per-cell cap.
     # The user explicitly wants brute-force, deterministic results,
@@ -918,24 +925,44 @@ async def get_results(run_id: str, request: Request,
     n_gradable = await db[OPTIMIZER_RESULTS].count_documents(graded_filter)
     n_ungradable = n_total - n_gradable if not include_ungradable else 0
 
-    # Deterministic sort across runs: primary by score, then by
-    # threshold dict (serialized). Without the secondary key, Mongo
-    # ties (e.g. 50 cells at score=-5.17) returned in insertion order,
-    # which varied between runs because cells finish out-of-order in
-    # parallel workers.
-    SORT_TIEBREAK = [("score", -1), ("tier", 1), ("stat_family", 1),
-                          ("odds_bucket", 1), ("n_bets", -1)]
-    SORT_TIEBREAK_ASC = [("score", 1), ("tier", 1), ("stat_family", 1),
-                              ("odds_bucket", 1), ("n_bets", -1)]
-    top_cur = db[OPTIMIZER_RESULTS].find(
-        graded_filter, {"_id": 0}
-    ).sort(SORT_TIEBREAK).skip(offset).limit(limit)
-    top = [d async for d in top_cur]
+    # ── Dedup pipeline ─────────────────────────────────────────────
+    # Many threshold combos in the grid filter to the same row set
+    # (e.g. nothing in the data discriminates between tp_min=0.50 and
+    # tp_min=0.55), producing 6-12 IDENTICAL rows in Top-25. Collapse
+    # by (tier, family, bucket, sample_sig) keeping the row with the
+    # most permissive thresholds (= the lowest combined threshold
+    # values) so the operator sees one canonical config per sample.
+    def _dedup_pipeline(extra_match: Optional[Dict[str, Any]] = None,
+                              sort_dir: int = -1) -> List[Dict[str, Any]]:
+        m = {**graded_filter}
+        if extra_match:
+            m.update(extra_match)
+        return [
+            {"$match": m},
+            {"$sort": {"score": sort_dir, "tier": 1, "stat_family": 1,
+                          "odds_bucket": 1, "n_bets": -1}},
+            {"$group": {
+                "_id": {"tier": "$tier", "stat_family": "$stat_family",
+                          "odds_bucket": "$odds_bucket",
+                          "sample_sig": "$sample_sig"},
+                "doc": {"$first": "$$ROOT"},
+                "n_equivalent_combos": {"$sum": 1},
+            }},
+            {"$replaceRoot": {"newRoot": {"$mergeObjects": [
+                "$doc", {"n_equivalent_combos": "$n_equivalent_combos"}]}}},
+            {"$project": {"_id": 0}},
+            {"$sort": {"score": sort_dir, "tier": 1, "stat_family": 1,
+                          "odds_bucket": 1, "n_bets": -1}},
+        ]
 
-    worst_cur = db[OPTIMIZER_RESULTS].find(
-        graded_filter, {"_id": 0}
-    ).sort(SORT_TIEBREAK_ASC).limit(limit)
-    worst = [d async for d in worst_cur]
+    top_pipeline = _dedup_pipeline(sort_dir=-1) + [
+        {"$skip": offset}, {"$limit": limit}]
+    top = [d async for d in db[OPTIMIZER_RESULTS].aggregate(
+        top_pipeline, allowDiskUse=True)]
+
+    worst_pipeline = _dedup_pipeline(sort_dir=1) + [{"$limit": limit}]
+    worst = [d async for d in db[OPTIMIZER_RESULTS].aggregate(
+        worst_pipeline, allowDiskUse=True)]
 
     ungradable_top: List[Dict[str, Any]] = []
     if not include_ungradable and n_ungradable > 0:
@@ -973,6 +1000,29 @@ async def get_results(run_id: str, request: Request,
     best_by_odds_bucket = await _best_by("odds_bucket")
     overfit_warnings    = [r for r in top if r.get("overfit_flag")]
 
+    # ── Family coverage ─────────────────────────────────────────────
+    # Surface which stat families produced graded cells vs were
+    # skipped (typically because every threshold combo left < min_bets
+    # graded rows). Answers the operator's "where are the other 9
+    # families?" question instead of silently dropping them.
+    fam_cov_pipeline = [
+        {"$match": {"run_id": run_id}},
+        {"$group": {
+            "_id": "$stat_family",
+            "n_cells": {"$sum": 1},
+            "n_graded_cells": {"$sum": {"$cond": [
+                {"$ne": ["$score", None]}, 1, 0]}},
+            "best_score": {"$max": "$score"},
+            "best_n_bets": {"$max": "$n_bets"},
+        }},
+        {"$sort": {"n_graded_cells": -1, "_id": 1}},
+        {"$project": {"_id": 0, "stat_family": "$_id",
+                          "n_cells": 1, "n_graded_cells": 1,
+                          "best_score": 1, "best_n_bets": 1}},
+    ]
+    family_coverage = [d async for d in db[OPTIMIZER_RESULTS].aggregate(
+        fam_cov_pipeline, allowDiskUse=True)]
+
     return {
         "ok": True, "run_id": run_id,
         "n_results": n_total,
@@ -986,6 +1036,7 @@ async def get_results(run_id: str, request: Request,
         "best_by_stat_family": best_by_stat_family,
         "best_by_odds_bucket": best_by_odds_bucket,
         "overfit_warnings": overfit_warnings,
+        "family_coverage": family_coverage,
     }
 
 
@@ -1011,9 +1062,22 @@ async def top_per_family(run_id: str, request: Request,
     match: Dict[str, Any] = {"run_id": run_id, "score": {"$ne": None}}
     if tier:
         match["tier"] = tier
-    # MongoDB aggregation: sort → group by (family, bucket) → push top-N
+    # MongoDB aggregation: dedupe equivalent samples FIRST, then group
+    # by (family, bucket) and slice top-N.
     pipeline = [
         {"$match": match},
+        # Collapse threshold-equivalent rows to one canonical config
+        # per sample_sig within each (tier, family, bucket).
+        {"$sort": {"score": -1, "tier": 1, "n_bets": -1}},
+        {"$group": {
+            "_id": {"tier": "$tier", "stat_family": "$stat_family",
+                      "odds_bucket": "$odds_bucket",
+                      "sample_sig": "$sample_sig"},
+            "doc": {"$first": "$$ROOT"},
+            "n_equivalent_combos": {"$sum": 1},
+        }},
+        {"$replaceRoot": {"newRoot": {"$mergeObjects": [
+            "$doc", {"n_equivalent_combos": "$n_equivalent_combos"}]}}},
         {"$sort": {"score": -1, "tier": 1, "n_bets": -1}},
         {"$group": {
             "_id": {"stat_family": "$stat_family",

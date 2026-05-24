@@ -118,6 +118,9 @@ async def _seed_run(db) -> str:
                     "n_bets": 30 + i, "n_graded": 30 + i,
                     "hit_rate": 0.5 + i * 0.01, "roi": -0.05 - i * 0.01,
                     "thresholds": {"tp_min": 0.50 + i * 0.05},
+                    # Unique sample_sig per config so the dedup
+                    # aggregation doesn't collapse our seed cells.
+                    "sample_sig": (30 + i, 15 + i, 15 - i, 0, -1.0 * i),
                 })
     await db["optimizer_run_results"].insert_many(docs)
     return rid
@@ -170,3 +173,64 @@ async def test_results_top_is_repeatable(db):
     for i, body in enumerate(responses[1:], start=2):
         assert body["top"] == first_top, (
             f"GET #{i} top differs — possible nondeterministic sort tiebreak")
+
+
+# ── Sample dedup ────────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_top_collapses_threshold_equivalent_samples(db):
+    """The user's complaint: same n_bets/HR/ROI repeated 6× in Top 25
+    with different threshold values that filter to the IDENTICAL row
+    set. Seed 6 cells with the same sample_sig and verify /results.top
+    collapses them to one with n_equivalent_combos: 6."""
+    rid = f"pytest_dedup_{uuid.uuid4().hex[:6]}"
+    await db["optimizer_runs"].insert_one({
+        "run_id": rid, "status": "succeeded", "_pytest_tag": TAG,
+    })
+    sig = (35, 20, 13, 2, 1.5)
+    docs = []
+    # 6 identical-sample configs differing only in tp_min
+    for i in range(6):
+        docs.append({
+            "_pytest_tag": TAG, "run_id": rid, "tier": "safe_haven",
+            "stat_family": "batter_strikeouts",
+            "odds_bucket": "odds_-200_-100",
+            "score": 0.06, "n_bets": 35, "n_graded": 33,
+            "hit_rate": 0.576, "roi": 0.062,
+            "thresholds": {"tp_min": 0.50 + i * 0.01},
+            "sample_sig": sig,
+        })
+    # Plus one truly different cell
+    docs.append({
+        "_pytest_tag": TAG, "run_id": rid, "tier": "safe_haven",
+        "stat_family": "batter_strikeouts",
+        "odds_bucket": "odds_-200_-100",
+        "score": 0.04, "n_bets": 34, "n_graded": 32,
+        "hit_rate": 0.563, "roi": 0.036,
+        "thresholds": {"tp_min": 0.60},
+        "sample_sig": (34, 19, 13, 2, 1.0),
+    })
+    await db["optimizer_run_results"].insert_many(docs)
+    async with AsyncClient(base_url=BACKEND_URL, timeout=20.0) as c:
+        r = await c.get(f"/api/emergent-admin/optimizer/{rid}/results",
+                            headers=_auth(), params={"limit": 25})
+    body = r.json()
+    # All 7 docs persisted, but `top` must collapse to 2 unique samples
+    assert body["n_results"] == 7
+    assert len(body["top"]) == 2
+    first = body["top"][0]
+    assert first["sample_sig"] == list(sig)
+    assert first["n_equivalent_combos"] == 6   # ← 6 threshold-twins collapsed
+
+
+@pytest.mark.asyncio
+async def test_results_includes_family_coverage(db):
+    """family_coverage must list every stat_family that produced ANY
+    cell, even if all of that family's cells are ungradable."""
+    rid = await _seed_run(db)
+    async with AsyncClient(base_url=BACKEND_URL, timeout=20.0) as c:
+        r = await c.get(f"/api/emergent-admin/optimizer/{rid}/results",
+                            headers=_auth(), params={"limit": 5})
+    body = r.json()
+    fams = {f["stat_family"] for f in body.get("family_coverage", [])}
+    assert "pitcher_strikeouts" in fams
+    assert "batter_strikeouts" in fams
