@@ -1060,3 +1060,74 @@ git pull && systemctl restart vision-backend
 # persistence view (planned) that highlights combos which recur
 # in the top-N of multiple monthly runs.
 ```
+
+
+### 2026-05-24 — Market coverage gap: 7 markets silently dropped + HR/SB probe
+**Reported symptom:** Optimizer Top 25 only ever showed 2 families
+(`pitcher_strikeouts`, `earned_runs`); user expected to see HR, hits,
+batter_walks, HRR, singles, stolen_bases, pitcher_outs, etc.
+
+**Diagnosis (cross-collection audit on prod, May 2025 MLB):**
+- Raw odds (`sgo_replay_alt_odds_raw`)  : **14 markets**
+- Outcomes (`sgo_pp_research_outcomes`) : 15 stat_families
+- Replay cache (optimizer's source)     : **only 7 markets** ← gap
+
+**7 markets present in raw odds but missing from the replay cache:**
+batter_hits_runs_rbis, batter_singles, batter_walks, fantasy_score,
+pitcher_hits_allowed, pitcher_outs, pitcher_pitches_thrown.
+
+**Root cause** — `_STAT_FAMILY_MAP` in
+`services/replay/mlb_feature_cache.py` was incomplete: missing
+`batter_singles`, `batter_walks`, `batter_home_runs`,
+`batter_stolen_bases`, `batter_doubles`. Without a family token the
+runner returned `None` for these market rows → silent drop. Plus the
+historical Odds-API ingest whitelist `_BASE_MARKETS` was missing the
+same 5 markets, so the underlying odds for those markets were never
+fetched against fresh windows in the first place.
+
+**Fixes shipped:**
+1. **Extended `_STAT_FAMILY_MAP`** with `batter_singles → singles`,
+   `batter_walks → batter_walks`, `batter_home_runs → home_runs`,
+   `batter_stolen_bases → stolen_bases`, `batter_doubles → doubles`.
+2. **Extended `_CANONICAL_FAMILY_TO_MODEL_KEY`** with
+   `batter_walks → walks` (distinct from `walks_allowed → pitcher_walks`).
+3. **Extended `_BASE_MARKETS`** in
+   `services/replay/historical_alt_odds_ingest.py` so future Odds-API
+   ingests fetch all 5 added markets.
+4. **NEW endpoint `GET /api/emergent-admin/research/market-coverage-audit`**
+   — surfaces every market present in raw odds but missing from the
+   replay cache, plus the precise drop reason (UNMAPPED vs MODEL
+   MISSING vs RUNTIME DROP). Makes future silent drops impossible to
+   miss.
+5. **NEW script `scripts.sgo.probe_mlb_markets`** — read-only SGO API
+   probe that dumps every market_id + statID SGO returns for an MLB
+   window. The user can run this on prod to confirm whether SGO's
+   PrizePicks feed carries `batter_home_runs` (HR was absent from
+   raw odds for May 2025 — needs confirmation upstream of our ingest).
+6. **Tests:** `tests/test_mlb_market_coverage.py` (6 cases): every
+   required market → family, alternates resolve identically, every
+   family has a supported model key, batter_walks vs walks_allowed
+   distinction, pitcher_outs key bridge, HRR plus-key bridge.
+   Backend total: 60+/60+ passing.
+
+**Operator runbook on prod (after `git pull && systemctl restart`):**
+```bash
+TOK="17808e1c13717b0d2170f6e1f023388d93740ff66f70ae1a"
+
+# 1. Audit market coverage before rebuilding
+curl -sS "https://propvision.bet/api/emergent-admin/research/market-coverage-audit?sport=MLB&start=2025-05-01&end=2025-05-31" \
+     -H "X-Admin-Token: $TOK" | jq
+
+# 2. Probe SGO directly for HR / SB availability
+python -m scripts.sgo.probe_mlb_markets \
+       --start=2025-05-01 --end=2025-05-03 \
+       --max-events=100 --save=/tmp/mlb_market_probe.json
+
+# 3. If HR appears in step 2 — re-run reshape + replay so it lands
+python -m scripts.sgo.reshape_sgo_to_replay_odds --league MLB \
+       --start 2025-05-01 --end 2025-05-31
+python -m scripts.sgo.historical_full_pipeline_replay --league MLB \
+       --start 2025-05-01 --end 2025-05-31 --research-mode
+
+# 4. Re-run the optimizer — Top 25 should now span 10-14 families
+```

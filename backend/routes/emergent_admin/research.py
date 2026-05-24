@@ -774,3 +774,149 @@ async def replay_outcome_join_diagnose(
         "diagnosis":             diagnosis,
         "sample_mismatches":     first_mismatch,
     }
+
+
+# ── Market coverage audit ───────────────────────────────────────────
+#
+# Surfaces silent market drops between the raw-odds → replay-cache →
+# outcomes pipeline so the operator can see at a glance WHICH markets
+# the optimizer is being starved on.  The May-2025 audit found 7
+# markets present in raw odds but missing from the replay cache (e.g.
+# batter_singles, batter_walks, fantasy_score, pitcher_pitches_thrown,
+# batter_hits_runs_rbis, pitcher_hits_allowed, pitcher_outs).  Some
+# were unmapped (`_STAT_FAMILY_MAP` miss); others were dropped at
+# `model.feature_cols` lookup.  This endpoint surfaces all of them.
+RAW_ODDS_COLL        = "sgo_replay_alt_odds_raw"
+OUTCOMES_COLL        = "sgo_pp_research_outcomes"
+REPLAY_CACHE_COLL    = "sgo_propvision_full_pipeline_replay"
+
+
+@router.get("/market-coverage-audit")
+async def market_coverage_audit(
+    sport: str = Query("MLB"),
+    start: str = Query(...),
+    end:   str = Query(...),
+    request: Request = None,
+    auth=Depends(require_admin_token),
+):
+    """Cross-collection market audit.
+
+    Returns markets present in each pipeline stage for the window:
+      - raw_odds            (sgo_replay_alt_odds_raw)
+      - replay_cache        (sgo_propvision_full_pipeline_replay)
+      - outcomes            (sgo_pp_research_outcomes; aggregated by stat_family)
+      - model_supported     (services.mlb_high_friction_model.MLB_STAT_TYPES)
+    Plus a `drops` list explaining each missing-in-pipeline market.
+    """
+    db = _get_db()
+    league = sport.upper()
+    sport_canonical = "mlb" if league == "MLB" else league.lower()
+    window = {"game_date": {"$gte": start, "$lte": end}}
+
+    # Raw odds: `sport` field is lowercase
+    raw_markets = sorted(
+        m for m in await db[RAW_ODDS_COLL].distinct(
+            "market", {**window, "sport": sport_canonical}) if m)
+
+    # Replay cache: `league_id` is uppercase, has `market` field
+    cache_markets = sorted(
+        m for m in await db[REPLAY_CACHE_COLL].distinct(
+            "market", {**window, "league_id": league}) if m)
+
+    # Outcomes: uses `stat_family` (no `market`)
+    outcomes_families = sorted(
+        f for f in await db[OUTCOMES_COLL].distinct(
+            "stat_family", {**window, "league_id": league}) if f)
+
+    # What the live model supports.
+    try:
+        from services.mlb_high_friction_model import MLBHighFrictionModel
+        model_supported = sorted(MLBHighFrictionModel.MLB_STAT_TYPES)
+    except Exception:  # noqa: BLE001
+        model_supported = []
+
+    # What the runner's market→family map covers.
+    try:
+        from services.replay.mlb_feature_cache import (
+            _STAT_FAMILY_MAP, _CANONICAL_FAMILY_TO_MODEL_KEY,
+        )
+        family_map = dict(_STAT_FAMILY_MAP)
+        canonical_to_model = dict(_CANONICAL_FAMILY_TO_MODEL_KEY)
+    except Exception:  # noqa: BLE001
+        family_map = {}
+        canonical_to_model = {}
+
+    # Per-market drop analysis. For each raw market: is it mapped?
+    # Does the mapped family resolve to a model key the model has?
+    # Does it show up in the cache for this window?
+    drops: List[Dict[str, Any]] = []
+    for m in raw_markets:
+        canonical_m = m[: -len("_alternate")] if m.endswith("_alternate") else m
+        in_cache = m in cache_markets or canonical_m in cache_markets
+        family = family_map.get(canonical_m)
+        model_key = canonical_to_model.get(family, family) if family else None
+        model_has = bool(model_key and model_key in model_supported)
+        if in_cache:
+            continue  # not a drop
+        reason: str
+        if not family:
+            reason = ("UNMAPPED — add to "
+                          "services.replay.mlb_feature_cache._STAT_FAMILY_MAP")
+        elif not model_has:
+            reason = (f"MODEL MISSING — family={family!r} resolves to "
+                          f"model_key={model_key!r} but MLB-HF model has no "
+                          f"such pkl")
+        else:
+            reason = ("RUNTIME DROP — mapped and model has key, but runner "
+                          "produced no output rows for this window (engine "
+                          "skipped → check predict()/feature cache hydration)")
+        drops.append({
+            "market":     m,
+            "canonical":  canonical_m,
+            "family":     family,
+            "model_key":  model_key,
+            "model_supported": model_has,
+            "reason":     reason,
+        })
+
+    # Build a clean summary diagnosis.
+    n_drop_unmapped     = sum(1 for d in drops if d["reason"].startswith("UNMAPPED"))
+    n_drop_model_missing = sum(1 for d in drops
+                                       if d["reason"].startswith("MODEL"))
+    n_drop_runtime      = sum(1 for d in drops if d["reason"].startswith("RUNTIME"))
+    pieces = []
+    if not drops:
+        diagnosis = (f"✓ All {len(raw_markets)} raw-odds markets reach "
+                          f"the replay cache for this window.")
+    else:
+        if n_drop_unmapped:
+            pieces.append(f"{n_drop_unmapped} unmapped (config fix)")
+        if n_drop_model_missing:
+            pieces.append(f"{n_drop_model_missing} no model (train or skip)")
+        if n_drop_runtime:
+            pieces.append(
+                f"{n_drop_runtime} runtime-dropped (investigate predict())")
+        diagnosis = (
+            f"⚠ {len(drops)}/{len(raw_markets)} markets present in raw "
+            f"odds are missing from the replay cache: "
+            + ", ".join(pieces) + ".")
+
+    await audit_log(request, action="market_coverage_audit",
+                       params={"sport": league, "start": start, "end": end},
+                       response_summary={"n_raw": len(raw_markets),
+                                              "n_cache": len(cache_markets),
+                                              "n_drops": len(drops)},
+                       **auth)
+    return {
+        "ok":               True,
+        "sport":            league,
+        "start":            start,
+        "end":              end,
+        "raw_odds_markets": raw_markets,
+        "replay_cache_markets": cache_markets,
+        "outcomes_families":    outcomes_families,
+        "model_supported":      model_supported,
+        "drops":                drops,
+        "n_drops":              len(drops),
+        "diagnosis":            diagnosis,
+    }

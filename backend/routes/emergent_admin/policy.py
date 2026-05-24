@@ -115,6 +115,17 @@ ALLOWED_JOBS: Dict[str, Dict] = {
         "enabled": True,
         "args": ["--start", "--end", "--max-events", "--save-samples"],
     },
+    # 2026-05-24 — MLB market-availability probe. Read-only against SGO.
+    # Dumps every market_id + statID returned for a MLB window so the
+    # operator can confirm whether HR / SB / pitches_thrown / fantasy
+    # are present in SGO's PrizePicks-anchored feed before chasing
+    # ingest bugs.
+    "scripts.sgo.probe_mlb_markets": {
+        "label": "Read-only MLB SGO market probe (HR / SB / pitch count audit)",
+        "writes_to": "(read-only)",
+        "enabled": True,
+        "args": ["--start", "--end", "--max-events", "--save"],
+    },
     "scripts.sgo.build_historical_consensus_probabilities": {
         "label": "Enrich PP-anchored props with consensus probabilities",
         "writes_to": "sgo_pp_research_core_enriched (PROTECTED) — locked OFF",

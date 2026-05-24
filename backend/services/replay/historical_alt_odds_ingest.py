@@ -63,6 +63,11 @@ _BASE_MARKETS = [
     "batter_rbis",
     "batter_hits_runs_rbis",
     "batter_strikeouts",
+    "batter_singles",        # 2026-05-24 — model has it, was missing
+    "batter_walks",          # 2026-05-24 — model has it (`walks`), was missing
+    "batter_home_runs",      # 2026-05-24 — model has it, was missing
+    "batter_stolen_bases",   # 2026-05-24 — model has it, was missing
+    "batter_doubles",        # 2026-05-24 — model has it, was missing
     "pitcher_strikeouts",
     "pitcher_hits_allowed",
     "pitcher_walks",

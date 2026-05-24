@@ -76,6 +76,11 @@ _STAT_FAMILY_MAP: Dict[str, str] = {
     "batter_rbis":              "rbis",
     "batter_hits_runs_rbis":    "hits_runs_rbis",
     "batter_strikeouts":        "batter_strikeouts",  # ← was "strikeouts"
+    "batter_singles":           "singles",     # 2026-05-24
+    "batter_walks":             "batter_walks", # 2026-05-24
+    "batter_home_runs":         "home_runs",    # 2026-05-24 (no MLB rows yet but mapped)
+    "batter_stolen_bases":      "stolen_bases", # 2026-05-24 (no MLB rows yet but mapped)
+    "batter_doubles":           "doubles",      # 2026-05-24
     "pitcher_strikeouts":       "pitcher_strikeouts",
     "pitcher_hits_allowed":     "hits_allowed",       # ← matches SSOT
     "pitcher_walks":            "walks_allowed",      # ← was "pitcher_walks"
@@ -155,6 +160,7 @@ _PITCHER_FAMILIES = {
 # go away.
 _CANONICAL_FAMILY_TO_MODEL_KEY: Dict[str, str] = {
     "batter_strikeouts": "strikeouts",
+    "batter_walks":      "walks",            # 2026-05-24 — batter BB
     "walks_allowed":     "pitcher_walks",
     "hits_allowed":      "hits_allowed",
     "hits_runs_rbis":    "hits+runs+rbis",
