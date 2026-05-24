@@ -2932,6 +2932,9 @@ function OptimizerTab({ token }) {
   const [preflight, setPreflight] = useState(null);
   const [preflightBusy, setPreflightBusy] = useState(false);
   const [enforceTierGates, setEnforceTierGates] = useState(false);
+  // 2026-05-24 — Multi-book universe filter. "any" = best-available
+  // (rec); other values filter to a single book or to multi-book consensus.
+  const [bookFilter, setBookFilter] = useState('any');
   const [busy, setBusy] = useState(false);
   const [cachedWindow, setCachedWindow] = useState(null);
   const [windowAutofilled, setWindowAutofilled] = useState(false);
@@ -2946,17 +2949,18 @@ function OptimizerTab({ token }) {
         body: JSON.stringify({
           sport: form.sport, start: form.start, end: form.end,
           enforce_tier_gates: enforceTierGates,
+          book_filter: bookFilter,
         }),
       });
       setPreflight(r);
     } catch (e) { toast.error(`Preflight: ${e.message}`); }
     finally { setPreflightBusy(false); }
-  }, [token, form.sport, form.start, form.end, enforceTierGates]);
+  }, [token, form.sport, form.start, form.end, enforceTierGates, bookFilter]);
 
-  // Auto-run preflight every time the window or strict-gates toggle changes
+  // Auto-run preflight every time the window / strict-gates / book filter changes
   useEffect(() => {
     if (token && form.start && form.end) runPreflight();
-  }, [token, form.sport, form.start, form.end, enforceTierGates, runPreflight]);
+  }, [token, form.sport, form.start, form.end, enforceTierGates, bookFilter, runPreflight]);
 
   const loadOutcomeCoverage = useCallback(async () => {
     if (!token || !form.sport || !form.start || !form.end) return;
@@ -3017,6 +3021,7 @@ function OptimizerTab({ token }) {
           .map(f => [f.key, form.filters[f.key] ? parseFloat(form.filters[f.key]) : null])
           .filter(([, v]) => v !== null && !Number.isNaN(v))),
         enforce_tier_gates: enforceTierGates,
+        book_filter: bookFilter,
       };
       const res = await apiFetch(token, '/optimizer/run', {
         method: 'POST', body: JSON.stringify(body),
@@ -3251,6 +3256,22 @@ function OptimizerTab({ token }) {
             </div>
             <div style={{ color: TEXT, marginBottom: 6, fontFamily: 'monospace' }}>{preflight.diagnosis}</div>
             <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label data-testid="opt-book-filter" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: TEXT }}>
+                <span>Book filter:</span>
+                <select data-testid="opt-book-filter-select"
+                        value={bookFilter}
+                        onChange={(e) => setBookFilter(e.target.value)}
+                        style={{ background: SURFACE_3, color: TEXT, border: `1px solid ${BORDER}`, padding: '2px 6px', fontSize: 11, fontFamily: 'monospace' }}>
+                  <option value="any">Best Available (all books)</option>
+                  <option value="pp_only">PrizePicks only</option>
+                  <option value="dk_only">DraftKings only</option>
+                  <option value="fd_only">FanDuel only</option>
+                  <option value="mgm_only">BetMGM only</option>
+                  <option value="caesars_only">Caesars only</option>
+                  <option value="bol_only">BetOnline only</option>
+                  <option value="multi_book">Multi-book consensus (≥2 books)</option>
+                </select>
+              </label>
               <label data-testid="opt-enforce-toggle" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, color: TEXT }}>
                 <input type="checkbox" checked={enforceTierGates}
                   onChange={(e) => setEnforceTierGates(e.target.checked)} />

@@ -88,6 +88,32 @@ def _tier_odds_filter(tier: str) -> Dict[str, Any]:
     return {"_unknown_tier_": tier}
 
 
+# 2026-05-24 — Multi-book universe filter helper.
+# Translates `OptimizerRunBody.book_filter` into the Mongo predicate
+# applied alongside the tier-odds filter in `_evaluate_cell` and
+# `/preflight`. Returns {} for "any" (no filter).
+_BOOK_FILTER_MAP: Dict[str, Dict[str, Any]] = {
+    "any":            {},
+    "pp_only":        {"playable_on_pp":      True},
+    "dk_only":        {"playable_on_dk":      True},
+    "fd_only":        {"playable_on_fd":      True},
+    "mgm_only":       {"playable_on_mgm":     True},
+    "caesars_only":   {"playable_on_caesars": True},
+    "bol_only":       {"playable_on_bol":     True},
+}
+
+
+def _book_filter_clause(book_filter: str) -> Dict[str, Any]:
+    """Returns the Mongo clause for the requested book filter.
+    `multi_book` requires `available_books` length ≥ 2 (consensus
+    strength) — implemented via a `$expr` because Mongo doesn't have
+    a clean shorthand for "array length ≥ N"."""
+    if book_filter == "multi_book":
+        return {"$expr": {"$gte": [{"$size": {"$ifNull":
+                                                            ["$available_books", []]}}, 2]}}
+    return dict(_BOOK_FILTER_MAP.get(book_filter, {}))
+
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -188,6 +214,23 @@ class OptimizerRunBody(BaseModel):
     # always fails. Default OFF per user instruction
     # ("not reject, just create different buckets").
     enforce_tier_gates:    bool  = Field(default=False)
+    # 2026-05-24 — Multi-book universe filter. The reshape pipeline
+    # now flows EVERY book's rows into `sgo_propvision_full_pipeline_replay`
+    # (anchor priority: PP → DK → FD → MGM → Caesars → BOL). This
+    # filter lets the operator slice the optimizer to a single book
+    # (or "any" / "best_available"). Default "any" → multi-book.
+    # Possible values:
+    #   "any"            — all rows (default; "Best Available" mode)
+    #   "pp_only"        — playable_on_pp = True
+    #   "dk_only"        — playable_on_dk = True
+    #   "fd_only"        — playable_on_fd = True
+    #   "mgm_only"       — playable_on_mgm = True
+    #   "caesars_only"   — playable_on_caesars = True
+    #   "bol_only"       — playable_on_bol = True
+    #   "multi_book"     — len(available_books) >= 2 (consensus
+    #                      strength filter — props at least 2 books
+    #                      are willing to take)
+    book_filter:           str   = Field(default="any")
 
 
 # ── Combo generation ──────────────────────────────────────────────
@@ -498,6 +541,7 @@ async def _evaluate_cell(state: Dict[str, Any], db, *,
         "stat_family": stat_family,
         "odds_bucket": odds_bucket,
         **_tier_odds_filter(tier),
+        **_book_filter_clause(getattr(body, "book_filter", "any")),
     }
     if getattr(body, "enforce_tier_gates", False):
         q[f"{tier}_pass"] = True
@@ -879,6 +923,7 @@ async def preflight(body: PreflightBody, request: Request,
     base_match: Dict[str, Any] = {
         "league_id": league,
         "game_date": {"$gte": body.start, "$lte": body.end},
+        **_book_filter_clause(getattr(body, "book_filter", "any")),
     }
     n_total = await db[REPLAY_COLL].count_documents(base_match)
     if n_total == 0:

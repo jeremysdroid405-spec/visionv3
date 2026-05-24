@@ -328,6 +328,18 @@ def reshape_row(d: Dict[str, Any], now: datetime) -> tuple[Optional[Dict[str, An
         "_odds_source": odds_src,
         "_sgo_consensus_probability": d.get("consensus_probability"),
         "_sgo_best_book_probability": d.get("best_book_probability"),
+        # 2026-05-24 — Multi-book universe metadata. Propagated from
+        # `sgo_pp_research_core` so the optimizer + UI can filter
+        # by anchor book or by playability per book without re-joins.
+        "anchor_book":      d.get("anchor_book") or book,
+        "anchor_source":    d.get("anchor_source"),
+        "available_books":  d.get("available_books") or [],
+        "playable_on_pp":      bool(d.get("playable_on_pp")),
+        "playable_on_dk":      bool(d.get("playable_on_dk")),
+        "playable_on_fd":      bool(d.get("playable_on_fd")),
+        "playable_on_mgm":     bool(d.get("playable_on_mgm")),
+        "playable_on_caesars": bool(d.get("playable_on_caesars")),
+        "playable_on_bol":     bool(d.get("playable_on_bol")),
     }
     return row, None
 

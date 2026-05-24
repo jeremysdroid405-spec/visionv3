@@ -41,7 +41,65 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import UpdateOne, ASCENDING
 
 OUT_COLL = "sgo_pp_research_core"
-ANCHOR_BOOK = "prizepicks"
+
+# 2026-05-24 — Multi-book market universe (replaces single-PP anchor).
+#
+# Previously this script hard-filtered `{"books.book_id":"prizepicks"}` which
+# silently destroyed entire prop families (HR, SB, doubles, triples) that
+# PrizePicks doesn't carry historically. Per the architecture brief, we are
+# evolving PropVision from "PP-only optimizer" to "universal sportsbook
+# intelligence" — PP is one of N books, not the gatekeeper.
+#
+# Anchor priority: per-row, the FIRST book in `ANCHOR_PRIORITY` that offers
+# a quote becomes the anchor. PP remains first so existing PP-anchored
+# rows are byte-identical to before. The other books are added in
+# rank-of-coverage order observed in prod (DK > FD > MGM > Caesars > BOL).
+# Any other books we ingest are still kept in `books` and `available_books`
+# but only become the anchor if NONE of the priority books offer the line.
+ANCHOR_BOOK = "prizepicks"   # legacy alias — kept for backward compat
+ANCHOR_PRIORITY: List[str] = [
+    "prizepicks",
+    "draftkings",
+    "fanduel",
+    "betmgm",
+    "caesars",
+    "betonlineag",
+    "betonline",  # SGO sometimes uses this spelling
+]
+# Used to populate `playable_on_*` flags so the optimizer UI can filter
+# without re-querying.
+_PLAYABLE_FLAG_MAP: Dict[str, str] = {
+    "prizepicks":   "playable_on_pp",
+    "draftkings":   "playable_on_dk",
+    "fanduel":      "playable_on_fd",
+    "betmgm":       "playable_on_mgm",
+    "caesars":      "playable_on_caesars",
+    "betonlineag":  "playable_on_bol",
+    "betonline":    "playable_on_bol",
+}
+
+
+def _pick_anchor(seen_book: Dict[str, Dict[str, Any]]
+                       ) -> tuple[Optional[str], Dict[str, Any], str]:
+    """Apply `ANCHOR_PRIORITY` to a per-row dict of books. Returns
+    (book_id, anchor_quote, source_tag).
+
+    `source_tag` is one of:
+      - `"priority"` — chosen from `ANCHOR_PRIORITY`
+      - `"fallback_first_available"` — no priority book had a quote;
+        we used whichever book did (sorted alphabetically for
+        determinism)
+      - `"none"` — no quote at all (caller should skip)
+    """
+    for bid in ANCHOR_PRIORITY:
+        if bid in seen_book:
+            return bid, seen_book[bid], "priority"
+    if not seen_book:
+        return None, {}, "none"
+    # Deterministic alphabetical fallback so the same input always
+    # yields the same anchor — critical for reproducible backtests.
+    fallback_bid = sorted(seen_book.keys())[0]
+    return fallback_bid, seen_book[fallback_bid], "fallback_first_available"
 
 
 def _resolve_out_coll(args: argparse.Namespace) -> str:
@@ -144,7 +202,11 @@ async def build_month(
             "stat_entity_id": {"$first": "$stat_entity_id"},
             "bet_type_id": {"$first": "$bet_type_id"},
         }},
-        {"$match": {"books.book_id": ANCHOR_BOOK}},
+        # 2026-05-24 — REMOVED prizepicks-only filter. Multi-book
+        # universe — we keep EVERY row, then pick anchor by priority
+        # below. HR/SB/doubles/etc. that PP doesn't carry will now
+        # flow through downstream collections instead of being
+        # silently dropped.
     ]
 
     upserts: List[UpdateOne] = []
@@ -172,15 +234,24 @@ async def build_month(
             if (prev is None or
                 (b.get("snapshot_time") or "") > (prev.get("snapshot_time") or "")):
                 seen_book[bid] = b
-        anchor = seen_book.get(ANCHOR_BOOK) or {}
-        other_books = [v for k, v in seen_book.items() if k != ANCHOR_BOOK]
+        anchor_book_id, anchor, anchor_source = _pick_anchor(seen_book)
+        if anchor_book_id is None:
+            continue  # no books at all — pre-existing aggregation skipped this
+        # `other_books` = every book EXCEPT the chosen anchor. Same
+        # shape as before so downstream consumers don't care which
+        # book became the anchor.
+        other_books = [v for k, v in seen_book.items() if k != anchor_book_id]
         books_attached_total += len(other_books)
+        available_books = sorted(seen_book.keys())
+        playable_flags = {flag: False for flag in _PLAYABLE_FLAG_MAP.values()}
+        for bid in available_books:
+            flag = _PLAYABLE_FLAG_MAP.get(bid)
+            if flag:
+                playable_flags[flag] = True
 
-        # Consensus lookup (latest per anchor.odd_id; anchor odd_id is
-        # PrizePicks-side, but the consensus belongs to the MARKET so any
-        # other-book odd_id from the same group will also resolve. Use
-        # whichever odd_id has a hit; prefer non-PrizePicks since PP odd_ids
-        # are sometimes opaque.)
+        # Consensus lookup (latest per ANY odd_id from the group; the
+        # anchor's odd_id is preferred since it's market-identifying.
+        # PrizePicks odd_ids can be opaque so prefer non-PP).
         consensus_doc: Optional[Dict[str, Any]] = None
         odd_ids_to_try: List[str] = []
         for b in other_books + [anchor]:
@@ -213,13 +284,30 @@ async def build_month(
             "stat_entity_id": grp.get("stat_entity_id"),
             "bet_type_id":    grp.get("bet_type_id"),
             "anchor": {
-                "book_id":       ANCHOR_BOOK,
+                # 2026-05-24 — `book_id` is now whatever priority book
+                # was found for this row. Existing PP-anchored rows
+                # remain byte-identical because PP is first in
+                # ANCHOR_PRIORITY. Downstream code that read
+                # `anchor.book_id` continues to work — it just sees
+                # DK/FD/MGM/etc. on rows PP didn't cover.
+                "book_id":       anchor_book_id,
                 "price":         anchor.get("price"),
                 "snapshot_time": anchor.get("snapshot_time"),
                 "odd_id":        anchor.get("odd_id"),
                 "opposing_odd_id": anchor.get("opposing_odd_id"),
                 "selection_id":  anchor.get("selection_id"),
+                # New metadata fields the optimizer can read:
+                "source":        anchor_source,
             },
+            # New top-level fields for the multi-book universe. The
+            # optimizer + UI use these for source-filtering without
+            # reshaping the row.
+            "anchor_book":     anchor_book_id,
+            "anchor_line":     grp["_id"]["line"],
+            "anchor_odds":     anchor.get("price"),
+            "anchor_source":   anchor_source,
+            "available_books": available_books,
+            **playable_flags,
             "books":     other_books,
             "n_books":   len(other_books),
             "fair_odds": (consensus_doc or {}).get("fair_odds"),

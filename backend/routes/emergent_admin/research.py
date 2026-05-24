@@ -963,3 +963,94 @@ async def market_coverage_audit(
         "n_drops":              len(drops),
         "diagnosis":            diagnosis,
     }
+
+
+# ── Per-book coverage debug ────────────────────────────────────────
+#
+# 2026-05-24 — Multi-book universe debug endpoint. Surfaces:
+#   - top markets per book
+#   - per-book row count + percent of total
+#   - per-(book, stat_family) coverage matrix (which books carry which
+#     markets in this window)
+# Used to verify the multi-book ingest is healthy + to populate the
+# UI "Coverage by Sportsbook" panel.
+@router.get("/book-coverage-audit")
+async def book_coverage_audit(
+    sport: str = Query("MLB"),
+    start: str = Query(...),
+    end:   str = Query(...),
+    request: Request = None,
+    auth=Depends(require_admin_token),
+):
+    db = _get_db()
+    league = sport.upper()
+    window = {"league_id": league,
+                "game_date": {"$gte": start, "$lte": end}}
+
+    n_total = await db[REPLAY_CACHE_COLL].count_documents(window)
+    if n_total == 0:
+        return {"ok": True, "sport": league, "start": start, "end": end,
+                  "n_total": 0, "by_book": [], "coverage_matrix": [],
+                  "diagnosis": "No replay-cache rows for this window."}
+
+    # Per-anchor-book row count
+    by_book_cursor = db[REPLAY_CACHE_COLL].aggregate([
+        {"$match": window},
+        {"$group": {"_id": "$anchor_book", "n": {"$sum": 1}}},
+        {"$project": {"_id": 0, "book": "$_id", "n": "$n"}},
+        {"$sort": {"n": -1}},
+    ], allowDiskUse=True)
+    by_book = [d async for d in by_book_cursor]
+    for row in by_book:
+        row["pct"] = round(row["n"] * 100.0 / max(n_total, 1), 1)
+
+    # Per-(book, stat_family) coverage matrix — which families ride on
+    # which anchor books, so the operator can see "HR is ALL on DK,
+    # SB is ALL on FanDuel" etc.
+    matrix_cursor = db[REPLAY_CACHE_COLL].aggregate([
+        {"$match": window},
+        {"$group": {"_id": {"book": "$anchor_book",
+                                  "fam":  "$stat_family"},
+                       "n": {"$sum": 1}}},
+        {"$project": {"_id": 0, "book": "$_id.book",
+                          "stat_family": "$_id.fam", "n": "$n"}},
+        {"$sort": {"book": 1, "n": -1}},
+    ], allowDiskUse=True)
+    coverage_matrix = [d async for d in matrix_cursor]
+
+    # Per-book playability counts — how many rows on each book are
+    # ALSO playable on PP.
+    playable_pct: Dict[str, Any] = {}
+    for flag in ("playable_on_pp", "playable_on_dk", "playable_on_fd",
+                     "playable_on_mgm", "playable_on_caesars", "playable_on_bol"):
+        n = await db[REPLAY_CACHE_COLL].count_documents(
+            {**window, flag: True})
+        playable_pct[flag] = {"n": n,
+                                  "pct": round(n * 100.0 / max(n_total, 1), 1)}
+
+    # Diagnosis
+    n_pp = playable_pct["playable_on_pp"]["n"]
+    diagnosis_parts: List[str] = [
+        f"{n_total} rows / {len(by_book)} anchor books."
+    ]
+    if n_pp / max(n_total, 1) < 0.3:
+        diagnosis_parts.append(
+            f"⚠ Only {n_pp} ({playable_pct['playable_on_pp']['pct']}%) rows "
+            "are playable on PrizePicks. Most of this universe is sportsbook-"
+            "only — switch the UI book filter to 'any' or a specific book "
+            "to see results.")
+    diagnosis = " ".join(diagnosis_parts)
+
+    await audit_log(request, action="book_coverage_audit",
+                       params={"sport": league, "start": start, "end": end},
+                       response_summary={"n_total": n_total,
+                                              "n_books": len(by_book)},
+                       **auth)
+    return {
+        "ok": True, "sport": league, "start": start, "end": end,
+        "n_total": n_total,
+        "by_book": by_book,
+        "coverage_matrix": coverage_matrix,
+        "playability": playable_pct,
+        "diagnosis": diagnosis,
+    }

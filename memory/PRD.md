@@ -1301,3 +1301,74 @@ data-thinness issue. Recommend re-running with all 3 tiers selected
 in the UI to populate front_lines (5,457 graded rows in May 2025)
 and war_zone (129) — that alone will give Top-5-per-family real
 data for ~10 of the 14 discovered families.
+
+
+### 2026-05-24 — Multi-book universe (END of PrizePicks-only anchor)
+**Architecture brief from user:**
+> "We are no longer treating PrizePicks as the sole anchor universe.
+>  PropVision is evolving from a PP-only optimizer into a market-wide
+>  betting intelligence platform."
+
+**Root cause uncovered:** `build_pp_research_core.py` hard-filtered
+`{"$match":{"books.book_id":"prizepicks"}}` at line 147. PrizePicks
+historically carries only ~122 HR offers across ALL time (vs DK 58k,
+FD 94k). The filter silently destroyed entire prop families (HR, SB,
+doubles, triples) → never reached replay cache → optimizer couldn't
+see them.
+
+**Shipped:**
+1. **`scripts/sgo/build_pp_research_core.py`** — anchor priority
+   chain replaces the single-PP filter:
+   ```
+   prizepicks → draftkings → fanduel → betmgm → caesars → betonlineag
+   → first-alphabetical-available
+   ```
+   `_pick_anchor()` deterministic + reproducible. PP rows are
+   byte-identical to before (PP is still priority #1).
+2. **New per-row metadata** propagated all the way to the optimizer:
+   - `anchor_book`, `anchor_line`, `anchor_odds`, `anchor_source`
+     ("priority" / "fallback_first_available" / "none")
+   - `available_books: [...]`
+   - `playable_on_pp`, `playable_on_dk`, `playable_on_fd`,
+     `playable_on_mgm`, `playable_on_caesars`, `playable_on_bol`
+3. **`scripts/sgo/reshape_sgo_to_replay_odds.py`** carries the new
+   fields into `sgo_propvision_full_pipeline_replay`.
+4. **`routes/emergent_admin/optimizer.py`** — `book_filter` field on
+   `OptimizerRunBody` (default `"any"`). Helper `_book_filter_clause`
+   translates to Mongo predicates targeting `playable_on_*` flags
+   (NOT `anchor_book` — a row anchored on DK can still be playable
+   on PP if PP offered the line). 8 filter modes: any, pp_only,
+   dk_only, fd_only, mgm_only, caesars_only, bol_only, multi_book.
+5. **New `/research/book-coverage-audit`** endpoint surfaces per-book
+   row counts, per-(book, family) coverage matrix, and playability
+   percentages. Diagnoses the universe at a glance.
+6. **`AdminTesting.jsx`** — book-filter dropdown next to the
+   enforce-tier-gates checkbox. 8 options. Preflight + launch
+   both pass `book_filter`.
+7. **Tests:** `test_multi_book_universe.py` (14 pins) lock the
+   priority order, fallback behaviour, playable-flag map,
+   deterministic alphabetical fallback, `book_filter` map and the
+   `any` default. **Backend total: 40/40 passing.**
+
+**Operator runbook on prod (after `git pull && systemctl restart`):**
+```bash
+TOK="17808e1c13717b0d2170f6e1f023388d93740ff66f70ae1a"
+
+# 1. Rebuild sgo_pp_research_core for May 2025 — multi-book anchors
+python -m scripts.sgo.build_pp_research_core --league MLB \
+       --start 2025-05-01 --end 2025-05-31
+
+# 2. Rebuild enrichment + reshape so anchor_book + playable_* flags
+#    flow to the replay cache
+python -m scripts.sgo.build_historical_consensus_probabilities \
+       --start 2025-05-01 --end 2025-05-31
+python -m scripts.sgo.reshape_sgo_to_replay_odds --league MLB \
+       --start 2025-05-01 --end 2025-05-31
+
+# 3. Audit per-book coverage
+curl -sS "https://propvision.bet/api/emergent-admin/research/book-coverage-audit?sport=MLB&start=2025-05-01&end=2025-05-31" \
+     -H "X-Admin-Token: $TOK" | jq
+
+# 4. Re-launch the optimizer — HR / SB / doubles / triples
+#    should now appear in Top-25 + Top-5 per family.
+```
