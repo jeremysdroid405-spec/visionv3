@@ -2931,7 +2931,7 @@ function OptimizerTab({ token }) {
   const [diagBusy, setDiagBusy]   = useState(false);
   const [preflight, setPreflight] = useState(null);
   const [preflightBusy, setPreflightBusy] = useState(false);
-  const [enforceTierGates, setEnforceTierGates] = useState(true);
+  const [enforceTierGates, setEnforceTierGates] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cachedWindow, setCachedWindow] = useState(null);
   const [windowAutofilled, setWindowAutofilled] = useState(false);
@@ -3254,7 +3254,7 @@ function OptimizerTab({ token }) {
               <label data-testid="opt-enforce-toggle" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, color: TEXT }}>
                 <input type="checkbox" checked={enforceTierGates}
                   onChange={(e) => setEnforceTierGates(e.target.checked)} />
-                <span>enforce_tier_gates (strict: only rows where gates passed)</span>
+                <span>enforce_tier_gates (also require prod {'{tier}_pass=true'}; usually empties cells on historical data)</span>
               </label>
               <Btn variant="ghost" onClick={runPreflight} disabled={preflightBusy} testId="opt-preflight-refresh">
                 {preflightBusy ? '…' : 'Refresh'}

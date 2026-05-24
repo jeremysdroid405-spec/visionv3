@@ -950,3 +950,76 @@ curl -sS -X POST "https://propvision.bet/api/emergent-admin/optimizer/grid-diagn
 # the grid + min_bets=15, you should now see ALL 14 families.
 ```
 
+
+
+### 2026-05-24 — Tier filter: route by ODDS RANGE (mirrors live runner)
+**Reported symptom:** Operator launched `opt_dd261da1e1` on prod (MLB
+2025-05-01..05-31). Worker reported `succeeded rc=0` in 5 s — but
+the run actually evaluated **0 combos** and persisted **0 results**
+(`cells_done=105, cells_skipped_empty=105, n_results=0`). The
+results endpoint then returned `404 "results not available yet"`.
+
+**Root cause** — the optimizer was filtering tier membership by the
+prod gate-pass boolean (`{tier}_pass=True`) when `enforce_tier_gates`
+was True (the default at the time). On prod's May 2025 replay window:
+- **0 / 7,664 rows** had `safe_haven_pass=true`
+- **0 / 7,664 rows** had `front_lines_pass=true`
+- **0 / 7,664 rows** had `war_zone_pass=true`
+
+Every single one of the 7,664 rows fails `coverage_gate` because
+historical replay rows are anchored to a single book (DraftKings) →
+`book_count = 1` → `coverage_gate` rejects them. The boolean was
+useless for backtesting and silently starved every cell.
+
+**Architectural fix** — route by **odds range** (matches live
+`services/scoring/gates/thresholds.py::resolve_target_tier`):
+```
+safe_haven  : odds ≤ -300         (heavy chalk)
+front_lines : -299 ≤ odds ≤ +149   (mid range)
+war_zone    : odds ≥ +150          (longshot)
+```
+- New helper `_tier_odds_filter(tier) -> dict` in
+  `routes/emergent_admin/optimizer.py` produces the Mongo clause that
+  exactly mirrors `resolve_target_tier`. Imports
+  `UNIVERSAL_SAFE_HAVEN_MAX` + `UNIVERSAL_WAR_ZONE_MIN` from the
+  canonical source — no drift possible.
+- `_evaluate_cell` now uses `**_tier_odds_filter(tier)` instead of
+  `f"{tier}_pass": True/{"$exists":True}`.
+- `/optimizer/preflight` uses the same routing helper so the banner
+  the operator sees is exactly what the optimizer will scan.
+- Rows with `odds=None` are routed to no tier (matches live
+  `resolve_target_tier` returning `None`).
+- `enforce_tier_gates` is now **opt-in** (default `False`). When
+  `True`, it ADDS `{tier}_pass=True` ON TOP of the odds-range filter —
+  exposed for parity validation but never the default.
+- Frontend `enforceTierGates` state defaults `false`; tooltip text
+  updated to explain it usually empties cells on historical data.
+
+**Tests:** +11 (6 in `test_optimizer_tier_odds_routing.py` pinning
+the routing helper; 5 in `test_optimizer_preflight.py` rewritten to
+seed odds spanning all three tiers and assert correct routing +
+`enforce_tier_gates` adds the gate-pass filter on top + null-odds
+exclusion). Backend total: **56/56** across optimizer + mirror +
+diagnose + preflight + tier-routing suites.
+
+**Operator runbook to verify on prod:**
+```bash
+git pull && systemctl restart vision-backend
+
+# 1. Preflight should now show NON-ZERO per-tier counts:
+TOK="17808e1c13717b0d2170f6e1f023388d93740ff66f70ae1a"
+curl -sS -X POST "https://propvision.bet/api/emergent-admin/optimizer/preflight" \
+     -H "Content-Type: application/json" -H "X-Admin-Token: $TOK" \
+     -d '{"sport":"MLB","start":"2025-05-01","end":"2025-05-31"}' | jq '.by_tier'
+
+# Expect (based on prod data):
+#   safe_haven  : ~2,500 rows (odds_lt_-200 subset where odds ≤ -300)
+#   front_lines : ~5,000 rows
+#   war_zone    :   ~130 rows
+# (Sum ≈ 7,664 minus any null-odds rows.)
+
+# 2. Launch optimizer — n_results > 0 this time:
+curl -sS -X POST "https://propvision.bet/api/emergent-admin/optimizer/run" \
+     -H "Content-Type: application/json" -H "X-Admin-Token: $TOK" \
+     -d '{"sport":"MLB","start":"2025-05-01","end":"2025-05-31"}'
+```

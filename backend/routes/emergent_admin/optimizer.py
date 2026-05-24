@@ -51,6 +51,43 @@ from pydantic import BaseModel, Field
 from .auth import audit_log, require_admin_token, _get_db
 from workers.queue import enqueue as worker_enqueue
 
+# Canonical tier-by-odds boundaries used by the live runner
+# (`services/scoring/gates/thresholds.py::resolve_target_tier`). The
+# optimizer routes rows into tiers the SAME WAY production does — by
+# `reference_odds` range — instead of filtering on a `{tier}_pass`
+# boolean. The boolean reflects whether a row passed prod's full gate
+# stack (including `coverage_gate`, which requires live `book_count`
+# data that historical replay does not carry → would be False for
+# 100% of historical rows and starve the optimizer of samples).
+try:
+    from services.scoring.gates.thresholds import (
+        UNIVERSAL_SAFE_HAVEN_MAX,
+        UNIVERSAL_WAR_ZONE_MIN,
+    )
+except Exception:  # noqa: BLE001 — keep optimizer importable in tests
+    UNIVERSAL_SAFE_HAVEN_MAX = -300
+    UNIVERSAL_WAR_ZONE_MIN   = 150
+
+
+def _tier_odds_filter(tier: str) -> Dict[str, Any]:
+    """Mongo filter clause that mirrors `resolve_target_tier` exactly.
+
+    Returns the odds-range predicate for the given tier. Rows with
+    `odds == null` are intentionally excluded — they can't be routed
+    to any tier and they can't produce a graded payout.
+    """
+    if tier == "safe_haven":
+        return {"odds": {"$ne": None, "$lte": UNIVERSAL_SAFE_HAVEN_MAX}}
+    if tier == "war_zone":
+        return {"odds": {"$ne": None, "$gte": UNIVERSAL_WAR_ZONE_MIN}}
+    if tier == "front_lines":
+        return {"odds": {"$ne": None,
+                              "$gt":  UNIVERSAL_SAFE_HAVEN_MAX,
+                              "$lt":  UNIVERSAL_WAR_ZONE_MIN}}
+    # Unknown tier — return a never-matches clause rather than {}.
+    return {"_unknown_tier_": tier}
+
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -140,12 +177,17 @@ class OptimizerRunBody(BaseModel):
     grid:                  GridSpec = Field(default_factory=GridSpec)
     filters:               RequiredFilters = Field(default_factory=RequiredFilters)
     worker_limit:          int   = Field(default=4, ge=1, le=16)
-    # When True (DEFAULT), each cell restricts to rows where THIS
-    # tier's gates actually passed in the prod runner. Set False to
-    # ignore the tier dimension and use the full row pool — useful
-    # when historical data is too sparse for the strict-gate sample
-    # to be meaningful.
-    enforce_tier_gates:    bool  = Field(default=True)
+    # Tier routing is by ODDS RANGE (matches the live runner's
+    # `resolve_target_tier` — safe_haven ≤ -300, front_lines -299..149,
+    # war_zone ≥ +150). The optimizer's tier dimension is always
+    # odds-routed.  This flag is OPT-IN and adds the prod gate-pass
+    # boolean `{tier}_pass=True` ON TOP of the odds-range filter —
+    # useful for "what would prod actually have bet" parity checks,
+    # but produces empty cells on most historical windows because
+    # historical replay has no live `book_count` so `coverage_gate`
+    # always fails. Default OFF per user instruction
+    # ("not reject, just create different buckets").
+    enforce_tier_gates:    bool  = Field(default=False)
 
 
 # ── Combo generation ──────────────────────────────────────────────
@@ -430,20 +472,25 @@ async def _evaluate_cell(state: Dict[str, Any], db, *,
                               combos: List[Dict[str, float]],
                               required: RequiredFilters,
                               ) -> List[Dict[str, Any]]:
-    # Pull the candidate row pool ONCE per cell.
-    # `enforce_tier_gates=True` restricts to rows where this tier's
-    # gates actually passed in the prod runner; `False` (default)
-    # treats tier as a label and queries the full pool. The latter is
-    # required because production gates rarely pass on historical
-    # data, which would leave the optimizer with nothing to score.
+    # ── Tier filter (ODDS-RANGE ROUTING, matches live runner) ──────
+    # Tiers are pure odds-range buckets — same boundaries as
+    # `resolve_target_tier`: safe_haven ≤ -300, war_zone ≥ +150,
+    # front_lines in between. We do NOT filter on `{tier}_pass`
+    # because that boolean requires live `book_count` data that
+    # historical replay rows don't carry (every historical row fails
+    # `coverage_gate`, making the boolean useless for backtesting).
+    # `enforce_tier_gates=True` is an opt-in to ALSO require the
+    # prod gate-pass on top — exposed for parity validation, never
+    # the default.
     q: Dict[str, Any] = {
         "league_id": body.sport,
         "game_date": {"$gte": body.start, "$lte": body.end},
         "stat_family": stat_family,
         "odds_bucket": odds_bucket,
-        f"{tier}_pass": (True if getattr(body, "enforce_tier_gates", False)
-                            else {"$exists": True}),
+        **_tier_odds_filter(tier),
     }
+    if getattr(body, "enforce_tier_gates", False):
+        q[f"{tier}_pass"] = True
     if sides:
         q["side"] = {"$in": sides}
     rows: List[Dict[str, Any]] = []
@@ -828,12 +875,14 @@ async def preflight(body: PreflightBody, request: Request,
                   )}
     n_graded = await db[REPLAY_COLL].count_documents(
         {**base_match, "outcome_numeric": {"$in": [0, 1, 0.5]}})
-    # Per-tier preview — runs the same filter shape the optimizer uses.
+    # Per-tier preview — runs the SAME odds-range filter the optimizer
+    # uses (`_tier_odds_filter`), plus the opt-in `{tier}_pass=True`
+    # when `enforce_tier_gates` is set.
     by_tier: List[Dict[str, Any]] = []
     for tier in DEFAULT_TIERS:
-        tier_match = {**base_match,
-                          f"{tier}_pass": (True if body.enforce_tier_gates
-                                              else {"$exists": True})}
+        tier_match = {**base_match, **_tier_odds_filter(tier)}
+        if body.enforce_tier_gates:
+            tier_match[f"{tier}_pass"] = True
         n = await db[REPLAY_COLL].count_documents(tier_match)
         n_graded_tier = await db[REPLAY_COLL].count_documents(
             {**tier_match, "outcome_numeric": {"$in": [0, 1, 0.5]}})
@@ -872,8 +921,20 @@ async def preflight(body: PreflightBody, request: Request,
         thin = [t["tier"] for t in by_tier if t["n_graded"] < 30]
         diagnosis = (
             f"⚠ enforce_tier_gates=true gives <30 graded rows for "
-            f"{thin}. Set enforce_tier_gates=false (default) to use "
-            f"the full pool, OR widen the date window."
+            f"{thin}. Historical replay rows lack live `book_count`, "
+            f"so the prod `coverage_gate` rejects virtually everything. "
+            f"Leave `enforce_tier_gates=false` (default) — tiers will "
+            f"still be routed by odds range, just without the "
+            f"live-only gate filter."
+        )
+    elif any(t["n_graded"] < 30 for t in by_tier):
+        thin = [f"{t['tier']}({t['n_graded']})" for t in by_tier
+                  if t["n_graded"] < 30]
+        diagnosis = (
+            f"⚠ Thin tier samples: {', '.join(thin)} < 30 graded "
+            f"rows. Tiers are routed by odds (safe_haven ≤ -300, "
+            f"front_lines -299..+149, war_zone ≥ +150). Widen the "
+            f"window or use `--tiers` to focus on the populated tier."
         )
     else:
         diagnosis = (
