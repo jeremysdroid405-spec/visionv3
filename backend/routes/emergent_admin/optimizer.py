@@ -138,12 +138,19 @@ MAX_INLINE_FAILURES = 50
 #   (b) "what happens if I relax this constraint entirely"
 # without the operator having to manually run separate sweeps.
 DEFAULT_GRID: Dict[str, List[float]] = {
-    "hr_l20_min": [float("-inf"), 0.40, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75],
-    "hr_l10_min": [float("-inf"), 0.40, 0.50, 0.55, 0.60, 0.65, 0.70],
-    "hr_l5_min":  [float("-inf"), 0.40, 0.50, 0.55, 0.60, 0.65, 0.70],
-    "cv_max":     [float("+inf"), 0.50, 0.70, 0.90, 1.10, 1.30, 1.50],
-    "edge_min":   [float("-inf"), 0.00, 0.02, 0.05, 0.08, 0.10, 0.15],
-    "tp_min":     [float("-inf"), 0.45, 0.50, 0.55, 0.60, 0.65, 0.70],
+    # 2026-05-24 — Sized so brute-force per cell stays tractable while
+    # still covering the meaningful threshold space + wildcards. Each
+    # axis includes its `-inf`/`+inf` sentinel so the search includes
+    # "no constraint on this axis" combos (essential for thin
+    # families to surface). Total: 4×3×3×3×4×4 = 1,728 combos/cell.
+    # Across 14 fam × 5 buckets × 3 tiers = 210 cells → 362,880
+    # combos per run. Runs to completion in 2-3 min on prod worker.
+    "hr_l20_min": [float("-inf"), 0.55, 0.65, 0.75],
+    "hr_l10_min": [float("-inf"), 0.55, 0.65],
+    "hr_l5_min":  [float("-inf"), 0.55, 0.65],
+    "cv_max":     [float("+inf"), 0.90, 1.30],
+    "edge_min":   [float("-inf"), 0.02, 0.05, 0.10],
+    "tp_min":     [float("-inf"), 0.50, 0.60, 0.70],
 }
 
 DEFAULT_TIERS         = ["safe_haven", "front_lines", "war_zone"]

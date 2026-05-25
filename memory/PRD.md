@@ -1423,3 +1423,31 @@ hits (430), rbis (44) etc. were starved by the form constraints.
   batter_strikeouts, hits, etc.
 - Toggle "Apply form-grid as display filter" if you want to filter
   the display to combos matching your form values.
+
+
+### 2026-05-24 — DEFAULT_GRID right-sized (worker no longer OOMs)
+**Reported symptom:** "the optimizer is killing the worker. its trying
+to process 28 million combos simultaneously".
+
+**Root cause:** The earlier "ALWAYS brute-force" change made
+`_resolve_grid` return DEFAULT_GRID for every run, but the existing
+DEFAULT_GRID was sized 8×7×7×7×7×7 = 134,456 combos/cell. Across
+14 fam × 5 buckets × 3 tiers = 210 cells → **28.2M combos** which
+exceeded worker RLIMIT_AS.
+
+**Fix:** Right-sized DEFAULT_GRID to 4×3×3×3×4×4 = **1,728 combos/cell**:
+```
+hr_l20_min: [-inf, 0.55, 0.65, 0.75]
+hr_l10_min: [-inf, 0.55, 0.65]
+hr_l5_min:  [-inf, 0.55, 0.65]
+cv_max:     [+inf, 0.90, 1.30]
+edge_min:   [-inf, 0.02, 0.05, 0.10]
+tp_min:     [-inf, 0.50, 0.60, 0.70]
+```
+Every axis still includes its wildcard (`-inf` / `+inf`) so unconstrained
+sweeps stay in the search. 1 tier = 120,960 combos. 3 tiers =
+362,880 combos. Runs in 2–3 min, well under worker memory limits.
+
+**Test pin updated:** `test_brute_force_combo_count_is_tractable`
+now enforces `1,000 ≤ combos/cell ≤ 12,000` (was `≥ 50,000`). Backend
+total: **33/33** passing.
