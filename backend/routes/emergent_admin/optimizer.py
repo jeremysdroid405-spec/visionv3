@@ -138,19 +138,17 @@ MAX_INLINE_FAILURES = 50
 #   (b) "what happens if I relax this constraint entirely"
 # without the operator having to manually run separate sweeps.
 DEFAULT_GRID: Dict[str, List[float]] = {
-    # 2026-05-24 — Sized so brute-force per cell stays tractable while
-    # still covering the meaningful threshold space + wildcards. Each
-    # axis includes its `-inf`/`+inf` sentinel so the search includes
-    # "no constraint on this axis" combos (essential for thin
-    # families to surface). Total: 4×3×3×3×4×4 = 1,728 combos/cell.
-    # Across 14 fam × 5 buckets × 3 tiers = 210 cells → 362,880
-    # combos per run. Runs to completion in 2-3 min on prod worker.
+    # 2026-05-24 — Sized for the operator's "up to 1M combos" budget
+    # while keeping wildcards on every axis. 4×3×3×4×5×6 = 4,320
+    # combos/cell · across 14 fam × 5 buckets × 3 tiers = 210 cells
+    # → 907,200 combos per 3-tier run. Comfortably under 1M and runs
+    # in ~5-7 min on the prod worker.
     "hr_l20_min": [float("-inf"), 0.55, 0.65, 0.75],
     "hr_l10_min": [float("-inf"), 0.55, 0.65],
     "hr_l5_min":  [float("-inf"), 0.55, 0.65],
-    "cv_max":     [float("+inf"), 0.90, 1.30],
-    "edge_min":   [float("-inf"), 0.02, 0.05, 0.10],
-    "tp_min":     [float("-inf"), 0.50, 0.60, 0.70],
+    "cv_max":     [float("+inf"), 0.70, 0.90, 1.10],
+    "edge_min":   [float("-inf"), 0.02, 0.05, 0.08, 0.10],
+    "tp_min":     [float("-inf"), 0.50, 0.55, 0.60, 0.65, 0.70],
 }
 
 DEFAULT_TIERS         = ["safe_haven", "front_lines", "war_zone"]
@@ -1476,6 +1474,113 @@ async def top_per_family(run_id: str, request: Request,
         "top_n": top_n, "tier": tier,
         "n_groups": len(groups),
         "groups": groups,
+    }
+
+
+# 2026-05-24 — Tier-organized top-N per stat_family.
+#
+# User asked: "i need them organized by tier so i can figure out the
+# prod gates per stat per tier" — i.e. each tier section should list
+# every stat_family's Top-N (across all odds buckets within that
+# tier) so the operator can see the full per-tier landscape in one
+# response. This is the natural shape for "promote to live gates"
+# decisions, which are tier-scoped.
+@router.get("/{run_id}/top-by-tier")
+async def top_by_tier(run_id: str, request: Request,
+                            top_n: int = 3,
+                            include_empty: bool = True,
+                            auth=Depends(require_admin_token)):
+    """Returns Top-N configs per (tier × stat_family), aggregated
+    across odds buckets within each tier. Response shape:
+
+        {
+          "tiers": {
+            "safe_haven":  [{stat_family, configs:[...]}, ...],
+            "front_lines": [{stat_family, configs:[...]}, ...],
+            "war_zone":    [{stat_family, configs:[...]}, ...],
+          }
+        }
+
+    With `include_empty=True` (default) every discovered stat_family
+    appears in every tier section — empty families get
+    `configs:[]` and `status` set so the UI can render an
+    explanatory placeholder instead of silently dropping the family.
+    """
+    if top_n < 1 or top_n > 100:
+        raise HTTPException(400, "top_n must be 1..100")
+    db = _get_db()
+    run = await db[OPTIMIZER_RUNS].find_one({"run_id": run_id}, {"_id": 0})
+    if run is None:
+        raise HTTPException(404, f"run_id not found: {run_id}")
+    pipeline = [
+        {"$match": {"run_id": run_id, "score": {"$ne": None}}},
+        # Dedupe threshold-equivalent rows the same way top_per_family
+        # does — score is identical when sample_sig is identical, so
+        # keep one canonical doc per sample_sig per (tier, family).
+        {"$sort": {"score": -1, "tier": 1, "n_bets": -1}},
+        {"$group": {
+            "_id": {"tier": "$tier", "stat_family": "$stat_family",
+                      "sample_sig": "$sample_sig"},
+            "doc": {"$first": "$$ROOT"},
+            "n_equivalent_combos": {"$sum": 1},
+        }},
+        {"$replaceRoot": {"newRoot": {"$mergeObjects": [
+            "$doc", {"n_equivalent_combos": "$n_equivalent_combos"}]}}},
+        {"$sort": {"score": -1, "tier": 1, "stat_family": 1, "n_bets": -1}},
+        {"$group": {
+            "_id": {"tier": "$tier", "stat_family": "$stat_family"},
+            "configs": {"$push": "$$ROOT"},
+        }},
+        {"$project": {
+            "_id": 0,
+            "tier": "$_id.tier",
+            "stat_family": "$_id.stat_family",
+            "configs": {"$slice": ["$configs", top_n]},
+        }},
+        {"$sort": {"tier": 1, "stat_family": 1}},
+    ]
+
+    by_tier: Dict[str, List[Dict[str, Any]]] = {
+        t: [] for t in DEFAULT_TIERS
+    }
+    seen_by_tier: Dict[str, set] = {t: set() for t in DEFAULT_TIERS}
+    async for g in db[OPTIMIZER_RESULTS].aggregate(
+                                                  pipeline, allowDiskUse=True):
+        tier_name = g.pop("tier", None)
+        if tier_name not in by_tier:
+            by_tier[tier_name] = []
+            seen_by_tier[tier_name] = set()
+        # Strip Mongo _id from nested docs
+        for c in g.get("configs", []):
+            c.pop("_id", None)
+        g["status"] = "graded"
+        by_tier[tier_name].append(g)
+        seen_by_tier[tier_name].add(g["stat_family"])
+
+    # Surface discovered-but-empty (tier × family) pairs so the
+    # operator sees every family in every tier section.
+    if include_empty:
+        state = run.get("state") or {}
+        discovered_families = list(state.get("stat_families", []) or [])
+        for tier_name, rows in by_tier.items():
+            for sf in sorted(set(discovered_families)
+                                   - seen_by_tier.get(tier_name, set())):
+                rows.append({
+                    "stat_family": sf, "configs": [],
+                    "status": "no_rows_in_tier",
+                })
+            rows.sort(key=lambda g: g["stat_family"])
+
+    await audit_log(request, action="optimizer_top_by_tier",
+                       params={"run_id": run_id, "top_n": top_n},
+                       response_summary={
+                           "n_tiers": len(by_tier),
+                           "n_total_groups": sum(len(v) for v in by_tier.values()),
+                       }, **auth)
+    return {
+        "ok": True, "run_id": run_id, "top_n": top_n,
+        "tier_order": DEFAULT_TIERS,
+        "tiers": by_tier,
     }
 
 

@@ -1451,3 +1451,50 @@ sweeps stay in the search. 1 tier = 120,960 combos. 3 tiers =
 **Test pin updated:** `test_brute_force_combo_count_is_tractable`
 now enforces `1,000 ≤ combos/cell ≤ 12,000` (was `≥ 50,000`). Backend
 total: **33/33** passing.
+
+
+### 2026-05-24 — Grid right-sized to ~1M + tier-organized Top-3
+**User directive:**
+> "increase combos up to 1 million and i want the top 3 for every
+>  stat for every tier without having to run it separately ... i
+>  need them organized by tier so i can figure out the prod gates
+>  per stat per tier"
+
+**Shipped:**
+1. **DEFAULT_GRID expanded** 4×3×3×4×5×6 = 4,320 combos/cell.
+   3-tier all-families: 907,200 combos. 1-tier: 302,400. Under
+   the 1M budget. Wildcards on every axis preserved.
+2. **New endpoint `/optimizer/{run_id}/top-by-tier?top_n=3`** —
+   returns Top-N configs per (tier × stat_family), aggregated
+   across odds buckets within each tier. Response shape:
+   ```
+   {
+     "tier_order": ["safe_haven", "front_lines", "war_zone"],
+     "tiers": {
+       "safe_haven":  [{stat_family, configs:[#1,#2,#3]}, ...],
+       "front_lines": [{stat_family, configs:[#1,#2,#3]}, ...],
+       "war_zone":    [{stat_family, configs:[#1,#2,#3]}, ...],
+     }
+   }
+   ```
+   Default `top_n=3`. `include_empty=True` surfaces every
+   discovered family in every tier section (empty ones marked
+   `status: "no_rows_in_tier"`).
+3. **Frontend `AdminTesting.jsx`** — new "Top 3 by Tier × Stat
+   Family" panel renders three tier sections (color-coded:
+   safe_haven=green, front_lines=blue, war_zone=amber) with a
+   per-family card grid in each. Each card shows the 3 best
+   configs with HR/ROI/n/score + the odds bucket + threshold
+   summary. Display-filter toggle applies to this panel too.
+4. **Tests:** `test_optimizer_top_by_tier.py` (5 pins): endpoint
+   registered, default top_n=3, default include_empty=True,
+   tier_order canonical, response-shape contract. Backend total:
+   **52/52** passing.
+
+**Operator runbook:**
+- Single optimizer run now returns ALL tiers × ALL families × Top-3
+  in one shot. Read the "Top 3 by Tier × Stat Family" panel:
+  - Safe Haven row for each family → prod-gate candidates for chalk
+  - Front Lines → mid-range market
+  - War Zone → longshot edges
+- Promote rows directly to candidate_thresholds when you're satisfied.

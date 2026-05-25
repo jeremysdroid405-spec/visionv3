@@ -3096,11 +3096,16 @@ function OptimizerTab({ token }) {
               // operator actually asked for ("best 3 combos per stat")
               // and lives in a dedicated deterministic endpoint.
               let tpf = null;
+              let tbt = null;
               try {
                 const t = await apiFetch(token, `/optimizer/${runId}/top-per-family?top_n=5&include_empty=true`);
                 tpf = t.groups || [];
               } catch (e) { /* non-fatal */ }
-              setResults({ ...rr, top_per_family: tpf });
+              try {
+                const tt = await apiFetch(token, `/optimizer/${runId}/top-by-tier?top_n=3&include_empty=true`);
+                tbt = tt;
+              } catch (e) { /* non-fatal */ }
+              setResults({ ...rr, top_per_family: tpf, top_by_tier: tbt });
               loadOutcomeCoverage();
             } catch (e) { /* ignore */ }
           }
@@ -3653,6 +3658,92 @@ function OptimizerTab({ token }) {
               each stat the user is actually testing. Mirrors the
               backend `/top-per-family` endpoint exactly so it can
               never disagree with the Top-25 above. */}
+          {/* 2026-05-24 — Top-3 per (tier × stat_family). Organized
+              by tier section so the operator can see prod-gate
+              candidates per stat per tier in one view. */}
+          {results.top_by_tier?.tiers && (
+            <div data-testid="opt-top-by-tier" style={{
+              background: SURFACE_3, border: `1px solid ${BORDER}`,
+              borderLeft: `3px solid ${ACCENT_3}`, borderRadius: 6,
+              padding: 10, marginBottom: 14,
+            }}>
+              <div style={{ fontSize: 10, color: ACCENT_3, textTransform: 'uppercase', marginBottom: 8 }}>
+                ★ Top 3 by Tier × Stat Family (use this to set prod gates per tier)
+              </div>
+              {(results.top_by_tier.tier_order || ['safe_haven', 'front_lines', 'war_zone']).map((tierName) => {
+                const rows = results.top_by_tier.tiers[tierName] || [];
+                const tierColor = tierName === 'safe_haven' ? ACCENT_2
+                                : tierName === 'front_lines' ? ACCENT
+                                : WARN;
+                const tierLabel = tierName === 'safe_haven' ? 'Safe Haven (odds ≤ -300)'
+                                : tierName === 'front_lines' ? 'Front Lines (odds -299..+149)'
+                                : 'War Zone (odds ≥ +150)';
+                return (
+                  <div key={tierName} data-testid={`tbt-tier-${tierName}`} style={{ marginBottom: 14 }}>
+                    <div style={{ borderBottom: `1px solid ${BORDER}`, paddingBottom: 4, marginBottom: 8 }}>
+                      <span style={{ color: tierColor, fontWeight: 700, fontSize: 13, fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                        ═══ {tierLabel} ═══
+                      </span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 8 }}>
+                      {rows.map((g, gi) => {
+                        const cfgs = applyGridFilter
+                          ? (g.configs || []).filter((c) =>
+                              passesDisplayFilter(c, results.display_filter_grid))
+                          : (g.configs || []);
+                        return (
+                        <div key={gi} data-testid={`tbt-${tierName}-${g.stat_family}`}
+                             style={{ background: SURFACE_2,
+                                      border: `1px solid ${BORDER}`,
+                                      borderRadius: 6, padding: 8,
+                                      opacity: g.status && g.status !== 'graded' ? 0.55 : 1 }}>
+                          <div style={{ fontSize: 11, marginBottom: 6, fontFamily: 'monospace' }}>
+                            <code style={{ color: ACCENT }}>{g.stat_family}</code>
+                          </div>
+                          {(!cfgs || cfgs.length === 0) ? (
+                            <div style={{ padding: '4px 0', fontSize: 10, fontFamily: 'monospace',
+                                          color: WARN, fontStyle: 'italic' }}>
+                              {g.status === 'no_rows_in_tier'
+                                ? `⚠ no rows in ${tierName}`
+                                : applyGridFilter && (g.configs || []).length > 0
+                                ? '⚠ hidden by form-grid filter'
+                                : '⚠ no graded combos'}
+                            </div>
+                          ) : null}
+                          {cfgs.map((c, ci) => (
+                            <div key={ci} style={{
+                              borderTop: ci > 0 ? `1px solid ${BORDER}` : 'none',
+                              padding: '5px 0', fontSize: 10, fontFamily: 'monospace',
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: ACCENT_2, fontWeight: 700 }}>#{ci + 1}</span>
+                                <span style={{ color: TEXT }}>
+                                  HR={fmtPct(c.hit_rate)} · ROI={fmtPct(c.roi)} · n={fmtInt(c.n_bets)}
+                                </span>
+                                <span style={{ color: c.score >= 0 ? ACCENT_2 : BAD }}>
+                                  {fmtNum(c.score, 2)}
+                                </span>
+                              </div>
+                              <div style={{ color: DIM, marginTop: 2, fontSize: 9 }}>
+                                bucket=<code style={{ color: ACCENT_3 }}>{c.odds_bucket}</code>
+                                {' · '}
+                                {Object.entries(c.thresholds || {})
+                                  .filter(([, v]) => v !== null && v !== Infinity && v !== -Infinity)
+                                  .map(([k, v]) => `${k}=${typeof v === 'number' ? v.toFixed(2) : v}`)
+                                  .join(' · ')}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {results.top_per_family?.length > 0 && (
             <div data-testid="opt-top-per-family" style={{
               background: SURFACE_3, border: `1px solid ${BORDER}`,

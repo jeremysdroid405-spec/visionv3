@@ -89,16 +89,13 @@ def test_user_grid_to_display_filter_skips_empty_lists():
 
 
 def test_brute_force_combo_count_is_tractable():
-    """Sanity check — DEFAULT_GRID must be small enough that
-    `combos_per_cell × cells_per_run` doesn't kill the worker, but
-    big enough to cover the meaningful threshold space + wildcards.
-    Target: 1,500–10,000 combos/cell. At 14 fam × 5 buckets × 3 tiers
-    = 210 cells, this gives 300k–2M total combos which completes in
-    2–5 minutes on the prod worker (vs the 28M that crashed it)."""
+    """Sanity check — DEFAULT_GRID is sized for the operator's
+    explicit "up to 1M combos" budget. 4,320 combos/cell × 210
+    cells = 907k combos per 3-tier run. Under 1M comfortably."""
     import functools, operator
     n = functools.reduce(operator.mul,
                             (len(v) for v in DEFAULT_GRID.values()), 1)
-    assert 1_000 <= n <= 12_000, (
+    assert 3_000 <= n <= 6_000, (
         f"DEFAULT_GRID generates {n} combos per cell — outside the "
-        f"tractable 1k–12k range. <1k = too sparse; >12k = will OOM "
-        f"the worker on a 3-tier sweep.")
+        f"target 3k–6k range. <3k = too sparse; >6k = pushes a "
+        f"3-tier sweep past 1M combos and risks worker OOM.")
