@@ -1568,3 +1568,36 @@ curl -sS -X POST "https://propvision.bet/api/emergent-admin/optimizer/opt_XXXX/c
 #   rows:                      every row matched (audit by hand)
 # If recomputed.hit_rate != stored.hit_rate, that's a bug to investigate.
 ```
+
+
+### 2026-05-24 — CRITICAL: _score was using n_bets, not n_graded
+**Operator finding (verbatim trace JSON from prod):**
+```
+n_bets: 58, n_graded: 6, wins: 6, losses: 0, hit_rate: 1.0
+```
+
+**Root cause:** `_score()` derived its sample-size penalty from
+`metrics["n_bets"]` (total rows in cell, including ungraded) instead
+of `wins + losses` (settled outcomes). When 52 of 58 rows were
+ungraded, the optimizer scored them as if they were a 58-bet sample
+with 100% hit rate — beating actual 30-bet samples with 65% HR.
+This produced the "100%/58" false top combos the operator caught.
+
+**Fix:** `_score()` now computes `n = wins + losses` from the
+metrics dict and uses that for the sample-size penalty. Result: a
+6-of-6 settled cell gets the statistical weight of n=6 (which the
+penalty correctly diminishes vs a real n=30+ sample). Cells with
+n_graded=0 still return None (unrankable).
+
+**UI fix:** Top-3-by-Tier panel now displays `n={settled}` with a
+⚠ inflation badge `(of {n_bets})` when total rows exceed settled by
+≥50%, plus a "(thin)" badge when settled < 10. The operator
+immediately sees whether a result is a real signal or a thin/
+ungraded artifact.
+
+**Tests:** `test_score_uses_settled_sample.py` (4 pins):
+  - 58-rows-but-6-settled vs 58-settled — thick must outscore thin
+  - Legacy cells (no n_graded) still work
+  - n_graded=0 → score=None
+  - Sample penalty differential 6 vs 10 baseline ≥ 0.04 score
+Backend total: **25/25 in this run · 60+ across session**.

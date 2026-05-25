@@ -557,7 +557,21 @@ def _score(metrics: Dict[str, Any], goal: str, baseline_n: int) -> Optional[floa
     else:
         cons = max(0.0, min(1.0, float(cons)))
     dd   = metrics.get("max_drawdown_units") or 0.0
-    n    = metrics.get("n_bets") or 0
+    # 2026-05-24 — Score using `n_graded` (settled outcomes) NOT
+    # `n_bets` (total rows in cell). Otherwise a cell with 58 rows
+    # of which 52 are ungraded gets the sample-confidence of a
+    # 58-bet sample when it's really 6 bets. That's how 6/6=100%
+    # combos were beating real 30-bet combos with 65% HR.
+    n_graded_val = metrics.get("n_graded")
+    if n_graded_val is None:
+        n = metrics.get("n_bets") or 0
+    else:
+        # settled = wins + losses (pushes don't contribute statistical
+        # signal). If n_graded includes pushes (per `_evaluate_combo`
+        # it does), use wins + losses directly for the sample size.
+        w = metrics.get("wins") or 0
+        l = metrics.get("losses") or 0
+        n = w + l
     if goal == "hit_rate":
         return hr
     if goal == "roi":

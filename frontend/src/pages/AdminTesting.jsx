@@ -3718,7 +3718,21 @@ function OptimizerTab({ token }) {
                               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <span style={{ color: ACCENT_2, fontWeight: 700 }}>#{ci + 1}</span>
                                 <span style={{ color: TEXT }}>
-                                  HR={fmtPct(c.hit_rate)} · ROI={fmtPct(c.roi)} · n={fmtInt(c.n_bets)}
+                                  HR={fmtPct(c.hit_rate)} · ROI={fmtPct(c.roi)} ·
+                                  {' '}
+                                  {(() => {
+                                    const settled = (c.wins ?? 0) + (c.losses ?? 0);
+                                    const total   = c.n_bets ?? 0;
+                                    const thin    = settled < 10;
+                                    const inflated = total > settled * 1.5;
+                                    return (
+                                      <span style={{ color: thin || inflated ? WARN : TEXT }}>
+                                        n={settled}
+                                        {inflated ? ` ⚠of ${total}` : ''}
+                                        {thin ? ' (thin)' : ''}
+                                      </span>
+                                    );
+                                  })()}
                                 </span>
                                 <span style={{ color: c.score >= 0 ? ACCENT_2 : BAD }}>
                                   {fmtNum(c.score, 2)}
