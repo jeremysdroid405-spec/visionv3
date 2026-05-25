@@ -1498,3 +1498,73 @@ total: **33/33** passing.
   - Front Lines → mid-range market
   - War Zone → longshot edges
 - Promote rows directly to candidate_thresholds when you're satisfied.
+
+
+### 2026-05-24 — Cross-book duplication audit + combo-trace endpoint
+**Reported skepticism (verbatim):** "im a little leary of these results?
+hr 100% out of 58 games? seems unlikely"
+
+**Investigation on prod:** Re-ran the exact filter for the user's
+top-stored combo (safe_haven · odds_lt_-200 · hr_l20≥0.75 · hr_l10≥0.65
+· hr_l5≥0.65 · tp≥0.55) against `sgo_propvision_full_pipeline_replay`:
+  - Optimizer stored:   **HR=100% · n_bets=58 · ROI=13.2%**
+  - Direct Mongo query: **HR=84.2% · n=19 · 16 wins / 3 losses**
+  - Distinct-bet check (event_id, player, market, side, line, date)
+    showed 19 unique bets → confirmed the OPTIMIZER is overcounting
+
+**Root cause (most-likely):** post the multi-book universe migration,
+the same physical bet can appear multiple times in the row pool —
+once per anchor book — and `_evaluate_combo` was counting each row
+independently. A 19-bet, 100% chalk win was getting amplified to
+58 rows / 100% via cross-book duplication (DK, FD, MGM, etc. all
+quoted the same prop and all "won" together).
+
+**Fixes shipped:**
+1. **`_evaluate_combo`** now returns audit fields alongside the
+   raw counts:
+     - `n_distinct_bets` (dedupes by event_id × player × market × side × line × date)
+     - `wins_distinct` / `losses_distinct` / `pushes_distinct`
+     - `hit_rate_distinct = wins_distinct / (wins_distinct + losses_distinct)`
+   Operator can spot duplication at a glance: when
+   `n_bets >> n_distinct_bets`, the headline hit_rate is inflated.
+2. **New endpoint `/optimizer/{run_id}/combo-trace`** —
+   `POST {tier, stat_family, odds_bucket, thresholds, side?, limit_rows?}`.
+   Re-runs the EXACT same filter against the source replay cache and
+   returns:
+     - All matching rows (up to limit_rows)
+     - Recomputed metrics (with distinct-bet audit fields)
+     - The stored metrics from `optimizer_run_results` for direct
+       comparison
+   Operator self-audit: paste any top combo's thresholds in, see the
+   actual rows, verify the numbers match.
+3. **Allowlist** extended (`policy.py::READABLE_COLLECTIONS`) to
+   include `optimizer_runs`, `optimizer_run_results`,
+   `research_grid_runs`, `research_grid_results`,
+   `candidate_thresholds`, `mlb_replay_model_status` so the operator
+   can also direct-query via `/collections/{name}/find` for ad-hoc
+   investigations.
+4. **Tests:** `test_optimizer_distinct_audit.py` (4 pins): unique-bet
+   case = audit fields match raw; cross-book duplication case = 4×
+   inflation surfaces as `n_bets=4 / n_distinct_bets=1`;
+   `hit_rate_distinct=None` for all-pushes; distinct-key tuple locks
+   `(event, player, market, side, line, date)`. Backend total:
+   **28/28** in this run, 60+ across the session.
+
+**Operator runbook (after `git pull && systemctl restart`):**
+```bash
+# Audit any top combo:
+TOK="17808e1c13717b0d2170f6e1f023388d93740ff66f70ae1a"
+curl -sS -X POST "https://propvision.bet/api/emergent-admin/optimizer/opt_XXXX/combo-trace" \
+     -H "Content-Type: application/json" -H "X-Admin-Token: $TOK" \
+     -d '{"tier":"safe_haven","stat_family":"pitcher_strikeouts",
+            "odds_bucket":"odds_lt_-200","thresholds":{"hr_l20_min":0.75,
+            "hr_l10_min":0.65,"hr_l5_min":0.65,"tp_min":0.55}}' | jq
+
+# Returns:
+#   n_rows_in_cell:           rows in (tier × family × bucket)
+#   n_rows_passing_thresholds: rows that pass the threshold combo
+#   recomputed_metrics:        wins/losses + n_distinct_bets + hit_rate_distinct
+#   stored_metrics:            what the optimizer stored for the same combo
+#   rows:                      every row matched (audit by hand)
+# If recomputed.hit_rate != stored.hit_rate, that's a bug to investigate.
+```

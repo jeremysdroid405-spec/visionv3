@@ -89,6 +89,15 @@ READ_ONLY_ALLOWED: Set[str] = (PROTECTED_COLLECTIONS | {
     "mlb_statcast_player_features", "mlb_statcast_raw",
     "mlb_player_identity_map", "mlb_lineup_resolver",
     "mlb_live_lineup_feed",
+    # 2026-05-24 — optimizer audit. Read-only access to the per-cell
+    # result rows + run state so the operator can verify any combo
+    # against the source data (rather than trust the headline number).
+    "optimizer_runs",
+    "optimizer_run_results",
+    "research_grid_runs",
+    "research_grid_results",
+    "candidate_thresholds",
+    "mlb_replay_model_status",
 }) | WRITABLE_COLLECTIONS  # writable are also readable
 
 

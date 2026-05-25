@@ -406,6 +406,19 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
     n = len(qual)
     if n < min_bets:
         return None
+    # 2026-05-24 — Cross-book duplication audit.
+    # The same (game, player, market, side, line) prop can appear in
+    # the replay cache N times (one per anchor book) post the
+    # multi-book universe migration. Counting each row as an
+    # independent bet inflates `n_bets` and biases `hit_rate` toward
+    # the more-quoted props. Track DISTINCT bets and distinct wins
+    # alongside so the operator can audit. Operator-visible: a
+    # combo claiming `n_bets=58 / hit_rate=1.00` is suspect if
+    # `n_distinct_bets` is much smaller.
+    distinct_keys: set = set()
+    distinct_wins: set = set()
+    distinct_losses: set = set()
+    distinct_pushes: set = set()
     wins = losses = pushes = ungraded = 0
     n_with_odds = 0
     n_with_payout = 0
@@ -414,13 +427,25 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
     daily: Dict[str, float] = {}
     pnl_units = 0.0
     for r in qual:
+        key = (
+            r.get("event_id") or r.get("game_event_id") or "_",
+            r.get("player_name_normalized") or "_",
+            r.get("market") or "_",
+            r.get("side") or "_",
+            r.get("line"),
+            r.get("game_date") or "_",
+        )
+        distinct_keys.add(key)
         on = r.get("outcome_numeric")
         if on == 1:
             wins += 1
+            distinct_wins.add(key)
         elif on == 0:
             losses += 1
+            distinct_losses.add(key)
         elif on == 0.5:
             pushes += 1
+            distinct_pushes.add(key)
         else:
             ungraded += 1
         if r.get("odds") is not None:
@@ -478,6 +503,20 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
         "n_with_odds": n_with_odds,
         "n_with_payout": n_with_payout,
         "wins": wins, "losses": losses, "pushes": pushes,
+        # 2026-05-24 — Distinct-bet audit fields. The same prop can
+        # appear N times in the row pool (anchor-book duplication),
+        # so the headline `wins / losses` can inflate. These dedupe
+        # by (event_id, player, market, side, line, date) and let the
+        # operator detect when a "100% / 58" claim is really
+        # "100% / 14 unique bets × 4 books".
+        "n_distinct_bets":  len(distinct_keys),
+        "wins_distinct":    len(distinct_wins),
+        "losses_distinct":  len(distinct_losses),
+        "pushes_distinct":  len(distinct_pushes),
+        "hit_rate_distinct": (
+            len(distinct_wins) / (len(distinct_wins) + len(distinct_losses))
+            if (len(distinct_wins) + len(distinct_losses)) else None
+        ),
         "hit_rate": hit_rate, "roi": roi,
         "calibration_delta": calibration_delta,
         "avg_tp": avg_tp, "avg_cv": avg_cv, "avg_edge": avg_edge,
@@ -1581,6 +1620,120 @@ async def top_by_tier(run_id: str, request: Request,
         "ok": True, "run_id": run_id, "top_n": top_n,
         "tier_order": DEFAULT_TIERS,
         "tiers": by_tier,
+    }
+
+
+# ── Combo trace (operator self-audit) ──────────────────────────────
+#
+# 2026-05-24 — When a stored result claims `100% / 58 bets`, the
+# operator must be able to verify it against the source data without
+# trusting the stored aggregate. This endpoint takes a run_id + a
+# specific combo (tier, family, bucket, thresholds) and:
+#   1. Re-runs the EXACT same cell query + threshold filter
+#   2. Returns all the rows that match
+#   3. Returns the recomputed metrics (wins, losses, distinct-bet
+#      audit fields)
+#   4. Returns the stored metrics for comparison
+# If the recomputed numbers disagree with the stored ones, that's an
+# optimizer bug (or a cross-book-duplication artifact the operator
+# can now SEE).
+class ComboTraceBody(BaseModel):
+    tier:        str
+    stat_family: str
+    odds_bucket: str
+    thresholds:  Dict[str, Optional[float]]
+    side:        Optional[str] = None
+    limit_rows:  int = Field(default=200, ge=1, le=2000)
+
+
+@router.post("/{run_id}/combo-trace")
+async def combo_trace(run_id: str, request: Request,
+                            body: ComboTraceBody,
+                            auth=Depends(require_admin_token)):
+    """Re-run a single (tier × family × bucket × thresholds) combo
+    against the source replay cache and return both the row-level
+    breakdown AND the stored metrics for comparison.
+
+    Distinct-bet fields surface cross-book duplication artifacts:
+    a `100% / 58` claim with only 14 distinct (game, player, side, line)
+    keys means the same 14 bets are counted ~4× (one per anchor book).
+    """
+    db = _get_db()
+    run = await db[OPTIMIZER_RUNS].find_one({"run_id": run_id}, {"_id": 0})
+    if run is None:
+        raise HTTPException(404, f"run_id not found: {run_id}")
+    req = (run.get("state") or {}).get("request", {})
+    sport = req.get("sport") or "MLB"
+    start = req.get("start")
+    end   = req.get("end")
+    sides = ([body.side] if body.side
+                  else req.get("sides") or ["OVER", "UNDER"])
+    book_filter = req.get("book_filter", "any")
+
+    # Mongo cell query — mirrors `_evaluate_cell`.
+    q: Dict[str, Any] = {
+        "league_id":    sport,
+        "game_date":    {"$gte": start, "$lte": end},
+        "stat_family":  body.stat_family,
+        "odds_bucket":  body.odds_bucket,
+        **_tier_odds_filter(body.tier),
+        **_book_filter_clause(book_filter),
+        "side":         {"$in": sides},
+    }
+    raw_rows: List[Dict[str, Any]] = []
+    async for r in db[REPLAY_COLL].find(q, projection={"_id": 0}):
+        raw_rows.append(r)
+
+    # Apply threshold combo filter.
+    combo = dict(body.thresholds)
+    pass_rows = [r for r in raw_rows if _row_passes_combo(r, combo)]
+    recomputed = _evaluate_combo(pass_rows, combo, min_bets=1)
+
+    # Stored aggregate (if any) — match by tier/family/bucket/thresholds.
+    stored_query: Dict[str, Any] = {
+        "run_id":      run_id,
+        "tier":        body.tier,
+        "stat_family": body.stat_family,
+        "odds_bucket": body.odds_bucket,
+    }
+    for k in ("hr_l20_min", "hr_l10_min", "hr_l5_min",
+                 "cv_max", "edge_min", "tp_min"):
+        v = body.thresholds.get(k)
+        if v is not None:
+            stored_query[f"thresholds.{k}"] = v
+    stored = await db[OPTIMIZER_RESULTS].find_one(
+        stored_query, {"_id": 0})
+
+    # Truncate row dump for response payload.
+    trace_rows = pass_rows[: body.limit_rows]
+    for r in trace_rows:
+        # Strip unhelpful nested chunks
+        r.pop("books", None)
+        r.pop("books_attached", None)
+
+    await audit_log(request, action="optimizer_combo_trace",
+                       params={"run_id": run_id, "tier": body.tier,
+                                  "stat_family": body.stat_family,
+                                  "odds_bucket": body.odds_bucket},
+                       response_summary={"n_pass": len(pass_rows),
+                                              "n_total": len(raw_rows)},
+                       **auth)
+    return {
+        "ok":          True,
+        "run_id":      run_id,
+        "cell": {
+            "tier":        body.tier,
+            "stat_family": body.stat_family,
+            "odds_bucket": body.odds_bucket,
+        },
+        "thresholds":  body.thresholds,
+        "n_rows_in_cell": len(raw_rows),
+        "n_rows_passing_thresholds": len(pass_rows),
+        "rows_truncated_at": (
+            body.limit_rows if len(pass_rows) > body.limit_rows else None),
+        "recomputed_metrics": recomputed,
+        "stored_metrics":     stored,
+        "rows":               trace_rows,
     }
 
 
