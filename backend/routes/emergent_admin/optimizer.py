@@ -234,11 +234,35 @@ class OptimizerRunBody(BaseModel):
 
 
 # ── Combo generation ──────────────────────────────────────────────
-def _resolve_grid(spec: GridSpec) -> Dict[str, List[float]]:
+def _resolve_grid(spec: Optional[GridSpec]) -> Dict[str, List[float]]:
+    """2026-05-24 — ALWAYS returns the full brute-force `DEFAULT_GRID`.
+
+    The user-supplied `spec` is intentionally IGNORED at search time per
+    user directive:
+
+      > "the grid should create the absolute 5 best combos for every
+      >  tier from brute force. the settings on the grid should only
+      >  be used to filter that AFTER the absolute best are displayed"
+
+    The form values are stored on the run state as
+    `state.display_filter_grid` and applied client-side when the UI
+    renders Top-N tables — they NEVER narrow the search itself.
+    """
+    return {axis: list(default) for axis, default in DEFAULT_GRID.items()}
+
+
+def _user_grid_to_display_filter(spec: Optional[GridSpec]
+                                            ) -> Dict[str, List[float]]:
+    """Capture the operator's submitted grid for client-side post-
+    filtering. Returns {} when nothing was customized (i.e. the
+    frontend can render the unfiltered brute-force ranking)."""
+    if spec is None:
+        return {}
     out: Dict[str, List[float]] = {}
-    for axis, default in DEFAULT_GRID.items():
+    for axis in DEFAULT_GRID:
         v = getattr(spec, axis, None)
-        out[axis] = list(v) if v else list(default)
+        if v:
+            out[axis] = list(v)
     return out
 
 
@@ -1047,6 +1071,10 @@ async def run_optimizer(body: OptimizerRunBody, request: Request,
         "best": None, "failures": [], "cancelled": False,
         "n_results_persisted": 0,
         "agent_id": auth["agent_id"],
+        # 2026-05-24 — capture the operator's submitted grid as a
+        # client-side post-display filter (the backend always brute-
+        # forces on DEFAULT_GRID per user directive).
+        "display_filter_grid": _user_grid_to_display_filter(body.grid),
     }
     # IMPORTANT: do NOT populate `_RUNS[run_id]` from the API process.
     # The research_worker process is the sole owner of the in-flight
@@ -1335,6 +1363,11 @@ async def get_results(run_id: str, request: Request,
         "best_by_odds_bucket": best_by_odds_bucket,
         "overfit_warnings": overfit_warnings,
         "family_coverage": family_coverage,
+        # 2026-05-24 — operator's submitted grid for client-side
+        # post-display filtering. The backend ALWAYS brute-forces on
+        # `DEFAULT_GRID`; this field is the optional UI-side filter.
+        "display_filter_grid": (run.get("state") or {})
+                                  .get("display_filter_grid", {}),
     }
 
 

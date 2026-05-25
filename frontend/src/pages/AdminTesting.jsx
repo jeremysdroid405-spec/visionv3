@@ -2926,6 +2926,50 @@ function OptimizerTab({ token }) {
   const [runId, setRunId] = useState(null);
   const [status, setStatus] = useState(null);
   const [results, setResults] = useState(null);
+
+  // 2026-05-24 — Client-side post-display filter.
+  // The backend ALWAYS brute-forces on the maximal `DEFAULT_GRID` per
+  // user directive ("the grid should create the absolute 5 best
+  // combos for every tier from brute force. the settings on the
+  // grid should only be used to filter that AFTER the absolute
+  // best are displayed"). The form values are applied here to hide
+  // any combo that's weaker than the operator's minimum strictness.
+  // A row's `thresholds[axis]` is the SAVED threshold value used at
+  // search time — for `*_min` axes (hr_l20, edge, tp, …) the saved
+  // value must be ≥ the lowest form value the operator typed; for
+  // `*_max` axes (cv) the saved value must be ≤ the highest form
+  // value. Wildcards (`-inf` / `+inf`) on the saved threshold are
+  // always hidden by the post-filter because they represent "no
+  // constraint" — they should NOT pass a stricter operator filter.
+  const passesDisplayFilter = useCallback((row, displayFilterGrid) => {
+    if (!displayFilterGrid || !row?.thresholds) return true;
+    const isInf = (v) => v === null || v === undefined || v === Infinity
+                            || v === -Infinity
+                            || (typeof v === 'string' && v.toLowerCase() === 'inf')
+                            || (typeof v === 'string' && v.toLowerCase().includes('inf'));
+    for (const [axis, vals] of Object.entries(displayFilterGrid)) {
+      if (!vals?.length) continue;
+      const saved = row.thresholds[axis];
+      if (saved === undefined || saved === null) continue;
+      // Saved wildcards never pass an operator strictness filter.
+      if (isInf(saved)) return false;
+      if (axis.endsWith('_min')) {
+        // saved must be ≥ the lowest form value
+        const floor = Math.min(...vals.filter((v) => !isInf(v)));
+        if (Number.isFinite(floor) && saved < floor) return false;
+      } else if (axis.endsWith('_max')) {
+        // saved must be ≤ the highest form value
+        const ceil = Math.max(...vals.filter((v) => !isInf(v)));
+        if (Number.isFinite(ceil) && saved > ceil) return false;
+      }
+    }
+    return true;
+  }, []);
+
+  // Display-filter toggle: when true, apply the operator's grid form
+  // to filter Top-25 / Top-5-per-family. Default off → operator sees
+  // the absolute Top-N from brute force, unfiltered.
+  const [applyGridFilter, setApplyGridFilter] = useState(false);
   const [outcomeCov, setOutcomeCov] = useState(null);
   const [joinDiag, setJoinDiag]   = useState(null);
   const [diagBusy, setDiagBusy]   = useState(false);
@@ -3535,8 +3579,27 @@ function OptimizerTab({ token }) {
 
           {/* Top 25 table */}
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Top 25 by Score</div>
-            <ResultsRankTable rows={results.top || []} testId="opt-top-table" accent={ACCENT_2} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase' }}>
+                Top 25 by Score
+                {applyGridFilter && Object.keys(results.display_filter_grid || {}).length > 0 ? (
+                  <span style={{ marginLeft: 8, color: ACCENT_2 }}>
+                    (filtered by form grid)
+                  </span>
+                ) : null}
+              </div>
+              <label data-testid="apply-grid-filter-toggle" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: TEXT, cursor: 'pointer' }}>
+                <input type="checkbox" checked={applyGridFilter}
+                       onChange={(e) => setApplyGridFilter(e.target.checked)} />
+                <span>Apply form-grid as display filter</span>
+              </label>
+            </div>
+            <ResultsRankTable
+              rows={(results.top || []).filter((r) =>
+                !applyGridFilter ||
+                passesDisplayFilter(r, results.display_filter_grid))}
+              testId="opt-top-table"
+              accent={ACCENT_2} />
           </div>
 
           {/* Stat family coverage — surface ALL families even when
@@ -3599,7 +3662,12 @@ function OptimizerTab({ token }) {
                 ★ Top 5 per Stat Family (deterministic · brute-force)
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 10 }}>
-                {results.top_per_family.map((g, gi) => (
+                {results.top_per_family.map((g, gi) => {
+                  const filteredConfigs = applyGridFilter
+                    ? (g.configs || []).filter((c) =>
+                        passesDisplayFilter(c, results.display_filter_grid))
+                    : (g.configs || []);
+                  return (
                   <div key={gi} data-testid={`opt-tpf-group-${g.stat_family}-${g.odds_bucket}`} style={{
                     background: SURFACE_2, border: `1px solid ${BORDER}`,
                     borderRadius: 6, padding: 8,
@@ -3610,18 +3678,20 @@ function OptimizerTab({ token }) {
                       {' · '}
                       <code style={{ color: ACCENT_3 }}>{g.odds_bucket || '—'}</code>
                     </div>
-                    {(!g.configs || g.configs.length === 0) ? (
+                    {(!filteredConfigs || filteredConfigs.length === 0) ? (
                       <div data-testid={`opt-tpf-empty-${g.stat_family}`}
                            style={{ padding: '6px 0', fontSize: 10, fontFamily: 'monospace',
                                     color: WARN, fontStyle: 'italic' }}>
-                        {g.status === 'no_rows_after_tier_filter'
+                        {applyGridFilter && (g.configs || []).length > 0
+                          ? '⚠ all combos hidden by form-grid filter — uncheck "Apply form-grid as display filter" to see brute-force best'
+                          : g.status === 'no_rows_after_tier_filter'
                           ? '⚠ no rows in selected tier — widen tiers (all 3 checked) or expand window'
                           : g.status === 'no_graded_combos'
                           ? '⚠ rows present but no combo passed min_bets · lower min_bets in launch form'
                           : '⚠ no graded combos for this family'}
                       </div>
                     ) : null}
-                    {(g.configs || []).map((c, ci) => (
+                    {filteredConfigs.map((c, ci) => (
                       <div key={ci} style={{
                         borderTop: ci > 0 ? `1px solid ${BORDER}` : 'none',
                         padding: '6px 0', fontSize: 10, fontFamily: 'monospace',
@@ -3643,7 +3713,8 @@ function OptimizerTab({ token }) {
                       </div>
                     ))}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

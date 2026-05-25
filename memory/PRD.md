@@ -1372,3 +1372,54 @@ curl -sS "https://propvision.bet/api/emergent-admin/research/book-coverage-audit
 # 4. Re-launch the optimizer — HR / SB / doubles / triples
 #    should now appear in Top-25 + Top-5 per family.
 ```
+
+
+### 2026-05-24 — Brute-force ALWAYS, form-grid becomes display filter
+**User directive (verbatim):**
+> "the grid should create the absolute 5 best combos for every tier
+>  from brute force. the settings on the grid should only be used to
+>  filter that AFTER the absolute best are displayed"
+
+**Root cause behind the previous Top-25:** The operator's form-grid
+`hr_l20:[0.55…0.80]` was narrowing the search space ENORMOUSLY. For
+hitter props at chalk odds (-300), very few rows have hr_l20≥0.55, so
+22,192 of 23,040 combos got marked low-sample → only pitcher_strikeouts
+surfaced in safe_haven, while total_bases (944 graded rows), batter_strikeouts (610),
+hits (430), rbis (44) etc. were starved by the form constraints.
+
+**Shipped:**
+1. `_resolve_grid(spec) → DEFAULT_GRID` ALWAYS. User input is
+   ignored at search time. DEFAULT_GRID brute-forces 50k+ combos
+   per cell including `-inf`/`+inf` wildcards for unconstrained
+   sweeps.
+2. `_user_grid_to_display_filter(spec)` captures the operator's
+   form values into `state.display_filter_grid` — a passive
+   metadata field surfaced in `/results`.
+3. `/results` payload now includes `display_filter_grid`.
+4. Frontend `AdminTesting.jsx`:
+   - New `passesDisplayFilter(row, grid)` helper applies the operator's
+     form values as a strictness floor/ceiling (saved threshold must
+     be ≥ form min on `*_min` axes; ≤ form max on `*_max`).
+   - Toggle "Apply form-grid as display filter" (default OFF) above
+     Top-25 table.
+   - When enabled, applied to BOTH Top-25 table and Top-5-per-family
+     cards. Empty filtered groups show "⚠ all combos hidden by
+     form-grid filter — uncheck to see brute-force best".
+5. **Tests:** `test_optimizer_brute_force_grid.py` (7 pins):
+   - `_resolve_grid` ignores user spec
+   - `_resolve_grid(None)` returns DEFAULT_GRID
+   - DEFAULT_GRID has wildcards on every axis
+   - `_user_grid_to_display_filter` captures verbatim
+   - None spec → empty filter
+   - Empty axis lists ignored
+   - DEFAULT_GRID combos ≥ 50k per cell (sanity)
+   Backend total: **47/47 passing**.
+
+**Operator runbook (after deploy):**
+- Re-launch optimizer with ANY grid form values — backend now ignores them.
+- Top-25 will now show combos across ALL families that have rows in
+  the (tier × bucket) cells. The narrow Top-25 dominated by
+  pitcher_strikeouts will become a diverse mix of total_bases,
+  batter_strikeouts, hits, etc.
+- Toggle "Apply form-grid as display filter" if you want to filter
+  the display to combos matching your form values.
