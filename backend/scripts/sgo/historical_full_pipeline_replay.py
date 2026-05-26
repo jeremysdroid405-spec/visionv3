@@ -589,7 +589,22 @@ async def _emit_sample_diff(db, *, snapshots: List[Dict[str, Any]],
 
 # ── Main ─────────────────────────────────────────────────────────────────
 async def _run(args: argparse.Namespace) -> int:
-    db = AsyncIOMotorClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
+    # 2026-05-26 — Open the client separately so we can close it in
+    # `finally` below. Previously this leaked: when `asyncio.run(_run())`
+    # returned, motor's background connection-pool tasks kept the
+    # event loop alive → the subprocess never exited → the research
+    # worker saw `status='running'` forever → the next pipeline step
+    # never kicked off. That's the "freezes between Full Pipeline and
+    # Gate Grid" symptom.
+    client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+    try:
+        db = client[os.environ["DB_NAME"]]
+        return await _run_body(args, db)
+    finally:
+        client.close()
+
+
+async def _run_body(args: argparse.Namespace, db) -> int:
 
     league = args.league.upper()
     tiers = [t.strip() for t in args.tiers.split(",") if t.strip()]

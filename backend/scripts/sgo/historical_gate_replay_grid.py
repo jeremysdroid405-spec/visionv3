@@ -167,7 +167,19 @@ def _iter_grid(g: Dict[str, List[float]]):
 
 
 async def _run(args: argparse.Namespace) -> int:
-    db = AsyncIOMotorClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
+    # 2026-05-26 — Wrap entire body in try/finally + client.close() so
+    # `asyncio.run(_run())` can actually exit. Without this motor
+    # holds the loop open and the subprocess hangs after the script
+    # logically completes — see historical_full_pipeline_replay.py
+    # for the matching fix and the symptom write-up.
+    client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+    try:
+        return await _run_body(args, client[os.environ["DB_NAME"]])
+    finally:
+        client.close()
+
+
+async def _run_body(args: argparse.Namespace, db) -> int:
     grid = dict(DEFAULT_GRID)
     run_id = str(uuid.uuid4())
     started = datetime.now(timezone.utc)

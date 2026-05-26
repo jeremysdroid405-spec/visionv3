@@ -39,56 +39,58 @@ async def amain(args):
     dates = ([args.date] if args.date
              else list(daterange(args.start, args.end)))
     cli = AsyncIOMotorClient(os.environ["MONGO_URL"])
-    db = cli[os.environ["DB_NAME"]]
-    for d in dates:
-        print(f"\n=== {d} ===", flush=True)
-        print(f"  odds_collection    = {args.odds_collection}")
-        print(f"  feature_source     = {args.feature_source}")
-        try:
-            s = await cache_date(
-                db, d, mem_limit_mb=args.mem_limit, force=args.force,
-                odds_collection=args.odds_collection,
-                feature_source=args.feature_source,
-                league=args.league,
-                sgo_lookback_days=args.sgo_lookback_days,
-                min_prior_games=args.min_prior_games,
-            )
-        except MemoryError as me:
-            print(f"  HALTED: {me}", flush=True)
-            break
-        except RuntimeError as rt:
-            # Hard-fail from cache_date when rows_written=0 while odds>0.
-            print(f"  HARD-FAIL: {rt}", flush=True)
-            sys.exit(2)
-        if s.get("skipped"):
-            print("  already completed — skipped (use --force to override)")
-            continue
-        # The "no-prior-logs" counter is labelled differently depending
-        # on source so the report makes sense regardless.
-        no_prior_label = ("skipped_no_prior_sgo_stats"
-                              if args.feature_source == "sgo_player_stats"
-                              else "skipped_no_hub")
-        print( "  ── coverage report ──")
-        print(f"  feature_source                 = {s.get('feature_source', args.feature_source)}")
-        print(f"  odds_universe_count            = {s.get('odds_rows_in_window', 0)}")
-        print(f"  distinct_player_market_pairs   = {s.get('distinct_player_market_pairs', 0)}")
-        print(f"  universe_size (post-fam-map)   = {s.get('universe_size', 0)}")
-        print(f"  feature_cache_rows_written     = {s.get('rows_written', 0)}")
-        print(f"  pairs_cached (matched players) = {s.get('pairs_cached', 0)}")
-        print(f"  players_cached                 = {s.get('players_cached', 0)}")
-        print(f"  {no_prior_label:.<30} = {s.get(no_prior_label, 0)}")
-        print(f"  skipped_few_logs               = {s.get('skipped_few_logs', 0)}")
-        print(f"  skipped_stat_mapping           = {s.get('skipped_stat_mapping', 0)}")
-        print(f"  skipped_stat_family_mismatch   = {s.get('skipped_stat_family_mismatch', 0)}")
-        print(f"  skipped_player_name_mismatch   = {s.get('skipped_player_name_mismatch', 0)}")
-        if s.get("unknown_markets_sample"):
-            print(f"  unknown_markets_sample         = {s['unknown_markets_sample']}")
-        if s.get("missed_player_sample"):
-            print(f"  missed_player_sample           = {s['missed_player_sample']}")
-        print(f"  rss start/peak/end             = {s['rss_mb_start']}/"
-              f"{s['rss_mb_peak']}/{s['rss_mb_end']} MB")
-        print(f"  elapsed                        = {s['elapsed_s']:.1f}s")
-    cli.close()
+    try:
+        db = cli[os.environ["DB_NAME"]]
+        for d in dates:
+            print(f"\n=== {d} ===", flush=True)
+            print(f"  odds_collection    = {args.odds_collection}")
+            print(f"  feature_source     = {args.feature_source}")
+            try:
+                s = await cache_date(
+                    db, d, mem_limit_mb=args.mem_limit, force=args.force,
+                    odds_collection=args.odds_collection,
+                    feature_source=args.feature_source,
+                    league=args.league,
+                    sgo_lookback_days=args.sgo_lookback_days,
+                    min_prior_games=args.min_prior_games,
+                )
+            except MemoryError as me:
+                print(f"  HALTED: {me}", flush=True)
+                break
+            except RuntimeError as rt:
+                # Hard-fail from cache_date when rows_written=0 while odds>0.
+                print(f"  HARD-FAIL: {rt}", flush=True)
+                sys.exit(2)
+            if s.get("skipped"):
+                print("  already completed — skipped (use --force to override)")
+                continue
+            # The "no-prior-logs" counter is labelled differently depending
+            # on source so the report makes sense regardless.
+            no_prior_label = ("skipped_no_prior_sgo_stats"
+                                  if args.feature_source == "sgo_player_stats"
+                                  else "skipped_no_hub")
+            print( "  ── coverage report ──")
+            print(f"  feature_source                 = {s.get('feature_source', args.feature_source)}")
+            print(f"  odds_universe_count            = {s.get('odds_rows_in_window', 0)}")
+            print(f"  distinct_player_market_pairs   = {s.get('distinct_player_market_pairs', 0)}")
+            print(f"  universe_size (post-fam-map)   = {s.get('universe_size', 0)}")
+            print(f"  feature_cache_rows_written     = {s.get('rows_written', 0)}")
+            print(f"  pairs_cached (matched players) = {s.get('pairs_cached', 0)}")
+            print(f"  players_cached                 = {s.get('players_cached', 0)}")
+            print(f"  {no_prior_label:.<30} = {s.get(no_prior_label, 0)}")
+            print(f"  skipped_few_logs               = {s.get('skipped_few_logs', 0)}")
+            print(f"  skipped_stat_mapping           = {s.get('skipped_stat_mapping', 0)}")
+            print(f"  skipped_stat_family_mismatch   = {s.get('skipped_stat_family_mismatch', 0)}")
+            print(f"  skipped_player_name_mismatch   = {s.get('skipped_player_name_mismatch', 0)}")
+            if s.get("unknown_markets_sample"):
+                print(f"  unknown_markets_sample         = {s['unknown_markets_sample']}")
+            if s.get("missed_player_sample"):
+                print(f"  missed_player_sample           = {s['missed_player_sample']}")
+            print(f"  rss start/peak/end             = {s['rss_mb_start']}/"
+                  f"{s['rss_mb_peak']}/{s['rss_mb_end']} MB")
+            print(f"  elapsed                        = {s['elapsed_s']:.1f}s")
+    finally:
+        cli.close()
 
 
 def main():

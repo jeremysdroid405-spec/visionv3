@@ -269,8 +269,18 @@ def _fmt(c: Dict[str, Any]) -> str:
 
 
 async def _run(args: argparse.Namespace) -> int:
+    # 2026-05-26 — try/finally around client.close() so the subprocess
+    # exits cleanly even when an exception bubbles. Otherwise motor
+    # background tasks keep `asyncio.run(_run())` alive → worker sees
+    # status='running' forever → pipeline next-step never fires.
     client = AsyncIOMotorClient(os.environ["MONGO_URL"])
-    db = client[os.environ["DB_NAME"]]
+    try:
+        return await _run_body(args, client[os.environ["DB_NAME"]])
+    finally:
+        client.close()
+
+
+async def _run_body(args: argparse.Namespace, db) -> int:
 
     grid = dict(DEFAULT_GRID)
     if args.config:

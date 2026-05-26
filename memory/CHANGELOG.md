@@ -4826,3 +4826,45 @@ without `maxTimeMS`, easy to bust nginx 60s ceiling)
     (admin endpoints reachable, 108 pytest tests pass).
   - Pending: user verification of Guided Workflow macro completion in prod
     after deploy.
+
+
+## 2026-05-26 — Pipeline Subprocess Hang Root-Cause Fix
+
+**Symptom (user-reported):** "We are making it all the way to run full pipeline.
+It's scanning all the data but freezing between running full pipeline and gate grid."
+
+**Root cause:** 6 SSOT historical-pipeline scripts opened
+`AsyncIOMotorClient(os.environ["MONGO_URL"])` at function entry but never
+called `.close()`. When `asyncio.run(_run())` returned, motor's background
+connection-pool tasks kept the event loop alive → the Python subprocess never
+exited → the research_worker saw the job as `status='running'` forever → the
+Workflow orchestrator never advanced to the next step. The script logically
+finished (you'd see the summary in the tail), but the process hung until
+SIGKILL'd by the 7200 s worker timeout — 2 hours of "freeze."
+
+**Empirical proof (post-fix, MLB 1990-01-01..01-01 empty window):**
+  - `historical_full_pipeline_replay`: returncode=1 in 0.81 s (was: hang)
+  - `historical_gate_replay_grid`:     returncode=0 in 0.81 s (was: hang)
+
+**Files fixed (try/finally + client.close()):**
+  - `scripts/sgo/historical_full_pipeline_replay.py`
+  - `scripts/sgo/historical_gate_replay_grid.py`
+  - `scripts/sgo/reshape_sgo_to_replay_odds.py`
+  - `scripts/sgo/score_historical_with_live_mlb_hf.py`
+  - `scripts/research/grid_sweep.py`
+  - `scripts/mlb_replay_build_feature_cache.py` (had `cli.close()` but not in finally)
+
+**Test contract added:** `tests/test_pipeline_scripts_motor_close.py`
+(20 parametrized tests — pins every pipeline script that opens an
+`AsyncIOMotorClient` must close it inside a `try/finally`). Any regression
+that removes the close gets caught at CI time, not in prod 2 hours later.
+
+**Pattern enforced going forward:**
+```python
+async def _run(args):
+    client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+    try:
+        return await _run_body(args, client[os.environ["DB_NAME"]])
+    finally:
+        client.close()
+```

@@ -674,10 +674,17 @@ def _parse():
 
 async def amain():
     args = _parse()
-    db = AsyncIOMotorClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
-    if args.probe:
-        return await _probe(args, db)
-    return await _run(args, db)
+    # 2026-05-26 — open client separately + close in finally so the
+    # subprocess can exit cleanly. See
+    # historical_full_pipeline_replay.py for write-up.
+    client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+    try:
+        db = client[os.environ["DB_NAME"]]
+        if args.probe:
+            return await _probe(args, db)
+        return await _run(args, db)
+    finally:
+        client.close()
 
 
 if __name__ == "__main__":

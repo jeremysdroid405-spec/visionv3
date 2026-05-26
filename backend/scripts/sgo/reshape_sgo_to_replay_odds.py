@@ -389,7 +389,16 @@ async def _preflight_diagnostics(db, *, league: str, start: str, end: str) -> Di
 
 
 async def _run(args: argparse.Namespace) -> int:
-    db = AsyncIOMotorClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
+    # 2026-05-26 — close the motor client on exit so the subprocess
+    # actually terminates (see historical_full_pipeline_replay.py).
+    client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+    try:
+        return await _run_body(args, client[os.environ["DB_NAME"]])
+    finally:
+        client.close()
+
+
+async def _run_body(args: argparse.Namespace, db) -> int:
     await _ensure_indexes(db)
 
     print("=" * 72)
