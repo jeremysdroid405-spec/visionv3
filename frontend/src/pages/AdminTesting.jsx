@@ -337,7 +337,93 @@ function WorkerHealthBar({ token }) {
         style={{ background: 'transparent', border: `1px solid ${BORDER_STRONG}`, color: MUTED, borderRadius: 4, padding: '2px 10px', fontSize: 10, cursor: refreshing ? 'wait' : 'pointer', textTransform: 'uppercase', letterSpacing: 0.5 }}>
         {refreshing ? '…' : 'Refresh'}
       </button>
+      <RebootServicesButton token={token} />
       {err && <span style={{ color: BAD, fontWeight: 600 }}>· {err}</span>}
+    </div>
+  );
+}
+
+// ── Reboot services button ──────────────────────────────────────────
+//
+// 2026-05-24 — One-click prod-stack reboot. Hits
+// /api/emergent-admin/ops/reboot which runs sudo systemctl/supervisorctl
+// against the allowlisted services (backend, worker, nginx).
+function RebootServicesButton({ token }) {
+  const [busy, setBusy] = useState(false);
+  const [openConfirm, setOpenConfirm] = useState(false);
+  const [lastResult, setLastResult] = useState(null);
+  const doReboot = useCallback(async () => {
+    setBusy(true);
+    setOpenConfirm(false);
+    try {
+      const r = await apiFetch(token, '/ops/reboot', {
+        method: 'POST',
+        body: JSON.stringify({ services: ['backend', 'worker', 'nginx'] }),
+      });
+      setLastResult(r);
+      if (r.all_succeeded) {
+        toast.success('All services restarted');
+      } else {
+        const failed = (r.results || []).filter((x) => !x.ok)
+                            .map((x) => x.service).join(', ');
+        toast.error(`Reboot partial: failed=${failed}. See dropdown.`);
+      }
+    } catch (e) {
+      toast.error(`Reboot failed: ${e.message}`);
+      setLastResult({ error: e.message });
+    }
+    setBusy(false);
+  }, [token]);
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <button data-testid="wh-reboot-services" disabled={busy}
+        onClick={() => setOpenConfirm(true)}
+        title="Restart backend + worker + nginx (one click)"
+        style={{ background: 'transparent', border: `1px solid ${WARN}`, color: WARN, borderRadius: 4, padding: '2px 10px', fontSize: 10, cursor: busy ? 'wait' : 'pointer', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {busy ? '↻ rebooting…' : '↻ Reboot Stack'}
+      </button>
+      {openConfirm && (
+        <div data-testid="wh-reboot-confirm" style={{
+          position: 'absolute', top: 28, right: 0, zIndex: 10,
+          background: SURFACE_3, border: `1px solid ${WARN}`,
+          borderRadius: 6, padding: 12, minWidth: 320, fontSize: 11,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        }}>
+          <div style={{ marginBottom: 8, color: WARN, fontWeight: 600 }}>
+            Restart backend + worker + nginx?
+          </div>
+          <div style={{ marginBottom: 10, color: DIM, lineHeight: 1.4 }}>
+            <code>sudo systemctl restart vision-backend.service</code><br/>
+            <code>sudo supervisorctl restart research_worker</code><br/>
+            <code>sudo systemctl reload nginx</code>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button data-testid="wh-reboot-cancel"
+              onClick={() => setOpenConfirm(false)}
+              style={{ background: 'transparent', border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 4, padding: '2px 10px', fontSize: 10, cursor: 'pointer' }}>
+              Cancel
+            </button>
+            <button data-testid="wh-reboot-confirm-go" onClick={doReboot}
+              style={{ background: WARN, border: 'none', color: '#000', borderRadius: 4, padding: '2px 12px', fontSize: 10, cursor: 'pointer', fontWeight: 700 }}>
+              Reboot now
+            </button>
+          </div>
+          {lastResult?.results && (
+            <div style={{ marginTop: 10, fontSize: 10, fontFamily: 'monospace', maxHeight: 180, overflow: 'auto' }}>
+              {lastResult.results.map((r, i) => (
+                <div key={i} style={{ marginBottom: 4, color: r.ok ? ACCENT_2 : BAD }}>
+                  {r.ok ? '✓' : '✗'} {r.service} (rc={String(r.rc)} · {Math.round(r.duration_s)}s)
+                  {!r.ok && r.stderr ? (
+                    <div style={{ marginLeft: 12, color: BAD, fontSize: 9 }}>
+                      {r.stderr.slice(0, 200)}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

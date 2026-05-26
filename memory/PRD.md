@@ -1601,3 +1601,61 @@ ungraded artifact.
   - n_graded=0 → score=None
   - Sample penalty differential 6 vs 10 baseline ≥ 0.04 score
 Backend total: **25/25 in this run · 60+ across session**.
+
+
+### 2026-05-24 — Rate-limit exemption + one-click stack reboot
+**Reported symptom:** "trying to run a new month and the research
+worker is constantly dying ... Rate limit exceeded. Try again in 15
+seconds." Step 4 of the Guided Workflow ("Reshape Odds (SSOT)") was
+failing.
+
+**Root cause #1 (the rate limit):** `middleware/rate_limiter.py`
+applied the default public-IP tier to ALL `/api/*` paths, including
+`/api/emergent-admin/*`. The Guided Workflow polls `/jobs/{id}`
+every ~2s during each step, easily hitting the public tier ceiling
+mid-pipeline. Since emergent-admin is already admin-token-gated
+(no anonymous traffic possible), public rate-limiting is meaningless
+here — it just blocks the operator's own poll loop.
+
+**Fix #1:** Added `"/api/emergent-admin"` to the rate-limiter
+`exempt_paths`. Token-based throttling already exists per agent_id
+in the audit_log layer; the public-IP middleware is redundant.
+
+**Feature #2 (the operator's one-click reboot):** New endpoint
+`POST /api/emergent-admin/ops/reboot` and `GET /ops/reboot/_meta`:
+- Strict allowlist of 3 services: `backend`, `worker`, `nginx`
+- Hardcoded `argv` lists (NO user input ever reaches the shell)
+- `subprocess.run(argv_list, shell=False)` — no shell-interpolation
+- `sudo -n` (fail fast without TTY prompt)
+- Each command has a 15-30s timeout
+- Audit-logged with admin token
+- Runs in canonical order: backend → worker → nginx
+
+**UI:** New "↻ Reboot Stack" amber button in the worker-status bar
+(top of Admin Testing page). Click → confirm modal showing the
+three commands → "Reboot now". Per-service results render with
+rc/stderr in the same dropdown.
+
+**PROD PREREQUISITE (one-time setup):** Add to
+`/etc/sudoers.d/propvision-admin` (chmod 440):
+```
+vision_user ALL=(root) NOPASSWD: /bin/systemctl restart vision-backend.service
+vision_user ALL=(root) NOPASSWD: /bin/supervisorctl restart research_worker
+vision_user ALL=(root) NOPASSWD: /bin/systemctl reload nginx
+```
+Without these lines the endpoint will return the subprocess stderr
+verbatim so the operator can diagnose.
+
+**Tests:** `tests/test_ops_reboot.py` (10 pins) lock the contract:
+endpoint registered, allowlist = exactly 3 keys, argv lists are
+static Python lists, no shell metacharacters, backend targets
+vision-backend.service, worker targets supervisorctl, nginx uses
+`reload` not `restart`, every command uses `sudo -n`, every command
+has a bounded timeout. Backend total: **18/18 in this run**.
+
+**Operator runbook (after `git pull && systemctl restart`):**
+- Pipeline runs without rate-limit blocks. If a step fails for
+  other reasons, the "↻ Reboot Stack" button in the header is one
+  click away from a clean stack restart.
+- Audit log shows every reboot call with timestamp + agent + per-
+  service rc.

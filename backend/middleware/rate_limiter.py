@@ -267,6 +267,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             "/api/health",
             "/api/",  # Root endpoint
             "/api/proxy/nba-headshot",  # Images are cached, no need to rate limit
+            # 2026-05-24 — emergent-admin is the internal operator
+            # console; every request is admin-token-gated (no
+            # anonymous IPs touch it) and the Guided Workflow polls
+            # /jobs/{id} every 2s, easily exceeding the public IP
+            # tier. Public rate-limit is meaningless here — the
+            # admin token itself is the rate guard.
+            "/api/emergent-admin",
         ]
         self.storage = get_rate_limit_storage()
     

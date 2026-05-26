@@ -24,6 +24,7 @@ from .optimizer import router as optimizer_router
 from .coverage  import router as coverage_router
 from .research  import router as research_router
 from .worker    import router as worker_router
+from .ops       import router as ops_router
 
 router = APIRouter(prefix="/emergent-admin",
                     tags=["emergent-admin"])
@@ -41,3 +42,4 @@ router.include_router(optimizer_router,   prefix="/optimizer")
 router.include_router(coverage_router,    prefix="/coverage")
 router.include_router(research_router,    prefix="/research")
 router.include_router(worker_router,      prefix="/worker")
+router.include_router(ops_router,         prefix="/ops")
