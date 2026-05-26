@@ -274,28 +274,42 @@ async def load_prior_history(
     if league:
         match["league_id"] = league
     cache: Dict[Tuple[str, str], List[Tuple[str, float]]] = {}
-    # Sort once at the DB to avoid Python-side sort
-    cursor = db[STATS_COLL].find(
-        match,
-        {"_id": 0, "player_id": 1, "game_date": 1, "stats": 1}
-    ).sort([("game_date", ASCENDING)])
-    async for row in cursor:
-        pid = row.get("player_id")
-        gd  = row.get("game_date")
-        stats = row.get("stats") or {}
-        if not pid or not gd:
-            continue
-        for sid in (stat_ids or []):
-            res = stat_resolver(sid, stats)
-            # Backward-compatible unpacking: resolver may return (val, fam)
-            # or (val, fam, reason) depending on version.
-            if isinstance(res, tuple) and len(res) >= 1:
-                val = res[0]
-            else:
-                val = None
-            if val is None:
+    # 2026-05-26 — Chunk player_ids and pull each chunk with an
+    # explicit large batch_size. WHY:
+    #   1. Motor's default batch_size=101 turns a 2-3 M row history
+    #      pull (typical for an MLB date with 180-day lookback) into
+    #      ~25 000 network round-trips. At ~5 ms RTT that's >2 min of
+    #      pure latency PER DATE — for a 180-date window it blows the
+    #      7200 s worker timeout and looks like "the worker died."
+    #   2. A single `$in` over 300+ player_ids forces Mongo to
+    #      OR-merge that many index scans into one result stream;
+    #      chunking lets each scan return faster and lets us page
+    #      memory pressure (`stats` blobs are large).
+    CHUNK = int(os.environ.get("BHMF_PID_CHUNK", "150"))
+    BATCH = int(os.environ.get("BHMF_BATCH_SIZE", "5000"))
+    pid_chunks = [player_ids[i:i + CHUNK] for i in range(0, len(player_ids), CHUNK)]
+    for chunk in pid_chunks:
+        m = dict(match, **{"player_id": {"$in": chunk}})
+        cursor = db[STATS_COLL].find(
+            m, {"_id": 0, "player_id": 1, "game_date": 1, "stats": 1}
+        ).sort([("game_date", ASCENDING)]).batch_size(BATCH)
+        async for row in cursor:
+            pid = row.get("player_id")
+            gd  = row.get("game_date")
+            stats = row.get("stats") or {}
+            if not pid or not gd:
                 continue
-            cache.setdefault((pid, sid), []).append((gd, val))
+            for sid in (stat_ids or []):
+                res = stat_resolver(sid, stats)
+                # Backward-compatible unpacking: resolver may return (val, fam)
+                # or (val, fam, reason) depending on version.
+                if isinstance(res, tuple) and len(res) >= 1:
+                    val = res[0]
+                else:
+                    val = None
+                if val is None:
+                    continue
+                cache.setdefault((pid, sid), []).append((gd, val))
     return cache
 
 
@@ -361,7 +375,11 @@ async def process_date(
     anchors: List[Dict[str, Any]] = []
     needed_players: set = set()
     needed_stats: set = set()
-    async for d in db[SRC_COLL].find(src_match, {"_id": 0}):
+    # 2026-05-26 — explicit batch_size on the anchors find. The
+    # default 101 docs/batch turns a date-with-5k-props pull into ~50
+    # network round-trips. With batch_size 5 000 it's one. Same
+    # rationale as the history loader (see load_prior_history).
+    async for d in db[SRC_COLL].find(src_match, {"_id": 0}).batch_size(5000):
         anchors.append(d)
         if d.get("player_id"): needed_players.add(d["player_id"])
         if d.get("stat_id"):   needed_stats.add(d["stat_id"])
@@ -379,7 +397,7 @@ async def process_date(
               "feature_ready": True},
             projection={"_id": 0, "event_id": 1, "player_id": 1,
                          "stat_id": 1, "side": 1, "line": 1, "period_id": 1}
-        ):
+        ).batch_size(5000):
             already_done.add((r.get("event_id"), r.get("player_id"),
                                 r.get("stat_id"),
                                 (r.get("side") or "").upper(),
@@ -485,7 +503,18 @@ async def process_date(
 
 # ─── main ─────────────────────────────────────────────────────────────────
 async def amain(args: argparse.Namespace) -> int:
+    # 2026-05-26 — Wrap entire body in try/finally so the client
+    # ALWAYS closes — including on unhandled exceptions. Previously
+    # the script had 3 explicit `client.close()` calls in separate
+    # branches, but any exception outside those branches would leak.
     client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+    try:
+        return await _amain_body(args, client)
+    finally:
+        client.close()
+
+
+async def _amain_body(args: argparse.Namespace, client) -> int:
     db = client[os.environ["DB_NAME"]]
 
     t0 = time.time()
@@ -499,7 +528,6 @@ async def amain(args: argparse.Namespace) -> int:
     if args.drop_existing:
         if not args.dry_run and not args.yes:
             print(f"  [err] --drop-existing requires --yes (or --dry-run).")
-            client.close()
             return 2
         if not args.dry_run:
             existing = await db[OUT_COLL].count_documents({})
@@ -514,7 +542,6 @@ async def amain(args: argparse.Namespace) -> int:
         db, league=args.league, start=args.start, end=args.end)
     if not dates:
         print(f"  [err] no anchor docs in {SRC_COLL} for window")
-        client.close()
         return 1
     print(f"  [plan] {len(dates)} game_dates to process  "
           f"(from {dates[0]} to {dates[-1]})")
@@ -579,7 +606,6 @@ async def amain(args: argparse.Namespace) -> int:
             print("    " + json.dumps(d, indent=2, default=str)
                               .replace("\n", "\n    "))
     print("=" * 72)
-    client.close()
     return 0
 
 

@@ -36,6 +36,13 @@ WORKER_HEARTBEAT_PATH = os.environ.get("RW_HEARTBEAT_PATH",
 # is stale beyond this many seconds. The API refuses enqueue in that
 # state so jobs don't pile up invisibly.
 WORKER_STALE_AFTER_S = float(os.environ.get("RW_STALE_AFTER_S", "30"))
+# 2026-05-26 — hard cap on the size of the rolling per-job log array.
+# Picked so the Mongo doc stays well under 16 MB BSON ceiling even
+# with 1 KB-per-line worst case, AND so the 1-second /jobs/{id}/log
+# poll never exceeds a few MB of response payload. Operators can read
+# the full log via the cumulative `log_lines_total` counter; the
+# rolling array is the live-tail view.
+LOG_CAP_LINES = int(os.environ.get("RW_LOG_CAP_LINES", "2000"))
 
 # Default resource caps applied to every spawned subprocess.
 DEFAULT_RESOURCE_CAPS: Dict[str, Any] = {
@@ -103,6 +110,19 @@ async def enqueue(
     where jobs pile up in `queued` forever because the worker service
     isn't installed on the host.
     """
+    # 2026-05-26 — lazy idempotent indexes so /jobs/{id} and the
+    # reconciler are O(1) even on a million-row jobs collection.
+    # Without these, a /jobs/{id} poll every 1 s would COLLSCAN.
+    try:
+        coll = db()[JOBS_COLL]
+        await coll.create_index("job_id", unique=True, background=True)
+        await coll.create_index(
+            [("status", 1), ("worker_queue", 1), ("queued_at", 1)],
+            background=True, name="queue_drain_idx")
+        await coll.create_index("last_heartbeat_at", background=True,
+                                       sparse=True)
+    except Exception:  # noqa: BLE001 — index may exist with different opts
+        pass
     if require_worker:
         import os as _os
         try:
@@ -195,9 +215,24 @@ async def finalize(
 async def append_log(job_id: str, lines: List[str]) -> None:
     if not lines:
         return
+    # 2026-05-26 — Cap the log array at a fixed size via `$slice`.
+    # WHY: the previous unbounded `$push` was the root cause of step-2 504s.
+    # A long-running script that emits 50 k+ progress lines would grow
+    # the Mongo doc past 16 MB BSON limit → inserts silently fail and the
+    # subprocess output stops appearing in the UI. Worse: the 1-second
+    # /jobs/{id}/log poll on the frontend reads the WHOLE log array
+    # each tick → the response can grow to >10 MB → nginx 504 after
+    # 60 s. With `$slice: -LOG_CAP_LINES` Mongo keeps only the last
+    # LOG_CAP_LINES entries on every push, bounding doc size and
+    # response size to O(LOG_CAP_LINES × avg_line_len) regardless of
+    # how long the job runs.
     await db()[JOBS_COLL].update_one(
         {"job_id": job_id},
-        {"$push": {"log": {"$each": lines}}},
+        {"$push": {"log": {
+            "$each":  lines,
+            "$slice": -LOG_CAP_LINES,
+        }},
+         "$inc":  {"log_lines_total": len(lines)}},
     )
 
 

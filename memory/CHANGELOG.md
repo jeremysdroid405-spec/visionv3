@@ -4868,3 +4868,77 @@ async def _run(args):
     finally:
         client.close()
 ```
+
+
+## 2026-05-26 — Step-2 504 / Worker Crash Root Causes (3 distinct bugs)
+
+**User report:** "now I can't even get past step 2. you aren't really testing
+it. fix the worker error. I don't know if it's killing the OOM or dying but
+it has not worked once."
+
+Properly investigated. Three distinct root causes found, each with an
+empirical reproduction and a pinned test:
+
+### Bug #1 — Unbounded job log array (root cause of /jobs/{id}/log 504s)
+  - `append_log` used `{$push: {log: {$each: lines}}}` with NO cap.
+  - A long-running step (build_features over a 90-day window emits 50 k+
+    progress lines) grew the Mongo doc past the 16 MB BSON ceiling →
+    writes silently failed → poll responses were 10 MB → nginx 504.
+  - **Fix:** `append_log` now uses `{$push: {log: {$each, $slice: -LOG_CAP_LINES}}}`
+    + `{$inc: {log_lines_total: N}}`. Doc size is now O(LOG_CAP_LINES ×
+    avg_line_len) regardless of job duration. Default cap 2000 lines.
+  - File: `workers/queue.py`
+
+### Bug #2 — /jobs/{id}/log read the whole log array each poll
+  - Old projection `{log: 1, ...}` returned the FULL 2 MB array, then
+    sliced `log[-tail:]` in Python — every 1-second poll re-transferred
+    the entire log.
+  - **Fix:** Projection now uses `{log: {$slice: -tail}}` so Mongo sends
+    ONLY the requested tail bytes over the wire. Also pinned
+    `max_time_ms=15_000` on both `/jobs/{id}` and `/jobs/{id}/log` so a
+    missing index can't blow nginx's 60s ceiling.
+  - File: `routes/emergent_admin/jobs.py`
+
+### Bug #3 — build_features network thrashing (root cause of "worker dies")
+  - `find()` cursors in `build_historical_model_features` used motor's
+    DEFAULT batch_size of 101. The 180-day prior-history pull for a
+    typical MLB date returns ~2-3 M rows → **~25 000 network round-trips
+    per date**. At 5 ms RTT that's 2+ minutes of pure latency PER DATE.
+    Across a 180-day window: ~6 hours of network latency alone, which
+    blows the 7200 s worker timeout → worker SIGKILL → user sees
+    "worker died" with no obvious cause.
+  - Also: a single `$in` over 300+ player_ids forced Mongo to OR-merge
+    that many index scans, blowing memory.
+  - **Fix:** Chunk `player_ids` (default 150 per chunk, env `BHMF_PID_CHUNK`)
+    and pin `batch_size(5000)` (env `BHMF_BATCH_SIZE`) on every cursor.
+    Anchors + resume cursors also bumped to `batch_size(5000)`.
+    Network round-trips drop ~50× (e.g. 25 000 → 540 per date).
+  - Added try/finally around motor client close so exceptions during
+    process_date can't leak the connection pool.
+  - File: `scripts/sgo/build_historical_model_features.py`
+
+### Lazy-create critical Mongo indexes
+  - `emergent_admin_jobs` had ONLY `_id_` index — every `/jobs/{job_id}`
+    poll was a COLLSCAN. On a host with 50 k+ accumulated jobs that
+    alone can 504.
+  - **Fix:** `enqueue()` now lazily creates: unique `job_id`,
+    `(status, worker_queue, queued_at)` queue-drain compound, sparse
+    `last_heartbeat_at`. All `background=True`.
+  - File: `workers/queue.py`
+
+### Tests added (11 new, 139 in scope total)
+  - `tests/test_job_log_cap.py` (5 tests) — log cap; cumulative counter;
+    `/log` slice projection; `max_time_ms` on jobs endpoints; jobs
+    collection has job_id index.
+  - `tests/test_pipeline_steps_e2e_exit.py` (6 parametrized tests) —
+    actually run each pipeline script as a real subprocess against an
+    empty data window, assert exit within 15 s, assert not SIGKILLed.
+    This is the test the user explicitly asked for. **Pre-fix all 6
+    would hang for 7200 s until SIGKILL.**
+
+### Empirical verification (preview pod):
+  - build_features subprocess on empty window: returncode=1 in **0.81 s**
+    (previously: would hang or run slowly through unnecessary I/O)
+  - End-to-end queue test: enqueue → claim → run → succeed with
+    `log_lines_total=12`, heartbeat=set, in **2.5 s** elapsed
+  - 139 tests pass

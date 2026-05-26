@@ -368,7 +368,11 @@ async def get_job(job_id: str, request: Request,
     proj = {"_id": 0}
     if not include_log:
         proj["log"] = 0
-    doc = await db[JOBS_COLL].find_one({"job_id": job_id}, proj)
+    # 2026-05-26 — Cap server-side query time so a degenerate index
+    # miss can't blow nginx's 60 s ceiling. The job doc is keyed off
+    # `job_id` (indexed); 15 s is generous.
+    doc = await db[JOBS_COLL].find_one(
+        {"job_id": job_id}, proj, max_time_ms=15_000)
     if not doc:
         raise HTTPException(404, f"job {job_id} not found")
     await audit_log(request, action="job_get",
@@ -382,23 +386,36 @@ async def get_job_log(job_id: str, request: Request,
                           tail: int = Query(500, ge=1, le=10000),
                           auth=Depends(require_admin_token)):
     db = _get_db()
+    # 2026-05-26 — Use `$slice` projection so Mongo sends ONLY the last
+    # `tail` entries of the (already-capped) log array, NOT the whole
+    # 2 000-line buffer × N bytes per line. Without this, every 1 s
+    # poll from AdminTesting's WorkflowTab pulled the full doc (~1-2 MB
+    # for a noisy script) → 60 polls/min × N concurrent steps quickly
+    # overwhelmed Mongo + nginx → 504s during long-running steps.
+    proj = {"_id": 0, "log": {"$slice": -tail},
+              "status": 1, "exit_code": 1,
+              "error": 1, "traceback": 1, "tail_preview": 1,
+              "log_lines_total": 1}
     doc = await db[JOBS_COLL].find_one(
-        {"job_id": job_id},
-        {"_id": 0, "log": 1, "status": 1, "exit_code": 1,
-          "error": 1, "traceback": 1, "tail_preview": 1})
+        {"job_id": job_id}, proj,
+        max_time_ms=15_000)
     if not doc:
         raise HTTPException(404, f"job {job_id} not found")
     log = doc.get("log") or []
     await audit_log(request, action="job_log",
                       params={"job_id": job_id, "tail": tail}, **auth)
     return {"ok": True,
-              "status":       doc.get("status"),
-              "exit_code":    doc.get("exit_code"),
-              "error":        doc.get("error"),
-              "traceback":    doc.get("traceback"),
-              "tail_preview": doc.get("tail_preview"),
-              "lines":        log[-tail:],
-              "total_lines":  len(log)}
+              "status":           doc.get("status"),
+              "exit_code":        doc.get("exit_code"),
+              "error":            doc.get("error"),
+              "traceback":        doc.get("traceback"),
+              "tail_preview":     doc.get("tail_preview"),
+              "lines":            log,
+              "total_lines":      len(log),
+              # Lifetime line count (incremented by append_log on every
+              # push so the UI can show "got 12,345 lines so far, tail
+              # below" even though the rolling buffer is capped).
+              "log_lines_total":  doc.get("log_lines_total") or len(log)}
 
 
 @router.post("/{job_id}/cancel")
