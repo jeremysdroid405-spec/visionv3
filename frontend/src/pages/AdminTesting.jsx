@@ -575,6 +575,20 @@ function WorkflowTab({ token, onPipelineFinished }) {
   const [tail, setTail] = useState([]);
   const [coverage, setCoverage] = useState(null);
   const pollRef = useRef(null);
+  // 2026-05-26 — Dispatch mutex. CRITICAL fix for the "step keeps
+  // re-enqueueing 80+ times" bug. WHY:
+  //   `drive()` runs every 1 s (setInterval). When it finds a `pending`
+  //   step it calls `await apiFetch('/jobs/run')` to enqueue, THEN
+  //   updates state to mark the step `queued`. The state update only
+  //   takes effect AFTER apiFetch resolves — but the next 1-s tick can
+  //   fire BEFORE the state update applies, see the step still
+  //   `pending`, and enqueue a second job. With slow backend responses
+  //   this stacks up: each prod log line showed an identical job_id
+  //   spawning every ~10 s with `queue_depth=87` and falling. That's
+  //   step 2 being re-enqueued ~87 times in a tight loop. The
+  //   `dispatchingRef` flag is set BEFORE the network call and cleared
+  //   in finally, so concurrent drive() calls bail out at the top.
+  const dispatchingRef = useRef(false);
 
   // Pull coverage when dates change so the step grid can show
   // "Using cached stats" instead of "Pulling historical player stats".
@@ -647,6 +661,14 @@ function WorkflowTab({ token, onPipelineFinished }) {
           toast.error(`No ${pipeline.config.sport} job for ${stepDef.label}`);
           return;
         }
+        // ── Dispatch mutex ────────────────────────────────────────
+        // If a prior tick is already in the middle of POST /jobs/run
+        // for this step, bail out. Without this, slow backend
+        // responses cause N parallel enqueues of the same step.
+        if (dispatchingRef.current) {
+          return;
+        }
+        dispatchingRef.current = true;
         try {
           toast.info(`▶ starting ${stepDef.label}…`);
           const res = await apiFetch(token, '/jobs/run', {
@@ -667,6 +689,11 @@ function WorkflowTab({ token, onPipelineFinished }) {
             return { ...p, status: 'halted', steps };
           });
           toast.error(`Step failed: ${e.message}`);
+        } finally {
+          // Release the mutex so the next drive() tick (which will see
+          // the now-queued state) can poll job status normally. If we
+          // forget this, the chain stalls forever.
+          dispatchingRef.current = false;
         }
         return;
       }      // poll active

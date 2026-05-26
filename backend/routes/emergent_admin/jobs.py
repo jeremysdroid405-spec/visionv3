@@ -294,6 +294,37 @@ async def run_job(body: RunBody, request: Request,
     if not ok:
         raise HTTPException(400, f"rejected args (not in allowlist): "
                                     f"{rejected}")
+    # 2026-05-26 — Server-side dedupe (defense in depth).
+    # If an identical (module, args) job is already queued/claimed/
+    # running, return that job_id INSTEAD of enqueueing a new one.
+    # WHY: the AdminTesting Workflow tab's `drive()` runs every 1 s
+    # and can fire `/jobs/run` multiple times in flight while the
+    # first response is in-flight (frontend mutex closes that hole
+    # going forward, but old browser tabs / external clients / future
+    # bugs can still produce the storm). A prod log this morning
+    # showed 87 identical reshape_sgo_to_replay_odds jobs queued in
+    # under 2 minutes; the user reasonably perceived this as "the
+    # worker is hung" because each one takes 10 s and the chain
+    # never advanced.
+    db = _get_db()
+    existing = await db[JOBS_COLL].find_one(
+        {"module": body.module,
+          "args":   body.args,
+          "status": {"$in": ["queued", "claimed", "running"]}},
+        {"_id": 0, "job_id": 1, "status": 1, "queued_at": 1},
+        sort=[("queued_at", -1)],
+        max_time_ms=5_000,
+    )
+    if existing:
+        logger.info("[job dedupe] reusing in-flight job %s (status=%s) "
+                       "for module=%s args=%s — refused duplicate enqueue",
+                       existing["job_id"], existing.get("status"),
+                       body.module, body.args)
+        return {"ok":         True,
+                  "job_id":     existing["job_id"],
+                  "status":     existing.get("status") or "queued",
+                  "deduped":    True,
+                  "routed_to":  "research_worker" if is_heavy(body.module) else "inline"}
     job_id = str(uuid.uuid4())
     # Heavy modules route through the dedicated research_worker (separate
     # process, resource-capped). The endpoint still returns immediately

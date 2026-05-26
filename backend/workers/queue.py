@@ -121,6 +121,13 @@ async def enqueue(
             background=True, name="queue_drain_idx")
         await coll.create_index("last_heartbeat_at", background=True,
                                        sparse=True)
+        # 2026-05-26 — dedupe-lookup index for POST /jobs/run.
+        # Without this the dedupe query is a COLLSCAN over a growing
+        # jobs table — turning the dedupe SAFEGUARD into a new 504
+        # source on busy hosts.
+        await coll.create_index(
+            [("module", 1), ("status", 1), ("queued_at", -1)],
+            background=True, name="dedupe_lookup_idx")
     except Exception:  # noqa: BLE001 — index may exist with different opts
         pass
     if require_worker:
