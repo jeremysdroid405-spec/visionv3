@@ -201,6 +201,54 @@ async def append_log(job_id: str, lines: List[str]) -> None:
     )
 
 
+async def heartbeat_job(job_id: str, rss_bytes: int = 0) -> None:
+    """Update the `last_heartbeat_at` watermark on a running job so the
+    reconciler can distinguish 'truly working' from 'zombie / crashed'.
+    Called from research_worker every few seconds during a job's run.
+    """
+    await db()[JOBS_COLL].update_one(
+        {"job_id": job_id},
+        {"$set": {"last_heartbeat_at": datetime.now(timezone.utc),
+                    "rss_bytes_current": int(rss_bytes)}},
+    )
+
+
+async def reconcile_zombies(stale_after_s: float = 15 * 60) -> int:
+    """Finalize any `running`/`claimed` worker job whose
+    `last_heartbeat_at` is older than `stale_after_s`.
+
+    Returns count of zombie jobs reaped. Called by the worker daemon
+    every few minutes. Idempotent / safe to run from many places at
+    once because each update narrows by job_id + status condition.
+
+    Why this exists: if research_worker is killed mid-job by the
+    kernel (OOM SIGKILL) the parent never gets a chance to write
+    `finalize(status='errored', ...)`. On the next worker startup
+    `_recover_stuck_jobs` catches anything we owned, but ONLY at
+    startup — between starts, the UI sees the job hanging in
+    'running' for hours. Periodic reconciliation fixes that.
+    """
+    cutoff = datetime.now(timezone.utc).timestamp() - stale_after_s
+    cutoff_dt = datetime.fromtimestamp(cutoff, tz=timezone.utc)
+    res = await db()[JOBS_COLL].update_many(
+        {"status": {"$in": ["claimed", "running"]},
+          "worker_queue": True,
+          "$or": [
+              {"last_heartbeat_at": {"$lt": cutoff_dt}},
+              # Job claimed but never wrote a heartbeat (immediate crash)
+              {"last_heartbeat_at": {"$exists": False},
+               "claimed_at": {"$lt": cutoff_dt}},
+          ]},
+        {"$set": {"status":      "errored",
+                    "error":       (f"zombie reconciled "
+                                          f"(no heartbeat for ≥"
+                                          f"{int(stale_after_s)}s)"),
+                    "finished_at": datetime.now(timezone.utc),
+                    "reconciled":  True}},
+    )
+    return int(res.modified_count or 0)
+
+
 async def queue_depth() -> int:
     return await db()[JOBS_COLL].count_documents(
         {"status": "queued", "worker_queue": True})

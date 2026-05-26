@@ -43,7 +43,8 @@ def test_evaluate_combo_all_ungraded_returns_null_hit_rate():
     but cells still showed n_bets > 0. We must NOT collapse to 0.0
     hit_rate — that masked the upstream join bug. None signals
     "unknown" so the UI shows the em-dash placeholder."""
-    rows = [_row(None) for _ in range(50)]
+    # 50 DISTINCT ungraded bets (unique event_ids), each ungraded.
+    rows = [_row(None, event_id=f"evt{i}") for i in range(50)]
     metrics = _evaluate_combo(rows, _empty_combo(), min_bets=20)
     assert metrics is not None
     assert metrics["n_bets"] == 50
@@ -58,9 +59,9 @@ def test_evaluate_combo_all_ungraded_returns_null_hit_rate():
 
 def test_evaluate_combo_mixed_grades_uses_payout_denominator():
     # 10 wins @ +100 = +10u, 10 losses = -10u, 30 ungraded
-    rows = ([_row(1, odds=+100) for _ in range(10)]
-              + [_row(0, odds=+100) for _ in range(10)]
-              + [_row(None, odds=+100) for _ in range(30)])
+    rows = ([_row(1, odds=+100, event_id=f"w{i}") for i in range(10)]
+              + [_row(0, odds=+100, event_id=f"l{i}") for i in range(10)]
+              + [_row(None, odds=+100, event_id=f"u{i}") for i in range(30)])
     m = _evaluate_combo(rows, _empty_combo(), min_bets=20)
     assert m["n_bets"] == 50
     assert m["n_graded"] == 20
@@ -78,7 +79,12 @@ def test_evaluate_combo_diagnostic_fields_present():
     n_with_odds / n_with_payout. The Admin UI keys off these to label
     the warning pill 'X/Y graded'. If they ever disappear, the failure
     mode silently returns."""
-    rows = [_row(1), _row(0), _row(None)] * 10  # 30 rows
+    # 30 DISTINCT rows so n_bets reflects 30 unique bets.
+    rows = []
+    for i in range(10):
+        rows.append(_row(1, event_id=f"w{i}"))
+        rows.append(_row(0, event_id=f"l{i}"))
+        rows.append(_row(None, event_id=f"u{i}"))
     m = _evaluate_combo(rows, _empty_combo(), min_bets=20)
     for k in ("n_bets", "n_graded", "n_ungraded",
                 "n_with_odds", "n_with_payout"):
@@ -88,12 +94,12 @@ def test_evaluate_combo_diagnostic_fields_present():
 def test_evaluate_combo_missing_odds_doesnt_break_grading():
     # outcome_numeric present but no odds → counted as graded but
     # contributes nothing to pnl / ROI denominator.
-    rows = [_row(1, odds=None) for _ in range(20)]
+    rows = [_row(1, odds=None, event_id=f"e{i}") for i in range(20)]
     m = _evaluate_combo(rows, _empty_combo(), min_bets=10)
     assert m["n_bets"] == 20
     assert m["n_graded"] == 20
-    assert m["n_with_odds"] == 0
-    assert m["n_with_payout"] == 0
+    assert m["n_with_odds"] == 0  # no row has odds at all
+    assert m["n_with_payout"] == 0  # no odds → no payout possible
     assert m["hit_rate"] == 1.0
     assert m["roi"] is None     # 0 / 0 = None, NOT 0.0
 

@@ -4739,3 +4739,90 @@ total_edge      = p_model - best_book_implied      ← "Total Edge" (NEW)
 **Gates: NOT TOUCHED.** Per user spec, total_edge is display-only
 until distribution-snapshot review completes.
 
+
+
+## 2026-05-26 — Testing Suite SSOT Fix Pack (P0)
+
+User report: "testing suite still isn't working right. constantly getting 504
+errors, the worker is crashing and locking up. when it does try to work numbers
+come back messed up." Mandated SSOT replica/clone of production: only inputs
+(historical data) and outputs (test results sink) may differ from prod.
+
+### Root causes addressed (3 categories, 10 bugs identified via troubleshoot RCA)
+
+**A. 504 Gateway Timeouts** (was: 6 serial Mongo aggregations on 900k+ rows
+without `maxTimeMS`, easy to bust nginx 60s ceiling)
+  - `optimizer.py /results` endpoint: added `_DEFAULT_AGG_TIMEOUT_MS=30_000`,
+    `maxTimeMS=30_000` on every cursor, all 7 aggregations now dispatched
+    concurrently via `asyncio.gather`. Timeout converts to clean 503 with
+    actionable message (was 500 → nginx 504).
+  - `optimizer.py /top-per-family`, `/top-by-tier`, `/grid-diagnose`: same
+    `maxTimeMS` pin.
+  - `research.py /replay-outcome-coverage`, `/qualified-cells`,
+    `/book-coverage-audit`, `/replay-event-window`, `/research/best`: same.
+  - `coverage.py`: same.
+
+**B. Worker Crashes / Zombie "running" Jobs**
+  - `workers/queue.py`: added `heartbeat_job(job_id, rss_bytes)` and
+    `reconcile_zombies(stale_after_s)`. Reconciler marks any `running`/
+    `claimed` worker job whose `last_heartbeat_at` is older than the cutoff
+    (or claimed but never heartbeated) as `errored` + `reconciled=true`.
+  - `workers/research_worker.py`:
+    - Per-job heartbeat written every `RW_JOB_HEARTBEAT_S=5` seconds.
+    - Periodic reconciler in main loop every `RW_RECONCILE_EVERY_S=60`s
+      (was: only at worker startup → zombies stayed visible for hours).
+    - Pre-emptive RSS guard at `RW_RSS_KILL_RATIO=0.95` of `rlimit_as`.
+      Sends SIGTERM (catchable) before kernel SIGKILL (uncatchable). Records
+      structured `"RSS guard tripped — child reached N B"` error instead of
+      silently leaving the row in `running` forever.
+
+**C. Multi-book Row Inflation = Wrong hit_rate / ROI** (the "100% of 58" bug)
+  - `optimizer.py _evaluate_combo`: rewrote to compute SSOT v2
+    distinct-bet metrics. Headline `n_bets`, `wins`, `losses`, `pushes`,
+    `hit_rate`, `roi` are all per unique opportunity
+    `(event_id, player, market, side, line, game_date)`. Raw row counts
+    preserved under `*_raw_rows` for audit. ROI = mean payout per backing
+    row, averaged within unique bet (= what a real bettor placing one bet
+    at "the available market" would realize). Legacy `*_distinct` aliases
+    kept for backwards compatibility. `metrics_version="v2_distinct"`
+    stamped on every cell.
+  - `_score()` aligned to v2: sample-size penalty uses distinct settled
+    bets (wins + losses), not inflated row counts.
+
+### Tests added (33 new, 108 total in this scope)
+  - `tests/test_optimizer_distinct_audit.py` (7 tests) — SSOT distinct-bet
+    contract: hit_rate/roi reflect unique opportunities; raw rows preserved
+    for audit; metrics_version stamped.
+  - `tests/test_optimizer_results_endpoint_perf.py` (5 tests) — endpoint
+    contract: maxTimeMS pinned; aggregations parallel via gather; 503 on
+    timeout; constant ≤ 30s.
+  - `tests/test_worker_reconciler.py` (5 tests) — heartbeat writes;
+    reconciler reaps stale/never-heartbeated jobs; never touches alive
+    jobs; idempotent.
+  - `tests/test_research_worker_guards.py` (5 tests) — RSS guard ratio
+    sane; uses SIGTERM not SIGKILL; per-job heartbeat in stream loop;
+    periodic reconciler wired into main loop.
+  - Existing `test_optimizer_evaluate_combo.py` updated to new schema
+    (still 11 tests, all green).
+
+### Files changed
+  - `/app/backend/routes/emergent_admin/optimizer.py` (~250 lines)
+  - `/app/backend/routes/emergent_admin/research.py`
+  - `/app/backend/routes/emergent_admin/coverage.py`
+  - `/app/backend/workers/queue.py` (added heartbeat_job + reconcile_zombies)
+  - `/app/backend/workers/research_worker.py` (heartbeat + reconciler + RSS guard)
+
+### Operational impact
+  - Existing optimizer runs in Mongo will show different (correct) hit_rate /
+    ROI numbers on next read because the headline now dedupes by unique
+    opportunity. The new fields are `metrics_version="v2_distinct"` stamped.
+    Older persisted cell docs lack the v2 fields — `_score` has a legacy
+    branch and will continue to rank them safely.
+  - Backend / research_worker restart needed in prod for changes to take
+    effect (`sudo systemctl restart vision-backend.service research_worker`).
+
+### Status
+  - Backend + worker restarted in preview pod, smoke-test green
+    (admin endpoints reachable, 108 pytest tests pass).
+  - Pending: user verification of Guided Workflow macro completion in prod
+    after deploy.

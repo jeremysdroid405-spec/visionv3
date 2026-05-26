@@ -32,6 +32,7 @@ All endpoints sit under  /api/emergent-admin/research/*  and require
 X-Admin-Token. They are audit-logged via the shared helper.
 """
 from __future__ import annotations
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -207,10 +208,15 @@ async def get_grid_results(
             {"$project": {"_id": 0}},
         ]
         return [d async for d in db[RESULTS_COLL].aggregate(pipeline,
-                                                                   allowDiskUse=True)]
+                                                                   allowDiskUse=True,
+                                                                   maxTimeMS=30_000)]
 
-    top   = await _ranked(direction=-1, limit=top_k)
-    worst = await _ranked(direction= 1, limit=top_k)
+    # 2026-05-26 — parallel: serial gather was easily blowing 60 s nginx
+    # timeout on big windows. asyncio.gather lets these share I/O.
+    top, worst = await asyncio.gather(
+        _ranked(direction=-1, limit=top_k),
+        _ranked(direction= 1, limit=top_k),
+    )
 
     # "Best by X" — one aggregation per bucket. $first picks the highest
     # ranked row per group after sorting by the chosen metric desc.
@@ -227,16 +233,20 @@ async def get_grid_results(
             {"$limit": 200},
         ]
         out: Dict[str, Any] = {}
-        async for d in db[RESULTS_COLL].aggregate(pipeline, allowDiskUse=True):
+        async for d in db[RESULTS_COLL].aggregate(pipeline,
+                                                            allowDiskUse=True,
+                                                            maxTimeMS=30_000):
             k = d.get(key)
             if k is not None and k not in out:
                 out[k] = d
         return out
 
-    best_by_tier        = await _bucket("tier")
-    best_by_stat_family = await _bucket("stat_family")
-    best_by_side        = await _bucket("side")
-    best_by_odds_bucket = await _bucket("odds_bucket")
+    best_by_tier, best_by_stat_family, best_by_side, best_by_odds_bucket = await asyncio.gather(
+        _bucket("tier"),
+        _bucket("stat_family"),
+        _bucket("side"),
+        _bucket("odds_bucket"),
+    )
 
     return {
         "ok": True,
@@ -314,7 +324,8 @@ async def list_grid_cells(
         {"$project": {"_id": 0}},
     ]
     cells = [d async for d in db[RESULTS_COLL].aggregate(pipeline,
-                                                                 allowDiskUse=True)]
+                                                                 allowDiskUse=True,
+                                                                 maxTimeMS=30_000)]
     return {
         "ok": True, "run_id": run_id,
         "n_total":  n_total,
@@ -433,7 +444,7 @@ async def last_pipeline_window(
             "n_distinct_dates": {"$size": "$dates"},
         }},
     ]
-    cur = db[REPLAY_COLL].aggregate(pipeline)
+    cur = db[REPLAY_COLL].aggregate(pipeline, maxTimeMS=30_000)
     docs = [d async for d in cur]
     if not docs:
         return {"ok": True, "sport": league,
@@ -512,7 +523,8 @@ async def replay_outcome_coverage(
                           "n_with_outcome_numeric": 1, "n_with_odds": 1}},
     ]
     by_family = [d async for d in db[REPLAY_COLL].aggregate(fam_pipeline,
-                                                                       allowDiskUse=True)]
+                                                                       allowDiskUse=True,
+                                                                       maxTimeMS=30_000)]
 
     # sample rows whose outcome is null
     missing_match = {**match,
@@ -999,7 +1011,7 @@ async def book_coverage_audit(
         {"$group": {"_id": "$anchor_book", "n": {"$sum": 1}}},
         {"$project": {"_id": 0, "book": "$_id", "n": "$n"}},
         {"$sort": {"n": -1}},
-    ], allowDiskUse=True)
+    ], allowDiskUse=True, maxTimeMS=30_000)
     by_book = [d async for d in by_book_cursor]
     for row in by_book:
         row["pct"] = round(row["n"] * 100.0 / max(n_total, 1), 1)
@@ -1015,7 +1027,7 @@ async def book_coverage_audit(
         {"$project": {"_id": 0, "book": "$_id.book",
                           "stat_family": "$_id.fam", "n": "$n"}},
         {"$sort": {"book": 1, "n": -1}},
-    ], allowDiskUse=True)
+    ], allowDiskUse=True, maxTimeMS=30_000)
     coverage_matrix = [d async for d in matrix_cursor]
 
     # Per-book playability counts — how many rows on each book are

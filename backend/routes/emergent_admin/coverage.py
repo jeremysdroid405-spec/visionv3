@@ -109,7 +109,7 @@ async def _per_date_counts(db, *, coll: str, league_field: str,
         {"$group": {"_id": f"${date_field}", "n": {"$sum": 1}}},
     ]
     out: Dict[str, int] = {}
-    async for d in db[coll].aggregate(pipeline, allowDiskUse=True):
+    async for d in db[coll].aggregate(pipeline, allowDiskUse=True, maxTimeMS=30_000):
         out[str(d["_id"])] = int(d.get("n", 0))
     return out
 

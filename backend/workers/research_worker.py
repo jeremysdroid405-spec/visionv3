@@ -50,6 +50,7 @@ for env_path in ("/app/backend/.env", "/var/www/app/backend/.env"):
 from workers.queue import (  # noqa: E402
     WORKER_ID, JOBS_COLL, db,
     atomic_claim, mark_running, finalize, append_log, queue_depth,
+    heartbeat_job, reconcile_zombies,
 )
 from workers.live_sync_state import (  # noqa: E402
     worker_pause_for_job, worker_finish_job,
@@ -67,6 +68,20 @@ HEARTBEAT_PATH     = os.environ.get("RW_HEARTBEAT_PATH",
 TAIL_PREVIEW_LINES = 300
 FLUSH_LINE_THRESHOLD = 25
 FLUSH_SECONDS        = 1.0
+# 2026-05-26 — periodic reconciler config.
+# `RECONCILE_EVERY_S` is how often we scan for zombie running jobs.
+# `JOB_STALE_AFTER_S` is the no-heartbeat cutoff before a job is reaped.
+# Default 15 min stale matches what an operator would manually consider
+# "this job is hung; kill it." Stay generous — long replays go quiet
+# during $group passes.
+RECONCILE_EVERY_S    = float(os.environ.get("RW_RECONCILE_EVERY_S",   "60"))
+JOB_STALE_AFTER_S    = float(os.environ.get("RW_JOB_STALE_AFTER_S", "900"))
+JOB_HEARTBEAT_EVERY_S = float(os.environ.get("RW_JOB_HEARTBEAT_S",    "5"))
+# RSS guard: pre-emptively kill the child when its RSS exceeds this
+# many bytes of the configured rlimit_as so the kernel never SIGKILLs
+# us (which is uncatchable and leaves the job row in 'running').
+# Default 95 % of the rlimit.
+RSS_KILL_RATIO = float(os.environ.get("RW_RSS_KILL_RATIO", "0.95"))
 
 
 def _set_subprocess_limits(caps: Dict[str, Any]):
@@ -152,6 +167,16 @@ async def _run_subprocess(job: Dict[str, Any]) -> Dict[str, Any]:
 
     assert proc.stdout is not None
     timed_out = False
+    oom_killed = False
+    # RSS pre-emptive kill threshold (bytes). When the child's RSS
+    # exceeds this, we SIGTERM it cleanly before the kernel SIGKILLs
+    # us — kernel SIGKILL is uncatchable and leaves the job row in
+    # 'running' forever; SIGTERM gives our parent a clean returncode
+    # path and a meaningful error message.
+    rlimit_bytes = int(caps.get("rlimit_as_bytes") or 0)
+    rss_kill_threshold = (int(rlimit_bytes * RSS_KILL_RATIO)
+                                  if rlimit_bytes > 0 else 0)
+    last_heartbeat = 0.0
     while True:
         if time.monotonic() - started > timeout_s:
             logger.error("[%s] timeout after %.0fs, killing pid=%d",
@@ -176,7 +201,28 @@ async def _run_subprocess(job: Dict[str, Any]) -> Dict[str, Any]:
             if len(rolling_tail) > TAIL_PREVIEW_LINES:
                 rolling_tail = rolling_tail[-TAIL_PREVIEW_LINES:]
 
-        rss_peak = max(rss_peak, _peek_rss())
+        cur_rss = _peek_rss()
+        rss_peak = max(rss_peak, cur_rss)
+
+        # ── RSS guard ─────────────────────────────────────────────
+        # Triggered BEFORE the kernel OOM-kills us. Send SIGTERM so
+        # the child can write any in-flight log + Mongo commits, then
+        # the parent's normal returncode path will record `failed`
+        # with a clear error rather than the kernel's uncatchable
+        # SIGKILL which silently leaves status='running'.
+        if rss_kill_threshold and cur_rss > rss_kill_threshold and not oom_killed:
+            logger.error(
+                "[%s] RSS guard tripped: %d > %d (%.0f%% of rlimit). "
+                "SIGTERM pid=%d to avoid kernel SIGKILL.",
+                job_id, cur_rss, rss_kill_threshold,
+                100 * RSS_KILL_RATIO, proc.pid)
+            try:
+                proc.terminate()
+            except Exception:  # noqa: BLE001
+                pass
+            oom_killed = True
+            # Don't break yet — let the stream drain so we capture the
+            # tail. The proc.returncode check below will catch exit.
 
         now = time.monotonic()
         if (len(log_chunks) >= FLUSH_LINE_THRESHOLD
@@ -184,6 +230,17 @@ async def _run_subprocess(job: Dict[str, Any]) -> Dict[str, Any]:
             await append_log(job_id, log_chunks)
             log_chunks = []
             last_flush = now
+
+        # ── Job-level heartbeat (Mongo) ────────────────────────────
+        # Distinct from `_touch_heartbeat()` which is the WORKER
+        # liveness file. This updates the per-JOB heartbeat so the
+        # reconciler knows the job is making progress.
+        if now - last_heartbeat >= JOB_HEARTBEAT_EVERY_S:
+            try:
+                await heartbeat_job(job_id, rss_bytes=cur_rss)
+            except Exception:  # noqa: BLE001
+                logger.exception("[%s] heartbeat write failed", job_id)
+            last_heartbeat = now
 
         if proc.returncode is not None and not line_bytes:
             # Drain
@@ -219,6 +276,14 @@ async def _run_subprocess(job: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "timeout", "exit_code": rc,
                   "tail": rolling_tail[-TAIL_PREVIEW_LINES:],
                   "error": f"timeout after {timeout_s:.0f}s",
+                  "rss_peak_bytes": rss_peak, "cpu_seconds": cpu_seconds}
+    if oom_killed:
+        return {"status": "failed", "exit_code": rc,
+                  "tail": rolling_tail[-TAIL_PREVIEW_LINES:],
+                  "error": (f"RSS guard tripped — child reached "
+                              f"{rss_peak} B (>{int(RSS_KILL_RATIO*100)}% of "
+                              f"{rlimit_bytes} B rlimit). Job killed "
+                              f"pre-emptively to avoid kernel SIGKILL."),
                   "rss_peak_bytes": rss_peak, "cpu_seconds": cpu_seconds}
     status = "succeeded" if rc == 0 else "failed"
     return {"status": status, "exit_code": rc,
@@ -312,8 +377,28 @@ async def main() -> int:
                   WORKER_ID, _backend_cwd(), sys.executable)
     _install_signal_handlers(asyncio.get_event_loop())
     await _recover_stuck_jobs()
+    last_reconcile = 0.0
     while not _STOP:
         await _touch_heartbeat()
+        # ── Periodic zombie reconciler ────────────────────────────
+        # Every RECONCILE_EVERY_S, scan for `running` jobs whose
+        # `last_heartbeat_at` is stale. This catches the case where
+        # the worker is restarted by supervisor mid-job (or kernel
+        # OOM-kills it) and the in-flight job row otherwise stays
+        # `running` forever. _recover_stuck_jobs at startup catches
+        # OUR own claimed rows; this catches anybody's.
+        now = time.monotonic()
+        if now - last_reconcile >= RECONCILE_EVERY_S:
+            last_reconcile = now
+            try:
+                n_reaped = await reconcile_zombies(
+                    stale_after_s=JOB_STALE_AFTER_S)
+                if n_reaped:
+                    logger.warning(
+                        "reconciler reaped %d zombie job(s) "
+                        "(stale ≥ %.0fs)", n_reaped, JOB_STALE_AFTER_S)
+            except Exception:  # noqa: BLE001
+                logger.exception("reconciler failed (will retry)")
         try:
             job = await atomic_claim(WORKER_ID)
         except Exception as e:  # noqa: BLE001

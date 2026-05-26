@@ -1,17 +1,24 @@
 """
-Pin the audit fields added 2026-05-24 in response to the operator
-discovering a 100%/58-bet stored result that recomputed to 64%/19.
+SSOT v2 distinct-bet metrics contract (2026-05-26).
 
-`_evaluate_combo` MUST now return:
-  - n_distinct_bets    : dedup by (event, player, market, side, line, date)
-  - wins_distinct      : wins counted at the distinct-key level
-  - losses_distinct
-  - hit_rate_distinct  : wins_distinct / (wins_distinct + losses_distinct)
+Pins the headline-metrics-are-distinct guarantee added to `_evaluate_combo`
+in response to the "100% / 58" inflation bug. Under SSOT v2:
 
-These let the operator detect cross-book duplication artifacts at a
-glance: when `wins / n_bets` >> `wins_distinct / n_distinct_bets`,
-the same physical bet is being counted N times (once per anchor
-book) and the headline number is overstated.
+  Headline (UI / ranking inputs):
+    n_bets, n_graded, n_ungraded, wins, losses, pushes, hit_rate, roi
+    All are counted at the unique-opportunity level
+    `(event_id, player, market, side, line, game_date)`.
+
+  Raw row counters (audit only; never drive ranking):
+    n_bets_raw_rows, wins_raw_rows, losses_raw_rows, pushes_raw_rows,
+    ungraded_raw_rows, n_with_odds_raw_rows
+    These expose how many book × snapshot rows backed each unique bet
+    so the operator can detect duplication (e.g. n_bets=14 / raw=58
+    means "14 unique bets × ~4 books").
+
+  Legacy aliases (still emitted, equal to the headline distincts):
+    n_distinct_bets, wins_distinct, losses_distinct, pushes_distinct,
+    hit_rate_distinct
 """
 from __future__ import annotations
 import sys
@@ -33,28 +40,30 @@ def _row(**kw):
     return base
 
 
-def test_distinct_audit_fields_match_n_bets_when_no_duplication():
-    """When every row is a unique bet, the distinct counts must
-    equal the raw counts."""
+def test_no_duplication_distinct_equals_raw():
+    """When every row is a unique bet, distinct counts == raw counts."""
     rows = [
         _row(event_id="e1", player_name_normalized="p1", outcome_numeric=1),
         _row(event_id="e2", player_name_normalized="p2", outcome_numeric=1),
         _row(event_id="e3", player_name_normalized="p3", outcome_numeric=0),
     ]
     m = _evaluate_combo(rows, {}, min_bets=1)
+    # Headline (SSOT v2)
     assert m["n_bets"] == 3
-    assert m["n_distinct_bets"] == 3
-    assert m["wins_distinct"] == 2
-    assert m["losses_distinct"] == 1
-    assert m["hit_rate_distinct"] == 2 / 3
+    assert m["wins"]   == 2
+    assert m["losses"] == 1
+    assert m["hit_rate"] == 2 / 3
+    # Raw rows match because there's no duplication
+    assert m["n_bets_raw_rows"]  == 3
+    assert m["wins_raw_rows"]    == 2
+    assert m["losses_raw_rows"]  == 1
 
 
-def test_distinct_audit_catches_cross_book_duplication():
+def test_cross_book_duplication_collapses_to_one_bet():
     """The exact bug from the screenshot: same physical bet appears
-    4× (once per anchor book) → n_bets=4, but n_distinct_bets=1.
-    Headline HR is 100%, distinct HR is also 100% — but the operator
-    needs to SEE the duplication so they don't think the sample is 4
-    independent observations."""
+    4× (once per anchor book). Headline n_bets/wins/hit_rate MUST
+    reflect ONE bet, not four. Raw counts surface the duplication.
+    """
     same_bet = lambda book: _row(  # noqa: E731
         event_id="e1", player_name_normalized="player_a",
         market="batter_hits", side="OVER", line=0.5,
@@ -63,23 +72,44 @@ def test_distinct_audit_catches_cross_book_duplication():
     rows = [same_bet("draftkings"), same_bet("fanduel"),
               same_bet("betmgm"),     same_bet("caesars")]
     m = _evaluate_combo(rows, {}, min_bets=1)
-    assert m["n_bets"] == 4
-    assert m["n_distinct_bets"] == 1, (
-        f"expected 1 distinct bet (same prop × 4 books), got "
-        f"{m['n_distinct_bets']}")
-    assert m["wins_distinct"] == 1
-    assert m["losses_distinct"] == 0
-    # When n_bets >> n_distinct_bets that's a duplication red flag —
-    # the operator's audit view surfaces both numbers.
-    assert m["n_bets"] / max(m["n_distinct_bets"], 1) == 4.0
+    # Headline — ONE unique bet, ONE win, 100% on n=1
+    assert m["n_bets"] == 1, (
+        f"expected 1 unique bet (same prop × 4 books); got {m['n_bets']}")
+    assert m["wins"] == 1
+    assert m["losses"] == 0
+    assert m["hit_rate"] == 1.0
+    # Raw rows surface the 4× duplication — operator-visible audit
+    assert m["n_bets_raw_rows"] == 4
+    assert m["wins_raw_rows"]   == 4
+    # Legacy aliases agree
+    assert m["n_distinct_bets"] == 1
+    assert m["wins_distinct"]   == 1
 
 
-def test_hit_rate_distinct_handles_zero_settled():
-    """If all rows are pushes/ungraded, distinct hit rate is None
-    (no settled outcomes to divide by)."""
+def test_roi_uses_mean_payout_across_books_per_unique_bet():
+    """ROI must reflect ONE bet per unique opportunity, with the
+    payout averaged across the books that quoted it (= what a real
+    bettor placing one bet at "the available market" would realize).
+    NOT the sum of all per-book payouts (which would inflate ROI by
+    a factor of K)."""
+    # Same bet on 4 books, all win — payouts at -200 odds = +0.5 units each.
+    rows = [_row(event_id="e1", odds=-200, outcome_numeric=1)
+              for _ in range(4)]
+    m = _evaluate_combo(rows, {}, min_bets=1)
+    assert m["n_bets"] == 1
+    assert m["wins"] == 1
+    # Mean payout across 4 backing rows = +0.5 units; one unique bet.
+    # ROI = 0.5 / 1 = 0.5.  Old (buggy) behaviour would have given 2.0.
+    assert abs(m["roi"] - 0.5) < 1e-9, (
+        f"ROI must be per-unique-bet mean payout, got {m['roi']}")
+
+
+def test_hit_rate_none_when_no_settled_outcomes():
+    """If all rows are pushes/ungraded, hit_rate is None."""
     rows = [_row(outcome_numeric=0.5), _row(outcome_numeric=None,
                                                           event_id="e2")]
     m = _evaluate_combo(rows, {}, min_bets=1)
+    assert m["hit_rate"] is None
     assert m["hit_rate_distinct"] is None
 
 
@@ -97,6 +127,14 @@ def test_distinct_keys_use_event_player_market_side_line_date():
     rows = [base, different_side, different_line,
               different_market, different_day]
     m = _evaluate_combo(rows, {}, min_bets=1)
-    assert m["n_distinct_bets"] == 5, (
+    assert m["n_bets"] == 5, (
         f"all 5 rows differ on at least one key field — expected 5 "
-        f"distinct keys, got {m['n_distinct_bets']}")
+        f"distinct bets, got {m['n_bets']}")
+
+
+def test_metrics_version_v2():
+    """Cell emits metrics_version='v2_distinct' so downstream consumers
+    can detect / handle the schema."""
+    rows = [_row()]
+    m = _evaluate_combo(rows, {}, min_bets=1)
+    assert m.get("metrics_version") == "v2_distinct"

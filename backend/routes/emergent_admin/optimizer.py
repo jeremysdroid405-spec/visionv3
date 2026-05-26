@@ -117,6 +117,20 @@ def _book_filter_clause(book_filter: str) -> Dict[str, Any]:
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+
+# 2026-05-26 — Shared aggregation helper. Every aggregation in this
+# module must time out at the Mongo layer (not just the driver) so a
+# pathological query fails fast with `OperationFailure` instead of
+# tying up an event-loop slot until nginx 504s at 60 s.
+_DEFAULT_AGG_TIMEOUT_MS = 30_000
+
+
+async def _agg_to_list(coll, pipeline, *, timeout_ms: int = _DEFAULT_AGG_TIMEOUT_MS,
+                              allow_disk: bool = True) -> List[Dict[str, Any]]:
+    cur = coll.aggregate(pipeline, allowDiskUse=allow_disk,
+                                maxTimeMS=timeout_ms)
+    return [d async for d in cur]
+
 REPLAY_COLL          = "sgo_propvision_full_pipeline_replay"
 CANDIDATE_THRESH     = "candidate_thresholds"
 OPTIMIZER_RUNS       = "optimizer_runs"
@@ -406,26 +420,23 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
     n = len(qual)
     if n < min_bets:
         return None
-    # 2026-05-24 — Cross-book duplication audit.
-    # The same (game, player, market, side, line) prop can appear in
-    # the replay cache N times (one per anchor book) post the
-    # multi-book universe migration. Counting each row as an
-    # independent bet inflates `n_bets` and biases `hit_rate` toward
-    # the more-quoted props. Track DISTINCT bets and distinct wins
-    # alongside so the operator can audit. Operator-visible: a
-    # combo claiming `n_bets=58 / hit_rate=1.00` is suspect if
-    # `n_distinct_bets` is much smaller.
-    distinct_keys: set = set()
-    distinct_wins: set = set()
-    distinct_losses: set = set()
-    distinct_pushes: set = set()
-    wins = losses = pushes = ungraded = 0
-    n_with_odds = 0
-    n_with_payout = 0
+    # 2026-05-26 — SSOT bet-distinct metrics (replaces row-based headlines).
+    # The same unique opportunity `(event, player, market, side, line, date)`
+    # can appear N times in the replay cache (one per book × snapshot).
+    # Counting each row as an independent bet inflates `n_bets` and biases
+    # `hit_rate` upward toward more-quoted props. The HEADLINE metrics
+    # below now treat one unique-prop-tuple as ONE bet, regardless of how
+    # many book/snapshot rows backed it. The raw row-based counts are
+    # preserved under `*_raw_rows` for transparency. This is the SSOT
+    # contract: the operator's view of "did this strategy win?" matches
+    # what a real bettor — placing one bet per unique opportunity — would
+    # have realized.
+    # ── per-key aggregation ──────────────────────────────────────────
+    by_key: Dict[Tuple, Dict[str, Any]] = {}
+    wins_raw = losses_raw = pushes_raw = ungraded_raw = 0
+    n_with_odds_raw = 0
     sum_tp = sum_cv = sum_edge = 0.0
     cnt_tp = cnt_cv = cnt_edge = 0
-    daily: Dict[str, float] = {}
-    pnl_units = 0.0
     for r in qual:
         key = (
             r.get("event_id") or r.get("game_event_id") or "_",
@@ -435,44 +446,69 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
             r.get("line"),
             r.get("game_date") or "_",
         )
-        distinct_keys.add(key)
+        slot = by_key.setdefault(key, {
+            "outcome": None,   # one outcome per unique bet
+            "payouts": [],     # one payout per (book, snapshot) backing this bet
+            "had_odds": False, # at least one backing row carried `odds`
+            "date":    r.get("game_date") or "_",
+        })
+        # Outcome should be identical across books/snapshots for the same
+        # (event, player, market, side, line, date). Take first seen and
+        # log if a conflict arises (data-quality probe).
         on = r.get("outcome_numeric")
+        if slot["outcome"] is None and on is not None:
+            slot["outcome"] = on
+        # ── raw-row counters (auditable, do NOT drive headline metrics) ──
         if on == 1:
-            wins += 1
-            distinct_wins.add(key)
+            wins_raw += 1
         elif on == 0:
-            losses += 1
-            distinct_losses.add(key)
+            losses_raw += 1
         elif on == 0.5:
-            pushes += 1
-            distinct_pushes.add(key)
+            pushes_raw += 1
         else:
-            ungraded += 1
+            ungraded_raw += 1
         if r.get("odds") is not None:
-            n_with_odds += 1
+            n_with_odds_raw += 1
+            slot["had_odds"] = True
         p = _payout_units(r)
         if p is not None:
-            n_with_payout += 1
-            pnl_units += p
-            daily[r.get("game_date") or "_"] = daily.get(r.get("game_date") or "_", 0.0) + p
-        for k, sum_ref, cnt_ref in (("tp",   "sum_tp",   "cnt_tp"),
-                                          ("cv",   "sum_cv",   "cnt_cv"),
-                                          ("edge", "sum_edge", "cnt_edge")):
+            slot["payouts"].append(p)
+        # tp/cv/edge averaged across raw rows (model-output diagnostic)
+        for k, which in (("tp", "tp"), ("cv", "cv"), ("edge", "edge")):
             v = r.get(k)
             if v is None and k == "tp":
                 v = r.get("model_probability")
             if isinstance(v, (int, float)):
-                if sum_ref == "sum_tp":   sum_tp += float(v);   cnt_tp += 1
-                elif sum_ref == "sum_cv": sum_cv += float(v);   cnt_cv += 1
-                else:                     sum_edge += float(v); cnt_edge += 1
-    settled = wins + losses
-    hit_rate = (wins / settled) if settled else None
-    # ROI denominator = bets we could actually grade (i.e. ones with a
-    # numeric payout). Using `n` here silently drove ROI → 0 whenever
-    # replay rows had missing outcome_numeric/odds, masking the upstream
-    # join failure. We now expose the ungraded count alongside so the
-    # operator can see the diagnosis at-a-glance.
-    roi      = (pnl_units / n_with_payout) if n_with_payout else None
+                if which == "tp":   sum_tp += float(v);   cnt_tp += 1
+                elif which == "cv": sum_cv += float(v);   cnt_cv += 1
+                else:               sum_edge += float(v); cnt_edge += 1
+
+    # ── headline metrics (one row per unique bet) ───────────────────
+    wins_distinct = sum(1 for s in by_key.values() if s["outcome"] == 1)
+    losses_distinct = sum(1 for s in by_key.values() if s["outcome"] == 0)
+    pushes_distinct = sum(1 for s in by_key.values() if s["outcome"] == 0.5)
+    ungraded_distinct = sum(1 for s in by_key.values() if s["outcome"] is None)
+    settled_distinct = wins_distinct + losses_distinct
+    n_distinct_bets = len(by_key)
+    hit_rate = (wins_distinct / settled_distinct) if settled_distinct else None
+
+    # ROI: take the MEAN payout across the books/snapshots backing each
+    # unique bet (= the realized PnL of placing the bet at "the available
+    # market" rather than cherry-picking the best book). One payout per
+    # unique opportunity, then sum across opportunities.
+    n_with_payout_distinct = 0
+    pnl_units_distinct = 0.0
+    daily: Dict[str, float] = {}
+    for slot in by_key.values():
+        ps = slot["payouts"]
+        if not ps:
+            continue
+        mean_p = sum(ps) / len(ps)
+        n_with_payout_distinct += 1
+        pnl_units_distinct += mean_p
+        d = slot["date"]
+        daily[d] = daily.get(d, 0.0) + mean_p
+    roi = (pnl_units_distinct / n_with_payout_distinct) if n_with_payout_distinct else None
     avg_tp   = (sum_tp / cnt_tp) if cnt_tp else None
     avg_cv   = (sum_cv / cnt_cv) if cnt_cv else None
     avg_edge = (sum_edge / cnt_edge) if cnt_edge else None
@@ -497,32 +533,44 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
     # model under-predicts; negative means model over-predicts.
     calibration_delta = (hit_rate - avg_tp) if (hit_rate is not None and avg_tp is not None) else None
     return {
-        "n_bets": n,
-        "n_graded": settled + pushes,     # rows with outcome ∈ {1, 0, 0.5}
-        "n_ungraded": ungraded,           # rows with outcome_numeric == null
-        "n_with_odds": n_with_odds,
-        "n_with_payout": n_with_payout,
-        "wins": wins, "losses": losses, "pushes": pushes,
-        # 2026-05-24 — Distinct-bet audit fields. The same prop can
-        # appear N times in the row pool (anchor-book duplication),
-        # so the headline `wins / losses` can inflate. These dedupe
-        # by (event_id, player, market, side, line, date) and let the
-        # operator detect when a "100% / 58" claim is really
-        # "100% / 14 unique bets × 4 books".
-        "n_distinct_bets":  len(distinct_keys),
-        "wins_distinct":    len(distinct_wins),
-        "losses_distinct":  len(distinct_losses),
-        "pushes_distinct":  len(distinct_pushes),
-        "hit_rate_distinct": (
-            len(distinct_wins) / (len(distinct_wins) + len(distinct_losses))
-            if (len(distinct_wins) + len(distinct_losses)) else None
-        ),
-        "hit_rate": hit_rate, "roi": roi,
+        # ── HEADLINE METRICS (distinct-bet basis, SSOT v2) ───────────
+        # One row per unique opportunity. These are the numbers the
+        # operator sees in the UI and the optimizer ranks on.
+        "metrics_version":   "v2_distinct",
+        "n_bets":            n_distinct_bets,
+        "n_graded":          settled_distinct + pushes_distinct,
+        "n_ungraded":        ungraded_distinct,
+        "wins":              wins_distinct,
+        "losses":            losses_distinct,
+        "pushes":            pushes_distinct,
+        "n_with_odds":       sum(1 for s in by_key.values() if s["had_odds"]),
+        "n_with_payout":     n_with_payout_distinct,
+        "hit_rate":          hit_rate,
+        "roi":               roi,
+        # ── RAW ROW COUNTS (auditable; never drive headline metrics) ─
+        # The same unique bet can appear in K rows (books × snapshots).
+        # `*_raw_rows` exposes that K so the operator can sanity-check
+        # ("did this combo really see 58 unique opportunities or just
+        # 14 propagated across 4 books?").
+        "n_bets_raw_rows":      n,
+        "n_with_odds_raw_rows": n_with_odds_raw,
+        "wins_raw_rows":        wins_raw,
+        "losses_raw_rows":      losses_raw,
+        "pushes_raw_rows":      pushes_raw,
+        "ungraded_raw_rows":    ungraded_raw,
+        # ── legacy aliases (kept for tests / UI panels that already
+        # check audit fields by their 2026-05-24 names) ─────────────
+        "n_distinct_bets":   n_distinct_bets,
+        "wins_distinct":     wins_distinct,
+        "losses_distinct":   losses_distinct,
+        "pushes_distinct":   pushes_distinct,
+        "hit_rate_distinct": hit_rate,
+        # ── shared metrics ───────────────────────────────────────────
         "calibration_delta": calibration_delta,
         "avg_tp": avg_tp, "avg_cv": avg_cv, "avg_edge": avg_edge,
         "daily_consistency": daily_consistency,
         "max_drawdown_units": max_dd,
-        "profit_units": pnl_units,
+        "profit_units": pnl_units_distinct,
         "n_days": len(daily_vals),
     }
 
@@ -530,16 +578,22 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
 def _score(metrics: Dict[str, Any], goal: str, baseline_n: int) -> Optional[float]:
     """Composite ranking score; higher is better.
 
-    Returns None when the cell has no graded rows. Previously this
-    function silently coalesced None metrics to 0.0, which caused
+    Inputs come from `_evaluate_combo()` (SSOT v2 distinct-bet basis):
+    `wins`, `losses`, `hit_rate`, `roi` are all per unique opportunity,
+    not per book × snapshot row. Sample-size penalty therefore uses
+    distinct settled bets — a 6-row / 6-book / 1-unique-bet combo
+    correctly counts as n=1, not n=6.
+
+    Returns None when the cell has no graded distinct bets. Previously
+    this function silently coalesced None metrics to 0.0, which caused
     completely-ungraded cells to score `0.0` and outrank legitimately
     graded cells with negative scores. That produced the "Top 25 are
     all empty" symptom in the optimizer Results panel.
     """
     n_graded = metrics.get("n_graded")
     if n_graded is None:
-        # Old cell shape (pre-diagnostic-fields). Fall through to
-        # legacy behavior but treat null HR as ungradable.
+        # Old (pre-v2) cell shape. Fall through to legacy behaviour but
+        # treat null HR as ungradable.
         if metrics.get("hit_rate") is None and metrics.get("roi") is None:
             return None
     elif n_graded < 1:
@@ -557,21 +611,12 @@ def _score(metrics: Dict[str, Any], goal: str, baseline_n: int) -> Optional[floa
     else:
         cons = max(0.0, min(1.0, float(cons)))
     dd   = metrics.get("max_drawdown_units") or 0.0
-    # 2026-05-24 — Score using `n_graded` (settled outcomes) NOT
-    # `n_bets` (total rows in cell). Otherwise a cell with 58 rows
-    # of which 52 are ungraded gets the sample-confidence of a
-    # 58-bet sample when it's really 6 bets. That's how 6/6=100%
-    # combos were beating real 30-bet combos with 65% HR.
-    n_graded_val = metrics.get("n_graded")
-    if n_graded_val is None:
-        n = metrics.get("n_bets") or 0
-    else:
-        # settled = wins + losses (pushes don't contribute statistical
-        # signal). If n_graded includes pushes (per `_evaluate_combo`
-        # it does), use wins + losses directly for the sample size.
-        w = metrics.get("wins") or 0
-        l = metrics.get("losses") or 0
-        n = w + l
+    # Sample size = distinct settled bets (wins + losses, pushes excluded
+    # — pushes carry no statistical signal). Per the v2 contract above,
+    # `wins`/`losses` are already deduped to unique opportunities.
+    w = metrics.get("wins") or 0
+    l = metrics.get("losses") or 0
+    n = w + l
     if goal == "hit_rate":
         return hr
     if goal == "roi":
@@ -926,7 +971,8 @@ async def grid_diagnose(body: GridDiagnoseBody, request: Request,
             {"$match": {**base_match, row_field: {"$ne": None}}},
             {"$group": {"_id": None, "values": {"$push": f"${row_field}"}}},
         ]
-        agg = await db[REPLAY_COLL].aggregate(pipe).to_list(1)
+        agg = await db[REPLAY_COLL].aggregate(
+            pipe, maxTimeMS=_DEFAULT_AGG_TIMEOUT_MS).to_list(1)
         if not agg:
             out[axis_key] = {"row_field": row_field, "n_with_value": 0}
             issues.append(f"`{row_field}` is null on all {n_graded} graded rows — "
@@ -1048,10 +1094,10 @@ async def preflight(body: PreflightBody, request: Request,
             {"$project": {"_id": 0, field: "$_id",
                               "n_rows": 1, "n_graded": 1}},
         ]
-    by_family = [d async for d in db[REPLAY_COLL].aggregate(
-                       _pipeline_for("stat_family"), allowDiskUse=True)]
-    by_bucket = [d async for d in db[REPLAY_COLL].aggregate(
-                       _pipeline_for("odds_bucket"), allowDiskUse=True)]
+    by_family, by_bucket = await asyncio.gather(
+        _agg_to_list(db[REPLAY_COLL], _pipeline_for("stat_family")),
+        _agg_to_list(db[REPLAY_COLL], _pipeline_for("odds_bucket")),
+    )
     # Diagnosis
     pct_graded = n_graded * 100.0 / max(n_total, 1)
     if pct_graded < 1.0:
@@ -1309,25 +1355,24 @@ async def get_results(run_id: str, request: Request,
                           "odds_bucket": 1, "n_bets": -1}},
         ]
 
+    # 2026-05-26 — Hard-cap every aggregation at 30 s server-side so
+    # the endpoint fails fast with a Mongo OperationFailure instead of
+    # letting nginx 504 at 60 s. `maxTimeMS` enforces this in Mongo
+    # itself, not just in driver-side polling, so the server stops
+    # spending CPU on a doomed query.
+    _AGG_TIMEOUT_MS = 30_000
+
+    async def _agg(pipeline: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        cursor = db[OPTIMIZER_RESULTS].aggregate(
+            pipeline, allowDiskUse=True, maxTimeMS=_AGG_TIMEOUT_MS)
+        return [d async for d in cursor]
+
     top_pipeline = _dedup_pipeline(sort_dir=-1) + [
         {"$skip": offset}, {"$limit": limit}]
-    top = [d async for d in db[OPTIMIZER_RESULTS].aggregate(
-        top_pipeline, allowDiskUse=True)]
-
     worst_pipeline = _dedup_pipeline(sort_dir=1) + [{"$limit": limit}]
-    worst = [d async for d in db[OPTIMIZER_RESULTS].aggregate(
-        worst_pipeline, allowDiskUse=True)]
 
-    ungradable_top: List[Dict[str, Any]] = []
-    if not include_ungradable and n_ungradable > 0:
-        cur = db[OPTIMIZER_RESULTS].find(
-            {"run_id": run_id, "score": None}, {"_id": 0}
-        ).sort([("n_bets", -1)]).limit(10)
-        ungradable_top = [d async for d in cur]
-
-    async def _best_by(field: str) -> Dict[str, Any]:
-        out: Dict[str, Any] = {}
-        pipeline = [
+    def _best_by_pipeline(field: str) -> List[Dict[str, Any]]:
+        return [
             # Exclude ungradable cells from "best by …" — a score=None
             # cell with thousands of rows must never win a group.
             {"$match": {"run_id": run_id, field: {"$ne": None},
@@ -1342,26 +1387,7 @@ async def get_results(run_id: str, request: Request,
             {"$project": {"_id": 0}},
             {"$limit": 200},
         ]
-        async for d in db[OPTIMIZER_RESULTS].aggregate(
-                pipeline, allowDiskUse=True):
-            k = d.get(field)
-            if k is not None and k not in out:
-                out[k] = d
-        return out
 
-    best_by_tier        = await _best_by("tier")
-    best_by_stat_family = await _best_by("stat_family")
-    best_by_odds_bucket = await _best_by("odds_bucket")
-    overfit_warnings    = [r for r in top if r.get("overfit_flag")]
-
-    # ── Family coverage (ALL discovered families) ───────────────────
-    # Per-family aggregate from the results collection ONLY covers
-    # families that wrote rows. The operator wants to see EVERY family
-    # the optimizer was meant to evaluate, including the ones that
-    # produced 0 cells (so they know it's a data-thinness problem,
-    # not a missing-family bug). Build a placeholder row for every
-    # family in `state.stat_families` that the aggregation didn't
-    # cover, with a structured `status` field.
     fam_cov_pipeline = [
         {"$match": {"run_id": run_id}},
         {"$group": {
@@ -1377,8 +1403,56 @@ async def get_results(run_id: str, request: Request,
                           "n_cells": 1, "n_graded_cells": 1,
                           "best_score": 1, "best_n_bets": 1}},
     ]
-    family_coverage = [d async for d in db[OPTIMIZER_RESULTS].aggregate(
-        fam_cov_pipeline, allowDiskUse=True)]
+
+    async def _ungradable_top() -> List[Dict[str, Any]]:
+        if include_ungradable or n_ungradable <= 0:
+            return []
+        cur = db[OPTIMIZER_RESULTS].find(
+            {"run_id": run_id, "score": None}, {"_id": 0}
+        ).sort([("n_bets", -1)]).limit(10).max_time_ms(_AGG_TIMEOUT_MS)
+        return [d async for d in cur]
+
+    # 2026-05-26 — Run ALL aggregations concurrently. Previously these
+    # were serial → 6 × O(900k row) pipelines = easy to bust nginx's
+    # 60s ceiling under load. Concurrent gather lets them share I/O
+    # and the response is bottlenecked by the slowest one, not the sum.
+    try:
+        (top, worst, best_by_tier_raw, best_by_family_raw,
+         best_by_bucket_raw, family_coverage, ungradable_top) = await asyncio.gather(
+            _agg(top_pipeline),
+            _agg(worst_pipeline),
+            _agg(_best_by_pipeline("tier")),
+            _agg(_best_by_pipeline("stat_family")),
+            _agg(_best_by_pipeline("odds_bucket")),
+            _agg(fam_cov_pipeline),
+            _ungradable_top(),
+        )
+    except Exception as exc:  # noqa: BLE001
+        # Surface a clean 503 (not a generic 500) so the operator
+        # knows it's a transient Mongo perf issue, not a code bug.
+        logger.exception("[%s] /results aggregation failed", run_id)
+        raise HTTPException(
+            503,
+            f"results aggregation exceeded {_AGG_TIMEOUT_MS // 1000}s "
+            f"({type(exc).__name__}). Retry shortly or rebuild the "
+            f"run digest.",
+        ) from exc
+
+    # Convert "best by …" cursor lists into dict-by-field-value, matching
+    # the legacy contract. `$group` already gives us at most one doc per
+    # field value (the highest-scoring); we just key the response by it.
+    def _index_by(field: str, rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        for d in rows:
+            k = d.get(field)
+            if k is not None and k not in out:
+                out[k] = d
+        return out
+
+    best_by_tier        = _index_by("tier",         best_by_tier_raw)
+    best_by_stat_family = _index_by("stat_family",  best_by_family_raw)
+    best_by_odds_bucket = _index_by("odds_bucket",  best_by_bucket_raw)
+    overfit_warnings    = [r for r in top if r.get("overfit_flag")]
     # Surface families that were discovered but produced ZERO cells
     # (= every cell in every (tier,bucket) combination had no rows
     # after the tier-odds + bucket filter). These would otherwise be
@@ -1490,7 +1564,9 @@ async def top_per_family(run_id: str, request: Request,
         {"$sort": {"stat_family": 1, "odds_bucket": 1}},
     ]
     groups: List[Dict[str, Any]] = []
-    async for g in db[OPTIMIZER_RESULTS].aggregate(pipeline, allowDiskUse=True):
+    async for g in db[OPTIMIZER_RESULTS].aggregate(pipeline,
+                                                            allowDiskUse=True,
+                                                            maxTimeMS=30_000):
         # Strip Mongo _id from nested docs
         for c in g.get("configs", []):
             c.pop("_id", None)
@@ -1598,7 +1674,9 @@ async def top_by_tier(run_id: str, request: Request,
     }
     seen_by_tier: Dict[str, set] = {t: set() for t in DEFAULT_TIERS}
     async for g in db[OPTIMIZER_RESULTS].aggregate(
-                                                  pipeline, allowDiskUse=True):
+                                                  pipeline,
+                                                  allowDiskUse=True,
+                                                  maxTimeMS=30_000):
         tier_name = g.pop("tier", None)
         if tier_name not in by_tier:
             by_tier[tier_name] = []
