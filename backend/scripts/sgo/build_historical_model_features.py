@@ -354,7 +354,7 @@ async def _distinct_game_dates(
     return dates
 
 
-def _history_window_start(prop_date: str, lookback_days: int = 180) -> str:
+def _history_window_start(prop_date: str, lookback_days: int = 90) -> str:
     """Conservative lookback window (default 180 days) for player history."""
     try:
         d = datetime.strptime(prop_date[:10], "%Y-%m-%d")
@@ -618,8 +618,19 @@ def main() -> int:
     p.add_argument("--drop-existing", action="store_true")
     p.add_argument("--yes",    action="store_true")
     p.add_argument("--resume", action="store_true")
-    p.add_argument("--lookback-days", type=int, default=180,
-                    help="Days of prior history to load per date (default 180)")
+    p.add_argument(
+        "--lookback-days", type=int, default=90,
+        help=("Days of prior history to load per date. "
+                "Default 90 — large enough to fully populate "
+                "last_3 / last_5 / last_10 / last_20 features and "
+                "the line-relative hit-rate windows for any everyday "
+                "player, while keeping `season_to_date_avg` a "
+                "meaningful ~3-month baseline. Lowered from 180 on "
+                "2026-05-26 after the 180-day setting was found to "
+                "balloon peak memory for `process_date` past the "
+                "4 GiB worker rlimit on multi-month MLB windows. "
+                "Push higher (120-180) only if you specifically need "
+                "`season_to_date_avg` to span the full season."))
     return asyncio.run(amain(p.parse_args()))
 
 
