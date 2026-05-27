@@ -1659,3 +1659,18 @@ has a bounded timeout. Backend total: **18/18 in this run**.
   click away from a clean stack restart.
 - Audit log shows every reboot call with timestamp + agent + per-
   service rc.
+
+
+### 2026-06-02 — Mirror event_id allowlist (June grading-coverage RCA)
+Restored June 2025 grading coverage 33% → 96.69% by filtering mirror
+writes to event_ids that exist in `sgo_pp_research_outcomes`.
+- Code fix: `scripts/sgo/historical_full_pipeline_replay.py`
+  `_mirror_to_legacy` now builds an event_id allowlist from
+  `sgo_pp_research_outcomes` for the window before aggregating
+  `mlb_propvision_full_pipeline_outputs`.
+- Cleanup (prod): removed 16,198 V2-hash rows from
+  `sgo_propvision_full_pipeline_replay` and 529,196 from
+  `mlb_propvision_full_pipeline_outputs`.
+- Regression tests: `tests/test_mirror_event_id_allowlist.py` (3 pins).
+- Verified via `/research/replay-outcome-coverage`: May 97.44%,
+  June 96.69%, July 100%.

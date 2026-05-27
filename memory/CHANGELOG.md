@@ -1,5 +1,59 @@
 # Changelog
 
+## 2026-06-02 — RCA & fix: June 2025 grading-coverage drop (33% → 96.69%)
+
+**Root cause.** `mlb_propvision_full_pipeline_outputs` had accumulated rows
+from TWO Layer-3 sources writing into the same collection:
+  1. SSOT SGO replay path keyed on `sgo_replay_alt_odds_raw`
+     → 20-char V1 `event_id` values that match `sgo_pp_research_outcomes`.
+  2. Live production replay path keyed on `mlb_historical_alt_odds_raw`
+     → 32-char MD5-hash `event_id` values that have **no** matching
+     outcome row.
+
+The mirror (`_mirror_to_legacy`) grouped on `event_id`, so every
+`(player, market, line, side)` prop produced TWO mirrored rows — one
+graded (V1), one permanently unresolved (V2). That doubled the row
+count (24,666 vs May’s 7,664 for the same calendar month) and dropped
+grading coverage from 97% → 33%.
+
+Verified via prod admin API:
+  - `/research/replay-outcome-join-diagnose` for June: K0..K4 all 0%
+    (event_id-only match against outcomes also 0%) — confirming the
+    unresolved-side event_ids do not exist in
+    `sgo_pp_research_outcomes` at all.
+  - Length histogram on the runner outputs collection: 83,660 rows
+    with 20-char V1 ids + **529,196** rows with 32-char hashes.
+  - Length histogram on the mirror replay collection (June): 8,468 V1
+    + 16,198 V2.
+
+**Fix A — code (`scripts/sgo/historical_full_pipeline_replay.py`).**
+`_mirror_to_legacy` now resolves the affected `game_dates` from
+`mlb_propvision_full_pipeline_runs` for the supplied `replay_serials`,
+queries `sgo_pp_research_outcomes` for those dates, and constrains the
+runner-outputs aggregation `$match` stage to those event_ids. Dead-
+weight rows (any event_id format that has no outcome row) are silently
+filtered at the source, regardless of length.
+
+**Fix B — cleanup (prod, admin API).**
+  - `sgo_propvision_full_pipeline_replay`: deleted 16,198 rows whose
+    `event_id` is 32 chars (2025-05-01..2025-12-31, league=MLB).
+  - `mlb_propvision_full_pipeline_outputs`: deleted 529,196 V2-hash rows
+    so re-runs cannot re-introduce them via the legacy join key.
+
+**Fix C — regression test (`tests/test_mirror_event_id_allowlist.py`).**
+Three new contract tests pinning that the mirror must:
+  1. Resolve `game_dates` from `RUNNER_RUNS` for the replay serials,
+  2. Build a `valid_event_ids` allowlist from `SGO_OUTCOMES_COLL`,
+  3. Apply `match_stage["event_id"]` constraint to the aggregation.
+
+**Verification.**
+  - June 2025 coverage: `n_total=8,468  graded=8,188  pct_graded=96.69%`
+    (was 33.2% before fix; matches May’s 97.44%).
+  - July 2025 coverage: `n_total=208  graded=208  pct_graded=100.0%`.
+  - May 2025 untouched (still 97.44%).
+  - All 34 mirror-related pytest cases pass (3 new + 31 pre-existing).
+
+
 ## 2026-05-23 — Backfill polling + cache-preflight (no more stuck "queued" UI)
 
 Fixed the "UI stays stuck on queued" bug reported in the Admin Testing
