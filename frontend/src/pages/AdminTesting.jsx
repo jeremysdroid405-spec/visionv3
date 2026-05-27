@@ -560,10 +560,59 @@ function buildStepArgs(sportKey, stepKey, cfg) {
   return { module: spec.module, args: a };
 }
 
+// ── Month picker helpers (Workflow tab) ──────────────────────────
+// 2026-05-26 — Switched the Workflow tab from raw YYYY-MM-DD inputs
+// to (Month, Year) dropdowns. Operator runs monthly windows almost
+// exclusively, so typing the dates every time was friction with no
+// flexibility benefit. Backend still receives plain YYYY-MM-DD start
+// and end strings — we just derive them from the dropdown picks.
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun',
+                       'Jul','Aug','Sep','Oct','Nov','Dec'];
+function _availableYears() {
+  const cur = new Date().getFullYear();
+  // Reach back 5 years; reach forward 1 in case the operator is
+  // running tomorrow's date for a known schedule.
+  const ys = [];
+  for (let y = cur - 5; y <= cur + 1; y++) ys.push(y);
+  return ys;
+}
+function monthWindowToDates(year, month1to12) {
+  // Returns { start, end } as YYYY-MM-DD strings. `end` is the LAST
+  // day of the month (inclusive), matching the convention used by
+  // the pipeline scripts (`--start ≤ game_date ≤ --end`).
+  const pad = (n) => String(n).padStart(2, '0');
+  const start = `${year}-${pad(month1to12)}-01`;
+  // Last day of month: day 0 of NEXT month in JS Date semantics.
+  const last = new Date(year, month1to12, 0).getDate();
+  const end = `${year}-${pad(month1to12)}-${pad(last)}`;
+  return { start, end };
+}
+function datesToMonthWindow(start) {
+  // Inverse — given a YYYY-MM-DD start, return {year, month1to12}.
+  // Used to initialize the dropdowns from any persisted config.
+  if (!start || typeof start !== 'string' || start.length < 7) {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  }
+  return {
+    year:  parseInt(start.slice(0, 4), 10),
+    month: parseInt(start.slice(5, 7), 10),
+  };
+}
+
+
 // ── Workflow tab ────────────────────────────────────────────────────
 function WorkflowTab({ token, onPipelineFinished }) {
+  const _now = new Date();
+  const _initStart = monthWindowToDates(_now.getFullYear(), _now.getMonth() + 1).start;
+  const _initEnd   = monthWindowToDates(_now.getFullYear(), _now.getMonth() + 1).end;
   const [config, setConfig] = useState({
-    sport: 'MLB', start: '', end: '', minBets: 20,
+    sport: 'MLB',
+    // start/end are the persisted YYYY-MM-DD strings the API expects.
+    // We treat them as the SOURCE OF TRUTH; the dropdowns derive
+    // from / write to them via setMonthWindow().
+    start: _initStart, end: _initEnd,
+    minBets: 20,
     excludeFamilies: 'fantasy_score',
     skip: { ingest_stats: true, build_features: true, score_model: true },
     // SSOT audit defaults — diff ON, size 200, universal gate path
@@ -571,6 +620,12 @@ function WorkflowTab({ token, onPipelineFinished }) {
     sampleDiffSize: 200,
     gatePath: 'universal',
   });
+  // Derived dropdown state — kept in sync with config.start.
+  const _mw = datesToMonthWindow(config.start);
+  const setMonthWindow = (year, month) => {
+    const { start, end } = monthWindowToDates(year, month);
+    setConfig(c => ({ ...c, start, end }));
+  };
   const [pipeline, setPipeline] = useState(loadPipeline());
   const [tail, setTail] = useState([]);
   const [coverage, setCoverage] = useState(null);
@@ -810,10 +865,19 @@ function WorkflowTab({ token, onPipelineFinished }) {
             onChange={(e) => setConfig({ ...config, sport: e.target.value })}
             options={Object.keys(SPORT_ADAPTERS)} />
         </Field>
-        <Field label="Start (YYYY-MM-DD)"><Input testId="pipe-start" value={config.start}
-          onChange={(e) => setConfig({ ...config, start: e.target.value })} placeholder="2026-06-01" /></Field>
-        <Field label="End (YYYY-MM-DD)"><Input testId="pipe-end" value={config.end}
-          onChange={(e) => setConfig({ ...config, end: e.target.value })} placeholder="2026-06-30" /></Field>
+        <Field label="Month">
+          <Select testId="pipe-month" value={String(_mw.month)}
+            onChange={(e) => setMonthWindow(_mw.year, parseInt(e.target.value, 10))}
+            options={MONTH_NAMES.map((n, i) => ({
+              value: String(i + 1), label: `${n} (${String(i + 1).padStart(2,'0')})`,
+            }))} />
+        </Field>
+        <Field label="Year"
+                hint={`window: ${config.start} → ${config.end}`}>
+          <Select testId="pipe-year" value={String(_mw.year)}
+            onChange={(e) => setMonthWindow(parseInt(e.target.value, 10), _mw.month)}
+            options={_availableYears().map(y => String(y))} />
+        </Field>
         <Field label="Min bets / cell"><Input testId="pipe-minbets" type="number" value={config.minBets}
           onChange={(e) => setConfig({ ...config, minBets: parseInt(e.target.value || '0', 10) })} /></Field>
         <Field label="Exclude families"><Input testId="pipe-excl" value={config.excludeFamilies}
