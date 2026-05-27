@@ -105,9 +105,24 @@ class CancelBody(BaseModel):
 async def _flush(db, job_id: str, lines: List[str]) -> None:
     if not lines:
         return
+    # 2026-05-27 — Inline-job log cap (was unbounded $push). When a
+    # LIGHT module runs in-process here, every line was being pushed
+    # to the Mongo log array forever. Two failure modes:
+    #   (a) doc grows past the 16 MB BSON ceiling → silent insert
+    #       failure → log polling returns truncated/stale data
+    #   (b) /jobs/{id}/log polling (1 s loop) reads the WHOLE array
+    #       each tick → backend RSS climbs as motor buffers the
+    #       full doc transiently. Combined with multiple browser
+    #       tabs polling, this can pile up to GB+ before GC catches
+    #       up.
+    # Use $slice so the rolling buffer is hard-capped at LOG_CAP_LINES
+    # and bump a lifetime counter for the UI. Same contract as
+    # workers/queue.append_log().
+    from workers.queue import LOG_CAP_LINES
     await db[JOBS_COLL].update_one(
         {"job_id": job_id},
-        {"$push": {"log": {"$each": lines}}})
+        {"$push": {"log": {"$each": lines, "$slice": -LOG_CAP_LINES}},
+          "$inc":  {"log_lines_total": len(lines)}})
 
 
 async def _run_job(job_id: str, module: str, args: List[str]) -> None:
