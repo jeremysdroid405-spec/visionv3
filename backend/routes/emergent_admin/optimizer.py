@@ -479,6 +479,19 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
             if v is None and k == "tp":
                 v = r.get("model_probability")
             if isinstance(v, (int, float)):
+                # 2026-06-02 — Defense-in-depth: normalize stray
+                # percent-scale `tp` rows back to probability [0,1].
+                # The 2026-05-27 mirror fix divides `tp` by 100 before
+                # writing, but legacy rows from runs PRIOR to that fix
+                # can still carry tp in PERCENT form (e.g. 49.43 instead
+                # of 0.4943). Without this guard a few stale rows can
+                # blow up `avg_tp` from ~0.45 to ~25, and the optimizer
+                # ranks configs that include them as if their "true
+                # probability" averaged 25 — meaningless. Threshold
+                # >1.5 (not just >1) so a model that fairly outputs
+                # 1.0 (degenerate sure-thing) doesn't get clobbered.
+                if which == "tp" and v > 1.5:
+                    v = v / 100.0
                 if which == "tp":   sum_tp += float(v);   cnt_tp += 1
                 elif which == "cv": sum_cv += float(v);   cnt_cv += 1
                 else:               sum_edge += float(v); cnt_edge += 1

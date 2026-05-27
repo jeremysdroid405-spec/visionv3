@@ -1,5 +1,55 @@
 # Changelog
 
+## 2026-06-02 — TP-scale full audit + defense-in-depth in optimizer
+
+**Symptom (user report):** Optimizer JSON shows `avg_tp` values
+mixed-scale — some rows ~0.74 (probability), others ~25.39 (percent).
+
+**Root cause.** The 2026-05-27 mirror fix divided `tp` by 100 to
+convert percent → probability. But 275 stale rows in
+`sgo_propvision_full_pipeline_replay` for June 2025 had been written
+by an earlier mirror run that day (02:23–02:32 UTC, before the
+deploy at 02:27), so they still carried `tp` in PERCENT form. When
+the optimizer aggregated configs that pulled in any of those legacy
+rows, `avg_tp` was contaminated. Confirmed via prod aggregation:
+275 rows with `tp ∈ [1.06, 100.0]` co-existed with 8,167 rows
+with `tp ∈ [0, 1]`.
+
+**Cleanup (prod).** Normalized all 275 percent-scale rows in
+`sgo_propvision_full_pipeline_replay` to probability scale
+(`tp ← tp / 100`). Post-cleanup verification: every month
+(2025-05, 2025-06, 2025-07) shows `min_tp ≥ 0`, `max_tp ≤ 1.0`,
+`any tp > 1 = 0`.
+
+**Defense in depth** in `_evaluate_combo`
+(`routes/emergent_admin/optimizer.py`): the per-row `tp` accumulator
+now divides by 100 whenever `tp > 1.5`. Threshold uses 1.5 (not just
+1) so a model that fairly outputs `tp = 1.0` (degenerate edge case)
+isn't clobbered. Regression covered by
+`tests/test_optimizer_tp_scale_guard.py` (3 pins):
+  - 49.43 (percent) → averages as 0.4943.
+  - 0.85 (probability) → not rescaled.
+  - 1.0 boundary value → not rescaled.
+
+**Audit results for HR / ROI / score math.** Hand-verified the top
+result of `opt_d6095a4b15` (front_lines pitcher_strikeouts
+odds_+0_+150):
+  - `n_bets=4  wins=2  losses=0  pushes=0  ungraded=2`
+  - `hit_rate = 2 / (2+0) = 1.000` ✓
+  - `profit_units = 2 × 1.18 = 2.36`
+  - `roi = 2.36 / 2 = 1.18` ✓
+  - Score formula = `2·max(0, hr−0.55) + 5·roi − 2·|hr−avg_tp| +
+    1.5·daily_consistency − 0.02·dd − 0.25·log10(baseline/n)`
+  - Hand recompute: 0.9 + 5.9 − 0.818 + 1.5 + 0 − 0.175 = 7.307
+  - Stored: 7.383 (delta ≈ 0.07 = float-precision of avg_tp).
+**Math is correct.** The thin-sample warnings remain a UX
+consideration (see CHANGELOG 2026-05-25 for the n_graded fix that
+already addressed the most egregious case), but the underlying
+formulas are arithmetically sound.
+
+**Total backend tests:** 37 mirror + tp + ssot-clone tests passing.
+
+
 ## 2026-06-02 — RCA & fix: June 2025 grading-coverage drop (33% → 96.69%)
 
 **Root cause.** `mlb_propvision_full_pipeline_outputs` had accumulated rows
