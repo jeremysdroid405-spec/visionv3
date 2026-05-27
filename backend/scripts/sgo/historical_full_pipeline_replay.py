@@ -349,6 +349,17 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
     """
     if not replay_serials:
         return (0, 0)
+    # 2026-05-27 — SSOT-faithful mirror.
+    # The mirror previously dropped every de-vig / tier / canonical
+    # field on the floor, then OVERWROTE `tp` with `model_probability`.
+    # That made the legacy collection a pre-2026-04-22 schema —
+    # i.e. the Results page and optimizer were operating on data
+    # that pre-dated the multi-book de-vig engine entirely.
+    # Fix: $first every SSOT field the production_replay_runner writes
+    # (tp_source, edge_pct, is_alternate_market, devig_method,
+    #  canonical_edge, p_model, p_true_active, vision_score, tier, etc.)
+    # and carry them verbatim into the mirrored doc. STOP overwriting
+    # `tp` — it's already the multi-book devigged value from the runner.
     pipe = [
         {"$match": {"replay_serial": {"$in": replay_serials}}},
         {"$group": {
@@ -357,19 +368,40 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
                 "player_name_normalized": "$player_name_normalized",
                 "market": "$market", "line": "$line", "side": "$side",
             },
-            "game_date": {"$first": "$game_date"},
-            "stat_family": {"$first": "$stat_family"},
-            "player_name": {"$first": "$player_name"},
-            "book": {"$first": "$book"}, "odds": {"$first": "$odds"},
-            "projection_mu": {"$first": "$projection_mu"},
-            "sigma": {"$first": "$sigma"},
-            "model_probability": {"$first": "$model_probability"},
-            "fair_probability": {"$first": "$fair_probability"},
-            "implied_probability": {"$first": "$implied_probability"},
-            "edge": {"$first": "$edge"}, "cv": {"$first": "$cv"},
-            "hit_rate_l5": {"$first": "$hit_rate_l5"},
-            "hit_rate_l10": {"$first": "$hit_rate_l10"},
-            "hit_rate_l20": {"$first": "$hit_rate_l20"},
+            "game_date":            {"$first": "$game_date"},
+            "stat_family":          {"$first": "$stat_family"},
+            "player_name":          {"$first": "$player_name"},
+            "book":                 {"$first": "$book"},
+            "odds":                 {"$first": "$odds"},
+            "projection_mu":        {"$first": "$projection_mu"},
+            "sigma":                {"$first": "$sigma"},
+            "model_probability":    {"$first": "$model_probability"},
+            "fair_probability":     {"$first": "$fair_probability"},
+            "implied_probability":  {"$first": "$implied_probability"},
+            "edge":                 {"$first": "$edge"},
+            "cv":                   {"$first": "$cv"},
+            "hit_rate_l5":          {"$first": "$hit_rate_l5"},
+            "hit_rate_l10":         {"$first": "$hit_rate_l10"},
+            "hit_rate_l20":         {"$first": "$hit_rate_l20"},
+            # ── SSOT de-vig + canonical fields ────────────────────
+            # These are the fields production_replay_runner writes
+            # (production_replay_runner.py:986-1003). Without them
+            # the Results / optimizer have no idea about de-vigging,
+            # tier classification, or alt-market handling.
+            "tp_runner":            {"$first": "$tp"},
+            "tp_source":            {"$first": "$tp_source"},
+            "edge_pct":             {"$first": "$edge_pct"},
+            "is_alternate_market":  {"$first": "$is_alternate_market"},
+            "devig_method":         {"$first": "$devig_method"},
+            "canonical_edge":       {"$first": "$canonical_edge"},
+            "p_model":              {"$first": "$p_model"},
+            "p_true_active":        {"$first": "$p_true_active"},
+            "vision_score":         {"$first": "$vision_score"},
+            "tier_ssot":            {"$first": "$tier"},
+            "routed_tier":          {"$first": "$routed_tier"},
+            "tier_reference_odds":  {"$first": "$tier_reference_odds"},
+            "tier_reference_book":  {"$first": "$tier_reference_book"},
+            "research_mode":        {"$first": "$research_mode"},
             "tier_evals": {"$push": {
                 "tier": "$tier",
                 "gate_pass": "$gate_pass",
@@ -474,10 +506,38 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
             "sigma":               g.get("sigma"),
             "cv":                  g.get("cv"),
             "model_probability":   g.get("model_probability"),
-            "tp":                  g.get("model_probability"),
+            # 2026-05-27 — `tp` is now the runner's MULTI-BOOK DE-VIGGED
+            # true probability (production_replay_runner sets
+            # out_doc["tp"] = metrics.tp). The previous mirror
+            # OVERWROTE this with model_probability, silently rolling
+            # the schema back to pre-2026-04-22. Carry the runner's
+            # value verbatim. Fall back to model_probability ONLY when
+            # the runner left tp null (= no usable market quote).
+            "tp":                  g.get("tp_runner") if g.get("tp_runner") is not None else g.get("model_probability"),
             "fair_probability":    g.get("fair_probability"),
             "implied_probability": g.get("implied_probability"),
             "edge":                g.get("edge"),
+
+            # ── SSOT de-vig + canonical fields (faithful clone) ─────
+            # Without these, the optimizer / Results page cannot see
+            # the production tp_source, devig_method, vision_score, or
+            # the routed tier — making the testing suite operate on
+            # different data than production. The whole point of SSOT
+            # is that these mirror through unchanged.
+            "tp_source":           g.get("tp_source"),
+            "edge_pct":            g.get("edge_pct"),
+            "is_alternate_market": g.get("is_alternate_market"),
+            "is_alternate":        g.get("is_alternate_market"),  # legacy alias
+            "devig_method":        g.get("devig_method"),
+            "canonical_edge":      g.get("canonical_edge"),
+            "p_model":             g.get("p_model"),
+            "p_true_active":       g.get("p_true_active"),
+            "vision_score":        g.get("vision_score"),
+            "tier":                g.get("tier_ssot"),
+            "routed_tier":         g.get("routed_tier"),
+            "tier_reference_odds": g.get("tier_reference_odds"),
+            "tier_reference_book": g.get("tier_reference_book"),
+            "research_mode":       g.get("research_mode"),
 
             "hit_rate_l5":  g.get("hit_rate_l5"),
             "hit_rate_l10": g.get("hit_rate_l10"),
