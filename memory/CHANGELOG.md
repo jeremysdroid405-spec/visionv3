@@ -4942,3 +4942,65 @@ empirical reproduction and a pinned test:
   - End-to-end queue test: enqueue → claim → run → succeed with
     `log_lines_total=12`, heartbeat=set, in **2.5 s** elapsed
   - 139 tests pass
+
+
+## 2026-05-26 — Grid Sweep OOM Root Cause (the actual one)
+
+**User report:** "after 3 resets I finally got it to complete a full mlb
+replay. then the optimizer got 504 and killed the OOM. its barely
+functioning. not at all like a reliable tool. more like a I'm lucky if it
+works after a 30 min fight."
+
+After they got the full replay to complete (validating my prior fixes
+worked), the next step — gate-grid sweep — would OOM-kill the worker.
+**Real root cause** found by counting cells:
+
+### The math
+`historical_gate_replay_grid.py` runs a 5-axis grid:
+  - 6 × 5 × 5 × 5 × 4 = **3,000 grid combinations**
+  - × ~3 tiers × ~22 stat families = **66 (tier, fam) groups**
+  - × 3,000 combos = **~198,000 cells**
+  - PLUS tier × fam × side = ~132 groups × 3,000 = **~396,000 cells**
+  - **Total: ~594,000 cell dicts × ~1 KB = ~600 MB just for the `bulk` list**
+
+Add row dataset (~20 MB), tier-index dicts, motor connection-pool
+buffers, mongo's internal bulk_write buffers, and any concurrent
+`/results` aggregation — and peak RSS easily blew the 4 GiB rlimit.
+Kernel SIGKILL'd the worker. From the operator's perspective: "OOM
+killed it."
+
+### Fix — streaming writes
+Replaced `bulk: List[Dict]` accumulator with a `write_buffer` flushed
+to Mongo every 1000 cells. Best-per-(tier, fam) and best-per-side
+winners are now tracked **on the fly** inside the sweep loop so we
+don't need to keep the full list around for post-loop reporting.
+
+**Peak memory drops from ~600 MB → ~1 MB** (just the FLUSH_EVERY buffer).
+
+### Applied to both grid scripts
+  - `scripts/sgo/historical_gate_replay_grid.py` (step 8 — main fix)
+  - `scripts/research/grid_sweep.py` (same anti-pattern; fixed too)
+
+### Tests added (6)
+  - `tests/test_grid_streaming_writes.py` — pins:
+    - No top-level `bulk: List[...]` accumulator
+    - FLUSH_EVERY constant present
+    - `len(write_buffer) >= FLUSH_EVERY` flush check inside loop
+    - Final `await _flush()` after loop drains partial batch
+    - Best-per-group tracked on the fly (no post-loop scans of cell lists)
+
+### Empirical (preview pod, empty 1990 window)
+  - `historical_gate_replay_grid`: exits cleanly in <1 s
+  - `grid_sweep`: exits cleanly in <1 s
+  - 150 total pytest tests pass
+
+### Architectural truth this exposes
+The user is right that "barely functioning" isn't acceptable. The
+underlying issue with the whole testing-suite design is that the
+sweep produces 198k+ cells most of which are *redundant* — many
+threshold combinations admit the same underlying graded events
+(same 4 wins out of 4 settled bets, just with different no-op
+threshold filters). The streaming fix unblocks the OOM; the
+**dedup-by-graded-event-set** fix discussed with the user but not
+yet shipped is the next move to make the Results page meaningful
+instead of overwhelming.

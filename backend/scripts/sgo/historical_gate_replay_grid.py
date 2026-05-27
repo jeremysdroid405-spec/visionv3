@@ -236,10 +236,34 @@ async def _run_body(args: argparse.Namespace, db) -> int:
         print(f"  {tier:<12} universe size = {n:,}")
 
     # ── Sweep ──────────────────────────────────────────────────
-    bulk: List[Dict[str, Any]] = []
+    # 2026-05-26 — STREAMING writes instead of accumulating the full
+    # bulk list in RAM. WHY:
+    #   The old code built `bulk: List[Dict]` over the entire sweep
+    #   (3,000 combos × ~66 tier×fam groups + ~132 tier×fam×side
+    #   groups ≈ 594,000 cells × ~1 KB each = ~600 MB resident).
+    #   Combined with the row dataset, motor pool buffers, and any
+    #   concurrent /results aggregation, peak RSS easily blew the
+    #   4 GiB worker rlimit and the kernel SIGKILL'd it. Symptom for
+    #   the operator: "optimizer 504'd and killed the OOM."
+    #
+    #   With streaming, peak buffer is bounded to FLUSH_EVERY × cell_size
+    #   (1 MB) regardless of how many combos × groups the sweep
+    #   produces.
     n_cells_total = 0
     n_cells_qualified = 0
     candidates: List[Dict[str, Any]] = []
+    # For "best per (tier, family)" we need to remember the winning
+    # cells. Storing only the WINNERS (not all 594k cells) keeps the
+    # dict tiny — at most 3 tiers × ~22 fams = ~66 entries.
+    best_per_pair_hr: Dict[Any, Dict[str, Any]] = {}
+    best_per_pair_dl: Dict[Any, Dict[str, Any]] = {}
+    FLUSH_EVERY = 1000
+    write_buffer: List[Dict[str, Any]] = []
+
+    async def _flush():
+        if write_buffer and not args.dry_run:
+            await db[RESULTS].insert_many(write_buffer, ordered=False)
+        write_buffer.clear()
 
     for (tier, fam), pool in by_tier_fam.items():
         if len(pool) < args.min_bets: continue
@@ -251,9 +275,21 @@ async def _run_body(args: argparse.Namespace, db) -> int:
                      "slice": "TIER_FAMILY",
                      "tier": tier, "stat_family": fam,
                      **metrics}
-            bulk.append(cell)
+            write_buffer.append(cell)
+            if len(write_buffer) >= FLUSH_EVERY:
+                await _flush()
             if (metrics["n_bets"] or 0) >= args.min_bets:
                 n_cells_qualified += 1
+                # Track best-per-(tier,fam) ON THE FLY so we don't have
+                # to hold the full bulk list to find winners later.
+                pk = (tier, fam)
+                hr = metrics.get("hit_rate") or -1
+                if pk not in best_per_pair_hr or hr > (best_per_pair_hr[pk]["hit_rate"] or -1):
+                    best_per_pair_hr[pk] = cell
+                dl = metrics.get("calibration_delta")
+                if dl is not None:
+                    if pk not in best_per_pair_dl or dl > (best_per_pair_dl[pk]["calibration_delta"] or -1):
+                        best_per_pair_dl[pk] = cell
                 if (metrics.get("calibration_delta") or -1) > 0:
                     candidates.append(cell)
 
@@ -268,28 +304,14 @@ async def _run_body(args: argparse.Namespace, db) -> int:
                      "slice": "TIER_FAMILY_SIDE",
                      "tier": tier, "stat_family": fam, "side": sd,
                      **metrics}
-            bulk.append(cell)
+            write_buffer.append(cell)
+            if len(write_buffer) >= FLUSH_EVERY:
+                await _flush()
             if (metrics["n_bets"] or 0) >= args.min_bets:
                 n_cells_qualified += 1
 
-    if not args.dry_run:
-        for i in range(0, len(bulk), 1000):
-            await db[RESULTS].insert_many(bulk[i:i+1000], ordered=False)
-
-    # Per (tier, stat_family) best by hit_rate AND best by calibration
-    best_per_pair_hr: Dict[Any, Dict[str, Any]] = {}
-    best_per_pair_dl: Dict[Any, Dict[str, Any]] = {}
-    for c in bulk:
-        if c["slice"] != "TIER_FAMILY":                continue
-        if (c.get("n_bets") or 0) < args.min_bets:     continue
-        pk = (c["tier"], c["stat_family"])
-        hr = c.get("hit_rate") or -1
-        if pk not in best_per_pair_hr or hr > (best_per_pair_hr[pk]["hit_rate"] or -1):
-            best_per_pair_hr[pk] = c
-        dl = c.get("calibration_delta")
-        if dl is not None:
-            if pk not in best_per_pair_dl or dl > (best_per_pair_dl[pk]["calibration_delta"] or -1):
-                best_per_pair_dl[pk] = c
+    # Final flush
+    await _flush()
 
     # Save candidates
     saved_candidates: List[Dict[str, Any]] = []
@@ -348,7 +370,7 @@ async def _run_body(args: argparse.Namespace, db) -> int:
                 f"{(c.get('calibration_delta') or 0)*100:>+6.1f}")
     print()
     print(f"  run_id={run_id}")
-    print(f"  → research_grid_results  ({len(bulk):,} docs)")
+    print(f"  → research_grid_results  ({n_cells_total:,} docs)")
     print(f"  → candidate_gate_configs ({len(saved_candidates)} docs)")
     return 0
 

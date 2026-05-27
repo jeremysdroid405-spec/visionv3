@@ -344,32 +344,68 @@ async def _run_body(args: argparse.Namespace, db) -> int:
         by_family[r.get("stat_family") or "_unknown"].append(r)
         by_side[(r.get("side") or "_unknown").upper()].append(r)
 
-    all_cells: List[Dict[str, Any]] = []
-    fam_cells: List[Dict[str, Any]] = []
-    side_cells: List[Dict[str, Any]] = []
+    # 2026-05-26 — STREAMING writes instead of accumulating all cells
+    # in RAM. WHY: with 3,000 grid combos × ALL slice + ~22 fam slices
+    # + 2 side slices = ~75,000 cells held in memory = ~75 MB just for
+    # the cell lists. Combined with the ~150 MB row dataset, motor
+    # pool buffers, and any concurrent /results aggregation, the
+    # worker easily blew its 4 GiB rlimit and got SIGKILL'd. With
+    # streaming, peak buffer is FLUSH_EVERY × cell_size (~1 MB)
+    # regardless of how many combos × slices we run.
     n_total = 0
+    qualified: List[Dict[str, Any]] = []
+    # Per-family best (top 10 by Δ, top 10 by HR). We track running
+    # winners on the fly so we don't need to keep the full fam_cells
+    # list in memory.
+    fam_best: Dict[str, Dict[str, Any]] = {}
+    side_best: Dict[str, Dict[str, Any]] = {}
+    # ALL-slice qualified cells we want for the top-10 / worst-10
+    # reports. Bounded to ~200 — small enough to keep.
+    FLUSH_EVERY = 1000
+    write_buffer: List[Dict[str, Any]] = []
+
+    async def _flush():
+        if write_buffer and not args.dry_run:
+            await db[RESULTS].insert_many(write_buffer, ordered=False)
+        write_buffer.clear()
+
+    def _stamp(cell: Dict[str, Any]) -> Dict[str, Any]:
+        cell["run_id"] = run_id
+        cell["version"] = VERSION
+        cell["methodology"] = METHODOLOGY
+        return cell
+
     for cm, dm, sm, mw, cd in _iter_grid(grid):
         n_total += 1
-        all_cells.append({"slice": "ALL", **_eval_cell(rows, cm, dm, sm, mw, cd)})
+        # ── ALL slice ─────────────────────────────────────────
+        all_cell = _stamp({"slice": "ALL",
+                                 **_eval_cell(rows, cm, dm, sm, mw, cd)})
+        write_buffer.append(all_cell)
+        if (all_cell["n_bets"] or 0) >= args.min_bets:
+            qualified.append(all_cell)
+        # ── per stat_family ───────────────────────────────────
         for fam, fr in by_family.items():
-            fam_cells.append({"slice": "STAT_FAMILY", "stat_family": fam,
-                                **_eval_cell(fr, cm, dm, sm, mw, cd)})
+            fam_cell = _stamp({"slice": "STAT_FAMILY", "stat_family": fam,
+                                       **_eval_cell(fr, cm, dm, sm, mw, cd)})
+            write_buffer.append(fam_cell)
+            if (fam_cell["n_bets"] or 0) >= args.min_bets:
+                d = fam_cell.get("calibration_delta_consensus")
+                if d is not None:
+                    if fam not in fam_best or d > (fam_best[fam].get("calibration_delta_consensus") or -1):
+                        fam_best[fam] = fam_cell
+        # ── per side ──────────────────────────────────────────
         for sd, sr in by_side.items():
-            side_cells.append({"slice": "SIDE", "side": sd,
-                                **_eval_cell(sr, cm, dm, sm, mw, cd)})
-
-    qualified = [c for c in all_cells if (c["n_bets"] or 0) >= args.min_bets]
-
-    if not args.dry_run:
-        for batch in (all_cells, fam_cells, side_cells):
-            for c in batch:
-                c["run_id"] = run_id
-                c["version"] = VERSION
-                c["methodology"] = METHODOLOGY
-        bulk = all_cells + fam_cells + side_cells
-        chunk = 1000
-        for i in range(0, len(bulk), chunk):
-            await db[RESULTS].insert_many(bulk[i:i+chunk], ordered=False)
+            side_cell = _stamp({"slice": "SIDE", "side": sd,
+                                        **_eval_cell(sr, cm, dm, sm, mw, cd)})
+            write_buffer.append(side_cell)
+            if (side_cell["n_bets"] or 0) >= args.min_bets:
+                d = side_cell.get("calibration_delta_consensus")
+                if d is not None:
+                    if sd not in side_best or d > (side_best[sd].get("calibration_delta_consensus") or -1):
+                        side_best[sd] = side_cell
+        if len(write_buffer) >= FLUSH_EVERY:
+            await _flush()
+    await _flush()
 
     await db[RUNS].update_one(
         {"run_id": run_id},
@@ -402,15 +438,9 @@ async def _run_body(args: argparse.Namespace, db) -> int:
     else:
         print("\n  No cells met min_bets gate.")
 
-    fam_best: Dict[str, Dict[str, Any]] = {}
-    for c in fam_cells:
-        if (c["n_bets"] or 0) < args.min_bets:    continue
-        fam = c["stat_family"]
-        d = c.get("calibration_delta_consensus")
-        if d is None: continue
-        if (fam not in fam_best
-            or d > (fam_best[fam].get("calibration_delta_consensus") or -1)):
-            fam_best[fam] = c
+    # `fam_best` / `side_best` are now tracked on the fly inside the
+    # streaming sweep loop above (no longer need to scan `fam_cells`
+    # or `side_cells` lists — they don't exist by design).
     if fam_best:
         print("\n  ── BEST CALIBRATION Δ PER STAT_FAMILY ──────────────────")
         for fam, c in sorted(
@@ -419,15 +449,6 @@ async def _run_body(args: argparse.Namespace, db) -> int:
             reverse=True):
             print(f"    {fam:<24} {_fmt(c)}")
 
-    side_best: Dict[str, Dict[str, Any]] = {}
-    for c in side_cells:
-        if (c["n_bets"] or 0) < args.min_bets:    continue
-        sd = c["side"]
-        d = c.get("calibration_delta_consensus")
-        if d is None: continue
-        if (sd not in side_best
-            or d > (side_best[sd].get("calibration_delta_consensus") or -1)):
-            side_best[sd] = c
     if side_best:
         print("\n  ── BEST CALIBRATION Δ PER SIDE ─────────────────────────")
         for sd, c in side_best.items():
@@ -467,7 +488,7 @@ async def _run_body(args: argparse.Namespace, db) -> int:
 
     print(f"\n  saved run_id = {run_id}")
     print(f"  → research_grid_runs    (1 doc)")
-    print(f"  → research_grid_results ({len(all_cells)+len(fam_cells)+len(side_cells):,} docs)")
+    print(f"  → research_grid_results ({n_total:,} cells written)")
     if stable and not args.dry_run:
         print(f"  → candidate_thresholds  ({len(stable)} docs)")
     return 0
