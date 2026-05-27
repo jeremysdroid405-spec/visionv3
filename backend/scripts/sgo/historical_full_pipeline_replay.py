@@ -513,7 +513,16 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
             # the schema back to pre-2026-04-22. Carry the runner's
             # value verbatim. Fall back to model_probability ONLY when
             # the runner left tp null (= no usable market quote).
-            "tp":                  g.get("tp_runner") if g.get("tp_runner") is not None else g.get("model_probability"),
+            #
+            # Scale conversion: production_replay_runner stores `tp`
+            # as a PERCENT (0..100; replay_metrics_builder.py:88
+            # multiplies fair_probability by 100). The optimizer
+            # downstream expects `tp` as a PROBABILITY (0..1), same
+            # contract as `model_probability` and `fair_probability`.
+            # Divide by 100 to restore the probability form.
+            "tp":                  ((g.get("tp_runner") / 100.0)
+                                          if g.get("tp_runner") is not None
+                                          else g.get("model_probability")),
             "fair_probability":    g.get("fair_probability"),
             "implied_probability": g.get("implied_probability"),
             "edge":                g.get("edge"),
@@ -524,6 +533,14 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
             # the routed tier — making the testing suite operate on
             # different data than production. The whole point of SSOT
             # is that these mirror through unchanged.
+            #
+            # SCALE NOTE: production_replay_runner stores edge_pct,
+            # p_model, p_true_active as PERCENT (0..100). The decimal
+            # form for edge is already in `edge` (0..1). Leave the
+            # *_pct fields in PERCENT — that matches their name and
+            # how production live data uses them. Downstream consumers
+            # that want decimals use `edge`, `tp`, `model_probability`,
+            # `fair_probability` (all 0..1).
             "tp_source":           g.get("tp_source"),
             "edge_pct":            g.get("edge_pct"),
             "is_alternate_market": g.get("is_alternate_market"),
