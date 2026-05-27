@@ -3376,10 +3376,34 @@ function OptimizerTab({ token }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginBottom: 12 }}>
           <Field label="Sport"><Select testId="opt-sport" value={form.sport}
             onChange={(e) => { setForm({ ...form, sport: e.target.value, start: '', end: '' }); setWindowAutofilled(false); }} options={['MLB','NBA','NFL']} /></Field>
-          <Field label="Start (MM-DD-YYYY)"><Input testId="opt-start" value={form.start}
-            onChange={(e) => { setForm({ ...form, start: e.target.value }); setWindowAutofilled(false); }} placeholder="YYYY-MM-DD" /></Field>
-          <Field label="End (MM-DD-YYYY)"><Input testId="opt-end" value={form.end}
-            onChange={(e) => { setForm({ ...form, end: e.target.value }); setWindowAutofilled(false); }} placeholder="YYYY-MM-DD" /></Field>
+          {/* 2026-06-02 — Month/Year dropdowns (parity with Workflow tab).
+              `form.start` / `form.end` remain the SSOT YYYY-MM-DD strings
+              the optimizer API expects; the dropdowns just derive them. */}
+          {(() => {
+            const _omw = datesToMonthWindow(form.start);
+            const setOptMonthWindow = (year, month) => {
+              const { start, end } = monthWindowToDates(year, month);
+              setForm(prev => ({ ...prev, start, end }));
+              setWindowAutofilled(false);
+            };
+            return (
+              <>
+                <Field label="Month">
+                  <Select testId="opt-month" value={String(_omw.month)}
+                    onChange={(e) => setOptMonthWindow(_omw.year, parseInt(e.target.value, 10))}
+                    options={MONTH_NAMES.map((n, i) => ({
+                      value: String(i + 1), label: `${n} (${String(i + 1).padStart(2,'0')})`,
+                    }))} />
+                </Field>
+                <Field label="Year"
+                       hint={form.start && form.end ? `window: ${form.start} → ${form.end}` : 'pick a month'}>
+                  <Select testId="opt-year" value={String(_omw.year)}
+                    onChange={(e) => setOptMonthWindow(parseInt(e.target.value, 10), _omw.month)}
+                    options={_availableYears().map(y => String(y))} />
+                </Field>
+              </>
+            );
+          })()}
           <Field label="Min bets / cell"><Input testId="opt-minbets" type="number" value={form.min_bets}
             onChange={(e) => setForm({ ...form, min_bets: e.target.value })} /></Field>
           <Field label="Max configs / cell"><Input testId="opt-maxconfigs" type="number" value={form.max_configs_per_cell}
