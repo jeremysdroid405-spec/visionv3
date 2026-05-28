@@ -409,10 +409,24 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
     pipe = [
         {"$match": match_stage},
         {"$group": {
+            # 2026-06-02 — Multi-book mirror. The group key now includes
+            # `book` so every per-book quote becomes its own mirror row.
+            # Previously the mirror grouped only on
+            # (event, player, market, line, side) and took $first of
+            # book/odds, collapsing 21 books per prop into ONE row.
+            # That dropped 95%+ of the multi-book universe and emptied
+            # the optimizer's +150_+300 / +300p odds buckets. The
+            # downstream optimizer's per-bet dedupe (see
+            # `_evaluate_combo` by_key aggregation) already collapses
+            # multiple book rows for the same unique opportunity into
+            # ONE bet at scoring time, so this expansion is safe — the
+            # mirror exposes EVERY quote and the optimizer decides how
+            # to weight them.
             "_id": {
                 "event_id": "$event_id",
                 "player_name_normalized": "$player_name_normalized",
                 "market": "$market", "line": "$line", "side": "$side",
+                "book": "$book",
             },
             "game_date":            {"$first": "$game_date"},
             "stat_family":          {"$first": "$stat_family"},
@@ -634,6 +648,11 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
             "market": replay_row["market"],
             "line": replay_row["line"],
             "side": replay_row["side"],
+            # 2026-06-02 — Multi-book mirror: include `book` in the
+            # upsert key. Without this every per-book quote upserts
+            # into the same document and we collapse 21 books → 1 row,
+            # which is exactly the bug we fixed in the $group above.
+            "book": replay_row["book"],
             "pipeline_version": PIPELINE_VERSION,
         }
         buf.append(UpdateOne(flt, {"$set": replay_row}, upsert=True))
