@@ -51,6 +51,22 @@ from pydantic import BaseModel, Field
 from .auth import audit_log, require_admin_token, _get_db
 from workers.queue import enqueue as worker_enqueue
 
+# 2026-06-02 — Reference-only books policy.
+# These books quote fixed-payout multipliers (effectively +100) instead
+# of real sportsbook odds. Including them in optimizer math
+# systematically inflates ROI (every "win" pays +1 unit at +100
+# regardless of true probability) and corrupts `avg_tp` /
+# `calibration_delta` by averaging real prices with placeholder ones.
+# The rows ARE kept in the replay collection so the operator can still
+# audit playability ("could I have placed this on PrizePicks/Underdog?")
+# but they MUST NOT contribute to ROI / HR / TP / EDGE / CV math.
+# Keep in sync with scripts/sgo/reshape_sgo_to_replay_odds.py.
+REFERENCE_ONLY_BOOKS = frozenset({"prizepicks", "underdog"})
+
+
+def _is_reference_only(row: Dict[str, Any]) -> bool:
+    return (row.get("book") or "").lower() in REFERENCE_ONLY_BOOKS
+
 # Canonical tier-by-odds boundaries used by the live runner
 # (`services/scoring/gates/thresholds.py::resolve_target_tier`). The
 # optimizer routes rows into tiers the SAME WAY production does — by
@@ -437,7 +453,17 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
     n_with_odds_raw = 0
     sum_tp = sum_cv = sum_edge = 0.0
     cnt_tp = cnt_cv = cnt_edge = 0
+    # 2026-06-02 — Reference-only book audit counter. PrizePicks /
+    # Underdog rows are kept in the warehouse for playability tracking
+    # but they MUST NOT contribute to any optimizer math. This counter
+    # surfaces the ignored-row tally in the per-cell result so the
+    # operator can spot-check (and so the test contract can pin the
+    # invariant).
+    n_reference_only_skipped = 0
     for r in qual:
+        if _is_reference_only(r):
+            n_reference_only_skipped += 1
+            continue
         key = (
             r.get("event_id") or r.get("game_event_id") or "_",
             r.get("player_name_normalized") or "_",
@@ -585,6 +611,11 @@ def _evaluate_combo(rows: List[Dict[str, Any]],
         "max_drawdown_units": max_dd,
         "profit_units": pnl_units_distinct,
         "n_days": len(daily_vals),
+        # 2026-06-02 — Reference-only book audit (PrizePicks / Underdog).
+        # These rows were filtered out of ALL math above; this field
+        # surfaces how many were skipped so the operator can sanity-
+        # check that the cell still has real-book coverage.
+        "n_reference_only_skipped": n_reference_only_skipped,
     }
 
 

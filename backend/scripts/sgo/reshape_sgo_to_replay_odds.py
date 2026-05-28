@@ -61,16 +61,30 @@ SNAPSHOT_HOUR_UTC = 11
 
 ANCHOR_BOOK = "prizepicks"
 
-# 2026-06-02 — Permanent ingest-layer block.
-# Books in this set will be skipped at reshape time (no row ever
-# written to sgo_replay_alt_odds_raw). Rationale:
+# 2026-06-02 — Two-tier book policy.
+#
+# BLOCKED_BOOKS: hard-removed from ingestion entirely.
 #   • fliff    : Fliff Coins is a free-play sweepstakes — not real money.
 #   • mybookie : tiny offshore book with stale, unreliable lines.
 #   • unknown  : missing/garbled book label — can't de-vig or grade.
-# To re-admit a book, remove it from this set AND re-run reshape for
-# the affected window. Keep this list in sync with the
-# corresponding guard in production_replay_runner._book_passes_quality_gates.
+#
+# REFERENCE_ONLY_BOOKS: kept in the warehouse for playability tracking,
+# but every mathematical aggregation (de-vig, fair-probability,
+# ROI / HR in the optimizer, peer median, integrity filter) MUST
+# exclude them. These books post fixed +100 / +PP-multiplier payouts
+# that are NOT real sportsbook quotes — including them in math
+# systematically pulls every estimate toward +100.
+#   • prizepicks : DFS pick'em; fixed payout multipliers, always +100.
+#   • underdog   : DFS pick'em; same fixed-payout model.
+#
+# To re-admit a BLOCKED book, remove it from BLOCKED_BOOKS AND re-run
+# reshape for the affected window. To promote a book OUT of
+# REFERENCE_ONLY (treat it as a real book), remove it from
+# REFERENCE_ONLY_BOOKS. Keep these sets in sync with the canonical
+# `routes/emergent_admin/policy.py::REFERENCE_ONLY_BOOKS` and the
+# scoring sibling modules.
 BLOCKED_BOOKS = {"fliff", "mybookie", "unknown"}
+REFERENCE_ONLY_BOOKS = {"prizepicks", "underdog"}
 
 
 # Canonical SGO stat_id → production replay `market` name. These keys are

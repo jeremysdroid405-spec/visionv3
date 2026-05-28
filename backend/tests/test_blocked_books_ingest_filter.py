@@ -58,6 +58,20 @@ def test_blocked_books_set_is_lowercase() -> None:
         assert b == b.lower(), f"BLOCKED_BOOKS entry {b!r} must be lowercase"
 
 
+def test_reference_only_books_separate_from_blocked() -> None:
+    """PrizePicks / Underdog are reference-only (kept in DB, ignored
+    by math), NOT blocked. They must NOT appear in BLOCKED_BOOKS or
+    the warehouse will lose playability data."""
+    assert "prizepicks" in rsr.REFERENCE_ONLY_BOOKS
+    assert "underdog" in rsr.REFERENCE_ONLY_BOOKS
+    assert "prizepicks" not in rsr.BLOCKED_BOOKS, (
+        "PrizePicks must remain in the warehouse for playability "
+        "tracking — block it via REFERENCE_ONLY_BOOKS instead so the "
+        "optimizer skips it in math while keeping the rows."
+    )
+    assert "underdog" not in rsr.BLOCKED_BOOKS
+
+
 def test_reshape_source_blocks_books_at_ingest() -> None:
     """The reshape function body must reject rows whose resolved book
     is in BLOCKED_BOOKS. Encoded as a source-level contract so we
