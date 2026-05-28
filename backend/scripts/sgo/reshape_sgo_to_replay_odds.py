@@ -286,11 +286,139 @@ async def _ensure_indexes(db) -> None:
 
 
 def reshape_row(d: Dict[str, Any], now: datetime) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
-    """Pure function — transform ONE enriched-core doc into ONE alt-odds
-    row, or return (None, reason) explaining why it was skipped.
+    """Backwards-compat: returns the FIRST reshaped row (best book) for the
+    legacy unit test and any caller that still expects a single doc.
 
-    Exported for the unit smoke test.
+    New code should use `reshape_rows` (plural) below — it yields ONE row
+    per book in `books[]`, which is what the multi-book optimizer needs."""
+    rows, reason = reshape_rows(d, now)
+    if not rows:
+        return None, reason
+    return rows[0], None
+
+
+def reshape_rows(d: Dict[str, Any], now: datetime) -> tuple[List[Dict[str, Any]], Optional[str]]:
+    """Transform ONE enriched-core doc into a LIST of alt-odds rows —
+    one per book in `books[]` plus one fallback row when `books[]` is
+    empty (legacy / unenriched docs).
+
+    2026-06-02 — RCA for "no other book had +150 odds" optimizer hole.
+    The previous implementation emitted ONE row per prop (the
+    best_book / anchor). That dropped ~95% of the upstream multi-book
+    universe: a single MLB prop with 22 book quotes in books[] became
+    a single replay row, losing 21 quotes from real sportsbooks
+    (DraftKings, FanDuel, ESPN BET, Fanatics, HardRock — all of whom
+    DO post +150..+250 MLB longshots). The optimizer's `+150_+300`
+    and `+300p` odds buckets ended up populated only by Fliff
+    (16% of pool) and a handful of stragglers, so removing Fliff
+    emptied them.
+
+    Fix: enumerate every entry in `books[]`, skip BLOCKED_BOOKS at
+    the source, and emit one row per (prop × real-money book). The
+    compound unique index `(sport, game_date, event_id, player,
+    market, line, side, book, snapshot_iso)` already supports this —
+    book is part of the key.
     """
+    if not d.get("league_id"):
+        return [], "no_league"
+    if not d.get("game_date"):
+        return [], "no_game_date"
+    if not d.get("event_id"):
+        return [], "no_event_id"
+
+    market = _resolve_market(d)
+    if not market:
+        return [], "no_market"
+
+    line = _safe_float_line(d.get("line"))
+    if line is None:
+        return [], "bad_line"
+
+    side = (d.get("side") or "").upper()
+    if side not in ("OVER", "UNDER"):
+        return [], "bad_side"
+
+    pname = d.get("player_name") or ""
+    if not pname:
+        return [], "no_player_name"
+
+    snapshot_iso = f"{d['game_date']}T{SNAPSHOT_HOUR_UTC:02d}:00:00Z"
+    commence_time = d.get("commence_time") or f"{d['game_date']}T22:00:00Z"
+
+    # Build a list of (book, odds, source_label) tuples to emit.
+    quotes: List[tuple[str, int, str]] = []
+    for entry in (d.get("books") or []):
+        if not isinstance(entry, dict):
+            continue
+        bk = (entry.get("book_id") or "").strip()
+        if not bk:
+            continue
+        if bk.lower() in BLOCKED_BOOKS:
+            continue
+        o = _safe_int_odds(entry.get("price"))
+        if o is None:
+            continue
+        quotes.append((bk, o, f"books[].{bk}"))
+
+    # When books[] is empty (typical for unenriched core docs), fall
+    # back to the legacy best_book / anchor resolution so we still
+    # emit ONE row instead of dropping the doc.
+    if not quotes:
+        o, src = _resolve_odds(d)
+        if o is None:
+            return [], "no_odds"
+        bk = _resolve_book(d)
+        if (bk or "").lower() in BLOCKED_BOOKS:
+            return [], f"blocked_book:{bk}"
+        quotes.append((bk, o, src))
+
+    base = {
+        "sport": "mlb",
+        "sport_key": "baseball_mlb",
+        "league": "MLB",
+        "game_date": d["game_date"],
+        "event_id": d["event_id"],
+        "home_team": d.get("home_team"),
+        "away_team": d.get("away_team"),
+        "commence_time": commence_time,
+        "market": market,
+        "stat": market,
+        "is_alternate": bool(d.get("is_alternate")),
+        "player_name": pname,
+        "player_name_normalized": _normalize_player_name(pname),
+        "line": line,
+        "side": side,
+        "book_last_update": now.isoformat(),
+        "snapshot_iso": snapshot_iso,
+        "ingested_at": now,
+        "_source": "sgo_pp_research_core_enriched",
+        "_source_stat_id": d.get("stat_id"),
+        "_sgo_consensus_probability": d.get("consensus_probability"),
+        "_sgo_best_book_probability": d.get("best_book_probability"),
+        # 2026-05-24 — Multi-book universe metadata.
+        "anchor_book":      d.get("anchor_book") or _resolve_book(d),
+        "anchor_source":    d.get("anchor_source"),
+        "available_books":  d.get("available_books") or [],
+        "playable_on_pp":      bool(d.get("playable_on_pp")),
+        "playable_on_dk":      bool(d.get("playable_on_dk")),
+        "playable_on_fd":      bool(d.get("playable_on_fd")),
+        "playable_on_mgm":     bool(d.get("playable_on_mgm")),
+        "playable_on_caesars": bool(d.get("playable_on_caesars")),
+        "playable_on_bol":     bool(d.get("playable_on_bol")),
+    }
+
+    out: List[Dict[str, Any]] = []
+    for bk, o, src in quotes:
+        row = dict(base)
+        row["book"] = bk
+        row["odds"] = o
+        row["_odds_source"] = src
+        out.append(row)
+    return out, None
+
+
+def _legacy_reshape_row_single_book(d: Dict[str, Any], now: datetime) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Legacy single-row reshape kept for reference. Do not use in new code."""
     if not d.get("league_id"):
         return None, "no_league"
     if not d.get("game_date"):
@@ -554,12 +682,12 @@ async def _run_body(args: argparse.Namespace, db) -> int:
                           f"first = {d['books'][0] if d['books'] else None!r}")
 
         try:
-            row, reason = reshape_row(d, now)
+            rows, reason = reshape_rows(d, now)
         except Exception as row_exc:
             reason = f"row_exception:{row_exc!r}"
-            row = None
+            rows = []
 
-        if row is None:
+        if not rows:
             skip_reasons[reason] += 1
             if reason == "no_market":
                 unmapped_stat_ids[d.get("stat_id") or "<none>"] += 1
@@ -579,17 +707,17 @@ async def _run_body(args: argparse.Namespace, db) -> int:
                 })
             continue
 
-        odds_source_counts[row["_odds_source"]] += 1
-        if len(sample_outputs) < 3:
-            sample_outputs.append(row)
-
-        flt = {k: row[k] for k in
-                ("sport", "game_date", "event_id", "player_name_normalized",
-                  "market", "line", "side", "book", "snapshot_iso")}
-        buf.append(UpdateOne(flt, {"$set": row}, upsert=True))
-        if len(buf) >= 1000:
-            await _flush_buf()
-            buf = []
+        for row in rows:
+            odds_source_counts[row["_odds_source"]] += 1
+            if len(sample_outputs) < 3:
+                sample_outputs.append(row)
+            flt = {k: row[k] for k in
+                    ("sport", "game_date", "event_id", "player_name_normalized",
+                      "market", "line", "side", "book", "snapshot_iso")}
+            buf.append(UpdateOne(flt, {"$set": row}, upsert=True))
+            if len(buf) >= 1000:
+                await _flush_buf()
+                buf = []
 
     if buf:
         await _flush_buf()
