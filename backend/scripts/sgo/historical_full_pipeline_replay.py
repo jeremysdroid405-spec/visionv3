@@ -396,6 +396,16 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
     match_stage: Dict[str, Any] = {"replay_serial": {"$in": replay_serials}}
     if valid_event_ids:
         match_stage["event_id"] = {"$in": sorted(valid_event_ids)}
+    # 2026-06-02 — Block reference-bad books at the mirror layer.
+    # The reshape-layer block stops NEW data from carrying them, but
+    # the mirror reads the runner-outputs collection which still
+    # contains rows written before the reshape block landed (and any
+    # legacy backfill). Re-running the mirror without this guard
+    # silently re-introduces 1,500+ Fliff rows per month into the
+    # optimizer pool. Mirror-layer block makes the policy idempotent.
+    # Source-of-truth list lives in reshape_sgo_to_replay_odds.py.
+    _BLOCKED_BOOKS = ("fliff", "mybookie", "unknown")
+    match_stage["book"] = {"$nin": list(_BLOCKED_BOOKS)}
     pipe = [
         {"$match": match_stage},
         {"$group": {
