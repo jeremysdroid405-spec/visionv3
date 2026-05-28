@@ -26,6 +26,7 @@ UNDER alt-line replay is intentionally skipped — historical alt markets
 are OVER-only (see `audits/replay_market_coverage_rule_2026_05_16.md`).
 """
 from __future__ import annotations
+import gc
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -74,7 +75,7 @@ def _derive_batter_hand_from_hub(hub: Optional[Dict[str, Any]]) -> Optional[str]
     head = str(bt).split("/", 1)[0].strip().upper()
     return head[:1] if head and head[:1] in ("L", "R", "S") else None
 
-DEFAULT_MEM_LIMIT_MB = 1_500
+DEFAULT_MEM_LIMIT_MB = 3_500
 
 
 def _rss_mb() -> float:
@@ -640,6 +641,13 @@ async def replay_date(
 
         if len(buffer) >= 500:
             await _flush()
+            # 2026-06-02 — Force a `gc.collect()` after each flush.
+            # XGBoost / sklearn inference leaves behind short-lived
+            # numpy/pandas scratch frames whose refcounts hit zero
+            # at flush boundaries; without the explicit collect those
+            # frames sit in generation-2 until the next full GC cycle,
+            # ballooning RSS past the limit on long replays.
+            gc.collect()
             rss = _rss_mb()
             if rss > rss_peak:
                 rss_peak = rss

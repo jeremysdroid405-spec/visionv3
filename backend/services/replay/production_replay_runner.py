@@ -367,7 +367,7 @@ async def run_production_replay(
     game_date: str,
     snapshot_iso: Optional[str] = None,
     tier: str = "war_zone",
-    mem_limit_mb: int = 1_500,
+    mem_limit_mb: int = 3_500,
     force_layer3: bool = False,
     dry_run: bool = False,
     notes: Optional[str] = None,
