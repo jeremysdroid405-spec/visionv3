@@ -2504,6 +2504,25 @@ function WarehouseCoverage({ token, defaultStart, defaultEnd, defaultSport, comp
     if (compact) load();
   }, [compact, load]);
 
+  // 2026-06-02 — Re-sync internal q state when parent props change.
+  // The component is initialized once from defaultStart / defaultEnd /
+  // defaultSport at mount; if the operator then changes the Month/Year
+  // dropdowns upstream, the props change but `q` stayed at the original
+  // window. That caused the "first 30 days needing backfill" panel to
+  // show 2026 dates even though the operator selected May 2025, because
+  // the panel was still showing coverage for the original mount-time
+  // window (today's month). Sync q whenever defaults change so the
+  // coverage payload always matches what the operator picked.
+  useEffect(() => {
+    if (!compact) return;
+    setQ((prev) => ({
+      ...prev,
+      sport: defaultSport || prev.sport,
+      start: defaultStart || prev.start,
+      end:   defaultEnd   || prev.end,
+    }));
+  }, [compact, defaultSport, defaultStart, defaultEnd]);
+
   // Cancel all in-flight pollers on unmount
   useEffect(() => () => {
     Object.values(pollersRef.current).forEach((id) => clearInterval(id));
