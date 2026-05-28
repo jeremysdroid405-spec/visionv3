@@ -61,6 +61,17 @@ SNAPSHOT_HOUR_UTC = 11
 
 ANCHOR_BOOK = "prizepicks"
 
+# 2026-06-02 — Permanent ingest-layer block.
+# Books in this set will be skipped at reshape time (no row ever
+# written to sgo_replay_alt_odds_raw). Rationale:
+#   • fliff    : Fliff Coins is a free-play sweepstakes — not real money.
+#   • mybookie : tiny offshore book with stale, unreliable lines.
+#   • unknown  : missing/garbled book label — can't de-vig or grade.
+# To re-admit a book, remove it from this set AND re-run reshape for
+# the affected window. Keep this list in sync with the
+# corresponding guard in production_replay_runner._book_passes_quality_gates.
+BLOCKED_BOOKS = {"fliff", "mybookie", "unknown"}
+
 
 # Canonical SGO stat_id → production replay `market` name. These keys are
 # the values build_pp_research_core writes into doc["stat_id"]; the values
@@ -294,6 +305,8 @@ def reshape_row(d: Dict[str, Any], now: datetime) -> tuple[Optional[Dict[str, An
         return None, "no_odds"
 
     book = _resolve_book(d)
+    if (book or "").lower() in BLOCKED_BOOKS:
+        return None, f"blocked_book:{book}"
     snapshot_iso = f"{d['game_date']}T{SNAPSHOT_HOUR_UTC:02d}:00:00Z"
     commence_time = d.get("commence_time") or f"{d['game_date']}T22:00:00Z"
 
