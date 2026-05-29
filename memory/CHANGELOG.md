@@ -1,5 +1,51 @@
 # Changelog
 
+## 2026-06-02 — Phase 1.A.3.4a: `team_odds_dry_run_fetch` CLI
+
+**Scope (per user-approved):** one-shot dry-run smoke CLI. One event,
+mode HARD-LOCKED to `dry_run`. Prints audit row + market counts +
+dropped/unresolved counts + market-explosion status + projected
+writes. **No live writes, no prod, no historical backfill, no UI.**
+
+**Files created:**
+- `backend/scripts/team_odds_dry_run_fetch.py` — NEW CLI.
+  Flags: `--sport`, `--event-id`, `--snapshot-iso`, `--json`.
+  Dispatch guard required (`SGO_API_KEY` + `TEAM_INGEST_ENABLED=1`).
+  **`TEAM_INGEST_LIVE=1` has NO effect — `mode="dry_run"` is hard-
+  coded.** Calls `TeamOddsIngestWorker.fetch_and_run_pass` (Phase
+  1.A.3.3) and prints:
+    - audit row (run_id, status, diagnosis, duration)
+    - HTTP / normalize counters (sgo_events, sgo_outcomes, rows_normalized)
+    - book policy (n_blocked, n_refs)
+    - master-hub resolution (n_unresolved)
+    - market explosion guard (observed/expected/explosion_abort)
+    - per-market normalized counts
+    - projected impact ("WOULD have written N rows" vs
+      "actually wrote 0 rows")
+  Exit codes: 0 success / 2 bad args / 3 guard closed / 5 SGO fetch
+  failed / 9 mongo error.
+- `backend/tests/test_team_odds_dry_run_fetch_cli.py` — NEW (8 cases):
+  argparse contract, `_would_write_count` math (normalized minus
+  blocked minus unresolved, never negative, 0 on explosion abort),
+  `_print_summary` renders every section, in-process happy path
+  with mocked httpx (3 normalized → 1 blocked → "WOULD have written
+  2 rows" vs "actually wrote 0"), `--json` mode (parseable JSON
+  block), SGO-failure exit 5 (no audit row written), subprocess
+  guard-closed exit 3, and the critical lock test:
+  **`test_cli_never_passes_live_mode_to_worker`** — patches
+  `fetch_and_run_pass` and asserts `mode="dry_run"` is sent even
+  when `TEAM_INGEST_LIVE=1` is set in env.
+
+**Tests:** 8/8 passing. Live CLI smoke confirms guard-closed exit 3
+with no SGO call.
+
+**Out of scope (pausing per user instruction):** real SGO call (the
+operator runs this once with a real key against a real event, reviews
+the printed audit row, and decides whether to proceed to the first
+bounded live test).
+
+
+
 ## 2026-06-02 — Phase 1.A.3.3: Recorder body + dry-run HTTP fetcher integration
 
 **Scope (per user-approved):** wire the recorder body, single HTTP
