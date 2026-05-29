@@ -1,5 +1,71 @@
 # Changelog
 
+## 2026-06-02 — Phase 1.A.2: Team collections + worker skeletons
+
+**Scope (per user-approved constraints, option B + option A):** sport-
+agnostic worker skeletons (3 files, sport via constructor arg) +
+double dispatch guard (`SGO_API_KEY` + `TEAM_INGEST_ENABLED=1`). Preview
+MongoDB only. NO SGO calls. NO prod. NO UI. NO historical backfill. NO
+player-side mutation.
+
+**Files created/modified:**
+- `backend/services/team_master_hub/collections.py` — NEW.
+  `ensure_team_collections(db)` creates the ten team-side collections
+  from §1.1 with the exact §1.2 compound indexes (idempotent).
+  `collections_status(db)` is the read-only counterpart.
+  `COMPOUND_UNIQUE_KEYS` is the SSOT for the multi-book invariant.
+- `backend/workers/team/__init__.py` — NEW package + public API.
+- `backend/workers/team/base.py` — NEW. `TeamWorkerBase` ABC,
+  `SUPPORTED_SPORTS`, `TeamIngestDisabled`, `dispatch_guard_ok()`
+  (both `SGO_API_KEY` + `TEAM_INGEST_ENABLED=1` required — fail-closed).
+- `backend/workers/team/team_odds_ingest.py` — NEW skeleton with
+  `probe()` + `dry_run_promote()`. Planned SGO endpoint + markets per
+  sport (informational; no network calls).
+- `backend/workers/team/team_outcomes_grader.py` — NEW skeleton with
+  `probe()` + `dry_run_grade()` + read-only `_resolve_team_id()` that
+  looks up `team_master_hub.display_names` for the worker's sport.
+- `backend/workers/team/team_matchups_ingest.py` — NEW skeleton with
+  `probe()` + `dry_run_ingest()`.
+- `backend/routes/emergent_admin/team_master_hub.py` — added three
+  endpoints (token-gated, audit-logged):
+    - `POST /api/emergent-admin/team-master-hub/ensure-collections`
+    - `GET  /api/emergent-admin/team-master-hub/collections-status`
+    - `GET  /api/emergent-admin/team-master-hub/workers/probe?worker={odds|outcomes|matchups}&sport={mlb|nba|nfl}`
+- `backend/scripts/team_collections_ensure.py` — NEW CLI calling the
+  same `ensure_team_collections` / `collections_status` SSOT.
+- `backend/tests/test_team_collections_phase_1_a_2.py` — NEW (39 cases):
+  10-collection inventory, no-player-side-naming guard, multi-book
+  `book` invariant on the 4 odds/score collections, version field on
+  features + projections unique keys, full create + idempotency on a
+  real Motor DB, duplicate-key end-to-end (same row blocked, different
+  `book` allowed), `_resolve_team_id` correctness, fail-closed
+  dispatch guard (3 negative cases + 1 positive), `probe()` and every
+  `dry_run_*` make zero network calls (httpx + urllib stubs raise),
+  player-side collections unchanged after team bootstrap.
+
+**Tests:** 56/56 passing across all Team Props slices (5 + 12 + 39).
+
+**Live verification (preview pod, MongoDB pick_vision):**
+- `POST /ensure-collections` → 10 collections, 25 new indexes total
+- Idempotent re-run → 0 indexes created
+- `GET /collections-status` → all 10 present
+- `/workers/probe?worker=odds&sport=mlb` → guard CLOSED as expected;
+  returns planned SGO path + 4 markets
+- CLI `python -m scripts.team_collections_ensure --status-only` matches
+
+**Out of scope (deferred — explicitly NOT in this slice):**
+- Real SGO ingest (Phase 1.A.3)
+- `team_matchups` schedule backfill (Phase 1.A.4)
+- `REFERENCE_ONLY_BOOKS` cleanup in `optimizer.py` (separate micro-slice)
+- UI
+
+**Production safety:** Real dispatch requires the operator to set BOTH
+`SGO_API_KEY` and `TEAM_INGEST_ENABLED=1` on the prod pod. Until then
+all `dry_run_*` methods are safe-by-default and probe metadata is
+informational only.
+
+
+
 ## 2026-06-02 — Phase 1.A.1: Team Master Hub bootstrap/seeder
 
 **Scope (per user-approved constraints):** preview MongoDB only, NO SGO

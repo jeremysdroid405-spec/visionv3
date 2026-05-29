@@ -33,6 +33,17 @@ from services.team_master_hub import (
     audit_team_master_hub,
     seed_and_audit,
 )
+from services.team_master_hub.collections import (
+    collections_status,
+    ensure_team_collections,
+)
+from workers.team import (
+    SUPPORTED_SPORTS,
+    TeamMatchupsIngestWorker,
+    TeamOddsIngestWorker,
+    TeamOutcomesGrader,
+    dispatch_guard_ok,
+)
 
 from .auth import _get_db, audit_log, require_admin_token
 
@@ -110,3 +121,108 @@ async def audit_endpoint(
         **auth,
     )
     return report
+
+
+# ── Phase 1.A.2 — collections + worker probe endpoints ───────────────
+@router.post("/ensure-collections")
+async def ensure_collections_endpoint(
+    request: Request,
+    auth: Dict[str, Any] = Depends(require_admin_token),
+) -> Dict[str, Any]:
+    """Create the ten team-side collections + their §1.2 indexes.
+
+    Idempotent. NO documents inserted. Preview-only.
+    """
+    db = _get_db()
+    try:
+        result = await ensure_team_collections(db)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("[team_master_hub.ensure_collections] failed")
+        raise HTTPException(500, f"ensure_collections failed: {exc}") from exc
+
+    n_new = sum(1 for c in result["collections"] if c["is_new"])
+    n_idx_created = sum(len(c["indexes_created"])
+                            for c in result["collections"])
+    await audit_log(
+        request,
+        action="team_ensure_collections",
+        params={},
+        response_summary={
+            "n_collections":           result["n_collections"],
+            "n_new_collections":       n_new,
+            "n_indexes_created_total": n_idx_created,
+        },
+        **auth,
+    )
+    return result
+
+
+@router.get("/collections-status")
+async def collections_status_endpoint(
+    request: Request,
+    auth: Dict[str, Any] = Depends(require_admin_token),
+) -> Dict[str, Any]:
+    db = _get_db()
+    report = await collections_status(db)
+    await audit_log(
+        request,
+        action="team_collections_status",
+        params={},
+        response_summary={
+            "n_collections": report["n_collections"],
+            "n_present":     sum(1 for c in report["collections"]
+                                     if c["present"]),
+        },
+        **auth,
+    )
+    return report
+
+
+_WORKER_REGISTRY = {
+    "odds":     TeamOddsIngestWorker,
+    "outcomes": TeamOutcomesGrader,
+    "matchups": TeamMatchupsIngestWorker,
+}
+
+
+@router.get("/workers/probe")
+async def workers_probe_endpoint(
+    request: Request,
+    worker: str,
+    sport:  str,
+    auth: Dict[str, Any] = Depends(require_admin_token),
+) -> Dict[str, Any]:
+    """Probe a team worker for the given sport. ZERO network calls.
+
+    Args:
+      worker: one of `odds`, `outcomes`, `matchups`.
+      sport:  one of `mlb`, `nba`, `nfl`.
+    """
+    if worker not in _WORKER_REGISTRY:
+        raise HTTPException(
+            400,
+            f"unknown worker: {worker!r}. "
+            f"Available: {sorted(_WORKER_REGISTRY.keys())}",
+        )
+    sport_l = (sport or "").lower()
+    if sport_l not in SUPPORTED_SPORTS:
+        raise HTTPException(
+            400, f"unsupported sport: {sport!r}",
+        )
+    instance = _WORKER_REGISTRY[worker](sport_l)
+    probe = instance.probe()
+    ok, reasons = dispatch_guard_ok()
+    await audit_log(
+        request,
+        action="team_worker_probe",
+        params={"worker": worker, "sport": sport_l},
+        response_summary={
+            "dispatch_allowed": ok,
+            "dispatch_reasons": reasons,
+        },
+        **auth,
+    )
+    return {"ok": True,
+            "global_dispatch_allowed": ok,
+            "global_dispatch_reasons": reasons,
+            "probe": probe}
