@@ -859,14 +859,314 @@ These need answers before Phase 1.A starts:
 
 ## 10. Approval Gates
 
-Before any code is written:
+Status as of 2026-06-02:
 
-1. Sign-off on the 11-collection inventory in §1.
-2. Sign-off on Hybrid Scoring (Option C in §4.3).
-3. Sign-off on the distribution table in §2.3.
+1. ✅ **APPROVED WITH CONDITION** — 11-collection inventory (§1).
+   The three "extra" collections beyond the original brief
+   (`team_historical_props`, `team_features`, `team_projections`)
+   are LOCKED IN because Team Props will train a true predictive
+   model, and clean separation of historical training data,
+   engineered features, and model projections is required. Do NOT
+   collapse them into one implicit collection (lesson from the
+   player side).
+2. ✅ **APPROVED** — Hybrid Scoring (Option C in §4.3). Shared
+   CONTRACT, separate IMPLEMENTATION. No hard-wiring team props
+   into the player gate engine.
+3. ✅ **APPROVED FOR PHASE 1, MODEL-FIRST** — Distribution table
+   (§2.3) is the baseline probability layer, NOT the entire model.
+   The predictive model produces `μ + σ` (mean + uncertainty); the
+   distribution layer converts that into `P(OVER) / P(UNDER)`. See
+   §11.
 4. ✅ **LOCKED 2026-06-02** — Team Card mirrors Player Card visual
    contract (§5.1–§5.8) with team-specific badge vocabulary.
+5. ⛔ **NEW GATE — PENDING** — Predictive-model training plan (§11
+   below). Phase 1 coding cannot begin until this is signed off.
 
-Each remaining gate is a one-line "approved by `<user>` on `<date>`"
-entry in this document. Do not start coding until all gates are
-signed.
+---
+
+## 11. Predictive-Model Training Plan (Phase 1.A deliverable)
+
+Team Props use a real predictive model trained on historical
+team-level data, with the same discipline as the player model. This
+section is the training-plan blueprint required before any coding.
+
+### 11.1 The full data flow (locked)
+
+```
+Historical Team Data        (truth + lines + features)
+    ↓
+Feature Engineering         (pre-game only, leak-proof)
+    ↓
+Team Prediction Model       (sport × market, gradient-boosted)
+    ↓
+Team Projection             (μ, σ or distribution params)
+    ↓
+Distribution Layer          (§2.3 — NegBinom/Poisson/Normal)
+    ↓
+Multi-Book De-vig           (anchor-weighted fair_probability)
+    ↓
+True Probability (TP)       (blend of model + market)
+    ↓
+Team GateAdapter            (universal contract, team thresholds)
+    ↓
+Tier + Score                (SH / FL / WZ + universal score formula)
+```
+
+This pipeline is reversible and replayable — every artifact has a
+versioned write path to a collection in §1.1 so we can rebuild any
+prior production decision from cold storage.
+
+### 11.2 Historical data sources needed
+
+| Source | What we need from it | Window | Owner |
+|---|---|---|---|
+| SGO historical odds API | Per-game team-prop opening + closing lines + per-book quotes | 3 prior seasons per sport | new `workers/team_odds_backfill.py` |
+| MLB Stats API / Statcast | Game-level team box scores: R, H, K, TB; pitch-level for derived features | 2019 → present | reuse existing player-side ingest |
+| nflfastR (or equivalent) | NFL team game logs + play-by-play (for situational features) | 2018 → present | new |
+| NBA Stats API | NBA team box scores + advanced stats (pace, ORtg, DRtg) | 2018 → present | new |
+| Weather provider | Historical weather for outdoor venues (MLB, NFL) at gametime | back to 2018 | reuse existing |
+| Injury feed / news archive | Historical injury reports keyed to `as_of_snapshot_iso ≤ commence_time` | 2 prior seasons | new vendor TBD |
+| Schedule archive | Rest days, travel, b2b, short-week, divisional flags | back to 2018 | derived from box scores |
+
+**Data quality bar:** before any model trains, every source above
+must pass a coverage audit (≥ 95% of expected game-team rows
+present) with the same diagnostic shape used for the player-side
+`/research/replay-outcome-coverage` endpoint.
+
+### 11.3 Training labels per market
+
+One label per `(game, team, market)`. Stored in `team_prop_outcomes`.
+
+| Sport | Market | Label = `actual_value` |
+|---|---|---|
+| MLB | team_total_runs | runs scored by team |
+| MLB | team_total_hits | hits by team |
+| MLB | team_strikeouts | strikeouts by team's batters |
+| MLB | team_total_bases | total bases by team |
+| NFL | team_total_points | points scored by team |
+| NFL | first_half_total | team points in H1 |
+| NFL | team_passing_yards | net team passing yards |
+| NFL | team_rushing_yards | team rushing yards |
+| NBA | team_total_points | team points |
+| NBA | first_half_total | team H1 points |
+| NBA | first_quarter_total | team Q1 points |
+
+Each row also gets `outcome_numeric ∈ {0, 0.5, 1}` relative to any
+(line, side) pair the row is graded against — identical contract to
+player-side `sgo_pp_research_outcomes`.
+
+### 11.4 Feature sets by sport
+
+Features come from `team_features` (engineered, versioned). The
+universal features from §2.2 apply across all sports + markets;
+sport/market-specific features layer on top.
+
+Each sport-market combo gets its own feature manifest, e.g.:
+
+```
+team_features.feature_set_version = "mlb_runs_v1"
+team_features.feature_vector = {
+  # universal
+  vegas_team_total, vegas_total, opponent_strength_rating,
+  team_offensive_rating, team_defensive_rating,
+  last_7_team_for_market, last_14_team_for_market,
+  season_team_for_market, last_7_opp_allowed_for_market,
+  line_movement_open_to_close, sharp_money_indicator,
+  rest_days_team, rest_days_opp, travel_miles, home_away,
+  # mlb-specific
+  park_factor_runs, weather_wind_in_out_score, weather_temp_f,
+  weather_humidity, dome_flag,
+  opposing_starter_l5_era, opposing_starter_l5_whip,
+  opposing_starter_l5_k_per_9, opposing_starter_l5_bb_per_9,
+  opposing_starter_handedness, team_handedness_split,
+  bullpen_innings_used_last_3_days,
+  lineup_position_strength,
+}
+```
+
+Versioning rule: any change to the manifest bumps
+`feature_set_version` and **forces a full retrain**. No silent
+feature drift.
+
+### 11.5 Leakage rules (HARD)
+
+These are non-negotiable. Every feature in `team_features` must
+satisfy them or it is rejected at build time.
+
+| Rule | Concrete enforcement |
+|---|---|
+| **No in-game data.** No feature may use any event recorded at or after `commence_time`. | Feature builder reads only data with `event_time < commence_time`. Audit field: `max_source_event_time < commence_time` must be True. |
+| **No closing-line data in opening-line training.** If the model targets opener-to-game window, closing odds are off-limits. | Two separate feature manifests when needed: `*_open_v1` and `*_close_v1`. |
+| **No box-score features.** Final box-score stats from the game being predicted are NEVER an input. | Explicit blocklist by SourceField. |
+| **No future schedule data.** `rest_days_opp` for next game cannot leak into current game. | Computed as `commence_time - prior_game_end_time`. |
+| **No leaked injury status.** Injury feature value is the LAST report whose timestamp is `< commence_time`. | `injury_as_of_snapshot_iso < commence_time` audit. |
+| **No leaked weather.** Use the FORECAST captured before kickoff, not the actual weather observed during play. | Weather feature row carries `forecast_issued_at < commence_time`. |
+| **No truth leakage via market.** Closing-line features OK only to anchor TP at score-time, not as training target. | Model never takes `actual_value` of any other game as a direct input. |
+
+Every `team_features` row carries `leakage_audit_passed: bool`. The
+feature builder REFUSES to write when this is False.
+
+### 11.6 Backtest methodology
+
+**Walk-forward, never random.** Time-series cross-validation only.
+
+For each sport-market:
+
+1. Sort all eligible rows by `commence_time`.
+2. Fold pattern (default):
+   - Train window: 18 months
+   - Validation window: 1 month
+   - Step: 1 month forward
+3. Metrics computed PER FOLD:
+   - **Regression**: MAE on `actual_value`, RMSE, Pearson r on
+     model μ vs truth.
+   - **Calibration**: KS statistic on residuals vs the chosen
+     distribution. Reliability diagram (10 deciles).
+   - **Probability**: log-loss + Brier score on OVER label using
+     the model + distribution layer combined.
+   - **Backtest ROI**: simulated wager-1-unit-on-positive-edge
+     against historical closing line. Track cumulative PnL,
+     drawdown, Sharpe.
+4. **Acceptance gates per fold**:
+   - MAE < pre-set sport-market threshold (e.g. MLB runs < 0.60).
+   - Brier score better than the market-implied-probability baseline.
+   - Backtest ROI > 0 net of −110 vig over the full validation set.
+   - Calibration: 80% of decile bins within ±5 pp of diagonal.
+
+A model that fails any acceptance gate on any fold does NOT go to
+production, period.
+
+### 11.7 Model family recommendations
+
+| Sport-Market | Primary model | Backup / ensemble | Why |
+|---|---|---|---|
+| MLB team_runs | LightGBM regressor → μ; quantile heads for σ | Bayesian hierarchical (shrinkage to league mean) | Tabular, ~10K games/yr × 3 seasons, gradient boosting state-of-the-art for this shape |
+| MLB team_hits | LightGBM | same | same |
+| MLB team_strikeouts | LightGBM | Linear (interpretable baseline) | low-dispersion, simpler model competitive |
+| MLB team_total_bases | LightGBM | NegBinom-GLM | heavy right tail; verify boost handles it |
+| NFL team_total_points | LightGBM | linear + Bayesian shrinkage | ~270 games/season → small data; shrinkage crucial |
+| NFL first_half_total | LightGBM (full-game features + H1 history) | derived: 0.5 × full + scaled noise | low data |
+| NFL team_passing_yards | LightGBM | linear | tabular, multivariate |
+| NFL team_rushing_yards | LightGBM w/ Gamma loss option | linear | right-tail risk |
+| NBA team_total_points | LightGBM | linear | 1230 games/season → boost has enough data |
+| NBA first_half_total | LightGBM | full × 0.5 + noise | |
+| NBA first_quarter_total | LightGBM | full × 0.25 + amplified noise | smallest split, highest σ |
+
+**Per-model artifacts (versioned):**
+
+```
+models/team/
+├── mlb_runs_v1.joblib
+├── mlb_hits_v1.joblib
+├── mlb_strikeouts_v1.joblib
+├── ...
+└── manifest.json    # model_version → {features_used, training_window, fold_metrics, accepted}
+```
+
+### 11.8 Collection write flow
+
+```
+1. team_odds_backfill        → team_historical_props (immutable archive)
+2. team_outcomes_backfill    → team_prop_outcomes (truth)
+3. team_features_build       → team_features (engineered, leak-audited)
+4. team_projection_build     → team_projections (model μ + σ + distribution_audit)
+5. team_tp_compute           → team_prop_scores.{tp, fair_probability, model_probability, edge}
+6. team_gates_evaluate       → team_prop_scores.{*_pass, selected_tier, score}
+```
+
+Every step is idempotent, replayable, and writes its own audit fields
+(`built_at`, `feature_set_version`, `model_version`,
+`gate_config_version`). No step ever reads from a later step.
+
+### 11.9 How team projections become true probability
+
+Given a `team_projections` row with `(distribution, μ, σ|None, k|None)`
+and a `team_live_props` row with `(line, side, odds, book)`:
+
+1. **Model probability**:
+   - Normal: `model_p = 1 - Φ((line + 0.5 - μ) / σ)` for OVER.
+   - Poisson: `model_p = 1 - F_pois(floor(line); μ)` for OVER.
+   - NegBinom: `model_p = 1 - F_nb(floor(line); k, p)` where
+     `p = k/(k+μ)`.
+   - UNDER = `1 - OVER` (pushes computed when line is integer).
+2. **Multi-book fair probability**: anchor-weighted multiplicative
+   devig across all real-money books with a quote on the same
+   `(event, team, market, line, side)`. Reference-only books
+   excluded (same policy as player side).
+3. **True probability (TP) blend**:
+   ```
+   α = f(model_confidence, n_books_for_devig, fold_calibration)
+   tp = α · model_p + (1 - α) · fair_p
+   ```
+   α bounded `[0.2, 0.8]` so neither side dominates on thin data.
+4. **Edge** = `tp - implied_probability`.
+5. **TP source provenance** persisted in
+   `team_prop_scores.tp_source ∈ {"model", "blend", "market"}` so
+   we can always trace why a TP is what it is (lesson from player
+   side).
+
+### 11.10 How TP feeds the Team GateAdapter
+
+The Team GateAdapter consumes a row whose shape is identical to the
+player-side scoring row. The gate decisions read:
+
+```
+tp, edge, vision_score
+hit_rate_l20  (team's own L20 hit rate for THIS market)
+hit_rate_l10
+cv            (coefficient of variation of recent perf)
+book_count
+sharp_anchor_count
+line_movement_open_to_close
+```
+
+Threshold values live in
+`services/team_scoring/gates/team_thresholds.py` and are **distinct
+from player thresholds**. Each `(sport, market)` gets its own SH /
+FL / WZ threshold table tuned by backtest in §11.6.
+
+### 11.11 Production validation gates (pre-launch)
+
+A team-prop model goes live ONLY after:
+
+1. **Coverage gate**: ≥ 95% of historical games have all required
+   features available without leakage.
+2. **Backtest gate**: Every walk-forward fold passes §11.6 criteria.
+3. **Calibration gate**: Reliability diagram on a holdout 2-month
+   block matches the diagonal within ±5 pp in every decile.
+4. **ROI gate**: Simulated −110 backtest on the holdout returns
+   ROI > 2% net of vig over ≥ 200 graded bets per tier per
+   sport-market.
+5. **Drift gate**: Feature distribution on the holdout matches the
+   training distribution (PSI < 0.2 for every feature).
+6. **Shadow gate**: Model runs in shadow mode against live odds for
+   ≥ 14 days, comparing model vs market without producing
+   user-facing tier badges. Operator reviews shadow ROI vs
+   prediction accuracy daily.
+7. **Sign-off**: Platform owner signs the launch checklist with
+   timestamp.
+
+Shadow mode flag persists in
+`team_prop_scores.production_visible: bool`. Until all 7 gates pass,
+the UI hides team prop cards for that sport-market.
+
+### 11.12 What §11 is NOT
+
+- A schedule. Each phase ships when its gates pass, not on a date.
+- A model code spec. Hyperparameters, exact feature transforms, and
+  loss functions are decided in Phase 1.C during the model-fit
+  loop.
+- A research wish-list. Everything here is the minimum bar; we may
+  iterate beyond it (e.g., neural ranking, market-impact features)
+  after production stability.
+
+### 11.13 Sign-off for §11
+
+Status: **PENDING — awaiting operator approval before Phase 1
+coding may begin.**
+
+When approved, replace this line with:
+
+```
+Approved by <user> on <date>. Phase 1.A coding cleared to start.
+```
