@@ -874,19 +874,21 @@ Status as of 2026-06-02:
    into the player gate engine.
 3. ✅ **APPROVED FOR PHASE 1, MODEL-FIRST** — Distribution table
    (§2.3) is the baseline probability layer, NOT the entire model.
-   The predictive model produces `μ + σ` (mean + uncertainty); the
-   distribution layer converts that into `P(OVER) / P(UNDER)`. See
-   §11.
 4. ✅ **LOCKED 2026-06-02** — Team Card mirrors Player Card visual
    contract (§5.1–§5.8) with team-specific badge vocabulary.
-5. ⛔ **PENDING** — Predictive-model training plan (§11). Phase 1.A
-   foundation coding (collections + ingest + multi-book invariant
-   tests) cannot begin until this is signed off.
-6. ⛔ **PENDING — gates PROD SGO API KEY** — Historical Training
-   Plan (§12). Even after §11 is approved, the prod `SGO_API_KEY`
-   stays WITHHELD until §12 is signed. Production historical ingest
-   starts only after §12.8 sign-off plus all items in §12.7
-   checklist are True.
+5. ✅ **APPROVED 2026-06-02** — Predictive-model training plan
+   (§11). Phase 1.A foundation coding cleared.
+6. ✅ **APPROVED 2026-06-02** — Historical Training Plan (§12).
+   **Prod SGO_API_KEY release STAYS WITHHELD** until all items in
+   §12.7 are True, §13 baseline benchmark and §14 forward-compat
+   hooks are wired, and the pilot window is approved separately.
+7. ✅ **APPROVED 2026-06-02** — §13 Historical Baseline Benchmark
+   gate: every team model must beat sportsbook baseline on Brier,
+   Log Loss, and ROI. Failures do not promote.
+8. ✅ **APPROVED 2026-06-02** — §14 Team Optimizer Framework
+   forward-compat hooks. Row-shape parity with player-prop replay
+   rows. No optimizer code changes in Phase 1; design surface
+   ready for Phase 2.
 
 ---
 
@@ -1168,14 +1170,9 @@ the UI hides team prop cards for that sport-market.
 
 ### 11.13 Sign-off for §11
 
-Status: **PENDING — awaiting operator approval before Phase 1
-coding may begin.**
-
-When approved, replace this line with:
-
-```
-Approved by <user> on <date>. Phase 1.A coding cleared to start.
-```
+Status: ✅ **APPROVED by user on 2026-06-02.** Phase 1.A coding
+cleared to start. Prod SGO key release remains gated on §12.8 plus
+§12.7 checklist completion.
 
 ---
 
@@ -1520,14 +1517,232 @@ The following ALL must be True before the first prod ingest call:
 
 ### 12.8 Sign-off for §12
 
-Status: **PENDING — awaiting operator approval.**
+Status: ✅ **APPROVED by user on 2026-06-02.** Phase 1.A coding
+cleared. **Prod SGO_API_KEY release remains WITHHELD** until all
+items in §12.7 are True and §13 baseline-benchmark + §14 optimizer
+forward-compat requirements are wired into the implementation.
 
-When approved:
+The key-release contract (still binding):
 
 ```
-Approved by <user> on <date>. SGO_API_KEY may be deployed to prod
-and Phase 12.A-pilot ingest is cleared to begin.
+Prod SGO_API_KEY release requires ALL of:
+  ✓ §11.13 signed (done 2026-06-02)
+  ✓ §12.8 signed (done 2026-06-02)
+  ☐ §13 Historical Baseline Benchmark wired (per-market vs sportsbook)
+  ☐ §14 Team Optimizer Framework forward-compat wired
+  ☐ All 11 items in §12.7 checklist = True
+  ☐ Pilot ingest target window approved separately by operator
 ```
 
-Until that line is filled, the prod SGO key STAYS WITHHELD and no
-team-prop ingest is dispatched against the prod admin API.
+Until that line is fully checked, no team-prop ingest dispatch
+runs against prod.
+
+---
+
+## 13. Historical Baseline Benchmark (Pre-Production Gate)
+
+**Locked by operator 2026-06-02.** Every team model must beat a
+simple sportsbook baseline on every market before it can be promoted
+to production. A model that loses to the market on its own
+hand-picked validation window is, by definition, adding noise — and
+shipping it would actively degrade trust in the platform.
+
+### 13.1 The baseline
+
+For every `(sport, market)`:
+
+```
+Baseline_p(OVER | line)  =  multi_book_devigged_fair_probability
+                            (anchor-weighted, identical to player-side devig)
+Baseline_p(UNDER | line) =  1 - Baseline_p(OVER | line)
+```
+
+The baseline reads from `team_historical_props` at `commence_time -
+30 min` snapshot (consistent "30-minutes-out" benchmark across all
+sports) and produces a probability for every (event, team, market,
+line, side) tuple that has a graded outcome.
+
+### 13.2 Metrics tracked (per market, per validation fold)
+
+For BOTH the model and the baseline, on the SAME row set:
+
+| Metric | What it measures | Direction |
+|---|---|---|
+| **MAE** on `actual_value` vs μ | regression error of the projection | lower better |
+| **Brier score** on `outcome_numeric` vs `tp` (or baseline prob) | overall probabilistic accuracy | lower better |
+| **Log loss** on `outcome_numeric` vs probability | calibration-sensitive accuracy | lower better |
+| **Reliability diagram + ECE** (expected calibration error) | how well probabilities reflect frequencies | lower better |
+| **Backtest ROI** at −110 flat-staking, positive-edge filter | real-money simulation | higher better |
+| **Backtest ROI — sharp-only** at −110, positive-edge, sharp-book-only | how the model performs when forced to bet sharp prices | higher better |
+
+### 13.3 The hard rules
+
+1. **A model that loses to baseline on ANY of `Brier`, `Log loss`,
+   or `Backtest ROI` does NOT promote to production.** Period.
+2. **MAE alone is insufficient.** A model can have lower MAE than
+   baseline and still lose on Brier (e.g., overconfident on
+   mid-line props). All three of (Brier, Log Loss, ROI) must beat
+   baseline.
+3. **The comparison must be on the SAME row set** — every row that
+   has a baseline probability available is included; every row that
+   doesn't is excluded from BOTH sides. No cherry-picking the
+   model's good days.
+4. **The baseline is computed ONCE per row from a frozen snapshot
+   (`commence_time - 30 min`).** The model does not get to peek at
+   later odds movement. Identical evaluation footing.
+
+### 13.4 Persistence
+
+Each model's benchmark result lives in a new collection
+`team_model_benchmark_runs` with one row per `(model_version,
+sport, market, fold_id)`:
+
+```
+{
+  model_version, feature_set_version, sport, market, fold_id,
+  fold_window: { train_start, train_end, val_start, val_end },
+  n_rows: int,
+  model: { mae, brier, log_loss, ece, roi, roi_sharp_only },
+  baseline: { mae, brier, log_loss, ece, roi, roi_sharp_only },
+  delta:    { brier, log_loss, roi, roi_sharp_only },  # model - baseline (negative = model wins)
+  promoted: bool,
+  promoted_reason_if_not: str | null,
+  built_at,
+}
+```
+
+The diagnostic page reads from this collection. Before a model is
+promoted, the operator can inspect this table and see every fold's
+delta vs baseline.
+
+### 13.5 Acceptance integration with §11.6 / §12.5
+
+The §11.6 / §12.5 acceptance gates already include "Brier better
+than market-baseline" and "ROI > +2% net of vig over the holdout."
+§13 makes this explicit, per-market, recorded, and visible. It
+strengthens §11.6 — does not replace it.
+
+### 13.6 What §13 prevents
+
+- Promoting a model whose calibration is wrong but whose mean is
+  close to market (silently bleeds ROI in production).
+- Promoting a model that fits the average but mis-prices the tails
+  (where the +150+ longshot value lives — same lesson from the
+  player-side Fliff incident).
+- Hiding behind cherry-picked metrics. The benchmark table is the
+  single canonical artifact.
+
+---
+
+## 14. Team Optimizer Framework — Forward-Compat (Phase 1 design only)
+
+**Locked by operator 2026-06-02.** Team Props must be designed from
+day one to plug into the existing optimizer research workflow used
+for player props. The optimizer is one of the most valuable research
+tools on the platform; retrofitting it for team props later would
+cost months and re-introduce coupling we just spent weeks removing.
+
+### 14.1 The forward-compat contract
+
+The optimizer's `_evaluate_combo` function reads rows with a known
+shape. Team prop rows in `team_prop_scores` and
+`team_replay_outputs` MUST produce rows with that same shape so the
+existing optimizer can consume them with zero code change beyond a
+collection-name parameter.
+
+The shared row contract (subset of player-prop replay row):
+
+```
+event_id, game_date, league_id, sport,
+entity_id     (player_id for player rows, team_id for team rows),
+entity_name   (player_name / team_name),
+entity_kind   ("player" | "team")               ← NEW shared field
+market, stat_family, line, side,
+book, odds, implied_probability, fair_probability,
+tp, tp_source, edge, cv, vision_score,
+hit_rate_l20, hit_rate_l10, hit_rate_l5,
+selected_tier, safe_haven_pass, front_lines_pass, war_zone_pass,
+outcome_resolved, outcome_numeric, hit, actual,
+pipeline_version, ssot_source, scored_at,
+model_version, feature_set_version, gate_config_version,
+n_reference_only_skipped                        ← reused audit field
+```
+
+Every team-prop row carries `entity_kind: "team"`. Every player-prop
+row gets `entity_kind: "player"` (backfilled on next mirror pass).
+The optimizer reads `entity_kind` for diagnostics + filtering but
+its math does not branch on it.
+
+### 14.2 Optimizer run-id namespacing
+
+Future optimizer runs targeting team data get a distinct run-id
+prefix and a distinct results collection:
+
+```
+opt_team_runs          ← MLB team runs
+opt_team_hits          ← MLB team hits
+opt_team_strikeouts    ← MLB team K's
+opt_team_total_bases   ← MLB team TB
+opt_team_points        ← NBA / NFL team total points (sport disambiguated via filter)
+opt_team_first_half    ← NBA / NFL 1H totals
+opt_team_first_quarter ← NBA 1Q totals
+opt_team_pass_yards    ← NFL passing yards
+opt_team_rush_yards    ← NFL rushing yards
+```
+
+This isolation lets us:
+
+- Tune optimizer thresholds per team market without polluting the
+  player-prop tuning.
+- Run team and player optimizers in parallel on the same window
+  without locking each other out.
+- Compare team-vs-player edge distributions side-by-side as a
+  cross-product audit (does the team model agree with the player
+  models that drive that team's score?).
+
+### 14.3 Required hooks in Phase 1 code
+
+To honor §14 without doing any optimizer code now:
+
+| Hook | Where | What |
+|---|---|---|
+| `entity_kind` field on row writes | `team_prop_scores`, `team_replay_outputs` | Always set to `"team"` |
+| `entity_kind` backfill on player rows | one-time mirror script | Adds `entity_kind: "player"` to every existing player replay row (idempotent, indexed) |
+| Optimizer `--collection` flag | placeholder added to existing `/optimizer/launch` endpoint, default = player replay collection | Operator can later target team replay collection without code change |
+| Reference-only / blocked-book policies | shared module | Already implemented for player side; team workers must `import` from the SAME module, not duplicate |
+| `n_reference_only_skipped` audit | same name on team-row writes | Optimizer's existing audit panel works unchanged |
+
+### 14.4 What §14 explicitly does NOT do in Phase 1
+
+- Does NOT modify the optimizer code (no scoring tweaks, no new
+  metrics).
+- Does NOT add a "Team Optimizer" tab to the admin UI.
+- Does NOT run the optimizer on team data.
+- Does NOT define team-specific score-formula weights.
+
+All of the above happens in Phase 2 (post-launch). Phase 1's
+obligation is solely: write rows in a shape the optimizer can later
+read.
+
+### 14.5 Regression test contract
+
+Phase 1 ships with a contract test that pins:
+
+1. Every `team_prop_scores` write carries `entity_kind: "team"`.
+2. Every `team_replay_outputs` write carries `entity_kind: "team"`.
+3. The player-side mirror pass produces `entity_kind: "player"` on
+   every row.
+4. The shared `BLOCKED_BOOKS` and `REFERENCE_ONLY_BOOKS` sets are
+   the SAME object (`from policy import …`) on both team and
+   player code paths — verified by `id()` identity check in tests.
+
+Without these pins the forward-compat surface drifts silently and
+Phase 2 optimizer work becomes a refactor instead of a config
+change.
+
+### 14.6 Sign-off for §14
+
+Status: ✅ **APPROVED by operator 2026-06-02.** The hooks in §14.3
+MUST land in Phase 1.A. The actual optimizer integration ships in
+Phase 2.
+
