@@ -154,6 +154,21 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
             unique=True, name="ix_replay_compound_unique",
         ),
     ]),
+
+    # ── team_odds_ingest_runs (Phase 1.A.3.1 audit) ──────────────────
+    # Append-only audit log of every TeamOddsIngestWorker.run_pass()
+    # call. Never updated, never deleted in normal flow.
+    ("team_odds_ingest_runs", [
+        IndexModel([("run_id", ASCENDING)],
+                    unique=True, name="ix_run_id_unique"),
+        IndexModel([("sport", ASCENDING)],            name="ix_sport"),
+        IndexModel([("started_at", ASCENDING)],       name="ix_started_at"),
+        IndexModel([("finished_at", ASCENDING)],      name="ix_finished_at"),
+        IndexModel([("status", ASCENDING)],           name="ix_status"),
+        IndexModel([("dry_run", ASCENDING)],          name="ix_dry_run"),
+        IndexModel([("live_write_allowed", ASCENDING)],
+                    name="ix_live_write_allowed"),
+    ]),
 ]
 
 # Compound-unique-key column ordering keyed by collection name —
@@ -190,6 +205,7 @@ COMPOUND_UNIQUE_KEYS: Dict[str, Tuple[str, ...]] = {
         "event_id", "team_id", "market", "line", "side", "book",
         "snapshot_iso", "model_version", "gate_config_version",
     ),
+    "team_odds_ingest_runs": ("run_id",),
 }
 
 

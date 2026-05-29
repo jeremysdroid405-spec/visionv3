@@ -1,5 +1,67 @@
 # Changelog
 
+## 2026-06-02 — Phase 1.A.3.1: Single-pass team odds ingest worker (Tier 1/2)
+
+**Scope (per user-approved):** `run_pass(db, payload, *, snapshot_iso,
+mode)` only. Synthetic payloads in tests. NO real SGO calls. NO prod.
+NO UI. NO live HTTP fetch. NO cadence governor.
+
+**Files created/modified:**
+- `backend/services/team_master_hub/collections.py` — added 11th
+  collection `team_odds_ingest_runs` (append-only audit log) with 7
+  indexes: `run_id` unique, `sport`, `started_at`, `finished_at`,
+  `status`, `dry_run`, `live_write_allowed`.
+- `backend/workers/team/_normalize.py` — NEW pure normalizer.
+  Transforms SGO-shape event payloads → canonical `team_live_props`
+  row dicts. Side uppercased, line floated, book lowercased,
+  `home_away` always null (1.A.4 backfill), bad-side/bad-line/no-team
+  outcomes dropped with per-reason counters.
+- `backend/workers/team/team_odds_ingest.py` — replaced skeleton with
+  the single-pass `run_pass()` walking
+  `idle → claim_window → fetch (injected) → normalize → write
+  → settle` per `SNAPSHOT_LOOP_DESIGN.md`. Helpers:
+    - `_apply_book_policy` — drops `BLOCKED_BOOKS`, tags
+      `reference_only=True` for `REFERENCE_ONLY_BOOKS`.
+    - `_resolve_team_ids_in_rows` — batched lookup against
+      `team_master_hub.display_names.{full,short,abbrev,market}` for
+      the worker's sport. Rows with unresolved teams are dropped.
+    - `_build_upsert_ops` — idempotent `UpdateOne` with
+      `$setOnInsert: {ingested_at}` so re-runs against unchanged
+      payload yield `modified_count=0`.
+  Live writes require BOTH `dispatch_guard_ok()` (env: SGO_API_KEY +
+  TEAM_INGEST_ENABLED) AND `dry_run_default()==False` (env:
+  TEAM_INGEST_LIVE=1). Any closed-guard `mode="live"` call falls back
+  to dry-run and audits with `status="guard_closed"`. Market-explosion
+  kill switch aborts BEFORE any write.
+- `backend/tests/test_team_odds_ingest_run_pass.py` — NEW (16 cases):
+    - Tier 1 (pure): normalize emits rows per outcome, drops
+      market-without-team, drops bad-side/bad-line, empty-payload
+      sanity, `_apply_book_policy` drops blocked + tags refs.
+    - Tier 2 (Mongo + synthetic): dry-run writes 0 rows but 1 audit
+      row, live mode with guard closed aborts to dry-run, live mode
+      with guard open writes 3 rows (fliff blocked, prizepicks
+      `reference_only=True`, DK normal), idempotency on same
+      snapshot_iso (`modified=0`), distinct snapshot_iso doubles row
+      count, unresolved team → skipped, market-explosion abort fires
+      before any write, full audit field shape per design §7,
+      player-side `sgo_*` collections never mutated.
+- `backend/tests/test_team_collections_phase_1_a_2.py` — pinned to
+  the new collection count (11) and the additional name in the
+  expected-set assertion.
+
+**Tests:** 110/110 passing (16 new + 94 prior).
+
+**Live verification (preview pod):**
+- `POST /ensure-collections` reports `n_collections=11`,
+  `team_odds_ingest_runs` is_new=True with all 7 indexes plus `_id_`.
+
+**Out of scope (deferred — pausing per user instruction):**
+- Real SGO HTTP fetch (Tier 3 fixture capture + Tier 4 live HTTP)
+- Cadence governor (token-bucket per-sport RPM)
+- Full repeated-pass loop wrapper
+
+
+
 ## 2026-06-02 — Phase 1.A.3 design doc (no code)
 
 **Scope:** documentation only. No SGO calls. No code changes outside

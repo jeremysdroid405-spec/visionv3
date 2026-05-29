@@ -72,8 +72,12 @@ def test_ten_team_collections_declared() -> None:
         "team_prop_outcomes", "team_matchups", "team_injuries",
         "team_context", "team_features", "team_projections",
         "team_prop_scores", "team_replay_outputs",
+        "team_odds_ingest_runs",
     }
-    assert len(names) == 10, "exactly 10 team-side collections (§1.1)"
+    assert len(names) == 11, (
+        "11 team-side collections: 10 from §1.1 + team_odds_ingest_runs "
+        "(audit, added in Phase 1.A.3.1)"
+    )
 
 
 def test_no_player_side_collection_named() -> None:
@@ -126,7 +130,7 @@ def test_engineered_collection_unique_key_includes_version(coll) -> None:
 async def test_ensure_team_collections_creates_all(db) -> None:
     result = await ensure_team_collections(db)
     assert result["ok"] is True
-    assert result["n_collections"] == 10
+    assert result["n_collections"] == 11
 
     for entry in result["collections"]:
         name = entry["name"]
@@ -194,7 +198,7 @@ async def test_unique_index_blocks_duplicate_multi_book_row(db) -> None:
 async def test_collections_status_reflects_reality(db) -> None:
     # Before ensure: none present
     pre = await collections_status(db)
-    assert pre["n_collections"] == 10
+    assert pre["n_collections"] == 11
     assert all(c["present"] is False for c in pre["collections"])
 
     await ensure_team_collections(db)
