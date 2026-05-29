@@ -192,20 +192,24 @@ class SGOPayloadProvider:
                 f"(top-level keys: {sorted(payload.keys())})",
             )
 
-        # Coverage summary for the meta file
+        # Coverage summary for the meta file — walks the REAL SGO
+        # event shape: `event.odds[market_key].byBookmaker[book]`.
         books: set[str] = set()
         markets: set[str] = set()
         outcomes = 0
         for ev in payload.get("events", []) or []:
-            for bm in ev.get("bookmakers", []) or []:
-                bk = (bm.get("key") or "").lower()
-                if bk:
-                    books.add(bk)
-                for mkt in bm.get("markets", []) or []:
-                    mk = mkt.get("key")
+            odds_block = ev.get("odds")
+            if isinstance(odds_block, dict):
+                for mk, mkt in odds_block.items():
                     if mk:
                         markets.add(mk)
-                    outcomes += len(mkt.get("outcomes", []) or [])
+                    if isinstance(mkt, dict):
+                        by_bm = mkt.get("byBookmaker") or {}
+                        if isinstance(by_bm, dict):
+                            for bk in by_bm.keys():
+                                if bk:
+                                    books.add(bk.lower())
+                            outcomes += len(by_bm)
 
         return {
             "sgo_endpoint":    sanitized_url,

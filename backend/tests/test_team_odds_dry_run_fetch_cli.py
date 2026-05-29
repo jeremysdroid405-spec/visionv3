@@ -363,41 +363,38 @@ def test_cli_never_passes_live_mode_to_worker(monkeypatch) -> None:
 # ── --diff-planned tests ────────────────────────────────────────────
 def test_compute_market_diff_clean_match() -> None:
     from scripts.team_odds_dry_run_fetch import compute_market_diff
-    # MLB planned markets: team_total_runs, team_total_hits,
-    #                       first_inning_runs, first_five_innings_total
+    # MLB planned markets (6 prod targets):
     audit = {
-        "per_market_counts": {"team_total_runs": 3,
-                                "team_total_hits": 1},
+        "per_market_counts": {
+            "points-away-game-ml-away": 3,
+            "points-home-game-ml-home": 3,
+        },
         "explosion_abort": False,
     }
     d = compute_market_diff(audit, "mlb")
     assert d["n_unmapped"] == 0
     assert d["n_matched"]  == 2
-    assert d["n_missing"]  == 2   # 4 planned - 2 observed
-    assert d["unmapped"]   == []
-    assert set(d["missing"]) == {"first_inning_runs",
-                                   "first_five_innings_total"}
+    assert d["n_missing"]  == 4   # 6 planned - 2 observed
 
 
 def test_compute_market_diff_unmapped_market_surfaces() -> None:
     from scripts.team_odds_dry_run_fetch import compute_market_diff
     audit = {
         "per_market_counts": {
-            "team_total_runs":          3,    # planned
-            "team_total_doubles":       5,    # NEW unplanned market
-            "team_total_walks":         7,    # NEW unplanned market
+            "points-away-game-ml-away":  3,    # planned
+            "synth-unmapped-game-xx-aa": 5,    # NEW unplanned market
+            "synth-unmapped-game-xx-bb": 7,    # NEW unplanned market
         },
         "explosion_abort": False,
     }
     d = compute_market_diff(audit, "mlb")
     assert d["n_unmapped"] == 2
     unmapped_names = [r["market"] for r in d["unmapped"]]
-    assert "team_total_doubles" in unmapped_names
-    assert "team_total_walks"   in unmapped_names
-    # Counts surface for unmapped markets
+    assert "synth-unmapped-game-xx-aa" in unmapped_names
+    assert "synth-unmapped-game-xx-bb" in unmapped_names
     counts = {r["market"]: r["count"] for r in d["unmapped"]}
-    assert counts["team_total_doubles"] == 5
-    assert counts["team_total_walks"]   == 7
+    assert counts["synth-unmapped-game-xx-aa"] == 5
+    assert counts["synth-unmapped-game-xx-bb"] == 7
 
 
 def test_compute_market_diff_empty_observed() -> None:
@@ -405,8 +402,8 @@ def test_compute_market_diff_empty_observed() -> None:
     d = compute_market_diff({}, "nba")
     assert d["n_unmapped"] == 0
     assert d["n_matched"]  == 0
-    # All planned NBA markets missing
-    assert d["n_missing"]  == 3
+    # All planned NBA markets missing (6 prod targets)
+    assert d["n_missing"]  == 6
 
 
 def test_compute_market_diff_surfaces_explosion_flag() -> None:

@@ -84,57 +84,32 @@ def guard_open_with_live(monkeypatch):
 
 @pytest.fixture
 def synthetic_payload() -> dict:
-    """One event, two teams, three books (one DFS, one blocked, one
-    book), single market with OVER + UNDER outcomes.
+    """One event, six prod markets, three books — two of which are
+    `draftkings` (full book) and `prizepicks` (reference-only) and
+    one `fliff` (blocked).
+
+    Uses the NEW SGO v2 shape: `events[].odds[market_key].byBookmaker`.
     """
-    return {
-        "events": [
-            {
-                "event_id":      "evt_test_001",
-                "commence_time": "2026-06-02T22:00:00Z",
-                "home_team":     "New York Yankees",
-                "away_team":     "Boston Red Sox",
-                "bookmakers": [
-                    {"key": "draftkings",
-                      "markets": [{
-                         "key": "team_total_runs",
-                         "team": "New York Yankees",
-                         "outcomes": [
-                             {"name": "Over",  "point": 4.5,
-                              "price": -110},
-                             {"name": "Under", "point": 4.5,
-                              "price": -110},
-                         ]}]},
-                    {"key": "prizepicks",   # reference-only
-                      "markets": [{
-                         "key": "team_total_runs",
-                         "team": "New York Yankees",
-                         "outcomes": [
-                             {"name": "More", "point": 4.5,
-                              "price": -119},
-                         ]}]},
-                    {"key": "fliff",   # BLOCKED
-                      "markets": [{
-                         "key": "team_total_runs",
-                         "team": "New York Yankees",
-                         "outcomes": [
-                             {"name": "Over", "point": 4.5,
-                              "price": -110},
-                         ]}]},
-                ],
-            },
-        ],
-    }
+    from ._team_odds_test_payloads import make_events_envelope
+    return make_events_envelope(
+        books=("draftkings", "prizepicks", "fliff"),
+    )
 
 
 async def _seed_master_hub(db) -> None:
-    await db[MASTER_HUB_COLL].insert_one({
-        "team_id": "mlb_nyy", "sport": "mlb",
-        "display_names": {"full":   "New York Yankees",
-                            "short":  "Yankees",
-                            "abbrev": "NYY",
-                            "market": "New York"},
-    })
+    """Seed BOTH teams referenced by the synthetic payload."""
+    await db[MASTER_HUB_COLL].insert_many([
+        {"team_id": "mlb_nyy", "sport": "mlb",
+          "display_names": {"full":   "New York Yankees",
+                              "short":  "Yankees",
+                              "abbrev": "NYY",
+                              "market": "New York"}},
+        {"team_id": "mlb_bos", "sport": "mlb",
+          "display_names": {"full":   "Boston Red Sox",
+                              "short":  "Sox",
+                              "abbrev": "BOS",
+                              "market": "Boston"}},
+    ])
 
 
 # ── Tier 1 — pure normalize ──────────────────────────────────────────
@@ -147,68 +122,94 @@ def test_normalize_emits_rows_for_each_outcome(
         snapshot_iso="2026-06-02T22:00:00Z",
         ingested_at=datetime.now(timezone.utc),
     )
-    # 3 books × outcomes (DK=2, PP=1, Fliff=1) → 4 rows pre-policy
-    assert len(rows) == 4
+    # 6 prod markets × 3 books = 18 rows pre-policy
+    assert len(rows) == 18
     assert c["sgo_events"] == 1
-    assert c["sgo_outcomes"] == 4
-    assert c["rows_emitted"] == 4
+    assert c["sgo_outcomes"] == 18
+    assert c["rows_emitted"] == 18
+    assert c["sgo_markets_seen"] == 6
     # All rows tagged with the inputs
     for r in rows:
         assert r["sport"] == "mlb"
         assert r["snapshot_iso"] == "2026-06-02T22:00:00Z"
-        assert r["home_away"] is None        # 1.A.4 backfill
         assert r["game_date"] == "2026-06-02"
-        assert r["market"]    == "team_total_runs"
-        assert r["line"]      == 4.5
-        assert r["side"] in ("OVER", "UNDER")
+        assert r["market"] in {
+            "points-away-game-ml-away",
+            "points-home-game-ml-home",
+            "points-away-game-sp-away",
+            "points-home-game-sp-home",
+            "points-all-game-ou-over",
+            "points-all-game-ou-under",
+        }
+        assert r["side"] in ("AWAY", "HOME", "OVER", "UNDER")
         assert r["book"] in ("draftkings", "prizepicks", "fliff")
-        assert r["_team_name"] == "New York Yankees"
+        # Game-level OU rows carry the sentinel team_id; ML/SP carry
+        # `_team_name` for the resolver.
+        if r["betTypeID"] == "ou":
+            assert r.get("team_id") == "game"
+        else:
+            assert r.get("_team_name") in (
+                "New York Yankees", "Boston Red Sox")
 
 
-def test_normalize_drops_market_without_team(synthetic_payload) -> None:
-    # Strip the `team` key from one market
-    bad_payload = dict(synthetic_payload)
-    bad_payload["events"][0]["bookmakers"][0]["markets"][0].pop("team")
+def test_normalize_filters_unmapped_markets() -> None:
+    """Markets outside the 6-target set are dropped with a counter."""
+    from ._team_odds_test_payloads import make_payload
+    # Add an unmapped market alongside the 6 prod ones
+    payload = make_payload(
+        extra_markets={
+            "synth-xx-game-xx-xx": {
+                "marketName": "Synth", "statID": "synth",
+                "statEntityID": "all", "periodID": "game",
+                "betTypeID": "ou", "sideID": "over",
+                "byBookmaker": {"draftkings": {"odds": -110,
+                                                  "overUnder": 1.5}},
+            },
+        },
+    )
+    # Re-shape to {events: [...]} since make_payload returns
+    # {data: [...]} from the SGO envelope
+    payload = {"events": payload["data"]}
     rows, c = normalize_sgo_payload(
-        bad_payload,
-        sport="mlb",
-        snapshot_iso="t",
+        payload, sport="mlb", snapshot_iso="t",
         ingested_at=datetime.now(timezone.utc),
     )
-    # DK book lost both outcomes (no team)
-    assert c["dropped_no_team"] == 2
-    # PP + Fliff still ingested
-    books = {r["book"] for r in rows}
-    assert "draftkings" not in books
-    assert "prizepicks" in books
-    assert "fliff" in books
+    # 6 prod markets × 3 books = 18 emitted; 1 unmapped × 1 book = 1
+    # dropped_unmapped
+    assert c["dropped_unmapped"] == 1
+    assert c["rows_emitted"]    == 18
 
 
 def test_normalize_drops_bad_side(synthetic_payload) -> None:
-    synthetic_payload["events"][0]["bookmakers"][0]["markets"][0][
-        "outcomes"][0]["name"] = "Vibes"
+    # Mutate one market to have a bogus sideID
+    synthetic_payload["events"][0]["odds"][
+        "points-away-game-ml-away"]["sideID"] = "vibes"
     rows, c = normalize_sgo_payload(
         synthetic_payload,
         sport="mlb",
         snapshot_iso="t",
         ingested_at=datetime.now(timezone.utc),
     )
-    assert c["dropped_bad_side"] == 1
-    # 4 candidate outcomes minus the bad-side one = 3
-    assert len(rows) == 3
+    # Lost 3 quotes (1 market × 3 books)
+    assert c["dropped_bad_side"] == 3
+    assert len(rows) == 15
 
 
-def test_normalize_drops_bad_line(synthetic_payload) -> None:
-    synthetic_payload["events"][0]["bookmakers"][0]["markets"][0][
-        "outcomes"][0]["point"] = "not-a-number"
+def test_normalize_drops_no_odds(synthetic_payload) -> None:
+    """Strip the `odds` field from one bookmaker — counted but not
+    emitted."""
+    # Remove odds from DK on one market
+    synthetic_payload["events"][0]["odds"][
+        "points-away-game-ml-away"]["byBookmaker"][
+            "draftkings"].pop("odds")
     rows, c = normalize_sgo_payload(
         synthetic_payload,
         sport="mlb",
         snapshot_iso="t",
         ingested_at=datetime.now(timezone.utc),
     )
-    assert c["dropped_bad_line"] == 1
-    assert len(rows) == 3
+    assert c["dropped_no_odds"] == 1
+    assert len(rows) == 17
 
 
 def test_normalize_empty_payload() -> None:
@@ -227,21 +228,23 @@ def test_apply_book_policy_drops_blocked_tags_refs(
         synthetic_payload, sport="mlb", snapshot_iso="t",
         ingested_at=datetime.now(timezone.utc),
     )
-    assert len(rows) == 4
+    assert len(rows) == 18
     counters = _apply_book_policy(rows)
-    # 1 blocked (fliff), 1 reference_only (prizepicks)
-    assert counters["n_blocked"] == 1
-    assert counters["n_refs"] == 1
-    # Survived books: draftkings (×2 — OVER+UNDER) + prizepicks (×1)
-    assert len(rows) == 3
-    books = sorted(r["book"] for r in rows)
-    assert books == ["draftkings", "draftkings", "prizepicks"]
+    # 6 blocked (fliff has one quote per market), 6 reference_only
+    # (prizepicks has one quote per market)
+    assert counters["n_blocked"] == 6
+    assert counters["n_refs"]    == 6
+    # Survived: 12 rows (6 DK + 6 PP, fliff dropped)
+    assert len(rows) == 12
+    by_book = {r["book"]: [] for r in rows}
+    for r in rows:
+        by_book[r["book"]].append(r)
+    assert set(by_book.keys()) == {"draftkings", "prizepicks"}
+    assert len(by_book["draftkings"]) == 6
+    assert len(by_book["prizepicks"]) == 6
     # reference_only tagged correctly
-    by_book = {r["book"]: r for r in rows}
-    assert by_book["prizepicks"]["reference_only"] is True
-    # DK row also has reference_only=False explicitly
-    dk_rows = [r for r in rows if r["book"] == "draftkings"]
-    assert all(r["reference_only"] is False for r in dk_rows)
+    assert all(r["reference_only"] is True  for r in by_book["prizepicks"])
+    assert all(r["reference_only"] is False for r in by_book["draftkings"])
 
 
 # ── Tier 2 — run_pass against real Mongo (synthetic payload) ─────────
@@ -263,9 +266,12 @@ async def test_run_pass_dry_run_writes_no_rows_but_writes_audit(
     assert result["status"] == "dry_run"
     assert result["n_writes"] == 0
     # Normalize + policy stats still surfaced
-    assert result["n_rows_normalized"] == 4
-    assert result["n_blocked"] == 1   # fliff
-    assert result["n_refs"]    == 1   # prizepicks
+    # 6 prod markets × 3 books = 18 quotes
+    assert result["n_rows_normalized"] == 18
+    # fliff blocked once per market = 6
+    assert result["n_blocked"] == 6
+    # prizepicks reference-only-tagged once per market = 6
+    assert result["n_refs"]    == 6
 
     # No team_live_props rows
     assert await db[LIVE_PROPS_COLL].count_documents({}) == 0
@@ -309,27 +315,43 @@ async def test_run_pass_live_mode_with_guard_open_writes_rows(
     )
     assert result["status"] == "succeeded"
     assert result["live_write_allowed"] is True
-    # 4 normalized → 1 blocked → 3 written (2 DK + 1 PP)
-    assert result["n_writes"]    == 3
-    assert result["n_upserted"]  == 3
-    assert result["n_blocked"]   == 1
-    assert result["n_refs"]      == 1
+    # 18 normalized → 6 blocked (fliff) → 12 written (DK 6 + PP 6)
+    assert result["n_writes"]    == 12
+    assert result["n_upserted"]  == 12
+    assert result["n_blocked"]   == 6
+    assert result["n_refs"]      == 6
 
     rows = await db[LIVE_PROPS_COLL].find(
         {}, {"_id": 0}).to_list(length=None)
-    assert len(rows) == 3
-    # Multi-book preservation
-    books = sorted(r["book"] for r in rows)
-    assert books == ["draftkings", "draftkings", "prizepicks"]
-    # fliff was hard-dropped
+    assert len(rows) == 12
+    # Multi-book preservation: 2 books (DK + PP) per market_key
+    by_market: Dict[str, set] = {}
+    for r in rows:
+        by_market.setdefault(r["market"], set()).add(r["book"])
+    assert len(by_market) == 6, f"expected 6 markets, got {len(by_market)}"
+    for mk, books in by_market.items():
+        assert books == {"draftkings", "prizepicks"}, (
+            f"market {mk}: expected 2 books, got {sorted(books)}"
+        )
+    # fliff was hard-dropped (zero rows survived)
     assert all(r["book"] != "fliff" for r in rows)
-    # reference_only on prizepicks
-    pp = next(r for r in rows if r["book"] == "prizepicks")
-    assert pp["reference_only"] is True
-    # team_id resolved
-    assert all(r["team_id"] == "mlb_nyy" for r in rows)
-    # home_away null (1.A.4 pre-condition)
-    assert all(r["home_away"] is None for r in rows)
+    # reference_only on every prizepicks row
+    pp_rows = [r for r in rows if r["book"] == "prizepicks"]
+    assert len(pp_rows) == 6
+    assert all(r["reference_only"] is True for r in pp_rows)
+    # team_id resolution split:
+    #   ML/SP rows resolve to a real team_id (away/home)
+    #   OU rows carry the game-level sentinel `team_id="game"`
+    team_ids = sorted({r["team_id"] for r in rows})
+    assert "game" in team_ids
+    real_team_ids = [t for t in team_ids if t != "game"]
+    assert set(real_team_ids).issubset({"mlb_nyy", "mlb_bos"})
+    # home_away is null only for OU markets, set for ML/SP
+    for r in rows:
+        if r["betTypeID"] == "ou":
+            assert r["home_away"] is None
+        else:
+            assert r["home_away"] in ("home", "away")
     # Sport tag preserved
     assert all(r["sport"] == "mlb" for r in rows)
 
@@ -349,17 +371,17 @@ async def test_run_pass_idempotent_when_repeated(
         db, synthetic_payload, snapshot_iso="2026-06-02T22:00:00Z",
         mode="live",
     )
-    assert first["n_upserted"] == 3
+    assert first["n_upserted"] == 12
     # Re-run with SAME snapshot_iso → all matched, none modified
     # (ingested_at lives under $setOnInsert per design §5)
-    assert second["n_writes"]   == 3
+    assert second["n_writes"]   == 12
     assert second["n_upserted"] == 0
-    assert second["n_matched"]  == 3
+    assert second["n_matched"]  == 12
     assert second["n_modified"] == 0
     # Two distinct audit rows
     assert await db[INGEST_RUNS_COLL].count_documents({}) == 2
-    # Still exactly 3 team_live_props rows
-    assert await db[LIVE_PROPS_COLL].count_documents({}) == 3
+    # Still exactly 12 team_live_props rows
+    assert await db[LIVE_PROPS_COLL].count_documents({}) == 12
 
 
 @pytest.mark.asyncio
@@ -376,33 +398,33 @@ async def test_run_pass_different_snapshot_iso_creates_new_rows(
         db, synthetic_payload, snapshot_iso="t1", mode="live")
     await worker.run_pass(
         db, synthetic_payload, snapshot_iso="t2", mode="live")
-    # 3 rows per snapshot × 2 snapshots = 6 rows
-    assert await db[LIVE_PROPS_COLL].count_documents({}) == 6
+    # 12 rows per snapshot × 2 snapshots = 24 rows
+    assert await db[LIVE_PROPS_COLL].count_documents({}) == 24
 
 
 @pytest.mark.asyncio
 async def test_run_pass_unresolved_team_skips_row(
     db, guard_open_with_live,
 ) -> None:
+    from ._team_odds_test_payloads import make_events_envelope
     await ensure_team_collections(db)
-    # Do NOT seed master_hub → every row unresolved
-    payload = {
-        "events": [{
-            "event_id": "e1", "commence_time": "2026-06-02T22:00:00Z",
-            "bookmakers": [{
-                "key": "draftkings",
-                "markets": [{
-                    "key": "team_total_runs",
-                    "team": "Unknown Team Name",
-                    "outcomes": [
-                        {"name": "Over",  "point": 5.5, "price": -110}
-                    ]}]}]}],
-    }
+    # Seed master_hub with NEITHER team name from the payload →
+    # every ML/SP row unresolved. (OU rows are game-level and use
+    # the "game" sentinel — they still write.)
+    payload = make_events_envelope(
+        home_team="Fake Unknown Home",
+        away_team="Fake Unknown Away",
+        market_keys=("points-away-game-ml-away",
+                      "points-home-game-ml-home"),
+        books=("draftkings",),
+    )
     worker = TeamOddsIngestWorker("mlb")
     result = await worker.run_pass(
         db, payload, snapshot_iso="t", mode="live")
-    assert result["n_unresolved"] == 1
-    assert result["n_writes"]     == 0
+    # 2 markets × 1 book = 2 normalized; both unresolved
+    assert result["n_rows_normalized"] == 2
+    assert result["n_unresolved"]     == 2
+    assert result["n_writes"]          == 0
     assert result["status"] in ("succeeded_empty", "succeeded")
     assert await db[LIVE_PROPS_COLL].count_documents({}) == 0
 
@@ -411,26 +433,72 @@ async def test_run_pass_unresolved_team_skips_row(
 async def test_run_pass_market_explosion_aborts_before_write(
     db, guard_open_with_live,
 ) -> None:
+    from ._team_odds_test_payloads import make_event
     await ensure_team_collections(db)
     await _seed_master_hub(db)
-    # MLB expected markets = 4. Force ≥ 12 distinct markets (3×).
-    bms = []
-    fake_markets = [f"team_synth_market_{i}" for i in range(15)]
-    for m in fake_markets:
-        bms.append({
-            "key": "draftkings",
-            "markets": [{
-                "key": m, "team": "New York Yankees",
-                "outcomes": [{"name": "Over", "point": 1.5,
-                               "price": -110}]}]})
-    payload = {"events": [{
-        "event_id": "e_explode",
-        "commence_time": "2026-06-02T22:00:00Z",
-        "bookmakers": bms,
-    }]}
+    # MLB expected markets = 6. Force ≥ 18 distinct UNMAPPED markets
+    # to trip the 3× explosion guard. The unmapped markets are
+    # filtered by the normalizer but still counted by SGO-level
+    # market_key counters — the explosion guard reads the COLLECTED
+    # (passed-through) markets, not seen-but-dropped. So we have to
+    # include them as PASSING markets — easiest: pass them in the
+    # `market_keys` filter so the normalizer accepts them.
+    fake_keys = tuple(f"synth-points-team-game-xx-{i}" for i in range(20))
+
+    def _meta_synth(_mk: str):  # synthetic markets get all-role
+        return {
+            "marketName":   "Synth",
+            "statID":       "synth",
+            "statEntityID": "all",
+            "periodID":     "game",
+            "betTypeID":    "ou",
+            "sideID":       "over",
+        }
+
+    # Build event manually with the synth markets — bypass make_event's
+    # validators by hand-crafting odds block.
+    odds_block = {}
+    for mk in fake_keys:
+        odds_block[mk] = {**_meta_synth(mk),
+                            "byBookmaker": {"draftkings": {
+                                "odds": -110, "overUnder": 1.5}}}
+    ev = make_event(books=())  # zero real markets
+    ev["odds"] = odds_block
+    payload = {"events": [ev]}
     worker = TeamOddsIngestWorker("mlb")
-    result = await worker.run_pass(
-        db, payload, snapshot_iso="t", mode="live")
+    # Pass the synthetic keys through the filter so they hit the
+    # market_keys observed count.
+    from workers.team._normalize import normalize_sgo_payload
+    # We override the worker by injecting the keys via direct
+    # patching of `normalize_sgo_payload` isn't trivial — instead
+    # just pre-normalize and rebuild payload. Simpler: rely on
+    # the worker's run_pass path, but the explosion check needs
+    # observed_markets ≥ 3× expected (= ≥18). The normalize counter
+    # `seen_market_keys` includes BOTH mapped and unmapped, but
+    # the worker's `observed_markets` is len(distinct emitted
+    # markets). With market_keys=PRODUCTION (6) and no overlap,
+    # ZERO rows emit → observed_markets = 0. So we need to inject
+    # the synthetic keys into the normalizer's target set.
+    # The cleanest way is to subclass-monkeypatch the worker to use
+    # a custom target list.
+    import workers.team.team_odds_ingest as wk_mod
+
+    original = wk_mod.normalize_sgo_payload
+
+    def _patched(payload, *, sport, snapshot_iso, ingested_at,
+                   market_keys=None):
+        return original(payload, sport=sport,
+                          snapshot_iso=snapshot_iso,
+                          ingested_at=ingested_at,
+                          market_keys=fake_keys)
+
+    wk_mod.normalize_sgo_payload = _patched
+    try:
+        result = await worker.run_pass(
+            db, payload, snapshot_iso="t", mode="live")
+    finally:
+        wk_mod.normalize_sgo_payload = original
+
     assert result["status"] == "aborted_explosion"
     assert result["explosion_abort"] is True
     assert result["n_writes"] == 0
@@ -459,7 +527,6 @@ async def test_run_pass_persists_full_policy_snapshot_audit_fields(
         mode="live")
     audit = await db[INGEST_RUNS_COLL].find_one(
         {"run_id": res["run_id"]}, {"_id": 0})
-    # Every audit field from the design doc §7 is present
     expected_fields = {
         "run_id", "sport", "worker", "mode_requested",
         "mode_effective", "dry_run", "live_write_allowed",
@@ -473,7 +540,8 @@ async def test_run_pass_persists_full_policy_snapshot_audit_fields(
     assert expected_fields.issubset(set(audit.keys())), (
         f"missing audit fields: {expected_fields - set(audit.keys())}"
     )
-    assert audit["per_market_counts"]["team_total_runs"] == 3
+    # Each prod market sees DK + PP = 2 writes (fliff filtered)
+    assert audit["per_market_counts"]["points-away-game-ml-away"] == 2
 
 
 # ── Player-side isolation ────────────────────────────────────────────

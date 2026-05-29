@@ -48,25 +48,15 @@ from workers.team.team_odds_ingest import (  # noqa: E402
 
 # ── Tiny synthetic fixture builder ──────────────────────────────────
 def _synthetic_payload() -> dict:
-    return {
-        "events": [{
-            "event_id":      "evt_fixture_001",
-            "commence_time": "2026-06-02T22:00:00Z",
-            "home_team":     "New York Yankees",
-            "away_team":     "Boston Red Sox",
-            "bookmakers": [{
-                "key": "draftkings",
-                "markets": [{
-                    "key":  "team_total_runs",
-                    "team": "New York Yankees",
-                    "outcomes": [
-                        {"name": "Over",  "point": 4.5, "price": -110},
-                        {"name": "Under", "point": 4.5, "price": -110},
-                    ],
-                }],
-            }],
-        }],
-    }
+    """Real SGO v2 shape — used as the payload-on-disk for fixture
+    loader tests. The provider already normalizes `data` → `events`,
+    so the persisted shape here uses `events` directly.
+    """
+    from tests._team_odds_test_payloads import make_events_envelope
+    return make_events_envelope(
+        event_id="evt_fixture_001",
+        books=("draftkings",),
+    )
 
 
 def _meta(payload_bytes: bytes, *, overrides: dict | None = None) -> dict:
@@ -435,7 +425,7 @@ async def test_fixture_replays_through_run_pass(db, tmp_path) -> None:
         mode="dry_run",
     )
     assert res["status"] == "dry_run"
-    assert res["n_rows_normalized"] == 2   # over + under
+    assert res["n_rows_normalized"] == 6   # 6 prod markets × 1 book
     # Zero rows in team_live_props
     assert await db["team_live_props"].count_documents({}) == 0
     # One audit row

@@ -41,36 +41,46 @@ from .base import TeamWorkerBase
 logger = logging.getLogger("workers.team.team_odds_ingest")
 
 # Planned SGO endpoints + markets per sport. NEVER hit at probe time.
-# Used by the orchestrator UI (later) to show the operator what a
-# real run would request.
+# Phase 1.A.3.5 production targets — the 6 team/game-level markets
+# we ingest first. Player-level fantasyScore props are ignored.
 _PLANNED_ENDPOINTS: Dict[str, Dict[str, Any]] = {
     "mlb": {
-        "sgo_path": "/v2/events",
-        "league_filter": "MLB",
+        "sgo_path":      "/v2/events",
+        "sportID":       "BASEBALL",
+        "leagueID":      "MLB",
         "markets": [
-            "team_total_runs",
-            "team_total_hits",
-            "first_inning_runs",
-            "first_five_innings_total",
+            "points-away-game-ml-away",
+            "points-home-game-ml-home",
+            "points-away-game-sp-away",
+            "points-home-game-sp-home",
+            "points-all-game-ou-over",
+            "points-all-game-ou-under",
         ],
     },
     "nba": {
-        "sgo_path": "/v2/events",
-        "league_filter": "NBA",
+        "sgo_path":      "/v2/events",
+        "sportID":       "BASKETBALL",
+        "leagueID":      "NBA",
         "markets": [
-            "team_total_points",
-            "first_quarter_total",
-            "first_half_total",
+            "points-away-game-ml-away",
+            "points-home-game-ml-home",
+            "points-away-game-sp-away",
+            "points-home-game-sp-home",
+            "points-all-game-ou-over",
+            "points-all-game-ou-under",
         ],
     },
     "nfl": {
-        "sgo_path": "/v2/events",
-        "league_filter": "NFL",
+        "sgo_path":      "/v2/events",
+        "sportID":       "FOOTBALL",
+        "leagueID":      "NFL",
         "markets": [
-            "team_total_points",
-            "first_half_total",
-            "team_total_passing_yards",
-            "team_total_rushing_yards",
+            "points-away-game-ml-away",
+            "points-home-game-ml-home",
+            "points-away-game-sp-away",
+            "points-home-game-sp-home",
+            "points-all-game-ou-over",
+            "points-all-game-ou-under",
         ],
     },
 }
@@ -121,35 +131,42 @@ async def _resolve_team_ids_in_rows(
     """Mutates `rows` in place — attaches `team_id` via lookup against
     `team_master_hub.display_names`. Rows whose team can't be
     resolved are removed.
+
+    Rows that ALREADY carry a `team_id` (e.g. the game-level
+    sentinel `team_id="game"` from `statEntityID="all"` markets)
+    pass through untouched — no lookup, no drop.
     """
-    # Build distinct (team_name) set for one batched query
-    names = sorted({r["_team_name"] for r in rows
-                     if r.get("_team_name")})
-    if not names:
-        return {"n_unresolved": len(rows)}
-    cursor = db[MASTER_HUB_COLL].find(
-        {
-            "sport": sport,
-            "$or": [
-                {"display_names.full":   {"$in": names}},
-                {"display_names.short":  {"$in": names}},
-                {"display_names.abbrev": {"$in": names}},
-                {"display_names.market": {"$in": names}},
-            ],
-        },
-        {"_id": 0, "team_id": 1, "display_names": 1},
-    )
+    # Partition: rows that need resolution vs already-set
+    needs_lookup = [r for r in rows if r.get("_team_name")]
+    pre_resolved = [r for r in rows
+                     if r.get("team_id") and not r.get("_team_name")]
+    names = sorted({r["_team_name"] for r in needs_lookup})
+
     lookup: Dict[str, str] = {}
-    async for d in cursor:
-        tid = d.get("team_id")
-        if not tid:
-            continue
-        for variant in (d.get("display_names") or {}).values():
-            if isinstance(variant, str) and variant:
-                lookup[variant] = tid
+    if names:
+        cursor = db[MASTER_HUB_COLL].find(
+            {
+                "sport": sport,
+                "$or": [
+                    {"display_names.full":   {"$in": names}},
+                    {"display_names.short":  {"$in": names}},
+                    {"display_names.abbrev": {"$in": names}},
+                    {"display_names.market": {"$in": names}},
+                ],
+            },
+            {"_id": 0, "team_id": 1, "display_names": 1},
+        )
+        async for d in cursor:
+            tid = d.get("team_id")
+            if not tid:
+                continue
+            for variant in (d.get("display_names") or {}).values():
+                if isinstance(variant, str) and variant:
+                    lookup[variant] = tid
+
     unresolved = 0
-    kept: List[Dict[str, Any]] = []
-    for r in rows:
+    kept: List[Dict[str, Any]] = list(pre_resolved)
+    for r in needs_lookup:
         tid = lookup.get(r.get("_team_name", ""))
         if not tid:
             unresolved += 1

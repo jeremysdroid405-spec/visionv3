@@ -146,8 +146,11 @@ def _do_record(args: argparse.Namespace) -> int:
     # ── Derive filename ──
     commence_iso = ""
     for ev in payload.get("events", []) or []:
-        if ev.get("commence_time"):
-            commence_iso = ev["commence_time"]
+        # New SGO shape uses `startsAt`; synthetic tests use
+        # `commence_time` — tolerate both.
+        iso = ev.get("startsAt") or ev.get("commence_time")
+        if iso:
+            commence_iso = iso
             break
     try:
         utc_date = datetime.fromisoformat(

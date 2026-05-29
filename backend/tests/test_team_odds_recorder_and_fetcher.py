@@ -114,29 +114,12 @@ class _FakeHttpxClient:
         self.was_closed = True
 
 
-def _make_payload_bytes(extra: dict | None = None) -> bytes:
-    payload = {
-        "events": [{
-            "event_id":      "evt_e2e_001",
-            "commence_time": "2026-06-02T22:00:00Z",
-            "home_team":     "New York Yankees",
-            "away_team":     "Boston Red Sox",
-            "bookmakers": [{
-                "key": "draftkings",
-                "markets": [{
-                    "key":  "team_total_runs",
-                    "team": "New York Yankees",
-                    "outcomes": [
-                        {"name": "Over",  "point": 4.5, "price": -110},
-                        {"name": "Under", "point": 4.5, "price": -110},
-                    ],
-                }],
-            }],
-        }],
-    }
-    if extra:
-        payload.update(extra)
-    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+def _make_payload_bytes() -> bytes:
+    from tests._team_odds_test_payloads import make_payload_bytes
+    return make_payload_bytes(
+        event_id="evt_e2e_001",
+        books=("draftkings", "fanduel", "betmgm"),
+    )
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -171,9 +154,10 @@ def test_provider_fetch_happy_path() -> None:
         content=_make_payload_bytes()))
     p = SGOPayloadProvider("k_THIS_IS_THE_OPERATOR_KEY", client=fake)
     result = p.fetch_event_odds(sport="mlb", event_id="evt_e2e_001")
-    assert result["books_seen"] == ["draftkings"]
-    assert result["markets_seen"] == ["team_total_runs"]
-    assert result["outcomes_count"] == 2
+    assert result["books_seen"] == ["betmgm", "draftkings", "fanduel"]
+    assert len(result["markets_seen"]) == 6
+    # 3 books × 6 markets = 18
+    assert result["outcomes_count"] == 18
     # The OUTBOUND URL (last_url) carries the real key — that's the
     # actual wire request
     assert "k_THIS_IS_THE_OPERATOR_KEY" in fake.last_url
@@ -332,9 +316,9 @@ def test_recorder_happy_path_writes_two_files(
     assert loaded.meta["sport"] == "mlb"
     assert loaded.meta["event_id"] == "evt_e2e_001"
     assert loaded.meta["recorded_by"] == "ops-e2e"
-    assert loaded.meta["books_seen"] == ["draftkings"]
-    assert loaded.meta["markets_seen"] == ["team_total_runs"]
-    assert loaded.meta["outcomes_count"] == 2
+    assert loaded.meta["books_seen"] == ["betmgm", "draftkings", "fanduel"]
+    assert len(loaded.meta["markets_seen"]) == 6
+    assert loaded.meta["outcomes_count"] == 18
     # The key is in the OUTBOUND URL but NOT in the meta endpoint
     assert "k_THIS_IS_THE_OPERATOR_KEY" not in loaded.meta["sgo_endpoint"]
     assert REDACTION_TOKEN in loaded.meta["sgo_endpoint"]
@@ -448,7 +432,7 @@ async def test_fetch_and_run_pass_dry_run_no_writes(
         provider=provider,
     )
     assert res["status"] == "dry_run"
-    assert res["n_rows_normalized"] == 2
+    assert res["n_rows_normalized"] == 18
     assert res["n_writes"] == 0
 
     # Verify the mocked HTTP was actually called
@@ -563,7 +547,7 @@ async def test_full_path_record_then_replay_then_run_pass(
         mode="dry_run",
     )
     assert res["status"] == "dry_run"
-    assert res["n_rows_normalized"] == 2
+    assert res["n_rows_normalized"] == 18
     assert res["n_writes"] == 0
 
     # ── Step 5: invariants ──
