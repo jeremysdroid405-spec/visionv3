@@ -879,8 +879,14 @@ Status as of 2026-06-02:
    §11.
 4. ✅ **LOCKED 2026-06-02** — Team Card mirrors Player Card visual
    contract (§5.1–§5.8) with team-specific badge vocabulary.
-5. ⛔ **NEW GATE — PENDING** — Predictive-model training plan (§11
-   below). Phase 1 coding cannot begin until this is signed off.
+5. ⛔ **PENDING** — Predictive-model training plan (§11). Phase 1.A
+   foundation coding (collections + ingest + multi-book invariant
+   tests) cannot begin until this is signed off.
+6. ⛔ **PENDING — gates PROD SGO API KEY** — Historical Training
+   Plan (§12). Even after §11 is approved, the prod `SGO_API_KEY`
+   stays WITHHELD until §12 is signed. Production historical ingest
+   starts only after §12.8 sign-off plus all items in §12.7
+   checklist are True.
 
 ---
 
@@ -1170,3 +1176,358 @@ When approved, replace this line with:
 ```
 Approved by <user> on <date>. Phase 1.A coding cleared to start.
 ```
+
+---
+
+## 12. Phase 1.A — Historical Training Plan
+
+Production SGO API access stays withheld until this section is signed
+off. Historical ingest at scale commits us to storage growth,
+collection schema, feature schema, and millions of immutable rows.
+We design that surface area on paper FIRST, validate the math, then
+turn on the firehose.
+
+### 12.1 Data Inventory
+
+For every (sport × market) we lock the following 5 attributes BEFORE
+any ingest begins.
+
+#### MLB
+
+| Market | Label (target) | Historical source | Required features (manifest version) | Expected records / season (game-team rows × books × snapshots) | Earliest reliable date |
+|---|---|---|---|---|---|
+| `team_total_runs` | runs scored by team in 9 innings | MLB Stats API + SGO odds | `mlb_runs_v1` (28 fields, §11.4 plus park / weather / starter / bullpen) | 4,860 truth rows; ~2.3M odds rows | 2019-03-28 (Statcast era stable; SGO archive coverage robust from 2020) |
+| `team_total_hits` | team hits | MLB Stats API + SGO | `mlb_hits_v1` (same skeleton + handedness split) | 4,860 truth; ~2.0M odds | 2019-03-28 |
+| `team_strikeouts` | team batter strikeouts | MLB Stats API + SGO | `mlb_strikeouts_v1` (starter K/9, bullpen K/9) | 4,860 truth; ~1.5M odds | 2019-03-28 |
+| `team_total_bases` | team total bases | MLB Stats API + SGO | `mlb_total_bases_v1` (slugging-tilted) | 4,860 truth; ~1.2M odds | 2020 (SGO market coverage spotty before) |
+
+#### NBA
+
+| Market | Label | Source | Features | Records / season | Earliest |
+|---|---|---|---|---|---|
+| `team_total_points` | team points (full game) | NBA Stats API + SGO | `nba_points_v1` (pace, ORtg, DRtg, rest, b2b, injury) | 2,460 truth; ~1.5M odds | 2018-10-16 |
+| `first_half_total` | team H1 points | NBA Stats API quarter splits + SGO | `nba_h1_v1` (full features + 1H historical splits) | 2,460 truth; ~700K odds | 2019-10 (1H market liquidity threshold) |
+| `first_quarter_total` | team Q1 points | NBA Stats API quarter splits + SGO | `nba_q1_v1` (starting-five minutes, opp Q1 D-rating) | 2,460 truth; ~400K odds | 2020-10 (Q1 market liquidity threshold) |
+
+#### NFL
+
+| Market | Label | Source | Features | Records / season | Earliest |
+|---|---|---|---|---|---|
+| `team_total_points` | team points (full game) | nflfastR + SGO | `nfl_points_v1` (weather, rest, divisional, QB-tier) | 544 truth; ~280K odds | 2018-09 (nflfastR + SGO joint coverage) |
+| `first_half_total` | team H1 points | nflfastR + SGO | `nfl_h1_v1` | 544 truth; ~140K odds | 2019-09 |
+| `team_passing_yards` | net passing yards | nflfastR + SGO | `nfl_pass_v1` (opp pass D-grade, QB L4, weather) | 544 truth; ~250K odds | 2018-09 |
+| `team_rushing_yards` | rushing yards | nflfastR + SGO | `nfl_rush_v1` (opp run D-grade, OL grade, weather) | 544 truth; ~220K odds | 2018-09 |
+
+**Total dataset estimate (all sports, 1 season):**
+
+```
+Truth rows (team_prop_outcomes):       ~25,400 / season
+Engineered features (team_features):   ~25,400 / season (same cardinality)
+Projections (team_projections):        ~25,400 / season
+Live + historical odds (multi-book):   ~10.5M  / season
+```
+
+Odds dominates by 400×. Storage discipline is critical (§12.3).
+
+### 12.2 Training Architecture per market
+
+Same shape for every (sport × market). All collections are versioned
+and write-once for that version.
+
+```
+SGO historical odds API
+    ↓ workers/team_odds_backfill
+team_historical_props          ── immutable archive (compound-keyed, multi-book)
+    │
+    │ joined on (event_id, team_id, market, line, side, book)
+    ↓
+MLB Stats / NBA Stats / nflfastR
+    ↓ workers/team_outcomes_backfill
+team_prop_outcomes             ── ONE row per (event, team, market, line, side); actual_value + outcome_numeric
+    │
+    │ joined on (event_id, team_id) with…
+    ↓
+team_matchups + team_injuries + team_context
+    ↓ workers/team_features_build  (manifest = mlb_runs_v1, nfl_pass_v1, …)
+team_features                  ── leak-audited, versioned, one row per (event, team, market)
+    │
+    │ feeds model training (offline, walk-forward, §11.6)
+    ↓ models/team/<sport>_<market>_<version>.joblib
+team_projections               ── μ, σ|None, distribution, model_version
+    │
+    │ joined with live `team_live_props` row
+    ↓ services/team_tp/
+team_prop_scores               ── model_p, fair_p, tp, edge, tp_source provenance
+    ↓ services/team_scoring/gates/
+team_prop_scores               ── *_pass, selected_tier, score (same row, updated in-place)
+    ↓ research-mode mirror (analog of player-side replay)
+team_replay_outputs            ── SSOT replay artifact
+```
+
+Critical invariants from this diagram:
+
+1. **No step reads from a later step.** Same SSOT discipline that
+   carried the player-side replay coverage from 33% to 97%.
+2. **`team_historical_props` is immutable.** Once written for a
+   game-snapshot, never updated. New snapshots are new rows.
+3. **`team_features` is reproducible.** Given a `feature_set_version`
+   the builder must produce byte-identical output (modulo float
+   precision) on a rebuild. Locks out "the data drifted under me"
+   bugs.
+4. **`team_projections` is bound to `model_version` + `feature_set_version`.**
+   You cannot retrofit features into an old projection. New features
+   = new projection rows + new model version.
+
+### 12.3 Storage Estimate
+
+Per-document size estimate (conservative, with indexes):
+
+| Collection | Doc size (bytes) | Index size factor |
+|---|---|---|
+| `team_historical_props` | 600 (small doc, many odds quotes) | 1.4× |
+| `team_prop_outcomes` | 400 | 1.3× |
+| `team_features` | 2,500 (rich feature vector) | 1.2× |
+| `team_projections` | 600 | 1.2× |
+| `team_prop_scores` | 900 | 1.4× |
+| `team_replay_outputs` | 900 | 1.4× |
+
+#### 1-year horizon (all sports, all markets)
+
+| Collection | Rows | Raw | With indexes |
+|---|---|---|---|
+| `team_historical_props` | 10.5M | 6.3 GB | 8.8 GB |
+| `team_prop_outcomes` | 25.4K | 10 MB | 13 MB |
+| `team_features` | 25.4K | 64 MB | 77 MB |
+| `team_projections` | 25.4K | 15 MB | 18 MB |
+| `team_prop_scores` | ~3M (multi-book live) | 2.7 GB | 3.8 GB |
+| `team_replay_outputs` | ~10M (multi-book replay) | 9.0 GB | 12.6 GB |
+| **Subtotal** | | **18.1 GB** | **25.3 GB** |
+
+#### 3-year horizon
+
+```
+team_historical_props:  ~31M    rows   ≈  26 GB on disk
+team_prop_outcomes:     ~76K           ≈  39 MB
+team_features:          ~76K           ≈ 231 MB
+team_projections:       ~76K           ≈  54 MB
+team_prop_scores:       ~9M            ≈ 11 GB
+team_replay_outputs:    ~30M           ≈ 38 GB
+Subtotal:                              ≈ 75 GB on disk
+```
+
+#### 5-year horizon
+
+```
+team_historical_props:  ~52M    rows   ≈  44 GB
+team_prop_outcomes:     ~127K          ≈  66 MB
+team_features:          ~127K          ≈ 380 MB
+team_projections:       ~127K          ≈  91 MB
+team_prop_scores:       ~15M           ≈  19 GB
+team_replay_outputs:    ~52M           ≈  65 GB
+Subtotal:                              ≈ 130 GB on disk
+```
+
+**Storage discipline rules (lessons from player-side replay
+explosion):**
+
+1. **TTL on live, no TTL on historical.** `team_live_props` purges
+   to `team_historical_props` after 48 h.
+2. **Compound unique index on every multi-book collection** so
+   double-ingest can't double the row count.
+3. **`bulk_write` chunk size = 1,000** for every backfill writer,
+   identical to the player-side fix that resolved Grid Sweep OOMs.
+4. **`gc.collect()` after every flush** in long-running backfills
+   (we already learned this on the replay engine).
+5. **No `find().to_list(None)`** anywhere — only cursors with
+   `batch_size=500`. This is the rule we wrote after the 3.6 GB
+   FastAPI leak.
+6. **`maxTimeMS` on every aggregation** so a runaway pipeline can't
+   wedge the server.
+7. **Per-month coverage panel** (analog of the warehouse coverage
+   page) so missing rows are visible BEFORE training, not after.
+
+### 12.4 Ingestion Plan
+
+Three independent backfill workers. Each writes to ONE collection
+and can be re-run idempotently.
+
+```
+─────────────────────────────────────────────────────────────
+Worker 1: team_odds_backfill (uses SGO_API_KEY)
+─────────────────────────────────────────────────────────────
+  for sport in (MLB, NBA, NFL):
+    for game_date in window:
+      pull /v2/events?sportID={sport}&date={game_date}
+      for each event:
+        for each team-prop market in registry[sport]:
+          for each book quote in books[]:
+            UPSERT into team_historical_props
+              keyed on (event_id, team_id, market, line, side, book, snapshot_iso)
+  emit: skip_reasons{blocked_book, no_market, no_line, etc.}
+
+─────────────────────────────────────────────────────────────
+Worker 2: team_outcomes_backfill (no SGO needed; uses sport APIs)
+─────────────────────────────────────────────────────────────
+  for sport in (MLB, NBA, NFL):
+    for game_date in window:
+      pull box scores from MLB Stats / NBA Stats / nflfastR
+      for each (event_id, team_id, market in registry[sport]):
+        UPSERT into team_prop_outcomes
+          keyed on (event_id, team_id, market, line, side)
+        with actual_value + outcome_numeric
+
+─────────────────────────────────────────────────────────────
+Worker 3: team_stats_backfill (running team performance history)
+─────────────────────────────────────────────────────────────
+  for sport in (MLB, NBA, NFL):
+    for game_date in window:
+      pull team game logs (offense + defense + pace + injuries)
+      UPSERT into team_game_stats (NEW collection — feeds features)
+        keyed on (event_id, team_id)
+```
+
+**Join contract:**
+
+```
+team_historical_props          ── (event_id, team_id, market, line, side, book, snapshot_iso)
+                                        ▲
+                                        │ joined on (event_id, team_id)
+team_prop_outcomes             ── (event_id, team_id, market, line, side)
+                                        ▲
+                                        │ joined on (event_id, team_id)
+team_game_stats                ── (event_id, team_id)
+team_matchups                  ── (event_id)
+team_context                   ── (event_id, team_id)
+team_injuries                  ── (event_id, team_id)
+                                        ↓
+                            team_features (built from the above)
+```
+
+The join key for label vs feature is `(event_id, team_id, market)`.
+Cardinality must match — any feature row without a matching outcome
+row gets `label_present=False` and is dropped from training (but
+kept for inference / future grading).
+
+**Backfill order (mandatory):**
+
+1. team_master_hub seed (one-time)
+2. team_matchups for the entire window (schedule must be complete)
+3. team_outcomes_backfill (truth labels must exist before features)
+4. team_stats_backfill (need historical performance for rolling features)
+5. team_odds_backfill (can run in parallel with #4 — they don't overlap)
+6. team_features_build (after #3, #4, #5 are complete)
+7. Model training (offline, see §12.5)
+
+### 12.5 Validation Plan
+
+NO production ingest is allowed until the validation methodology
+is signed off here. This section is the contract.
+
+#### 12.5.1 Train / Validation / Test split
+
+Time-series only — never random. For a model targeting 2025
+production:
+
+```
+Train:           2020-01-01 → 2024-04-30   (~4 seasons of MLB, 5 of NFL/NBA)
+Validation:      2024-05-01 → 2024-12-31   (in-sample tuning, walk-forward)
+Out-of-sample:   2025-01-01 → 2025-04-30   (HOLDOUT — never touched until final acceptance)
+Backtest:        2025-05-01 → 2025-09-30   (paper-trade simulation, ROI computation)
+```
+
+Walk-forward fold pattern within the train+validation window:
+18-month train → 1-month validation → step 1 month (§11.6).
+
+#### 12.5.2 Success criteria (must hit ALL before launch)
+
+| Gate | Metric | Threshold |
+|---|---|---|
+| **G1 — Coverage** | `% game-team rows with leak-audited feature row` | ≥ 95% |
+| **G2 — Regression** | MAE on `actual_value` (validation) | sport-specific table below |
+| **G3 — Calibration** | KS p-value on `(actual − μ) / σ` vs chosen distribution | ≥ 0.05 |
+| **G4 — Decile calibration** | % of 10 deciles where reliability matches diagonal ±5 pp | ≥ 80% |
+| **G5 — Probability skill** | Brier score vs market-baseline | strictly lower |
+| **G6 — Out-of-sample** | Brier + MAE on the untouched 4-month holdout | within 10% of validation |
+| **G7 — Backtest ROI** | Simulated −110 wager-on-positive-edge ROI on the 5-month backtest window | > +2% net of vig over ≥ 200 graded bets per tier |
+| **G8 — Drift** | PSI on each feature comparing train vs OOS distribution | < 0.2 per feature |
+| **G9 — Shadow mode** | 14-day live shadow comparing model to market without user-facing tiers | operator review approves |
+
+MAE acceptance thresholds (G2):
+
+| Sport / Market | MAE upper bound (validation) |
+|---|---|
+| MLB team_total_runs | 0.60 runs |
+| MLB team_total_hits | 0.75 hits |
+| MLB team_strikeouts | 1.40 K |
+| MLB team_total_bases | 1.20 TB |
+| NBA team_total_points | 5.5 pts |
+| NBA first_half_total | 3.0 pts |
+| NBA first_quarter_total | 2.0 pts |
+| NFL team_total_points | 4.5 pts |
+| NFL first_half_total | 2.6 pts |
+| NFL team_passing_yards | 38 yds |
+| NFL team_rushing_yards | 26 yds |
+
+(Thresholds set from public published win-rates of comparable
+prop-model papers; sharpen during fitting.)
+
+#### 12.5.3 Failure handling
+
+If ANY gate fails for a (sport × market):
+
+- Model is NOT promoted.
+- `team_prop_scores.production_visible = False` for that market.
+- UI hides that market under that sport.
+- Diagnostic report auto-generated (which gate failed, by how much,
+  with the calibration plot + ROI curve + feature drift table).
+- Re-train cycle begins; production ingest continues but downstream
+  scoring + UI surface remain dark for that market.
+
+### 12.6 Phased rollout of production ingest
+
+Once §12 is approved AND the SGO key is set in prod:
+
+| Phase | Window | Purpose | Stop condition |
+|---|---|---|---|
+| **12.A-pilot** | 2025-04-01 → 2025-04-30 (single month) | Validate schema, joins, blocked-book filter, coverage audit, multi-book invariant | Coverage < 95% on any one collection → STOP and fix |
+| **12.A-2024** | 2024-01-01 → 2024-12-31 | First full season per sport for training | All 9 success gates pass on 2024 walk-forward folds → GO |
+| **12.A-3yr** | 2022-01-01 → 2024-12-31 | Three seasons of training data | 75 GB storage budget honored (§12.3) |
+| **12.A-5yr** | 2020-01-01 → 2024-12-31 (sport-dependent) | Five-season corpus for the markets that need it (NFL, NBA points) | 130 GB storage budget honored |
+| **12.B-shadow** | continuous from launch + 14 days | Shadow mode validation | G9 passes → user-facing toggle ON |
+| **12.B-go-live** | continuous | Production scoring | All 9 gates maintained on rolling 30-day window |
+
+Each phase has a stop condition that an automated audit can detect.
+The audit job runs at the end of each ingest window and writes a
+`team_phase_audit` document with PASS/FAIL per gate.
+
+### 12.7 Pre-prod-ingest checklist (mandatory)
+
+The following ALL must be True before the first prod ingest call:
+
+```
+[ ] §10 gate 5 (predictive-model training plan, §11) signed
+[ ] §12.5 validation methodology signed (this section)
+[ ] team_master_hub seeded for the 3 sports (~100 teams)
+[ ] storage budget reserved (≥ 30 GB Mongo headroom)
+[ ] backfill workers shipped with `bulk_write` chunked at 1000
+[ ] backfill workers carry `gc.collect()` after each flush
+[ ] coverage audit endpoint live: /api/emergent-admin/team/coverage
+[ ] blocked-book + reference-only policies wired into team_odds_backfill
+[ ] regression tests pin multi-book invariant for team odds (analog of test_reshape_multi_book.py)
+[ ] team_outcomes_backfill verified on a 1-week pilot — manually spot-check 20 rows
+[ ] SGO_API_KEY set in PROD env (this is the last switch to flip)
+```
+
+### 12.8 Sign-off for §12
+
+Status: **PENDING — awaiting operator approval.**
+
+When approved:
+
+```
+Approved by <user> on <date>. SGO_API_KEY may be deployed to prod
+and Phase 12.A-pilot ingest is cleared to begin.
+```
+
+Until that line is filled, the prod SGO key STAYS WITHHELD and no
+team-prop ingest is dispatched against the prod admin API.
