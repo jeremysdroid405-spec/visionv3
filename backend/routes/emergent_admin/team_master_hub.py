@@ -438,3 +438,112 @@ async def events_status_endpoint(
         "by_status":  by_status,
         "rows":       rows,
     }
+
+
+# ── Phase 1.A.4.acquire — historical pull endpoint ──────────────────
+class HistoricalAcquireBody(BaseModel):
+    """Body for POST /team-master-hub/historical-acquire."""
+    sport:    str  = Field(..., description="mlb | nba | nfl")
+    start:    str  = Field(..., description="UTC start date YYYY-MM-DD")
+    end:      str  = Field(..., description="UTC end date YYYY-MM-DD")
+    dry_run:  bool = Field(default=True)
+    markets:  Optional[str] = Field(
+        default=None,
+        description="comma-separated market_key allow-list, or null/'all' "
+                    "to acquire every market",
+    )
+
+
+@router.post("/historical-acquire")
+async def historical_acquire_endpoint(
+    body: HistoricalAcquireBody,
+    request: Request,
+    auth: Dict[str, Any] = Depends(require_admin_token),
+) -> Dict[str, Any]:
+    """Pull historical matchups + odds for `(sport, [start, end])`.
+    DRY-RUN by default; pass `dry_run=False` to write.
+
+    Writes to:
+      - {team_matchups | nfl_matchups}
+      - {team_historical_props | nfl_historical_props}
+      - historical_acquire_runs (audit, always)
+    """
+    sport_l = (body.sport or "").lower()
+    from workers.team.historical_ingest import (
+        SPORT_COLLECTIONS as _SC,
+        acquire_historical_window as _acquire,
+    )
+    if sport_l not in _SC:
+        raise HTTPException(
+            400, f"unsupported sport: {body.sport!r}. "
+                 f"Supported: {sorted(_SC.keys())}")
+    if not _DATE_RE.match(body.start or ""):
+        raise HTTPException(
+            400, f"start must be 'YYYY-MM-DD' (got {body.start!r})")
+    if not _DATE_RE.match(body.end or ""):
+        raise HTTPException(
+            400, f"end must be 'YYYY-MM-DD' (got {body.end!r})")
+    market_keys: Optional[tuple] = None
+    if body.markets and body.markets.strip() and \
+            body.markets.lower() != "all":
+        market_keys = tuple(
+            mk.strip() for mk in body.markets.split(",") if mk.strip())
+
+    db = _get_db()
+    api_key = _os.environ.get("SGO_API_KEY", "")
+    audit = await _acquire(
+        db, sport=sport_l,
+        start_date=body.start, end_date=body.end,
+        api_key=api_key, dry_run=body.dry_run,
+        market_keys=market_keys,
+    )
+
+    await audit_log(
+        request,
+        action="team_historical_acquire",
+        params={"sport": sport_l, "start": body.start, "end": body.end,
+                  "dry_run": body.dry_run,
+                  "markets": body.markets or "all"},
+        response_summary={
+            "status":          audit["status"],
+            "n_sgo_events":    audit["n_sgo_events"],
+            "n_matchups":      audit["n_matchups_written"],
+            "n_props_written": audit["n_props_written"],
+            "n_props_upserted": audit["n_props_upserted"],
+            "n_unresolved":    audit["n_unresolved"],
+        },
+        **auth,
+    )
+    return audit
+
+
+@router.get("/historical-acquire-runs")
+async def historical_acquire_runs_endpoint(
+    request: Request,
+    sport: Optional[str] = None,
+    limit: int = 25,
+    auth: Dict[str, Any] = Depends(require_admin_token),
+) -> Dict[str, Any]:
+    """Read-only browse of `historical_acquire_runs`. Latest first."""
+    if sport is not None:
+        sport_l = sport.lower()
+        if sport_l not in ("mlb", "nba", "nfl"):
+            raise HTTPException(
+                400, f"unsupported sport: {sport!r}")
+        sport = sport_l
+    if limit < 1 or limit > 100:
+        raise HTTPException(
+            400, f"limit must be in [1, 100] (got {limit})")
+    db = _get_db()
+    flt: Dict[str, Any] = {}
+    if sport:
+        flt["sport"] = sport
+    rows: List[Dict[str, Any]] = []
+    cursor = db["historical_acquire_runs"].find(
+        flt, projection={"_id": 0, "per_date_counts": 0}
+    ).sort("started_at", -1).limit(limit)
+    async for d in cursor:
+        rows.append(d)
+    n_total = await db["historical_acquire_runs"].count_documents(flt)
+    return {"ok": True, "n_total": int(n_total),
+            "n_returned": len(rows), "rows": rows}

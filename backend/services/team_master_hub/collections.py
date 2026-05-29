@@ -169,6 +169,52 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
         IndexModel([("live_write_allowed", ASCENDING)],
                     name="ix_live_write_allowed"),
     ]),
+
+    # ── NFL-side mirrors (Phase 1.A.4.acquire) ──────────────────────
+    # Mirror the team-side shape so the historical ingest worker
+    # can target either bucket with a single normalizer. NFL is
+    # acquired at FULL market depth (no 6-target filter), MLB is
+    # acquired into team_historical_props with optional filter.
+    ("nfl_matchups", [
+        IndexModel([("sport", ASCENDING), ("event_id", ASCENDING)],
+                    unique=True, name="ix_nfl_matchup_sport_event_unique"),
+        IndexModel([("game_date", ASCENDING)],
+                    name="ix_nfl_matchup_date"),
+        IndexModel([("status", ASCENDING)],
+                    name="ix_nfl_matchup_status"),
+    ]),
+
+    ("nfl_historical_props", [
+        IndexModel(
+            [("event_id", ASCENDING), ("team_id", ASCENDING),
+              ("market",   ASCENDING), ("line",    ASCENDING),
+              ("side",     ASCENDING), ("book",    ASCENDING),
+              ("snapshot_iso", ASCENDING)],
+            unique=True, name="ix_nfl_hist_prop_compound_unique",
+        ),
+        IndexModel(
+            [("game_date", ASCENDING)],
+            name="ix_nfl_hist_prop_date",
+        ),
+        IndexModel(
+            [("market", ASCENDING), ("game_date", ASCENDING)],
+            name="ix_nfl_hist_prop_market_date",
+        ),
+    ]),
+
+    # ── historical_acquire_runs (Phase 1.A.4.acquire audit) ─────────
+    # Append-only audit log for every historical-window pull. Records
+    # date window, sport, n_events, n_writes, status. NEVER deleted.
+    ("historical_acquire_runs", [
+        IndexModel([("run_id", ASCENDING)],
+                    unique=True, name="ix_hist_acquire_run_id_unique"),
+        IndexModel([("sport", ASCENDING)],
+                    name="ix_hist_acquire_sport"),
+        IndexModel([("started_at", ASCENDING)],
+                    name="ix_hist_acquire_started_at"),
+        IndexModel([("status", ASCENDING)],
+                    name="ix_hist_acquire_status"),
+    ]),
 ]
 
 # Compound-unique-key column ordering keyed by collection name —
@@ -206,6 +252,12 @@ COMPOUND_UNIQUE_KEYS: Dict[str, Tuple[str, ...]] = {
         "snapshot_iso", "model_version", "gate_config_version",
     ),
     "team_odds_ingest_runs": ("run_id",),
+    "nfl_matchups": ("sport", "event_id"),
+    "nfl_historical_props": (
+        "event_id", "team_id", "market", "line", "side",
+        "book", "snapshot_iso",
+    ),
+    "historical_acquire_runs": ("run_id",),
 }
 
 

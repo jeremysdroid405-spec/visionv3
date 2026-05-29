@@ -44,6 +44,9 @@ _TEST_COLLS = (
     "team_context", "team_features", "team_projections",
     "team_prop_scores", "team_replay_outputs",
     "team_odds_ingest_runs",
+    # NFL-side mirrors + acquire audit (Phase 1.A.4.acquire)
+    "nfl_matchups", "nfl_historical_props",
+    "historical_acquire_runs",
     "sgo_propvision_full_pipeline_replay", "sgo_player_stats",
 )
 
@@ -90,19 +93,32 @@ def test_ten_team_collections_declared() -> None:
         "team_context", "team_features", "team_projections",
         "team_prop_scores", "team_replay_outputs",
         "team_odds_ingest_runs",
+        # NFL-side mirrors + acquire audit (Phase 1.A.4.acquire)
+        "nfl_matchups", "nfl_historical_props",
+        "historical_acquire_runs",
     }
-    assert len(names) == 11, (
-        "11 team-side collections: 10 from §1.1 + team_odds_ingest_runs "
-        "(audit, added in Phase 1.A.3.1)"
+    assert len(names) == 14, (
+        "14 team-side collections: 10 from §1.1 + team_odds_ingest_runs "
+        "(audit, Phase 1.A.3.1) + nfl_matchups + nfl_historical_props "
+        "+ historical_acquire_runs (Phase 1.A.4.acquire)"
     )
 
 
 def test_no_player_side_collection_named() -> None:
     """Defence-in-depth: the bootstrap must never name a player-side
-    `sgo_*` / `mlb_*` / `nba_*` / `nfl_*` / `pp_*` collection.
+    `sgo_*` / `mlb_*` / `nba_*` / `pp_*` collection. NFL-side
+    matchup/historical mirrors are explicitly allow-listed since they
+    are the team-prop NFL twin of `team_matchups` / `team_historical_props`.
     """
-    forbidden = ("sgo_", "mlb_", "nba_", "nfl_", "pp_")
+    forbidden = ("sgo_", "mlb_", "nba_", "pp_")
+    nfl_team_allowlist = {"nfl_matchups", "nfl_historical_props"}
     for name, _ in TEAM_COLLECTIONS:
+        if name in nfl_team_allowlist:
+            continue
+        if name.startswith("nfl_"):
+            # No other nfl_ collections are allowed in the team bootstrap.
+            raise AssertionError(
+                f"forbidden NFL collection name in team bootstrap: {name}")
         assert not name.startswith(forbidden), (
             f"forbidden collection name in team bootstrap: {name}"
         )
@@ -147,7 +163,7 @@ def test_engineered_collection_unique_key_includes_version(coll) -> None:
 async def test_ensure_team_collections_creates_all(db) -> None:
     result = await ensure_team_collections(db)
     assert result["ok"] is True
-    assert result["n_collections"] == 11
+    assert result["n_collections"] == 14
 
     for entry in result["collections"]:
         name = entry["name"]
@@ -215,7 +231,7 @@ async def test_unique_index_blocks_duplicate_multi_book_row(db) -> None:
 async def test_collections_status_reflects_reality(db) -> None:
     # Before ensure: none present
     pre = await collections_status(db)
-    assert pre["n_collections"] == 11
+    assert pre["n_collections"] == 14
     assert all(c["present"] is False for c in pre["collections"])
 
     await ensure_team_collections(db)
