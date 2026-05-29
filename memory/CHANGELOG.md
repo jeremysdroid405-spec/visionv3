@@ -1,5 +1,57 @@
 # Changelog
 
+## 2026-06-02 — Hotfix: SGO 401 (auth method + URL contract) + `--raw` flag
+
+**Trigger:** operator ran first real dry-run fetch → SGO HTTP 401. RCA:
+my provider used `api_key=` (snake_case query param) — SGO v2 expects
+`apiKey=` (camelCase) per the canonical `scripts/sgo/client.py`. Also
+discovered the event-fetch contract differs further: SGO wants
+`sportID=BASEBALL`, `leagueID=MLB`, `eventID=<id>` (all camelCase) and
+returns the events under a `data: [...]` envelope, not `events: [...]`.
+
+**Files modified:**
+- `backend/workers/team/_sgo_provider.py`:
+  - Renamed `_LEAGUE_BY_SPORT` → `_SPORT_TO_SGO_IDS` carrying
+    `{sportID, leagueID}` per sport (`BASEBALL/MLB`,
+    `BASKETBALL/NBA`, `FOOTBALL/NFL`).
+  - `_build_url` now emits `?sportID=…&leagueID=…&eventID=<id>
+    &expandResults=true&apiKey=<key>` matching the canonical
+    SGO v2 contract.
+  - `fetch_event_odds` accepts either `{"data": [...]}` (real SGO)
+    or `{"events": [...]}` (synthetic) and normalizes to the
+    `events` shape so downstream normalize_sgo_payload sees a
+    stable structure.
+- `backend/scripts/team_odds_dry_run_fetch.py`:
+  - Added `--raw` flag. When set, the CLI fetches via the provider
+    and dumps the SANITIZED payload + endpoint + summary counters
+    as JSON. **Bypasses the worker entirely** — no Mongo connect,
+    no run_pass call, no audit row. Lets the operator see exactly
+    what SGO returned without committing anything.
+- `backend/tests/test_team_odds_dry_run_fetch_cli.py` — added 4
+  new tests (20/20 total):
+    - `--raw` mode dumps the sanitized payload AND writes nothing
+      to `team_live_props` / `team_odds_ingest_runs`.
+    - `_build_url` URL contract pin: regression test for the exact
+      401 cause — asserts `apiKey=` and `eventID=` (camelCase) are
+      present and `api_key=` / `event_id=` are NOT, plus
+      `sportID=BASEBALL`, `leagueID=MLB`, `expandResults=true`.
+    - Provider accepts `data: [...]` envelope and normalizes to
+      `events: [...]`.
+    - Provider rejects a dict with neither key → `empty_payload`.
+
+**Tests:** 72/72 passing across CLI + recorder + fixtures suites.
+
+**Operator next:**
+```bash
+python -m scripts.team_odds_dry_run_fetch \
+    --sport mlb --event-id durxysyG9m2bDAPWTSv7 --raw
+```
+This will print the real SGO response shape so we can finalize the
+normalizer for team-level markets (which I suspect live under a
+different field than `bookmakers[].markets[].outcomes[]`).
+
+
+
 ## 2026-06-02 — Phase 1.A.3.4a follow-up: `--diff-planned`
 
 **Scope:** add observed-vs-planned market diff to

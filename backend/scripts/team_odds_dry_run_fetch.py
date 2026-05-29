@@ -34,7 +34,10 @@ from typing import Any, Dict
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from workers.team._sgo_provider import SGOFetchError
+from workers.team._sgo_provider import (
+    SGOFetchError,
+    SGOPayloadProvider,
+)
 from workers.team.base import dispatch_guard_ok
 from workers.team.team_odds_ingest import (
     TeamOddsIngestWorker,
@@ -71,6 +74,10 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="compare observed markets against planned "
                          "list for the sport (highlights unmapped + "
                          "missing market names)")
+    p.add_argument("--raw", action="store_true",
+                    help="emit the sanitized raw SGO payload as JSON "
+                         "(for first-time response-shape inspection). "
+                         "Implies skipping the worker pass entirely.")
     return p
 
 
@@ -227,6 +234,25 @@ async def _run(args: argparse.Namespace) -> int:
         return EXIT_GUARD_CLOSED
 
     api_key = os.environ["SGO_API_KEY"]
+
+    # ── --raw mode: skip worker pass entirely, dump SGO response ──
+    if args.raw:
+        provider = SGOPayloadProvider(api_key)
+        try:
+            result = provider.fetch_event_odds(
+                sport=args.sport, event_id=args.event_id)
+        except SGOFetchError as exc:
+            print(f"ERROR: SGO fetch failed: {exc}", file=sys.stderr)
+            return EXIT_SGO_FAILURE
+        print(json.dumps({
+            "mode":           "raw",
+            "sgo_endpoint":   result["sgo_endpoint"],
+            "books_seen":     result["books_seen"],
+            "markets_seen":   result["markets_seen"],
+            "outcomes_count": result["outcomes_count"],
+            "payload":        result["payload"],
+        }, indent=2, default=str))
+        return EXIT_OK
 
     # ── Mongo connect ──
     try:

@@ -556,3 +556,119 @@ def test_diff_planned_get_planned_markets_for_every_sport() -> None:
     # Unknown sport → empty list, no crash
     assert get_planned_markets("formula1") == []
     assert get_planned_markets("") == []
+
+
+# ── --raw mode tests ────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_raw_mode_dumps_sanitized_payload_no_worker_pass(
+    db, monkeypatch, capsys,
+) -> None:
+    """`--raw` must bypass the worker entirely (no audit row written,
+    no team_live_props rows) and just dump the sanitized SGO payload.
+    """
+    monkeypatch.setenv("SGO_API_KEY", "k_RAW_INSPECTION_TEST")
+    monkeypatch.setenv("TEAM_INGEST_ENABLED", "1")
+    monkeypatch.setenv("DB_NAME", db.name)
+    await ensure_team_collections(db)
+
+    # SGO v2 returns `{"data": [...]}` — the provider normalizes this
+    # into `{"events": [...]}` for downstream consumers, and that's
+    # the shape --raw should print.
+    payload = {"data": [{
+        "eventID":  "evt_raw_001",
+        "startsAt": "2026-06-02T22:00:00Z",
+        "props":    [{"marketName": "Team Total Runs",
+                       "statID": "runs"}],
+    }]}
+    fake = _FakeHttpxClient(response=_FakeResponse(
+        content=json.dumps(payload).encode("utf-8")))
+    from workers.team import _sgo_provider as prov_mod
+    from scripts import team_odds_dry_run_fetch as cli_mod
+    real_cls = prov_mod.SGOPayloadProvider
+
+    class _Patched(real_cls):
+        def __init__(self, api_key, **kw):
+            super().__init__(api_key, client=fake, **kw)
+
+    monkeypatch.setattr(prov_mod, "SGOPayloadProvider", _Patched)
+    monkeypatch.setattr(cli_mod,  "SGOPayloadProvider", _Patched)
+
+    from scripts.team_odds_dry_run_fetch import _build_parser, _run
+    args = _build_parser().parse_args([
+        "--sport", "mlb", "--event-id", "evt_raw_001", "--raw",
+    ])
+    rc = await _run(args)
+    out = capsys.readouterr().out
+    assert rc == 0
+    parsed = json.loads(out[out.find("{"):])
+    assert parsed["mode"] == "raw"
+    # The normalized envelope under `events`
+    assert "events" in parsed["payload"]
+    assert parsed["payload"]["events"][0]["eventID"] == "evt_raw_001"
+    # NO worker pass: zero rows, zero audit rows
+    assert await db["team_live_props"].count_documents({}) == 0
+    assert await db["team_odds_ingest_runs"].count_documents({}) == 0
+
+
+def test_build_url_uses_camelcase_apikey_and_eventid() -> None:
+    """Regression for the 401 root cause: SGO expects `apiKey` +
+    `eventID` (camelCase), not snake_case. Pinning the URL contract.
+    """
+    p = SGOPayloadProvider("k_TEST_URL_PIN")
+    real, sanitized = p._build_url(sport="mlb", event_id="evt_xyz")
+    # Auth: apiKey camelCase, NOT api_key
+    assert "apiKey=k_TEST_URL_PIN" in real
+    assert "api_key=" not in real
+    # Event ID: eventID camelCase, NOT event_id
+    assert "eventID=evt_xyz" in real
+    assert "event_id=" not in real
+    # Sport / league filters
+    assert "sportID=BASEBALL" in real
+    assert "leagueID=MLB"     in real
+    # expandResults included
+    assert "expandResults=true" in real
+    # Sanitized URL has the key replaced
+    assert "k_TEST_URL_PIN" not in sanitized
+    assert REDACTION_TOKEN in sanitized
+
+
+def test_provider_accepts_data_envelope() -> None:
+    """SGO v2 wraps events under `data`. The provider must accept
+    this and normalize to `events`.
+    """
+    body = json.dumps({"data": [{"eventID": "x",
+                                    "bookmakers": [{
+                                        "key": "draftkings",
+                                        "markets": [{
+                                            "key": "team_total_runs",
+                                            "team": "NYY",
+                                            "outcomes": [
+                                                {"name": "Over",
+                                                 "point": 4.5,
+                                                 "price": -110}
+                                            ]}]}]}]}).encode("utf-8")
+    fake = _FakeHttpxClient(response=_FakeResponse(content=body))
+    p = SGOPayloadProvider("k_DATA_ENVELOPE_TEST", client=fake)
+    result = p.fetch_event_odds(sport="mlb", event_id="x")
+    # Normalized to `events` key
+    assert "events" in result["payload"]
+    assert len(result["payload"]["events"]) == 1
+
+
+def test_provider_rejects_dict_without_events_or_data() -> None:
+    body = b'{"meta": "no data"}'
+    fake = _FakeHttpxClient(response=_FakeResponse(content=body))
+    p = SGOPayloadProvider("k_NO_EVENTS_TEST", client=fake)
+    with pytest.raises(SGOFetchError) as exc:
+        p.fetch_event_odds(sport="mlb", event_id="x")
+    assert exc.value.kind == "empty_payload"
+
+
+# Need the SGOPayloadProvider + REDACTION_TOKEN symbols in this module
+from services.team_master_hub.fixtures import (  # noqa: E402
+    REDACTION_TOKEN,
+)
+from workers.team._sgo_provider import (  # noqa: E402
+    SGOFetchError,
+    SGOPayloadProvider,
+)

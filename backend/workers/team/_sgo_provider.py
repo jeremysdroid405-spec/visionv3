@@ -42,12 +42,12 @@ logger = logging.getLogger("workers.team.sgo_provider")
 _SGO_HOST = "https://api.sportsgameodds.com"
 _DEFAULT_TIMEOUT_SEC = 30.0
 
-# League filter per sport — must match `_PLANNED_ENDPOINTS` in
-# `team_odds_ingest.py`.
-_LEAGUE_BY_SPORT: Dict[str, str] = {
-    "mlb": "MLB",
-    "nba": "NBA",
-    "nfl": "NFL",
+# League filter per sport — matches the canonical client convention
+# (`sportID` + `leagueID` as separate camelCase query params).
+_SPORT_TO_SGO_IDS: Dict[str, Dict[str, str]] = {
+    "mlb": {"sportID": "BASEBALL",   "leagueID": "MLB"},
+    "nba": {"sportID": "BASKETBALL", "leagueID": "NBA"},
+    "nfl": {"sportID": "FOOTBALL",   "leagueID": "NFL"},
 }
 
 
@@ -89,14 +89,20 @@ class SGOPayloadProvider:
         sport: str,
         event_id: str,
     ) -> Tuple[str, str]:
-        """Return `(real_url, sanitized_url)`. The sanitized form is
+        """Build the SGO v2 /events?eventID=... URL with apiKey as a
+        query param (canonical pattern from scripts/sgo/client.py).
+
+        Returns `(real_url, sanitized_url)`. The sanitized form is
         used for logging — the real form is sent over the wire.
         """
-        league = _LEAGUE_BY_SPORT[sport]
+        ids = _SPORT_TO_SGO_IDS[sport]
         real = (
             f"{self._host}/v2/events"
-            f"?league={league}&event_id={event_id}"
-            f"&api_key={self._api_key}"
+            f"?sportID={ids['sportID']}"
+            f"&leagueID={ids['leagueID']}"
+            f"&eventID={event_id}"
+            f"&expandResults=true"
+            f"&apiKey={self._api_key}"
         )
         sanitized = real.replace(self._api_key, REDACTION_TOKEN)
         return real, sanitized
@@ -121,7 +127,7 @@ class SGOPayloadProvider:
 
         Raises `SGOFetchError(kind=…)` on any failure.
         """
-        if sport not in _LEAGUE_BY_SPORT:
+        if sport not in _SPORT_TO_SGO_IDS:
             raise SGOFetchError(
                 "transport", f"unsupported sport: {sport!r}")
         if not event_id:
@@ -164,11 +170,26 @@ class SGOPayloadProvider:
                 f"failed to parse SGO response as JSON: {exc}",
             ) from exc
 
-        if not isinstance(payload, dict) or not payload.get("events"):
+        if not isinstance(payload, dict):
             raise SGOFetchError(
                 "empty_payload",
-                "SGO response has no `events` list "
-                f"(top-level keys: {sorted(payload.keys()) if isinstance(payload, dict) else type(payload).__name__})",
+                f"SGO response is not a dict (got "
+                f"{type(payload).__name__})",
+            )
+
+        # SGO v2 returns `{"data": [<event>, ...]}` — older code-paths
+        # used `{"events": [...]}`. Normalize to the latter so the
+        # downstream `normalize_sgo_payload` walks a stable shape.
+        if "events" not in payload:
+            raw_events = payload.get("data") or []
+            payload = dict(payload)        # avoid mutating caller view
+            payload["events"] = raw_events
+
+        if not payload.get("events"):
+            raise SGOFetchError(
+                "empty_payload",
+                "SGO response has no events "
+                f"(top-level keys: {sorted(payload.keys())})",
             )
 
         # Coverage summary for the meta file
