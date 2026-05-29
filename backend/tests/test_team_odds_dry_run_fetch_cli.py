@@ -258,8 +258,10 @@ async def test_dry_run_fetch_json_mode(db, monkeypatch, capsys) -> None:
     # The JSON block must be parseable; the banner above it is OK
     json_start = out.find("{")
     parsed = json.loads(out[json_start:])
-    assert parsed["status"] == "dry_run"
-    assert parsed["n_writes"] == 0
+    assert parsed["audit"]["status"] == "dry_run"
+    assert parsed["audit"]["n_writes"] == 0
+    # No diff_planned key unless --diff-planned passed
+    assert "diff_planned" not in parsed
 
 
 @pytest.mark.asyncio
@@ -356,3 +358,201 @@ def test_cli_never_passes_live_mode_to_worker(monkeypatch) -> None:
         f"CLI must hard-lock mode='dry_run' even when "
         f"TEAM_INGEST_LIVE=1 is set. Got mode={captured.get('mode')!r}"
     )
+
+
+# ── --diff-planned tests ────────────────────────────────────────────
+def test_compute_market_diff_clean_match() -> None:
+    from scripts.team_odds_dry_run_fetch import compute_market_diff
+    # MLB planned markets: team_total_runs, team_total_hits,
+    #                       first_inning_runs, first_five_innings_total
+    audit = {
+        "per_market_counts": {"team_total_runs": 3,
+                                "team_total_hits": 1},
+        "explosion_abort": False,
+    }
+    d = compute_market_diff(audit, "mlb")
+    assert d["n_unmapped"] == 0
+    assert d["n_matched"]  == 2
+    assert d["n_missing"]  == 2   # 4 planned - 2 observed
+    assert d["unmapped"]   == []
+    assert set(d["missing"]) == {"first_inning_runs",
+                                   "first_five_innings_total"}
+
+
+def test_compute_market_diff_unmapped_market_surfaces() -> None:
+    from scripts.team_odds_dry_run_fetch import compute_market_diff
+    audit = {
+        "per_market_counts": {
+            "team_total_runs":          3,    # planned
+            "team_total_doubles":       5,    # NEW unplanned market
+            "team_total_walks":         7,    # NEW unplanned market
+        },
+        "explosion_abort": False,
+    }
+    d = compute_market_diff(audit, "mlb")
+    assert d["n_unmapped"] == 2
+    unmapped_names = [r["market"] for r in d["unmapped"]]
+    assert "team_total_doubles" in unmapped_names
+    assert "team_total_walks"   in unmapped_names
+    # Counts surface for unmapped markets
+    counts = {r["market"]: r["count"] for r in d["unmapped"]}
+    assert counts["team_total_doubles"] == 5
+    assert counts["team_total_walks"]   == 7
+
+
+def test_compute_market_diff_empty_observed() -> None:
+    from scripts.team_odds_dry_run_fetch import compute_market_diff
+    d = compute_market_diff({}, "nba")
+    assert d["n_unmapped"] == 0
+    assert d["n_matched"]  == 0
+    # All planned NBA markets missing
+    assert d["n_missing"]  == 3
+
+
+def test_compute_market_diff_surfaces_explosion_flag() -> None:
+    from scripts.team_odds_dry_run_fetch import compute_market_diff
+    audit = {
+        "per_market_counts": {"team_total_runs": 1},
+        "explosion_abort":   True,
+    }
+    d = compute_market_diff(audit, "mlb")
+    assert d["explosion_abort"] is True
+
+
+def test_print_diff_planned_renders_all_sections(capsys) -> None:
+    from scripts.team_odds_dry_run_fetch import _print_diff_planned
+    diff = {
+        "sport": "mlb",
+        "planned":  ["a", "b"],
+        "observed": ["a", "c"],
+        "matched":  [{"market": "a", "count": 3}],
+        "unmapped": [{"market": "c", "count": 7}],
+        "missing":  ["b"],
+        "n_matched":  1, "n_unmapped": 1, "n_missing": 1,
+        "explosion_abort": False,
+    }
+    _print_diff_planned(diff)
+    out = capsys.readouterr().out
+    assert "--diff-planned" in out
+    assert "UNMAPPED markets" in out
+    assert "MISSING planned markets" in out
+    assert "c" in out  # unmapped market name
+    assert "7 outcomes" in out  # unmapped count
+    assert "b" in out  # missing planned market
+
+
+@pytest.mark.asyncio
+async def test_dry_run_fetch_diff_planned_text_mode(
+    db, monkeypatch, capsys,
+) -> None:
+    """End-to-end: fetch (mocked) → audit → diff-planned section
+    appears in text output with the planned/observed counts.
+    """
+    monkeypatch.setenv("SGO_API_KEY", "k_DIFF_PLANNED_TEST")
+    monkeypatch.setenv("TEAM_INGEST_ENABLED", "1")
+    monkeypatch.setenv("DB_NAME", db.name)
+    await ensure_team_collections(db)
+    await _seed_master_hub(db)
+
+    # Payload includes ONE planned (team_total_runs) and ONE unmapped
+    # (team_total_doubles) market.
+    payload = {
+        "events": [{
+            "event_id":      "evt_diff_001",
+            "commence_time": "2026-06-02T22:00:00Z",
+            "bookmakers": [{
+                "key": "draftkings",
+                "markets": [
+                    {"key":  "team_total_runs",
+                      "team": "New York Yankees",
+                      "outcomes": [
+                          {"name": "Over",  "point": 4.5, "price": -110}
+                      ]},
+                    {"key":  "team_total_doubles",   # unmapped
+                      "team": "New York Yankees",
+                      "outcomes": [
+                          {"name": "Over",  "point": 1.5, "price": -110}
+                      ]},
+                ],
+            }],
+        }],
+    }
+    fake = _FakeHttpxClient(response=_FakeResponse(
+        content=json.dumps(payload).encode("utf-8")))
+    from workers.team import _sgo_provider as prov_mod
+    from workers.team import team_odds_ingest as wk_mod
+    real_cls = prov_mod.SGOPayloadProvider
+
+    class _Patched(real_cls):
+        def __init__(self, api_key, **kw):
+            super().__init__(api_key, client=fake, **kw)
+
+    monkeypatch.setattr(prov_mod, "SGOPayloadProvider", _Patched)
+    monkeypatch.setattr(wk_mod,   "SGOPayloadProvider", _Patched)
+
+    from scripts.team_odds_dry_run_fetch import _build_parser, _run
+    args = _build_parser().parse_args([
+        "--sport", "mlb", "--event-id", "evt_diff_001",
+        "--diff-planned",
+    ])
+    rc = await _run(args)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "--diff-planned" in out
+    assert "team_total_doubles" in out
+    assert "UNMAPPED" in out
+
+
+@pytest.mark.asyncio
+async def test_dry_run_fetch_diff_planned_json_mode(
+    db, monkeypatch, capsys,
+) -> None:
+    monkeypatch.setenv("SGO_API_KEY", "k_DIFF_JSON_TEST")
+    monkeypatch.setenv("TEAM_INGEST_ENABLED", "1")
+    monkeypatch.setenv("DB_NAME", db.name)
+    await ensure_team_collections(db)
+    await _seed_master_hub(db)
+
+    fake = _FakeHttpxClient(response=_FakeResponse(
+        content=_payload_bytes()))
+    from workers.team import _sgo_provider as prov_mod
+    from workers.team import team_odds_ingest as wk_mod
+    real_cls = prov_mod.SGOPayloadProvider
+
+    class _Patched(real_cls):
+        def __init__(self, api_key, **kw):
+            super().__init__(api_key, client=fake, **kw)
+
+    monkeypatch.setattr(prov_mod, "SGOPayloadProvider", _Patched)
+    monkeypatch.setattr(wk_mod,   "SGOPayloadProvider", _Patched)
+
+    from scripts.team_odds_dry_run_fetch import _build_parser, _run
+    args = _build_parser().parse_args([
+        "--sport", "mlb", "--event-id", "evt_dryrun_001",
+        "--json", "--diff-planned",
+    ])
+    rc = await _run(args)
+    out = capsys.readouterr().out
+    assert rc == 0
+    parsed = json.loads(out[out.find("{"):])
+    # Both keys present
+    assert "audit"        in parsed
+    assert "diff_planned" in parsed
+    diff = parsed["diff_planned"]
+    assert diff["sport"] == "mlb"
+    # MLB has 4 planned markets; the synthetic payload observes one
+    assert diff["n_matched"] == 1
+    assert diff["n_missing"] == 3
+    assert diff["n_unmapped"] == 0
+
+
+def test_diff_planned_get_planned_markets_for_every_sport() -> None:
+    from workers.team.team_odds_ingest import get_planned_markets
+    for sport in ("mlb", "nba", "nfl"):
+        planned = get_planned_markets(sport)
+        assert isinstance(planned, list)
+        assert len(planned) >= 3, (
+            f"sport {sport!r} should have ≥3 planned markets")
+    # Unknown sport → empty list, no crash
+    assert get_planned_markets("formula1") == []
+    assert get_planned_markets("") == []

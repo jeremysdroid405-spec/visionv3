@@ -80,6 +80,14 @@ INGEST_RUNS_COLL = "team_odds_ingest_runs"
 MASTER_HUB_COLL  = "team_master_hub"
 
 
+def get_planned_markets(sport: str) -> List[str]:
+    """Public read-only accessor for the planned-market list of a
+    given sport. Used by `team_odds_dry_run_fetch --diff-planned`.
+    """
+    cfg = _PLANNED_ENDPOINTS.get((sport or "").lower())
+    return list(cfg.get("markets", [])) if cfg else []
+
+
 def _apply_book_policy(
     rows: List[Dict[str, Any]],
 ) -> Dict[str, int]:

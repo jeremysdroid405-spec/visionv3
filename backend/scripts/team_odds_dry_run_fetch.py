@@ -36,7 +36,10 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from workers.team._sgo_provider import SGOFetchError
 from workers.team.base import dispatch_guard_ok
-from workers.team.team_odds_ingest import TeamOddsIngestWorker
+from workers.team.team_odds_ingest import (
+    TeamOddsIngestWorker,
+    get_planned_markets,
+)
 
 
 # ── exit codes (stable) ──────────────────────────────────────────────
@@ -64,6 +67,10 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="UTC ISO; defaults to now")
     p.add_argument("--json", action="store_true",
                     help="emit the full audit row as JSON only")
+    p.add_argument("--diff-planned", action="store_true",
+                    help="compare observed markets against planned "
+                         "list for the sport (highlights unmapped + "
+                         "missing market names)")
     return p
 
 
@@ -91,6 +98,81 @@ def _would_write_count(audit: Dict[str, Any]) -> int:
         - int(audit.get("n_blocked",        0))
         - int(audit.get("n_unresolved",     0))
     )
+
+
+def compute_market_diff(
+    audit: Dict[str, Any],
+    sport: str,
+) -> Dict[str, Any]:
+    """Compare observed markets in the audit row against the planned
+    list from `team_odds_ingest.get_planned_markets`. Pure function.
+
+    Returns:
+        {
+          "sport":            <str>,
+          "planned":          [<str>, ...],   # sorted
+          "observed":         [<str>, ...],   # sorted
+          "unmapped":         [{"market": <name>, "count": <int>}],
+          "missing":          [<str>, ...],   # sorted
+          "matched":          [{"market": <name>, "count": <int>}],
+          "n_unmapped":       <int>,
+          "n_missing":        <int>,
+          "n_matched":        <int>,
+          "explosion_abort":  <bool>,
+        }
+    """
+    planned = set(get_planned_markets(sport))
+    per_market: Dict[str, int] = dict(
+        audit.get("per_market_counts") or {})
+    observed = set(per_market.keys())
+
+    unmapped_names = sorted(observed - planned)
+    missing        = sorted(planned - observed)
+    matched_names  = sorted(observed & planned)
+
+    return {
+        "sport":           sport,
+        "planned":         sorted(planned),
+        "observed":        sorted(observed),
+        "unmapped": [
+            {"market": m, "count": int(per_market[m])}
+            for m in unmapped_names
+        ],
+        "missing":         missing,
+        "matched": [
+            {"market": m, "count": int(per_market[m])}
+            for m in matched_names
+        ],
+        "n_unmapped":      len(unmapped_names),
+        "n_missing":       len(missing),
+        "n_matched":       len(matched_names),
+        "explosion_abort": bool(audit.get("explosion_abort")),
+    }
+
+
+def _print_diff_planned(diff: Dict[str, Any]) -> None:
+    print("\n─── --diff-planned (observed vs planned markets) ───")
+    print(f"  sport         : {diff['sport']}")
+    print(f"  planned       : {len(diff['planned'])} markets")
+    print(f"  observed      : {len(diff['observed'])} markets")
+    print(f"  matched       : {diff['n_matched']} markets")
+    print(f"  unmapped      : {diff['n_unmapped']} (observed but "
+           "NOT in planned)")
+    print(f"  missing       : {diff['n_missing']} (planned but "
+           "NOT observed)")
+
+    if diff["unmapped"]:
+        print("\n  UNMAPPED markets (need a planned-list update):")
+        for row in diff["unmapped"]:
+            print(f"    {row['market']:32s} : {row['count']} outcomes")
+    if diff["missing"]:
+        print("\n  MISSING planned markets (not in this snapshot):")
+        for m in diff["missing"]:
+            print(f"    {m}")
+    if diff["matched"]:
+        print("\n  matched markets:")
+        for row in diff["matched"]:
+            print(f"    {row['market']:32s} : {row['count']} outcomes")
 
 
 def _print_summary(audit: Dict[str, Any]) -> None:
@@ -178,9 +260,15 @@ async def _run(args: argparse.Namespace) -> int:
         client.close()
 
     if args.json:
-        print(json.dumps(audit, indent=2, default=str))
+        out: Dict[str, Any] = {"audit": audit}
+        if args.diff_planned:
+            out["diff_planned"] = compute_market_diff(audit, args.sport)
+        print(json.dumps(out, indent=2, default=str))
     else:
         _print_summary(audit)
+        if args.diff_planned:
+            _print_diff_planned(
+                compute_market_diff(audit, args.sport))
     return EXIT_OK
 
 

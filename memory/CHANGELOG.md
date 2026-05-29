@@ -1,5 +1,60 @@
 # Changelog
 
+## 2026-06-02 — Phase 1.A.3.4a follow-up: `--diff-planned`
+
+**Scope:** add observed-vs-planned market diff to
+`team_odds_dry_run_fetch`. Pure additive. Dry-run only.
+
+**Files modified:**
+- `backend/workers/team/team_odds_ingest.py` — added public
+  `get_planned_markets(sport)` accessor (read-only view of
+  `_PLANNED_ENDPOINTS[sport]["markets"]`).
+- `backend/scripts/team_odds_dry_run_fetch.py` — added
+  `--diff-planned` flag, `compute_market_diff(audit, sport)` pure
+  helper, and `_print_diff_planned(...)` text renderer. JSON output
+  shape now wraps under `{"audit": …, "diff_planned": …}` (the
+  `diff_planned` key only appears when the flag is set).
+- `backend/tests/test_team_odds_dry_run_fetch_cli.py` — added 8 new
+  tests (16/16 total) and updated `test_dry_run_fetch_json_mode` to
+  the new wrapped JSON shape:
+    - Clean match (planned ⊇ observed → 0 unmapped, 2 missing for MLB)
+    - Unmapped market surfaces with count (`team_total_doubles`,
+      `team_total_walks` as unplanned)
+    - Empty observed → all planned in `missing`, 0 in `unmapped`
+    - `explosion_abort` flag carried through
+    - `_print_diff_planned` renders every section
+    - E2E text path with one planned + one unmapped market
+    - E2E JSON path with both top-level keys present
+    - `get_planned_markets` returns ≥ 3 entries per sport, empty
+      list for unknown / blank sport
+
+**Diff output (text mode):**
+```
+─── --diff-planned (observed vs planned markets) ───
+  sport         : mlb
+  planned       : 4 markets
+  observed      : 2 markets
+  matched       : 1 markets
+  unmapped      : 1 (observed but NOT in planned)
+  missing       : 3 (planned but NOT observed)
+
+  UNMAPPED markets (need a planned-list update):
+    team_total_doubles               : 5 outcomes
+
+  MISSING planned markets (not in this snapshot):
+    first_inning_runs
+    first_five_innings_total
+    team_total_hits
+```
+
+**Tests:** 16/16 passing. CLI `--help` lists the new flag. Live
+smoke confirmed help text only — no SGO key on this pod.
+
+**Constraints respected:** dry-run only, no live writes, no prod,
+no UI, no historical backfill.
+
+
+
 ## 2026-06-02 — Phase 1.A.3.4a: `team_odds_dry_run_fetch` CLI
 
 **Scope (per user-approved):** one-shot dry-run smoke CLI. One event,
