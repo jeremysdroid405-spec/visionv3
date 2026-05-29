@@ -37,6 +37,7 @@ from services.team_master_hub.collections import (
     collections_status,
     ensure_team_collections,
 )
+from services.team_master_hub.ingest_policy import policy_summary
 from workers.team import (
     SUPPORTED_SPORTS,
     TeamMatchupsIngestWorker,
@@ -226,3 +227,27 @@ async def workers_probe_endpoint(
             "global_dispatch_allowed": ok,
             "global_dispatch_reasons": reasons,
             "probe": probe}
+
+
+@router.get("/ingest-policy")
+async def ingest_policy_endpoint(
+    request: Request,
+    auth: Dict[str, Any] = Depends(require_admin_token),
+) -> Dict[str, Any]:
+    """Read-only snapshot of the effective team-ingest policy
+    (Phase 1.A.3.0). Never mutates anything; never calls SGO.
+    """
+    report = policy_summary()
+    await audit_log(
+        request,
+        action="team_ingest_policy_view",
+        params={},
+        response_summary={
+            "dispatch_allowed":   report["dispatch_guard"]["allowed"],
+            "dry_run_default":    report["dry_run_default"],
+            "retry_count":        report["retry"]["count"],
+            "live_ttl_hours":     report["retention"]["live_ttl_hours"],
+        },
+        **auth,
+    )
+    return report

@@ -1,5 +1,57 @@
 # Changelog
 
+## 2026-06-02 — Phase 1.A.3.0: Team ingest policy SSOT
+
+**Scope (per user-approved constraints):** policy module + tests +
+read-only admin endpoint. **No SGO calls. No prod. No historical
+ingest. No UI. No data writes.**
+
+**Files created/modified:**
+- `backend/services/team_master_hub/ingest_policy.py` — NEW. The
+  single source of truth for cadence, retry/backoff, rate limits,
+  snapshot retention TTL, dry-run default, kill switches, and book
+  policy inheritance.
+- `backend/routes/emergent_admin/team_master_hub.py` — added
+  `GET /api/emergent-admin/team-master-hub/ingest-policy` (read-only,
+  token-gated, audit-logged) → returns `policy_summary()` verbatim.
+- `backend/tests/test_team_ingest_policy.py` — NEW (33 cases): locked
+  defaults, frozen dataclass, env-override + invalid-value fallback,
+  dispatch guard from every combination, dry-run default fail-closed
+  semantics, backoff schedule (0.5, 1, 2, 4, 8, 10-capped), error-rate
+  kill-switch (min sample, at/below threshold, zero errors), market-
+  explosion kill-switch (below min, at 3×, below ratio, zero
+  expected), book policy `is` identity invariant (§14.5), summary
+  shape pin.
+
+**Policy locked-in:**
+| Field | Value | Source |
+|---|---|---|
+| `TEAM_INGEST_ENABLED=1` required | yes | env |
+| `SGO_API_KEY` required | yes | env |
+| `TEAM_INGEST_LIVE=1` required to flip dry-run off | yes | env |
+| `mlb` / `nba` max RPM | 60 | default |
+| `nfl` max RPM | 30 | default |
+| retry count | 5 | default |
+| backoff schedule | 0.5 → 1 → 2 → 4 → 8 (cap 10) sec | default |
+| live-props TTL | 48 h | default |
+| abort error-rate threshold | 25% (min 20 sample) | default |
+| abort market-explosion ratio | 3.0× (min 5 markets) | default |
+| `blocked_books` / `reference_only_books` | SAME OBJECT as `services.team_policy.*` | §14.5 identity |
+
+**Tests:** 89/89 passing across all Team Props slices
+(5 + 12 + 39 + 33).
+
+**Live verification (preview pod):**
+- `GET /ingest-policy` returns the full snapshot with
+  `dispatch_guard.allowed=false`, `dry_run_default=true`,
+  fail-closed reasons enumerated.
+
+**Out of scope (deferred):** real ingest dispatch loop, snapshot TTL
+index creation (will be added when Phase 1.A.3 wires the real worker
+loop), per-worker rate-limit consumption counter.
+
+
+
 ## 2026-06-02 — Phase 1.A.2: Team collections + worker skeletons
 
 **Scope (per user-approved constraints, option B + option A):** sport-
