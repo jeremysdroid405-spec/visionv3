@@ -1,5 +1,87 @@
 # Changelog
 
+## 2026-06-02 — Phase 1.A.0: Team Props foundation skeleton
+
+**Scope:** Approved by user as the smallest verifiable slice. NO Mongo
+writes, NO SGO API calls, NO worker code, NO UI, NO production touch
+of any kind. Pure namespace + ABCs + shared policy + deterministic
+seed + regression tests.
+
+**Files created (10):**
+- `backend/services/team_master_hub/__init__.py` — empty package; seed lives in data/
+- `backend/services/team_projections/__init__.py` — re-exports
+- `backend/services/team_projections/base.py` — `TeamProjectionAdapter` ABC + `TeamProjection` dataclass + `SUPPORTED_DISTRIBUTIONS` frozenset
+- `backend/services/team_tp/__init__.py` — re-exports
+- `backend/services/team_tp/base.py` — `TeamTPAdapter` ABC + `TeamTPResult` dataclass + `TP_SOURCES` frozenset
+- `backend/services/team_scoring/__init__.py` — empty package
+- `backend/services/team_scoring/gates/__init__.py` — re-exports
+- `backend/services/team_scoring/gates/base.py` — `GateAdapter` ABC + `GateDecision` dataclass + `TIER_NAMES` tuple
+- `backend/services/team_policy.py` — re-exports `BLOCKED_BOOKS` and `REFERENCE_ONLY_BOOKS` from canonical `scripts/sgo/reshape_sgo_to_replay_odds` (preserves `id()` identity per §14.5)
+- `backend/data/team_master_hub_seed.json` — 92 teams (30 MLB + 30 NBA + 32 NFL), sorted by `team_id` for byte-stable seed
+- `backend/tests/test_team_phase_1_a_0_skeleton.py` — 5 regression tests
+
+**Tests (5/5 green):**
+1. `test_blocked_and_reference_only_books_are_same_object_as_canonical`
+   — pins §14.5 `is` identity invariant for BLOCKED_BOOKS + REFERENCE_ONLY_BOOKS
+2. `test_team_projection_adapter_abc_contract`
+   — ABC non-instantiable, distribution whitelist locked,
+     sigma/dispersion_k/confidence_metric invariants enforced
+3. `test_team_tp_adapter_abc_and_result_invariants`
+   — ABC non-instantiable, [0,1] probability scale invariant
+     (echoes player-side TP-scale bug fix from 2026-06-02),
+     tp_source ∈ {model, blend, market}, alpha ∈ [0.2, 0.8]
+4. `test_gate_adapter_abc_and_tier_names`
+   — ABC non-instantiable, three canonical tier names
+     (safe_haven, front_lines, war_zone), selected_tier validation
+5. `test_master_hub_seed_structural_validation`
+   — counts match (mlb=30, nba=30, nfl=32, total=92),
+     team_id prefix discipline, sorted order, full schema compliance
+
+**Player code modifications:** NONE. The team_policy module imports
+from the existing `scripts/sgo/reshape_sgo_to_replay_odds` location;
+that file was not modified in this slice.
+
+**DB / API / prod operations:** NONE. Zero Mongo writes, zero SGO
+calls, zero deploy actions. Preview pod only.
+
+**Linting:** All new modules pass `mcp_lint_python` cleanly.
+
+**Pre-existing test failure noted (NOT caused by this slice):**
+- `tests/market_structure_policy/test_registry_mirrors_live_config.py::test_mlb_safe_haven_mirrors_tp_source_gate_cfg`
+  fails: `tp_source_gate.required_source = None`, expected `"devig"`.
+  Existed before Phase 1.A.0 changes. Flagged for separate fix —
+  unrelated to team-prop work.
+
+**Follow-ups for Phase 1.A.1 (next slice):**
+- Unify the duplicated REFERENCE_ONLY_BOOKS between
+  `scripts/sgo/reshape_sgo_to_replay_odds` and
+  `routes/emergent_admin/optimizer` into a single canonical
+  module. Currently the test enforces identity via the reshape
+  source; the optimizer's copy is a literal duplicate that should
+  not exist long-term.
+- Author the `team_master_hub` MongoDB seeder script (still no SGO
+  calls; just `bulk_write` the JSON contents into the DB on the
+  preview pod first).
+- Build the coverage-audit endpoint skeleton at
+  `/api/emergent-admin/team/coverage` (read-only, no real data
+  yet; just the shape).
+- Open question: at what point should `external_ids.sgo` be
+  populated? Either (a) manually mapped once we see the first SGO
+  response payload, or (b) auto-populated on first ingest with a
+  reconciliation pass. Default plan = (a) — defer until the SGO
+  key is in prod and we can do a one-shot probe job to enumerate
+  the SGO team ids.
+
+**Risks identified:**
+- LOW: `team_policy.py` re-export pattern means if someone later
+  inlines `BLOCKED_BOOKS = {...}` in a team module instead of
+  importing, the `is` test catches it. Documented.
+- LOW: master-hub seed is hand-curated; team relocations or
+  rebrands (e.g. OAK Athletics → Sacramento → Las Vegas in real
+  life) will require seed bumps to v1.1.0. Documented.
+- NONE that block Phase 1.A.1.
+
+
 ## 2026-06-02 — TP-scale full audit + defense-in-depth in optimizer
 
 **Symptom (user report):** Optimizer JSON shows `avg_tp` values

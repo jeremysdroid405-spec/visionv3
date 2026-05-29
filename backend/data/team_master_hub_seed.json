@@ -1,0 +1,2130 @@
+{
+  "counts": {
+    "mlb": 30,
+    "nba": 30,
+    "nfl": 32,
+    "total": 92
+  },
+  "frozen_at": "2026-06-02T00:00:00Z",
+  "generated_by": "phase_1_a_0_skeleton",
+  "schema_doc": "/app/memory/TEAM_PROPS_ARCHITECTURE.md#11-master_hub",
+  "seed_version": "1.0.0",
+  "teams": [
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "ARI",
+        "full": "Arizona Diamondbacks",
+        "market": "Arizona",
+        "short": "Diamondbacks"
+      },
+      "division": "NL West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_ari"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "ATL",
+        "full": "Atlanta Braves",
+        "market": "Atlanta",
+        "short": "Braves"
+      },
+      "division": "NL East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_atl"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "BAL",
+        "full": "Baltimore Orioles",
+        "market": "Baltimore",
+        "short": "Orioles"
+      },
+      "division": "AL East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_bal"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "BOS",
+        "full": "Boston Red Sox",
+        "market": "Boston",
+        "short": "Red Sox"
+      },
+      "division": "AL East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_bos"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "CHC",
+        "full": "Chicago Cubs",
+        "market": "Chicago",
+        "short": "Cubs"
+      },
+      "division": "NL Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_chc"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "CHW",
+        "full": "Chicago White Sox",
+        "market": "Chicago",
+        "short": "White Sox"
+      },
+      "division": "AL Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_chw"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "CIN",
+        "full": "Cincinnati Reds",
+        "market": "Cincinnati",
+        "short": "Reds"
+      },
+      "division": "NL Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_cin"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "CLE",
+        "full": "Cleveland Guardians",
+        "market": "Cleveland",
+        "short": "Guardians"
+      },
+      "division": "AL Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_cle"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "COL",
+        "full": "Colorado Rockies",
+        "market": "Colorado",
+        "short": "Rockies"
+      },
+      "division": "NL West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_col"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "DET",
+        "full": "Detroit Tigers",
+        "market": "Detroit",
+        "short": "Tigers"
+      },
+      "division": "AL Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_det"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "HOU",
+        "full": "Houston Astros",
+        "market": "Houston",
+        "short": "Astros"
+      },
+      "division": "AL West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_hou"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "KCR",
+        "full": "Kansas City Royals",
+        "market": "Kansas City",
+        "short": "Royals"
+      },
+      "division": "AL Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_kcr"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "LAA",
+        "full": "Los Angeles Angels",
+        "market": "Los Angeles",
+        "short": "Angels"
+      },
+      "division": "AL West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_laa"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "LAD",
+        "full": "Los Angeles Dodgers",
+        "market": "Los Angeles",
+        "short": "Dodgers"
+      },
+      "division": "NL West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_lad"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "MIA",
+        "full": "Miami Marlins",
+        "market": "Miami",
+        "short": "Marlins"
+      },
+      "division": "NL East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_mia"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "MIL",
+        "full": "Milwaukee Brewers",
+        "market": "Milwaukee",
+        "short": "Brewers"
+      },
+      "division": "NL Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_mil"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "MIN",
+        "full": "Minnesota Twins",
+        "market": "Minnesota",
+        "short": "Twins"
+      },
+      "division": "AL Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_min"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "NYM",
+        "full": "New York Mets",
+        "market": "New York",
+        "short": "Mets"
+      },
+      "division": "NL East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_nym"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "NYY",
+        "full": "New York Yankees",
+        "market": "New York",
+        "short": "Yankees"
+      },
+      "division": "AL East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_nyy"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "OAK",
+        "full": "Oakland Athletics",
+        "market": "Oakland",
+        "short": "Athletics"
+      },
+      "division": "AL West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_oak"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "PHI",
+        "full": "Philadelphia Phillies",
+        "market": "Philadelphia",
+        "short": "Phillies"
+      },
+      "division": "NL East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_phi"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "PIT",
+        "full": "Pittsburgh Pirates",
+        "market": "Pittsburgh",
+        "short": "Pirates"
+      },
+      "division": "NL Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_pit"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "SDP",
+        "full": "San Diego Padres",
+        "market": "San Diego",
+        "short": "Padres"
+      },
+      "division": "NL West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_sdp"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "SEA",
+        "full": "Seattle Mariners",
+        "market": "Seattle",
+        "short": "Mariners"
+      },
+      "division": "AL West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_sea"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "SFG",
+        "full": "San Francisco Giants",
+        "market": "San Francisco",
+        "short": "Giants"
+      },
+      "division": "NL West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_sfg"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "STL",
+        "full": "St. Louis Cardinals",
+        "market": "St. Louis",
+        "short": "Cardinals"
+      },
+      "division": "NL Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_stl"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "TBR",
+        "full": "Tampa Bay Rays",
+        "market": "Tampa Bay",
+        "short": "Rays"
+      },
+      "division": "AL East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_tbr"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "TEX",
+        "full": "Texas Rangers",
+        "market": "Texas",
+        "short": "Rangers"
+      },
+      "division": "AL West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_tex"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "American",
+      "display_names": {
+        "abbrev": "TOR",
+        "full": "Toronto Blue Jays",
+        "market": "Toronto",
+        "short": "Blue Jays"
+      },
+      "division": "AL East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_tor"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "National",
+      "display_names": {
+        "abbrev": "WSN",
+        "full": "Washington Nationals",
+        "market": "Washington",
+        "short": "Nationals"
+      },
+      "division": "NL East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "MLB",
+      "sport": "mlb",
+      "team_id": "mlb_wsn"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "ATL",
+        "full": "Atlanta Hawks",
+        "market": "Atlanta",
+        "short": "Hawks"
+      },
+      "division": "Southeast",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_atl"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "BKN",
+        "full": "Brooklyn Nets",
+        "market": "Brooklyn",
+        "short": "Nets"
+      },
+      "division": "Atlantic",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_bkn"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "BOS",
+        "full": "Boston Celtics",
+        "market": "Boston",
+        "short": "Celtics"
+      },
+      "division": "Atlantic",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_bos"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "CHA",
+        "full": "Charlotte Hornets",
+        "market": "Charlotte",
+        "short": "Hornets"
+      },
+      "division": "Southeast",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_cha"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "CHI",
+        "full": "Chicago Bulls",
+        "market": "Chicago",
+        "short": "Bulls"
+      },
+      "division": "Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_chi"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "CLE",
+        "full": "Cleveland Cavaliers",
+        "market": "Cleveland",
+        "short": "Cavaliers"
+      },
+      "division": "Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_cle"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "DAL",
+        "full": "Dallas Mavericks",
+        "market": "Dallas",
+        "short": "Mavericks"
+      },
+      "division": "Southwest",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_dal"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "DEN",
+        "full": "Denver Nuggets",
+        "market": "Denver",
+        "short": "Nuggets"
+      },
+      "division": "Northwest",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_den"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "DET",
+        "full": "Detroit Pistons",
+        "market": "Detroit",
+        "short": "Pistons"
+      },
+      "division": "Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_det"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "GSW",
+        "full": "Golden State Warriors",
+        "market": "Golden State",
+        "short": "Warriors"
+      },
+      "division": "Pacific",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_gsw"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "HOU",
+        "full": "Houston Rockets",
+        "market": "Houston",
+        "short": "Rockets"
+      },
+      "division": "Southwest",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_hou"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "IND",
+        "full": "Indiana Pacers",
+        "market": "Indiana",
+        "short": "Pacers"
+      },
+      "division": "Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_ind"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "LAC",
+        "full": "LA Clippers",
+        "market": "Los Angeles",
+        "short": "Clippers"
+      },
+      "division": "Pacific",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_lac"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "LAL",
+        "full": "Los Angeles Lakers",
+        "market": "Los Angeles",
+        "short": "Lakers"
+      },
+      "division": "Pacific",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_lal"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "MEM",
+        "full": "Memphis Grizzlies",
+        "market": "Memphis",
+        "short": "Grizzlies"
+      },
+      "division": "Southwest",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_mem"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "MIA",
+        "full": "Miami Heat",
+        "market": "Miami",
+        "short": "Heat"
+      },
+      "division": "Southeast",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_mia"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "MIL",
+        "full": "Milwaukee Bucks",
+        "market": "Milwaukee",
+        "short": "Bucks"
+      },
+      "division": "Central",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_mil"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "MIN",
+        "full": "Minnesota Timberwolves",
+        "market": "Minnesota",
+        "short": "Timberwolves"
+      },
+      "division": "Northwest",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_min"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "NOP",
+        "full": "New Orleans Pelicans",
+        "market": "New Orleans",
+        "short": "Pelicans"
+      },
+      "division": "Southwest",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_nop"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "NYK",
+        "full": "New York Knicks",
+        "market": "New York",
+        "short": "Knicks"
+      },
+      "division": "Atlantic",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_nyk"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "OKC",
+        "full": "Oklahoma City Thunder",
+        "market": "Oklahoma City",
+        "short": "Thunder"
+      },
+      "division": "Northwest",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_okc"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "ORL",
+        "full": "Orlando Magic",
+        "market": "Orlando",
+        "short": "Magic"
+      },
+      "division": "Southeast",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_orl"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "PHI",
+        "full": "Philadelphia 76ers",
+        "market": "Philadelphia",
+        "short": "76ers"
+      },
+      "division": "Atlantic",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_phi"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "PHX",
+        "full": "Phoenix Suns",
+        "market": "Phoenix",
+        "short": "Suns"
+      },
+      "division": "Pacific",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_phx"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "POR",
+        "full": "Portland Trail Blazers",
+        "market": "Portland",
+        "short": "Trail Blazers"
+      },
+      "division": "Northwest",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_por"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "SAC",
+        "full": "Sacramento Kings",
+        "market": "Sacramento",
+        "short": "Kings"
+      },
+      "division": "Pacific",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_sac"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "SAS",
+        "full": "San Antonio Spurs",
+        "market": "San Antonio",
+        "short": "Spurs"
+      },
+      "division": "Southwest",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_sas"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "TOR",
+        "full": "Toronto Raptors",
+        "market": "Toronto",
+        "short": "Raptors"
+      },
+      "division": "Atlantic",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_tor"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Western",
+      "display_names": {
+        "abbrev": "UTA",
+        "full": "Utah Jazz",
+        "market": "Utah",
+        "short": "Jazz"
+      },
+      "division": "Northwest",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_uta"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "Eastern",
+      "display_names": {
+        "abbrev": "WAS",
+        "full": "Washington Wizards",
+        "market": "Washington",
+        "short": "Wizards"
+      },
+      "division": "Southeast",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NBA",
+      "sport": "nba",
+      "team_id": "nba_was"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "ARI",
+        "full": "Arizona Cardinals",
+        "market": "Arizona",
+        "short": "Cardinals"
+      },
+      "division": "NFC West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_ari"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "ATL",
+        "full": "Atlanta Falcons",
+        "market": "Atlanta",
+        "short": "Falcons"
+      },
+      "division": "NFC South",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_atl"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "BAL",
+        "full": "Baltimore Ravens",
+        "market": "Baltimore",
+        "short": "Ravens"
+      },
+      "division": "AFC North",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_bal"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "BUF",
+        "full": "Buffalo Bills",
+        "market": "Buffalo",
+        "short": "Bills"
+      },
+      "division": "AFC East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_buf"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "CAR",
+        "full": "Carolina Panthers",
+        "market": "Carolina",
+        "short": "Panthers"
+      },
+      "division": "NFC South",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_car"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "CHI",
+        "full": "Chicago Bears",
+        "market": "Chicago",
+        "short": "Bears"
+      },
+      "division": "NFC North",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_chi"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "CIN",
+        "full": "Cincinnati Bengals",
+        "market": "Cincinnati",
+        "short": "Bengals"
+      },
+      "division": "AFC North",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_cin"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "CLE",
+        "full": "Cleveland Browns",
+        "market": "Cleveland",
+        "short": "Browns"
+      },
+      "division": "AFC North",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_cle"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "DAL",
+        "full": "Dallas Cowboys",
+        "market": "Dallas",
+        "short": "Cowboys"
+      },
+      "division": "NFC East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_dal"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "DEN",
+        "full": "Denver Broncos",
+        "market": "Denver",
+        "short": "Broncos"
+      },
+      "division": "AFC West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_den"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "DET",
+        "full": "Detroit Lions",
+        "market": "Detroit",
+        "short": "Lions"
+      },
+      "division": "NFC North",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_det"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "GB",
+        "full": "Green Bay Packers",
+        "market": "Green Bay",
+        "short": "Packers"
+      },
+      "division": "NFC North",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_gb"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "HOU",
+        "full": "Houston Texans",
+        "market": "Houston",
+        "short": "Texans"
+      },
+      "division": "AFC South",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_hou"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "IND",
+        "full": "Indianapolis Colts",
+        "market": "Indianapolis",
+        "short": "Colts"
+      },
+      "division": "AFC South",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_ind"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "JAX",
+        "full": "Jacksonville Jaguars",
+        "market": "Jacksonville",
+        "short": "Jaguars"
+      },
+      "division": "AFC South",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_jax"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "KC",
+        "full": "Kansas City Chiefs",
+        "market": "Kansas City",
+        "short": "Chiefs"
+      },
+      "division": "AFC West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_kc"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "LAC",
+        "full": "Los Angeles Chargers",
+        "market": "Los Angeles",
+        "short": "Chargers"
+      },
+      "division": "AFC West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_lac"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "LAR",
+        "full": "Los Angeles Rams",
+        "market": "Los Angeles",
+        "short": "Rams"
+      },
+      "division": "NFC West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_lar"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "LV",
+        "full": "Las Vegas Raiders",
+        "market": "Las Vegas",
+        "short": "Raiders"
+      },
+      "division": "AFC West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_lv"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "MIA",
+        "full": "Miami Dolphins",
+        "market": "Miami",
+        "short": "Dolphins"
+      },
+      "division": "AFC East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_mia"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "MIN",
+        "full": "Minnesota Vikings",
+        "market": "Minnesota",
+        "short": "Vikings"
+      },
+      "division": "NFC North",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_min"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "NE",
+        "full": "New England Patriots",
+        "market": "New England",
+        "short": "Patriots"
+      },
+      "division": "AFC East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_ne"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "NO",
+        "full": "New Orleans Saints",
+        "market": "New Orleans",
+        "short": "Saints"
+      },
+      "division": "NFC South",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_no"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "NYG",
+        "full": "New York Giants",
+        "market": "New York",
+        "short": "Giants"
+      },
+      "division": "NFC East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_nyg"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "NYJ",
+        "full": "New York Jets",
+        "market": "New York",
+        "short": "Jets"
+      },
+      "division": "AFC East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_nyj"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "PHI",
+        "full": "Philadelphia Eagles",
+        "market": "Philadelphia",
+        "short": "Eagles"
+      },
+      "division": "NFC East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_phi"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "PIT",
+        "full": "Pittsburgh Steelers",
+        "market": "Pittsburgh",
+        "short": "Steelers"
+      },
+      "division": "AFC North",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_pit"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "SEA",
+        "full": "Seattle Seahawks",
+        "market": "Seattle",
+        "short": "Seahawks"
+      },
+      "division": "NFC West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_sea"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "SF",
+        "full": "San Francisco 49ers",
+        "market": "San Francisco",
+        "short": "49ers"
+      },
+      "division": "NFC West",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_sf"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "TB",
+        "full": "Tampa Bay Buccaneers",
+        "market": "Tampa Bay",
+        "short": "Buccaneers"
+      },
+      "division": "NFC South",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_tb"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "AFC",
+      "display_names": {
+        "abbrev": "TEN",
+        "full": "Tennessee Titans",
+        "market": "Tennessee",
+        "short": "Titans"
+      },
+      "division": "AFC South",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_ten"
+    },
+    {
+      "colors": {
+        "primary": null,
+        "secondary": null
+      },
+      "conference": "NFC",
+      "display_names": {
+        "abbrev": "WAS",
+        "full": "Washington Commanders",
+        "market": "Washington",
+        "short": "Commanders"
+      },
+      "division": "NFC East",
+      "external_ids": {
+        "espn": null,
+        "oddsapi": null,
+        "sgo": null,
+        "statsapi": null
+      },
+      "league_id": "NFL",
+      "sport": "nfl",
+      "team_id": "nfl_was"
+    }
+  ]
+}
