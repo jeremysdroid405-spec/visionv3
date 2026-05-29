@@ -36,12 +36,14 @@ def build_upsert_ops(seed_doc: Dict[str, Any]) -> List[UpdateOne]:
     """Transform the seed doc into a list of `UpdateOne` upserts.
 
     Operational fields injected here (not in the JSON):
-      - `active: True` — default for fresh seeds.
-      - `seed_version` / `seeded_at` — provenance.
+      - `active: True`        — default for fresh seeds (via $set).
+      - `seed_version: …`     — provenance, refreshed each run (via $set).
+      - `seeded_at: <iso utc>`— set ONLY on first insert
+                                  (via $setOnInsert) so re-runs against
+                                  unchanged content produce a true no-op
+                                  (`modified_count == 0`).
 
-    `team_id` is the upsert key. Re-running with the same seed
-    version produces no-op updates (Mongo writes a doc identical to
-    the existing one) thanks to deterministic JSON ordering.
+    `team_id` is the upsert key.
     """
     seed_version = seed_doc.get("seed_version", "unknown")
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -50,10 +52,11 @@ def build_upsert_ops(seed_doc: Dict[str, Any]) -> List[UpdateOne]:
         doc = dict(team)  # shallow copy — never mutate the input
         doc["active"] = True
         doc["seed_version"] = seed_version
-        doc["seeded_at"] = now_iso
-        ops.append(UpdateOne({"team_id": doc["team_id"]},
-                             {"$set": doc},
-                             upsert=True))
+        ops.append(UpdateOne(
+            {"team_id": doc["team_id"]},
+            {"$set": doc, "$setOnInsert": {"seeded_at": now_iso}},
+            upsert=True,
+        ))
     return ops
 
 
@@ -124,3 +127,118 @@ def diff_seed_vs_collection_docs(
         sorted(db_ids - seed_ids),
         sorted(seed_ids & db_ids),
     )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Audit layer — coverage report for the live `team_master_hub` coll.
+# Pure read path: never writes, never calls SGO. Surfaces the four
+# health signals required by Phase 1.A.1 spec:
+#   total, by_sport, missing_sgo, duplicates, inactive
+# Plus `indexes_present` so the operator can verify the index spec
+# matches what `ensure_indexes` claims to create.
+# ─────────────────────────────────────────────────────────────────────
+async def audit_team_master_hub(db) -> Dict[str, Any]:
+    """Run the coverage audit. Pure read, no mutations.
+
+    Returns a structured report; the seed CLI + admin endpoint both
+    surface this same dict verbatim.
+    """
+    coll = db[COLLECTION_NAME]
+
+    total = await coll.count_documents({})
+
+    # ── by_sport: { sport: count } ────────────────────────────────
+    by_sport: Dict[str, int] = {}
+    async for d in coll.aggregate(
+        [{"$group": {"_id": "$sport", "n": {"$sum": 1}}}]
+    ):
+        sport = d.get("_id") or "(none)"
+        by_sport[str(sport)] = int(d.get("n", 0))
+
+    # ── missing_sgo: teams without an SGO external_id (sorted) ────
+    missing_sgo: List[str] = []
+    async for d in coll.find(
+        {"$or": [{"external_ids.sgo": {"$exists": False}},
+                  {"external_ids.sgo": None}]},
+        {"_id": 0, "team_id": 1},
+    ).sort("team_id", 1):
+        if "team_id" in d:
+            missing_sgo.append(d["team_id"])
+
+    # ── duplicates: team_ids appearing more than once ─────────────
+    duplicates: List[Dict[str, Any]] = []
+    async for d in coll.aggregate([
+        {"$group": {"_id": "$team_id", "n": {"$sum": 1}}},
+        {"$match": {"n": {"$gt": 1}}},
+        {"$sort": {"_id": 1}},
+    ]):
+        duplicates.append({"team_id": d["_id"], "count": int(d["n"])})
+
+    # ── inactive: explicitly active=False (sorted) ────────────────
+    inactive: List[str] = []
+    async for d in coll.find(
+        {"active": False},
+        {"_id": 0, "team_id": 1},
+    ).sort("team_id", 1):
+        if "team_id" in d:
+            inactive.append(d["team_id"])
+
+    # ── indexes_present: report what's actually on the collection ─
+    indexes_present: List[str] = []
+    try:
+        idx_info = await coll.index_information()
+        indexes_present = sorted(idx_info.keys())
+    except Exception:  # noqa: BLE001
+        # Collection may not exist yet — report empty list.
+        indexes_present = []
+
+    return {
+        "ok": True,
+        "collection": COLLECTION_NAME,
+        "total": int(total),
+        "by_sport": dict(sorted(by_sport.items())),
+        "missing_sgo": missing_sgo,
+        "missing_sgo_count": len(missing_sgo),
+        "duplicates": duplicates,
+        "duplicates_count": len(duplicates),
+        "inactive": inactive,
+        "inactive_count": len(inactive),
+        "indexes_present": indexes_present,
+    }
+
+
+async def seed_and_audit(
+    db,
+    seed_path: Path = SEED_PATH,
+    *,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """Run the seeder (or simulate it) and return both seed + audit
+    payloads in a single dict.
+
+    `dry_run=True` skips index creation and bulk_write. The function
+    still loads the seed JSON and returns the audit of the CURRENT
+    collection state (which the operator can compare against the
+    `seed_preview` block to anticipate what a real run would do).
+    """
+    seed_doc = load_seed_doc(seed_path)
+    if dry_run:
+        audit = await audit_team_master_hub(db)
+        return {
+            "ok": True,
+            "dry_run": True,
+            "seed_preview": {
+                "seed_version": seed_doc.get("seed_version"),
+                "counts": seed_doc.get("counts"),
+                "n_ops_would_run": len(seed_doc.get("teams", [])),
+            },
+            "audit": audit,
+        }
+    seed_result = await seed_team_master_hub(db, seed_path)
+    audit = await audit_team_master_hub(db)
+    return {
+        "ok": True,
+        "dry_run": False,
+        "seed": seed_result,
+        "audit": audit,
+    }

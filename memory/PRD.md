@@ -105,6 +105,9 @@ starving live scoring and API request handling. Split now enforced:
 
 ## Backlog (priority order)
 ### P0 — Awaiting explicit user go-ahead
+- Phase 1.A.2 — Team Props SGO ingest workers + historical training
+  pipeline validation (still preview-only until user releases prod
+  SGO API key); per `/app/memory/TEAM_PROPS_ARCHITECTURE.md` §§4-6.
 - Google/Apple OAuth via Emergent-managed Google Auth
   (must call `integration_playbook_expert_v2` before writing any auth code)
 - Stripe payments (must call `integration_playbook_expert_v2`, use pod test keys)

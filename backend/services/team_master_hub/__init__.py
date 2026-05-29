@@ -1,10 +1,43 @@
 """
 Team Master Hub — canonical team identity (SSOT for team_id).
 
-This package is INTENTIONALLY empty in Phase 1.A.0. The seed data
-lives at `backend/data/team_master_hub_seed.json` and is loaded by
-the (forthcoming) `team_master_hub_seeder` worker in Phase 1.A.1.
+Public API for Phase 1.A.1 (Master Hub bootstrap/seeder slice):
+    - `SEED_PATH`              : canonical seed file location
+    - `COLLECTION_NAME`        : `team_master_hub`
+    - `load_seed_doc(path)`    : pure I/O — parse the seed JSON
+    - `build_upsert_ops(doc)`  : pure transform — JSON → UpdateOne[]
+    - `ensure_indexes(db)`     : create unique/sparse indexes
+    - `seed_team_master_hub`   : full seed flow (indexes + bulk upsert)
+    - `audit_team_master_hub`  : read-only coverage audit
+    - `seed_and_audit(db,…)`   : combined runner used by the admin
+                                  endpoint + CLI (single SSOT)
 
-Architecture: see /app/memory/TEAM_PROPS_ARCHITECTURE.md §1.2 and
-§12.7 checklist item "team_master_hub seeded for the 3 sports".
+Hard limits (preview-only): no SGO API, no historical ingest, no UI.
+
+Architecture: /app/memory/TEAM_PROPS_ARCHITECTURE.md §1.2 / §12.7.
 """
+from __future__ import annotations
+
+from .seeder import (
+    COLLECTION_NAME,
+    SEED_PATH,
+    audit_team_master_hub,
+    build_upsert_ops,
+    diff_seed_vs_collection_docs,
+    ensure_indexes,
+    load_seed_doc,
+    seed_and_audit,
+    seed_team_master_hub,
+)
+
+__all__ = [
+    "COLLECTION_NAME",
+    "SEED_PATH",
+    "audit_team_master_hub",
+    "build_upsert_ops",
+    "diff_seed_vs_collection_docs",
+    "ensure_indexes",
+    "load_seed_doc",
+    "seed_and_audit",
+    "seed_team_master_hub",
+]

@@ -1,5 +1,54 @@
 # Changelog
 
+## 2026-06-02 — Phase 1.A.1: Team Master Hub bootstrap/seeder
+
+**Scope (per user-approved constraints):** preview MongoDB only, NO SGO
+API, NO production touch, NO historical ingest, NO UI. Single SSOT for
+the seed flow shared between admin HTTP endpoint and CLI.
+
+**Files created/modified:**
+- `backend/services/team_master_hub/seeder.py` — finalized: load → build
+  ops → `ensure_indexes` → `bulk_write` → `audit_team_master_hub` →
+  combined `seed_and_audit(db, dry_run)` runner. `seeded_at` lives under
+  `$setOnInsert` so re-runs against unchanged content yield
+  `modified_count=0` (true idempotency).
+- `backend/services/team_master_hub/__init__.py` — public API re-exports.
+- `backend/routes/emergent_admin/team_master_hub.py` — NEW. Two endpoints
+  under `/api/emergent-admin/team-master-hub/*`, token-gated, audit-logged:
+    - `POST /seed { dry_run: bool = false }` → matched/modified/upserted
+      counts + post-seed audit. `dry_run` skips all writes.
+    - `GET  /audit` → total, by_sport, missing_sgo, duplicates, inactive,
+      indexes_present.
+- `backend/routes/emergent_admin/__init__.py` — mounted under
+  `/team-master-hub`.
+- `backend/scripts/team_master_hub_seed.py` — NEW CLI. Calls the SAME
+  `seed_and_audit` / `audit_team_master_hub` service functions, so the
+  HTTP endpoint and CLI are guaranteed to agree. Supports `--dry-run`
+  and `--audit-only`.
+- `backend/tests/test_team_master_hub_seeder.py` — NEW (12 cases):
+  pure-transform shape, no-mutation guarantee, full seed flow, true
+  idempotency (modified=0 on re-run), all four index spec, unique index
+  blocks duplicate team_id, audit shape on empty + post-seed,
+  missing_sgo / inactive surfaces, combined dry-run + real-run runners.
+
+**Live verification (preview pod, MongoDB pick_vision):**
+- Fresh seed → `upserted=92, matched=0, modified=0`, 5 indexes present
+  (`_id_`, `ix_team_id_unique`, `ix_sport`, `ix_active`,
+  `ix_external_ids_sgo_sparse`).
+- Idempotent re-run → `upserted=0, matched=92, modified=0`.
+- Audit → `total=92, by_sport={mlb:30, nba:30, nfl:32},
+  missing_sgo_count=92, duplicates=[], inactive=[]`.
+- CLI `--dry-run` and `--audit-only` modes match endpoint output byte-
+  for-byte.
+
+**Tests:** 17/17 passing (12 new + 5 Phase 1.A.0 regressions).
+
+**Out of scope (deferred):** Phase 1.A.2 SGO ingest workers, OAuth,
+Stripe, UI. Still HOLDING on production SGO API key until Phase 1.A
+completes.
+
+
+
 ## 2026-06-02 — Phase 1.A.0: Team Props foundation skeleton
 
 **Scope:** Approved by user as the smallest verifiable slice. NO Mongo
