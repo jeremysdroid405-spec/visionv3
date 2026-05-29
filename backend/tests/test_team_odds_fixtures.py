@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import uuid
@@ -357,28 +358,35 @@ def test_cli_print_plan_exits_zero_no_writes(tmp_path) -> None:
         f"--print-plan should exit 0; got {proc.returncode}\n"
         f"stdout: {proc.stdout}\nstderr: {proc.stderr}"
     )
-    assert "Phase 1.A.3.2 STUB" in proc.stdout
+    assert "RECORDING PLAN" in proc.stdout
     # Output dir is still empty
     assert list(out_dir.iterdir()) == []
 
 
-def test_cli_default_refuses_to_record(tmp_path) -> None:
-    """Without --print-plan the CLI must refuse and exit non-zero
-    in Phase 1.A.3.2.
+def test_cli_default_refuses_without_guard(tmp_path, monkeypatch) -> None:
+    """Without SGO_API_KEY + TEAM_INGEST_ENABLED, the CLI must abort
+    with exit code 3 and write nothing.
     """
     out_dir = tmp_path / "would_record_here"
     out_dir.mkdir()
+    env = {k: v for k, v in os.environ.items()
+            if k not in ("SGO_API_KEY", "TEAM_INGEST_ENABLED")}
     proc = subprocess.run(
         [sys.executable, "-m", "scripts.team_odds_fixture_record",
           "--sport", "mlb",
           "--event-id", "evt_xyz",
           "--recorded-by", "ops-alice",
-          "--output", str(out_dir)],
+          "--output", str(out_dir),
+          "--yes"],
         cwd="/app/backend",
         capture_output=True, text=True, timeout=15,
+        env=env,
     )
-    assert proc.returncode != 0, "stub must refuse to record"
-    assert "not wired" in proc.stderr.lower()
+    assert proc.returncode == 3, (
+        f"guard-closed should exit 3; got {proc.returncode}\n"
+        f"stderr: {proc.stderr}"
+    )
+    assert "dispatch guard closed" in proc.stderr.lower()
     assert list(out_dir.iterdir()) == []
 
 

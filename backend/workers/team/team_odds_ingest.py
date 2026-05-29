@@ -35,6 +35,7 @@ from services.team_master_hub.ingest_policy import (
 )
 
 from ._normalize import normalize_sgo_payload
+from ._sgo_provider import SGOFetchError, SGOPayloadProvider
 from .base import TeamWorkerBase
 
 logger = logging.getLogger("workers.team.team_odds_ingest")
@@ -372,4 +373,41 @@ class TeamOddsIngestWorker(TeamWorkerBase):
         # Strip Mongo's mutation of _id from the response (BSON safe)
         audit_row.pop("_id", None)
         return audit_row
+
+    # ── Phase 1.A.3.3 — dry-run HTTP fetcher integration ─────────────
+    async def fetch_and_run_pass(
+        self,
+        db,
+        *,
+        event_id: str,
+        api_key: str,
+        snapshot_iso: Optional[str] = None,
+        mode: str = "dry_run",
+        provider: Optional[SGOPayloadProvider] = None,
+    ) -> Dict[str, Any]:
+        """Tier 4 entrypoint: HTTP → sanitize → run_pass.
+
+        Single fetch, no retries. The API key is passed explicitly
+        (caller resolves from env) so the worker never reads env
+        directly.
+
+        Phase 1.A.3.3 scope: defaults to `mode="dry_run"`. Even when
+        the caller passes `mode="live"`, `run_pass` will downgrade to
+        dry-run unless BOTH the dispatch guard is open AND
+        `dry_run_default()==False` (i.e. `TEAM_INGEST_LIVE=1`). This
+        method does NOT relax that gate.
+
+        On a transport / HTTP / parse failure, no audit row is
+        written and `SGOFetchError` is re-raised for the caller.
+        """
+        prov = provider or SGOPayloadProvider(api_key)
+        try:
+            fetched = prov.fetch_event_odds(
+                sport=self.sport, event_id=event_id)
+        except SGOFetchError:
+            raise
+        return await self.run_pass(
+            db, fetched["payload"],
+            snapshot_iso=snapshot_iso, mode=mode,
+        )
 

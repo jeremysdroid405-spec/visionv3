@@ -41,6 +41,10 @@ _LEAKED_KEY_PATTERNS: Tuple[re.Pattern, ...] = (
     re.compile(r"api[_-]?key\s*=\s*[A-Za-z0-9_\-]{12,}", re.IGNORECASE),
     re.compile(r"x[_-]?rapidapi[_-]?key", re.IGNORECASE),
     re.compile(r"authorization", re.IGNORECASE),
+    # Defence-in-depth: bearer tokens (SGO error responses sometimes
+    # echo header examples). 12-char minimum avoids matching
+    # the literal word "Bearer" in unrelated copy.
+    re.compile(r"bearer\s+[A-Za-z0-9._\-]{12,}", re.IGNORECASE),
 )
 
 # Endpoint allow-list (host part only). Lowered before compare.
@@ -299,6 +303,13 @@ def sanitize_response_bytes(
         text = text.replace(api_key_to_strip, REDACTION_TOKEN)
     text = re.sub(
         r"(api[_-]?key\s*=\s*)[A-Za-z0-9_\-]{12,}",
+        rf"\1{REDACTION_TOKEN}",
+        text, flags=re.IGNORECASE,
+    )
+    # Bearer-token defence-in-depth — strip the value while leaving
+    # the surrounding "Bearer " prefix intact for readability.
+    text = re.sub(
+        r"(bearer\s+)[A-Za-z0-9._\-]{12,}",
         rf"\1{REDACTION_TOKEN}",
         text, flags=re.IGNORECASE,
     )

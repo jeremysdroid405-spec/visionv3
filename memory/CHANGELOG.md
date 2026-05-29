@@ -1,5 +1,91 @@
 # Changelog
 
+## 2026-06-02 — Phase 1.A.3.3: Recorder body + dry-run HTTP fetcher integration
+
+**Scope (per user-approved):** wire the recorder body, single HTTP
+fetch, sanitization, atomic fixture write, dry-run HTTP fetcher
+integration into `run_pass`. **No live writes. No prod. No
+historical backfill. No UI.**
+
+**Files created/modified:**
+- `backend/services/team_master_hub/fixtures.py` — added the Bearer-
+  token defence-in-depth pattern to `_LEAKED_KEY_PATTERNS` and a
+  matching strip in `sanitize_response_bytes` (catches
+  `bearer\s+[A-Za-z0-9._-]{12,}`, case-insensitive). The literal
+  word "bearer" in normal copy is NOT matched.
+- `backend/workers/team/_sgo_provider.py` — NEW.
+  `SGOPayloadProvider(api_key, *, host, timeout_sec, client)`.
+  Single sync GET (no retries, no fan-out). Caller passes the API
+  key explicitly; provider never reads env. URL is sanitized
+  BEFORE logging. Response bytes pass through
+  `sanitize_response_bytes` BEFORE JSON parse. `SGOFetchError`
+  carries a stable `kind`: `transport`, `http_status`,
+  `json_decode`, `empty_payload`. 30 s default timeout.
+- `backend/scripts/team_odds_fixture_record.py` — REWRITTEN. The
+  9-step flow from `FIXTURE_RECORDING_PLAYBOOK.md` §5:
+  guard check → URL preview → confirmation → fetch (one GET) →
+  sanitize → meta build (with sha256 + git sha + books/markets/
+  outcomes summary) → `assert_sanitized` → atomic write of payload
+  + meta (`.tmp` rename pattern) → absolute-path print. Exit codes:
+  0 success / 2 invalid args / 3 guard closed / 4 operator-aborted
+  / 5 SGO fetch failed / 6 sanitization failed / 7 disk write
+  failed.
+- `backend/workers/team/team_odds_ingest.py` — added
+  `fetch_and_run_pass(db, *, event_id, api_key, snapshot_iso, mode,
+  provider=None)`. Single fetch via `SGOPayloadProvider`, then
+  feeds into the existing `run_pass`. Default `mode="dry_run"`.
+  Even `mode="live"` is downgraded by the existing dispatch-guard
+  check inside `run_pass` when `TEAM_INGEST_LIVE != "1"`. On
+  `SGOFetchError` no audit row is written (transport-level
+  failures bubble to the caller).
+- `backend/tests/test_team_odds_recorder_and_fetcher.py` — NEW
+  (22 cases):
+    - Bearer pattern: catches in meta + payload, strips in
+      `sanitize_response_bytes`, preserves "bearer" as a word.
+    - `SGOPayloadProvider`: rejects empty key/sport/event_id,
+      happy path round-trip, `last_url` carries real key while
+      `sgo_endpoint` returned to caller has it stripped, response
+      body sanitized (literal key never reaches parse), `http_status`
+      / `transport` (httpx.ConnectError) / `json_decode` /
+      `empty_payload` failure modes.
+    - Recorder body: guard-closed exit 3 with no writes,
+      `--print-plan` no writes, happy-path writes both files with
+      correct naming + sanitized meta endpoint, key absent from disk,
+      sanitization-failure exits 6 with no real files, HTTP 429
+      exits 5.
+    - `fetch_and_run_pass`: dry-run E2E (mocked HTTP → sanitize →
+      run_pass → zero writes + one audit row), `mode="live"` with
+      guard closed downgraded to `status="guard_closed"` (no
+      writes), `SGOFetchError` propagated (no audit row written).
+    - Full path proof: recorder → load_fixture → run_pass(dry_run)
+      → 0 `team_live_props` + 1 `team_odds_ingest_runs` audit row,
+      operator key absent from every committed byte.
+    - Phase invariant: no committed fixtures under
+      `backend/tests/fixtures/team_odds/`.
+- `backend/tests/test_team_odds_fixtures.py` — updated two CLI
+  subprocess tests to reflect the wired recorder: `--print-plan`
+  now asserts on "RECORDING PLAN" header (not the old "STUB"
+  footer), and `test_cli_default_refuses_without_guard` asserts on
+  guard-closed exit 3 + matching stderr line.
+
+**Tests:** 103/103 passing across all non-Mongo-heavy team-side
+suites. 22 NEW fully green. The Bearer regression + provider +
+recorder + `fetch_and_run_pass` + full-path-proof are all locked.
+
+**Live verification:**
+- `python -m scripts.team_odds_fixture_record --print-plan` → exits 0
+  with the plan, no network attempt.
+- Same command without `--print-plan` → exits 3 with
+  `dispatch guard closed` (no SGO key on this pod), no fetch
+  attempted.
+
+**Out of scope (deferred — pausing for sign-off):**
+- First bounded live test (requires operator to release a real
+  SGO_API_KEY + TEAM_INGEST_ENABLED=1 + TEAM_INGEST_LIVE=1).
+- Cadence governor + repeated-pass loop wrapper (Phase 1.A.3.4).
+
+
+
 ## 2026-06-02 — Phase 1.A.3.2: Fixture-recording playbook + offline replay (docs + CLI shape only)
 
 **Scope (per user-approved):** docs + CLI shape + offline replay loader.
