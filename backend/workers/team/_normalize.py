@@ -46,6 +46,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
+from services.team_master_hub.sgo_event_helpers import (
+    derive_game_date as _derive_game_date,
+    extract_event_start_iso,
+)
+
 # Production-target market_keys. Order is stable for snapshot tests.
 PRODUCTION_MARKET_KEYS: Tuple[str, ...] = (
     "points-away-game-ml-away",
@@ -118,15 +123,10 @@ def _extract_event_team_names(ev: Dict[str, Any]) -> Tuple[str | None,
     return home, away
 
 
-def _derive_game_date(commence_iso: str) -> str | None:
-    if not commence_iso:
-        return None
-    try:
-        return datetime.fromisoformat(
-            commence_iso.replace("Z", "+00:00")
-        ).astimezone(timezone.utc).date().isoformat()
-    except (TypeError, ValueError):
-        return None
+def _derive_game_date_local(commence_iso: str) -> str | None:
+    # Kept as a thin wrapper for backwards-compat with any callers that
+    # imported the private name. Delegates to the shared helper.
+    return _derive_game_date(commence_iso)
 
 
 def _extract_line(
@@ -206,7 +206,7 @@ def normalize_sgo_payload(
         counters["sgo_events"] += 1
 
         event_id     = ev.get("eventID") or ev.get("event_id")
-        commence_iso = ev.get("startsAt") or ev.get("commence_time", "")
+        commence_iso = extract_event_start_iso(ev)
         game_date    = _derive_game_date(commence_iso)
         if not event_id:
             continue
