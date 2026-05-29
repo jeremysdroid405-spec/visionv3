@@ -24,7 +24,7 @@ Hard constraints (per Phase 1.A.1 brief):
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -38,6 +38,7 @@ from services.team_master_hub.collections import (
     ensure_team_collections,
 )
 from services.team_master_hub.ingest_policy import policy_summary
+from services.team_master_hub.ingest_runs import list_ingest_runs
 from workers.team import (
     SUPPORTED_SPORTS,
     TeamMatchupsIngestWorker,
@@ -247,6 +248,62 @@ async def ingest_policy_endpoint(
             "dry_run_default":    report["dry_run_default"],
             "retry_count":        report["retry"]["count"],
             "live_ttl_hours":     report["retention"]["live_ttl_hours"],
+        },
+        **auth,
+    )
+    return report
+
+
+# ── Phase 1.A.3.1 — read-only audit query for ingest runs ────────────
+_MAX_INGEST_RUNS_LIMIT = 100
+
+
+@router.get("/ingest-runs")
+async def ingest_runs_endpoint(
+    request: Request,
+    sport:   Optional[str] = None,
+    status:  Optional[str] = None,
+    limit:   int = 25,
+    offset:  int = 0,
+    auth: Dict[str, Any] = Depends(require_admin_token),
+) -> Dict[str, Any]:
+    """Read-only view over `team_odds_ingest_runs` (Phase 1.A.3.1).
+
+    Latest rows first (sorted `started_at` desc). `_id` and
+    `guard_reasons` are redacted; a `guard_blocked` boolean is
+    surfaced in their place.
+    """
+    if sport is not None:
+        sport_l = sport.lower()
+        if sport_l not in SUPPORTED_SPORTS:
+            raise HTTPException(
+                400,
+                f"unsupported sport: {sport!r}. "
+                f"Supported: {sorted(SUPPORTED_SPORTS)}",
+            )
+        sport = sport_l
+    if limit < 1 or limit > _MAX_INGEST_RUNS_LIMIT:
+        raise HTTPException(
+            400,
+            f"limit must be in [1, {_MAX_INGEST_RUNS_LIMIT}] "
+            f"(got {limit})",
+        )
+    if offset < 0:
+        raise HTTPException(400, f"offset must be ≥ 0 (got {offset})")
+
+    db = _get_db()
+    report = await list_ingest_runs(
+        db, sport=sport, status=status,
+        limit=limit, offset=offset,
+    )
+    await audit_log(
+        request,
+        action="team_ingest_runs_query",
+        params={"sport": sport, "status": status,
+                  "limit": limit, "offset": offset},
+        response_summary={
+            "n_total":    report["n_total"],
+            "n_returned": report["n_returned"],
         },
         **auth,
     )

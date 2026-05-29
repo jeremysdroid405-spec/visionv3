@@ -38,17 +38,24 @@ from services.team_master_hub import (  # noqa: E402
 )
 
 
+_TEST_DB_NAME = "team_master_hub_seeder_shared"
+
+
 # ── Fixtures ──────────────────────────────────────────────────────────
 @pytest_asyncio.fixture
 async def db():
-    """Real Motor connection to a throw-away DB name, dropped after."""
+    """Shared test DB — drop just the team_master_hub collection."""
     mongo_url = os.environ["MONGO_URL"]
-    db_name = f"team_master_hub_test_{uuid.uuid4().hex[:10]}"
     client = AsyncIOMotorClient(mongo_url)
+    _db = client[_TEST_DB_NAME]
+    await _db["team_master_hub"].drop()
     try:
-        yield client[db_name]
+        yield _db
     finally:
-        await client.drop_database(db_name)
+        try:
+            await _db["team_master_hub"].drop()
+        except Exception:
+            pass
         client.close()
 
 

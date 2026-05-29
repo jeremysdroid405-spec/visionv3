@@ -37,16 +37,33 @@ from workers.team.base import TeamWorkerBase  # noqa: E402
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────
+_TEST_DB_NAME = "team_collections_phase_1_a_2_shared"
+_TEST_COLLS = (
+    "team_master_hub", "team_live_props", "team_historical_props",
+    "team_prop_outcomes", "team_matchups", "team_injuries",
+    "team_context", "team_features", "team_projections",
+    "team_prop_scores", "team_replay_outputs",
+    "team_odds_ingest_runs",
+    "sgo_propvision_full_pipeline_replay", "sgo_player_stats",
+)
+
+
 @pytest_asyncio.fixture
 async def db():
-    """Throw-away Motor DB per test."""
+    """Shared test DB per test — targeted collection drops only."""
     mongo_url = os.environ["MONGO_URL"]
-    db_name = f"team_collections_test_{uuid.uuid4().hex[:10]}"
     client = AsyncIOMotorClient(mongo_url)
+    _db = client[_TEST_DB_NAME]
+    for c in _TEST_COLLS:
+        await _db[c].drop()
     try:
-        yield client[db_name]
+        yield _db
     finally:
-        await client.drop_database(db_name)
+        for c in _TEST_COLLS:
+            try:
+                await _db[c].drop()
+            except Exception:
+                pass
         client.close()
 
 

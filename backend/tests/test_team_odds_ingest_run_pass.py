@@ -38,15 +38,33 @@ from workers.team.team_odds_ingest import (  # noqa: E402
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────
+_TEST_DB_NAME = "team_odds_ingest_runpass_shared"
+_TEST_COLLS = (
+    "team_master_hub", "team_live_props", "team_historical_props",
+    "team_prop_outcomes", "team_matchups", "team_injuries",
+    "team_context", "team_features", "team_projections",
+    "team_prop_scores", "team_replay_outputs",
+    "team_odds_ingest_runs",
+    "sgo_propvision_full_pipeline_replay", "sgo_player_stats",
+)
+
+
 @pytest_asyncio.fixture
 async def db():
     mongo_url = os.environ["MONGO_URL"]
-    name = f"team_odds_ingest_test_{uuid.uuid4().hex[:10]}"
     client = AsyncIOMotorClient(mongo_url)
+    _db = client[_TEST_DB_NAME]
+    # Pre-clear: targeted drops, not whole-DB drop (avoids mongod churn)
+    for c in _TEST_COLLS:
+        await _db[c].drop()
     try:
-        yield client[name]
+        yield _db
     finally:
-        await client.drop_database(name)
+        for c in _TEST_COLLS:
+            try:
+                await _db[c].drop()
+            except Exception:
+                pass
         client.close()
 
 

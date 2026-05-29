@@ -1,5 +1,49 @@
 # Changelog
 
+## 2026-06-02 — Phase 1.A.3.1 follow-up: ingest-runs audit endpoint
+
+**Scope (per user-approved):** read-only paginated query for the
+`team_odds_ingest_runs` audit log. No SGO calls. No writes. No UI.
+
+**Files created/modified:**
+- `backend/services/team_master_hub/ingest_runs.py` — NEW.
+  `list_ingest_runs(db, *, sport, status, limit, offset)` returns
+  the latest audit rows sorted by `started_at` desc. Redacts `_id`
+  + `guard_reasons`; surfaces a `guard_blocked` boolean derived
+  from the redacted field count.
+- `backend/routes/emergent_admin/team_master_hub.py` — added
+  `GET /api/emergent-admin/team-master-hub/ingest-runs`
+  (token-gated, audit-logged). Query params: `sport`, `status`,
+  `limit` (1-100, default 25), `offset` (≥0, default 0). Validates
+  sport against `SUPPORTED_SPORTS` and rejects out-of-range `limit`
+  / negative `offset` with HTTP 400.
+- `backend/tests/test_team_ingest_runs_query.py` — NEW (8 cases):
+  empty → empty list, latest-first sort, limit+offset pagination
+  (no overlap), sport filter, status filter, `_id` + `guard_reasons`
+  redaction (with `guard_blocked=True` when reasons present),
+  `guard_blocked=False` when empty, case-insensitive sport
+  normalization.
+- Test fixtures across `test_team_odds_ingest_run_pass.py`,
+  `test_team_ingest_runs_query.py`, `test_team_collections_phase_1_a_2.py`,
+  and `test_team_master_hub_seeder.py` migrated from per-test
+  `drop_database` to a shared-DB + targeted-collection-drop pattern
+  to reduce mongod metadata churn that was triggering WiredTiger
+  panics under combined backend+test load.
+
+**Live verification (preview pod):**
+- `GET /ingest-runs` → empty list with clean envelope
+- `?limit=999` → HTTP 400
+- `?sport=formula1` → HTTP 400
+- `?sport=mlb&limit=5` → 200 OK, filters echoed correctly
+
+**Test note:** Each test file passes 100% green when run individually
+(this slice's 8 + prior 117 verified). Combined-suite runs occasionally
+hit a known infra-level WiredTiger panic under combined prod-backend
++ test pressure — that's a 1 GB WT-cache cap issue from prior phases,
+not a code defect. Tracked but not blocking 1.A.3.1.
+
+
+
 ## 2026-06-02 — Phase 1.A.3.1: Single-pass team odds ingest worker (Tier 1/2)
 
 **Scope (per user-approved):** `run_pass(db, payload, *, snapshot_iso,
