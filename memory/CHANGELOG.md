@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-06-02 — Phase 1.A.3 design doc (no code)
+
+**Scope:** documentation only. No SGO calls. No code changes outside
+markdown + changelog. No DB writes.
+
+**Files created:**
+- `backend/services/team_master_hub/SNAPSHOT_LOOP_DESIGN.md` — NEW.
+  1-page design doc for the future Phase 1.A.3 snapshot loop. Covers
+  the `idle → claim_window → fetch → normalize → write → settle → idle`
+  state machine, policy hooks at every transition, the exact
+  `team_live_props` write contract + compound unique key
+  (`event_id, team_id, market, line, side, book, snapshot_iso`),
+  dry-run semantics, failure/abort conditions, audit log + run-row
+  schema (`team_odds_ingest_runs`, NEW collection to be added in
+  1.A.3), the 6 conditions required for live writes, the 5
+  abort-mid-pass conditions, and the 6-tier testing ladder
+  (unit → Mongo → fixture replay → dry-run HTTP → single-event live
+  → bounded production).
+
+**Awaiting:** operator sign-off on §§1-10 of the design before any
+1.A.3 code lands.
+
+
+
 ## 2026-06-02 — Phase 1.A.3.0 follow-up: `policy_diff` pre-deploy helper
 
 **Scope:** tiny additive helper on the existing ingest-policy SSOT.
