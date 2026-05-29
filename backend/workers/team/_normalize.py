@@ -170,7 +170,7 @@ def normalize_sgo_payload(
     snapshot_iso: str,
     ingested_at: datetime,
     market_keys: Tuple[str, ...] | None = None,
-) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Pure transform. Returns (rows, counters).
 
     Counters:
@@ -196,6 +196,11 @@ def normalize_sgo_payload(
     }
     rows: List[Dict[str, Any]] = []
     seen_market_keys: set[str] = set()
+    # Per-market byBookmaker outcome counts for EVERY market_key seen
+    # in the payload (mapped + unmapped). Used downstream by
+    # `compute_market_diff` so the diff can surface unmapped markets
+    # even when they emit zero rows (after the normalizer drops them).
+    markets_observed_counts: Dict[str, int] = {}
 
     for ev in payload.get("events", []) or []:
         counters["sgo_events"] += 1
@@ -215,6 +220,15 @@ def normalize_sgo_payload(
             seen_market_keys.add(market_key)
             if not isinstance(market, dict):
                 continue
+            # Count byBookmaker outcomes for EVERY observed market_key
+            # (mapped + unmapped) so the audit row can surface unmapped
+            # markets even when they emit zero rows.
+            by_bm_all = market.get("byBookmaker") or {}
+            if isinstance(by_bm_all, dict) and by_bm_all:
+                markets_observed_counts[market_key] = (
+                    markets_observed_counts.get(market_key, 0)
+                    + len(by_bm_all)
+                )
             if market_key not in targets:
                 # Still count the outcomes we skipped for visibility
                 by_bm = market.get("byBookmaker") or {}
@@ -309,4 +323,5 @@ def normalize_sgo_payload(
                 counters["rows_emitted"] += 1
 
     counters["sgo_markets_seen"] = len(seen_market_keys)
+    counters["markets_observed_counts"] = markets_observed_counts
     return rows, counters

@@ -363,6 +363,8 @@ class TeamOddsIngestWorker(TeamWorkerBase):
         finished = datetime.now(timezone.utc)
         per_market: Dict[str, int] = dict(
             Counter(r["market"] for r in rows))
+        markets_observed_counts: Dict[str, int] = dict(
+            norm_counters.get("markets_observed_counts") or {})
         audit_row = {
             "run_id":            run_id,
             "sport":             self.sport,
@@ -393,6 +395,7 @@ class TeamOddsIngestWorker(TeamWorkerBase):
             "expected_markets":  expected_markets,
             "explosion_abort":   explosion_abort,
             "per_market_counts": per_market,
+            "markets_observed_counts": markets_observed_counts,
         }
         await db[INGEST_RUNS_COLL].insert_one(dict(audit_row))
         # Strip Mongo's mutation of _id from the response (BSON safe)

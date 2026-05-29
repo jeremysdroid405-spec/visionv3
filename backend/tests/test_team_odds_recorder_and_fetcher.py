@@ -339,7 +339,7 @@ def test_recorder_aborts_on_sanitization_failure(
     monkeypatch.setenv("SGO_API_KEY", "k_THIS_IS_THE_OPERATOR_KEY")
     monkeypatch.setenv("TEAM_INGEST_ENABLED", "1")
     poisoned = json.loads(_make_payload_bytes())
-    poisoned["events"][0]["operator_email"] = "leak@example.com"
+    poisoned["data"][0]["operator_email"] = "leak@example.com"
     fake = _FakeHttpxClient(response=_FakeResponse(
         content=json.dumps(poisoned).encode("utf-8")))
     rc = _run_recorder_in_process(

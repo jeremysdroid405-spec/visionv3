@@ -129,8 +129,14 @@ def compute_market_diff(
         }
     """
     planned = set(get_planned_markets(sport))
+    # Prefer `markets_observed_counts` (every SGO market_key seen,
+    # including unmapped ones the normalizer dropped) when present.
+    # Falls back to `per_market_counts` (only emitted-row markets)
+    # for unit-test injection paths that pre-date this field.
     per_market: Dict[str, int] = dict(
-        audit.get("per_market_counts") or {})
+        audit.get("markets_observed_counts")
+        or audit.get("per_market_counts")
+        or {})
     observed = set(per_market.keys())
 
     unmapped_names = sorted(observed - planned)

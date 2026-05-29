@@ -47,29 +47,50 @@ class _FakeHttpxClient:
 
 
 def _payload_bytes() -> bytes:
+    """SGO v2-shape payload yielding:
+      - 3 normalized rows (2 DK + 1 Fliff) across 2 planned markets
+      - 1 blocked (Fliff is on BLOCKED_BOOKS) → would-write = 2
+    """
     payload = {
-        "events": [{
-            "event_id":      "evt_dryrun_001",
-            "commence_time": "2026-06-02T22:00:00Z",
-            "bookmakers": [
-                {"key": "draftkings",
-                  "markets": [{
-                     "key":  "team_total_runs",
-                     "team": "New York Yankees",
-                     "outcomes": [
-                         {"name": "Over",  "point": 4.5, "price": -110},
-                         {"name": "Under", "point": 4.5, "price": -110},
-                     ],
-                  }]},
-                {"key": "fliff",   # BLOCKED — should be dropped
-                  "markets": [{
-                     "key":  "team_total_runs",
-                     "team": "New York Yankees",
-                     "outcomes": [
-                         {"name": "Over", "point": 4.5, "price": -110},
-                     ],
-                  }]},
-            ],
+        "data": [{
+            "eventID":  "evt_dryrun_001",
+            "startsAt": "2026-06-02T22:00:00Z",
+            "teams": {
+                "home": {"names": {"long":   "New York Yankees",
+                                     "short":  "Yankees",
+                                     "abbrev": "NYY"}},
+                "away": {"names": {"long":   "Boston Red Sox",
+                                     "short":  "Red Sox",
+                                     "abbrev": "BOS"}},
+            },
+            "odds": {
+                # 2 books: DK (kept) + Fliff (BLOCKED → 1 row dropped)
+                "points-home-game-ml-home": {
+                    "marketName":   "Moneyline",
+                    "statID":       "points",
+                    "statEntityID": "home",
+                    "periodID":     "game",
+                    "betTypeID":    "ml",
+                    "sideID":       "home",
+                    "byBookmaker": {
+                        "draftkings": {"odds": -110},
+                        "fliff":      {"odds": -110},
+                    },
+                },
+                # 1 book: DK only → 1 normalized row
+                "points-home-game-sp-home": {
+                    "marketName":   "Spread",
+                    "statID":       "points",
+                    "statEntityID": "home",
+                    "periodID":     "game",
+                    "betTypeID":    "sp",
+                    "sideID":       "home",
+                    "byBookmaker": {
+                        "draftkings": {"odds": -110, "spread": -1.5},
+                    },
+                },
+            },
+            "props": [],
         }],
     }
     return json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -451,27 +472,45 @@ async def test_dry_run_fetch_diff_planned_text_mode(
     await ensure_team_collections(db)
     await _seed_master_hub(db)
 
-    # Payload includes ONE planned (team_total_runs) and ONE unmapped
-    # (team_total_doubles) market.
+    # Payload includes ONE planned (points-home-game-ml-home) and ONE
+    # unmapped (team_total_doubles) market in the real SGO v2 shape.
     payload = {
-        "events": [{
-            "event_id":      "evt_diff_001",
-            "commence_time": "2026-06-02T22:00:00Z",
-            "bookmakers": [{
-                "key": "draftkings",
-                "markets": [
-                    {"key":  "team_total_runs",
-                      "team": "New York Yankees",
-                      "outcomes": [
-                          {"name": "Over",  "point": 4.5, "price": -110}
-                      ]},
-                    {"key":  "team_total_doubles",   # unmapped
-                      "team": "New York Yankees",
-                      "outcomes": [
-                          {"name": "Over",  "point": 1.5, "price": -110}
-                      ]},
-                ],
-            }],
+        "data": [{
+            "eventID":  "evt_diff_001",
+            "startsAt": "2026-06-02T22:00:00Z",
+            "teams": {
+                "home": {"names": {"long":   "New York Yankees",
+                                     "short":  "Yankees",
+                                     "abbrev": "NYY"}},
+                "away": {"names": {"long":   "Boston Red Sox",
+                                     "short":  "Red Sox",
+                                     "abbrev": "BOS"}},
+            },
+            "odds": {
+                "points-home-game-ml-home": {
+                    "marketName":   "Moneyline",
+                    "statID":       "points",
+                    "statEntityID": "home",
+                    "periodID":     "game",
+                    "betTypeID":    "ml",
+                    "sideID":       "home",
+                    "byBookmaker": {
+                        "draftkings": {"odds": -110},
+                    },
+                },
+                "team_total_doubles": {   # unmapped market_key
+                    "marketName":   "Team Doubles",
+                    "statID":       "doubles",
+                    "statEntityID": "home",
+                    "periodID":     "game",
+                    "betTypeID":    "ou",
+                    "sideID":       "over",
+                    "byBookmaker": {
+                        "draftkings": {"odds": -110, "overUnder": 1.5},
+                    },
+                },
+            },
+            "props": [],
         }],
     }
     fake = _FakeHttpxClient(response=_FakeResponse(
@@ -537,9 +576,9 @@ async def test_dry_run_fetch_diff_planned_json_mode(
     assert "diff_planned" in parsed
     diff = parsed["diff_planned"]
     assert diff["sport"] == "mlb"
-    # MLB has 4 planned markets; the synthetic payload observes one
-    assert diff["n_matched"] == 1
-    assert diff["n_missing"] == 3
+    # MLB has 6 planned markets; `_payload_bytes()` observes 2
+    assert diff["n_matched"] == 2
+    assert diff["n_missing"] == 4
     assert diff["n_unmapped"] == 0
 
 
