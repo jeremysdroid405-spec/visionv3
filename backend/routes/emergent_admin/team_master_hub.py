@@ -24,7 +24,7 @@ Hard constraints (per Phase 1.A.1 brief):
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -46,6 +46,7 @@ from workers.team import (
     TeamOutcomesGrader,
     dispatch_guard_ok,
 )
+from workers.team.team_events_sync import fetch_and_sync as _events_sync
 
 from .auth import _get_db, audit_log, require_admin_token
 
@@ -308,3 +309,132 @@ async def ingest_runs_endpoint(
         **auth,
     )
     return report
+
+
+# ── Phase 1.A.4a — team event schedule sync ──────────────────────────
+import os as _os
+import re as _re
+
+
+class EventsSyncBody(BaseModel):
+    """Body for POST /team-master-hub/events-sync.
+
+    `dry_run=True` (default) → no writes. Pass `dry_run=False` to
+    actually upsert into `team_matchups`. Dispatch guard still applies.
+    """
+    sport:    str  = Field(..., description="mlb | nba | nfl")
+    date:     str  = Field(..., description="UTC date YYYY-MM-DD")
+    dry_run:  bool = Field(default=True)
+
+
+_DATE_RE = _re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+@router.post("/events-sync")
+async def events_sync_endpoint(
+    body: EventsSyncBody,
+    request: Request,
+    auth: Dict[str, Any] = Depends(require_admin_token),
+) -> Dict[str, Any]:
+    """Pull every SGO event for `(sport, date)` and upsert into
+    `team_matchups`. Phase 1.A.4a: one date per call, MLB-only
+    verified, no cron, no grading, no historical odds.
+    """
+    sport_l = (body.sport or "").lower()
+    if sport_l not in SUPPORTED_SPORTS:
+        raise HTTPException(
+            400, f"unsupported sport: {body.sport!r}. "
+                 f"Supported: {sorted(SUPPORTED_SPORTS)}")
+    if not _DATE_RE.match(body.date or ""):
+        raise HTTPException(
+            400, f"date must be 'YYYY-MM-DD' (got {body.date!r})")
+
+    db = _get_db()
+    api_key = _os.environ.get("SGO_API_KEY", "")
+    audit = await _events_sync(
+        db, sport=sport_l, game_date=body.date,
+        api_key=api_key, dry_run=body.dry_run,
+    )
+
+    await audit_log(
+        request,
+        action="team_events_sync",
+        params={"sport": sport_l, "date": body.date,
+                  "dry_run": body.dry_run},
+        response_summary={
+            "status":       audit["status"],
+            "n_sgo_events": audit["n_sgo_events"],
+            "n_normalized": audit["n_normalized"],
+            "n_unresolved": audit["n_unresolved"],
+            "n_writes":     audit["n_writes"],
+            "n_upserted":   audit["n_upserted"],
+            "n_modified":   audit["n_modified"],
+        },
+        **auth,
+    )
+    return audit
+
+
+@router.get("/events-status")
+async def events_status_endpoint(
+    request: Request,
+    sport: Optional[str] = None,
+    game_date: Optional[str] = None,
+    limit: int = 25,
+    auth: Dict[str, Any] = Depends(require_admin_token),
+) -> Dict[str, Any]:
+    """Read-only summary of `team_matchups` content.
+
+    Filters: `sport`, `game_date`. Counts plus the latest `limit`
+    matchups (latest by `updated_at`).
+    """
+    if sport is not None:
+        sport_l = sport.lower()
+        if sport_l not in SUPPORTED_SPORTS:
+            raise HTTPException(
+                400, f"unsupported sport: {sport!r}")
+        sport = sport_l
+    if game_date is not None and not _DATE_RE.match(game_date):
+        raise HTTPException(
+            400, f"game_date must be 'YYYY-MM-DD' (got {game_date!r})")
+    if limit < 1 or limit > 100:
+        raise HTTPException(
+            400, f"limit must be in [1, 100] (got {limit})")
+
+    db = _get_db()
+    flt: Dict[str, Any] = {}
+    if sport:
+        flt["sport"] = sport
+    if game_date:
+        flt["game_date"] = game_date
+
+    n_total = await db["team_matchups"].count_documents(flt)
+    rows: List[Dict[str, Any]] = []  # type: ignore[name-defined]
+    cursor = db["team_matchups"].find(
+        flt, projection={"_id": 0, "status_raw": 0}
+    ).sort("updated_at", -1).limit(limit)
+    async for d in cursor:
+        rows.append(d)
+
+    by_status: Dict[str, int] = {}  # type: ignore[name-defined]
+    async for d in db["team_matchups"].aggregate([
+        {"$match": flt},
+        {"$group": {"_id": "$status", "n": {"$sum": 1}}},
+    ]):
+        by_status[d["_id"] or "null"] = int(d["n"])
+
+    await audit_log(
+        request,
+        action="team_events_status",
+        params={"sport": sport, "game_date": game_date, "limit": limit},
+        response_summary={"n_total": n_total, "by_status": by_status},
+        **auth,
+    )
+    return {
+        "ok":         True,
+        "filter":     flt,
+        "n_total":    int(n_total),
+        "n_returned": len(rows),
+        "by_status":  by_status,
+        "rows":       rows,
+    }

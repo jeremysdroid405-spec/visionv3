@@ -107,6 +107,36 @@ class SGOPayloadProvider:
         sanitized = real.replace(self._api_key, REDACTION_TOKEN)
         return real, sanitized
 
+    def _build_events_by_date_url(
+        self,
+        *,
+        sport: str,
+        starts_after: str,
+        starts_before: str,
+        cursor: str | None = None,
+        page_size: int = 50,
+    ) -> Tuple[str, str]:
+        """Build the SGO v2 /events?startsAfter=...&startsBefore=... URL.
+
+        Used by the team-events schedule sync (Phase 1.A.4a) to pull
+        every event in a UTC date window. Pagination via `cursor`.
+        """
+        ids = _SPORT_TO_SGO_IDS[sport]
+        parts = [
+            f"{self._host}/v2/events",
+            f"?sportID={ids['sportID']}",
+            f"&leagueID={ids['leagueID']}",
+            f"&startsAfter={starts_after}",
+            f"&startsBefore={starts_before}",
+            f"&limit={page_size}",
+            f"&apiKey={self._api_key}",
+        ]
+        if cursor:
+            parts.append(f"&cursor={cursor}")
+        real = "".join(parts)
+        sanitized = real.replace(self._api_key, REDACTION_TOKEN)
+        return real, sanitized
+
     # ── Public API ──────────────────────────────────────────────────
     def fetch_event_odds(
         self,
@@ -218,6 +248,98 @@ class SGOPayloadProvider:
             "books_seen":      sorted(books),
             "markets_seen":    sorted(markets),
             "outcomes_count":  outcomes,
+        }
+
+    # ── Phase 1.A.4a — schedule sync entrypoint ─────────────────────
+    def fetch_events_by_date(
+        self,
+        *,
+        sport: str,
+        game_date: str,
+        max_pages: int = 50,
+        page_size: int = 50,
+    ) -> Dict[str, Any]:
+        """Fetch every SGO event whose `startsAt` falls inside the UTC
+        `game_date` window [00:00:00Z, +24h). Walks SGO cursor pages.
+
+        Returns:
+            {
+              "events":         <list of raw event dicts>,
+              "n_pages":        <int>,
+              "n_events":       <int>,
+              "sgo_endpoints":  <list of sanitized URLs walked>,
+            }
+
+        Raises `SGOFetchError(kind=…)` on any failure.
+        """
+        if sport not in _SPORT_TO_SGO_IDS:
+            raise SGOFetchError(
+                "transport", f"unsupported sport: {sport!r}")
+        if not game_date or len(game_date) != 10:
+            raise SGOFetchError(
+                "transport",
+                f"game_date must be 'YYYY-MM-DD' (got {game_date!r})")
+        starts_after  = f"{game_date}T00:00:00Z"
+        starts_before = f"{game_date}T23:59:59Z"
+
+        client_owned = self._client is None
+        client = self._client or httpx.Client(timeout=self._timeout)
+        all_events: list[Dict[str, Any]] = []
+        endpoints: list[str] = []
+        cursor: str | None = None
+        page = 0
+        try:
+            while page < max_pages:
+                page += 1
+                real_url, sanitized_url = self._build_events_by_date_url(
+                    sport=sport, starts_after=starts_after,
+                    starts_before=starts_before, cursor=cursor,
+                    page_size=page_size,
+                )
+                endpoints.append(sanitized_url)
+                logger.info("[sgo_provider] GET %s", sanitized_url)
+                try:
+                    resp = client.get(real_url)
+                except httpx.HTTPError as exc:
+                    raise SGOFetchError(
+                        "transport",
+                        f"network error: {type(exc).__name__}: {exc}",
+                    ) from exc
+                if resp.status_code != 200:
+                    raise SGOFetchError(
+                        "http_status",
+                        f"HTTP {resp.status_code} from SGO "
+                        f"(body bytes len={len(resp.content)})")
+                sanitized = sanitize_response_bytes(
+                    resp.content, api_key_to_strip=self._api_key)
+                try:
+                    payload = json.loads(sanitized.decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    raise SGOFetchError(
+                        "json_decode",
+                        f"failed to parse SGO response as JSON: {exc}",
+                    ) from exc
+                if not isinstance(payload, dict):
+                    raise SGOFetchError(
+                        "empty_payload",
+                        f"SGO response is not a dict (got "
+                        f"{type(payload).__name__})")
+                events = payload.get("data") or payload.get("events") or []
+                if isinstance(events, list):
+                    all_events.extend(events)
+                cursor = payload.get("nextCursor") or (
+                    (payload.get("meta") or {}).get("nextCursor"))
+                if not cursor:
+                    break
+        finally:
+            if client_owned:
+                client.close()
+
+        return {
+            "events":        all_events,
+            "n_pages":       page,
+            "n_events":      len(all_events),
+            "sgo_endpoints": endpoints,
         }
 
 
