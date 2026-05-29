@@ -577,56 +577,186 @@ This way:
 
 ## 5. TeamVision Product Design
 
-### 5.1 Recommended UX
+### 5.1 Direction (locked by user 2026-06-02)
 
-**Tab navigation: dedicated "Team Props" tab.**
+> Keep the UI format consistent with the existing player prop
+> experience. For Team Props, do NOT create a completely different
+> layout or separate visual language. Use the same card structure,
+> same tier styling, same badge system, same score display, same
+> confidence/edge display, and same interaction pattern. The only
+> difference is that the card entity is a TEAM, not a player.
+
+This is the visual contract for Phase 1.E.
+
+### 5.2 Card structure parity
+
+Every field that exists on the Player Card has a 1:1 Team Card
+analog:
+
+| Player Card field | Team Card field | Behavior |
+|---|---|---|
+| Player headshot | Team logo | Same component, same dimensions, fallback initials disc when asset missing |
+| Player name | Team full name | Same typography, same truncation rule |
+| Team vs Opponent line | Team vs Opponent line | Identical — reused verbatim |
+| Player stat market | Team prop market | Same metadata pill |
+| Line + side | Line + side | Identical layout |
+| Best-book chip (DK / FD / MGM …) | Best-book chip | Identical |
+| Odds value | Odds value | Identical |
+| Tier badge (SH / FL / WZ) | Tier badge | **Reused verbatim** — same colors, same border treatment, same animation |
+| Score (0-100) | Score (0-100) | Same placement, same weight ramp |
+| Edge % | Edge % | Same |
+| TP probability | TP probability | Same |
+| Confidence / vision_score | Confidence / vision_score | Same |
+| Badge strip | Badge strip | Same component; badge VOCABULARY is sport+entity specific (see §5.5) |
+| Expanded "Intel" drawer | Expanded "Intel" drawer | Same component; intel CONTENT changes |
+| Multi-book chips row | Multi-book chips row | Same component, same `playable_on_*` flags |
+
+### 5.3 Naming convention
+
+In code, in logs, in admin UI, in API responses:
 
 ```
-[ Player Props ]   [ Team Props ]   [ Parlays (future) ]
+Team Prop Card  (canonical)
+Team Card       (acceptable short form)
 ```
 
-But internally the data shape is the **same prop card** with a badge:
+NEVER reuse the string `"player card"` for a team prop, even when
+the underlying React component is shared.
+
+### 5.4 Component architecture (no code yet — just the shape)
 
 ```
-PLAYER • Aaron Judge • HR  O 0.5  +280   SAFE HAVEN
-TEAM   • Yankees     • Total Runs  O 4.5  -140   FRONT LINES
+PropCard                       ← shared base component
+├── PropCardHeader
+│   ├── EntityAvatar           ← takes {kind: "player"|"team", asset_url, fallback}
+│   ├── EntityName             ← takes {primary, secondary (team/opp)}
+│   └── MarketChip             ← takes {market_label, line, side}
+├── PropCardOdds
+│   ├── OddsValue
+│   ├── BestBookChip
+│   └── PlayabilityRow         ← per-book check chips
+├── PropCardScore
+│   ├── TierBadge
+│   ├── ScoreRing
+│   └── EdgeMetric
+├── PropCardBadgeStrip         ← takes {badges: BadgeDescriptor[]}
+└── PropCardIntel (expanded)
+    └── IntelSection           ← takes {sections: IntelSection[]} (entity-specific content)
 ```
 
-So the UI uses the **same card component** with different metadata
-fields. This keeps the rendering engine simple while letting the
-operator filter cleanly by tab.
+Key abstractions:
+- `EntityAvatar` is the only component that branches on
+  `kind: "player" | "team"`. Every other component is shape-agnostic.
+- `BadgeDescriptor` is a tagged-union of player + team badge
+  vocabularies; the rendering is identical.
+- `IntelSection[]` is supplied by the data layer (server-side),
+  not branched in the renderer.
 
-### 5.2 Filters added on Team Props tab
+This is the "cleanly abstracted reuse" called out in Acceptance
+Criterion #10.
+
+### 5.5 Team Badge taxonomy (Phase 1)
+
+These are the canonical Phase 1 badges. Each badge is rendered with
+the same `BadgePill` component used today for player badges — same
+icon position, same color treatment per polarity (positive / neutral
+/ caution).
+
+#### MLB Team Badges
+
+| Badge | Polarity | Triggered by |
+|---|---|---|
+| Bullpen Edge | positive | `team_features.bullpen_innings_used_last_3_days` < threshold AND opp bullpen high-usage |
+| Weak Starter Matchup | positive | opp `qb_id` equivalent = starting pitcher whose L5 ERA > league-95th-percentile |
+| Wind Boost | positive | `team_context.weather.wind_in_out_score > +5 mph blowing out` |
+| Park Boost | positive | `team_context.park_factor_runs > 1.10` |
+| Hot Offense | positive | `team_features.last_7_team_for_market` > league-80th-percentile |
+| Cold Opponent Pitching | positive | opp L7 starter+bullpen ERA in bottom quartile |
+| Travel Disadvantage | caution | `team_context.travel_miles > 1500` AND `rest_days_team <= 1` |
+| Rest Advantage | positive | `rest_days_team - rest_days_opp >= 2` |
+| Line Steam | positive | `line_movement_open_to_close` favorable AND sharp signal |
+
+#### NBA Team Badges
+
+| Badge | Polarity | Triggered by |
+|---|---|---|
+| Pace Boost | positive | `team_features.pace + opp_pace` in top decile |
+| Defensive Mismatch | positive | opp DRtg in bottom quartile vs team's primary scoring axis |
+| Rest Advantage | positive | `rest_days_team - rest_days_opp >= 2` |
+| Back-to-Back Spot | caution | `back_to_back_flag` true on opponent only → positive; on team → negative |
+| Injury Impact | caution | starter-level player out flag on either side |
+| High Implied Total | positive | `vegas_team_total` in top quintile |
+| Line Steam | positive | sharp signal |
+| Blowout Risk | caution | spread > 12 — reduces 4th-quarter scoring (relevant for full game O/U) |
+
+#### NFL Team Badges
+
+| Badge | Polarity | Triggered by |
+|---|---|---|
+| Weather Boost | positive | dome OR `wind_mph < 8` AND `temp_f > 40` AND no precip |
+| Weather Risk | caution | `wind_mph >= 15` OR `precip > 0.1` OR `temp_f < 25` |
+| Run Funnel | positive | opp pass defense top-10 + run defense bottom-10 → drives rushing yards over |
+| Pass Funnel | positive | opp run defense top-10 + pass defense bottom-10 → passing yards over |
+| Defensive Mismatch | positive | opp DVOA bottom quartile on the relevant unit |
+| Rest Advantage | positive | bye week OR > 7 days since last game while opp on short week |
+| Travel Spot | caution | east coast team in west coast venue (1 PM ET kickoff scheduling penalty) |
+| Line Steam | positive | sharp signal |
+| High Implied Total | positive | `vegas_team_total` > 27 |
+
+### 5.6 Filters added on Team Props tab
+
+Same control library as Player Props tab (Shadcn `Select`, `Input`,
+`Switch`). Filter set:
 
 ```
-[ Sport ]            MLB / NFL / NBA
-[ Market ]           Team Total / 1H / 1Q / Passing / Rushing / Hits / Runs / K / TB
-[ Home / Away ]      Both / Home only / Away only
-[ Side ]             Over / Under / Both
-[ Tier ]             SH / FL / WZ / all
-[ Min Edge ]         numeric
-[ Min TP ]           numeric
-[ Books ]            checkbox list (sticky)
-[ Time window ]      next 1h / next 4h / tonight / tomorrow
+Sport         MLB / NFL / NBA
+Market        Team Total / 1H / 1Q / Passing / Rushing / Hits / Runs / K / TB
+Home / Away   Both / Home only / Away only
+Side          Over / Under / Both
+Tier          SH / FL / WZ / all
+Min Edge      numeric
+Min TP        numeric
+Books         checkbox list (sticky)
+Time window   next 1h / next 4h / tonight / tomorrow
+Badge filter  multi-select of the badge vocabulary above
 ```
 
-### 5.3 Why NOT a unified board
+### 5.7 Visual rules NOT changing
 
-A unified board with badges would:
+- Tier colors — verbatim same hex values as player cards.
+- Score ring animation — same component.
+- Hover / focus / press states — same.
+- Mobile responsive breakpoints — same.
+- Dark / light theme handling — same.
 
-- Force every filter to be dual-shaped (player attrs ∪ team attrs).
-- Confuse the operator who wants to focus on one shape at a time.
-- Bloat the prop card with conditional rendering.
-- Make the API contract messier on the WebSocket / SSE channel.
+### 5.8 Acceptance Criteria (locked)
 
-The clean separation by tab is worth the extra navigation click.
+1. Team Props have their own tab in the user-facing UI.
+2. Team prop cards use the same card format as player props.
+3. Team logo replaces player headshot.
+4. Team name replaces player name.
+5. Team market replaces player stat.
+6. Team-specific badges are supported (see §5.5).
+7. Expanded Intel section works the same way (same drawer, same
+   open/close animation, same overflow behavior).
+8. Player prop UI is not modified or broken.
+9. No backend player-prop code is touched.
+10. UI component reuse is allowed only if cleanly abstracted (see
+    §5.4) and does not create player/team coupling.
 
-### 5.4 Cross-prop links (future)
+### 5.9 Why NOT a unified board (re-affirmed)
+
+A unified board would force every filter to be dual-shaped (player
+attrs ∪ team attrs), confuse the operator, and bloat the prop card
+with conditional rendering. The clean separation by tab is worth
+the extra navigation click — and §5.2 parity makes the tab feel
+familiar after the first second.
+
+### 5.10 Cross-prop links (future, phase 2+)
 
 Eventually we can add a "related player props" expand-row on a team
-prop card (and vice versa). This is a phase-2 enhancement — design
-the data layer to support it (both player and team rows carry
-`event_id`, so a join is trivial) but do NOT build the UI in phase 1.
+prop card and vice versa (both shapes carry `event_id`, so a join
+is trivial). Do NOT build this in Phase 1.
 
 ---
 
@@ -734,7 +864,9 @@ Before any code is written:
 1. Sign-off on the 11-collection inventory in §1.
 2. Sign-off on Hybrid Scoring (Option C in §4.3).
 3. Sign-off on the distribution table in §2.3.
-4. Sign-off on the dedicated-tab UI in §5.
+4. ✅ **LOCKED 2026-06-02** — Team Card mirrors Player Card visual
+   contract (§5.1–§5.8) with team-specific badge vocabulary.
 
-Each gate is a one-line "approved by `<user>` on `<date>`" entry in
-this document. Do not start coding until all four gates are signed.
+Each remaining gate is a one-line "approved by `<user>` on `<date>`"
+entry in this document. Do not start coding until all gates are
+signed.
