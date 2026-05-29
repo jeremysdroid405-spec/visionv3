@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-06-02 — Phase 1.A.3.0 follow-up: `policy_diff` pre-deploy helper
+
+**Scope:** tiny additive helper on the existing ingest-policy SSOT.
+No SGO calls. No prod. No DB writes. No UI.
+
+**Files modified:**
+- `backend/services/team_master_hub/ingest_policy.py` — added
+  `policy_diff(policy=None)` returning `{is_default, overrides,
+  n_overrides}` for the four env-overridable fields
+  (`max_rpm_per_sport`, `retry_count`, `backoff_cap_sec`,
+  `live_ttl_hours`). Each override carries both the locked default
+  and the effective value. `policy_summary()` embeds the result under
+  `diff_vs_defaults`.
+- `backend/tests/test_team_ingest_policy.py` — added 5 new cases:
+  clean env returns no overrides, single RPM override surfaces,
+  multi-field override (retry / backoff cap / TTL), explicit policy
+  arg path, and `policy_summary` correctly embeds the diff.
+
+**Live verification:** default preview pod → `is_default=true,
+n_overrides=0`. Operator can now eyeball any pod's drift in one
+shot before flipping `TEAM_INGEST_LIVE=1`.
+
+**Tests:** 94/94 passing across all Team Props slices.
+
+
+
 ## 2026-06-02 — Phase 1.A.3.0: Team ingest policy SSOT
 
 **Scope (per user-approved constraints):** policy module + tests +

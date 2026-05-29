@@ -319,4 +319,57 @@ def policy_summary(
             "blocked_books":        sorted(p.blocked_books),
             "reference_only_books": sorted(p.reference_only_books),
         },
+        "diff_vs_defaults": policy_diff(p),
+    }
+
+
+def policy_diff(
+    policy: TeamIngestPolicy | None = None,
+) -> Dict[str, Any]:
+    """Pre-deploy safety check: return the fields where the effective
+    policy differs from the locked defaults.
+
+    Pure compare — never reads env, never writes anything. Pass
+    `policy=TeamIngestPolicy.from_env()` (or omit; it's the default)
+    to see what the current pod has overridden.
+
+    Shape:
+        {
+          "is_default": bool,
+          "overrides": {
+            "<field>": {"default": ..., "effective": ...},
+            ...
+          },
+        }
+    """
+    p = policy or TeamIngestPolicy.from_env()
+    default_rpm = dict(DEFAULT_MAX_RPM_PER_SPORT)
+    effective_rpm = dict(p.max_rpm_per_sport)
+    overrides: Dict[str, Any] = {}
+
+    if effective_rpm != default_rpm:
+        overrides["max_rpm_per_sport"] = {
+            "default":   default_rpm,
+            "effective": effective_rpm,
+        }
+    if p.retry_count != DEFAULT_RETRY_COUNT:
+        overrides["retry_count"] = {
+            "default":   DEFAULT_RETRY_COUNT,
+            "effective": p.retry_count,
+        }
+    if p.backoff_cap_sec != DEFAULT_BACKOFF_CAP_SEC:
+        overrides["backoff_cap_sec"] = {
+            "default":   DEFAULT_BACKOFF_CAP_SEC,
+            "effective": p.backoff_cap_sec,
+        }
+    if p.live_ttl_hours != DEFAULT_LIVE_TTL_HOURS:
+        overrides["live_ttl_hours"] = {
+            "default":   DEFAULT_LIVE_TTL_HOURS,
+            "effective": p.live_ttl_hours,
+        }
+
+    return {
+        "is_default":    len(overrides) == 0,
+        "overrides":     overrides,
+        "n_overrides":   len(overrides),
     }

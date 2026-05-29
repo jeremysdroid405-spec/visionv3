@@ -31,6 +31,7 @@ from services.team_master_hub.ingest_policy import (  # noqa: E402
     is_book_blocked,
     is_book_reference_only,
     next_backoff_seconds,
+    policy_diff,
     policy_summary,
     should_abort_on_error_rate,
     should_abort_on_market_explosion,
@@ -276,3 +277,81 @@ def test_policy_summary_with_guard_open(guard_open) -> None:
     # Still dry-run by default — operator must explicitly set
     # TEAM_INGEST_LIVE=1 to flip dry_run_default to False.
     assert s["dry_run_default"] is True
+
+
+# ── policy_diff vs locked defaults ───────────────────────────────────
+def test_policy_diff_clean_when_env_has_no_overrides(monkeypatch) -> None:
+    # Strip any pod-level overrides so the env-derived policy is
+    # byte-identical to the locked defaults.
+    for var in ("TEAM_INGEST_MAX_RPM_MLB", "TEAM_INGEST_MAX_RPM_NBA",
+                 "TEAM_INGEST_MAX_RPM_NFL", "TEAM_INGEST_RETRY_COUNT",
+                 "TEAM_INGEST_BACKOFF_CAP_SEC",
+                 "TEAM_INGEST_LIVE_TTL_HOURS"):
+        monkeypatch.delenv(var, raising=False)
+    d = policy_diff()
+    assert d["is_default"] is True
+    assert d["overrides"] == {}
+    assert d["n_overrides"] == 0
+
+
+def test_policy_diff_surfaces_single_rpm_override(monkeypatch) -> None:
+    for var in ("TEAM_INGEST_MAX_RPM_NBA", "TEAM_INGEST_MAX_RPM_NFL",
+                 "TEAM_INGEST_RETRY_COUNT",
+                 "TEAM_INGEST_BACKOFF_CAP_SEC",
+                 "TEAM_INGEST_LIVE_TTL_HOURS"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("TEAM_INGEST_MAX_RPM_MLB", "120")
+    d = policy_diff()
+    assert d["is_default"] is False
+    assert d["n_overrides"] == 1
+    assert "max_rpm_per_sport" in d["overrides"]
+    o = d["overrides"]["max_rpm_per_sport"]
+    assert o["default"]   == dict(DEFAULT_MAX_RPM_PER_SPORT)
+    assert o["effective"]["mlb"] == 120
+    assert o["effective"]["nba"] == DEFAULT_MAX_RPM_PER_SPORT["nba"]
+
+
+def test_policy_diff_surfaces_multiple_overrides(monkeypatch) -> None:
+    for var in ("TEAM_INGEST_MAX_RPM_MLB", "TEAM_INGEST_MAX_RPM_NBA",
+                 "TEAM_INGEST_MAX_RPM_NFL"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("TEAM_INGEST_RETRY_COUNT", "8")
+    monkeypatch.setenv("TEAM_INGEST_BACKOFF_CAP_SEC", "20")
+    monkeypatch.setenv("TEAM_INGEST_LIVE_TTL_HOURS", "72")
+    d = policy_diff()
+    assert d["n_overrides"] == 3
+    assert d["overrides"]["retry_count"] == {
+        "default": DEFAULT_RETRY_COUNT, "effective": 8,
+    }
+    assert d["overrides"]["backoff_cap_sec"] == {
+        "default": DEFAULT_BACKOFF_CAP_SEC, "effective": 20.0,
+    }
+    assert d["overrides"]["live_ttl_hours"] == {
+        "default": DEFAULT_LIVE_TTL_HOURS, "effective": 72,
+    }
+
+
+def test_policy_diff_against_explicit_policy_arg() -> None:
+    # Pass a synthetic policy directly — bypasses env-read entirely.
+    p = TeamIngestPolicy(retry_count=99)
+    d = policy_diff(p)
+    assert d["n_overrides"] == 1
+    assert d["overrides"]["retry_count"] == {
+        "default": DEFAULT_RETRY_COUNT, "effective": 99,
+    }
+
+
+def test_policy_summary_embeds_diff_vs_defaults(monkeypatch) -> None:
+    for var in ("TEAM_INGEST_MAX_RPM_MLB", "TEAM_INGEST_MAX_RPM_NBA",
+                 "TEAM_INGEST_MAX_RPM_NFL", "TEAM_INGEST_RETRY_COUNT",
+                 "TEAM_INGEST_BACKOFF_CAP_SEC",
+                 "TEAM_INGEST_LIVE_TTL_HOURS"):
+        monkeypatch.delenv(var, raising=False)
+    s = policy_summary()
+    assert "diff_vs_defaults" in s
+    assert s["diff_vs_defaults"]["is_default"] is True
+
+    monkeypatch.setenv("TEAM_INGEST_LIVE_TTL_HOURS", "96")
+    s2 = policy_summary()
+    assert s2["diff_vs_defaults"]["is_default"] is False
+    assert "live_ttl_hours" in s2["diff_vs_defaults"]["overrides"]
