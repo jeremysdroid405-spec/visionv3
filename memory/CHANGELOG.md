@@ -1,5 +1,68 @@
 # Changelog
 
+## 2026-06-02 — Phase 1.A.3.2: Fixture-recording playbook + offline replay (docs + CLI shape only)
+
+**Scope (per user-approved):** docs + CLI shape + offline replay loader.
+NO real SGO calls. NO fixtures captured. NO prod-key usage. NO UI. NO Mongo writes.
+
+**Files created:**
+- `backend/services/team_master_hub/FIXTURE_RECORDING_PLAYBOOK.md` —
+  NEW 10-section playbook covering directory layout, file naming,
+  sanitization rules (no API key / no headers / endpoint allow-list /
+  no PII fields), meta-file shape, recording flow (10 steps for the
+  future 1.A.3.3 recorder), offline replay flow, refresh policy, and
+  pre-commit safety checklist.
+- `backend/services/team_master_hub/fixtures.py` — NEW. Pure offline
+  loader + sanitization gatekeeper:
+    - `SANITIZATION_VERSION = 1`
+    - `assert_sanitized(payload, meta)` — 8 named rules
+      (`meta_shape`, `sanitization_version`, `endpoint_allow_list`,
+      `leaked_key_meta`, `leaked_key_payload`, `forbidden_field`,
+      `payload_shape`, `recorded_at_present`) raise
+      `FixtureSanitizationError(rule=…)` on violation.
+    - `load_fixture(path)` — reads payload + sibling meta, re-runs
+      `assert_sanitized`, verifies `meta.checksum_sha256` against the
+      payload bytes, returns frozen `LoadedFixture`.
+    - `list_fixtures(root)` — discovery helper, skips `.meta.json`.
+    - `sanitize_response_bytes(raw, api_key_to_strip=…)` — pure
+      transform reusable by the future recorder. Strips literal
+      key + `api_key=…` query-param patterns.
+- `backend/scripts/team_odds_fixture_record.py` — NEW CLI STUB.
+  Locked argparse contract (`--sport`, `--event-id`, `--recorded-by`,
+  `--output`, `--yes`, `--print-plan`). `--print-plan` exits 0
+  cleanly without touching network or disk. Any other invocation
+  prints the plan then exits 2 with a clear "not wired in
+  Phase 1.A.3.2" message. Real recording lands in 1.A.3.3.
+- `backend/tests/test_team_odds_fixtures.py` — NEW (30 cases):
+    - `assert_sanitized` happy path
+    - One negative test per named rule (8 cases)
+    - Endpoint allow-list accepts bare paths + allowed host;
+      rejects evil mirrors + empty (5 cases)
+    - Leaked-key detection in meta + payload (2 cases)
+    - `sanitize_response_bytes` literal + pattern + idempotent
+    - `load_fixture` happy + missing-payload + missing-meta +
+      checksum-mismatch + sanitization-failure-from-disk
+    - `list_fixtures` discovery + empty-dir + nonexistent-dir
+    - Phase-1.A.3.2 invariant: no fixtures committed under
+      `backend/tests/fixtures/team_odds/`
+    - CLI argparse contract pin + sport-choice gate + subprocess
+      runs (`--print-plan` exits 0, default invocation exits ≠0,
+      output dir stays empty after either invocation)
+    - End-to-end replay: load synthetic fixture → `run_pass(dry_run)`
+      → 0 rows written, 1 audit row, normalize counters match.
+
+**Tests:** 30/30 new pass green in isolation. Full Team Props suite
+147/148 green (one transient WT-cache flake from prior infra issue,
+not a code defect — already documented).
+
+**Out of scope (deferred to next slice per user instruction):**
+- Real SGO HTTP fetch (recorder body wiring)
+- Any actual fixture commit
+- Dry-run HTTP fetcher (Phase 1.A.3.3)
+- Cadence governor (Phase 1.A.3.4)
+
+
+
 ## 2026-06-02 — Phase 1.A.3.1 follow-up: ingest-runs audit endpoint
 
 **Scope (per user-approved):** read-only paginated query for the
