@@ -67,15 +67,31 @@ def _daterange_inclusive(start: str, end: str) -> List[str]:
 
 def _apply_book_policy_in_place(
     rows: List[Dict[str, Any]],
+    *, block_books: bool = True,
 ) -> Dict[str, int]:
+    """Tag/drop rows per book policy.
+
+    block_books=True  (default): drop rows whose `book` is in
+        BLOCKED_BOOKS ({fliff, mybookie, unknown}). Reference-only
+        books (PrizePicks/Underdog) are still kept but tagged
+        `reference_only=True`.
+    block_books=False: keep EVERY row. Still tag `reference_only`,
+        and also tag `blocked=True` on rows whose book would have
+        been blocked — so downstream filters can still exclude
+        them without losing the historical record.
+    """
     blocked = 0
     refs    = 0
     kept: List[Dict[str, Any]] = []
     for r in rows:
         book = r.get("book", "")
-        if is_book_blocked(book):
+        is_blocked = is_book_blocked(book)
+        if is_blocked and block_books:
             blocked += 1
             continue
+        if is_blocked:
+            r["blocked"] = True
+            blocked += 1
         r["reference_only"] = is_book_reference_only(book)
         if r["reference_only"]:
             refs += 1
@@ -134,11 +150,11 @@ async def acquire_player_historical_window(
     dry_run: bool = True,
     provider: Optional[SGOPayloadProvider] = None,
     write_mode: str = "insert",   # "insert" (fast) | "upsert" (idempotent)
+    block_books: bool = True,     # False = preserve EVERY book
 ) -> Dict[str, Any]:
-    """Walk [start_date, end_date] UTC inclusive and upsert NFL
-    player-prop rows. NFL-only in Phase 4 (other sports may be added
-    once their player-master tables exist).
-    """
+    """Walk [start_date, end_date] UTC inclusive and write player-prop
+    rows for the requested sport into the canonical per-sport
+    collection (see PLAYER_HIST_COLL_BY_SPORT)."""
     sport_l = sport.lower()
     if sport_l not in PLAYER_HIST_COLL_BY_SPORT:
         raise ValueError(
@@ -212,11 +228,17 @@ async def acquire_player_historical_window(
                 for i in range(0, slab_total, CHUNK):
                     slab = props_ops[i:i + CHUNK]
                     try:
-                        rr = await db[target_coll].bulk_write(
-                            slab, ordered=False)
                         if write_mode == "insert":
-                            n_props_upserted += int(rr.inserted_count or 0)
+                            # Pure insert_many — no per-doc InsertOne
+                            # wrapper, no upsert lookup. Duplicates fall
+                            # out as 11000 errors caught below.
+                            rr = await db[target_coll].insert_many(
+                                slab, ordered=False,
+                                bypass_document_validation=True)
+                            n_props_upserted += len(rr.inserted_ids)
                         else:
+                            rr = await db[target_coll].bulk_write(
+                                slab, ordered=False)
                             n_props_upserted += len(rr.upserted_ids or {})
                             n_props_modified += int(rr.modified_count or 0)
                     except BulkWriteError as bwe:
@@ -276,12 +298,15 @@ async def acquire_player_historical_window(
                 )
                 for fam, n in (counters.get("stat_families") or {}).items():
                     stat_families[fam] = stat_families.get(fam, 0) + n
-                bc = _apply_book_policy_in_place(rows)
+                bc = _apply_book_policy_in_place(
+                    rows, block_books=block_books)
                 n_blocked += bc["n_blocked"]
                 n_refs    += bc["n_refs"]
                 n_props_norm += counters.get("rows_emitted", 0)
                 if write_mode == "insert":
-                    props_ops.extend(_build_player_inserts(rows))
+                    # insert_many takes raw dicts; skip the InsertOne
+                    # wrapper entirely.
+                    props_ops.extend(dict(r) for r in rows)
                 else:
                     props_ops.extend(_build_player_upserts(rows))
 

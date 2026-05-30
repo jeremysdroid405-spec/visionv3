@@ -72,6 +72,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default="insert",
         help=("'insert' (default, ~10x faster, duplicates skipped via "
               "compound unique index) or 'upsert' (idempotent merge)"))
+    p.add_argument(
+        "--no-book-filter", action="store_true",
+        help=("PRESERVE every book (incl. fliff/mybookie/unknown). "
+              "Blocked books are tagged blocked=True instead of "
+              "dropped. Use for full historical acquisition before "
+              "an SGO trial expires."))
     return p
 
 
@@ -121,6 +127,7 @@ async def _run(args) -> int:
             start_date=args.start, end_date=args.end,
             api_key=api_key, dry_run=dry_run,
             write_mode=args.write_mode,
+            block_books=not args.no_book_filter,
         )
     finally:
         client.close()
