@@ -52,6 +52,93 @@ PLAYER_HIST_COLL = "nfl_player_historical_props"
 AUDIT_COLL       = "historical_acquire_runs"
 
 
+# ── Self-heal: index spec for player-historical collections. ──
+# Mirrors `services/team_master_hub/collections.py` exactly. Baked
+# in here so the worker can self-ensure its own indexes on every
+# invocation, without coupling to ensure_team_collections() being
+# called separately. This is what makes the acquisition idempotent
+# even after a manual `db.<coll>.drop()`.
+_PLAYER_HIST_INDEX_SPECS_BY_SPORT: Dict[str, List[Dict[str, Any]]] = {
+    sport_: [
+        # Compound unique key — NO snapshot_iso. This is the dedupe
+        # contract: same prop on a rerun collides as DUP_KEY.
+        {"name": f"ix_{sport_}_player_hist_compound_unique",
+         "keys": [("event_id", 1), ("player_id", 1),
+                  ("market", 1), ("line", 1),
+                  ("side", 1), ("book", 1)],
+         "unique": True},
+        {"name": f"ix_{sport_}_player_hist_date",
+         "keys": [("game_date", 1)]},
+        {"name": f"ix_{sport_}_player_hist_market_date",
+         "keys": [("market", 1), ("game_date", 1)]},
+        {"name": f"ix_{sport_}_player_hist_player_date",
+         "keys": [("player_id", 1), ("game_date", 1)]},
+    ]
+    for sport_ in ("mlb", "nba", "nfl")
+}
+
+
+async def _ensure_player_hist_indexes(db, sport_l: str,
+                                          target_coll: str) -> None:
+    """Idempotently ensure the player-historical collection has
+    every index it needs — including the compound unique key that
+    makes the acquisition idempotent.
+
+    Self-heals after `db.<coll>.drop()`: creates missing indexes,
+    no-ops when they already exist. If the existing unique index
+    has the wrong key shape (e.g. an older spec that included
+    `snapshot_iso`), it is dropped and rebuilt.
+    """
+    specs = _PLAYER_HIST_INDEX_SPECS_BY_SPORT.get(sport_l) or []
+    if not specs:
+        return
+    coll = db[target_coll]
+    try:
+        info = await coll.index_information()
+    except Exception:
+        info = {}
+    for spec in specs:
+        name = spec["name"]
+        want_keys = spec["keys"]
+        want_unique = bool(spec.get("unique"))
+        existing = info.get(name)
+        if existing is not None:
+            existing_keys = [(k, int(v)) for k, v
+                             in (existing.get("key") or [])]
+            existing_unique = bool(existing.get("unique"))
+            if existing_keys == want_keys \
+                    and existing_unique == want_unique:
+                continue
+            # Wrong shape (e.g. legacy snapshot_iso-in-key) — drop
+            # it so we can recreate with the correct spec.
+            try:
+                await coll.drop_index(name)
+                logger.info(
+                    "[player_hist] dropped stale index %s on %s "
+                    "(was keys=%s unique=%s, want keys=%s unique=%s)",
+                    name, target_coll, existing_keys, existing_unique,
+                    want_keys, want_unique,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "[player_hist] failed to drop stale index %s "
+                    "on %s — skipping recreate", name, target_coll)
+                continue
+        try:
+            kwargs: Dict[str, Any] = {"name": name}
+            if want_unique:
+                kwargs["unique"] = True
+            await coll.create_index(want_keys, **kwargs)
+            logger.info(
+                "[player_hist] ensured index %s on %s "
+                "(unique=%s)",
+                name, target_coll, want_unique)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "[player_hist] failed to create index %s on %s",
+                name, target_coll)
+
+
 def _daterange_inclusive(start: str, end: str) -> List[str]:
     d0 = datetime.strptime(start, "%Y-%m-%d").date()
     d1 = datetime.strptime(end, "%Y-%m-%d").date()
@@ -198,6 +285,13 @@ async def acquire_player_historical_window(
         return audit
 
     prov = provider or SGOPayloadProvider(api_key)
+
+    # Self-heal indexes BEFORE any writes. Idempotent — no-op when
+    # they already exist. Critical: this is what makes the
+    # acquisition idempotent after `db.<coll>.drop()` because the
+    # compound unique index is what blocks duplicate inserts.
+    if not dry_run:
+        await _ensure_player_hist_indexes(db, sport_l, target_coll)
 
     # Streaming flush thresholds (proven OOM-safe for MLB-scale runs)
     FLUSH_PROPS = 50_000
