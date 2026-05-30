@@ -35,8 +35,7 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
         IndexModel(
             [("event_id", ASCENDING), ("team_id", ASCENDING),
               ("market",   ASCENDING), ("line",    ASCENDING),
-              ("side",     ASCENDING), ("book",    ASCENDING),
-              ("snapshot_iso", ASCENDING)],
+              ("side",     ASCENDING), ("book",    ASCENDING)],
             unique=True, name="ix_live_prop_compound_unique",
         ),
         IndexModel(
@@ -50,8 +49,7 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
         IndexModel(
             [("event_id", ASCENDING), ("team_id", ASCENDING),
               ("market",   ASCENDING), ("line",    ASCENDING),
-              ("side",     ASCENDING), ("book",    ASCENDING),
-              ("snapshot_iso", ASCENDING)],
+              ("side",     ASCENDING), ("book",    ASCENDING)],
             unique=True, name="ix_hist_prop_compound_unique",
         ),
         IndexModel(
@@ -135,7 +133,6 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
             [("event_id", ASCENDING), ("team_id", ASCENDING),
               ("market",   ASCENDING), ("line",    ASCENDING),
               ("side",     ASCENDING), ("book",    ASCENDING),
-              ("snapshot_iso", ASCENDING),
               ("model_version", ASCENDING),
               ("gate_config_version", ASCENDING)],
             unique=True, name="ix_score_compound_unique",
@@ -148,7 +145,6 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
             [("event_id", ASCENDING), ("team_id", ASCENDING),
               ("market",   ASCENDING), ("line",    ASCENDING),
               ("side",     ASCENDING), ("book",    ASCENDING),
-              ("snapshot_iso", ASCENDING),
               ("model_version", ASCENDING),
               ("gate_config_version", ASCENDING)],
             unique=True, name="ix_replay_compound_unique",
@@ -188,8 +184,7 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
         IndexModel(
             [("event_id", ASCENDING), ("team_id", ASCENDING),
               ("market",   ASCENDING), ("line",    ASCENDING),
-              ("side",     ASCENDING), ("book",    ASCENDING),
-              ("snapshot_iso", ASCENDING)],
+              ("side",     ASCENDING), ("book",    ASCENDING)],
             unique=True, name="ix_nfl_hist_prop_compound_unique",
         ),
         IndexModel(
@@ -297,11 +292,11 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
 COMPOUND_UNIQUE_KEYS: Dict[str, Tuple[str, ...]] = {
     "team_live_props": (
         "event_id", "team_id", "market", "line", "side",
-        "book", "snapshot_iso",
+        "book",
     ),
     "team_historical_props": (
         "event_id", "team_id", "market", "line", "side",
-        "book", "snapshot_iso",
+        "book",
     ),
     "team_prop_outcomes": (
         "event_id", "team_id", "market", "line", "side",
@@ -319,17 +314,17 @@ COMPOUND_UNIQUE_KEYS: Dict[str, Tuple[str, ...]] = {
     ),
     "team_prop_scores": (
         "event_id", "team_id", "market", "line", "side", "book",
-        "snapshot_iso", "model_version", "gate_config_version",
+        "model_version", "gate_config_version",
     ),
     "team_replay_outputs": (
         "event_id", "team_id", "market", "line", "side", "book",
-        "snapshot_iso", "model_version", "gate_config_version",
+        "model_version", "gate_config_version",
     ),
     "team_odds_ingest_runs": ("run_id",),
     "nfl_matchups": ("sport", "event_id"),
     "nfl_historical_props": (
         "event_id", "team_id", "market", "line", "side",
-        "book", "snapshot_iso",
+        "book",
     ),
     "historical_acquire_runs": ("run_id",),
     "nfl_player_historical_props": (

@@ -45,11 +45,54 @@ NEW_INDEX_KEY = [
 DEDUPE_KEY_FIELDS = ("event_id", "player_id", "market",
                      "line", "side", "book")
 
-INDEX_NAMES = {
-    "mlb_player_historical_props": "ix_mlb_player_hist_compound_unique",
-    "nba_player_historical_props": "ix_nba_player_hist_compound_unique",
-    "nfl_player_historical_props": "ix_nfl_player_hist_compound_unique",
+# Per-collection dedupe spec. Player-historical and team-historical
+# collections share the same shape — only the entity field differs.
+COLL_SPECS: Dict[str, Dict[str, Any]] = {
+    "mlb_player_historical_props": {
+        "index_name": "ix_mlb_player_hist_compound_unique",
+        "entity": "player_id",
+        "new_keys": [("event_id", 1), ("player_id", 1),
+                       ("market", 1), ("line", 1),
+                       ("side", 1), ("book", 1)],
+    },
+    "nba_player_historical_props": {
+        "index_name": "ix_nba_player_hist_compound_unique",
+        "entity": "player_id",
+        "new_keys": [("event_id", 1), ("player_id", 1),
+                       ("market", 1), ("line", 1),
+                       ("side", 1), ("book", 1)],
+    },
+    "nfl_player_historical_props": {
+        "index_name": "ix_nfl_player_hist_compound_unique",
+        "entity": "player_id",
+        "new_keys": [("event_id", 1), ("player_id", 1),
+                       ("market", 1), ("line", 1),
+                       ("side", 1), ("book", 1)],
+    },
+    "team_historical_props": {
+        "index_name": "ix_hist_prop_compound_unique",
+        "entity": "team_id",
+        "new_keys": [("event_id", 1), ("team_id", 1),
+                       ("market", 1), ("line", 1),
+                       ("side", 1), ("book", 1)],
+    },
+    "nfl_historical_props": {
+        "index_name": "ix_nfl_hist_prop_compound_unique",
+        "entity": "team_id",
+        "new_keys": [("event_id", 1), ("team_id", 1),
+                       ("market", 1), ("line", 1),
+                       ("side", 1), ("book", 1)],
+    },
+    "team_live_props": {
+        "index_name": "ix_live_prop_compound_unique",
+        "entity": "team_id",
+        "new_keys": [("event_id", 1), ("team_id", 1),
+                       ("market", 1), ("line", 1),
+                       ("side", 1), ("book", 1)],
+    },
 }
+
+INDEX_NAMES = {k: v["index_name"] for k, v in COLL_SPECS.items()}
 
 
 async def _drop_old_index(coll, index_name: str) -> str:
@@ -60,19 +103,18 @@ async def _drop_old_index(coll, index_name: str) -> str:
     return f"{index_name} not present"
 
 
-async def _create_new_index(coll, index_name: str) -> str:
+async def _create_new_index(coll, index_name: str,
+                                new_keys: List) -> str:
     info = await coll.index_information()
     if index_name in info:
-        # Verify the existing index has the right key shape
         existing = info[index_name].get("key") or []
         existing_pairs = [(k, int(v)) for k, v in existing]
-        if existing_pairs == NEW_INDEX_KEY:
+        if existing_pairs == new_keys:
             return f"{index_name} already matches new key"
         await coll.drop_index(index_name)
-    await coll.create_index(
-        NEW_INDEX_KEY, unique=True, name=index_name)
-    return f"created {index_name} (unique=True, "\
-           f"keys={[k for k,_ in NEW_INDEX_KEY]})"
+    await coll.create_index(new_keys, unique=True, name=index_name)
+    return (f"created {index_name} (unique=True, "
+            f"keys={[k for k, _ in new_keys]})")
 
 
 async def _list_days(coll) -> List[str]:
@@ -87,14 +129,15 @@ async def _list_days(coll) -> List[str]:
     return sorted(days)
 
 
-async def _dedupe_day(coll, day: str) -> Dict[str, int]:
+async def _dedupe_day(coll, day: str,
+                          dedupe_fields: tuple) -> Dict[str, int]:
     """Per-day dedupe. Keeps the row with the smallest ingested_at;
     falls back to smallest _id when ingested_at ties."""
     pipeline = [
         {"$match": {"game_date": day}},
         {"$sort":  {"ingested_at": 1, "_id": 1}},
         {"$group": {
-            "_id": {f: f"${f}" for f in DEDUPE_KEY_FIELDS},
+            "_id": {f: f"${f}" for f in dedupe_fields},
             "keep_id":   {"$first": "$_id"},
             "drop_ids":  {"$push":  "$_id"},
             "count":     {"$sum":   1},
@@ -127,8 +170,15 @@ async def _dedupe_day(coll, day: str) -> Dict[str, int]:
 
 async def dedupe_collection(db, coll_name: str) -> Dict[str, Any]:
     coll = db[coll_name]
-    index_name = INDEX_NAMES[coll_name]
-    out: Dict[str, Any] = {"coll": coll_name}
+    spec = COLL_SPECS[coll_name]
+    index_name = spec["index_name"]
+    entity     = spec["entity"]
+    new_keys   = spec["new_keys"]
+    dedupe_fields = tuple(k for k, _ in new_keys)
+    out: Dict[str, Any] = {"coll": coll_name,
+                            "entity_field": entity,
+                            "new_unique_key":
+                                [k for k, _ in new_keys]}
 
     out["count_before"] = await coll.estimated_document_count()
     out["index_before"] = list((await coll.index_information()).keys())
@@ -147,7 +197,7 @@ async def dedupe_collection(db, coll_name: str) -> Dict[str, Any]:
     t0 = time.time()
     per_day_summary: List[Dict[str, int]] = []
     for i, day in enumerate(days, 1):
-        r = await _dedupe_day(coll, day)
+        r = await _dedupe_day(coll, day, dedupe_fields)
         per_day_summary.append(r)
         total_groups  += r["n_dup_groups"]
         total_deleted += r["n_deleted"]
@@ -161,7 +211,8 @@ async def dedupe_collection(db, coll_name: str) -> Dict[str, Any]:
     out["n_deleted_total"]    = total_deleted
 
     # 3. Build new unique index
-    out["create_new"] = await _create_new_index(coll, index_name)
+    out["create_new"] = await _create_new_index(
+        coll, index_name, new_keys)
 
     out["count_after"] = await coll.estimated_document_count()
     out["index_after"] = list((await coll.index_information()).keys())
@@ -173,13 +224,13 @@ async def main() -> int:
     ap.add_argument("--coll", default="",
                     help="collection name (omit with --all)")
     ap.add_argument("--all", action="store_true",
-                    help="run on all three player-historical collections")
+                    help="run on all dedupe-eligible collections")
     args = ap.parse_args()
 
     if args.all:
-        targets = list(INDEX_NAMES.keys())
+        targets = list(COLL_SPECS.keys())
     elif args.coll:
-        if args.coll not in INDEX_NAMES:
+        if args.coll not in COLL_SPECS:
             print(f"ERROR: unknown collection {args.coll!r}",
                   file=sys.stderr); return 2
         targets = [args.coll]

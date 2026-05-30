@@ -1,0 +1,1744 @@
+{
+  "generated_at": "2026-05-30T17:50:49.090891+00:00",
+  "db": "pick_vision",
+  "n_collections": 162,
+  "n_with_unique": 60,
+  "n_with_volatile": 14,
+  "n_with_run_id": 7,
+  "volatile_fields": [
+    "_first_seen",
+    "cached_at",
+    "captured_at",
+    "computed_at",
+    "detected_at",
+    "evaluated_at",
+    "fetched_at",
+    "finished_at",
+    "ingested_at",
+    "next_ts",
+    "occurred_at",
+    "previous_ts",
+    "recorded_at",
+    "requested_ts",
+    "returned_ts",
+    "snapshot_at",
+    "snapshot_iso",
+    "snapshot_label",
+    "snapshot_time",
+    "snapshot_ts",
+    "started_at",
+    "synced_at",
+    "timestamp"
+  ],
+  "run_id_fields": [
+    "replay_run_id",
+    "replay_serial",
+    "run_id",
+    "serial",
+    "source_run_id"
+  ],
+  "collections": [
+    {
+      "coll": "bdl_advanced_stats",
+      "n_docs": 147249,
+      "unique_indexes": [
+        {
+          "name": "player_id_1_game_id_1",
+          "keys": [
+            "player_id",
+            "game_id"
+          ]
+        },
+        {
+          "name": "game_id_1_player_id_1",
+          "keys": [
+            "game_id",
+            "player_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "game_id_1_player_id_1",
+        "player_id_1_game_id_1",
+        "player_id_1_season_1",
+        "season_1"
+      ]
+    },
+    {
+      "coll": "bdl_historical_game_logs",
+      "n_docs": 201626,
+      "unique_indexes": [
+        {
+          "name": "game_id_1_player_id_1",
+          "keys": [
+            "game_id",
+            "player_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "date_-1",
+        "game_id_1_player_id_1",
+        "pid_gid",
+        "player_id_1_season_1",
+        "season_idx"
+      ]
+    },
+    {
+      "coll": "bdl_mlb_historical_game_logs",
+      "n_docs": 1656,
+      "unique_indexes": [
+        {
+          "name": "bdl_mlb_raw_pid_game_unique",
+          "keys": [
+            "bdl_player_id",
+            "game_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "bdl_mlb_raw_pid_game_unique",
+        "season_1_date_1"
+      ]
+    },
+    {
+      "coll": "board_state",
+      "n_docs": 2359,
+      "unique_indexes": [
+        {
+          "name": "board_state_identity_uq",
+          "keys": [
+            "sport",
+            "tier",
+            "side",
+            "canonical_key"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "board_state_gc_idx",
+        "board_state_identity_uq",
+        "board_state_read_idx"
+      ]
+    },
+    {
+      "coll": "board_state_shadow",
+      "n_docs": 872,
+      "unique_indexes": [
+        {
+          "name": "shadow_board_state_identity_uq",
+          "keys": [
+            "sport",
+            "tier",
+            "side",
+            "canonical_key"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "shadow_board_state_identity_uq",
+        "shadow_board_state_read_idx"
+      ]
+    },
+    {
+      "coll": "dg_daily_insights",
+      "n_docs": 127,
+      "unique_indexes": [
+        {
+          "name": "player_name_1",
+          "keys": [
+            "player_name"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "player_name_1",
+        "team_1"
+      ]
+    },
+    {
+      "coll": "emergent_admin_jobs",
+      "n_docs": 50,
+      "unique_indexes": [
+        {
+          "name": "job_id_1",
+          "keys": [
+            "job_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "dedupe_lookup_idx",
+        "job_id_1",
+        "last_heartbeat_at_1",
+        "queue_drain_idx"
+      ]
+    },
+    {
+      "coll": "historical_acquire_runs",
+      "n_docs": 41,
+      "unique_indexes": [
+        {
+          "name": "ix_hist_acquire_run_id_unique",
+          "keys": [
+            "run_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [
+        {
+          "name": "ix_hist_acquire_run_id_unique",
+          "run_id_keys": [
+            "run_id"
+          ],
+          "full_keys": [
+            "run_id"
+          ]
+        }
+      ],
+      "all_indexes": [
+        "_id_",
+        "ix_hist_acquire_run_id_unique",
+        "ix_hist_acquire_sport",
+        "ix_hist_acquire_started_at",
+        "ix_hist_acquire_status"
+      ]
+    },
+    {
+      "coll": "historical_odds_full",
+      "n_docs": 460465,
+      "unique_indexes": [
+        {
+          "name": "uniq_sport_event_market_snapshot_book_player_line_side",
+          "keys": [
+            "sport_key",
+            "event_id",
+            "market_key",
+            "snapshot_time",
+            "bookmaker",
+            "player",
+            "line",
+            "side"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "uniq_sport_event_market_snapshot_book_player_line_side",
+          "volatile_keys": [
+            "snapshot_time"
+          ],
+          "full_keys": [
+            "sport_key",
+            "event_id",
+            "market_key",
+            "snapshot_time",
+            "bookmaker",
+            "player",
+            "line",
+            "side"
+          ]
+        }
+      ],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "line",
+        "snapshot_time_desc",
+        "sport_event_id",
+        "sport_game_date",
+        "sport_market_key",
+        "sport_player",
+        "sport_stat_family",
+        "uniq_sport_event_market_snapshot_book_player_line_side"
+      ]
+    },
+    {
+      "coll": "mlb_pick_history",
+      "n_docs": 148,
+      "unique_indexes": [
+        {
+          "name": "uniq_date_player_stat_line_side_book",
+          "keys": [
+            "game_date",
+            "player",
+            "stat_family",
+            "line",
+            "side",
+            "bookmaker"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "hit_date",
+        "model_version",
+        "player_date",
+        "tier_date",
+        "uniq_date_player_stat_line_side_book"
+      ]
+    },
+    {
+      "coll": "mlb_player_historical_props",
+      "n_docs": 100888,
+      "unique_indexes": [
+        {
+          "name": "ix_mlb_player_hist_compound_unique",
+          "keys": [
+            "event_id",
+            "player_id",
+            "market",
+            "line",
+            "side",
+            "book"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_mlb_player_hist_compound_unique",
+        "ix_mlb_player_hist_date",
+        "ix_mlb_player_hist_market_date",
+        "ix_mlb_player_hist_player_date"
+      ]
+    },
+    {
+      "coll": "mlb_production_replay_outputs",
+      "n_docs": 2069791,
+      "unique_indexes": [
+        {
+          "name": "prod_replay_outputs_compound_unique",
+          "keys": [
+            "replay_serial",
+            "event_id",
+            "player_name_normalized",
+            "market",
+            "line",
+            "side",
+            "book"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [
+        {
+          "name": "prod_replay_outputs_compound_unique",
+          "run_id_keys": [
+            "replay_serial"
+          ],
+          "full_keys": [
+            "replay_serial",
+            "event_id",
+            "player_name_normalized",
+            "market",
+            "line",
+            "side",
+            "book"
+          ]
+        }
+      ],
+      "all_indexes": [
+        "_id_",
+        "prod_replay_outputs_compound_unique",
+        "replay_serial_1",
+        "sport_1_game_date_1"
+      ]
+    },
+    {
+      "coll": "mlb_production_replay_runs",
+      "n_docs": 73,
+      "unique_indexes": [
+        {
+          "name": "serial_1",
+          "keys": [
+            "serial"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [
+        {
+          "name": "serial_1",
+          "run_id_keys": [
+            "serial"
+          ],
+          "full_keys": [
+            "serial"
+          ]
+        }
+      ],
+      "all_indexes": [
+        "_id_",
+        "serial_1",
+        "sport_1_game_date_1_tier_1"
+      ]
+    },
+    {
+      "coll": "mlb_projected_lineups",
+      "n_docs": 271,
+      "unique_indexes": [
+        {
+          "name": "evt_team_uq",
+          "keys": [
+            "event_id",
+            "team_abbr"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "as_of_idx",
+        "evt_team_uq"
+      ]
+    },
+    {
+      "coll": "mlb_prop_scores",
+      "n_docs": 89141,
+      "unique_indexes": [
+        {
+          "name": "uniq_canonical_version",
+          "keys": [
+            "canonical_key",
+            "version_tag"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "idx_computed_at_desc",
+        "idx_game_start_active",
+        "idx_pp_utility_desc",
+        "idx_tier",
+        "idx_tier_active_vision",
+        "idx_vision_score_desc",
+        "ttl_at_7d_nonlive_ix",
+        "ttl_purge_at_ephemeral_ix",
+        "uniq_canonical_version"
+      ]
+    },
+    {
+      "coll": "mlb_replay_audit",
+      "n_docs": 42,
+      "unique_indexes": [
+        {
+          "name": "audit_compound_unique",
+          "keys": [
+            "game_date",
+            "tier",
+            "snapshot_iso",
+            "gate_config_version",
+            "scoring_config_version"
+          ]
+        },
+        {
+          "name": "serial_1",
+          "keys": [
+            "serial"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "audit_compound_unique",
+          "volatile_keys": [
+            "snapshot_iso"
+          ],
+          "full_keys": [
+            "game_date",
+            "tier",
+            "snapshot_iso",
+            "gate_config_version",
+            "scoring_config_version"
+          ]
+        }
+      ],
+      "run_id_in_unique": [
+        {
+          "name": "serial_1",
+          "run_id_keys": [
+            "serial"
+          ],
+          "full_keys": [
+            "serial"
+          ]
+        }
+      ],
+      "all_indexes": [
+        "_id_",
+        "audit_compound_unique",
+        "game_date_1_serial_1",
+        "serial_1"
+      ]
+    },
+    {
+      "coll": "mlb_replay_feature_cache",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "feature_cache_compound_unique",
+          "keys": [
+            "sport",
+            "game_date",
+            "player_name_normalized",
+            "stat_family",
+            "source_version"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "feature_cache_compound_unique",
+        "game_date_1",
+        "player_id_1",
+        "stat_family_1"
+      ]
+    },
+    {
+      "coll": "mlb_replay_feature_status",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "feature_status_unique",
+          "keys": [
+            "game_date",
+            "source_version"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "completed_at_1",
+        "feature_status_unique",
+        "status_1"
+      ]
+    },
+    {
+      "coll": "mlb_replay_gate_results",
+      "n_docs": 1256868,
+      "unique_indexes": [
+        {
+          "name": "gate_results_compound_unique",
+          "keys": [
+            "game_date",
+            "event_id",
+            "player_name_normalized",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso",
+            "scoring_config_version",
+            "gate_config_version"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "gate_results_compound_unique",
+          "volatile_keys": [
+            "snapshot_iso"
+          ],
+          "full_keys": [
+            "game_date",
+            "event_id",
+            "player_name_normalized",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso",
+            "scoring_config_version",
+            "gate_config_version"
+          ]
+        }
+      ],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "game_date_1_gate_pass_1",
+        "game_date_1_gate_pass_1_edge_1",
+        "gate_results_compound_unique"
+      ]
+    },
+    {
+      "coll": "mlb_replay_model_status",
+      "n_docs": 44,
+      "unique_indexes": [
+        {
+          "name": "replay_status_unique",
+          "keys": [
+            "game_date",
+            "snapshot_iso",
+            "scoring_config_version"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "replay_status_unique",
+          "volatile_keys": [
+            "snapshot_iso"
+          ],
+          "full_keys": [
+            "game_date",
+            "snapshot_iso",
+            "scoring_config_version"
+          ]
+        }
+      ],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "replay_status_unique"
+      ]
+    },
+    {
+      "coll": "mlb_statcast_pitcher_features",
+      "n_docs": 47021,
+      "unique_indexes": [
+        {
+          "name": "uniq_pitcher_date",
+          "keys": [
+            "pitcher_id",
+            "game_date"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "game_date",
+        "pitcher_name_date",
+        "uniq_pitcher_date"
+      ]
+    },
+    {
+      "coll": "mlb_statcast_player_features",
+      "n_docs": 114859,
+      "unique_indexes": [
+        {
+          "name": "uniq_player_date",
+          "keys": [
+            "player_id",
+            "game_date"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "game_date",
+        "player_name_date",
+        "uniq_player_date"
+      ]
+    },
+    {
+      "coll": "mlb_statcast_raw",
+      "n_docs": 1674505,
+      "unique_indexes": [
+        {
+          "name": "uniq_game_ab_pitch",
+          "keys": [
+            "game_pk",
+            "at_bat_number",
+            "pitch_number"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "batter_date",
+        "batter_name_date",
+        "game_date",
+        "pitcher_date",
+        "uniq_game_ab_pitch"
+      ]
+    },
+    {
+      "coll": "mlb_test_cards",
+      "n_docs": 2601,
+      "unique_indexes": [
+        {
+          "name": "test_cards_serial_rank_unique",
+          "keys": [
+            "replay_serial",
+            "rank"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [
+        {
+          "name": "test_cards_serial_rank_unique",
+          "run_id_keys": [
+            "replay_serial"
+          ],
+          "full_keys": [
+            "replay_serial",
+            "rank"
+          ]
+        }
+      ],
+      "all_indexes": [
+        "_id_",
+        "replay_serial_1",
+        "sport_1_tier_1",
+        "test_cards_serial_rank_unique"
+      ]
+    },
+    {
+      "coll": "mlb_test_runs",
+      "n_docs": 156,
+      "unique_indexes": [
+        {
+          "name": "serial_1",
+          "keys": [
+            "serial"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [
+        {
+          "name": "serial_1",
+          "run_id_keys": [
+            "serial"
+          ],
+          "full_keys": [
+            "serial"
+          ]
+        }
+      ],
+      "all_indexes": [
+        "_id_",
+        "serial_1",
+        "sport_1_game_date_1_tier_1"
+      ]
+    },
+    {
+      "coll": "nba_calibration_runs",
+      "n_docs": 2,
+      "unique_indexes": [
+        {
+          "name": "uniq_snap_id",
+          "keys": [
+            "snapshot_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "idx_created_desc",
+        "idx_label",
+        "uniq_snap_id"
+      ]
+    },
+    {
+      "coll": "nba_live_props",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "_composite_key_1",
+          "keys": [
+            "_composite_key"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_composite_key_1",
+        "_id_"
+      ]
+    },
+    {
+      "coll": "nba_master_hub_2026",
+      "n_docs": 560,
+      "unique_indexes": [
+        {
+          "name": "bdl_id_1",
+          "keys": [
+            "bdl_id"
+          ]
+        },
+        {
+          "name": "nba_id_1",
+          "keys": [
+            "nba_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "bdl_id_1",
+        "display_name_1",
+        "espn_id_1",
+        "nba_id_1",
+        "team_abbreviation_1"
+      ]
+    },
+    {
+      "coll": "nba_odds_api_mapping_master",
+      "n_docs": 548,
+      "unique_indexes": [
+        {
+          "name": "bdl_id_1",
+          "keys": [
+            "bdl_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "bdl_id_1",
+        "odds_api_name_1",
+        "odds_api_name_lower_1"
+      ]
+    },
+    {
+      "coll": "nba_pick_history",
+      "n_docs": 5926,
+      "unique_indexes": [
+        {
+          "name": "uniq_player_stat_line_date_side",
+          "keys": [
+            "player",
+            "stat",
+            "line",
+            "game_date",
+            "side"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "hit_date",
+        "model_version",
+        "tier_date",
+        "uniq_player_stat_line_date_side"
+      ]
+    },
+    {
+      "coll": "nba_player_context_features",
+      "n_docs": 17531,
+      "unique_indexes": [
+        {
+          "name": "player_event_stat_unique",
+          "keys": [
+            "bdl_player_id",
+            "event_id",
+            "stat_type"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "player_event_stat_unique"
+      ]
+    },
+    {
+      "coll": "nba_player_historical_props",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "ix_nba_player_hist_compound_unique",
+          "keys": [
+            "event_id",
+            "player_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "ix_nba_player_hist_compound_unique",
+          "volatile_keys": [
+            "snapshot_iso"
+          ],
+          "full_keys": [
+            "event_id",
+            "player_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso"
+          ]
+        }
+      ],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_nba_player_hist_compound_unique",
+        "ix_nba_player_hist_date",
+        "ix_nba_player_hist_market_date",
+        "ix_nba_player_hist_player_date"
+      ]
+    },
+    {
+      "coll": "nba_prop_scores",
+      "n_docs": 42561,
+      "unique_indexes": [
+        {
+          "name": "uniq_canonical_version",
+          "keys": [
+            "canonical_key",
+            "version_tag"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "idx_computed_at_desc",
+        "idx_game_start_active",
+        "idx_pp_utility_desc",
+        "idx_tier",
+        "idx_tier_active_vision",
+        "idx_vision_score_desc",
+        "ttl_at_7d_nonlive_ix",
+        "ttl_purge_at_ephemeral_ix",
+        "uniq_canonical_version"
+      ]
+    },
+    {
+      "coll": "nfl_historical_props",
+      "n_docs": 316474,
+      "unique_indexes": [
+        {
+          "name": "ix_nfl_hist_prop_compound_unique",
+          "keys": [
+            "event_id",
+            "team_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "ix_nfl_hist_prop_compound_unique",
+          "volatile_keys": [
+            "snapshot_iso"
+          ],
+          "full_keys": [
+            "event_id",
+            "team_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso"
+          ]
+        }
+      ],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_nfl_hist_prop_compound_unique",
+        "ix_nfl_hist_prop_date",
+        "ix_nfl_hist_prop_market_date"
+      ]
+    },
+    {
+      "coll": "nfl_matchups",
+      "n_docs": 659,
+      "unique_indexes": [
+        {
+          "name": "ix_nfl_matchup_sport_event_unique",
+          "keys": [
+            "sport",
+            "event_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_nfl_matchup_date",
+        "ix_nfl_matchup_sport_event_unique",
+        "ix_nfl_matchup_status"
+      ]
+    },
+    {
+      "coll": "nfl_player_historical_props",
+      "n_docs": 1188943,
+      "unique_indexes": [
+        {
+          "name": "ix_nfl_player_hist_compound_unique",
+          "keys": [
+            "event_id",
+            "player_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "ix_nfl_player_hist_compound_unique",
+          "volatile_keys": [
+            "snapshot_iso"
+          ],
+          "full_keys": [
+            "event_id",
+            "player_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso"
+          ]
+        }
+      ],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_nfl_player_hist_compound_unique",
+        "ix_nfl_player_hist_date",
+        "ix_nfl_player_hist_market_date",
+        "ix_nfl_player_hist_player_date"
+      ]
+    },
+    {
+      "coll": "player_photos",
+      "n_docs": 282,
+      "unique_indexes": [
+        {
+          "name": "player_name_1",
+          "keys": [
+            "player_name"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "player_name_1"
+      ]
+    },
+    {
+      "coll": "pp_projection_id_cache",
+      "n_docs": 1,
+      "unique_indexes": [
+        {
+          "name": "ix_league_id",
+          "keys": [
+            "league_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_fetched_at",
+        "ix_league_id"
+      ]
+    },
+    {
+      "coll": "replay_ingest_progress",
+      "n_docs": 1438,
+      "unique_indexes": [
+        {
+          "name": "uniq_sport_event_window",
+          "keys": [
+            "sport_key",
+            "event_id",
+            "window_label"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "game_date",
+        "status",
+        "uniq_sport_event_window"
+      ]
+    },
+    {
+      "coll": "replay_odds_snapshots",
+      "n_docs": 23971,
+      "unique_indexes": [
+        {
+          "name": "uniq_event_market_label",
+          "keys": [
+            "event_id",
+            "market_key",
+            "snapshot_label"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "uniq_event_market_label",
+          "volatile_keys": [
+            "snapshot_label"
+          ],
+          "full_keys": [
+            "event_id",
+            "market_key",
+            "snapshot_label"
+          ]
+        }
+      ],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "payload_hash",
+        "sport_label",
+        "uniq_event_market_label"
+      ]
+    },
+    {
+      "coll": "replay_vk2_cache",
+      "n_docs": 314658,
+      "unique_indexes": [
+        {
+          "name": "uniq_event_snap_can_side",
+          "keys": [
+            "event_id",
+            "snapshot_label",
+            "canonical_key",
+            "side"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "uniq_event_snap_can_side",
+          "volatile_keys": [
+            "snapshot_label"
+          ],
+          "full_keys": [
+            "event_id",
+            "snapshot_label",
+            "canonical_key",
+            "side"
+          ]
+        }
+      ],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "source_run_id",
+        "stat_family",
+        "uniq_event_snap_can_side"
+      ]
+    },
+    {
+      "coll": "sgo_pp_research_core",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "pp_anchor_pk",
+          "keys": [
+            "event_id",
+            "player_id",
+            "stat_id",
+            "side",
+            "line",
+            "period_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "game_date_1",
+        "league_id_1",
+        "player_id_1",
+        "pp_anchor_pk",
+        "stat_id_1"
+      ]
+    },
+    {
+      "coll": "sgo_pp_research_model_features",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "feature_anchor_pk",
+          "keys": [
+            "event_id",
+            "player_id",
+            "stat_id",
+            "side",
+            "line",
+            "period_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "edge_vs_consensus_1",
+        "feature_anchor_pk",
+        "feature_ready_1",
+        "feature_version_1",
+        "game_date_1",
+        "has_valid_devig_1",
+        "league_id_1",
+        "player_id_1",
+        "stat_family_1",
+        "stat_id_1"
+      ]
+    },
+    {
+      "coll": "sgo_pp_research_outcomes",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "outcome_anchor_pk",
+          "keys": [
+            "event_id",
+            "player_id",
+            "stat_id",
+            "side",
+            "line",
+            "period_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "edge_vs_consensus_1",
+        "game_date_1",
+        "grading_version_1",
+        "has_valid_devig_1",
+        "hit_1",
+        "league_id_1",
+        "outcome_1",
+        "outcome_anchor_pk",
+        "outcome_resolved_1",
+        "player_id_1",
+        "stat_family_1",
+        "stat_id_1"
+      ]
+    },
+    {
+      "coll": "sgo_replay_alt_odds_raw",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "alt_odds_compound_unique_v2",
+          "keys": [
+            "sport",
+            "game_date",
+            "event_id",
+            "player_name_normalized",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "alt_odds_compound_unique_v2",
+          "volatile_keys": [
+            "snapshot_iso"
+          ],
+          "full_keys": [
+            "sport",
+            "game_date",
+            "event_id",
+            "player_name_normalized",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso"
+          ]
+        }
+      ],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "alt_odds_compound_unique_v2",
+        "event_id_1",
+        "game_date_1",
+        "snapshot_iso_1"
+      ]
+    },
+    {
+      "coll": "shadow_vk_snapshots",
+      "n_docs": 493,
+      "unique_indexes": [
+        {
+          "name": "shadow_uniq_key",
+          "keys": [
+            "sport",
+            "player_name",
+            "stat_type",
+            "capture_date"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "outcome_1_capture_date_-1",
+        "shadow_uniq_key",
+        "sport_1_capture_date_-1"
+      ]
+    },
+    {
+      "coll": "sync_locks",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "lock_key_uq",
+          "keys": [
+            "lock_key"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "expires_idx",
+        "lock_key_uq"
+      ]
+    },
+    {
+      "coll": "team_context",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "ix_context_compound_unique",
+          "keys": [
+            "event_id",
+            "team_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_context_compound_unique",
+        "ix_context_date_sport"
+      ]
+    },
+    {
+      "coll": "team_features",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "ix_features_compound_unique",
+          "keys": [
+            "event_id",
+            "team_id",
+            "market",
+            "feature_set_version"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_features_compound_unique"
+      ]
+    },
+    {
+      "coll": "team_historical_props",
+      "n_docs": 2904172,
+      "unique_indexes": [
+        {
+          "name": "ix_hist_prop_compound_unique",
+          "keys": [
+            "event_id",
+            "team_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "ix_hist_prop_compound_unique",
+          "volatile_keys": [
+            "snapshot_iso"
+          ],
+          "full_keys": [
+            "event_id",
+            "team_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso"
+          ]
+        }
+      ],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_hist_prop_compound_unique",
+        "ix_hist_prop_team_market_date"
+      ]
+    },
+    {
+      "coll": "team_injuries",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "ix_injury_compound_unique",
+          "keys": [
+            "event_id",
+            "team_id",
+            "player_id",
+            "reported_at"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_injury_compound_unique",
+        "ix_injury_event_team"
+      ]
+    },
+    {
+      "coll": "team_live_props",
+      "n_docs": 286,
+      "unique_indexes": [
+        {
+          "name": "ix_live_prop_compound_unique",
+          "keys": [
+            "event_id",
+            "team_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "ix_live_prop_compound_unique",
+          "volatile_keys": [
+            "snapshot_iso"
+          ],
+          "full_keys": [
+            "event_id",
+            "team_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso"
+          ]
+        }
+      ],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_live_prop_compound_unique",
+        "ix_live_prop_date_sport"
+      ]
+    },
+    {
+      "coll": "team_master_hub",
+      "n_docs": 92,
+      "unique_indexes": [
+        {
+          "name": "ix_team_id_unique",
+          "keys": [
+            "team_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_active",
+        "ix_external_ids_sgo_sparse",
+        "ix_sport",
+        "ix_team_id_unique"
+      ]
+    },
+    {
+      "coll": "team_matchups",
+      "n_docs": 7817,
+      "unique_indexes": [
+        {
+          "name": "ix_matchup_event_id_unique",
+          "keys": [
+            "event_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_matchup_date_sport",
+        "ix_matchup_event_id_unique"
+      ]
+    },
+    {
+      "coll": "team_odds_ingest_runs",
+      "n_docs": 2,
+      "unique_indexes": [
+        {
+          "name": "ix_run_id_unique",
+          "keys": [
+            "run_id"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [
+        {
+          "name": "ix_run_id_unique",
+          "run_id_keys": [
+            "run_id"
+          ],
+          "full_keys": [
+            "run_id"
+          ]
+        }
+      ],
+      "all_indexes": [
+        "_id_",
+        "ix_dry_run",
+        "ix_finished_at",
+        "ix_live_write_allowed",
+        "ix_run_id_unique",
+        "ix_sport",
+        "ix_started_at",
+        "ix_status"
+      ]
+    },
+    {
+      "coll": "team_projections",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "ix_projection_compound_unique",
+          "keys": [
+            "event_id",
+            "team_id",
+            "market",
+            "model_version"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_projection_compound_unique"
+      ]
+    },
+    {
+      "coll": "team_prop_outcomes",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "ix_outcome_compound_unique",
+          "keys": [
+            "event_id",
+            "team_id",
+            "market",
+            "line",
+            "side"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_outcome_compound_unique",
+        "ix_outcome_date_sport"
+      ]
+    },
+    {
+      "coll": "team_prop_scores",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "ix_score_compound_unique",
+          "keys": [
+            "event_id",
+            "team_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso",
+            "model_version",
+            "gate_config_version"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "ix_score_compound_unique",
+          "volatile_keys": [
+            "snapshot_iso"
+          ],
+          "full_keys": [
+            "event_id",
+            "team_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso",
+            "model_version",
+            "gate_config_version"
+          ]
+        }
+      ],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_score_compound_unique"
+      ]
+    },
+    {
+      "coll": "team_replay_outputs",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "ix_replay_compound_unique",
+          "keys": [
+            "event_id",
+            "team_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso",
+            "model_version",
+            "gate_config_version"
+          ]
+        }
+      ],
+      "volatile_in_unique": [
+        {
+          "name": "ix_replay_compound_unique",
+          "volatile_keys": [
+            "snapshot_iso"
+          ],
+          "full_keys": [
+            "event_id",
+            "team_id",
+            "market",
+            "line",
+            "side",
+            "book",
+            "snapshot_iso",
+            "model_version",
+            "gate_config_version"
+          ]
+        }
+      ],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "ix_replay_compound_unique"
+      ]
+    },
+    {
+      "coll": "users",
+      "n_docs": 0,
+      "unique_indexes": [
+        {
+          "name": "email_1",
+          "keys": [
+            "email"
+          ]
+        }
+      ],
+      "volatile_in_unique": [],
+      "run_id_in_unique": [],
+      "all_indexes": [
+        "_id_",
+        "email_1"
+      ]
+    }
+  ]
+}

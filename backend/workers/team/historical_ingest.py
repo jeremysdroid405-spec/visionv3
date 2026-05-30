@@ -166,7 +166,6 @@ def _build_props_upserts(
             "line":         r["line"],
             "side":         r["side"],
             "book":         r["book"],
-            "snapshot_iso": r["snapshot_iso"],
         }
         ops.append(UpdateOne(
             filter_doc,
@@ -175,6 +174,109 @@ def _build_props_upserts(
             upsert=True,
         ))
     return ops
+
+
+# ── Self-heal: index spec for team-historical / team-live writers ──
+# Mirrors `services/team_master_hub/collections.py` exactly. Baked
+# in here so the worker can self-ensure its own indexes on every
+# invocation, without coupling to ensure_team_collections() being
+# called separately. This is what makes the acquisition idempotent
+# even after a manual `db.<coll>.drop()`. Same shape as the
+# historical_player_ingest worker.
+_TEAM_HIST_INDEX_SPECS_BY_COLL: Dict[str, List[Dict[str, Any]]] = {
+    # MLB/NBA team historical
+    "team_historical_props": [
+        {"name": "ix_hist_prop_compound_unique",
+         "keys": [("event_id", 1), ("team_id", 1),
+                  ("market", 1), ("line", 1),
+                  ("side", 1), ("book", 1)],
+         "unique": True},
+        {"name": "ix_hist_prop_team_market_date",
+         "keys": [("team_id", 1), ("market", 1),
+                  ("game_date", 1)]},
+    ],
+    # NFL team historical
+    "nfl_historical_props": [
+        {"name": "ix_nfl_hist_prop_compound_unique",
+         "keys": [("event_id", 1), ("team_id", 1),
+                  ("market", 1), ("line", 1),
+                  ("side", 1), ("book", 1)],
+         "unique": True},
+        {"name": "ix_nfl_hist_prop_date",
+         "keys": [("game_date", 1)]},
+        {"name": "ix_nfl_hist_prop_market_date",
+         "keys": [("market", 1), ("game_date", 1)]},
+    ],
+    # Matchup tables don't change here — kept for completeness.
+    "team_matchups": [
+        {"name": "ix_matchup_event_id_unique",
+         "keys": [("event_id", 1)],
+         "unique": True},
+    ],
+    "nfl_matchups": [
+        {"name": "ix_nfl_matchup_sport_event_unique",
+         "keys": [("sport", 1), ("event_id", 1)],
+         "unique": True},
+    ],
+}
+
+
+async def _ensure_team_hist_indexes(db,
+                                       *colls: str) -> None:
+    """Idempotently ensure each team-historical / matchup
+    collection has the indexes it needs — including the compound
+    unique key that makes acquisition idempotent. Self-heals
+    legacy indexes that include `snapshot_iso` by dropping and
+    rebuilding them with the correct shape.
+    """
+    for target_coll in colls:
+        specs = _TEAM_HIST_INDEX_SPECS_BY_COLL.get(target_coll) or []
+        if not specs:
+            continue
+        coll = db[target_coll]
+        try:
+            info = await coll.index_information()
+        except Exception:
+            info = {}
+        for spec in specs:
+            name = spec["name"]
+            want_keys = spec["keys"]
+            want_unique = bool(spec.get("unique"))
+            existing = info.get(name)
+            if existing is not None:
+                existing_keys = [(k, int(v)) for k, v
+                                  in (existing.get("key") or [])]
+                existing_unique = bool(existing.get("unique"))
+                if existing_keys == want_keys \
+                        and existing_unique == want_unique:
+                    continue
+                try:
+                    await coll.drop_index(name)
+                    logger.info(
+                        "[team_hist] dropped stale index %s on %s "
+                        "(was keys=%s unique=%s, want keys=%s "
+                        "unique=%s)",
+                        name, target_coll, existing_keys,
+                        existing_unique, want_keys, want_unique,
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "[team_hist] failed to drop stale index %s "
+                        "on %s — skipping recreate",
+                        name, target_coll)
+                    continue
+            try:
+                kwargs: Dict[str, Any] = {"name": name}
+                if want_unique:
+                    kwargs["unique"] = True
+                await coll.create_index(want_keys, **kwargs)
+                logger.info(
+                    "[team_hist] ensured index %s on %s (unique=%s)",
+                    name, target_coll, want_unique)
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "[team_hist] failed to create index %s on %s",
+                    name, target_coll)
 
 
 async def acquire_historical_window(
@@ -246,6 +348,14 @@ async def acquire_historical_window(
 
     prov = provider or SGOPayloadProvider(api_key)
     name_to_tid = await build_team_id_lookup(db, sport=sport_l)
+
+    # Self-heal indexes BEFORE any writes. Idempotent — no-op when
+    # they already exist. Critical: this is what makes acquisition
+    # idempotent after `db.<coll>.drop()` because the compound
+    # unique index is what blocks duplicate inserts/upserts.
+    if not dry_run:
+        await _ensure_team_hist_indexes(db, hist_coll, matchup_coll)
+
     effective_market_keys = (market_keys
                                 if market_keys is not None
                                 else _ACQUIRE_ALL_SENTINEL)

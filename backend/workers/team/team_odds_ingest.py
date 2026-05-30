@@ -181,10 +181,16 @@ async def _resolve_team_ids_in_rows(
 def _build_upsert_ops(
     rows: List[Dict[str, Any]],
 ) -> List[UpdateOne]:
-    """Compound-unique-key upserts. Idempotent on snapshot_iso match.
+    """Compound-unique-key upserts.
 
     `ingested_at` lives under `$setOnInsert` so re-running an
     unchanged payload produces modified_count=0.
+
+    Note: `snapshot_iso` is intentionally NOT part of the filter
+    doc — it's run-time metadata that would otherwise defeat the
+    dedupe contract on every rerun. The unique index on
+    `team_live_props` is `(event_id, team_id, market, line, side,
+    book)` — identical to the historical-prop collections.
     """
     ops: List[UpdateOne] = []
     for r in rows:
@@ -196,7 +202,6 @@ def _build_upsert_ops(
             "line":         r["line"],
             "side":         r["side"],
             "book":         r["book"],
-            "snapshot_iso": r["snapshot_iso"],
         }
         ops.append(UpdateOne(
             filter_doc,
@@ -205,6 +210,69 @@ def _build_upsert_ops(
             upsert=True,
         ))
     return ops
+
+
+# ── Self-heal index spec for team_live_props ─────────────────────
+# Same shape as the historical_ingest worker. Idempotent. Drops
+# legacy indexes that include `snapshot_iso` and rebuilds them
+# with the correct shape on every run_pass() invocation.
+_LIVE_PROPS_INDEX_SPECS: List[Dict[str, Any]] = [
+    {"name": "ix_live_prop_compound_unique",
+     "keys": [("event_id", 1), ("team_id", 1),
+              ("market", 1), ("line", 1),
+              ("side", 1), ("book", 1)],
+     "unique": True},
+    {"name": "ix_live_prop_date_sport",
+     "keys": [("game_date", 1), ("sport", 1)]},
+]
+
+
+async def _ensure_live_props_indexes(db) -> None:
+    """Idempotently ensure `team_live_props` has the unique index
+    that makes live-ingest reruns collide-and-dedupe rather than
+    insert duplicates."""
+    coll = db[LIVE_PROPS_COLL]
+    try:
+        info = await coll.index_information()
+    except Exception:
+        info = {}
+    for spec in _LIVE_PROPS_INDEX_SPECS:
+        name = spec["name"]
+        want_keys = spec["keys"]
+        want_unique = bool(spec.get("unique"))
+        existing = info.get(name)
+        if existing is not None:
+            existing_keys = [(k, int(v)) for k, v
+                              in (existing.get("key") or [])]
+            existing_unique = bool(existing.get("unique"))
+            if existing_keys == want_keys \
+                    and existing_unique == want_unique:
+                continue
+            try:
+                await coll.drop_index(name)
+                logger.info(
+                    "[team_live] dropped stale index %s on %s "
+                    "(was keys=%s unique=%s, want keys=%s "
+                    "unique=%s)",
+                    name, LIVE_PROPS_COLL, existing_keys,
+                    existing_unique, want_keys, want_unique,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "[team_live] failed to drop stale index %s",
+                    name)
+                continue
+        try:
+            kwargs: Dict[str, Any] = {"name": name}
+            if want_unique:
+                kwargs["unique"] = True
+            await coll.create_index(want_keys, **kwargs)
+            logger.info(
+                "[team_live] ensured index %s on %s (unique=%s)",
+                name, LIVE_PROPS_COLL, want_unique)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "[team_live] failed to create index %s", name)
 
 
 class TeamOddsIngestWorker(TeamWorkerBase):
@@ -342,6 +410,10 @@ class TeamOddsIngestWorker(TeamWorkerBase):
             diagnosis = "no rows survived normalization"
         else:
             try:
+                # Self-heal indexes before any writes. Drops the
+                # legacy snapshot_iso-in-unique-key index if present
+                # and rebuilds with the correct stable key.
+                await _ensure_live_props_indexes(db)
                 ops = _build_upsert_ops(rows)
                 result = await db[LIVE_PROPS_COLL].bulk_write(
                     ops, ordered=False)
