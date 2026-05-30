@@ -267,6 +267,48 @@ async def acquire_historical_window(
 
     matchup_ops: List[UpdateOne] = []
     props_ops: List[UpdateOne]   = []
+    # Streaming flush thresholds — bounds peak memory so MLB-scale
+    # multi-season pulls don't OOM the pod. Each UpdateOne carries
+    # a ~1KB filter+update dict, so 50k ops ≈ ~50 MB peak (fine).
+    FLUSH_MATCHUPS = 200
+    FLUSH_PROPS    = 50_000
+
+    async def _flush(force: bool = False) -> None:
+        nonlocal n_props_upserted, n_props_modified, n_props_written
+        if not dry_run:
+            if matchup_ops and (force or
+                                  len(matchup_ops) >= FLUSH_MATCHUPS):
+                rr = await db[matchup_coll].bulk_write(
+                    matchup_ops, ordered=False)
+                logger.info(
+                    "[hist_acquire] %s matchups flush upserted=%d "
+                    "modified=%d",
+                    matchup_coll, len(rr.upserted_ids or {}),
+                    rr.modified_count or 0,
+                )
+                matchup_ops.clear()
+            if props_ops and (force or len(props_ops) >= FLUSH_PROPS):
+                # Sub-chunk in 1000-op slabs to keep server-side batch
+                # commands sane.
+                CHUNK = 1000
+                slab_total = len(props_ops)
+                for i in range(0, slab_total, CHUNK):
+                    slab = props_ops[i:i + CHUNK]
+                    rr = await db[hist_coll].bulk_write(
+                        slab, ordered=False)
+                    n_props_upserted += len(rr.upserted_ids or {})
+                    n_props_modified += int(rr.modified_count or 0)
+                n_props_written += slab_total
+                props_ops.clear()
+        else:
+            # Dry-run: just track the WOULD-write count, then drop ops
+            # to keep memory bounded across multi-month windows.
+            if matchup_ops and (force or
+                                  len(matchup_ops) >= FLUSH_MATCHUPS):
+                matchup_ops.clear()
+            if props_ops and (force or len(props_ops) >= FLUSH_PROPS):
+                n_props_written += len(props_ops)
+                props_ops.clear()
 
     try:
         for game_date in dates:
@@ -349,28 +391,11 @@ async def acquire_historical_window(
                 n_props_norm += counters.get("rows_emitted", 0)
                 props_ops.extend(_build_props_upserts(rows))
 
-        # ── Flush bulk writes ──
-        if not dry_run and matchup_ops:
-            r = await db[matchup_coll].bulk_write(
-                matchup_ops, ordered=False)
-            # matchup writes counted as success
-            logger.info(
-                "[hist_acquire] %s matchups upserted=%d modified=%d",
-                matchup_coll, len(r.upserted_ids or {}),
-                r.modified_count or 0,
-            )
-        if not dry_run and props_ops:
-            # Bulk in chunks to keep memory bounded
-            CHUNK = 1000
-            for i in range(0, len(props_ops), CHUNK):
-                slab = props_ops[i:i + CHUNK]
-                r = await db[hist_coll].bulk_write(slab, ordered=False)
-                n_props_upserted += len(r.upserted_ids or {})
-                n_props_modified += int(r.modified_count or 0)
-                n_props_written  += len(slab)
-        elif dry_run:
-            # Track what WOULD be written
-            n_props_written = len(props_ops)
+            # Day complete — opportunistic streaming flush
+            await _flush(force=False)
+
+        # ── Final flush ──
+        await _flush(force=True)
 
         status = "succeeded" if not dry_run else "dry_run"
         diagnosis = (
