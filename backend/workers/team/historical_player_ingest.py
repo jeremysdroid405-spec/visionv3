@@ -129,7 +129,6 @@ def _build_player_upserts(
             "line":         r["line"],
             "side":         r["side"],
             "book":         r["book"],
-            "snapshot_iso": r["snapshot_iso"],
         }
         ops.append(UpdateOne(
             filter_doc,

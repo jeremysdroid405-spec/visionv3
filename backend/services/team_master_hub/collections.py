@@ -224,8 +224,7 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
         IndexModel(
             [("event_id", ASCENDING), ("player_id", ASCENDING),
               ("market",   ASCENDING), ("line",      ASCENDING),
-              ("side",     ASCENDING), ("book",      ASCENDING),
-              ("snapshot_iso", ASCENDING)],
+              ("side",     ASCENDING), ("book",      ASCENDING)],
             unique=True,
             name="ix_nfl_player_hist_compound_unique",
         ),
@@ -249,8 +248,7 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
         IndexModel(
             [("event_id", ASCENDING), ("player_id", ASCENDING),
               ("market",   ASCENDING), ("line",      ASCENDING),
-              ("side",     ASCENDING), ("book",      ASCENDING),
-              ("snapshot_iso", ASCENDING)],
+              ("side",     ASCENDING), ("book",      ASCENDING)],
             unique=True,
             name="ix_mlb_player_hist_compound_unique",
         ),
@@ -274,8 +272,7 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
         IndexModel(
             [("event_id", ASCENDING), ("player_id", ASCENDING),
               ("market",   ASCENDING), ("line",      ASCENDING),
-              ("side",     ASCENDING), ("book",      ASCENDING),
-              ("snapshot_iso", ASCENDING)],
+              ("side",     ASCENDING), ("book",      ASCENDING)],
             unique=True,
             name="ix_nba_player_hist_compound_unique",
         ),
@@ -337,15 +334,15 @@ COMPOUND_UNIQUE_KEYS: Dict[str, Tuple[str, ...]] = {
     "historical_acquire_runs": ("run_id",),
     "nfl_player_historical_props": (
         "event_id", "player_id", "market", "line", "side",
-        "book", "snapshot_iso",
+        "book",
     ),
     "mlb_player_historical_props": (
         "event_id", "player_id", "market", "line", "side",
-        "book", "snapshot_iso",
+        "book",
     ),
     "nba_player_historical_props": (
         "event_id", "player_id", "market", "line", "side",
-        "book", "snapshot_iso",
+        "book",
     ),
 }
 
