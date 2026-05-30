@@ -547,3 +547,53 @@ async def historical_acquire_runs_endpoint(
     n_total = await db["historical_acquire_runs"].count_documents(flt)
     return {"ok": True, "n_total": int(n_total),
             "n_returned": len(rows), "rows": rows}
+
+
+# ── Phase 4 — NFL player-prop historical ─────────────────────────────
+class NflPlayerHistoricalAcquireBody(BaseModel):
+    start:   str  = Field(..., description="UTC YYYY-MM-DD inclusive")
+    end:     str  = Field(..., description="UTC YYYY-MM-DD inclusive")
+    dry_run: bool = Field(default=True)
+
+
+@router.post("/nfl-player-historical-acquire")
+async def nfl_player_historical_acquire_endpoint(
+    body: NflPlayerHistoricalAcquireBody,
+    request: Request,
+    auth: Dict[str, Any] = Depends(require_admin_token),
+) -> Dict[str, Any]:
+    """Pull NFL player-prop historical odds for `(start, end)` UTC
+    window and upsert into `nfl_player_historical_props`. Phase 4:
+    NFL only, acquire-all (no stat-family filter).
+    """
+    from workers.team.historical_player_ingest import (
+        acquire_player_historical_window as _acq_player,
+    )
+    if not _DATE_RE.match(body.start or ""):
+        raise HTTPException(
+            400, f"start must be 'YYYY-MM-DD' (got {body.start!r})")
+    if not _DATE_RE.match(body.end or ""):
+        raise HTTPException(
+            400, f"end must be 'YYYY-MM-DD' (got {body.end!r})")
+
+    db = _get_db()
+    api_key = _os.environ.get("SGO_API_KEY", "")
+    audit = await _acq_player(
+        db, sport="nfl",
+        start_date=body.start, end_date=body.end,
+        api_key=api_key, dry_run=body.dry_run,
+    )
+    await audit_log(
+        request,
+        action="nfl_player_historical_acquire",
+        params={"start": body.start, "end": body.end,
+                  "dry_run": body.dry_run},
+        response_summary={
+            "status":          audit["status"],
+            "n_sgo_events":    audit["n_sgo_events"],
+            "n_props_written": audit["n_props_written"],
+            "n_props_upserted": audit["n_props_upserted"],
+        },
+        **auth,
+    )
+    return audit

@@ -215,6 +215,33 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
         IndexModel([("status", ASCENDING)],
                     name="ix_hist_acquire_status"),
     ]),
+
+    # ── nfl_player_historical_props (Phase 4) ────────────────────────
+    # Historical NFL player-prop odds. Append-only by snapshot_iso.
+    # Unique key includes `book` (multi-book preservation) and `line`
+    # (alternate-line distinct).
+    ("nfl_player_historical_props", [
+        IndexModel(
+            [("event_id", ASCENDING), ("player_id", ASCENDING),
+              ("market",   ASCENDING), ("line",      ASCENDING),
+              ("side",     ASCENDING), ("book",      ASCENDING),
+              ("snapshot_iso", ASCENDING)],
+            unique=True,
+            name="ix_nfl_player_hist_compound_unique",
+        ),
+        IndexModel(
+            [("game_date", ASCENDING)],
+            name="ix_nfl_player_hist_date",
+        ),
+        IndexModel(
+            [("market", ASCENDING), ("game_date", ASCENDING)],
+            name="ix_nfl_player_hist_market_date",
+        ),
+        IndexModel(
+            [("player_id", ASCENDING), ("game_date", ASCENDING)],
+            name="ix_nfl_player_hist_player_date",
+        ),
+    ]),
 ]
 
 # Compound-unique-key column ordering keyed by collection name —
@@ -258,6 +285,10 @@ COMPOUND_UNIQUE_KEYS: Dict[str, Tuple[str, ...]] = {
         "book", "snapshot_iso",
     ),
     "historical_acquire_runs": ("run_id",),
+    "nfl_player_historical_props": (
+        "event_id", "player_id", "market", "line", "side",
+        "book", "snapshot_iso",
+    ),
 }
 
 
