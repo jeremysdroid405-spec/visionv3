@@ -1679,3 +1679,36 @@ writes to event_ids that exist in `sgo_pp_research_outcomes`.
 - Regression tests: `tests/test_mirror_event_id_allowlist.py` (3 pins).
 - Verified via `/research/replay-outcome-coverage`: May 97.44%,
   June 96.69%, July 100%.
+
+
+
+### 2026-05-30 — Database Inventory Audit (read-only)
+Completed the user's P0 request: comprehensive read-only Mongo
+inventory.
+- New script: `/app/backend/scripts/audit_database_inventory.py`
+  (read-only, aggregation w/ `maxTimeMS=120000`, missing collections
+  handled gracefully, no SGO/API calls).
+- Outputs:
+  - `/app/memory/DATABASE_INVENTORY_REPORT.md` (human-readable)
+  - `/app/memory/DATABASE_INVENTORY_SUMMARY.json` (machine-readable)
+- Headline figures: 22 collections audited, 17 present, 5 missing,
+  **4,550,066 total docs**, **426.9 MB storage**, sports MLB/NBA/NFL,
+  seasons 2024/2025/2026.
+- Per-sport totals:
+  - MLB: 5,401 matchups, 1,767,879 team props, 0 player props,
+    0 graded outcomes.
+  - NBA: 2,416 matchups, 1,136,293 team props, 0 player props,
+    0 graded outcomes.
+  - NFL: 659 matchups, 316,474 team props, 1,188,943 player props,
+    0 graded outcomes.
+- Data-quality notes (acquisition-only, expected at this stage):
+  - `null_player_id` blanket on team_* (correct — team rows).
+  - `null_team_id` blanket on nfl_player_historical_props.
+  - `null_line` present on ML/win-loss markets (correct — ML has no
+    line).
+  - `team_matchups` / `nfl_matchups` lack book/odds (schedule-only).
+- Acquisition-runs ledger: most recent NFL player pull wrote
+  899,601 rows in 138s using the new `mode="insert"` worker.
+- Next P0 unblocker: grading / outcomes are 0 across the board —
+  Phase 1.A.4b (post-game results/settlement) is the obvious next
+  step once user authorises feature work to resume.
