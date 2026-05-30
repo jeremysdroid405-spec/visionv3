@@ -39,6 +39,15 @@ from ._sgo_provider import SGOFetchError, SGOPayloadProvider
 
 logger = logging.getLogger("workers.team.historical_player_ingest")
 
+PLAYER_HIST_COLL_BY_SPORT: Dict[str, str] = {
+    "mlb": "mlb_player_historical_props",
+    "nba": "nba_player_historical_props",
+    "nfl": "nfl_player_historical_props",
+}
+LEAGUE_BY_SPORT: Dict[str, str] = {
+    "mlb": "MLB", "nba": "NBA", "nfl": "NFL",
+}
+# Kept for backward-compat with `nfl_player_historical_acquire` CLI.
 PLAYER_HIST_COLL = "nfl_player_historical_props"
 AUDIT_COLL       = "historical_acquire_runs"
 
@@ -131,16 +140,17 @@ async def acquire_player_historical_window(
     once their player-master tables exist).
     """
     sport_l = sport.lower()
-    if sport_l != "nfl":
+    if sport_l not in PLAYER_HIST_COLL_BY_SPORT:
         raise ValueError(
-            f"Phase 4 supports nfl only (got {sport!r}). "
-            "MLB/NBA player-prop ingest is a separate slice.")
+            f"unsupported sport {sport!r}; "
+            f"expected one of {sorted(PLAYER_HIST_COLL_BY_SPORT)}")
+    target_coll = PLAYER_HIST_COLL_BY_SPORT[sport_l]
+    league      = LEAGUE_BY_SPORT[sport_l]
 
     dates   = _daterange_inclusive(start_date, end_date)
     run_id  = str(uuid.uuid4())
     started = datetime.now(timezone.utc)
     snap_iso = started.isoformat()
-    league  = "NFL"
 
     # ── Dispatch guard ──
     ok, reasons = dispatch_guard_ok()
@@ -149,7 +159,7 @@ async def acquire_player_historical_window(
             "run_id":          run_id,
             "sport":           sport_l,
             "kind":            "player_historical",
-            "hist_coll":       PLAYER_HIST_COLL,
+            "hist_coll":       target_coll,
             "start_date":      start_date,
             "end_date":        end_date,
             "n_dates":         len(dates),
@@ -202,7 +212,7 @@ async def acquire_player_historical_window(
                 for i in range(0, slab_total, CHUNK):
                     slab = props_ops[i:i + CHUNK]
                     try:
-                        rr = await db[PLAYER_HIST_COLL].bulk_write(
+                        rr = await db[target_coll].bulk_write(
                             slab, ordered=False)
                         if write_mode == "insert":
                             n_props_upserted += int(rr.inserted_count or 0)
@@ -296,7 +306,7 @@ async def acquire_player_historical_window(
         "run_id":         run_id,
         "sport":          sport_l,
         "kind":           "player_historical",
-        "hist_coll":      PLAYER_HIST_COLL,
+        "hist_coll":      target_coll,
         "start_date":     start_date,
         "end_date":       end_date,
         "n_dates":        len(dates),
@@ -325,4 +335,5 @@ async def acquire_player_historical_window(
     return audit
 
 
-__all__ = ["PLAYER_HIST_COLL", "acquire_player_historical_window"]
+__all__ = ["PLAYER_HIST_COLL", "PLAYER_HIST_COLL_BY_SPORT",
+            "LEAGUE_BY_SPORT", "acquire_player_historical_window"]
