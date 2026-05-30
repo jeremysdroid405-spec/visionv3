@@ -70,7 +70,158 @@ OUT_COLL = "sgo_player_stats"
 RETRY_QUEUE_COLL = "sgo_ingest_retry_queue"
 EVENT_COLL = "sgo_events"
 PLAYERS_COLL = "sgo_players"
-DRIVER_COLL = "sgo_pp_research_core_enriched"
+
+# ── Canonical per-league driver mapping ───────────────────────────
+# The "driver" is the source of (event_id, player_id, game_date)
+# tuples the stats ingest needs to grade. For every supported sport
+# the canonical driver is the player_historical_props collection
+# acquired from SGO. The legacy `sgo_pp_research_core_enriched`
+# remains as a fallback ONLY when no canonical driver exists or is
+# empty.
+#
+# Each entry is (collection_name, league_field_name) — the field
+# carrying the league identifier on docs of that collection.
+DRIVER_COLL_BY_LEAGUE: Dict[str, Tuple[str, str]] = {
+    "MLB": ("mlb_player_historical_props", "league"),
+    "NBA": ("nba_player_historical_props", "league"),
+    "NFL": ("nfl_player_historical_props", "league"),
+}
+LEGACY_DRIVER_COLL = "sgo_pp_research_core_enriched"
+LEGACY_LEAGUE_FIELD = "league_id"
+# Kept for backwards compatibility with any external import; no
+# in-tree code path uses this constant anymore.
+DRIVER_COLL = LEGACY_DRIVER_COLL
+
+
+async def _resolve_driver(
+    db: "AsyncIOMotorDatabase", league: Optional[str]
+) -> Tuple[str, str]:
+    """Pick the (collection, league_field) the stats ingest should
+    drive from for the given league.
+
+    Strategy:
+      1. If `league` matches a sport in DRIVER_COLL_BY_LEAGUE AND
+         that canonical collection has ≥1 doc → use it.
+      2. Else fall back to LEGACY_DRIVER_COLL (which keys on
+         `league_id`).
+
+    The fallback exists so existing pipelines and historical data
+    that pre-date the canonical collections keep working unchanged.
+    """
+    lg = (league or "").upper()
+    if lg in DRIVER_COLL_BY_LEAGUE:
+        coll_name, field = DRIVER_COLL_BY_LEAGUE[lg]
+        try:
+            n = await db[coll_name].estimated_document_count()
+        except Exception:
+            n = 0
+        if n > 0:
+            return coll_name, field
+    return LEGACY_DRIVER_COLL, LEGACY_LEAGUE_FIELD
+
+
+async def _verify_coverage(args: argparse.Namespace) -> int:
+    """Per-sport coverage report: canonical_props vs sgo_player_stats.
+
+    For every sport in DRIVER_COLL_BY_LEAGUE prints:
+      - canonical n_rows, distinct_events, distinct_players, date range
+      - sgo_player_stats n_rows, distinct_events, distinct_players,
+        date range (filtered to that league)
+      - GAP: events that exist in canonical but NOT in stats
+    """
+    client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+    db = client[os.environ["DB_NAME"]]
+    try:
+        print(f"\n─── sgo_player_stats coverage vs canonical "
+              f"player_historical_props ───\n")
+        leagues = ([args.league.upper()] if args.league
+                    else list(DRIVER_COLL_BY_LEAGUE.keys()))
+        any_gap = False
+        for lg in leagues:
+            driver_coll, lg_field = DRIVER_COLL_BY_LEAGUE.get(
+                lg, (LEGACY_DRIVER_COLL, LEGACY_LEAGUE_FIELD))
+            print(f"=== {lg} ===  driver={driver_coll}  "
+                  f"(field={lg_field})")
+            drv = db[driver_coll]
+            try:
+                drv_n = await drv.estimated_document_count()
+            except Exception:
+                drv_n = 0
+            if drv_n == 0:
+                print(f"  (driver empty — nothing to verify)\n")
+                continue
+            drv_events: set = set()
+            drv_players: set = set()
+            drv_mn = drv_mx = None
+            async for r in drv.aggregate([
+                {"$group": {
+                    "_id": None,
+                    "events":  {"$addToSet": "$event_id"},
+                    "players": {"$addToSet": "$player_id"},
+                    "mn":      {"$min": "$game_date"},
+                    "mx":      {"$max": "$game_date"},
+                    "n":       {"$sum": 1},
+                }}], allowDiskUse=True, maxTimeMS=120_000):
+                drv_events  = set(r.get("events") or [])
+                drv_players = set(r.get("players") or [])
+                drv_mn = r.get("mn")
+                drv_mx = r.get("mx")
+                drv_n  = int(r.get("n") or drv_n)
+
+            stats = db[OUT_COLL]
+            stats_match: Dict[str, Any] = {"league_id": lg}
+            stats_events: set = set()
+            stats_players: set = set()
+            stats_mn = stats_mx = None
+            stats_n = 0
+            async for r in stats.aggregate([
+                {"$match": stats_match},
+                {"$group": {
+                    "_id": None,
+                    "events":  {"$addToSet": "$event_id"},
+                    "players": {"$addToSet": "$player_id"},
+                    "mn":      {"$min": "$game_date"},
+                    "mx":      {"$max": "$game_date"},
+                    "n":       {"$sum": 1},
+                }}], allowDiskUse=True, maxTimeMS=120_000):
+                stats_events  = set(r.get("events") or [])
+                stats_players = set(r.get("players") or [])
+                stats_mn = r.get("mn")
+                stats_mx = r.get("mx")
+                stats_n  = int(r.get("n") or 0)
+
+            event_gap   = drv_events  - stats_events
+            player_gap  = drv_players - stats_players
+
+            print(f"  canonical  : {drv_n:>12,} rows  "
+                  f"events={len(drv_events):>5,}  "
+                  f"players={len(drv_players):>5,}  "
+                  f"window={drv_mn} → {drv_mx}")
+            print(f"  stats      : {stats_n:>12,} rows  "
+                  f"events={len(stats_events):>5,}  "
+                  f"players={len(stats_players):>5,}  "
+                  f"window={stats_mn} → {stats_mx}")
+            print(f"  GAP        : "
+                  f"events_missing={len(event_gap):>5,}  "
+                  f"players_missing={len(player_gap):>5,}")
+            cov_pct = (100.0 * len(drv_events - event_gap)
+                        / max(len(drv_events), 1))
+            print(f"  coverage   : {cov_pct:6.2f}% of canonical events "
+                  f"have ≥1 stats row")
+            if event_gap:
+                any_gap = True
+                samples = sorted(event_gap)[:5]
+                print(f"  sample gap : {samples}")
+            print()
+        if any_gap:
+            print("→ Run `python -m scripts.sgo.ingest_historical_"
+                  "player_stats --league <SPORT>` to close gaps.")
+            return 1
+        print("→ Every canonical event has at least one stats row. "
+              "No gaps.")
+        return 0
+    finally:
+        client.close()
 
 INGEST_VERSION = "v1"
 MLB_BASE = "https://statsapi.mlb.com/api/v1"
@@ -536,18 +687,20 @@ async def ingest_from_mlbstatsapi(
     if only_dates:
         dates = sorted(only_dates)
     else:
-        match: Dict[str, Any] = {"league_id": league}
+        driver_coll, lg_field = await _resolve_driver(db, league)
+        match: Dict[str, Any] = {lg_field: league}
         if start or end:
             gd: Dict[str, Any] = {}
             if start: gd["$gte"] = start
             if end:   gd["$lte"] = end
             match["game_date"] = gd
         dates = []
-        async for r in db[DRIVER_COLL].aggregate(
+        async for r in db[driver_coll].aggregate(
             [{"$match": match}, {"$group": {"_id": "$game_date"}},
               {"$sort": {"_id": 1}}], allowDiskUse=True):
             if r.get("_id"):
                 dates.append(r["_id"])
+        print(f"  [mlbstatsapi] driver={driver_coll!r} (field={lg_field!r})")
 
     if not dates:
         return {"source": "mlbstatsapi", "dates": 0, "games": 0,
@@ -732,17 +885,19 @@ async def ingest_from_bdl(
     if only_dates:
         dates = sorted(only_dates)
     else:
-        match: Dict[str, Any] = {"league_id": "NBA"}
+        driver_coll, lg_field = await _resolve_driver(db, "NBA")
+        match: Dict[str, Any] = {lg_field: "NBA"}
         if start or end:
             gd: Dict[str, Any] = {}
             if start: gd["$gte"] = start
             if end:   gd["$lte"] = end
             match["game_date"] = gd
         dates = []
-        async for r in db[DRIVER_COLL].aggregate(
+        async for r in db[driver_coll].aggregate(
             [{"$match": match}, {"$group": {"_id": "$game_date"}},
               {"$sort": {"_id": 1}}], allowDiskUse=True):
             if r.get("_id"): dates.append(r["_id"])
+        print(f"  [bdl] driver={driver_coll!r} (field={lg_field!r})")
 
     if not dates:
         return {"source": "bdl", "dates": 0, "games": 0, "rows_emitted": 0,
@@ -1068,17 +1223,20 @@ async def ingest_from_sgo_api(
     if only_event_ids is not None:
         event_ids = list(only_event_ids)
     else:
-        match: Dict[str, Any] = {"league_id": league}
+        driver_coll, lg_field = await _resolve_driver(db, league)
+        match: Dict[str, Any] = {lg_field: league}
         if start or end:
             gd: Dict[str, Any] = {}
             if start: gd["$gte"] = start
             if end:   gd["$lte"] = end
             match["game_date"] = gd
         event_ids = []
-        async for r in db[DRIVER_COLL].aggregate(
+        async for r in db[driver_coll].aggregate(
             [{"$match": match}, {"$group": {"_id": "$event_id"}},
               {"$sort": {"_id": 1}}], allowDiskUse=True):
             if r.get("_id"): event_ids.append(r["_id"])
+        print(f"  [sgo_api/{league}] driver={driver_coll!r} "
+              f"(field={lg_field!r})  event_ids={len(event_ids):,}")
 
     events_total = len(event_ids)
 
@@ -1357,7 +1515,7 @@ async def amain(args: argparse.Namespace) -> int:
     sgo_api_extractor_mismatch = False
     if source in ("sgo_api", "auto"):
         leagues_to_run = ([args.league] if args.league
-                            else ["MLB", "NBA"])
+                            else list(DRIVER_COLL_BY_LEAGUE.keys()))
         # --retry-failed mode: drive event ids from the persistent
         # retry queue instead of the driver collection. Lets you rerun
         # ONLY the ones that 429'd previously, after waiting out the
@@ -1455,14 +1613,15 @@ async def amain(args: argparse.Namespace) -> int:
     # ── Gap detection for emergency fallback (auto only) ─────────────────
     if source == "auto":
         async def _gap_dates(lg: str) -> List[str]:
-            match: Dict[str, Any] = {"league_id": lg}
+            driver_coll, lg_field = await _resolve_driver(db, lg)
+            match: Dict[str, Any] = {lg_field: lg}
             if args.start or args.end:
                 gd: Dict[str, Any] = {}
                 if args.start: gd["$gte"] = args.start
                 if args.end:   gd["$lte"] = args.end
                 match["game_date"] = gd
             all_d = set()
-            async for d in db[DRIVER_COLL].aggregate(
+            async for d in db[driver_coll].aggregate(
                 [{"$match": match}, {"$group": {"_id": "$game_date"}}],
                 allowDiskUse=True):
                 if d.get("_id"): all_d.add(d["_id"])
@@ -1666,10 +1825,16 @@ def main() -> int:
                          "every event in the window. Default behavior is "
                          "cache-first: events already in sgo_player_stats "
                          "are skipped and no API call is made.")
+    p.add_argument("--verify-coverage", action="store_true",
+                    help="Skip ingest. Print per-sport coverage of "
+                         "sgo_player_stats vs each canonical "
+                         "player_historical_props collection, then exit.")
     args = p.parse_args()
     # --rate-limit-ms is a back-compat alias for --sleep-between-requests
     if getattr(args, "rate_limit_ms", None) is not None:
         args.sleep_between_requests = args.rate_limit_ms
+    if getattr(args, "verify_coverage", False):
+        return asyncio.run(_verify_coverage(args))
     return asyncio.run(amain(args))
 
 
