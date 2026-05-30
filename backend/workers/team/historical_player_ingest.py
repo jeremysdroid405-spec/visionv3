@@ -21,7 +21,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from pymongo import UpdateOne
+from pymongo import InsertOne, UpdateOne
+from pymongo.errors import BulkWriteError
 
 from services.team_master_hub.ingest_policy import (
     dispatch_guard_ok,
@@ -74,6 +75,22 @@ def _apply_book_policy_in_place(
     return {"n_blocked": blocked, "n_refs": refs}
 
 
+def _build_player_inserts(
+    rows: List[Dict[str, Any]],
+) -> List[InsertOne]:
+    """Phase 4-fast: pure InsertOne ops (no upsert). Combined with the
+    compound unique index + ordered=False, duplicates are silently
+    skipped at the index layer. ~10× faster than UpdateOne(upsert=True)
+    because there's no pre-write index lookup.
+    """
+    ops: List[InsertOne] = []
+    for r in rows:
+        # InsertOne expects the full doc — including `ingested_at`
+        # (which UpdateOne kept under `$setOnInsert`).
+        ops.append(InsertOne(dict(r)))
+    return ops
+
+
 def _build_player_upserts(
     rows: List[Dict[str, Any]],
 ) -> List[UpdateOne]:
@@ -107,6 +124,7 @@ async def acquire_player_historical_window(
     api_key: str,
     dry_run: bool = True,
     provider: Optional[SGOPayloadProvider] = None,
+    write_mode: str = "insert",   # "insert" (fast) | "upsert" (idempotent)
 ) -> Dict[str, Any]:
     """Walk [start_date, end_date] UTC inclusive and upsert NFL
     player-prop rows. NFL-only in Phase 4 (other sports may be added
@@ -165,26 +183,48 @@ async def acquire_player_historical_window(
     n_props_written  = 0
     n_props_upserted = 0
     n_props_modified = 0
+    n_props_duplicates = 0
     n_blocked = 0
     n_refs    = 0
     stat_families: Dict[str, int] = {}
     per_date_counts: Dict[str, int] = {}
     sample_endpoints: List[str] = []
 
-    props_ops: List[UpdateOne] = []
+    props_ops: List[Any] = []
 
     async def _flush(force: bool = False) -> None:
         nonlocal n_props_upserted, n_props_modified, n_props_written
+        nonlocal n_props_duplicates
         if not dry_run:
             if props_ops and (force or len(props_ops) >= FLUSH_PROPS):
                 CHUNK = 1000
                 slab_total = len(props_ops)
                 for i in range(0, slab_total, CHUNK):
                     slab = props_ops[i:i + CHUNK]
-                    rr = await db[PLAYER_HIST_COLL].bulk_write(
-                        slab, ordered=False)
-                    n_props_upserted += len(rr.upserted_ids or {})
-                    n_props_modified += int(rr.modified_count or 0)
+                    try:
+                        rr = await db[PLAYER_HIST_COLL].bulk_write(
+                            slab, ordered=False)
+                        if write_mode == "insert":
+                            n_props_upserted += int(rr.inserted_count or 0)
+                        else:
+                            n_props_upserted += len(rr.upserted_ids or {})
+                            n_props_modified += int(rr.modified_count or 0)
+                    except BulkWriteError as bwe:
+                        # Insert mode: duplicate-key errors are expected
+                        # on re-runs. Count them and continue.
+                        details = bwe.details or {}
+                        n_dup = sum(1 for w in details.get(
+                            "writeErrors", []) if w.get("code") == 11000)
+                        n_other = len(details.get("writeErrors", [])) - n_dup
+                        n_inserted = int(details.get("nInserted") or 0)
+                        n_props_upserted   += n_inserted
+                        n_props_duplicates += n_dup
+                        if n_other > 0:
+                            logger.warning(
+                                "[player_hist] %d non-duplicate write "
+                                "errors in this chunk",
+                                n_other,
+                            )
                 n_props_written += slab_total
                 props_ops.clear()
         else:
@@ -230,7 +270,10 @@ async def acquire_player_historical_window(
                 n_blocked += bc["n_blocked"]
                 n_refs    += bc["n_refs"]
                 n_props_norm += counters.get("rows_emitted", 0)
-                props_ops.extend(_build_player_upserts(rows))
+                if write_mode == "insert":
+                    props_ops.extend(_build_player_inserts(rows))
+                else:
+                    props_ops.extend(_build_player_upserts(rows))
 
             # Day complete — streaming flush
             await _flush(force=False)
@@ -258,6 +301,7 @@ async def acquire_player_historical_window(
         "end_date":       end_date,
         "n_dates":        len(dates),
         "dry_run":        dry_run,
+        "write_mode":     write_mode,
         "status":         status,
         "diagnosis":      diagnosis,
         "started_at":     started,
@@ -269,6 +313,7 @@ async def acquire_player_historical_window(
         "n_props_written":    n_props_written,
         "n_props_upserted":   n_props_upserted,
         "n_props_modified":   n_props_modified,
+        "n_props_duplicates": n_props_duplicates,
         "n_blocked":          n_blocked,
         "n_refs":             n_refs,
         "stat_families":      stat_families,
