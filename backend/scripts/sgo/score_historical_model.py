@@ -63,6 +63,25 @@ SRC_COLL = "sgo_pp_research_model_features"
 OUT_COLL = "sgo_pp_research_model_predictions"
 
 
+def _resolve_colls(league: Optional[str], src_override: Optional[str],
+                    out_override: Optional[str]) -> Tuple[str, str]:
+    """Per-league routing for source (features) and output (predictions),
+    matching the pattern used by build_pp_research_core,
+    build_historical_outcomes and build_historical_model_features.
+    """
+    league_u = (league or "").upper()
+    if league_u == "NFL":
+        default_src = "sgo_nfl_research_model_features"
+        default_out = "sgo_nfl_research_model_predictions"
+    elif league_u == "NCAAF":
+        default_src = "sgo_ncaaf_research_model_features"
+        default_out = "sgo_ncaaf_research_model_predictions"
+    else:
+        default_src = SRC_COLL
+        default_out = OUT_COLL
+    return (src_override or default_src, out_override or default_out)
+
+
 # ───────────────────────────── model loading ──────────────────────────────
 def _load_model_from_path(path: str):
     try:
@@ -168,11 +187,21 @@ async def amain(args: argparse.Namespace) -> int:
     db = client[os.environ["DB_NAME"]]
     t0 = time.time()
 
+    # Per-league routing for SRC/OUT collections (mirrors the other
+    # SGO pipeline scripts). Rebind module-globals so existing
+    # helpers (_infer_feature_keys, ensure_out_indexes, the find loop)
+    # pick up the per-league collections without signature changes.
+    global SRC_COLL, OUT_COLL
+    SRC_COLL, OUT_COLL = _resolve_colls(
+        args.league, getattr(args, "src_coll", None),
+        getattr(args, "out_coll", None))
+
     print(f"[{datetime.now(timezone.utc).isoformat()}] score_historical_model")
     print(f"  league={args.league or '(all)'}  "
           f"window=[{args.start or 'all'} .. {args.end or 'all'}]  "
           f"dry_run={args.dry_run}  resume={args.resume}  "
-          f"model_version={args.model_version}")
+          f"model_version={args.model_version}  "
+          f"src_coll={SRC_COLL}  out_coll={OUT_COLL}")
 
     # Load predictor
     batch_predict: Optional[Callable[[List[List[float]]], List[float]]] = None
@@ -396,6 +425,16 @@ def main() -> int:
                     help="Drop only rows with this --model-version")
     p.add_argument("--yes", action="store_true")
     p.add_argument("--resume", action="store_true")
+    p.add_argument("--src-coll", default=None,
+                    help="Override source features collection. "
+                          "Defaults to sgo_pp_research_model_features (MLB/NBA), "
+                          "sgo_nfl_research_model_features when --league=NFL, or "
+                          "sgo_ncaaf_research_model_features when --league=NCAAF.")
+    p.add_argument("--out-coll", default=None,
+                    help="Override output predictions collection. "
+                          "Defaults to sgo_pp_research_model_predictions (MLB/NBA), "
+                          "sgo_nfl_research_model_predictions when --league=NFL, or "
+                          "sgo_ncaaf_research_model_predictions when --league=NCAAF.")
     return asyncio.run(amain(p.parse_args()))
 
 

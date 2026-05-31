@@ -1,277 +1,306 @@
 # NCAAF Historical Outcomes Pipeline — Trace & Runbook
 
-> Traced from the live codebase at `/app/backend/scripts/sgo/*`.
-> No guessing — every collection / file / line is grounded.
+> Updated after pre-flight finding: `sgo_props_raw` / `sgo_events` /
+> `sgo_players` / `sgo_book_consensus` are EMPTY for NCAAF on the VPS.
+> Canonical NCAAF data lives in `ncaaf_player_historical_props`,
+> `ncaaf_matchups`, `ncaaf_historical_props`, and `sgo_player_stats`
+> (league=NCAAF). Bridging script added.
 
 ---
 
-## TL;DR — Direct answers to your 5 questions
+## Architectural summary
 
-### 1. Which collection feeds `build_historical_outcomes`?
+```
+                ┌────────────────────────────────────────────┐
+                │  NCAAF canonical data (already on VPS)     │
+                │    ncaaf_matchups                          │
+                │    ncaaf_player_historical_props           │
+                │    sgo_player_stats   (league_id=NCAAF)    │
+                └────────────────┬───────────────────────────┘
+                                 │
+                                 ▼
+        ┌─────────────────────────────────────────────────────┐
+        │  STEP 1 — reshape_ncaaf_to_legacy_sgo.py            │
+        │  (NEW; one-shot, idempotent, NCAAF-only)            │
+        │  Writes:                                            │
+        │    sgo_events     (from ncaaf_matchups)             │
+        │    sgo_players    (from sgo_player_stats + props)   │
+        │    sgo_props_raw  (from ncaaf_player_historical_props)│
+        │  Skips: sgo_book_consensus (optional downstream)    │
+        └────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+        ┌──────────────────────────────────────────────────────┐
+        │  STEP 2 — build_pp_research_core --league NCAAF      │
+        │  Writes: sgo_ncaaf_research_core                     │
+        └────────────────┬─────────────────────────────────────┘
+                         │
+                         ▼  (joins sgo_player_stats)
+        ┌──────────────────────────────────────────────────────┐
+        │  STEP 3 — build_historical_outcomes --league NCAAF   │
+        │  Reads: sgo_ncaaf_research_core + sgo_player_stats   │
+        │  Writes: sgo_ncaaf_research_outcomes                 │
+        │  (NCAAF skips enrichment — same as NFL)              │
+        └────────────────┬─────────────────────────────────────┘
+                         │
+                         ▼
+        ┌──────────────────────────────────────────────────────┐
+        │  STEP 4 — build_historical_model_features --league NCAAF │
+        │  Reads: sgo_ncaaf_research_core + sgo_player_stats   │
+        │  Writes: sgo_ncaaf_research_model_features           │
+        └────────────────┬─────────────────────────────────────┘
+                         │
+                         ▼
+        ┌──────────────────────────────────────────────────────┐
+        │  STEP 5 — score_historical_model --league NCAAF      │
+        │  Reads: sgo_ncaaf_research_model_features            │
+        │  Writes: sgo_ncaaf_research_model_predictions        │
+        └──────────────────────────────────────────────────────┘
+```
 
-It depends on `--league`. The script has hard-coded per-league routing in
-`amain()`:
+---
 
-| League        | Source collection                | Output collection                |
-|---------------|----------------------------------|----------------------------------|
-| MLB / NBA     | `sgo_pp_research_core_enriched`  | `sgo_pp_research_outcomes`       |
-| NFL           | `sgo_nfl_research_core`          | `sgo_nfl_research_outcomes`      |
-| **NCAAF** (new) | `sgo_ncaaf_research_core`      | `sgo_ncaaf_research_outcomes`    |
-
-The script ALSO joins `sgo_player_stats` to look up actual values to grade.
-
-File: `/app/backend/scripts/sgo/build_historical_outcomes.py`
-Routing block: `amain()` lines ~810–820 (now NFL + NCAAF cases).
-
-### 2. Which script creates that source collection?
-
-- `sgo_pp_research_core_enriched` ← `build_historical_consensus_probabilities.py`
-  (reads `sgo_pp_research_core` → enriches → writes enriched).
-- `sgo_pp_research_core`          ← `build_pp_research_core.py`
-- `sgo_nfl_research_core`         ← `build_pp_research_core.py --league NFL`
-- **`sgo_ncaaf_research_core`** (new) ← `build_pp_research_core.py --league NCAAF`
-
-`build_pp_research_core.py` reads from these legacy SGO ingest collections:
-- `sgo_props_raw`        — raw book quotes (anchor source)
-- `sgo_events`           — game metadata (`event_id`, `game_date`, `league_id`)
-- `sgo_players`          — player_id → player_name cache
-- `sgo_book_consensus`   — devig / fair-odds reference (optional)
-
-These four collections are populated by the legacy SGO ingest at
-`/app/backend/scripts/sgo/ingest.py` (function `ingest_one`, see `COLLECTIONS` map).
-
-### 3. Does `build_pp_research_core` support NCAAF today?
-
-**Before my changes:** Partially. It accepted `--league NCAAF` but would
-write into the SHARED `sgo_pp_research_core` collection, polluting
-MLB/NBA data. `_resolve_out_coll` only special-cased NFL.
-
-**After my changes:** Yes — NCAAF writes to its own
-`sgo_ncaaf_research_core`. Same surgical pattern used for NFL.
-
-### 4. NCAAF mappings added (mirrors MLB/NBA/NFL exactly)
-
-Patches applied in this session (3 files, ~25 LOC total — all additive):
+## Code changes applied in this session (5 files)
 
 | File | Change |
 |---|---|
-| `scripts/sgo/build_pp_research_core.py` | `_resolve_out_coll`: added `if league=="NCAAF" → "sgo_ncaaf_research_core"`. Help text updated. |
-| `scripts/sgo/build_historical_outcomes.py` | `amain` routing: added NCAAF branch (src=`sgo_ncaaf_research_core`, out=`sgo_ncaaf_research_outcomes`). CLI help updated. |
-| `scripts/sgo/build_historical_model_features.py` | Added `--src-coll` / `--out-coll` overrides and per-league routing. NCAAF reads from `sgo_ncaaf_research_core`, writes `sgo_ncaaf_research_model_features`. |
-| `scripts/sgo/ingest_historical_player_stats.py` | `normalize_stats()`: NCAAF → `_normalize_nfl_stats()` (college football shares NFL's SGO stat-family schema: `passing_yards`, `rushing_yards`, `receiving_yards`, etc.). |
+| `scripts/sgo/build_pp_research_core.py` | `_resolve_out_coll`: NCAAF → `sgo_ncaaf_research_core` |
+| `scripts/sgo/build_historical_outcomes.py` | NCAAF branch: src=`sgo_ncaaf_research_core`, out=`sgo_ncaaf_research_outcomes` |
+| `scripts/sgo/build_historical_model_features.py` | Added `--src-coll`/`--out-coll` + NCAAF auto-routing |
+| `scripts/sgo/score_historical_model.py` | Added `_resolve_colls()` + NCAAF first-class routing |
+| `scripts/sgo/ingest_historical_player_stats.py` | `normalize_stats()`: NCAAF → `_normalize_nfl_stats()` |
+| **NEW** `scripts/sgo/reshape_ncaaf_to_legacy_sgo.py` | The bridge script (this trace's STEP 1) |
 
-`score_historical_model.py` requires NO change — it already filters by
-`--league` against shared collections and doesn't care about routing.
-
-All three scripts dry-run cleanly with `--league NCAAF` on the preview pod
-(verified — empty results because preview Mongo has no NCAAF data, by design).
+All five scripts dry-run cleanly with `--league NCAAF` / `--dry-run`.
 
 ---
 
-## 5. Exact execution order + commands for NCAAF
+## Reshape script design notes (for review)
 
-> Run on your **VPS** (preview pod can't hold the volume).
-> `cd /var/www/app/backend` (or wherever your prod checkout lives).
+**Idempotency contract** — every write uses
+`bulk_write([UpdateOne(filter, {$set: doc}, upsert=True)], ordered=False)`
+keyed by the EXACT same unique-key tuples as the production indexes
+defined in `scripts/sgo/ingest.py::ensure_indexes()`:
 
-### Pre-flight (one-time): confirm legacy SGO collections have NCAAF data
+- `sgo_events`     unique: `(event_id, snapshot_time)`
+- `sgo_players`    unique: `(player_id)`
+- `sgo_props_raw`  unique: `(event_id, odd_id, book_id, side, line, snapshot_time)`
 
-`build_pp_research_core` reads from `sgo_props_raw` + `sgo_events`. The
-NEW per-sport pipeline (`workers/team/historical_player_ingest.py`)
-writes ONLY to `ncaaf_player_historical_props` — NOT to `sgo_props_raw`
-or `sgo_events`. So before kicking off the pipeline, verify:
+Re-running the script produces zero net new rows.
+
+**`odd_id` synthesis (per-anchor stable)** — the new NCAAF pipeline
+discards SGO's market ID, but the legacy `sgo_props_raw` unique index
+requires one. We synthesize a deterministic 24-char SHA1 prefix from
+`(event_id, statID, statEntityID, periodID, side, line)`:
+
+```python
+synth_odd_id = sha1(f"{event_id}|{statID}|{statEntityID}|{periodID}|{side}|{line}").hexdigest()[:24]
+```
+
+Same anchor across multiple books → same `odd_id` (essential for
+`build_pp_research_core`'s aggregation grouping). Different anchors →
+different IDs. SHA1-24 is collision-safe at 400k rows.
+
+**NCAAF-only filters** — every source query is gated by
+`{league: "NCAAF"}` (or `{league_id: "NCAAF"}` for `sgo_player_stats`).
+MLB / NBA / NFL rows are never read or written.
+
+**Safety** — defaults to dry-run. Requires explicit `--apply` to write.
+
+**`sgo_book_consensus`** — intentionally NOT populated. The new
+NCAAF pipeline doesn't carry fair-odds / consensus data, and
+`build_pp_research_core` already handles missing consensus rows
+gracefully (`consensus_doc = None`; downstream stamps `fair_odds=None`,
+`book_odds=None`, `consensus_probability=None` on the anchor). Skipping
+this collection is the architecturally correct choice — synthesizing
+fake consensus values would corrupt downstream model features.
+
+---
+
+## Execution order (run on the VPS)
+
+All commands run from your prod backend directory (e.g.
+`cd /var/www/app/backend`). Replace dates as needed for the seasons
+you've acquired.
+
+### Step 1 — Reshape NCAAF canonical → legacy SGO archive
+
+```bash
+# Dry-run first (counts only; no writes)
+python -m scripts.sgo.reshape_ncaaf_to_legacy_sgo --dry-run
+
+# Apply (idempotent — safe to re-run)
+python -m scripts.sgo.reshape_ncaaf_to_legacy_sgo --apply
+```
+
+Expected output footer:
+
+```
+  POST-MIGRATION COUNTS (league_id=NCAAF):
+    sgo_events     NCAAF:  <count from ncaaf_matchups>
+    sgo_players    NCAAF:  <distinct player_ids>
+    sgo_props_raw  NCAAF:  ~396,603 (matches ncaaf_player_historical_props)
+```
+
+### Step 2 — Build NCAAF research core (multi-book anchors)
+
+```bash
+# Dry-run (sizes the universe and prints sample anchor)
+python -m scripts.sgo.build_pp_research_core \
+    --league NCAAF --dry-run
+
+# Apply — writes to sgo_ncaaf_research_core
+python -m scripts.sgo.build_pp_research_core --league NCAAF
+```
+
+You can scope by season if you prefer:
+`--start 2024-08-24 --end 2024-12-15`.
+
+### Step 3 — Build NCAAF outcomes (grade props vs actual stats)
+
+NCAAF skips the enrichment step (same as NFL); outcomes script reads
+the raw research core directly.
+
+```bash
+# Dry-run
+python -m scripts.sgo.build_historical_outcomes \
+    --league NCAAF --dry-run
+
+# Apply — writes to sgo_ncaaf_research_outcomes.
+# --debug-unresolved is recommended on the first live run; it prints
+# a grouped breakdown of every UNRESOLVED row so you can spot any
+# resolver gaps before scaling up.
+python -m scripts.sgo.build_historical_outcomes \
+    --league NCAAF --debug-unresolved
+```
+
+### Step 4 — Build NCAAF model features (no-leakage rolling features)
+
+```bash
+# Dry-run
+python -m scripts.sgo.build_historical_model_features \
+    --league NCAAF --dry-run
+
+# Apply — writes to sgo_ncaaf_research_model_features
+python -m scripts.sgo.build_historical_model_features --league NCAAF
+```
+
+Default lookback is 90 days. For full-season `season_to_date_avg`
+coverage, bump to 180:
+`--lookback-days 180`.
+
+### Step 5 — Score NCAAF historical model
+
+```bash
+# With a trained model file:
+python -m scripts.sgo.score_historical_model \
+    --league NCAAF \
+    --model-path /path/to/your/ncaaf_model.joblib \
+    --model-version ncaaf_v1
+
+# OR with a custom Python entrypoint (module.path:func returning P(hit)):
+python -m scripts.sgo.score_historical_model \
+    --league NCAAF \
+    --model-entrypoint your_module.predictors:ncaaf_v1_predict \
+    --model-version ncaaf_v1
+```
+
+Writes to **`sgo_ncaaf_research_model_predictions`**.
+
+---
+
+## Step 6 — Final verification (after Step 5 completes)
+
+Run this single mongosh script to verify the end-to-end NCAAF pipeline
+produced the expected counts at every stage:
 
 ```bash
 mongosh "$MONGO_URL/$DB_NAME" --quiet --eval '
-  print("sgo_events     NCAAF:", db.sgo_events.countDocuments({league_id:"NCAAF"}));
-  print("sgo_props_raw  NCAAF:", db.sgo_props_raw.countDocuments({league_id:"NCAAF"}));
-  print("sgo_players    NCAAF:", db.sgo_players.countDocuments({$or:[{league_id:"NCAAF"},{sport_id:"FOOTBALL"}]}));
+const ncaaf = {league_id:"NCAAF"};
+const NCAAF = {league:"NCAAF"};
+print("===== LEGACY ARCHIVE (after reshape, Step 1) =====");
+print("sgo_events                          NCAAF:",
+      db.sgo_events.countDocuments(ncaaf));
+print("sgo_players                         NCAAF:",
+      db.sgo_players.countDocuments(ncaaf));
+print("sgo_props_raw                       NCAAF:",
+      db.sgo_props_raw.countDocuments(ncaaf));
+print("sgo_player_stats                    NCAAF:",
+      db.sgo_player_stats.countDocuments(ncaaf));
+print("");
+print("===== CANONICAL SOURCE (unchanged) =====");
+print("ncaaf_matchups:                            ",
+      db.ncaaf_matchups.countDocuments({}));
+print("ncaaf_player_historical_props:             ",
+      db.ncaaf_player_historical_props.countDocuments({}));
+print("");
+print("===== PIPELINE OUTPUTS =====");
+print("sgo_ncaaf_research_core              (Step 2):",
+      db.sgo_ncaaf_research_core.countDocuments({}));
+print("sgo_ncaaf_research_outcomes          (Step 3):",
+      db.sgo_ncaaf_research_outcomes.countDocuments({}));
+const r = db.sgo_ncaaf_research_outcomes.aggregate([
+    {$group: {_id:"$outcome", n:{$sum:1}}}, {$sort:{n:-1}}
+]).toArray();
+r.forEach(x => print("  outcome=" + x._id + ": " + x.n));
+print("sgo_ncaaf_research_model_features    (Step 4):",
+      db.sgo_ncaaf_research_model_features.countDocuments({}));
+print("  feature_ready=true:",
+      db.sgo_ncaaf_research_model_features.countDocuments({feature_ready:true}));
+print("sgo_ncaaf_research_model_predictions (Step 5):",
+      db.sgo_ncaaf_research_model_predictions.countDocuments({}));
+print("");
+print("===== CROSS-LEAGUE CONTAMINATION CHECK =====");
+print("(should be 0 — reshape is NCAAF-only)");
+print("non-NCAAF events with reshape_source:",
+      db.sgo_events.countDocuments(
+        {reshape_source:"ncaaf_legacy_bridge", league_id:{$ne:"NCAAF"}}));
+print("non-NCAAF players with reshape_source:",
+      db.sgo_players.countDocuments(
+        {reshape_source:"ncaaf_legacy_bridge", league_id:{$ne:"NCAAF"}}));
+print("non-NCAAF props_raw with reshape_source:",
+      db.sgo_props_raw.countDocuments(
+        {reshape_source:"ncaaf_legacy_bridge", league_id:{$ne:"NCAAF"}}));
 '
 ```
 
-You stated `sgo_player_stats` already has 3,570 NCAAF rows across 600
-events — that PROVES `sgo_events` is populated (since
-`ingest_historical_player_stats.py --source sgo` filters
-`sgo_events.find({league_id:"NCAAF"})`). The question is whether
-`sgo_props_raw` was also populated. Two outcomes:
+### Expected counts (orders of magnitude)
 
-- **`sgo_props_raw` NCAAF count > 0** → straight ahead, run Step 1 below.
-- **`sgo_props_raw` NCAAF count = 0** → you only ran the new
-  per-sport ingest. You'll first need to either (a) run the legacy
-  `scripts/sgo/ingest.py` for NCAAF, OR (b) write a one-shot reshape
-  from `ncaaf_player_historical_props` into `sgo_props_raw` schema.
-  Ping me and I'll write that reshape script — it's ~80 LOC.
-
-### Step 1 — Build NCAAF research core (anchors + multi-book attachment)
-
-```bash
-# Dry-run first to size the universe
-python -m scripts.sgo.build_pp_research_core \
-    --league NCAAF --start 2024-08-24 --end 2024-12-15 --dry-run
-
-# Live write
-python -m scripts.sgo.build_pp_research_core \
-    --league NCAAF --start 2024-08-24 --end 2024-12-15
-```
-
-Writes to **`sgo_ncaaf_research_core`**. One row per
-`(event_id, player_id, stat_id, side, line, period_id)` anchor.
-
-### Step 2 — Ingest NCAAF player stats (already done per your message)
-
-You said `sgo_player_stats` has 3,570 NCAAF rows. If you need to top up:
-
-```bash
-python -m scripts.sgo.ingest_historical_player_stats \
-    --league NCAAF --source sgo --start 2024-08-24 --end 2024-12-15
-```
-
-(NCAAF now dispatches to `_normalize_nfl_stats()` — was previously
-falling through auto-detect.)
-
-### Step 3 — Build NCAAF outcomes (joins core + player_stats → graded rows)
-
-NCAAF, like NFL, **skips the enrichment step**. The outcomes script
-reads directly from `sgo_ncaaf_research_core`:
-
-```bash
-# Dry-run
-python -m scripts.sgo.build_historical_outcomes \
-    --league NCAAF --start 2024-08-24 --end 2024-12-15 --dry-run
-
-# Live with detailed unresolved breakdown (recommended first live run)
-python -m scripts.sgo.build_historical_outcomes \
-    --league NCAAF --start 2024-08-24 --end 2024-12-15 --debug-unresolved
-```
-
-Writes to **`sgo_ncaaf_research_outcomes`**. Each row has:
-`actual_value`, `outcome` (WIN/LOSS/PUSH/UNRESOLVED), `hit`,
-`margin_vs_line`, `stat_family`, `grading_version=v1`.
-
-### Step 4 — Build NCAAF model features (prior-history-only, no leakage)
-
-```bash
-# Dry-run
-python -m scripts.sgo.build_historical_model_features \
-    --league NCAAF --start 2024-09-01 --end 2024-12-15 --dry-run
-
-# Live
-python -m scripts.sgo.build_historical_model_features \
-    --league NCAAF --start 2024-09-01 --end 2024-12-15
-```
-
-Writes to **`sgo_ncaaf_research_model_features`**. Computes
-`last_3 / last_5 / last_10 / last_20` rolling averages, recent
-volatility, line-relative hit-rates, plus passthrough market signal.
-
-### Step 5 — Score NCAAF historical rows (optional — model predictions)
-
-The scoring script reads `sgo_pp_research_model_features` and writes
-`sgo_pp_research_model_predictions`. It's currently a **shared**
-collection filtered by `--league`. If you want a per-sport features
-collection (which my patch creates: `sgo_ncaaf_research_model_features`),
-you'll need to pass `--src-coll` to score_historical_model.py OR
-let me add the same league-routing pattern there:
-
-```bash
-# Current behaviour (shared features coll) — requires features to be
-# written into sgo_pp_research_model_features:
-python -m scripts.sgo.score_historical_model \
-    --league NCAAF --model-version v3
-```
-
-> Recommendation: either (a) point Step 4's `--out-coll
-> sgo_pp_research_model_features` to keep using the shared
-> collection, or (b) tell me to wire NCAAF routing into
-> `score_historical_model.py` the same way I did for the other
-> three scripts. (b) is the consistent choice.
+| Collection                                  | Expected after pipeline                                  |
+|---------------------------------------------|----------------------------------------------------------|
+| `sgo_events`             NCAAF              | matches `ncaaf_matchups` count                           |
+| `sgo_players`            NCAAF              | ≥ ~600–2k (distinct players in the dataset)              |
+| `sgo_props_raw`          NCAAF              | ~396,603 (matches `ncaaf_player_historical_props`)       |
+| `sgo_player_stats`       NCAAF              | 3,570 (unchanged)                                        |
+| `sgo_ncaaf_research_core`                   | ≤ props_raw count (deduped to anchor tuples)             |
+| `sgo_ncaaf_research_outcomes`               | = research_core count                                    |
+|   — `outcome=WIN`                           | typical ~45-55% of resolved                              |
+|   — `outcome=LOSS`                          | typical ~45-55% of resolved                              |
+|   — `outcome=PUSH`                          | small (<5%)                                              |
+|   — `outcome=UNRESOLVED`                    | varies; expect a chunk for stat-families w/o resolver yet|
+| `sgo_ncaaf_research_model_features`         | = research_core count                                    |
+|   — `feature_ready=true`                    | depends on player game-history depth (5+ prior games)    |
+| `sgo_ncaaf_research_model_predictions`      | = `feature_ready=true` count                             |
+| **cross-league contamination check**        | **MUST be 0**                                            |
 
 ---
 
-## Pipeline DAG (full, with collection names)
+## Rollback
 
-```
-                 ┌───────────────────────────────────────┐
-                 │  LEGACY SGO INGEST (one-time per      │
-                 │  league; populates raw archives):     │
-                 │  scripts/sgo/ingest.py                │
-                 └─┬──────────┬──────────┬──────────┬────┘
-                   │          │          │          │
-              sgo_events  sgo_props_raw sgo_players sgo_book_consensus
-                   │          │          │          │
-                   └────┬─────┴────┬─────┴──────────┘
-                        │          │
-                        ▼          ▼
-              ┌─────────────────────────────────────┐
-              │  build_pp_research_core.py          │
-              │  --league {MLB|NBA|NFL|NCAAF}       │
-              └────────┬────────────────────┬───────┘
-                       │ (MLB/NBA)          │ (NFL/NCAAF)
-                       ▼                    │
-            sgo_pp_research_core            │
-                       │                    │
-                       ▼                    │
-   ┌──────────────────────────────────────┐ │
-   │ build_historical_consensus_          │ │
-   │   probabilities.py                   │ │
-   │ (MLB/NBA ONLY — NFL/NCAAF skip this) │ │
-   └────────┬─────────────────────────────┘ │
-            │                                │
-            ▼                                │
-    sgo_pp_research_core_enriched            │
-            │                                │
-            └────────────┬───────────────────┴──────┐
-                         │                          │
-                         │  + sgo_player_stats      │
-                         │  (← ingest_historical_   │
-                         │      player_stats.py)    │
-                         ▼                          ▼
-              ┌─────────────────────────────────────────┐
-              │  build_historical_outcomes.py           │
-              │  --league {MLB|NBA|NFL|NCAAF}           │
-              └──────┬─────────────────────────┬────────┘
-                     │                         │
-                     ▼                         ▼
-         sgo_pp_research_outcomes   sgo_{nfl,ncaaf}_research_outcomes
-         (MLB/NBA)                  (one per sport)
-                     ▲                         ▲
-                     │                         │
-              ┌──────┴─────────────────────────┴────────┐
-              │  build_historical_model_features.py     │
-              │  (writes per-league via my patch)       │
-              └────────┬────────────────────────────────┘
-                       ▼
-   sgo_{pp|nfl|ncaaf}_research_model_features
-                       │
-                       ▼
-              ┌─────────────────────────────────┐
-              │  score_historical_model.py      │
-              │  --league {…} --model-version   │
-              └────────┬────────────────────────┘
-                       ▼
-         sgo_pp_research_model_predictions
-         (currently shared across leagues)
+If you ever need to undo the reshape (e.g. you re-acquire NCAAF via
+the legacy SGO ingest later), the migrated rows are tagged with
+`reshape_source="ncaaf_legacy_bridge"` and can be cleanly removed:
+
+```bash
+mongosh "$MONGO_URL/$DB_NAME" --quiet --eval '
+db.sgo_events.deleteMany({league_id:"NCAAF",
+    reshape_source:"ncaaf_legacy_bridge"});
+db.sgo_players.deleteMany({league_id:"NCAAF",
+    reshape_source:"ncaaf_legacy_bridge"});
+db.sgo_props_raw.deleteMany({league_id:"NCAAF",
+    reshape_source:"ncaaf_legacy_bridge"});
+'
 ```
 
----
-
-## Notes on the dual-pipeline architecture
-
-This codebase has TWO independent historical pipelines:
-
-1. **Legacy SGO research pipeline** — what this doc describes. Driven by
-   `sgo_props_raw` + `sgo_events`. Produces graded outcomes for
-   backtesting/modelling.
-
-2. **Per-sport "Master Hub" pipeline** —
-   `workers/team/historical_player_ingest.py` writes directly into
-   `{sport}_player_historical_props` (e.g. `ncaaf_player_historical_props`
-   396,603 rows on your VPS). This is the **canonical home of the raw
-   prop universe** for the live/board layer; it does NOT feed
-   `build_pp_research_core`.
-
-If `sgo_props_raw` does NOT contain NCAAF data on your VPS (Step 1
-pre-flight = 0), the cleanest fix is a one-shot reshape from
-`ncaaf_player_historical_props` → `sgo_props_raw` shape. The schema
-mapping is straightforward (`market` → `stat_id`, `book` → `book_id`,
-`price` → `price`, `line` → `line`, `side` → `side`, …). Tell me and I'll
-write it next.
+(MLB/NBA/NFL rows lack the `reshape_source` field so they're
+untouched.)
