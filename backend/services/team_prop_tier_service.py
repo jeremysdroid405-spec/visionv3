@@ -28,9 +28,10 @@ from services.team_prop_passthrough import (
 logger = logging.getLogger(__name__)
 
 MATCHUP_COLL_BY_SPORT: Dict[str, str] = {
-    "mlb": "team_matchups",
-    "nba": "team_matchups",
-    "nfl": "nfl_matchups",
+    "mlb":   "team_matchups",
+    "nba":   "team_matchups",
+    "nfl":   "nfl_matchups",
+    "ncaaf": "ncaaf_matchups",
 }
 TEAM_MASTER_COLL = "team_master_hub"
 

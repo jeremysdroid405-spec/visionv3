@@ -45,9 +45,10 @@ _DEFAULT_TIMEOUT_SEC = 30.0
 # League filter per sport — matches the canonical client convention
 # (`sportID` + `leagueID` as separate camelCase query params).
 _SPORT_TO_SGO_IDS: Dict[str, Dict[str, str]] = {
-    "mlb": {"sportID": "BASEBALL",   "leagueID": "MLB"},
-    "nba": {"sportID": "BASKETBALL", "leagueID": "NBA"},
-    "nfl": {"sportID": "FOOTBALL",   "leagueID": "NFL"},
+    "mlb":   {"sportID": "BASEBALL",   "leagueID": "MLB"},
+    "nba":   {"sportID": "BASKETBALL", "leagueID": "NBA"},
+    "nfl":   {"sportID": "FOOTBALL",   "leagueID": "NFL"},
+    "ncaaf": {"sportID": "FOOTBALL",   "leagueID": "NCAAF"},
 }
 
 

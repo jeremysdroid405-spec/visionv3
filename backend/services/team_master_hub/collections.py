@@ -197,6 +197,33 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
         ),
     ]),
 
+    # ── NCAAF (mirrors NFL exactly: dedicated matchup + team_hist
+    # collections; player slice added further down). ─────────────────
+    ("ncaaf_matchups", [
+        IndexModel([("event_id", ASCENDING)],
+                    unique=True,
+                    name="ix_ncaaf_matchup_event_id_unique"),
+        IndexModel([("game_date", ASCENDING)],
+                    name="ix_ncaaf_matchup_date"),
+    ]),
+    ("ncaaf_historical_props", [
+        IndexModel(
+            [("event_id", ASCENDING), ("team_id", ASCENDING),
+              ("market",   ASCENDING), ("line",    ASCENDING),
+              ("side",     ASCENDING), ("book",    ASCENDING)],
+            unique=True,
+            name="ix_ncaaf_hist_prop_compound_unique",
+        ),
+        IndexModel(
+            [("game_date", ASCENDING)],
+            name="ix_ncaaf_hist_prop_date",
+        ),
+        IndexModel(
+            [("market", ASCENDING), ("game_date", ASCENDING)],
+            name="ix_ncaaf_hist_prop_market_date",
+        ),
+    ]),
+
     # ── historical_acquire_runs (Phase 1.A.4.acquire audit) ─────────
     # Append-only audit log for every historical-window pull. Records
     # date window, sport, n_events, n_writes, status. NEVER deleted.
@@ -284,6 +311,30 @@ TEAM_COLLECTIONS: List[Tuple[str, List[IndexModel]]] = [
             name="ix_nba_player_hist_player_date",
         ),
     ]),
+
+    # ── ncaaf_player_historical_props ──────────────────────────────
+    # Mirrors NFL spec. Acquire-all.
+    ("ncaaf_player_historical_props", [
+        IndexModel(
+            [("event_id", ASCENDING), ("player_id", ASCENDING),
+              ("market",   ASCENDING), ("line",      ASCENDING),
+              ("side",     ASCENDING), ("book",      ASCENDING)],
+            unique=True,
+            name="ix_ncaaf_player_hist_compound_unique",
+        ),
+        IndexModel(
+            [("game_date", ASCENDING)],
+            name="ix_ncaaf_player_hist_date",
+        ),
+        IndexModel(
+            [("market", ASCENDING), ("game_date", ASCENDING)],
+            name="ix_ncaaf_player_hist_market_date",
+        ),
+        IndexModel(
+            [("player_id", ASCENDING), ("game_date", ASCENDING)],
+            name="ix_ncaaf_player_hist_player_date",
+        ),
+    ]),
 ]
 
 # Compound-unique-key column ordering keyed by collection name —
@@ -326,6 +377,11 @@ COMPOUND_UNIQUE_KEYS: Dict[str, Tuple[str, ...]] = {
         "event_id", "team_id", "market", "line", "side",
         "book",
     ),
+    "ncaaf_matchups": ("event_id",),
+    "ncaaf_historical_props": (
+        "event_id", "team_id", "market", "line", "side",
+        "book",
+    ),
     "historical_acquire_runs": ("run_id",),
     "nfl_player_historical_props": (
         "event_id", "player_id", "market", "line", "side",
@@ -336,6 +392,10 @@ COMPOUND_UNIQUE_KEYS: Dict[str, Tuple[str, ...]] = {
         "book",
     ),
     "nba_player_historical_props": (
+        "event_id", "player_id", "market", "line", "side",
+        "book",
+    ),
+    "ncaaf_player_historical_props": (
         "event_id", "player_id", "market", "line", "side",
         "book",
     ),

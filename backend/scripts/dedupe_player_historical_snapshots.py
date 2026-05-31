@@ -69,6 +69,13 @@ COLL_SPECS: Dict[str, Dict[str, Any]] = {
                        ("market", 1), ("line", 1),
                        ("side", 1), ("book", 1)],
     },
+    "ncaaf_player_historical_props": {
+        "index_name": "ix_ncaaf_player_hist_compound_unique",
+        "entity": "player_id",
+        "new_keys": [("event_id", 1), ("player_id", 1),
+                       ("market", 1), ("line", 1),
+                       ("side", 1), ("book", 1)],
+    },
     "team_historical_props": {
         "index_name": "ix_hist_prop_compound_unique",
         "entity": "team_id",
@@ -78,6 +85,13 @@ COLL_SPECS: Dict[str, Dict[str, Any]] = {
     },
     "nfl_historical_props": {
         "index_name": "ix_nfl_hist_prop_compound_unique",
+        "entity": "team_id",
+        "new_keys": [("event_id", 1), ("team_id", 1),
+                       ("market", 1), ("line", 1),
+                       ("side", 1), ("book", 1)],
+    },
+    "ncaaf_historical_props": {
+        "index_name": "ix_ncaaf_hist_prop_compound_unique",
         "entity": "team_id",
         "new_keys": [("event_id", 1), ("team_id", 1),
                        ("market", 1), ("line", 1),

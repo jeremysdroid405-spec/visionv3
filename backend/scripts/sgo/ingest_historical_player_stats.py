@@ -82,9 +82,10 @@ PLAYERS_COLL = "sgo_players"
 # Each entry is (collection_name, league_field_name) — the field
 # carrying the league identifier on docs of that collection.
 DRIVER_COLL_BY_LEAGUE: Dict[str, Tuple[str, str]] = {
-    "MLB": ("mlb_player_historical_props", "league"),
-    "NBA": ("nba_player_historical_props", "league"),
-    "NFL": ("nfl_player_historical_props", "league"),
+    "MLB":   ("mlb_player_historical_props",   "league"),
+    "NBA":   ("nba_player_historical_props",   "league"),
+    "NFL":   ("nfl_player_historical_props",   "league"),
+    "NCAAF": ("ncaaf_player_historical_props", "league"),
 }
 LEGACY_DRIVER_COLL = "sgo_pp_research_core_enriched"
 LEGACY_LEAGUE_FIELD = "league_id"

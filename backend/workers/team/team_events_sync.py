@@ -36,6 +36,12 @@ from ._sgo_provider import SGOFetchError, SGOPayloadProvider
 logger = logging.getLogger("workers.team.team_events_sync")
 
 MATCHUPS_COLL = "team_matchups"
+MATCHUPS_COLL_BY_SPORT: Dict[str, str] = {
+    "mlb":   "team_matchups",
+    "nba":   "team_matchups",
+    "nfl":   "nfl_matchups",
+    "ncaaf": "ncaaf_matchups",
+}
 
 
 def _build_matchup_upserts(rows: List[Dict[str, Any]]) -> List[UpdateOne]:
@@ -148,8 +154,10 @@ async def fetch_and_sync(
     diagnosis = "dry_run mode — no rows written"
     if not dry_run and rows:
         try:
+            target_coll = MATCHUPS_COLL_BY_SPORT.get(
+                sport.lower(), MATCHUPS_COLL)
             ops = _build_matchup_upserts(rows)
-            result = await db[MATCHUPS_COLL].bulk_write(ops, ordered=False)
+            result = await db[target_coll].bulk_write(ops, ordered=False)
             n_upserted = len(result.upserted_ids or {})
             n_modified = int(result.modified_count or 0)
             n_matched  = int(result.matched_count or 0)

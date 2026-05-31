@@ -52,10 +52,12 @@ logger = logging.getLogger("workers.team.historical_ingest")
 
 # Sport → (matchup_collection, historical_props_collection)
 SPORT_COLLECTIONS: Dict[str, Tuple[str, str]] = {
-    "mlb": ("team_matchups", "team_historical_props"),
-    "nfl": ("nfl_matchups",  "nfl_historical_props"),
+    "mlb":   ("team_matchups",  "team_historical_props"),
+    "nfl":   ("nfl_matchups",   "nfl_historical_props"),
     # NBA piggy-backs on team_matchups / team_historical_props for now
-    "nba": ("team_matchups", "team_historical_props"),
+    "nba":   ("team_matchups",  "team_historical_props"),
+    # NCAAF uses its own dedicated collections — mirrors NFL.
+    "ncaaf": ("ncaaf_matchups", "ncaaf_historical_props"),
 }
 
 AUDIT_COLL = "historical_acquire_runs"
@@ -217,6 +219,22 @@ _TEAM_HIST_INDEX_SPECS_BY_COLL: Dict[str, List[Dict[str, Any]]] = {
         {"name": "ix_nfl_matchup_sport_event_unique",
          "keys": [("sport", 1), ("event_id", 1)],
          "unique": True},
+    ],
+    "ncaaf_matchups": [
+        {"name": "ix_ncaaf_matchup_event_id_unique",
+         "keys": [("event_id", 1)],
+         "unique": True},
+    ],
+    "ncaaf_historical_props": [
+        {"name": "ix_ncaaf_hist_prop_compound_unique",
+         "keys": [("event_id", 1), ("team_id", 1),
+                  ("market", 1), ("line", 1),
+                  ("side", 1), ("book", 1)],
+         "unique": True},
+        {"name": "ix_ncaaf_hist_prop_date",
+         "keys": [("game_date", 1)]},
+        {"name": "ix_ncaaf_hist_prop_market_date",
+         "keys": [("market", 1), ("game_date", 1)]},
     ],
 }
 

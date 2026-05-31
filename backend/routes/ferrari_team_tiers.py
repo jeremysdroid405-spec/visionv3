@@ -41,7 +41,7 @@ def init_router(db) -> None:
     _db = db
 
 
-_SUPPORTED_SPORTS = ("mlb", "nba", "nfl")
+_SUPPORTED_SPORTS = ("mlb", "nba", "nfl", "ncaaf")
 
 
 def _validate_sport(s: str) -> str:

@@ -40,12 +40,13 @@ from ._sgo_provider import SGOFetchError, SGOPayloadProvider
 logger = logging.getLogger("workers.team.historical_player_ingest")
 
 PLAYER_HIST_COLL_BY_SPORT: Dict[str, str] = {
-    "mlb": "mlb_player_historical_props",
-    "nba": "nba_player_historical_props",
-    "nfl": "nfl_player_historical_props",
+    "mlb":   "mlb_player_historical_props",
+    "nba":   "nba_player_historical_props",
+    "nfl":   "nfl_player_historical_props",
+    "ncaaf": "ncaaf_player_historical_props",
 }
 LEAGUE_BY_SPORT: Dict[str, str] = {
-    "mlb": "MLB", "nba": "NBA", "nfl": "NFL",
+    "mlb": "MLB", "nba": "NBA", "nfl": "NFL", "ncaaf": "NCAAF",
 }
 # Kept for backward-compat with `nfl_player_historical_acquire` CLI.
 PLAYER_HIST_COLL = "nfl_player_historical_props"
@@ -74,7 +75,7 @@ _PLAYER_HIST_INDEX_SPECS_BY_SPORT: Dict[str, List[Dict[str, Any]]] = {
         {"name": f"ix_{sport_}_player_hist_player_date",
          "keys": [("player_id", 1), ("game_date", 1)]},
     ]
-    for sport_ in ("mlb", "nba", "nfl")
+    for sport_ in ("mlb", "nba", "nfl", "ncaaf")
 }
 
 
