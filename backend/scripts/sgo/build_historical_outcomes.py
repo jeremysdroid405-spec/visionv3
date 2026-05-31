@@ -807,15 +807,22 @@ async def amain(args: argparse.Namespace) -> int:
     db = client[os.environ["DB_NAME"]]
 
     # Hybrid layout: NFL outcomes land in sgo_nfl_research_outcomes,
-    # and read from sgo_nfl_research_core (no enrichment step yet).
-    out_coll = args.out_coll or (
-        "sgo_nfl_research_outcomes"
-        if (args.league or "").upper() == "NFL" else OUT_COLL
-    )
-    src_coll = args.src_coll or (
-        "sgo_nfl_research_core"
-        if (args.league or "").upper() == "NFL" else SRC_COLL
-    )
+    # NCAAF outcomes land in sgo_ncaaf_research_outcomes — both read from
+    # their per-sport research_core (no enrichment step). MLB/NBA still
+    # read from sgo_pp_research_core_enriched and write to
+    # sgo_pp_research_outcomes.
+    league_u = (args.league or "").upper()
+    if league_u == "NFL":
+        default_out = "sgo_nfl_research_outcomes"
+        default_src = "sgo_nfl_research_core"
+    elif league_u == "NCAAF":
+        default_out = "sgo_ncaaf_research_outcomes"
+        default_src = "sgo_ncaaf_research_core"
+    else:
+        default_out = OUT_COLL
+        default_src = SRC_COLL
+    out_coll = args.out_coll or default_out
+    src_coll = args.src_coll or default_src
     # Some scope below still reads OUT_COLL from the module global; use the
     # canonical name in messages.
     t0 = time.time()
@@ -1002,12 +1009,14 @@ def main() -> int:
                          f"{GRADING_VERSION}")
     p.add_argument("--out-coll", default=None,
                     help="Override output collection. Defaults to "
-                          "sgo_pp_research_outcomes (MLB / NBA / generic) "
-                          "or sgo_nfl_research_outcomes when --league=NFL.")
+                          "sgo_pp_research_outcomes (MLB / NBA / generic), "
+                          "sgo_nfl_research_outcomes when --league=NFL, or "
+                          "sgo_ncaaf_research_outcomes when --league=NCAAF.")
     p.add_argument("--src-coll", default=None,
                     help="Override source collection of anchor rows. "
-                          "Defaults to sgo_pp_research_core_enriched (MLB) "
-                          "or sgo_nfl_research_core when --league=NFL.")
+                          "Defaults to sgo_pp_research_core_enriched (MLB), "
+                          "sgo_nfl_research_core when --league=NFL, or "
+                          "sgo_ncaaf_research_core when --league=NCAAF.")
     p.add_argument("--debug-unresolved", action="store_true",
                     help="Print a grouped breakdown of every unresolved row "
                          "(stat_id, stat_family, reason, sample player + "

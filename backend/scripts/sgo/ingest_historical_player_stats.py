@@ -268,6 +268,12 @@ def normalize_stats(raw: Dict[str, Any], *, league: Optional[str] = None
         return _normalize_nba_stats(raw)
     if lg == "NFL":
         return _normalize_nfl_stats(raw)
+    if lg == "NCAAF":
+        # College football shares the same SGO stat-family schema as NFL
+        # (passing_yards, rushing_yards, receiving_yards, …). Reuse the
+        # NFL normalizer so build_historical_outcomes can resolve actual
+        # values without a second alias hop.
+        return _normalize_nfl_stats(raw)
     # Auto-detect: try both, pick the one with more signal
     mlb = _normalize_mlb_stats(raw)
     nba = _normalize_nba_stats(raw)

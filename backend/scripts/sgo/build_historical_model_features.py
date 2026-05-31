@@ -517,13 +517,39 @@ async def amain(args: argparse.Namespace) -> int:
 async def _amain_body(args: argparse.Namespace, client) -> int:
     db = client[os.environ["DB_NAME"]]
 
+    # Hybrid per-league source/output routing — same pattern as
+    # build_historical_outcomes.py. NFL/NCAAF skip enrichment and read
+    # directly from their per-sport research_core; MLB/NBA continue to
+    # read the enriched collection.
+    global SRC_COLL, OUT_COLL
+    league_u = (args.league or "").upper()
+    if league_u == "NFL":
+        default_src = "sgo_nfl_research_core"
+        default_out = "sgo_nfl_research_model_features"
+    elif league_u == "NCAAF":
+        default_src = "sgo_ncaaf_research_core"
+        default_out = "sgo_ncaaf_research_model_features"
+    else:
+        default_src = SRC_COLL
+        default_out = OUT_COLL
+    src_coll = getattr(args, "src_coll", None) or default_src
+    out_coll = getattr(args, "out_coll", None) or default_out
+
+    # Rebind module-level constants so downstream helpers
+    # (_distinct_game_dates, process_date, ensure_out_indexes,
+    #  load_prior_history) pick up the per-league routing without a
+    # signature change.
+    SRC_COLL = src_coll
+    OUT_COLL = out_coll
+
     t0 = time.time()
     print(f"[{datetime.now(timezone.utc).isoformat()}] "
           f"build_historical_model_features (version={FEATURE_VERSION})")
     print(f"  league={args.league or '(all)'}  "
           f"window=[{args.start or 'all'} .. {args.end or 'all'}]  "
           f"dry_run={args.dry_run}  drop={args.drop_existing}  resume={args.resume}  "
-          f"lookback_days={args.lookback_days}")
+          f"lookback_days={args.lookback_days}  "
+          f"src_coll={src_coll}  out_coll={out_coll}")
 
     if args.drop_existing:
         if not args.dry_run and not args.yes:
@@ -618,8 +644,7 @@ def main() -> int:
     p.add_argument("--drop-existing", action="store_true")
     p.add_argument("--yes",    action="store_true")
     p.add_argument("--resume", action="store_true")
-    p.add_argument(
-        "--lookback-days", type=int, default=90,
+    p.add_argument("--lookback-days", type=int, default=90,
         help=("Days of prior history to load per date. "
                 "Default 90 — large enough to fully populate "
                 "last_3 / last_5 / last_10 / last_20 features and "
@@ -631,6 +656,16 @@ def main() -> int:
                 "4 GiB worker rlimit on multi-month MLB windows. "
                 "Push higher (120-180) only if you specifically need "
                 "`season_to_date_avg` to span the full season."))
+    p.add_argument("--src-coll", default=None,
+        help="Override source collection of anchor rows. "
+              "Defaults to sgo_pp_research_core_enriched (MLB/NBA), "
+              "sgo_nfl_research_core when --league=NFL, or "
+              "sgo_ncaaf_research_core when --league=NCAAF.")
+    p.add_argument("--out-coll", default=None,
+        help="Override output collection for model features. "
+              "Defaults to sgo_pp_research_model_features (MLB/NBA), "
+              "sgo_nfl_research_model_features when --league=NFL, or "
+              "sgo_ncaaf_research_model_features when --league=NCAAF.")
     return asyncio.run(amain(p.parse_args()))
 
 

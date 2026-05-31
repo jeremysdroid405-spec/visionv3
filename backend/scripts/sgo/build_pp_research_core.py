@@ -105,13 +105,15 @@ def _pick_anchor(seen_book: Dict[str, Dict[str, Any]]
 def _resolve_out_coll(args: argparse.Namespace) -> str:
     """Allow per-league override of the destination collection. Hybrid
     layout: MLB keeps writing to `sgo_pp_research_core`; NFL writes to
-    `sgo_nfl_research_core`. Set via `--out-coll` or auto-derived from
-    `--league`."""
+    `sgo_nfl_research_core`; NCAAF writes to `sgo_ncaaf_research_core`.
+    Set via `--out-coll` or auto-derived from `--league`."""
     if getattr(args, "out_coll", None):
         return str(args.out_coll)
     league = (getattr(args, "league", None) or "").upper()
     if league == "NFL":
         return "sgo_nfl_research_core"
+    if league == "NCAAF":
+        return "sgo_ncaaf_research_core"
     return OUT_COLL
 
 
@@ -498,7 +500,8 @@ def main() -> int:
     p.add_argument("--out-coll", default=None,
                     help="Override destination collection. Default: "
                           "sgo_pp_research_core (MLB) or sgo_nfl_research_core "
-                          "when --league=NFL.")
+                          "when --league=NFL or sgo_ncaaf_research_core "
+                          "when --league=NCAAF.")
     return asyncio.run(amain(p.parse_args()))
 
 
