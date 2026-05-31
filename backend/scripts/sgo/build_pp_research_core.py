@@ -40,6 +40,8 @@ for env_path in ("/var/www/app/backend/.env", "/app/backend/.env"):
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import UpdateOne, ASCENDING
 
+from ._index_utils import ensure_indexes as _shared_ensure_indexes
+
 OUT_COLL = "sgo_pp_research_core"
 
 # 2026-05-24 — Multi-book market universe (replaces single-PP anchor).
@@ -117,18 +119,18 @@ def _resolve_out_coll(args: argparse.Namespace) -> str:
     return OUT_COLL
 
 
-# ─── indexes (idempotent; safe to call repeatedly) ─────────────────────────
+# ─── indexes (idempotent; tolerant of pre-existing same-pattern indexes) ───
 async def ensure_out_indexes(db: AsyncIOMotorDatabase, out_coll: str = OUT_COLL) -> None:
-    coll = db[out_coll]
-    await coll.create_index(
-        [("event_id", ASCENDING), ("player_id", ASCENDING),
-         ("stat_id", ASCENDING), ("side", ASCENDING),
-         ("line", ASCENDING), ("period_id", ASCENDING)],
-        unique=True, name="pp_anchor_pk")
-    await coll.create_index("league_id")
-    await coll.create_index("game_date")
-    await coll.create_index("stat_id")
-    await coll.create_index("player_id")
+    await _shared_ensure_indexes(db[out_coll], [
+        {"keys": [("event_id", ASCENDING), ("player_id", ASCENDING),
+                  ("stat_id", ASCENDING), ("side", ASCENDING),
+                  ("line", ASCENDING), ("period_id", ASCENDING)],
+         "unique": True, "name": "pp_anchor_pk"},
+        {"keys": "league_id", "name": "league_id_1"},
+        {"keys": "game_date", "name": "game_date_1"},
+        {"keys": "stat_id",   "name": "stat_id_1"},
+        {"keys": "player_id", "name": "player_id_1"},
+    ])
 
 
 # ─── month iterator ───────────────────────────────────────────────────────

@@ -70,6 +70,8 @@ for env_path in ("/var/www/app/backend/.env", "/app/backend/.env"):
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import UpdateOne, ASCENDING
 
+from ._index_utils import ensure_indexes as _shared_ensure_indexes
+
 SRC_COLL    = "sgo_pp_research_core_enriched"
 STATS_COLL  = "sgo_player_stats"
 OUT_COLL    = "sgo_pp_research_model_features"
@@ -315,21 +317,21 @@ async def load_prior_history(
 
 # ─── indexes ───────────────────────────────────────────────────────────────
 async def ensure_out_indexes(db: AsyncIOMotorDatabase) -> None:
-    c = db[OUT_COLL]
-    await c.create_index(
-        [("event_id", ASCENDING), ("player_id", ASCENDING),
-         ("stat_id", ASCENDING), ("side", ASCENDING),
-         ("line", ASCENDING), ("period_id", ASCENDING)],
-        unique=True, name="feature_anchor_pk")
-    await c.create_index("league_id")
-    await c.create_index("game_date")
-    await c.create_index("player_id")
-    await c.create_index("stat_id")
-    await c.create_index("stat_family")
-    await c.create_index("feature_ready")
-    await c.create_index("feature_version")
-    await c.create_index("edge_vs_consensus")
-    await c.create_index("has_valid_devig")
+    await _shared_ensure_indexes(db[OUT_COLL], [
+        {"keys": [("event_id", ASCENDING), ("player_id", ASCENDING),
+                  ("stat_id", ASCENDING), ("side", ASCENDING),
+                  ("line", ASCENDING), ("period_id", ASCENDING)],
+         "unique": True, "name": "feature_anchor_pk"},
+        {"keys": "league_id",         "name": "league_id_1"},
+        {"keys": "game_date",         "name": "game_date_1"},
+        {"keys": "player_id",         "name": "player_id_1"},
+        {"keys": "stat_id",           "name": "stat_id_1"},
+        {"keys": "stat_family",       "name": "stat_family_1"},
+        {"keys": "feature_ready",     "name": "feature_ready_1"},
+        {"keys": "feature_version",   "name": "feature_version_1"},
+        {"keys": "edge_vs_consensus", "name": "edge_vs_consensus_1"},
+        {"keys": "has_valid_devig",   "name": "has_valid_devig_1"},
+    ])
 
 
 # ─── per-date processing ──────────────────────────────────────────────────

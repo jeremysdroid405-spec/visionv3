@@ -48,6 +48,8 @@ for env_path in ("/var/www/app/backend/.env", "/app/backend/.env"):
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import UpdateOne, ASCENDING
 
+from ._index_utils import ensure_indexes as _shared_ensure_indexes
+
 SRC_COLL     = "sgo_pp_research_core_enriched"
 STATS_COLL   = "sgo_player_stats"
 OUT_COLL     = "sgo_pp_research_outcomes"
@@ -577,23 +579,23 @@ def grade_outcome(
 
 # ───────────────────────────── indexes ────────────────────────────────────
 async def ensure_out_indexes(db: AsyncIOMotorDatabase, out_coll: str = OUT_COLL) -> None:
-    c = db[out_coll]
-    await c.create_index(
-        [("event_id", ASCENDING), ("player_id", ASCENDING),
-         ("stat_id", ASCENDING), ("side", ASCENDING),
-         ("line", ASCENDING), ("period_id", ASCENDING)],
-        unique=True, name="outcome_anchor_pk")
-    await c.create_index("league_id")
-    await c.create_index("game_date")
-    await c.create_index("player_id")
-    await c.create_index("stat_id")
-    await c.create_index("stat_family")
-    await c.create_index("outcome")
-    await c.create_index("outcome_resolved")
-    await c.create_index("hit")
-    await c.create_index("edge_vs_consensus")
-    await c.create_index("has_valid_devig")
-    await c.create_index("grading_version")
+    await _shared_ensure_indexes(db[out_coll], [
+        {"keys": [("event_id", ASCENDING), ("player_id", ASCENDING),
+                  ("stat_id", ASCENDING), ("side", ASCENDING),
+                  ("line", ASCENDING), ("period_id", ASCENDING)],
+         "unique": True, "name": "outcome_anchor_pk"},
+        {"keys": "league_id",         "name": "league_id_1"},
+        {"keys": "game_date",         "name": "game_date_1"},
+        {"keys": "player_id",         "name": "player_id_1"},
+        {"keys": "stat_id",           "name": "stat_id_1"},
+        {"keys": "stat_family",       "name": "stat_family_1"},
+        {"keys": "outcome",           "name": "outcome_1"},
+        {"keys": "outcome_resolved",  "name": "outcome_resolved_1"},
+        {"keys": "hit",               "name": "hit_1"},
+        {"keys": "edge_vs_consensus", "name": "edge_vs_consensus_1"},
+        {"keys": "has_valid_devig",   "name": "has_valid_devig_1"},
+        {"keys": "grading_version",   "name": "grading_version_1"},
+    ])
 
 
 # ───────────────────────────── per-date processing ────────────────────────

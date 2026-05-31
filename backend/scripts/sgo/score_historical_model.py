@@ -59,6 +59,8 @@ for env_path in ("/var/www/app/backend/.env", "/app/backend/.env"):
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import UpdateOne, ASCENDING
 
+from ._index_utils import ensure_indexes as _shared_ensure_indexes
+
 SRC_COLL = "sgo_pp_research_model_features"
 OUT_COLL = "sgo_pp_research_model_predictions"
 
@@ -166,19 +168,19 @@ def _row_to_vector(feats: Dict[str, Any], keys: List[str]) -> List[float]:
 
 # ───────────────────────────── indexes ────────────────────────────────────
 async def ensure_out_indexes(db: AsyncIOMotorDatabase) -> None:
-    c = db[OUT_COLL]
-    await c.create_index(
-        [("event_id", ASCENDING), ("player_id", ASCENDING),
-         ("stat_id", ASCENDING), ("side", ASCENDING),
-         ("line", ASCENDING), ("period_id", ASCENDING),
-         ("model_version", ASCENDING)],
-        unique=True, name="pred_anchor_pk")
-    await c.create_index("league_id")
-    await c.create_index("game_date")
-    await c.create_index("stat_family")
-    await c.create_index("model_probability")
-    await c.create_index("model_edge_vs_pp")
-    await c.create_index("model_version")
+    await _shared_ensure_indexes(db[OUT_COLL], [
+        {"keys": [("event_id", ASCENDING), ("player_id", ASCENDING),
+                  ("stat_id", ASCENDING), ("side", ASCENDING),
+                  ("line", ASCENDING), ("period_id", ASCENDING),
+                  ("model_version", ASCENDING)],
+         "unique": True, "name": "pred_anchor_pk"},
+        {"keys": "league_id",        "name": "league_id_1"},
+        {"keys": "game_date",        "name": "game_date_1"},
+        {"keys": "stat_family",      "name": "stat_family_1"},
+        {"keys": "model_probability","name": "model_probability_1"},
+        {"keys": "model_edge_vs_pp", "name": "model_edge_vs_pp_1"},
+        {"keys": "model_version",    "name": "model_version_1"},
+    ])
 
 
 # ───────────────────────────── main scoring ───────────────────────────────
