@@ -175,9 +175,17 @@ async def build_month(
             event_meta[ev["event_id"]] = ev
     eligible_events = list(event_meta)
     if not eligible_events:
+        # IMPORTANT: keep this dict's schema identical to the
+        # populated-return below — callers iterate logging fields
+        # unconditionally. Missing keys here previously crashed the
+        # logger when a season's first auto-window month was empty
+        # (e.g. NCAAF Aug → only a few games before week 1).
         return {"month": month, "events": 0, "anchors": 0,
                 "books_attached": 0, "with_consensus": 0,
-                "upserts": 0, "skipped_dry_run": dry_run}
+                "avg_books_per_anchor": 0.0,
+                "consensus_rate": None,
+                "upserts": 0, "skipped_dry_run": dry_run,
+                "sample_docs": []}
 
     # 2) Group props by (event, player, stat, side, line, period). Each
     # group must contain a PrizePicks row to qualify.
@@ -426,19 +434,24 @@ async def amain(args: argparse.Namespace) -> int:
         except Exception as e:
             print(f"    FAILED: {e!r}")
             continue
-        print(f"    events={r['events']}  pp_anchors={r['anchors']}  "
-              f"books_attached={r['books_attached']}  "
-              f"avg_books/anchor={r['avg_books_per_anchor']}  "
-              f"with_consensus={r['with_consensus']}  "
-              f"upserts={r['upserts']}")
+        # Defensive .get() everywhere — if build_month ever returns a
+        # partial dict (e.g. a future regression in the empty-month
+        # early-return), logging falls back to zeros instead of
+        # crashing the entire multi-month run.
+        print(f"    events={r.get('events', 0)}  "
+              f"pp_anchors={r.get('anchors', 0)}  "
+              f"books_attached={r.get('books_attached', 0)}  "
+              f"avg_books/anchor={r.get('avg_books_per_anchor', 0)}  "
+              f"with_consensus={r.get('with_consensus', 0)}  "
+              f"upserts={r.get('upserts', 0)}")
         total["months_processed"] += 1
-        total["events"] += r["events"]
-        total["anchors"] += r["anchors"]
-        total["books_attached"] += r["books_attached"]
-        total["with_consensus"] += r["with_consensus"]
-        total["upserts"] += r["upserts"]
+        total["events"]         += r.get("events", 0)
+        total["anchors"]        += r.get("anchors", 0)
+        total["books_attached"] += r.get("books_attached", 0)
+        total["with_consensus"] += r.get("with_consensus", 0)
+        total["upserts"]        += r.get("upserts", 0)
         if not total["sample_docs"]:
-            total["sample_docs"] = r["sample_docs"][:3]
+            total["sample_docs"] = (r.get("sample_docs") or [])[:3]
 
     # Final summary
     print()
