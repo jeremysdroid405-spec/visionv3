@@ -125,22 +125,88 @@ def _as_iso(v: Any) -> Optional[str]:
 # ──────────────────────────── index self-heal ────────────────────────────
 # Same indexes that `scripts/sgo/ingest.py::ensure_indexes()` installs —
 # baked in here so the migration is self-healing.
+#
+# Tolerant creation: if a unique index with the same KEY PATTERN already
+# exists (even under a different name, e.g. installed by an earlier
+# version of `scripts/sgo/ingest.py`), we skip recreation rather than
+# fail with IndexOptionsConflict / code 85. Never drops or mutates
+# existing indexes — touching them could ripple into MLB/NBA/NFL.
+async def _ensure_one_index(coll, *, keys, unique: bool, name: str) -> str:
+    """Create `name` on `coll` with the given key pattern + uniqueness.
+    If an index with the same key pattern already exists (under any
+    name), return that existing name and do nothing. If creation fails
+    with IndexOptionsConflict (85) and a same-pattern index exists,
+    swallow the error and return that existing name.
+
+    Returns the effective index name. Raises only on truly unexpected
+    failures (network, auth, etc.).
+    """
+    from pymongo.errors import OperationFailure
+    target_key_doc = dict(keys)   # SON-comparable dict form
+    existing = await coll.index_information()
+    for ex_name, ex_spec in existing.items():
+        ex_keys = ex_spec.get("key") or []
+        # Mongo returns key as a list of (field, direction) tuples
+        ex_key_doc = dict(ex_keys)
+        if ex_key_doc == target_key_doc:
+            # Match by pattern — even if name or `unique` differs we
+            # leave it alone (do NOT drop or rebuild — that could
+            # ripple into other leagues' data).
+            return ex_name
+    # No same-pattern index exists; safe to create.
+    try:
+        return await coll.create_index(
+            list(keys), unique=unique, name=name)
+    except OperationFailure as e:
+        # Code 85 = IndexOptionsConflict, 86 = IndexKeySpecsConflict.
+        # Race-condition safety net: re-scan and accept any same-
+        # pattern index that appeared between the check and create.
+        if getattr(e, "code", None) in (85, 86):
+            existing2 = await coll.index_information()
+            for ex_name, ex_spec in existing2.items():
+                if dict(ex_spec.get("key") or []) == target_key_doc:
+                    return ex_name
+        raise
+
+
 async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
-    await db[DST_EVENTS].create_index(
-        [("event_id", ASCENDING), ("snapshot_time", ASCENDING)],
+    # sgo_events
+    await _ensure_one_index(
+        db[DST_EVENTS],
+        keys=[("event_id", ASCENDING), ("snapshot_time", ASCENDING)],
         unique=True, name="events_pk")
-    await db[DST_EVENTS].create_index("league_id")
-    await db[DST_EVENTS].create_index("start_time")
-    await db[DST_PLAYERS].create_index("player_id", unique=True,
-                                        name="players_pk")
-    await db[DST_PROPS_RAW].create_index([
-        ("event_id", ASCENDING), ("odd_id", ASCENDING),
-        ("book_id", ASCENDING), ("side", ASCENDING),
-        ("line", ASCENDING), ("snapshot_time", ASCENDING),
-    ], unique=True, name="props_raw_pk")
-    await db[DST_PROPS_RAW].create_index("league_id")
-    await db[DST_PROPS_RAW].create_index("player_id")
-    await db[DST_PROPS_RAW].create_index("stat_id")
+    await _ensure_one_index(
+        db[DST_EVENTS],
+        keys=[("league_id", ASCENDING)],
+        unique=False, name="events_league_id")
+    await _ensure_one_index(
+        db[DST_EVENTS],
+        keys=[("start_time", ASCENDING)],
+        unique=False, name="events_start_time")
+    # sgo_players
+    await _ensure_one_index(
+        db[DST_PLAYERS],
+        keys=[("player_id", ASCENDING)],
+        unique=True, name="players_pk")
+    # sgo_props_raw
+    await _ensure_one_index(
+        db[DST_PROPS_RAW],
+        keys=[("event_id", ASCENDING), ("odd_id", ASCENDING),
+              ("book_id", ASCENDING), ("side", ASCENDING),
+              ("line", ASCENDING), ("snapshot_time", ASCENDING)],
+        unique=True, name="props_raw_pk")
+    await _ensure_one_index(
+        db[DST_PROPS_RAW],
+        keys=[("league_id", ASCENDING)],
+        unique=False, name="props_raw_league_id")
+    await _ensure_one_index(
+        db[DST_PROPS_RAW],
+        keys=[("player_id", ASCENDING)],
+        unique=False, name="props_raw_player_id")
+    await _ensure_one_index(
+        db[DST_PROPS_RAW],
+        keys=[("stat_id", ASCENDING)],
+        unique=False, name="props_raw_stat_id")
 
 
 # ──────────────────────────── Step A — events ────────────────────────────
