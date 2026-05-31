@@ -31,6 +31,7 @@ import {
 // Dashboard Components
 import { DemonIcon, GoblinIcon, VisionBadge } from '../components/dashboard/Icons';
 import UniversalPlayerCard from '../components/dashboard/UniversalPlayerCard';
+import TeamPropRow from '../components/TeamPropRow';
 import { ParlayTicket } from '../components/dashboard/ParlayTicket';
 import { PlayerDetailPage } from '../components/dashboard/PlayerDetailPage';
 import CommandPost from '../components/dashboard/CommandPost';
@@ -1984,6 +1985,7 @@ const Dashboard = () => {
                 onQuickAdd={handleQuickAdd} 
                 isLoading={mlbSafeHavenLoading} 
               />
+              <TeamPropRow tier="safe_haven" onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} />
               
               {/* MLB Front Lines (Mid-Juice 3-Gate Qualified) */}
               <MLBFrontLinesSection 
@@ -1992,6 +1994,7 @@ const Dashboard = () => {
                 onQuickAdd={handleQuickAdd} 
                 isLoading={mlbFrontLinesLoading} 
               />
+              <TeamPropRow tier="front_lines" onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} />
               
               {/* MLB War Zone (Moonshot Demons with Ceiling Protocol) */}
               <MLBWarZoneSection 
@@ -2000,6 +2003,7 @@ const Dashboard = () => {
                 onQuickAdd={handleQuickAdd} 
                 isLoading={mlbWarZoneLoading} 
               />
+              <TeamPropRow tier="war_zone" onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} />
             </>
           )}
           
@@ -2008,6 +2012,7 @@ const Dashboard = () => {
             <>
               {/* Safe Haven */}
               <SafeHavenSection picks={vaultPicks} onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} isLoading={safeHavenLoading} />
+              <TeamPropRow tier="safe_haven" onPickClick={handleVaultClick} onQuickAdd={handleQuickAdd} />
               
               {/* Shield Parlays */}
               <ParlaySection 
@@ -2021,6 +2026,7 @@ const Dashboard = () => {
               
               {/* Front Lines */}
               <FrontLinesSection picks={frontLinesPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={frontLinesLoading} />
+              <TeamPropRow tier="front_lines" onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} />
               
               {/* Strike Parlays */}
               <ParlaySection 
@@ -2034,6 +2040,7 @@ const Dashboard = () => {
               
               {/* War Zone */}
               <WarZoneSection picks={radarPicks} onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} isLoading={warZoneLoading} />
+              <TeamPropRow tier="war_zone" onPickClick={handleRadarClick} onQuickAdd={handleQuickAdd} />
               
               {/* Gauntlet Parlays */}
               <ParlaySection 

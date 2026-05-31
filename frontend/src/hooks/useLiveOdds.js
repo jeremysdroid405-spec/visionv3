@@ -406,6 +406,73 @@ export const useFrontLines = (options = {}) => {
   });
 };
 
+// ─────────────────────────────────────────────────────────────
+// TEAM PROPS (Phase 1 — odds-routed only; prop_type="team",
+// team_model_pending=true on every card). Same envelope shape as
+// the player tier endpoints so the existing UniversalPlayerCard
+// can consume the rows with a small identity-binding switch.
+// ─────────────────────────────────────────────────────────────
+const fetchTeamTier = async (tier, sport, sort = null) => {
+  // tier ∈ { 'safe-haven', 'front-lines', 'war-zone' }
+  const url = new URL(
+    `${API}/api/v3/ferrari/team/${tier}`);
+  url.searchParams.set('sport', sport);
+  url.searchParams.set('limit', '10');
+  if (sort) url.searchParams.set('sort', sort);
+  const r = await fetch(url.toString());
+  if (!r.ok) throw new Error(
+    `Team ${tier} fetch failed: HTTP ${r.status}`);
+  const data = await r.json();
+  // Mirror the player-side normalization: surface { picks } at top
+  // level for consumers that previously just spread .picks.
+  return data?.picks ? data : { ...data, picks: [] };
+};
+
+export const useTeamSafeHaven = (options = {}) => {
+  const { enabled = true,
+           refetchInterval = LIVE_ODDS_REFETCH_INTERVAL,
+           sort = null } = options;
+  const { currentSport, isTransitioning } = useSport();
+  return useQuery({
+    queryKey: ['teamSafeHaven', currentSport, sort || 'default'],
+    queryFn: () => fetchTeamTier('safe-haven', currentSport, sort),
+    enabled: enabled && !isTransitioning,
+    staleTime: LIVE_ODDS_STALE_TIME,
+    refetchInterval,
+    refetchOnWindowFocus: true,
+  });
+};
+
+export const useTeamFrontLines = (options = {}) => {
+  const { enabled = true,
+           refetchInterval = LIVE_ODDS_REFETCH_INTERVAL,
+           sort = null } = options;
+  const { currentSport, isTransitioning } = useSport();
+  return useQuery({
+    queryKey: ['teamFrontLines', currentSport, sort || 'default'],
+    queryFn: () => fetchTeamTier('front-lines', currentSport, sort),
+    enabled: enabled && !isTransitioning,
+    staleTime: LIVE_ODDS_STALE_TIME,
+    refetchInterval,
+    refetchOnWindowFocus: true,
+  });
+};
+
+export const useTeamWarZone = (options = {}) => {
+  const { enabled = true,
+           refetchInterval = LIVE_ODDS_REFETCH_INTERVAL,
+           sort = null } = options;
+  const { currentSport, isTransitioning } = useSport();
+  return useQuery({
+    queryKey: ['teamWarZone', currentSport, sort || 'default'],
+    queryFn: () => fetchTeamTier('war-zone', currentSport, sort),
+    enabled: enabled && !isTransitioning,
+    staleTime: LIVE_ODDS_STALE_TIME,
+    refetchInterval,
+    refetchOnWindowFocus: true,
+  });
+};
+
 /**
  * useMostPopularBets + useTrapGraveyard were removed in the 2026-04-22
  * HARD CONSOLIDATION. No production caller uses them; the backend

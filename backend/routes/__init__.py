@@ -23,6 +23,7 @@ from .live import router as live_router, set_db as set_live_db
 from .qa_testing import router as qa_router, set_qa_db
 from .image_proxy import router as image_proxy_router
 from .ferrari_tiers import router as ferrari_router, set_ferrari_db
+from .ferrari_team_tiers import router as ferrari_team_router, init_router as set_ferrari_team_db
 from .player import router as player_router, set_player_db
 from .vacuum import router as vacuum_router, set_vacuum_db
 from .mlb_vacuum import router as mlb_vacuum_router, set_mlb_vacuum_db
@@ -127,6 +128,13 @@ def register_all_routes(
     if db is not None:
         set_ferrari_db(db)
     app.include_router(ferrari_router, prefix="/api")
+
+    # Ferrari Team Tiers (Phase 1: odds-routed team props at
+    # /api/v3/ferrari/team/{tier}). Same envelope shape as player
+    # tiers, with prop_type="team" and team_model_pending=True.
+    if db is not None:
+        set_ferrari_team_db(db)
+    app.include_router(ferrari_team_router, prefix="/api")
 
     # Universal Player endpoint (restored post Hard Consolidation)
     if db is not None:
