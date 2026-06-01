@@ -1306,6 +1306,16 @@ async def startup_event():
         logger.info("[ODDS_BUDGET] call-log indexes ensured")
     except Exception as _e:
         logger.warning(f"[ODDS_BUDGET] index init non-fatal: {_e}")
+
+    # 2026-06-01 — Per-event odds cache indexes (TTL 24h).
+    try:
+        from services.odds_event_props_cache import (
+            ensure_indexes as _evcache_idx,
+        )
+        await _evcache_idx(db)
+        logger.info("[EV_CACHE] per-event cache indexes ensured")
+    except Exception as _e:
+        logger.warning(f"[EV_CACHE] index init non-fatal: {_e}")
     
     try:
         # nba_cached_board - Main board with player props

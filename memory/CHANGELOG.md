@@ -1,6 +1,86 @@
 # Changelog
 
 
+## 2026-06-01 — Odds API: third fix — scheduled_cron fanout eliminated
+
+### What the user reported
+Production budget aggregate showed `scheduled_cron` doing 92 calls/hour
+for MLB — re-fetching event_odds for the same 21 event IDs every ~10
+min cycle, even though nothing about those events had changed.
+
+### Root cause (third)
+`UniversalOddsSyncService.sync_sport_props()` iterated every event from
+`/events` and unconditionally called `fetch_event_odds()` for each one.
+No TTL gate, no payload-hash check. Hourly master_sync ⇒ N events × M
+syncs/hour = full re-fanout. The watcher's `_delta` path was already
+correct; this fix gives the cron the same discipline.
+
+### Files shipped
+- `services/odds_event_props_cache.py` — NEW. Per-event content cache.
+  Collection `odds_event_props_cache` keyed on `(sport, event_id)`,
+  stores `last_synced_at`, `props_hash`, `etag`, `props` list, plus
+  `sync_count`/`fresh_count` counters. TTL index on
+  `last_attempted_at` (24h). Pure helpers: `hash_props()`,
+  `is_fresh(ttl_seconds=600)`, `get()`, `put(fresh=True/False)`,
+  `stats()`.
+- `services/odds_api_budget.py` — added `SyncModeTag` contextvar
+  (mirrors `CallerTag`). `log_call_result()` now reads
+  `current_sync_mode()` if no explicit override; the previous
+  `sync_mode="full_or_delta"` placeholder is gone.
+- `services/universal_odds_sync.py` —
+  * `sync_sport_props(..., force_full=False)` — new kwarg. Default
+    behavior tags `SyncModeTag("delta")`; `force_full=True` tags
+    `SyncModeTag("full")` and bypasses the TTL gate.
+  * `_sync_sport_props_inner` — for-event loop now consults the
+    cache. Within TTL ⇒ re-uses cached `props` and stamps
+    `fresh_count`; outside TTL ⇒ calls `fetch_event_odds`, hashes
+    the new props, writes to cache. `results["event_stats"] =
+    {fetched, cache_hits, hash_unchanged, stale, ...}`.
+  * The two `await log_call_result(... sync_mode="full_or_delta")`
+    sites were stripped; the contextvar now drives the tag.
+- `server.py` — startup ensures the cache TTL/lookup indexes via
+  `services.odds_event_props_cache.ensure_indexes()`.
+- `routes/emergent_admin/odds_budget.py` — NEW endpoints:
+  * `GET /event-cache` — per-sport sync_count vs fresh_count stats.
+  * `DELETE /event-cache?sport=…&event_id=…` — admin bust for force
+    refresh.
+- `tests/test_odds_event_cache.py` — NEW. 16 tests covering hash
+  stability, TTL freshness boundary, naive-datetime handling, and
+  the SyncModeTag contextvar (default, scope, invalid, nested,
+  independent of CallerTag).
+
+### Verified live behavior
+- 16 new cache tests pass (54/54 total — 16 cache + 15 budget +
+  23 reshape).
+- Smoke test: `put(fresh=True)` writes `sync_count=1`, `is_fresh()`
+  returns True within 600s, subsequent `put(fresh=False)` increments
+  `fresh_count` without bumping `sync_count`.
+- Admin endpoint `/api/emergent-admin/odds-budget/event-cache` returns
+  per-sport stats with `ttl_seconds=600`.
+- The preview pod has `ODDS_API_KEY=` blank so we couldn't end-to-end
+  test against the real Odds API here, but the cache flow is unit-
+  tested and the integration path is small (~50 lines of branching
+  in the for-event loop).
+
+### Expected production impact after deploy
+For MLB at the current 21-event slate and the cron's ~10-min cadence:
+- Hour 1 after restart: 1 events ping + 21 event_odds fetches = ~22
+  calls. Cache warm-up.
+- Hour 2+: 1 events ping + 0-3 event_odds fetches per cycle (only
+  events stale or hash-changed). 4-6 cycles/hour × ~3 fetches ⇒
+  10-20 calls/hour MLB total. Down from 92/hour.
+- Add the watcher's 2 events pings every 240s = ~30/hour.
+- Combined target: ≤ 50 Odds API calls/hour/sport. Was 130-150.
+
+### Tunables (env vars, no code changes needed)
+- `EVENT_ODDS_TTL_SECONDS` (default `600`) — extend to 1200 for even
+  fewer fetches; shrink to 120 during live games for snappier lines.
+- `ODDS_API_MAX_CALLS_PER_HOUR` (default `500`) — hard cap. Crossing
+  it raises `OddsApiBudgetExceeded` and rejects the call before
+  httpx is invoked.
+
+
+
 ## 2026-06-01 — Odds API: SECOND fix — frontend route was firing /scores on every refresh
 
 ### What the user reported

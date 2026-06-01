@@ -175,12 +175,18 @@ def assert_full_sync_allowed(caller: str) -> None:
 
 async def log_call_result(
     db, *, caller: str, sport: Optional[str], endpoint: str,
-    url: str, status_code: int, sync_mode: str = "unknown",
+    url: str, status_code: int, sync_mode: Optional[str] = None,
     run_id: Optional[str] = None, error: Optional[str] = None,
 ) -> None:
-    """Persist one row to `odds_api_call_log` (best-effort)."""
+    """Persist one row to `odds_api_call_log` (best-effort).
+
+    `sync_mode` defaults to the active `SyncModeTag` contextvar
+    ("full"/"delta"). Explicit overrides are honored.
+    """
     if db is None:
         return
+    if sync_mode is None:
+        sync_mode = current_sync_mode()
     try:
         doc = {
             "ts":          datetime.now(timezone.utc),
@@ -218,6 +224,12 @@ import contextvars
 
 _caller_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
     "odds_api_caller", default="unknown")
+# 2026-06-01 — explicit sync_mode tagging. EVERY guarded call MUST land
+# in either "full" (force-refresh / forced-bypass) or "delta" (TTL +
+# hash gated). "unknown" is treated as "delta" by the call-log so the
+# top-level UI never has to special-case it.
+_sync_mode_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "odds_api_sync_mode", default="delta")
 
 
 class CallerTag:
@@ -239,6 +251,33 @@ class CallerTag:
             _caller_ctx.reset(self._token)
 
 
+class SyncModeTag:
+    """Context manager to scope an explicit sync_mode ("full" | "delta").
+    Mirrors CallerTag — set once at the top of a sync call, every
+    downstream `check_and_increment` / `log_call_result` picks it up
+    automatically.
+    """
+    def __init__(self, mode: str):
+        if mode not in ("full", "delta"):
+            raise ValueError(
+                f"sync_mode must be 'full' or 'delta', got {mode!r}")
+        self._mode = mode
+        self._token = None
+
+    def __enter__(self):
+        self._token = _sync_mode_ctx.set(self._mode)
+        return self
+
+    def __exit__(self, *exc):
+        if self._token is not None:
+            _sync_mode_ctx.reset(self._token)
+
+
 def current_caller() -> str:
     """Read the active caller tag from the context var."""
     return _caller_ctx.get()
+
+
+def current_sync_mode() -> str:
+    """Read the active sync_mode ("full" or "delta")."""
+    return _sync_mode_ctx.get()

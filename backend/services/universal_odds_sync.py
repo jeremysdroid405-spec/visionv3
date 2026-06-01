@@ -659,7 +659,7 @@ class UniversalOddsSyncService:
             )
             await log_call_result(
                 self.db, caller=caller, sport=sport, endpoint="events",
-                url=url, status_code=response.status_code, sync_mode="full_or_delta",
+                url=url, status_code=response.status_code,
             )
 
             if response.status_code == 200:
@@ -1094,7 +1094,6 @@ class UniversalOddsSyncService:
             await log_call_result(
                 self.db, caller=caller, sport=sport, endpoint="event_odds",
                 url=url, status_code=response.status_code,
-                sync_mode="full_or_delta",
             )
 
             
@@ -1726,53 +1725,60 @@ class UniversalOddsSyncService:
         include_sharp: bool = True,
         enrich_features: bool = True,
         caller: str = "unknown",
+        force_full: bool = False,
     ) -> Dict[str, Any]:
         """
-        Full sync of props for a sport from multiple bookmakers.
+        Sync of props for a sport from multiple bookmakers.
         
-        1. Fetch all events
-        2. Fetch odds for each event from all specified bookmakers
+        1. Fetch events list (cheap — 1 call/sport)
+        2. For each event, consult `odds_event_props_cache`. Within
+           `EVENT_ODDS_TTL_SECONDS` (default 600s), REUSE cached props
+           with NO API call. Outside the TTL, fetch from API and update
+           the cache.
         3. Extract and normalize props with multi-book comparison
-        4. Save to sport-specific collection
+           (cached events contribute their cached props unchanged).
+        4. Stage-then-prune into the sport-specific live_props
+           collection — board is always non-empty during writes.
         
         Args:
             sport: Sport to sync ('nba' or 'mlb')
             bookmakers: List of bookmakers (default: prizepicks, draftkings, fanduel, pinnacle)
             include_sharp: Include sharp books for edge calculation
-            enrich_features: When True (default), run the NBA Tier-1/2/3
-                context-feature enrichment (`enrich_slate`) after the
-                STAGE-THEN-PRUNE write. The hourly APScheduler master_sync
-                cron uses the default. The adaptive 5-min STANDBY callback
-                passes `enrich_features=False` because enrichment takes
-                ~6 min for NBA — running it every 5 min would push live_props
-                freshness over the <300s SLO. Enrichment is idempotent and
-                its outputs (Tier-1/2/3 context-feature docs) are read by
-                downstream scoring, not by the adaptive ingestion path,
-                so skipping it in the fast cadence is safe.
+            enrich_features: Run NBA Tier-1/2/3 enrichment after writes
+                (slow; the adaptive 5-min STANDBY callback passes False).
             caller: caller-id string used by the budget guard. MUST be
                 one of `{"startup", "manual_admin", "scheduled_cron",
                 "bootstrap_script"}` — any other value raises
                 `FullSyncNotAllowed`. The watcher (Adaptive Sync Engine)
                 does NOT have a full-sync entitlement; it uses
                 `sync_sport_props_delta` instead.
-            
+            force_full: When True, BYPASSES the per-event TTL gate and
+                refetches every event. Use for: bootstrap, manual admin
+                "force refresh now", or after `odds_event_props_cache`
+                schema changes. The scheduled_cron should NEVER set
+                this — that's the bug we just fixed.
+        
         Returns:
-            Sync results summary
+            Sync results summary with `mode` ("full"|"delta"), per-event
+            counts of `fetched` / `cache_hits`, and API credit usage.
         """
         # ── Hard guard: only allow-listed callers may full-sync ────
         from services.odds_api_budget import (
-            assert_full_sync_allowed, CallerTag,
+            assert_full_sync_allowed, CallerTag, SyncModeTag,
         )
         assert_full_sync_allowed(caller)
 
-        # Tag the active caller for the rest of this call so downstream
-        # `fetch_events` / `fetch_event_odds` / `discover_event_markets`
-        # all record the correct caller in budget logs.
-        with CallerTag(caller):
+        # Mode tagging — `force_full=True` ⇒ every event call carries
+        # `sync_mode="full"` in the budget log. Otherwise events are
+        # tagged "delta" (whether or not they actually hit the API).
+        mode = "full" if force_full else "delta"
+
+        with CallerTag(caller), SyncModeTag(mode):
             return await self._sync_sport_props_inner(
                 sport=sport, bookmakers=bookmakers,
                 include_sharp=include_sharp,
                 enrich_features=enrich_features,
+                force_full=force_full,
             )
 
     async def _sync_sport_props_inner(
@@ -1781,6 +1787,7 @@ class UniversalOddsSyncService:
         bookmakers: List[str],
         include_sharp: bool,
         enrich_features: bool,
+        force_full: bool = False,
     ) -> Dict[str, Any]:
         sport = validate_sport(sport)
         config = self._get_sport_config(sport)
@@ -1870,14 +1877,59 @@ class UniversalOddsSyncService:
             )
             results["markets_discovered"] = sync_markets
 
-            # Step 2: Fetch odds for each event (with rate limiting)
+            # Step 2: Fetch odds for each event (with TTL gate +
+            # payload-hash cache so we DON'T refetch events whose props
+            # are still fresh from the previous sync).
+            from services import odds_event_props_cache as _evc
+
             all_props = []
-            
+            event_stats = {"fetched": 0, "cache_hits": 0,
+                            "hash_unchanged": 0, "stale": 0}
+
             for event in events:
                 event_id = event.get("id")
                 if not event_id:
                     continue
-                
+
+                cache_rec: Optional[Dict[str, Any]] = None
+                cache_hit = False
+                if not force_full:
+                    cache_rec = await _evc.get(
+                        self.db, sport=sport, event_id=event_id)
+                    if _evc.is_fresh(cache_rec):
+                        cache_hit = True
+
+                if cache_hit:
+                    # No API call. Re-use cached props.
+                    cached_props = cache_rec.get("props") or []
+                    all_props.extend(cached_props)
+                    await _evc.put(
+                        self.db, sport=sport, event_id=event_id,
+                        props=cached_props, fresh=False)
+                    event_stats["cache_hits"] += 1
+                    logger.debug(
+                        f"[ODDS_SYNC:{sport}] event={event_id[:8]} "
+                        f"TTL-fresh cache_hit n_props={len(cached_props)}"
+                    )
+                    # Track per-prop bookkeeping so downstream stats stay
+                    # consistent. We DO NOT re-emit raw-markets writes
+                    # (the cache stored extract'd props, not raw odds).
+                    for prop in cached_props:
+                        results["unique_players"].add(
+                            prop.get("player_name") or "")
+                        st = prop.get("stat_type")
+                        if st:
+                            results["stat_types"][st] = \
+                                results["stat_types"].get(st, 0) + 1
+                        for bm in prop.get("bookmakers_available", []) or []:
+                            results["bookmaker_counts"][bm] = \
+                                results["bookmaker_counts"].get(bm, 0) + 1
+                        if prop.get("sharp_edge") is not None:
+                            results["props_with_sharp_edge"] += 1
+                    continue
+
+                # TTL gate missed → fetch from API.
+                event_stats["stale"] += 1
                 # Fetch odds from all bookmakers using the discovered
                 # market union so every book's complete prop menu
                 # surfaces in the response.
@@ -1887,7 +1939,8 @@ class UniversalOddsSyncService:
                 )
                 results["api_calls"] += 1
                 self.credits_used["event_odds"] += 1
-                
+                event_stats["fetched"] += 1
+
                 if odds_data:
                     # --- Persist raw odds for ALL markets (2026-04-24) ---
                     # When NBA_PULL_ALL_MARKETS=true we also pull game-level,
@@ -1921,7 +1974,7 @@ class UniversalOddsSyncService:
                     # Extract props
                     props = self.extract_props_from_odds(odds_data, event, sport)
                     all_props.extend(props)
-                    
+
                     # Track stats
                     for prop in props:
                         results["unique_players"].add(prop["player_name"])
@@ -1935,9 +1988,30 @@ class UniversalOddsSyncService:
                         # Track props with sharp edge
                         if prop.get("sharp_edge") is not None:
                             results["props_with_sharp_edge"] += 1
-                
+
+                    # Update the cache. If the hash matches what was
+                    # already stored, count it as `hash_unchanged` for
+                    # the audit (we still spent an API call, but the
+                    # cache TTL was too short or the operator forced).
+                    new_hash = _evc.hash_props(props)
+                    if cache_rec and cache_rec.get("props_hash") == new_hash:
+                        event_stats["hash_unchanged"] += 1
+                    await _evc.put(
+                        self.db, sport=sport, event_id=event_id,
+                        props=props, new_hash=new_hash, fresh=True)
+
                 # Rate limiting - The Odds API has limits
                 await asyncio.sleep(0.1)
+
+            results["event_stats"] = event_stats
+            logger.info(
+                f"[ODDS_SYNC:{sport}] event-cache mode="
+                f"{'full' if force_full else 'delta'} "
+                f"fetched={event_stats['fetched']} "
+                f"cache_hits={event_stats['cache_hits']} "
+                f"hash_unchanged={event_stats['hash_unchanged']} "
+                f"total_events={len(events)}"
+            )
             
             results["total_props"] = len(all_props)
             results["unique_players"] = len(results["unique_players"])

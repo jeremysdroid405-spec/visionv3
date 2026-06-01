@@ -102,3 +102,35 @@ async def aggregate_calls(
               "by_endpoint":  f.get("by_endpoint"),
               "by_sync_mode": f.get("by_sync_mode"),
               "by_hour":      f.get("by_hour")}
+
+
+@router.get("/event-cache")
+async def get_event_cache_stats(
+    sport: Optional[str] = Query(None),
+    auth=Depends(require_admin_token),
+) -> Dict[str, Any]:
+    """Per-event odds cache state. Shows TTL window + per-sport
+    sync_count vs fresh_count so operators can verify the TTL gate is
+    actually engaging (fresh_count >> sync_count is healthy)."""
+    from services.odds_event_props_cache import stats as _evcache_stats
+    db = _get_db()
+    return {"ok": True, **(await _evcache_stats(db, sport=sport))}
+
+
+@router.delete("/event-cache")
+async def bust_event_cache(
+    sport: Optional[str] = Query(None),
+    event_id: Optional[str] = Query(None),
+    auth=Depends(require_admin_token),
+) -> Dict[str, Any]:
+    """Delete cache entries (forces refetch on next sync). Pass
+    `sport` to wipe one sport, both `sport` and `event_id` for a
+    single row, or neither to wipe everything."""
+    from services.odds_event_props_cache import CACHE_COLL
+    db = _get_db()
+    q: Dict[str, Any] = {}
+    if sport:    q["sport"] = sport.lower()
+    if event_id: q["event_id"] = event_id
+    res = await db[CACHE_COLL].delete_many(q)
+    return {"ok": True, "deleted": res.deleted_count, "filter": q}
+
