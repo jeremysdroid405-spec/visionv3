@@ -70,12 +70,23 @@ from pymongo import UpdateOne
 # Reuse the SAME odds-bucket helper player props use — never re-implement.
 from scripts.sgo.historical_full_pipeline_replay import _odds_bucket
 
-PIPELINE_VERSION = "team_v1"
+PIPELINE_VERSION = "team_v1_scored"
 SSOT_SOURCE = "team_prop_features"
 SRC_COLL = "team_model_prop_features"
 DST_COLL = "sgo_propvision_full_pipeline_replay"
 
 SUPPORTED_SPORTS = ("mlb", "nba", "nfl")
+
+
+# ───── tier routing ─────
+# Mirrors `_tier_odds_filter` in routes/emergent_admin/optimizer.py.
+# Pure odds-bucket-based routing (per operator: "tier routing only").
+def tier_for_odds_bucket(bucket: str) -> str:
+    if bucket in ("odds_-200_-100", "odds_lt_-200"):
+        return "safe_haven"
+    if bucket in ("odds_+150_+300", "odds_+300p"):
+        return "war_zone"
+    return "front_lines"   # +0_+150, -100_-0, na
 
 
 # ───── pure helpers (unit-tested) ─────
@@ -117,14 +128,54 @@ def project_hit_rates_from_team_features(
     return {"hit_rate_l5": None, "hit_rate_l10": None, "hit_rate_l20": None}
 
 
-def assemble_replay_row(prop: Dict[str, Any]) -> Dict[str, Any]:
+def assemble_replay_row(
+    prop: Dict[str, Any],
+    *, model_score: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Translate one `team_model_prop_features` doc into one replay row
-    matching the player schema. Pure function — easy to unit-test."""
+    matching the player schema. Pure function — easy to unit-test.
+
+    If `model_score` is provided (from `score_team_props_batch` or
+    `score_team_prop`), populates `model_probability`, `edge`, etc.
+    If not, the function calls the single-row scorer itself so callers
+    using the legacy 1-arg API still get scoring (the orchestrator
+    now uses the batch path for speed)."""
     sport = prop.get("sport") or ""
     tf = prop.get("team_features") or None
     hrs = project_hit_rates_from_team_features(
         prop.get("market_category"), tf)
     cv_team = (tf or {}).get("cv_points_scored")
+    bucket = _odds_bucket(prop.get("odds"))
+    tier = tier_for_odds_bucket(bucket)
+
+    # If caller already batch-scored, skip the single-row call.
+    if model_score is None:
+        try:
+            from services.team_xgb_loader import score_team_prop
+            model_score = score_team_prop(prop)
+        except Exception:
+            model_score = None
+
+    model_prob   = (model_score or {}).get("model_probability")
+    implied_prob = (model_score or {}).get("implied_probability")
+    edge         = (model_score or {}).get("edge")
+    vision_score = (model_score or {}).get("vision_score")
+    model_ver    = (model_score or {}).get("model_version")
+
+    # Gate reasons — per-row diagnostic. Today we emit an empty list
+    # when the model scored the row, or a single non-fatal note when
+    # it did not (no model available for that sport/market_category).
+    gate_reasons: List[str] = ([] if model_score is not None
+                                  else ["no_team_xgb_model_for_market"])
+
+    # Tier-pass booleans. We rely on the optimizer's odds-bucket tier
+    # router rather than the player gates (per operator: tier routing
+    # only). Every row gets exactly ONE tier_pass=True, matching the
+    # bucket it routes to.
+    sh_pass = (tier == "safe_haven")
+    fl_pass = (tier == "front_lines")
+    wz_pass = (tier == "war_zone")
+
     return {
         # identity
         "event_id":               prop.get("event_id"),
@@ -147,34 +198,33 @@ def assemble_replay_row(prop: Dict[str, Any]) -> Dict[str, Any]:
         "line":                   prop.get("line"),
         "book":                   prop.get("book"),
         "odds":                   prop.get("odds"),
-        "odds_bucket":            _odds_bucket(prop.get("odds")),
+        "odds_bucket":            bucket,
         "is_alternate":           prop.get("is_alternate"),
         "is_alternate_market":    prop.get("is_alternate"),
         "period_id":              prop.get("periodID"),
-        # priors (mapped from team rolling features)
+        # priors (from rolling features)
         "cv":                     cv_team,
         "hit_rate_l5":            hrs["hit_rate_l5"],
         "hit_rate_l10":           hrs["hit_rate_l10"],
         "hit_rate_l20":           hrs["hit_rate_l20"],
-        # Scoring fields not yet computed for team — leave None so the
-        # optimizer's threshold filters degrade gracefully (Phase 4 work).
-        "tp":                     None,
-        "edge":                   None,
-        "model_probability":      None,
-        "fair_probability":       None,
-        "implied_probability":    None,
-        "vision_score":           None,
-        # Tier-pass booleans: no team gate logic yet. The optimizer's
-        # default tier dimension is odds-range routing (works on every
-        # row with valid odds). enforce_tier_gates=True will exclude
-        # team rows — that's correct (no gates passed by definition).
-        "safe_haven_pass":  False,
-        "front_lines_pass": False,
-        "war_zone_pass":    False,
-        "safe_haven_failed_reasons":  ["team_gates_not_implemented"],
-        "front_lines_failed_reasons": ["team_gates_not_implemented"],
-        "war_zone_failed_reasons":    ["team_gates_not_implemented"],
-        "selected_tier":              None,
+        # scoring (from trained XGB model)
+        "tp":                     model_prob,
+        "edge":                   edge,
+        "model_probability":      model_prob,
+        "implied_probability":    implied_prob,
+        "fair_probability":       model_prob,
+        "vision_score":           vision_score,
+        "model_version":          model_ver,
+        # tiers (odds-bucket-based routing)
+        "tier":                   tier,
+        "selected_tier":          tier,
+        "safe_haven_pass":        sh_pass,
+        "front_lines_pass":       fl_pass,
+        "war_zone_pass":          wz_pass,
+        "safe_haven_failed_reasons":  ([] if sh_pass else ["tier_route"]),
+        "front_lines_failed_reasons": ([] if fl_pass else ["tier_route"]),
+        "war_zone_failed_reasons":    ([] if wz_pass else ["tier_route"]),
+        "gate_reasons":           gate_reasons,
         # outcome (already graded into the prop row by Phase 1)
         "outcome_resolved": bool(prop.get("outcome_resolved")),
         "outcome_numeric":  prop.get("outcome_numeric"),
@@ -251,23 +301,53 @@ async def reshape_sport(
         "rows_written":     0,
         "missing_event_id": 0,
         "missing_team_id":  0,
+        "scored":           0,
+        "unscored":         0,
         "dry_run":          dry_run,
     }
     sample_rows: List[Dict[str, Any]] = []
-    pending: List[UpdateOne] = []
+    pending_props: List[Dict[str, Any]] = []   # raw prop docs awaiting batch-score
+    pending_ops:   List[UpdateOne] = []
+
+    # Lazy-import the batch scorer so the unit tests stay fast.
+    try:
+        from services.team_xgb_loader import score_team_props_batch
+    except Exception:
+        score_team_props_batch = None
 
     async def _flush() -> None:
-        if not pending:
+        if not pending_props:
             return
+        # Batch-score the whole pending buffer in one shot (groups by
+        # (sport, mc) internally — typically 1-2 predict_proba calls
+        # per flush vs `len(pending_props)` in the unbatched path).
+        scores = (score_team_props_batch(pending_props)
+                  if score_team_props_batch else [None] * len(pending_props))
+        for prop, score in zip(pending_props, scores):
+            row = assemble_replay_row(prop, model_score=score)
+            counters["scored" if score is not None else "unscored"] += 1
+            if len(sample_rows) < 5 and score is not None:
+                sample_rows.append({
+                    "league_id": row["league_id"], "team_id": row["team_id"],
+                    "stat_family": row["stat_family"], "side": row["side"],
+                    "line": row["line"], "book": row["book"],
+                    "odds": row["odds"], "tier": row["tier"],
+                    "tp": row["tp"], "edge": row["edge"],
+                    "vision": row["vision_score"],
+                    "hit": row["hit"],
+                })
+            pending_ops.append(UpdateOne(upsert_filter(row),
+                                              {"$set": row}, upsert=True))
+        pending_props.clear()
         if dry_run:
-            counters["rows_emitted"] += len(pending)
-            pending.clear()
+            counters["rows_emitted"] += len(pending_ops)
+            pending_ops.clear()
             return
-        res = await db[DST_COLL].bulk_write(pending, ordered=False)
-        counters["rows_emitted"] += len(pending)
+        res = await db[DST_COLL].bulk_write(pending_ops, ordered=False)
+        counters["rows_emitted"] += len(pending_ops)
         counters["rows_written"] += ((res.upserted_count or 0)
                                           + (res.modified_count or 0))
-        pending.clear()
+        pending_ops.clear()
 
     cursor = db[SRC_COLL].find({"sport": sport}).batch_size(2000)
     async for p in cursor:
@@ -282,26 +362,16 @@ async def reshape_sport(
         if not p.get("team_id"):
             counters["missing_team_id"] += 1
             continue
-        row = assemble_replay_row(p)
-        key = upsert_filter(row)
-        if len(sample_rows) < 5:
-            sample_rows.append({
-                "league_id": row["league_id"], "team_id": row["team_id"],
-                "stat_family": row["stat_family"], "side": row["side"],
-                "line": row["line"], "book": row["book"], "odds": row["odds"],
-                "odds_bucket": row["odds_bucket"],
-                "hr_l10": row["hit_rate_l10"], "cv": row["cv"],
-                "outcome_numeric": row["outcome_numeric"],
-                "hit": row["hit"],
-            })
-        pending.append(UpdateOne(key, {"$set": row}, upsert=True))
-        if len(pending) >= bulk_chunk:
+        pending_props.append(p)
+        if len(pending_props) >= bulk_chunk:
             await _flush()
             if counters["scanned"] % 20000 == 0:
                 print(f"    [{sport.upper()}] scanned={counters['scanned']:,}  "
-                      f"written={counters['rows_written']:,}")
+                      f"written={counters['rows_written']:,}  "
+                      f"scored={counters['scored']:,}")
     await _flush()
-    return {"sport": sport, "counters": counters, "sample_rows": sample_rows}
+    return {"sport": sport, "coll": coll_name if False else DST_COLL,
+              "counters": counters, "sample_rows": sample_rows}
 
 
 def _print_summary(r: Dict[str, Any]) -> None:

@@ -9,6 +9,7 @@ from scripts.sgo.reshape_team_props_to_replay import (
     project_hit_rates_from_team_features,
     assemble_replay_row,
     upsert_filter,
+    tier_for_odds_bucket,
     PIPELINE_VERSION,
     SSOT_SOURCE,
 )
@@ -111,15 +112,18 @@ class TestAssembleReplayRow:
         assert row["hit_rate_l10"] == 0.48
         assert row["hit_rate_l20"] is None
         assert row["cv"] == 0.42
-        # Scoring fields not computed (Phase 4)
-        assert row["tp"] is None
-        assert row["edge"] is None
-        assert row["vision_score"] is None
-        # Tier flags inert
-        assert row["safe_haven_pass"] is False
+        # Scoring fields — either populated by the model (when an
+        # artifact is loaded) OR None when no model is available.
+        # The exact value is intentionally not asserted here because
+        # the model artifact is a separate concern.
+        assert row["model_probability"] is None or 0.0 <= row["model_probability"] <= 1.0
+        assert row["tp"] is None or 0.0 <= row["tp"] <= 1.0
+        # Tier routing is always populated (odds-bucket-based).
+        assert row["tier"] == "safe_haven"
+        assert row["selected_tier"] == "safe_haven"
+        assert row["safe_haven_pass"] is True
         assert row["front_lines_pass"] is False
         assert row["war_zone_pass"] is False
-        assert row["selected_tier"] is None
         # Outcome
         assert row["outcome_resolved"] is True
         assert row["outcome_numeric"] == 1
@@ -196,3 +200,52 @@ class TestPropTypeClause:
         # Defensive — any unexpected string should default to player
         assert _prop_type_clause("invalid") == {"prop_type": {"$ne": "team"}}
         assert _prop_type_clause("") == {"prop_type": {"$ne": "team"}}
+
+
+# ───── tier_for_odds_bucket ─────
+class TestTierForOddsBucket:
+    def test_safe_haven_buckets(self):
+        assert tier_for_odds_bucket("odds_-200_-100") == "safe_haven"
+        assert tier_for_odds_bucket("odds_lt_-200") == "safe_haven"
+
+    def test_war_zone_buckets(self):
+        assert tier_for_odds_bucket("odds_+150_+300") == "war_zone"
+        assert tier_for_odds_bucket("odds_+300p") == "war_zone"
+
+    def test_front_lines_default(self):
+        assert tier_for_odds_bucket("odds_+0_+150") == "front_lines"
+        assert tier_for_odds_bucket("odds_-100_-0") == "front_lines"
+        assert tier_for_odds_bucket("odds_na") == "front_lines"
+        assert tier_for_odds_bucket("unknown_bucket") == "front_lines"
+
+
+# ───── assemble_replay_row + tier wiring ─────
+class TestTierWiringOnRow:
+    def test_safe_haven_routing(self):
+        row = assemble_replay_row(_mk_prop(odds=-150))
+        assert row["odds_bucket"] == "odds_-200_-100"
+        assert row["tier"] == "safe_haven"
+        assert row["safe_haven_pass"] is True
+        assert row["front_lines_pass"] is False
+        assert row["war_zone_pass"] is False
+
+    def test_war_zone_routing(self):
+        row = assemble_replay_row(_mk_prop(odds=200))
+        assert row["odds_bucket"] == "odds_+150_+300"
+        assert row["tier"] == "war_zone"
+        assert row["war_zone_pass"] is True
+
+    def test_front_lines_routing(self):
+        row = assemble_replay_row(_mk_prop(odds=100))
+        assert row["odds_bucket"] == "odds_+0_+150"
+        assert row["tier"] == "front_lines"
+        assert row["front_lines_pass"] is True
+
+    def test_each_row_has_exactly_one_tier_pass_true(self):
+        # Invariant: tier-pass booleans must be mutually exclusive +
+        # exactly one True. Optimizer reporting depends on this.
+        for odds in (-300, -150, -50, 50, 150, 250, 500):
+            row = assemble_replay_row(_mk_prop(odds=odds))
+            passes = sum([row["safe_haven_pass"], row["front_lines_pass"],
+                            row["war_zone_pass"]])
+            assert passes == 1, f"odds={odds} got {passes} tier_pass=True"
