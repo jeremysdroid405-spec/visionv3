@@ -51,6 +51,20 @@ explains the ~548k calls/day reported on the dashboard.
 | `routes/ferrari_tiers.py:3096` (POST /v3/odds/sync)   | manual admin only   |
 | `scripts/init_database.py:160` (bootstrap)            | one-time bootstrap  |
 
+### 7b. SECOND BUG (2026-06-01 P2) — frontend route fires Odds API on every refresh
+`routes/live_scores.py` had this pattern:
+```python
+result = await _live_scores_engine.get_cached_scores()
+if not result.get("success") or not result.get("games"):
+    result = await _live_scores_engine.fetch_live_scores()   # ← live API
+```
+Every GET hit during off-season / 0-games-today window fell through to
+the `else` branch because `not result.get("games")` is `True` for an
+empty list. With the frontend ticker polling every few seconds, every
+viewer accumulated calls FAST. Same pattern on
+`/api/v3/command-center/ticker`. Fix: cache TTL (default 300s) is now
+respected even when games list is empty.
+
 ### 8. NO call paths from optimizer / replay / training
 Verified by `grep -rn "fetch_event_odds\|sync_sport_props\|the-odds-api"`:
 - `routes/emergent_admin/optimizer.py` — none (reads

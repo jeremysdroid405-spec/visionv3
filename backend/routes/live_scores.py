@@ -40,11 +40,24 @@ async def get_live_scores(refresh: bool = False):
         raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
     
     if refresh:
-        result = await _live_scores_engine.fetch_live_scores()
+        # Tag the call so the budget log shows manual_refresh, not unknown.
+        from services.odds_api_budget import CallerTag
+        with CallerTag("manual_refresh"):
+            result = await _live_scores_engine.fetch_live_scores()
     else:
         result = await _live_scores_engine.get_cached_scores()
-        if not result.get("success") or not result.get("games"):
-            result = await _live_scores_engine.fetch_live_scores()
+        # 2026-06-01 — only fall through to a live API call when the
+        # cache is BOTH missing/unsuccessful AND not fresh. Previously
+        # `not result.get("games")` was true on every empty-slate day
+        # (e.g., off-season) and triggered an Odds API call on EVERY
+        # frontend hit. Now the empty cache result is honored for the
+        # configured TTL window (default 300s).
+        cache_fresh = bool(result.get("cache_fresh"))
+        needs_refetch = (not result.get("success")) and (not cache_fresh)
+        if needs_refetch:
+            from services.odds_api_budget import CallerTag
+            with CallerTag("frontend_live_scores_route"):
+                result = await _live_scores_engine.fetch_live_scores()
     
     return result
 
@@ -91,10 +104,16 @@ async def get_ticker_data():
     if _live_scores_engine is None:
         raise HTTPException(status_code=500, detail="Live Scores Engine not initialized")
     
-    # Get scores (from cache)
+    # Get scores (from cache).
+    # 2026-06-01 — same fix as `/v3/live-scores`: don't refetch on
+    # every frontend tick during empty-slate windows. Cache freshness
+    # is honored even when the games list is empty.
     scores_result = await _live_scores_engine.get_cached_scores()
-    if not scores_result.get("success"):
-        scores_result = await _live_scores_engine.fetch_live_scores()
+    scores_fresh = bool(scores_result.get("cache_fresh"))
+    if (not scores_result.get("success")) and (not scores_fresh):
+        from services.odds_api_budget import CallerTag
+        with CallerTag("frontend_ticker_route"):
+            scores_result = await _live_scores_engine.fetch_live_scores()
     
     # Get news (from cache)
     news_result = await _live_scores_engine.get_cached_news()

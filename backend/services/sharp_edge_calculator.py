@@ -220,7 +220,19 @@ class SharpEdgeCalculator:
                 "oddsFormat": "american",
                 "includeMultipliers": "true"
             }
-            
+
+            # ── Budget guard ─────────────────────────────────────────
+            from services.odds_api_budget import (
+                check_and_increment, current_caller, OddsApiBudgetExceeded,
+            )
+            try:
+                check_and_increment(
+                    caller=current_caller(), sport="nba",
+                    endpoint="event_odds_sharp_edge")
+            except OddsApiBudgetExceeded as exc:
+                logger.error(f"[ODDS_BUDGET] sharp_edge_calculator blocked: {exc}")
+                return {}
+
             client = await self._get_client()
             response = await client.get(url, params=params)
             

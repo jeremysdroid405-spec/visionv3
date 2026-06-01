@@ -106,6 +106,19 @@ class LiveScoresEngine:
         if not self._api_available:
             return {"success": False, "error": "API key not configured", "games": []}
         
+        # ── Budget guard ─────────────────────────────────────────────
+        from services.odds_api_budget import (
+            check_and_increment, log_call_result, current_caller,
+            OddsApiBudgetExceeded,
+        )
+        caller = current_caller()
+        try:
+            check_and_increment(
+                caller=caller, sport="nba", endpoint="scores")
+        except OddsApiBudgetExceeded as exc:
+            logger.error(f"[ODDS_BUDGET] fetch_live_scores blocked: {exc}")
+            return {"success": False, "error": "budget_exceeded", "games": []}
+
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
@@ -115,6 +128,14 @@ class LiveScoresEngine:
                         "daysFrom": 1  # Get scores from today
                     }
                 )
+                logger.info(
+                    f"[ODDS_BUDGET] caller={caller} sport=nba endpoint=scores "
+                    f"status={response.status_code}")
+                await log_call_result(
+                    self.db, caller=caller, sport="nba", endpoint="scores",
+                    url=f"{ODDS_API_BASE}/sports/basketball_nba/scores",
+                    status_code=response.status_code,
+                    sync_mode="live_scores_engine")
                 
                 if response.status_code != 200:
                     logger.error(f"[LIVE SCORES] API error: {response.status_code} - {response.text}")
@@ -292,7 +313,12 @@ class LiveScoresEngine:
             logger.error(f"[LIVE SCORES] Cache error: {e}")
     
     async def get_cached_scores(self) -> Dict[str, Any]:
-        """Get cached scores from MongoDB."""
+        """Get cached scores from MongoDB.
+
+        2026-06-01: returns `cache_fresh` based on age vs `live_scores_engine`
+        cache TTL (default 300s). Callers can use `cache_fresh` to avoid
+        re-fetching when there are legitimately 0 games right now.
+        """
         try:
             cached = await self.scores_cache.find_one(
                 {"type": "live_scores"},
@@ -304,6 +330,19 @@ class LiveScoresEngine:
                 live = sum(1 for g in games if g.get("status") == "in_play")
                 upcoming = sum(1 for g in games if g.get("status") == "upcoming")
                 final = sum(1 for g in games if g.get("status") == "final")
+                # Compute cache age. `updated_at` is an ISO string.
+                cache_fresh = False
+                cache_age_s: Optional[float] = None
+                _ttl = int(os.environ.get(
+                    "LIVE_SCORES_CACHE_TTL_SECONDS", "300") or 300)
+                try:
+                    ts = cached.get("updated_at")
+                    if isinstance(ts, str):
+                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        cache_age_s = (datetime.now(timezone.utc) - dt).total_seconds()
+                        cache_fresh = cache_age_s < _ttl
+                except Exception:
+                    cache_fresh = False
                 return {
                     "success": True,
                     "games": games,
@@ -311,10 +350,14 @@ class LiveScoresEngine:
                     "upcoming_count": upcoming,
                     "final_count": final,
                     "cached": True,
+                    "cache_fresh": cache_fresh,
+                    "cache_age_seconds": cache_age_s,
+                    "cache_ttl_seconds": _ttl,
                     "updated_at": cached.get("updated_at")
                 }
             
-            return {"success": False, "error": "No cached scores", "games": []}
+            return {"success": False, "error": "No cached scores",
+                      "games": [], "cache_fresh": False}
             
         except Exception as e:
             logger.error(f"[LIVE SCORES] Cache read error: {e}")

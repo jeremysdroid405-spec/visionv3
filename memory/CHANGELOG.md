@@ -1,6 +1,65 @@
 # Changelog
 
 
+## 2026-06-01 — Odds API: SECOND fix — frontend route was firing /scores on every refresh
+
+### What the user reported
+"Calls are still increasing with every refresh." → frontend hits the
+backend, and the backend hits the Odds API on every hit.
+
+### Root cause (second)
+`routes/live_scores.py` had this fall-through:
+
+```python
+result = await _live_scores_engine.get_cached_scores()
+if not result.get("success") or not result.get("games"):
+    result = await _live_scores_engine.fetch_live_scores()  # live API
+```
+
+In off-season / 0-games-today windows, `games == []` is truthy-empty,
+so `not result.get("games")` is `True`, so every frontend hit fell
+through to a live `/scores` Odds API call. The Command-Center ticker
+route had the same bug. With the frontend ticker polling every few
+seconds, every active viewer linearly added calls.
+
+### Files patched
+- `services/engines/live_scores_engine.py`:
+  - `get_cached_scores()` now returns `cache_fresh` + `cache_age_seconds`
+    + `cache_ttl_seconds` (default 300s, override via
+    `LIVE_SCORES_CACHE_TTL_SECONDS`).
+  - `fetch_live_scores()` now funnels through the budget guard.
+- `routes/live_scores.py` — both `/api/v3/live-scores` and
+  `/api/v3/command-center/ticker` only fall through to a live fetch when
+  the cache is `not success` AND `not cache_fresh`. Empty-games slates
+  are honored for the TTL window. Tagged `CallerTag("frontend_live_scores_route")`
+  and `CallerTag("frontend_ticker_route")` so the budget log attributes
+  the call correctly.
+- `services/engines/adaptive_sync_engine.py:_fetch_live_odds` (the
+  legacy fallback + priority-refresh path) — all 3 raw `client.get()`
+  calls now funnel through the budget guard (events + PrizePicks
+  event_odds + Sharp event_odds, each with its own `check_and_increment`
+  + log).
+- `services/sharp_edge_calculator.py`,
+  `services/game_script_service.py`,
+  `services/stateless_tier_service.py` — all 3 orphan-callable services
+  now funnel through the guard so any future caller is automatically
+  rate-capped.
+
+### Verified live behavior
+- 5 sequential frontend hits to `/api/v3/live-scores` → **0 Odds API
+  calls** (cache served all 5).
+- Watcher delta tick: 2 events + 0-3 event_odds per cycle.
+- Hour count after 5 frontend hits + 1 watcher cycle: 3 calls (was
+  ~32+ pre-fix).
+- 38/38 tests pass (15 budget + 23 reshape).
+
+### Reminder — fix must be deployed to production
+The user is observing the Odds API dashboard which reflects production
+traffic. The preview pod fix verified above MUST be pushed to prod for
+the dashboard counter to drop.
+
+
+
 ## 2026-06-01 — URGENT: Odds API watcher locked down to delta-only
 
 **Trigger:** Odds API dashboard reported ~548k calls since yesterday.

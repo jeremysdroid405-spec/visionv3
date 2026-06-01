@@ -98,6 +98,19 @@ class GameScriptService:
             }
             
             client = await self._get_client()
+
+            # ── Budget guard ─────────────────────────────────────────
+            from services.odds_api_budget import (
+                check_and_increment, current_caller, OddsApiBudgetExceeded,
+            )
+            try:
+                check_and_increment(
+                    caller=current_caller(), sport="nba",
+                    endpoint="odds_game_script")
+            except OddsApiBudgetExceeded as exc:
+                logger.error(f"[ODDS_BUDGET] game_script blocked: {exc}")
+                return {}
+
             response = await client.get(url, params=params)
             
             if response.status_code != 200:

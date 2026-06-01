@@ -586,12 +586,33 @@ class AdaptiveSyncEngine:
             "dateFormat": "iso"
         }
         
+        # ── Budget guard ─────────────────────────────────────────────
+        from services.odds_api_budget import (
+            check_and_increment, log_call_result, current_caller,
+            OddsApiBudgetExceeded,
+        )
+        caller = current_caller()
+        try:
+            check_and_increment(
+                caller=caller, sport=sport.lower(), endpoint="events")
+        except OddsApiBudgetExceeded as exc:
+            logger.error(f"[ODDS_BUDGET] _fetch_live_odds blocked: {exc}")
+            return []
+
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 events_response = await client.get(events_url, params=events_params)
                 events_response.raise_for_status()
                 events = events_response.json()
                 logger.info(f"[ADAPTIVE_SYNC] Found {len(events)} {sport_upper} events")
+                logger.info(
+                    f"[ODDS_BUDGET] caller={caller} sport={sport.lower()} "
+                    f"endpoint=events status={events_response.status_code}")
+                await log_call_result(
+                    self.db if hasattr(self, "db") else None,
+                    caller=caller, sport=sport.lower(), endpoint="events",
+                    url=events_url, status_code=events_response.status_code,
+                    sync_mode="adaptive_engine_legacy")
                 
                 if not events:
                     return []
@@ -616,10 +637,23 @@ class AdaptiveSyncEngine:
                         "includeMultipliers": "true"
                     }
                     
+                    # Budget guard per PrizePicks fetch
                     try:
+                        check_and_increment(
+                            caller=caller, sport=sport.lower(),
+                            endpoint="event_odds_pp")
                         pp_response = await client.get(odds_url, params=prizepicks_params, timeout=15.0)
                         if pp_response.status_code == 200:
                             prizepicks_data = pp_response.json()
+                        await log_call_result(
+                            self.db if hasattr(self, "db") else None,
+                            caller=caller, sport=sport.lower(),
+                            endpoint="event_odds_pp",
+                            url=odds_url, status_code=pp_response.status_code,
+                            sync_mode="adaptive_engine_legacy")
+                    except OddsApiBudgetExceeded as bexc:
+                        logger.error(f"[ODDS_BUDGET] PP fetch blocked: {bexc}")
+                        break  # stop the per-event loop on budget exhaustion
                     except Exception as e:
                         logger.warning(f"[SYNC] PrizePicks fetch failed for {event_id}: {e}")
                     
@@ -634,7 +668,11 @@ class AdaptiveSyncEngine:
                         "includeMultipliers": "true"
                     }
                     
+                    # Budget guard per Sharp fetch
                     try:
+                        check_and_increment(
+                            caller=caller, sport=sport.lower(),
+                            endpoint="event_odds_sharp")
                         sharp_response = await client.get(odds_url, params=sharp_params, timeout=15.0)
                         if sharp_response.status_code == 200:
                             sharp_data = sharp_response.json()
@@ -644,6 +682,15 @@ class AdaptiveSyncEngine:
                                 bm_markets = len(bm.get("markets", []))
                                 if bm_markets > 0:
                                     logger.debug(f"  [SHARP:{bm_key.upper()}] {event.get('away_team')} @ {event.get('home_team')}: {bm_markets} markets")
+                        await log_call_result(
+                            self.db if hasattr(self, "db") else None,
+                            caller=caller, sport=sport.lower(),
+                            endpoint="event_odds_sharp",
+                            url=odds_url, status_code=sharp_response.status_code,
+                            sync_mode="adaptive_engine_legacy")
+                    except OddsApiBudgetExceeded as bexc:
+                        logger.error(f"[ODDS_BUDGET] Sharp fetch blocked: {bexc}")
+                        break
                     except Exception as e:
                         logger.warning(f"[SYNC] Sharp books fetch failed for {event_id}: {e}")
                     
