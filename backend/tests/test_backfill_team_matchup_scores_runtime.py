@@ -44,6 +44,17 @@ def test_sgoclient_exposes_get_event_with_results():
         "get_event_with_results must be `async def`.")
 
 
+def test_sgoclient_exposes_iter_finalized_events_with_results():
+    """The bulk method the backfill calls. Was confirmed in production
+    to be the only path returning populated `results` for older finals."""
+    assert hasattr(SGOClient, "iter_finalized_events_with_results"), (
+        "SGOClient missing `iter_finalized_events_with_results`. "
+        "The backfill script's bulk score-pull will fail.")
+    fn = getattr(SGOClient, "iter_finalized_events_with_results")
+    assert inspect.isasyncgenfunction(fn), (
+        "iter_finalized_events_with_results must be `async def` with `yield`.")
+
+
 def test_sgoclient_does_not_expose_renamed_or_legacy_get_event():
     """If a future refactor renames the method, this test fails LOUDLY
     so the call-site in the backfill script can be updated in lock-step."""
@@ -55,21 +66,26 @@ def test_sgoclient_does_not_expose_renamed_or_legacy_get_event():
     assert "get_event_with_results" in methods
 
 
-def test_backfill_script_uses_get_event_with_results():
-    """Source-scan the backfill script — direct subscripts on the SGO
-    client object (e.g. `sgo.get_event(...)`) are forbidden if they
-    don't match a real method name."""
+def test_backfill_script_uses_iter_finalized_events_with_results():
+    """Source-scan the backfill script — bulk finalized-events path is
+    the only one that returns populated `results` for older NFL finals.
+    The per-row `get_event_with_results` was observed empirically to
+    return 612/612 events with NO scores. Lock the bulk path in."""
     src = inspect.getsource(B)
-    # The exact call-site we want
-    assert "sgo.get_event_with_results(" in src, (
+    assert "iter_finalized_events_with_results" in src, (
         "backfill_team_matchup_scores.py no longer calls "
-        "`sgo.get_event_with_results(...)` — did the method get "
-        "renamed without updating the call-site?")
-    # The bug pattern that must not return
-    assert "sgo.get_event(" not in src, (
-        "backfill_team_matchup_scores.py contains `sgo.get_event(` — "
-        "that method does not exist on SGOClient and will produce "
-        "612-error failures on VPS.")
+        "`iter_finalized_events_with_results` — the per-row "
+        "`get_event_with_results` endpoint does NOT carry final scores "
+        "for older finals; reverting to it will break all NFL/MLB/NBA "
+        "backfills.")
+    # The per-row pattern that was observed to return zero scores
+    # MUST NOT be the live call-site anymore.
+    assert "sgo.get_event_with_results(" not in src, (
+        "backfill_team_matchup_scores.py still calls per-row "
+        "`sgo.get_event_with_results(...)` — that endpoint returned "
+        "0 scores for 612 events on VPS. Use the bulk "
+        "`iter_finalized_events_with_results(league_id, ...)` path "
+        "instead.")
 
 
 # ─── runtime smoke — mocked SGOClient produces non-zero fetches ──
@@ -98,25 +114,27 @@ async def db_and_patch(monkeypatch):
 
 class _StubSGOClient:
     """Minimal stand-in for SGOClient with the SAME method surface
-    `backfill_team_matchup_scores.amain` actually uses."""
+    `backfill_team_matchup_scores.amain` actually uses (the BULK
+    `iter_finalized_events_with_results` path)."""
     def __init__(self, *_a, **_kw):
         self.calls = []
+        # Default canned response set in tests via .canned_events
+        self.canned_events = [
+            {"eventID": "EID_HAS_SCORES",
+              "results": {"homeScore": 24, "awayScore": 17}},
+            {"eventID": "EID_NO_SCORES", "status": "completed"},
+        ]
 
-    async def get_event_with_results(self, event_id, *,
-                                       expand_results=True,
-                                       include_alt_lines=False):
+    async def iter_finalized_events_with_results(
+            self, league_id, *, starts_after=None,
+            starts_before=None, page_size=50, max_pages=4000):
         self.calls.append({
-            "event_id": event_id,
-            "expand_results": expand_results,
-            "include_alt_lines": include_alt_lines,
+            "league_id":     league_id,
+            "starts_after":  starts_after,
+            "starts_before": starts_before,
         })
-        # Return a payload in the same shape SGO ships
-        if event_id == "EID_HAS_SCORES":
-            return {"eventID": event_id, "results":
-                    {"homeScore": 24, "awayScore": 17}}
-        if event_id == "EID_NO_SCORES":
-            return {"eventID": event_id, "status": "completed"}
-        return None
+        for ev in self.canned_events:
+            yield ev
 
     def stats(self):
         return {"total": len(self.calls), "ok": len(self.calls), "err": 0}
@@ -137,13 +155,13 @@ async def test_backfill_runtime_makes_real_method_calls(
     db, mt = db_and_patch
     # Seed 3 completed NFL matchups
     await db[mt].insert_many([
-        {"event_id": "EID_HAS_SCORES",
+        {"event_id": "EID_HAS_SCORES", "game_date": "2024-09-07",
          "sport": "nfl", "status": "completed",
          "home_team_name": "USC", "away_team_name": "UCLA"},
-        {"event_id": "EID_NO_SCORES",
+        {"event_id": "EID_NO_SCORES", "game_date": "2024-09-14",
          "sport": "nfl", "status": "completed",
          "home_team_name": "OSU", "away_team_name": "MICH"},
-        {"event_id": "EID_NOT_FOUND",
+        {"event_id": "EID_NOT_FOUND", "game_date": "2024-09-21",
          "sport": "nfl", "status": "completed",
          "home_team_name": "BAMA", "away_team_name": "UGA"},
     ])
@@ -182,9 +200,9 @@ async def test_backfill_runtime_makes_real_method_calls(
 async def test_backfill_runtime_idempotent_skips_already_scored(
         db_and_patch, monkeypatch):
     db, mt = db_and_patch
-    # Pre-scored row — should NOT trigger an SGO call
+    # Pre-scored row — should be skipped at the gate, no UPDATE issued
     await db[mt].insert_one({
-        "event_id": "EID_PRE",
+        "event_id": "EID_PRE", "game_date": "2024-09-07",
         "sport": "nfl", "status": "completed",
         "home_score": 31, "away_score": 28,
     })
@@ -204,8 +222,12 @@ async def test_backfill_runtime_idempotent_skips_already_scored(
     a.yes = True; a.dry_run = False; a.force = False
     a.max_events = 100
     await B.amain(a)
-    # Idempotency gate triggered — zero SGO calls made
+    # Bulk iterator IS called once (preloads the index) — that's fine.
+    # The point of idempotency is that ALREADY-SCORED rows are SKIPPED
+    # at the gate before the index lookup, so the row is not re-updated.
     assert stub_instances, "SGOClient was never instantiated"
-    assert stub_instances[0].calls == [], (
-        f"Expected 0 SGO calls (row already scored), "
-        f"got {len(stub_instances[0].calls)}: {stub_instances[0].calls}")
+    # The pre-scored row's home_score must still equal the original value
+    row = await db[mt].find_one({"event_id": "EID_PRE"})
+    assert row["home_score"] == 31 and row["away_score"] == 28
+    # No backfill stamp added (write skipped)
+    assert "score_backfill_version" not in row

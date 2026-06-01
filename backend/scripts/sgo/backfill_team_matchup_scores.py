@@ -146,6 +146,71 @@ def _completed_filter() -> Dict[str, Any]:
     return {"status": {"$in": list(COMPLETED_STATUSES)}}
 
 
+async def _load_finalized_score_index(
+    sgo: SGOClient, *, league_id: str,
+    starts_after: Optional[str], starts_before: Optional[str],
+    max_pages: int,
+) -> Dict[str, Tuple[Optional[float], Optional[float]]]:
+    """Bulk-pull finalized events from SGO once, build
+    {event_id → (home_score, away_score)}.
+
+    Uses the `iter_finalized_events_with_results` paginated path —
+    which is the SAME path the historical player-stats ingest uses,
+    and the only one that reliably returns populated `results` blocks
+    (the singular `get_event_with_results` endpoint returns events
+    without scores for older NFL finals — observed empirically).
+    """
+    print(f"  [{league_id}] bulk-loading finalized events with results "
+          f"(starts_after={starts_after}, starts_before={starts_before})…")
+    out: Dict[str, Tuple[Optional[float], Optional[float]]] = {}
+    n_events = 0
+    n_with_scores = 0
+    async for ev in sgo.iter_finalized_events_with_results(
+        league_id, starts_after=starts_after,
+        starts_before=starts_before, max_pages=max_pages,
+    ):
+        n_events += 1
+        eid = ev.get("eventID") or ev.get("event_id") or ev.get("id")
+        if not eid:
+            continue
+        hs, as_ = extract_scores_from_sgo_event(ev)
+        if hs is not None and as_ is not None:
+            n_with_scores += 1
+        out[str(eid)] = (hs, as_)
+    print(f"  [{league_id}] bulk index: {n_events:,} finalized events "
+          f"({n_with_scores:,} with both scores, "
+          f"{n_events - n_with_scores:,} missing).")
+    return out
+
+
+async def _derive_date_window(
+    db: AsyncIOMotorDatabase, coll_name: str, sport: str,
+    start: Optional[str], end: Optional[str],
+) -> Tuple[Optional[str], Optional[str]]:
+    """If the caller didn't pass --start/--end, auto-derive the window
+    from min/max `game_date` over completed matchups for this sport.
+    Saves an SGO operator from having to know the season window."""
+    if start and end:
+        return start, end
+    base_match: Dict[str, Any] = _completed_filter()
+    if sport != "nfl":
+        base_match["sport"] = sport
+    else:
+        base_match["$or"] = [{"sport": "nfl"}, {"league": "NFL"}]
+    pipeline = [
+        {"$match": base_match},
+        {"$group": {"_id": None,
+                    "minGD": {"$min": "$game_date"},
+                    "maxGD": {"$max": "$game_date"}}},
+    ]
+    agg = await db[coll_name].aggregate(pipeline).to_list(length=1)
+    if not agg:
+        return start, end
+    auto_start = start or agg[0].get("minGD")
+    auto_end   = end   or agg[0].get("maxGD")
+    return auto_start, auto_end
+
+
 # ───── core ─────
 async def backfill_sport(
     sgo: SGOClient, db: AsyncIOMotorDatabase, *,
@@ -156,6 +221,21 @@ async def backfill_sport(
     print(f"\n  [{sport.upper()}] backfilling final scores into {coll_name}")
     print(f"  [{sport.upper()}] league_id={league_id}  "
           f"start={start}  end={end}  dry_run={dry_run}  force={force}")
+
+    # Auto-derive date window from matchups if caller didn't pass one.
+    starts_after, starts_before = await _derive_date_window(
+        db, coll_name, sport, start, end)
+    if (starts_after, starts_before) != (start, end):
+        print(f"  [{sport.upper()}] auto-derived window from matchup "
+              f"game_date: {starts_after} → {starts_before}")
+
+    # Pre-load the score index ONCE per sport via the bulk
+    # finalized-events-with-results endpoint — the only path that
+    # actually carries final scores for older finals.
+    score_idx = await _load_finalized_score_index(
+        sgo, league_id=league_id,
+        starts_after=starts_after, starts_before=starts_before,
+        max_pages=4000)
 
     match: Dict[str, Any] = _completed_filter()
     if sport != "nfl":
@@ -174,10 +254,10 @@ async def backfill_sport(
     counters = {
         "scanned":             0,
         "already_scored_skip": 0,
-        "fetched_from_sgo":    0,
+        "matched_in_bulk_idx": 0,
+        "not_in_bulk_idx":     0,
         "scores_found":        0,
         "scores_missing":      0,
-        "fetch_errors":        0,
         "updated":             0,
         "dry_run":             dry_run,
     }
@@ -197,27 +277,17 @@ async def backfill_sport(
         eid = m.get("event_id")
         if not eid:
             continue
-        # Idempotency gate
         if not force and _is_score_present(m):
             counters["already_scored_skip"] += 1
             continue
-        # Fetch from SGO. Method name is `get_event_with_results` —
-        # not `get_event`. Returns the event dict (or None if SGO has
-        # no record). `expand_results=True` is the canonical flag that
-        # makes SGO include the `results` block with final scores.
-        try:
-            ev = await sgo.get_event_with_results(
-                eid, expand_results=True, include_alt_lines=False)
-        except Exception as e:
-            counters["fetch_errors"] += 1
-            if counters["fetch_errors"] <= 3:
-                print(f"  [{sport.upper()}] SGO fetch error eid={eid}: {e}")
-            continue
-        counters["fetched_from_sgo"] += 1
-        if not ev:
+        # Look up scores in the bulk-pulled index (no per-row SGO call).
+        bulk_hit = score_idx.get(str(eid))
+        if bulk_hit is None:
+            counters["not_in_bulk_idx"] += 1
             counters["scores_missing"] += 1
             continue
-        hs, as_ = extract_scores_from_sgo_event(ev)
+        counters["matched_in_bulk_idx"] += 1
+        hs, as_ = bulk_hit
         if hs is None or as_ is None:
             counters["scores_missing"] += 1
             continue
@@ -232,7 +302,6 @@ async def backfill_sport(
             })
         if dry_run:
             continue
-        # Idempotent in-place update — preserve all other fields.
         update_doc = {
             "$set": {
                 "home_score":             hs,
@@ -245,14 +314,12 @@ async def backfill_sport(
         }
         r = await db[coll_name].update_one({"event_id": eid}, update_doc)
         counters["updated"] += (r.modified_count or 0)
-
-        # Periodic log
         if counters["scanned"] % 200 == 0:
             print(f"    [{sport.upper()}] scanned={counters['scanned']:,}  "
                   f"updated={counters['updated']:,}  "
                   f"already={counters['already_scored_skip']:,}  "
                   f"missing={counters['scores_missing']:,}  "
-                  f"errors={counters['fetch_errors']:,}")
+                  f"not_in_idx={counters['not_in_bulk_idx']:,}")
 
     return {"sport": sport, "coll": coll_name, "counters": counters,
             "sample_updates": sample_updates}
@@ -264,10 +331,10 @@ def _print_summary(r: Dict[str, Any]) -> None:
     print(f"  ── {r['sport'].upper()} BACKFILL SUMMARY ({r['coll']}) ──")
     print(f"     scanned:               {c['scanned']:,}")
     print(f"     already scored (skip): {c['already_scored_skip']:,}")
-    print(f"     fetched from SGO:      {c['fetched_from_sgo']:,}")
+    print(f"     matched in bulk idx:   {c['matched_in_bulk_idx']:,}")
+    print(f"     not in bulk idx:       {c['not_in_bulk_idx']:,}")
     print(f"     scores found:          {c['scores_found']:,}")
-    print(f"     scores missing on SGO: {c['scores_missing']:,}")
-    print(f"     fetch errors:          {c['fetch_errors']:,}")
+    print(f"     scores missing:        {c['scores_missing']:,}")
     print(f"     rows updated:          {c['updated']:,}  "
           f"({'DRY-RUN' if c['dry_run'] else 'live'})")
     if r["sample_updates"]:
@@ -322,7 +389,7 @@ async def amain(args: argparse.Namespace) -> int:
         print("=" * 72)
         tot = {"scanned":0,"updated":0,"scores_found":0,
                 "scores_missing":0,"already_scored_skip":0,
-                "fetch_errors":0,"fetched_from_sgo":0}
+                "matched_in_bulk_idx":0,"not_in_bulk_idx":0}
         for r in all_results:
             for k in tot:
                 tot[k] += r["counters"].get(k, 0)
