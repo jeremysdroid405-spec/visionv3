@@ -201,9 +201,13 @@ async def backfill_sport(
         if not force and _is_score_present(m):
             counters["already_scored_skip"] += 1
             continue
-        # Fetch from SGO
+        # Fetch from SGO. Method name is `get_event_with_results` —
+        # not `get_event`. Returns the event dict (or None if SGO has
+        # no record). `expand_results=True` is the canonical flag that
+        # makes SGO include the `results` block with final scores.
         try:
-            ev = await sgo.get_event(eid, expand_results=True)
+            ev = await sgo.get_event_with_results(
+                eid, expand_results=True, include_alt_lines=False)
         except Exception as e:
             counters["fetch_errors"] += 1
             if counters["fetch_errors"] <= 3:
