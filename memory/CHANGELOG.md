@@ -1,59 +1,67 @@
 # Changelog
 
+## 2026-06-01 — BDL NFL score backfill (Phase 1 UNBLOCKED)
 
-## 2026-06-01 — Odds API team-matchup score backfill (NFL-first)
-
-**Trigger:** the SGO bulk-finalized-events feed does NOT carry final
-scores in a shape `build_team_historical_outcomes` can consume — even
-after 30-day date chunking, `scores_found` stayed 0. Per operator
-directive ("abandon SGO for team scores"), pivoted to The Odds API
-`/v4/sports/{sport}/scores` endpoint.
+**Trigger:** SGO bulk-finalized-events has no usable scores; The Odds
+API `/scores` is hard-capped at `daysFrom ≤ 3` (no deep history).
+Per operator pivot, switched the score source to **BDL NFL `/games`**
+(`https://api.balldontlie.io/nfl/v1/games`), which covers 2002–present.
 
 **Shipped:**
-- `backend/scripts/sgo/backfill_team_matchup_scores_oddsapi.py` — NEW
-  - Single `/scores?daysFrom=3` call per sport (1 credit per call).
-  - Pure-function helpers: `normalize_team_name`, `commence_date_iso`,
-    `extract_scores_from_odds_event`, `build_event_index`.
-  - Two-tier lookup: (date, home, away) primary → (home, away)
-    fallback for ±1-day UTC drift.
-  - Idempotent `$set` on `nfl_matchups` / `team_matchups` with
-    `score_source="odds_api_scores"`. Skips already-scored rows
-    unless `--force`.
-  - Default dry-run; `--yes` required to write.
-  - Sport allowlist: `nfl`, `mlb`, `nba`. NCAAF intentionally absent.
-- `backend/tests/test_backfill_team_matchup_scores_oddsapi.py` — NEW
-  - 47 cases covering normalization, score extraction (order-
-    independent), index construction, completed/score-present
-    predicates, dry-run vs. live, idempotency, force, fallback
-    date-mismatch, not-in-window, no-team-names, found-but-not-
-    completed, sport-config contract. All passing.
+- `backend/scripts/sgo/backfill_team_matchup_scores_bdl.py` — NEW
+  - Auto-derives BDL `seasons[]` from matchup `game_date` (Sep–Dec
+    of year Y → season Y; Jan–Jul → season Y-1; Aug → next season).
+  - Paginated fetch with cursor + 429-retry exponential backoff
+    (15s → 30s → 60s, up to 5 retries). Default `--rate-sleep-ms`
+    250ms (safe with the 429 retry); operator can bump to 13000ms
+    for free-tier compliance.
+  - Two-tier match: primary `(date, home, away)` then a constrained
+    fallback `(home, away)` that uses `pick_closest_game` with a
+    ±2-day window — prevents the cross-season collision where a
+    2024-08 preseason game could silently match a 2025-08 rematch.
+  - Idempotent `$set` (`home_score`, `away_score`, `final_score`,
+    `score_source="bdl_nfl_games"`, `bdl_game_id` for trace).
+  - Skips already-scored rows unless `--force`. Dry-run by default.
+- `backend/tests/test_backfill_team_matchup_scores_bdl.py` — NEW
+  - 50 cases covering: normalize (incl. franchise renames),
+    season derivation from game-dates, score extraction (with
+    home/away swap fallback), index build, pick-closest within/
+    outside window, dry-run vs live, idempotency, force,
+    fallback-on-drift, fallback-rejects-wrong-season-rematch,
+    non-final filtered out, no-team-names, seasons auto-derived.
+  - All 50 passing.
+- Removed the abandoned Odds API attempt (`backfill_team_matchup_scores_oddsapi.py`
+  + tests) — wrong data source per operator.
 - SGO sibling `backfill_team_matchup_scores.py` retained as
-  fallback per user instruction.
+  fallback per earlier instruction.
 
-**End-to-end dry-run (NFL, Feb 2026):**
-- API returned 75 events (4,898,455 credits remaining, 2-credit cost).
-- 659 candidate matchups → 70 matched, 66 of which were
-  `found_but_not_completed` (Super Bowl + adjacent week,
-  upcoming/live), 589 fell outside the 3-day window.
-- 0 scores written this run because the calendar moment had no
-  completed games within `daysFrom=3`.
+**Live verification on prod-equivalent data (preview pod):**
+- BDL pulled 855 NFL games across seasons 2023/2024/2025
+  (9 pages, ~120s with rate sleep + 429 backoffs).
+- All 855 carry `status="Final"`.
+- **570 / 659 matchups updated with scores (86%)** — 558 primary
+  matches + 12 fallback (within ±2 days).
+- 85 matchups not in BDL (Pro Bowl / exhibitions / international —
+  expected; "Team Ruff" Pro Bowl 2024 is not an NFL franchise).
+- 4 matchups had no team names on the source SGO doc.
+- Sample matches verified correct against known scores
+  (KC 25–22 SF SBLVIII, KC 27–20 BAL Wk1 2024, etc.).
 
-**KNOWN LIMITATION (flagged loudly):**
-The Odds API `/scores` endpoint is hard-capped at `daysFrom ≤ 3`.
-There is no deep-historical scores endpoint on The Odds API.
-To unblock `build_team_historical_outcomes` against the 2024 season,
-either:
-  (a) Run this script weekly during live season so scores flow in
-      as they finalize, or
-  (b) Use an alternate score source for backfill. Worth noting:
-      `nfl_matchups.status_raw.displayShort` already carries the
-      score string (e.g., "25-22") from SGO `/v2/events`. Parsing
-      that field in-place would unblock historical NFL backfill
-      with zero external API calls — to be evaluated in a follow-up
-      PR if the operator approves.
+**Phase 1 builder dry-run AFTER backfill:**
+- `events with final scores: 0 → 570 (86.49%)` — unblock landed.
+- Overall outcome resolution: **0% → 93.19%** (115,819 / 124,287
+  graded; 57,405 wins / 57,536 losses / 878 pushes — balanced).
+- Per-market resolution:
+  - game_total: 91.78%
+  - h2h:        93.15%
+  - spread:     91.82%
+  - team_total: 98.83%
+- Remaining 6.81% unresolved are all `no_final_score` (the 89
+  matchups BDL doesn't carry — Pro Bowl / exhibitions).
 
-**Operator next step:** run `--yes` weekly on prod once the regular
-season resumes; verify `events_with_final_scores` climbs.
+**Next:** operator runs `--yes` weekly during live season to
+keep new games scored; Phase 2 Team Feature Builder can begin
+since the resolution gate is now green.
 
 
 ## 2026-06-02 — Hotfix: SGO 401 (auth method + URL contract) + `--raw` flag
