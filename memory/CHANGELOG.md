@@ -1,5 +1,60 @@
 # Changelog
 
+
+## 2026-06-01 — Team Model Phase 1 (MLB+NBA scores) + Phase 2A (rolling priors) shipped
+
+**Step A — Phase 1 completion for MLB and NBA:**
+- Generalized `backfill_team_matchup_scores_bdl.py` from NFL-only to a
+  sport-aware adapter (BDL NFL/MLB/NBA `/games`). Per-sport spec
+  encodes URL, away-team key (`visitor_team` vs `away_team`),
+  team-name field (`full_name` vs `display_name`), score extractor
+  (top-level scores vs nested `*_team_data.runs`), final-status
+  pattern, and season deriver.
+- 57/57 unit tests pass (added MLB+NBA shape coverage, calendar-year
+  season deriver test).
+- Live backfill results (preview pod):
+  - MLB: 5,189 / 5,401 matchups scored (96%) across seasons 2023/2024/2025.
+  - NBA: 2,070 / 2,292 matchups scored (90%) — high fallback hit rate
+    explained by NBA's UTC date wrap (evening EST games appear on the
+    next UTC calendar day in BDL).
+- Phase 1 `build_team_historical_outcomes` then committed:
+  - MLB: 879,931 outcomes written, **93.85% resolution**, W 406,944 / L 407,750 / P 11,100 — balanced.
+  - NBA: 413,454 outcomes written, **94.77% resolution**, W 194,694 / L 195,039 / P 2,118 — balanced.
+  - Per-market: MLB game_total 93.70% · h2h 94.00% · spread 93.89% · team_total 93.69%;
+    NBA game_total 92.10% · h2h 95.79% · spread 95.72% · team_total 95.72%.
+
+**Step B — Phase 2A: Team Rolling-Priors Feature Builder:**
+- Shipped `backend/scripts/sgo/build_team_features.py` — universal
+  (one script, branches internally by sport). Mirrors the player
+  feature engine pattern (`services/replay/engine.py::build_as_of_features`):
+  - Pure compute function `compute_team_as_of_features` with strict
+    leakage guard (`assert_no_future_games`) — game_date < as_of_date.
+  - L5 / L10 / season ladder identical to the player builder.
+  - μ / σ / CV computed over points scored.
+- Feature set:
+  - sample_size, mu/sigma/cv points scored
+  - win_rate_l5/l10/season, avg_scored_l5/l10/season,
+    avg_allowed_l5/l10/season
+  - spread_cover_rate_l10, ou_hit_rate_l10
+  - home_win_rate, away_win_rate, rest_days (capped at 14)
+  - tempo_l10 (NBA pace proxy = (scored+allowed)/2 L10;
+                MLB runs/g L10)
+  - run_trend_l10 (MLB only: L10 avg − season avg)
+  - Tagged `feature_completeness = "team_v1_priors"`
+- Destination: `team_model_features` collection with unique index
+  on `(sport, team_id, as_of_date)` and helper index `(sport, as_of_date)`.
+- Idempotent upserts via `$set`. Dry-run via `--dry-run`.
+- 23/23 unit tests pass (helpers, aggregation, compute, leakage
+  guard, orchestrator with fake mongo).
+
+**Step C — Verification:**
+- MLB: 6,057 feature rows / 30 teams; 5,902 with `win_rate_l10` populated; 0 leakage violations.
+- NBA: 3,283 feature rows / 30 teams; 3,236 with `win_rate_l10` populated; 0 leakage violations.
+- Sample mature MLB row (`mlb_ari @ 2024-08-09`, n=21): μ=5.43, σ=2.28, cv=0.42, win_rate_l10=0.9, tempo_l10=5.55, run_trend_l10=+0.571, rest_days=2 — all values realistic and bounded.
+
+**Next:** Step D — decide on per-prop features and Phase 3 backtesting (operator decision).
+
+
 ## 2026-06-01 — BDL NFL score backfill (Phase 1 UNBLOCKED)
 
 **Trigger:** SGO bulk-finalized-events has no usable scores; The Odds

@@ -69,18 +69,39 @@ for env_path in ("/var/www/app/backend/.env", "/app/backend/.env"):
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
-BACKFILL_VERSION = "v1"
-SCORE_SOURCE = "bdl_nfl_games"
-BDL_NFL_GAMES_URL = "https://api.balldontlie.io/nfl/v1/games"
-
-# Currently NFL-only. MLB/NBA score endpoints exist on BDL too, but the
-# user brief explicitly scopes this script to NFL first.
-SPORT_CONFIG: Dict[str, str] = {
-    "nfl": "nfl_matchups",
+BACKFILL_VERSION = "v2"
+SCORE_SOURCE_BY_SPORT = {
+    "nfl": "bdl_nfl_games",
+    "mlb": "bdl_mlb_games",
+    "nba": "bdl_nba_games",
 }
 
 
-# ───── pure helpers (unit-tested) ─────
+# Per-sport BDL adapter spec — encodes the shape differences between
+# BDL's NFL / MLB / NBA `/games` payloads in one place. The orchestrator
+# never branches on sport; it dispatches through these specs.
+class _SportSpec:
+    """Holds the per-sport facts the orchestrator needs."""
+    def __init__(self, *,
+                  url: str,
+                  matchups_coll: str,
+                  away_team_key: str,
+                  team_name_field: str,
+                  score_extractor,
+                  is_final,
+                  season_deriver,
+                  seasons_in_url_when_empty: bool = True,
+                  matchups_sport_filter):
+        self.url = url
+        self.matchups_coll = matchups_coll
+        self.away_team_key = away_team_key
+        self.team_name_field = team_name_field
+        self.score_extractor = score_extractor
+        self.is_final = is_final
+        self.season_deriver = season_deriver
+        self.matchups_sport_filter = matchups_sport_filter
+
+
 def _num(v: Any) -> Optional[float]:
     if v is None:
         return None
@@ -92,14 +113,46 @@ def _num(v: Any) -> Optional[float]:
         return None
 
 
+def _nfl_score_extractor(g: Dict[str, Any]) -> Tuple[Optional[float], Optional[float]]:
+    return _num(g.get("home_team_score")), _num(g.get("visitor_team_score"))
+
+
+def _nba_score_extractor(g: Dict[str, Any]) -> Tuple[Optional[float], Optional[float]]:
+    return _num(g.get("home_team_score")), _num(g.get("visitor_team_score"))
+
+
+def _mlb_score_extractor(g: Dict[str, Any]) -> Tuple[Optional[float], Optional[float]]:
+    """MLB nests runs under `home_team_data.runs` / `away_team_data.runs`."""
+    h = g.get("home_team_data") or {}
+    a = g.get("away_team_data") or {}
+    hs = _num(h.get("runs")) if isinstance(h, dict) else None
+    as_ = _num(a.get("runs")) if isinstance(a, dict) else None
+    return hs, as_
+
+
+def _nfl_is_final(g: Dict[str, Any]) -> bool:
+    s = g.get("status")
+    return isinstance(s, str) and s.startswith("Final")
+
+
+def _nba_is_final(g: Dict[str, Any]) -> bool:
+    s = g.get("status")
+    return isinstance(s, str) and s.startswith("Final")
+
+
+def _mlb_is_final(g: Dict[str, Any]) -> bool:
+    s = g.get("status")
+    return isinstance(s, str) and "FINAL" in s.upper()
+
+
 _TEAM_NAME_NOISE = re.compile(r"[^a-z0-9]+")
 _NICKNAME_OVERRIDES = {
-    # Both SGO and BDL use official full names today, but pin known
-    # franchise renames for safety.
-    "washingtonfootballteam": "washingtoncommanders",
-    "oaklandraiders":         "lasvegasraiders",
-    "stlouisrams":            "losangelesrams",
-    "sandiegochargers":       "losangeleschargers",
+    # Franchise renames pinned for safety.
+    "washingtonfootballteam":  "washingtoncommanders",
+    "oaklandraiders":          "lasvegasraiders",
+    "stlouisrams":             "losangelesrams",
+    "sandiegochargers":        "losangeleschargers",
+    "clevelandindians":        "clevelandguardians",
 }
 
 
@@ -120,19 +173,13 @@ def commence_date_iso(commence_time: Optional[str]) -> Optional[str]:
     return commence_time[:10]
 
 
-def derive_seasons_from_game_dates(
+def derive_nfl_seasons_from_game_dates(
     game_dates: List[str],
 ) -> List[int]:
-    """Map a list of 'YYYY-MM-DD' game_date strings to a sorted list of
-    NFL season-start-years (BDL's `season` field uses the start year).
+    """Map 'YYYY-MM-DD' strings to BDL NFL season-start-years.
 
-    Rule: months Sep–Dec belong to the year-Y season; Jan–Feb belong
-    to the (year-1) season (Super Bowl + playoffs of the prior season).
-    Mar–Aug is treated as preseason of year-Y (rare in our data; the
-    HOF game in Aug is part of the next regular season).
-
-    Pure function — easy to unit-test.
-    """
+    Rule: Aug–Dec → season=Y; Jan–Jul → season=Y-1 (SB / playoffs of
+    the prior season). Pure function."""
     seasons: Set[int] = set()
     for gd in game_dates:
         d = commence_date_iso(gd)
@@ -140,54 +187,105 @@ def derive_seasons_from_game_dates(
             continue
         try:
             y, m, _ = d.split("-")
-            year = int(y)
-            month = int(m)
+            year, month = int(y), int(m)
         except (ValueError, IndexError):
             continue
-        if month >= 8:        # Aug HOF + Sep-Dec regular season
+        if month >= 8:
             seasons.add(year)
-        elif month <= 7:      # Jan-Jul playoff / Super Bowl of prev season
+        else:
             seasons.add(year - 1)
     return sorted(seasons)
 
 
-def extract_scores_from_bdl_game(
-    g: Dict[str, Any], *, home_team_norm: str, away_team_norm: str,
-) -> Tuple[Optional[float], Optional[float]]:
-    """Pull (home_score, away_score) from a BDL NFL `/games` entry.
+def derive_calendar_year_seasons(
+    game_dates: List[str],
+) -> List[int]:
+    """Map 'YYYY-MM-DD' strings to BDL MLB/NBA seasons (calendar year =
+    season start year). MLB season runs Feb–Nov, NBA Oct–Jun.
+    For NBA, games in Jan–Jun belong to season=Y-1; Oct–Dec to season=Y.
+    Common idiom: just send all calendar years that appear; BDL will
+    correctly return only games it has, no extra cost when seasons[]
+    duplicate.
 
-    BDL labels the away side as `visitor_team`. The matchup row uses
-    `away_team_name`. We map visitor→away on the way in.
+    For BDL `season` semantics:
+      - MLB: `season` = calendar year of the entire season
+        (e.g., 2024 season = Feb–Nov 2024)
+      - NBA: `season` = start-year (2024-25 season = `season=2024`)
+
+    To stay tolerant, return BOTH (Y) and (Y-1) for every game date —
+    BDL `seasons[]` is a whitelist, not an AND filter, so this just
+    means we fetch a superset that we'll filter on the way in.
+    Pure function."""
+    seasons: Set[int] = set()
+    for gd in game_dates:
+        d = commence_date_iso(gd)
+        if not d:
+            continue
+        try:
+            year = int(d.split("-")[0])
+        except (ValueError, IndexError):
+            continue
+        seasons.add(year)
+        # For NBA: a Feb 2024 game is the 2023-24 season (season=2023)
+        seasons.add(year - 1)
+    return sorted(seasons)
+
+
+# Legacy alias kept for the original NFL-only test
+def derive_seasons_from_game_dates(game_dates: List[str]) -> List[int]:
+    return derive_nfl_seasons_from_game_dates(game_dates)
+
+
+def extract_scores_from_bdl_game(
+    g: Dict[str, Any], *,
+    home_team_norm: str, away_team_norm: str,
+    away_team_key: str = "visitor_team",
+    team_name_field: str = "full_name",
+    score_extractor=_nfl_score_extractor,
+) -> Tuple[Optional[float], Optional[float]]:
+    """Pull (home_score, away_score) from a BDL `/games` entry.
+
+    Sport-aware via three parameters:
+      - `away_team_key`: BDL key for the away side
+        ("visitor_team" for NFL/NBA, "away_team" for MLB).
+      - `team_name_field`: nested field carrying the team name
+        ("full_name" for NFL/NBA, "display_name" for MLB).
+      - `score_extractor`: pure function returning (home, away) numbers
+        from a top-level game dict (sport-specific because MLB nests
+        scores under `home_team_data.runs`).
 
     Pure function. The caller passes pre-normalized team keys so this
     function is trivially testable."""
     if not isinstance(g, dict):
         return None, None
     h_team = g.get("home_team") or {}
-    v_team = g.get("visitor_team") or {}
-    h_norm = normalize_team_name(h_team.get("full_name")
+    a_team = g.get(away_team_key) or {}
+    h_norm = normalize_team_name(h_team.get(team_name_field)
                                   if isinstance(h_team, dict) else None)
-    v_norm = normalize_team_name(v_team.get("full_name")
-                                  if isinstance(v_team, dict) else None)
-    if h_norm != home_team_norm or v_norm != away_team_norm:
+    a_norm = normalize_team_name(a_team.get(team_name_field)
+                                  if isinstance(a_team, dict) else None)
+    if h_norm != home_team_norm or a_norm != away_team_norm:
         # Could legitimately be a reversed-home/away record; try the swap.
-        if h_norm == away_team_norm and v_norm == home_team_norm:
-            return _num(g.get("visitor_team_score")), _num(g.get("home_team_score"))
+        if h_norm == away_team_norm and a_norm == home_team_norm:
+            hs_raw, as_raw = score_extractor(g)
+            return as_raw, hs_raw   # swap to our perspective
         return None, None
-    return _num(g.get("home_team_score")), _num(g.get("visitor_team_score"))
+    return score_extractor(g)
 
 
 def build_event_index(
-    games: List[Dict[str, Any]],
+    games: List[Dict[str, Any]], *,
+    away_team_key: str = "visitor_team",
+    team_name_field: str = "full_name",
 ) -> Tuple[Dict[Tuple[str, str, str], Dict[str, Any]],
             Dict[Tuple[str, str], List[Dict[str, Any]]]]:
     """Build the (date, home, away) primary and (home, away) fallback
-    indices from a list of BDL game dicts.
+    indices from a list of BDL game dicts. Sport-aware via
+    `away_team_key` and `team_name_field`.
 
     The fallback maps to a LIST of games (not a single game) because
-    a team pair can meet multiple times across the seasons window
-    (e.g., home-and-home regular season + playoffs across multiple
-    years). The orchestrator picks the closest by date — see
+    a team pair can meet multiple times across the seasons window.
+    The orchestrator picks the closest by date — see
     `pick_closest_game`. Pure function."""
     primary: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
     fallback: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
@@ -195,11 +293,11 @@ def build_event_index(
         if not isinstance(g, dict):
             continue
         h_team = g.get("home_team") or {}
-        v_team = g.get("visitor_team") or {}
-        if not (isinstance(h_team, dict) and isinstance(v_team, dict)):
+        a_team = g.get(away_team_key) or {}
+        if not (isinstance(h_team, dict) and isinstance(a_team, dict)):
             continue
-        h = normalize_team_name(h_team.get("full_name"))
-        a = normalize_team_name(v_team.get("full_name"))
+        h = normalize_team_name(h_team.get(team_name_field))
+        a = normalize_team_name(a_team.get(team_name_field))
         d = commence_date_iso(g.get("date"))
         if not h or not a:
             continue
@@ -249,8 +347,9 @@ def pick_closest_game(
 
 
 def _is_final(g: Dict[str, Any]) -> bool:
-    """BDL marks completed games with `status="Final"`. Variants like
-    "Final/OT" are also treated as final."""
+    """Default final-status check (NFL/NBA): `status` starts with "Final".
+    MLB uses "STATUS_FINAL"; per-sport behavior is overridden via the
+    `SportSpec`."""
     s = g.get("status")
     if not isinstance(s, str):
         return False
@@ -262,14 +361,56 @@ def _is_score_present(row: Dict[str, Any]) -> bool:
             and row.get("away_score") is not None)
 
 
+# ───── Per-sport BDL spec table ─────
+_SPORT_SPECS: Dict[str, _SportSpec] = {
+    "nfl": _SportSpec(
+        url="https://api.balldontlie.io/nfl/v1/games",
+        matchups_coll="nfl_matchups",
+        away_team_key="visitor_team",
+        team_name_field="full_name",
+        score_extractor=_nfl_score_extractor,
+        is_final=_nfl_is_final,
+        season_deriver=derive_nfl_seasons_from_game_dates,
+        matchups_sport_filter={"$or": [{"sport": "nfl"}, {"league": "NFL"}]},
+    ),
+    "nba": _SportSpec(
+        url="https://api.balldontlie.io/nba/v1/games",
+        matchups_coll="team_matchups",
+        away_team_key="visitor_team",
+        team_name_field="full_name",
+        score_extractor=_nba_score_extractor,
+        is_final=_nba_is_final,
+        season_deriver=derive_calendar_year_seasons,
+        matchups_sport_filter={"sport": "nba"},
+    ),
+    "mlb": _SportSpec(
+        url="https://api.balldontlie.io/mlb/v1/games",
+        matchups_coll="team_matchups",
+        away_team_key="away_team",
+        team_name_field="display_name",
+        score_extractor=_mlb_score_extractor,
+        is_final=_mlb_is_final,
+        season_deriver=derive_calendar_year_seasons,
+        matchups_sport_filter={"sport": "mlb"},
+    ),
+}
+
+# Public alias for back-compat with tests that still import SPORT_CONFIG
+SPORT_CONFIG: Dict[str, str] = {s: spec.matchups_coll
+                                  for s, spec in _SPORT_SPECS.items()}
+
+
 # ───── HTTP fetch (mockable in tests) ─────
-async def fetch_bdl_nfl_games(
-    api_key: str, *, seasons: List[int],
+async def fetch_bdl_games(
+    api_key: str, *, url: str, seasons: List[int],
     per_page: int = 100, rate_sleep_ms: int = 250,
     timeout_s: float = 30.0, max_429_retries: int = 5,
 ) -> List[Dict[str, Any]]:
-    """Page through BDL NFL /games for the given seasons. Returns a
-    flat list of game dicts. Raises RuntimeError on non-2xx (except 429,
+    """Page through a BDL `/games` endpoint for the given seasons.
+
+    `url` is the full BDL endpoint
+    (e.g. "https://api.balldontlie.io/nfl/v1/games"). Returns a flat
+    list of game dicts. Raises RuntimeError on non-2xx (except 429,
     which is retried with exponential backoff up to `max_429_retries`).
 
     Kept thin so tests can monkeypatch this single function via the
@@ -294,16 +435,12 @@ async def fetch_bdl_nfl_games(
             req_params = list(params)
             if next_cursor is not None:
                 req_params.append(("cursor", next_cursor))
-            # 429-aware fetch loop
             attempt = 0
             while True:
-                async with sess.get(BDL_NFL_GAMES_URL,
-                                      params=req_params,
+                async with sess.get(url, params=req_params,
                                       headers=headers) as resp:
                     body = await resp.text()
                     if resp.status == 429 and attempt < max_429_retries:
-                        # BDL free tier: 5 req/min → wait 13s minimum.
-                        # Exponential: 15s, 30s, 60s, 60s, 60s.
                         delay = min(60, 15 * (2 ** attempt))
                         print(f"    [bdl] 429 rate-limited on page {page} "
                               f"(attempt {attempt + 1}); sleeping {delay}s…")
@@ -312,7 +449,7 @@ async def fetch_bdl_nfl_games(
                         continue
                     if resp.status >= 400:
                         raise RuntimeError(
-                            f"BDL /nfl/v1/games returned HTTP {resp.status}: "
+                            f"BDL {url} returned HTTP {resp.status}: "
                             f"{body[:300]}")
                     import json as _json
                     payload = _json.loads(body)
@@ -332,17 +469,25 @@ async def fetch_bdl_nfl_games(
     return out
 
 
+# Back-compat alias for the NFL-only tests
+async def fetch_bdl_nfl_games(
+    api_key: str, *, seasons: List[int],
+    per_page: int = 100, rate_sleep_ms: int = 250,
+    timeout_s: float = 30.0, max_429_retries: int = 5,
+) -> List[Dict[str, Any]]:
+    return await fetch_bdl_games(
+        api_key, url=_SPORT_SPECS["nfl"].url, seasons=seasons,
+        per_page=per_page, rate_sleep_ms=rate_sleep_ms,
+        timeout_s=timeout_s, max_429_retries=max_429_retries)
+
+
 # ───── core ─────
 async def _derive_matchup_date_range(
-    db: AsyncIOMotorDatabase, coll_name: str, sport: str,
+    db: AsyncIOMotorDatabase, coll_name: str, sport_filter: Dict[str, Any],
     start: Optional[str], end: Optional[str],
 ) -> Tuple[Optional[str], Optional[str], List[str]]:
     """Returns (effective_start, effective_end, distinct_game_dates)."""
-    base: Dict[str, Any] = {"status": "completed"}
-    if sport == "nfl":
-        base["$or"] = [{"sport": "nfl"}, {"league": "NFL"}]
-    else:
-        base["sport"] = sport
+    base: Dict[str, Any] = {"status": "completed", **sport_filter}
     if start or end:
         gd: Dict[str, Any] = {}
         if start:
@@ -367,23 +512,27 @@ async def backfill_sport(
     fetcher: Any = None,
 ) -> Dict[str, Any]:
     """Pull BDL games for the inferred (or user-supplied) seasons, then
-    update matchups in-place.
+    update matchups in-place. Dispatches all sport-specific shape
+    differences through `_SPORT_SPECS[sport]`.
 
-    `fetcher` mirrors `fetch_bdl_nfl_games`'s signature. Tests pass a
-    stub; production passes the real one."""
-    coll_name = SPORT_CONFIG[sport]
-    fetcher = fetcher or fetch_bdl_nfl_games
+    `fetcher` mirrors `fetch_bdl_games`'s signature, with the FIRST two
+    positional args being `(api_key, url)`. Tests pass a stub that
+    ignores `url`."""
+    spec = _SPORT_SPECS[sport]
+    coll_name = spec.matchups_coll
+    score_source = SCORE_SOURCE_BY_SPORT[sport]
+    fetcher = fetcher or fetch_bdl_games
     print(f"\n  [{sport.upper()}] backfilling final scores into {coll_name}")
-    print(f"  [{sport.upper()}] source=BDL NFL /games  start={start}  end={end}  "
+    print(f"  [{sport.upper()}] source=BDL {spec.url}  start={start}  end={end}  "
           f"dry_run={dry_run}  force={force}")
 
     eff_start, eff_end, gdates = await _derive_matchup_date_range(
-        db, coll_name, sport, start, end)
+        db, coll_name, spec.matchups_sport_filter, start, end)
     if (eff_start, eff_end) != (start, end):
         print(f"  [{sport.upper()}] auto-derived game_date window: "
               f"{eff_start} → {eff_end}  ({len(gdates)} distinct dates)")
 
-    effective_seasons = seasons or derive_seasons_from_game_dates(gdates)
+    effective_seasons = seasons or spec.season_deriver(gdates)
     if not effective_seasons:
         print(f"  [{sport.upper()}] no seasons resolved; aborting.")
         return {"sport": sport, "coll": coll_name,
@@ -391,20 +540,19 @@ async def backfill_sport(
                 "sample_updates": []}
     print(f"  [{sport.upper()}] BDL seasons to pull: {effective_seasons}")
 
-    games = await fetcher(api_key, seasons=effective_seasons,
-                           rate_sleep_ms=rate_sleep_ms)
-    finals = [g for g in games if _is_final(g)]
+    games = await fetcher(api_key, url=spec.url, seasons=effective_seasons,
+                            rate_sleep_ms=rate_sleep_ms)
+    finals = [g for g in games if spec.is_final(g)]
     print(f"  [{sport.upper()}] received {len(games):,} game(s) from BDL; "
           f"{len(finals):,} are final.")
-    primary_idx, fallback_idx = build_event_index(finals)
+    primary_idx, fallback_idx = build_event_index(
+        finals,
+        away_team_key=spec.away_team_key,
+        team_name_field=spec.team_name_field)
     print(f"  [{sport.upper()}] index sizes: "
           f"primary={len(primary_idx):,}  fallback={len(fallback_idx):,}")
 
-    match: Dict[str, Any] = {"status": "completed"}
-    if sport == "nfl":
-        match["$or"] = [{"sport": "nfl"}, {"league": "NFL"}]
-    else:
-        match["sport"] = sport
+    match: Dict[str, Any] = {"status": "completed", **spec.matchups_sport_filter}
     if eff_start or eff_end:
         gd: Dict[str, Any] = {}
         if eff_start:
@@ -465,7 +613,10 @@ async def backfill_sport(
             counters["not_in_bdl"] += 1
             continue
         hs, as_ = extract_scores_from_bdl_game(
-            hit, home_team_norm=h_norm, away_team_norm=a_norm)
+            hit, home_team_norm=h_norm, away_team_norm=a_norm,
+            away_team_key=spec.away_team_key,
+            team_name_field=spec.team_name_field,
+            score_extractor=spec.score_extractor)
         if hs is None or as_ is None:
             counters["missing_score_fields"] += 1
             continue
@@ -490,7 +641,7 @@ async def backfill_sport(
                 "home_score":             hs,
                 "away_score":             as_,
                 "final_score":            {"home": hs, "away": as_},
-                "score_source":           SCORE_SOURCE,
+                "score_source":           score_source,
                 "score_backfilled_at":    datetime.now(timezone.utc),
                 "score_backfill_version": BACKFILL_VERSION,
                 "bdl_game_id":            hit.get("id"),
@@ -556,7 +707,8 @@ async def amain(args: argparse.Namespace) -> int:
           f"force={args.force}  seasons={args.seasons}  "
           f"max_events_per_sport={args.max_events}")
     print("  CONTRACT: in-place $set updates to matchup docs; preserves "
-          "all other fields; idempotent. score_source='bdl_nfl_games'.")
+          "all other fields; idempotent. score_source = "
+          "'bdl_<sport>_games'.")
 
     mongo = AsyncIOMotorClient(os.environ["MONGO_URL"])
     db = mongo[os.environ["DB_NAME"]]
@@ -595,15 +747,18 @@ async def amain(args: argparse.Namespace) -> int:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--sport", choices=["nfl", "all"],
+    p.add_argument("--sport", choices=["nfl", "mlb", "nba", "all"],
                     default="nfl",
-                    help="Sport to backfill. NFL only for this script.")
+                    help="Sport to backfill. NFL → nfl_matchups; "
+                         "MLB/NBA → team_matchups (sport-filtered).")
     p.add_argument("--start", default=None,
                     help="Optional inclusive start game_date 'YYYY-MM-DD'.")
     p.add_argument("--end", default=None,
                     help="Optional inclusive end game_date 'YYYY-MM-DD'.")
     p.add_argument("--seasons", type=int, nargs="+", default=None,
-                    help="Explicit BDL seasons[] to pull (NFL start-year). "
+                    help="Explicit BDL seasons[] to pull. NFL: start-year "
+                         "(e.g. 2024 = 2024-25 season). MLB: calendar year. "
+                         "NBA: start-year (2024 = 2024-25 season). "
                          "If omitted, derived from matchup game_date.")
     p.add_argument("--yes", action="store_true",
                     help="Actually write to Mongo (default is dry-run).")

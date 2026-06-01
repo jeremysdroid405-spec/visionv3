@@ -20,8 +20,9 @@ from scripts.sgo.backfill_team_matchup_scores_bdl import (
     _is_score_present,
     backfill_sport,
     SPORT_CONFIG,
-    SCORE_SOURCE,
+    SCORE_SOURCE_BY_SPORT,
 )
+SCORE_SOURCE = SCORE_SOURCE_BY_SPORT["nfl"]  # back-compat for NFL tests
 
 
 # ───── _num ─────
@@ -264,7 +265,8 @@ class _FakeDB:
 
 
 def _stub_fetcher(games):
-    async def _f(api_key, *, seasons, per_page=100, rate_sleep_ms=0, timeout_s=30.0):
+    async def _f(api_key, *, url=None, seasons, per_page=100,
+                  rate_sleep_ms=0, timeout_s=30.0, max_429_retries=5):
         assert isinstance(seasons, list) and seasons
         return games
     return _f
@@ -472,7 +474,8 @@ async def test_seasons_auto_derived_from_matchups():
          "away_team_name": "Baltimore Ravens", "game_date": "2025-02-09"},
     ])
     seen_seasons: List[List[int]] = []
-    async def stub(api_key, *, seasons, per_page=100, rate_sleep_ms=0, timeout_s=30.0):
+    async def stub(api_key, *, url=None, seasons, per_page=100,
+                    rate_sleep_ms=0, timeout_s=30.0, max_429_retries=5):
         seen_seasons.append(list(seasons))
         return []
     r = await backfill_sport(
@@ -486,4 +489,121 @@ async def test_seasons_auto_derived_from_matchups():
 
 
 def test_sport_config():
-    assert SPORT_CONFIG == {"nfl": "nfl_matchups"}
+    # Backwards-compat: SPORT_CONFIG maps sport → matchups collection.
+    assert SPORT_CONFIG == {
+        "nfl": "nfl_matchups",
+        "mlb": "team_matchups",
+        "nba": "team_matchups",
+    }
+
+
+# ───── MLB/NBA-specific tests ─────
+_MLB_FINAL_GAME = {
+    "id": 5046422, "status": "STATUS_FINAL", "season": 2024,
+    "home_team": {"display_name": "San Diego Padres"},
+    "away_team":  {"display_name": "Los Angeles Dodgers"},
+    "date": "2024-10-22T23:30:00.000Z",
+    "home_team_data": {"runs": 6},
+    "away_team_data": {"runs": 5},
+}
+
+_NBA_FINAL_GAME = {
+    "id": 15907731, "status": "Final", "season": 2024,
+    "home_team": {"full_name": "Brooklyn Nets"},
+    "visitor_team": {"full_name": "Orlando Magic"},
+    "date": "2024-12-01",   # NBA returns date-only sometimes
+    "home_team_score": 92, "visitor_team_score": 100,
+}
+
+
+class TestMLBExtraction:
+    def test_mlb_extract_uses_team_data_runs(self):
+        from scripts.sgo.backfill_team_matchup_scores_bdl import (
+            _mlb_score_extractor)
+        hs, as_ = _mlb_score_extractor(_MLB_FINAL_GAME)
+        assert hs == 6.0 and as_ == 5.0
+
+    def test_mlb_is_final(self):
+        from scripts.sgo.backfill_team_matchup_scores_bdl import _mlb_is_final
+        assert _mlb_is_final({"status": "STATUS_FINAL"})
+        assert _mlb_is_final({"status": "FINAL"})
+        assert not _mlb_is_final({"status": "STATUS_IN_PROGRESS"})
+
+    def test_mlb_extract_via_orchestrator_kwargs(self):
+        # Verify extract_scores_from_bdl_game routes the MLB shape
+        # correctly when given the MLB spec kwargs.
+        from scripts.sgo.backfill_team_matchup_scores_bdl import (
+            extract_scores_from_bdl_game, _mlb_score_extractor)
+        hs, as_ = extract_scores_from_bdl_game(
+            _MLB_FINAL_GAME,
+            home_team_norm=normalize_team_name("San Diego Padres"),
+            away_team_norm=normalize_team_name("Los Angeles Dodgers"),
+            away_team_key="away_team",
+            team_name_field="display_name",
+            score_extractor=_mlb_score_extractor,
+        )
+        assert hs == 6.0 and as_ == 5.0
+
+
+class TestNBAExtraction:
+    def test_nba_extract_uses_top_level_scores(self):
+        from scripts.sgo.backfill_team_matchup_scores_bdl import (
+            _nba_score_extractor)
+        hs, as_ = _nba_score_extractor(_NBA_FINAL_GAME)
+        assert hs == 92.0 and as_ == 100.0
+
+
+@pytest.mark.asyncio
+async def test_mlb_orchestrator_end_to_end():
+    db = _FakeDB()
+    coll = db["team_matchups"]
+    coll.set_docs([{
+        "event_id": "mlb_e1",
+        "home_team_name": "San Diego Padres",
+        "away_team_name": "Los Angeles Dodgers",
+        "game_date": "2024-10-22",
+        "sport": "mlb",
+    }])
+    r = await backfill_sport(
+        db, sport="mlb", api_key="k",
+        start="2024-10-01", end="2024-10-31",
+        seasons=[2024], dry_run=False, force=False,
+        max_events=100, fetcher=_stub_fetcher([_MLB_FINAL_GAME]))
+    assert r["counters"]["scores_found"] == 1
+    assert r["counters"]["updated"] == 1
+    upd = coll._update_calls[0]["update"]
+    assert upd["$set"]["home_score"] == 6.0
+    assert upd["$set"]["away_score"] == 5.0
+    assert upd["$set"]["score_source"] == "bdl_mlb_games"
+
+
+@pytest.mark.asyncio
+async def test_nba_orchestrator_end_to_end():
+    db = _FakeDB()
+    coll = db["team_matchups"]
+    coll.set_docs([{
+        "event_id": "nba_e1",
+        "home_team_name": "Brooklyn Nets",
+        "away_team_name": "Orlando Magic",
+        "game_date": "2024-12-01",
+        "sport": "nba",
+    }])
+    r = await backfill_sport(
+        db, sport="nba", api_key="k",
+        start="2024-12-01", end="2024-12-31",
+        seasons=[2024], dry_run=False, force=False,
+        max_events=100, fetcher=_stub_fetcher([_NBA_FINAL_GAME]))
+    assert r["counters"]["scores_found"] == 1
+    assert r["counters"]["updated"] == 1
+    upd = coll._update_calls[0]["update"]
+    assert upd["$set"]["home_score"] == 92.0
+    assert upd["$set"]["away_score"] == 100.0
+    assert upd["$set"]["score_source"] == "bdl_nba_games"
+
+
+def test_calendar_year_seasons_deriver():
+    from scripts.sgo.backfill_team_matchup_scores_bdl import (
+        derive_calendar_year_seasons)
+    # Each date contributes year Y and Y-1 (NBA-tolerant)
+    assert derive_calendar_year_seasons(["2024-12-01"]) == [2023, 2024]
+    assert derive_calendar_year_seasons(["2024-03-01", "2024-12-01"]) == [2023, 2024]
