@@ -52,6 +52,15 @@
 - NBA: 3,283 feature rows / 30 teams; 3,236 with `win_rate_l10` populated; 0 leakage violations.
 - Sample mature MLB row (`mlb_ari @ 2024-08-09`, n=21): μ=5.43, σ=2.28, cv=0.42, win_rate_l10=0.9, tempo_l10=5.55, run_trend_l10=+0.571, rest_days=2 — all values realistic and bounded.
 
+## 2026-06-01 — Phase 2A extended to NFL
+
+- Committed NFL Phase 1 outcomes: 124,287 rows, **93.19% resolution** (W 57,405 / L 57,536 / P 878).
+- Ran `build_team_features --sport nfl` (universal script — zero code changes needed): **1,212 feature rows / 32 teams / 0 leakage violations**.
+- Sample mature NFL row (`nfl_ari @ 2024-11-24`, n=10): μ=23.8, σ=8.86, cv=0.37, win_rate_l5=0.8, win_rate_l10=0.6, tempo_l10=22.9, spread_cover_rate_l10=0.71, rest_days=14 — realistic.
+- **All 3 sports now have team rolling-prior features in `team_model_features`** (10,552 rows / 92 distinct (sport, team) pairs).
+
+
+
 **Next:** Step D — decide on per-prop features and Phase 3 backtesting (operator decision).
 
 
