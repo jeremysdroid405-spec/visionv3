@@ -1,6 +1,77 @@
 # Changelog
 
 
+## 2026-06-01 — Phase 3 wire-up: team props feed the EXISTING optimizer (no new framework)
+
+Per operator directive — **do not build a standalone backtesting harness**.
+Team props are now a first-class `prop_type` inside the existing
+PropVision player optimizer/backtester. No replay engine, optimizer
+structure, reporting format, ROI calc, hit-rate, tier breakdown, or
+odds-bucket logic was duplicated. One adapter + one filter were added.
+
+**Shipped:**
+- `backend/scripts/sgo/reshape_team_props_to_replay.py` — NEW adapter.
+  - Reads `team_model_prop_features` (Phase 2B).
+  - Writes into the SAME `sgo_propvision_full_pipeline_replay`
+    collection player props already use, tagged `prop_type="team"`.
+  - Reuses the player optimizer's `_odds_bucket()` helper verbatim —
+    same odds buckets across both prop types.
+  - Maps `market_category` → `stat_family` (h2h / spread / game_total /
+    team_total). Maps team rolling priors → `hit_rate_l5/l10/l20` by
+    market_category (h2h uses win_rate L5/L10/season; spread uses
+    spread_cover_rate_l10; game_total uses ou_hit_rate_l10).
+  - `cv` from team_features.cv_points_scored. `tp`, `edge`,
+    `vision_score`, tier-pass booleans all left None/False — Phase 4
+    will compute scoring. Optimizer's odds-range tier filter still
+    works on every row.
+  - Idempotent upsert keyed by
+    `(prop_type, event_id, team_id, market, line, side, book, pipeline_version)`.
+    Distinct from the player composite key — team & player rows can
+    coexist without ever colliding.
+  - Partial index on the team upsert key (`prop_type="team"` only).
+- `backend/routes/emergent_admin/optimizer.py` — minimal extension:
+  - Added `prop_type: str = Field(default="player")` to
+    `OptimizerRunBody` / `PreflightBody` / `GridDiagnoseBody`.
+  - Added `_prop_type_clause(prop_type)` helper:
+    - "player" (default) → `{"prop_type": {"$ne": "team"}}` — legacy
+      rows without the field included; **zero player query needed
+      editing for back-compat**.
+    - "team" → `{"prop_type": "team"}`.
+    - "all" → `{}`.
+  - Wired the clause into all four locations that build a replay query:
+    `_evaluate_cell`, the discovery `replay_window`, `/preflight`
+    base_match, and `/run` sanity-check. Also pulled `prop_type` from
+    the run request inside `/combo-trace`.
+  - `/run` 409 error message now points operators at the reshape
+    script when team rows are missing.
+- 16/16 unit tests pass (project_hit_rates per market_category,
+  assemble_replay_row schema parity, odds-bucket via shared helper,
+  upsert key uses team_id not player_name, _prop_type_clause all
+  three modes).
+
+**Live verification (preview pod, prod-equivalent endpoint):**
+- Reshape across all 3 sports: **1,333,464 rows written in ~2 min**
+  (~11,000 docs/sec — partial index serves the upsert lookup;
+  was 60/sec without the prop_type-pinned filter).
+  Breakdown: MLB 825,794 · NBA 391,851 · NFL 115,819.
+- `/api/emergent-admin/optimizer/preflight` with `prop_type=team`:
+  - NFL: 23,171 rows / 100% graded / clean by_tier
+    (safe_haven 5,532 · front_lines 10,870 · war_zone 6,769) /
+    by_stat_family (h2h 9,453 · spread 7,232 · …) — same response
+    schema player props use.
+- `/api/emergent-admin/optimizer/run`:
+  - `prop_type=team` → 200 + job queued, `replay_rows_in_window=23171`.
+  - `prop_type=player` default → 409 with helpful pointer to the
+    reshape script.
+
+**Phase 4 unblockers:** with team rows in the replay collection, all
+remaining work (real `tp`, `edge`, `model_probability`, `vision_score`,
+team tier gates) is now a localized edit to the team-side projection
+inside `reshape_team_props_to_replay.py` — no changes to the optimizer
+itself.
+
+
+
 ## 2026-06-01 — Phase 2B: Per-Prop Features Layer (all 3 sports)
 
 **Shipped:** `backend/scripts/sgo/build_team_prop_features.py` — joins

@@ -130,6 +130,20 @@ def _book_filter_clause(book_filter: str) -> Dict[str, Any]:
     return dict(_BOOK_FILTER_MAP.get(book_filter, {}))
 
 
+# 2026-06-01 — Team-prop support. The replay collection now carries
+# rows from `scripts.sgo.reshape_team_props_to_replay` tagged
+# `prop_type="team"`. Legacy player rows have NO prop_type field; the
+# default "player" clause therefore uses `$ne: "team"` so back-compat
+# is unconditional (NO player query needs editing).
+def _prop_type_clause(prop_type: str) -> Dict[str, Any]:
+    if prop_type == "team":
+        return {"prop_type": "team"}
+    if prop_type == "all":
+        return {}   # both player + team rows
+    # "player" (default) — legacy rows without the field included
+    return {"prop_type": {"$ne": "team"}}
+
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -266,6 +280,15 @@ class OptimizerRunBody(BaseModel):
     #                      strength filter — props at least 2 books
     #                      are willing to take)
     book_filter:           str   = Field(default="any")
+    # 2026-06-01 — Team-prop support: filter to player / team / all.
+    # Implementation: team rows live in the same replay collection with
+    # `prop_type="team"`. Legacy player rows have NO prop_type field;
+    # for back-compat, "player" means `{"$ne": "team"}`.
+    #   "player" (default): legacy + explicit player rows
+    #   "team":             only team rows (sourced via
+    #                       scripts/sgo/reshape_team_props_to_replay.py)
+    #   "all":              both prop types in one sweep
+    prop_type:             str   = Field(default="player")
 
 
 # ── Combo generation ──────────────────────────────────────────────
@@ -713,6 +736,7 @@ async def _evaluate_cell(state: Dict[str, Any], db, *,
         "odds_bucket": odds_bucket,
         **_tier_odds_filter(tier),
         **_book_filter_clause(getattr(body, "book_filter", "any")),
+        **_prop_type_clause(getattr(body, "prop_type", "player")),
     }
     if getattr(body, "enforce_tier_gates", False):
         q[f"{tier}_pass"] = True
@@ -796,6 +820,7 @@ async def _run_optimizer(run_id: str, body: OptimizerRunBody) -> None:
         replay_window: Dict[str, Any] = {
             "league_id": body.sport,
             "game_date": {"$gte": body.start, "$lte": body.end},
+            **_prop_type_clause(getattr(body, "prop_type", "player")),
         }
         stat_families = body.stat_families
         if not stat_families:
@@ -967,6 +992,7 @@ class GridDiagnoseBody(BaseModel):
     start: str
     end:   str
     grid: Optional[GridSpec] = None
+    prop_type: str = Field(default="player")
 
 
 class PreflightBody(BaseModel):
@@ -974,6 +1000,8 @@ class PreflightBody(BaseModel):
     start: str
     end:   str
     enforce_tier_gates: bool = False
+    book_filter: str = Field(default="any")
+    prop_type: str = Field(default="player")
 
 
 @router.post("/grid-diagnose")
@@ -1096,6 +1124,7 @@ async def preflight(body: PreflightBody, request: Request,
         "league_id": league,
         "game_date": {"$gte": body.start, "$lte": body.end},
         **_book_filter_clause(getattr(body, "book_filter", "any")),
+        **_prop_type_clause(getattr(body, "prop_type", "player")),
     }
     n_total = await db[REPLAY_COLL].count_documents(base_match)
     if n_total == 0:
@@ -1201,16 +1230,20 @@ async def preflight(body: PreflightBody, request: Request,
 async def run_optimizer(body: OptimizerRunBody, request: Request,
                             auth=Depends(require_admin_token)):
     db = _get_db()
-    # Cheap sanity check — ensure replay cache has rows in window
+    # Cheap sanity check — ensure replay cache has rows in window matching
+    # the requested prop_type (player default keeps legacy behavior).
     n = await db[REPLAY_COLL].count_documents({
         "league_id": body.sport.upper(),
         "game_date": {"$gte": body.start, "$lte": body.end},
+        **_prop_type_clause(getattr(body, "prop_type", "player")),
     })
     if n == 0:
         raise HTTPException(409,
             f"No rows in {REPLAY_COLL} for {body.sport} "
-            f"{body.start}..{body.end}. Run the SSOT historical "
-            "replay pipeline first.")
+            f"{body.start}..{body.end} prop_type={body.prop_type}. "
+            "Run the SSOT historical replay pipeline first "
+            "(or `scripts.sgo.reshape_team_props_to_replay` for "
+            "team props).")
     run_id = f"opt_{uuid.uuid4().hex[:10]}"
     state: Dict[str, Any] = {
         "run_id": run_id, "status": "queued",
@@ -1805,6 +1838,7 @@ async def combo_trace(run_id: str, request: Request,
     sides = ([body.side] if body.side
                   else req.get("sides") or ["OVER", "UNDER"])
     book_filter = req.get("book_filter", "any")
+    prop_type   = req.get("prop_type", "player")
 
     # Mongo cell query — mirrors `_evaluate_cell`.
     q: Dict[str, Any] = {
@@ -1814,6 +1848,7 @@ async def combo_trace(run_id: str, request: Request,
         "odds_bucket":  body.odds_bucket,
         **_tier_odds_filter(body.tier),
         **_book_filter_clause(book_filter),
+        **_prop_type_clause(prop_type),
         "side":         {"$in": sides},
     }
     raw_rows: List[Dict[str, Any]] = []
