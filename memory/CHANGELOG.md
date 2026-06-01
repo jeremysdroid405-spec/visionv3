@@ -1,6 +1,75 @@
 # Changelog
 
 
+## 2026-06-01 — URGENT: Odds API watcher locked down to delta-only
+
+**Trigger:** Odds API dashboard reported ~548k calls since yesterday.
+
+### Root cause
+`server.py:_adaptive_sync_callback` was calling
+`UniversalOddsSyncService.sync_sport_props(sport)` for BOTH `nba` and
+`mlb` every 240s. `sync_sport_props` is a FULL-board fetch (1 events
+call + N event-odds calls + up to 3 markets-discovery probes per
+sport). With 10–20 events combined and a 240s cadence, that's 150–330
+calls/hour just from the watcher.
+
+### Files shipped
+- `services/odds_api_budget.py` — NEW. Rolling-window counter,
+  per-caller/sport/endpoint counters, hard cap
+  (`ODDS_API_MAX_CALLS_PER_HOUR`, default 500), kill switch
+  (`ODDS_API_KILL_SWITCH=1`), Mongo call-log (`odds_api_call_log`, 24h TTL),
+  caller allow-list for full sync, `CallerTag` contextvar.
+- `services/universal_odds_sync.py` — every outbound `client.get` to
+  `the-odds-api.com` now passes through `check_and_increment(...)`.
+  `sync_sport_props` now takes `caller` kwarg and `assert_full_sync_allowed`
+  blocks non-allowed callers. NEW method `sync_sport_props_delta(sport,
+  caller, ttl_seconds=600, max_events_per_tick=3)` — reads
+  `odds_delta_state` collection, only refetches events whose
+  `last_synced_at` is stale, capped at N events per tick. Surgical
+  upsert into `live_props` keyed on `canonical_key`. Logs trigger
+  reason, scope (event_ids), api_calls, records_updated, sync_mode.
+- `services/market_catalog.py` — `discover_event_markets` funnels
+  through the same budget guard.
+- `server.py` — `_adaptive_sync_callback` rewired to call
+  `sync_sport_props_delta(sport, caller="adaptive_sync_watcher")`.
+  Watcher CANNOT escalate to full sync.
+- `services/master_sync.py` — passes `caller="scheduled_cron"`.
+- `routes/ferrari_tiers.py` — admin `/v3/odds/sync` passes
+  `caller="manual_admin"`.
+- `scripts/init_database.py` — bootstrap passes `caller="bootstrap_script"`.
+- `services/team_live_sync_service.py` — wraps body in
+  `CallerTag("manual_admin_team_live_sync")`.
+- `routes/emergent_admin/odds_budget.py` — NEW endpoint
+  `/api/emergent-admin/odds-budget/{snapshot,recent,aggregate}` for
+  hourly/daily counts + per-caller/sport/endpoint breakdown.
+- `backend/tests/test_odds_api_budget.py` — 15 tests covering the
+  allow-list, counters, hard cap, kill switch, contextvar scoping.
+
+### Verified behavior post-restart
+- Watcher tick: **2 Odds API calls** per cycle (1 events ping per
+  sport). 0 event_odds calls when all events are fresh.
+- Initial seed: watcher fetched odds for `min(stale_events, 3)` per
+  sport ONCE, populated `odds_delta_state`, then subsequent ticks did
+  zero event_odds calls.
+- Budget endpoint reports `hour_count=2 / limit=500 / pct_used=0.4`.
+- Unit tests pass: 15/15 budget tests + 23/23 reshape tests.
+- Hard guard verified: `sync_sport_props(caller="adaptive_sync_watcher")`
+  raises `FullSyncNotAllowed`.
+
+### Audit doc
+`/app/memory/ODDS_API_AUDIT_2026_06_01.md` — full inventory of every
+Odds API touch point, confirmed clean paths (optimizer/replay/training),
+volume measurements, and recommended controls.
+
+### Confirmed NOT touching Odds API
+- Optimizer (`routes/emergent_admin/optimizer.py`)
+- `scripts/sgo/reshape_team_props_to_replay.py`
+- `scripts/sgo/train_team_xgb.py`
+- `services/team_xgb_loader.py`
+- All Quant Terminal endpoints
+
+
+
 ## 2026-06-01 — Team Props XGB scoring wired into optimizer (sprint complete)
 
 **Success condition met:** team props are scored by the trained XGB models

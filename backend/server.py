@@ -1299,6 +1299,14 @@ async def startup_event():
     # ==========================================================================
     logger.info("[INDEXES] Creating MongoDB indexes for performance...")
     
+    # 2026-06-01 — Odds API budget call-log indexes (TTL 24h)
+    try:
+        from services.odds_api_budget import ensure_indexes as _odds_budget_idx
+        await _odds_budget_idx(db)
+        logger.info("[ODDS_BUDGET] call-log indexes ensured")
+    except Exception as _e:
+        logger.warning(f"[ODDS_BUDGET] index init non-fatal: {_e}")
+    
     try:
         # nba_cached_board - Main board with player props
         await db[COLL("board_cache", "nba")].create_index([("player_name", ASCENDING)], background=True)
@@ -1453,38 +1461,45 @@ async def startup_event():
         for _idx, _sport in enumerate(("nba", "mlb")):
             sport_t0 = datetime.now(timezone.utc)
             logger.info(
-                f"[ADAPTIVE_SYNC] BEGIN sync_sport_props({_sport})"
+                f"[ADAPTIVE_SYNC] BEGIN delta_sync({_sport}) "
+                f"caller=adaptive_sync_watcher trigger=watcher_tick"
             )
             try:
                 async with lock.exclusive(
                     _sport, holder="adaptive_sync_callback",
                 ):
-                    sport_result = await service.sync_sport_props(
+                    # 2026-06-01 — watcher MUST NOT call sync_sport_props.
+                    # That is a full-board fetch (1 events call + N
+                    # event-odds calls). The budget guard now BLOCKS
+                    # non-allow-listed callers from invoking it.
+                    # Delta path:
+                    #   - 1 events ping
+                    #   - <= max_events_per_tick (3) event-odds calls
+                    #     ONLY for events whose last_synced_at is stale
+                    sport_result = await service.sync_sport_props_delta(
                         sport=_sport,
-                        enrich_features=False,
+                        caller="adaptive_sync_watcher",
                     )
                 results[_sport] = sport_result
                 dur = (
                     datetime.now(timezone.utc) - sport_t0
                 ).total_seconds()
-                inserted = (
-                    sport_result.get("props_synced", 0)
-                    if isinstance(sport_result, dict) else 0
-                )
-                events = (
-                    sport_result.get("events_synced", 0)
-                    if isinstance(sport_result, dict) else 0
-                )
                 logger.info(
-                    f"[ADAPTIVE_SYNC] END   sync_sport_props({_sport}) "
-                    f"dur={dur:.1f}s events={events} props={inserted}"
+                    f"[ADAPTIVE_SYNC] END   delta_sync({_sport}) "
+                    f"dur={dur:.1f}s "
+                    f"events_total={sport_result.get('events_total', 0)} "
+                    f"events_stale={sport_result.get('events_stale', 0)} "
+                    f"events_fetched={sport_result.get('events_fetched', 0)} "
+                    f"api_calls={sport_result.get('api_calls_made', 0)} "
+                    f"records_updated={sport_result.get('records_updated', 0)} "
+                    f"sync_mode=delta"
                 )
             except Exception as _ms_err:  # noqa: BLE001
                 dur = (
                     datetime.now(timezone.utc) - sport_t0
                 ).total_seconds()
                 logger.error(
-                    f"[ADAPTIVE_SYNC] FAIL  sync_sport_props({_sport}) "
+                    f"[ADAPTIVE_SYNC] FAIL  delta_sync({_sport}) "
                     f"dur={dur:.1f}s err={_ms_err!r}"
                 )
                 results[_sport] = {"error": repr(_ms_err)}

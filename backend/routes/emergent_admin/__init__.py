@@ -27,6 +27,7 @@ from .worker    import router as worker_router
 from .ops       import router as ops_router
 from .team_master_hub import router as team_master_hub_router
 from .forensic_audit import router as forensic_audit_router
+from .odds_budget    import router as odds_budget_router
 
 router = APIRouter(prefix="/emergent-admin",
                     tags=["emergent-admin"])
@@ -47,3 +48,4 @@ router.include_router(worker_router,      prefix="/worker")
 router.include_router(ops_router,         prefix="/ops")
 router.include_router(team_master_hub_router, prefix="/team-master-hub")
 router.include_router(forensic_audit_router,  prefix="/forensic-audit")
+router.include_router(odds_budget_router,     prefix="/odds-budget")

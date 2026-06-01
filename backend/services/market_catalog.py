@@ -142,6 +142,23 @@ class MarketCatalog:
             "bookmakers": ",".join(bm_tuple),
         }
 
+        # ── Budget guard ─────────────────────────────────────────────
+        from services.odds_api_budget import (
+            check_and_increment, current_caller,
+            OddsApiBudgetExceeded,
+        )
+        caller = current_caller()
+        try:
+            check_and_increment(
+                caller=caller, sport=sport_key,
+                endpoint="event_markets")
+        except OddsApiBudgetExceeded as exc:
+            logger.error(
+                f"[ODDS_BUDGET] discover_event_markets blocked: "
+                f"caller={caller} sport_key={sport_key} "
+                f"event={event_id[:8]} err={exc}")
+            return []
+
         try:
             resp = await client.get(url, params=params)
         except Exception as e:  # pragma: no cover

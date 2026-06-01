@@ -341,6 +341,11 @@ async def sync_team_live_for_sport(
     await _ensure_team_live_index(db)
 
     sync = UniversalOddsSyncService(db)
+    # Tag all downstream Odds API calls so the budget log shows the
+    # team-live-sync caller separately from the player/watcher paths.
+    from services.odds_api_budget import CallerTag
+    _caller_ctx = CallerTag("manual_admin_team_live_sync")
+    _caller_ctx.__enter__()
     try:
         # 1. Discover live events for the sport (existing helper)
         events = await sync.fetch_events(sport=sport)
@@ -419,6 +424,7 @@ async def sync_team_live_for_sport(
                           else "partial"
     finally:
         await sync.close_client()
+        _caller_ctx.__exit__(None, None, None)
         audit["finished_at"] = datetime.now(timezone.utc).isoformat()
         try:
             await db[TEAM_RUNS_COLL].insert_one(dict(audit))

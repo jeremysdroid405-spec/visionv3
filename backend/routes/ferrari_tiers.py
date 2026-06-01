@@ -3095,6 +3095,7 @@ async def sync_odds_universal(
         ):
             result = await service.sync_sport_props(
                 sport, bookmakers=bookmaker_list, include_sharp=include_sharp,
+                caller="manual_admin",
             )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc))

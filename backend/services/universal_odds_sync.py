@@ -29,6 +29,16 @@ from datetime import datetime, timezone
 import httpx
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+# Budget guard — every odds-api call funnels through here.
+from services.odds_api_budget import hourly_count as _budget_hourly_count
+
+def hourly_count_safe() -> int:
+    try:
+        return _budget_hourly_count()
+    except Exception:
+        return -1
+
+
 from config.db_config import get_collection_name, validate_sport, SPORT_CONFIG
 from services.config.collection_names import COLL
 from services.market_catalog import MarketCatalog
@@ -622,6 +632,19 @@ class UniversalOddsSyncService:
         
         logger.info(f"[UNIVERSAL_ODDS] Fetching {display_name} events...")
         
+        # ── Budget guard ──────────────────────────────────────────────
+        from services.odds_api_budget import (
+            check_and_increment, log_call_result, current_caller,
+            OddsApiBudgetExceeded,
+        )
+        caller = current_caller()
+        try:
+            check_and_increment(
+                caller=caller, sport=sport, endpoint="events")
+        except OddsApiBudgetExceeded as exc:
+            logger.error(f"[ODDS_BUDGET] fetch_events blocked: {exc}")
+            return []
+
         try:
             url = f"{ODDS_API_BASE}/sports/{sport_key}/events"
             params = {"apiKey": ODDS_API_KEY, "dateFormat": "iso"}
@@ -629,6 +652,16 @@ class UniversalOddsSyncService:
             client = await self._get_client()
             response = await client.get(url, params=params)
             
+            logger.info(
+                f"[ODDS_BUDGET] caller={caller} sport={sport} "
+                f"endpoint=events status={response.status_code} "
+                f"hour_count={hourly_count_safe()}"
+            )
+            await log_call_result(
+                self.db, caller=caller, sport=sport, endpoint="events",
+                url=url, status_code=response.status_code, sync_mode="full_or_delta",
+            )
+
             if response.status_code == 200:
                 events = response.json()
                 logger.info(f"[UNIVERSAL_ODDS] Found {len(events)} {display_name} events")
@@ -1027,6 +1060,22 @@ class UniversalOddsSyncService:
                 "includeMultipliers": "true"
             }
             
+            # ── Budget guard ─────────────────────────────────────────
+            from services.odds_api_budget import (
+                check_and_increment, log_call_result, current_caller,
+                OddsApiBudgetExceeded,
+            )
+            caller = current_caller()
+            try:
+                check_and_increment(
+                    caller=caller, sport=sport, endpoint="event_odds")
+            except OddsApiBudgetExceeded as exc:
+                logger.error(
+                    f"[ODDS_BUDGET] fetch_event_odds blocked: "
+                    f"caller={caller} sport={sport} event={event_id[:8]} "
+                    f"err={exc}")
+                return {}
+
             # ================================================================
             # DIAGNOSTIC LOG 1: Raw Request Parameters
             # ================================================================
@@ -1036,6 +1085,18 @@ class UniversalOddsSyncService:
             
             client = await self._get_client()
             response = await client.get(url, params=params)
+            logger.info(
+                f"[ODDS_BUDGET] caller={caller} sport={sport} "
+                f"endpoint=event_odds event={event_id[:8]} "
+                f"status={response.status_code} "
+                f"hour_count={hourly_count_safe()}"
+            )
+            await log_call_result(
+                self.db, caller=caller, sport=sport, endpoint="event_odds",
+                url=url, status_code=response.status_code,
+                sync_mode="full_or_delta",
+            )
+
             
             if response.status_code == 200:
                 odds_data = response.json()
@@ -1664,6 +1725,7 @@ class UniversalOddsSyncService:
         bookmakers: List[str] = None,
         include_sharp: bool = True,
         enrich_features: bool = True,
+        caller: str = "unknown",
     ) -> Dict[str, Any]:
         """
         Full sync of props for a sport from multiple bookmakers.
@@ -1687,10 +1749,39 @@ class UniversalOddsSyncService:
                 its outputs (Tier-1/2/3 context-feature docs) are read by
                 downstream scoring, not by the adaptive ingestion path,
                 so skipping it in the fast cadence is safe.
+            caller: caller-id string used by the budget guard. MUST be
+                one of `{"startup", "manual_admin", "scheduled_cron",
+                "bootstrap_script"}` — any other value raises
+                `FullSyncNotAllowed`. The watcher (Adaptive Sync Engine)
+                does NOT have a full-sync entitlement; it uses
+                `sync_sport_props_delta` instead.
             
         Returns:
             Sync results summary
         """
+        # ── Hard guard: only allow-listed callers may full-sync ────
+        from services.odds_api_budget import (
+            assert_full_sync_allowed, CallerTag,
+        )
+        assert_full_sync_allowed(caller)
+
+        # Tag the active caller for the rest of this call so downstream
+        # `fetch_events` / `fetch_event_odds` / `discover_event_markets`
+        # all record the correct caller in budget logs.
+        with CallerTag(caller):
+            return await self._sync_sport_props_inner(
+                sport=sport, bookmakers=bookmakers,
+                include_sharp=include_sharp,
+                enrich_features=enrich_features,
+            )
+
+    async def _sync_sport_props_inner(
+        self,
+        sport: str,
+        bookmakers: List[str],
+        include_sharp: bool,
+        enrich_features: bool,
+    ) -> Dict[str, Any]:
         sport = validate_sport(sport)
         config = self._get_sport_config(sport)
         display_name = config["display_name"]
@@ -2070,6 +2161,175 @@ class UniversalOddsSyncService:
             await self.close_client()
         
         return results
+
+    # ============================================================
+    # 2026-06-01 — Delta sync (watcher-safe).
+    # ============================================================
+    async def sync_sport_props_delta(
+        self,
+        sport: str,
+        *,
+        caller: str,
+        ttl_seconds: int = 600,
+        max_events_per_tick: int = 3,
+        bookmakers: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Watcher-safe delta sync.
+
+        Behavior:
+          1. Hits `/events` once for the sport (cheap — single call,
+             returns the upcoming-game list).
+          2. Reads per-event `last_synced_at` from the
+             `odds_delta_state` collection.
+          3. Filters to events whose `last_synced_at` is older than
+             ``ttl_seconds`` (default 600s) or absent. Caps the result
+             at ``max_events_per_tick`` (default 3) — overflow waits
+             for the next tick.
+          4. Calls `fetch_event_odds` only for the selected events,
+             writes them through the existing extract+upsert path,
+             updates `odds_delta_state` with the new timestamp.
+
+        Returns a summary dict for logging.
+        Does NOT call `sync_sport_props`, ever.
+        """
+        from services.odds_api_budget import CallerTag
+        from services.config.collection_names import COLL
+        from pymongo import UpdateOne
+
+        sport = validate_sport(sport)
+        config = self._get_sport_config(sport)
+        if bookmakers is None:
+            bookmakers = list(config.get("bookmakers", DEFAULT_BOOKMAKERS))
+        now = datetime.now(timezone.utc)
+
+        result: Dict[str, Any] = {
+            "sync_mode":      "delta",
+            "sport":          sport,
+            "caller":         caller,
+            "trigger_reason": "watcher_tick",
+            "events_total":   0,
+            "events_stale":   0,
+            "events_fetched": 0,
+            "api_calls_made": 0,
+            "records_updated": 0,
+            "ttl_seconds":    ttl_seconds,
+            "max_events_per_tick": max_events_per_tick,
+            "scope":          {"event_ids": []},
+            "errors":         [],
+        }
+
+        with CallerTag(caller):
+            try:
+                events = await self.fetch_events(sport)
+                result["api_calls_made"] += 1
+                result["events_total"] = len(events)
+
+                if not events:
+                    logger.info(
+                        f"[ODDS_DELTA] sport={sport} caller={caller} "
+                        f"events=0 — nothing to refresh"
+                    )
+                    return result
+
+                event_ids = [e.get("id") for e in events if e.get("id")]
+                state_cur = self.db["odds_delta_state"].find(
+                    {"sport": sport, "event_id": {"$in": event_ids}})
+                last_seen: Dict[str, datetime] = {}
+                async for s in state_cur:
+                    ts = s.get("last_synced_at")
+                    eid = s.get("event_id")
+                    if eid and isinstance(ts, datetime):
+                        last_seen[eid] = ts
+
+                cutoff = now.timestamp() - ttl_seconds
+                stale_events = []
+                for ev in events:
+                    eid = ev.get("id")
+                    if not eid:
+                        continue
+                    ts = last_seen.get(eid)
+                    if ts is None or ts.timestamp() < cutoff:
+                        stale_events.append(ev)
+                result["events_stale"] = len(stale_events)
+
+                selected = stale_events[:max_events_per_tick]
+                result["events_fetched"] = len(selected)
+                result["scope"]["event_ids"] = [
+                    (e.get("id") or "")[:12] for e in selected]
+
+                if not selected:
+                    logger.info(
+                        f"[ODDS_DELTA] sport={sport} caller={caller} "
+                        f"events_total={result['events_total']} "
+                        f"events_stale=0 — nothing to refresh "
+                        f"(all fresh within {ttl_seconds}s)"
+                    )
+                    return result
+
+                markets_override = self._sport_market_union.get(sport)
+                upserts: List[UpdateOne] = []
+                for ev in selected:
+                    eid = ev.get("id")
+                    odds = await self.fetch_event_odds(
+                        eid, ev, sport, bookmakers,
+                        markets_override=markets_override,
+                    )
+                    result["api_calls_made"] += 1
+                    if not odds:
+                        continue
+                    props = self.extract_props_from_odds(odds, ev, sport)
+                    for prop in props:
+                        ck = prop.get("canonical_key") or prop.get("_id")
+                        if not ck:
+                            continue
+                        upserts.append(UpdateOne(
+                            {"canonical_key": ck},
+                            {"$set": prop,
+                              "$currentDate": {"updated_at": True}},
+                            upsert=True,
+                        ))
+                    await self.db["odds_delta_state"].update_one(
+                        {"sport": sport, "event_id": eid},
+                        {"$set": {
+                            "sport": sport, "event_id": eid,
+                            "last_synced_at": now,
+                            "commence_time": ev.get("commence_time"),
+                            "home_team": ev.get("home_team"),
+                            "away_team": ev.get("away_team"),
+                        }},
+                        upsert=True,
+                    )
+
+                if upserts:
+                    coll = COLL.handle(self.db, "live_props", sport)
+                    try:
+                        wres = await coll.bulk_write(upserts, ordered=False)
+                        result["records_updated"] = (
+                            (wres.upserted_count or 0)
+                            + (wres.modified_count or 0))
+                    except Exception as we:  # noqa: BLE001
+                        result["errors"].append(f"bulk_write: {we!r}")
+                        logger.error(
+                            f"[ODDS_DELTA] bulk_write failed: {we!r}")
+
+                logger.info(
+                    f"[ODDS_DELTA] sync_mode=delta sport={sport} "
+                    f"caller={caller} trigger=watcher_tick "
+                    f"events_total={result['events_total']} "
+                    f"events_stale={result['events_stale']} "
+                    f"events_fetched={result['events_fetched']} "
+                    f"api_calls={result['api_calls_made']} "
+                    f"records_updated={result['records_updated']} "
+                    f"hour_count={hourly_count_safe()}"
+                )
+                return result
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    f"[ODDS_DELTA] sport={sport} caller={caller} FAILED")
+                result["errors"].append(repr(exc))
+                return result
+
+
 
 
 # Singleton instance

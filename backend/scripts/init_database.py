@@ -157,7 +157,8 @@ async def sync_odds_and_props(db):
 
     try:
         from services.universal_odds_sync import get_universal_odds_service
-        result = await get_universal_odds_service(db).sync_sport_props("nba")
+        result = await get_universal_odds_service(db).sync_sport_props(
+            "nba", caller="bootstrap_script")
         logger.info(f"✓ Props synced: {result.get('total_props', 0)}")
         logger.info(f"✓ Events: {result.get('events_count', 0)}")
         return True

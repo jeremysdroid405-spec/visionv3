@@ -133,7 +133,8 @@ async def run_master_sync(
 
         old_count = await db[COLL("live_props", sport)].count_documents({})
 
-        odds_result = await get_universal_odds_service(db).sync_sport_props(sport)
+        odds_result = await get_universal_odds_service(db).sync_sport_props(
+            sport, caller="scheduled_cron")
         metrics["steps"]["1_odds_sync"] = {
             "duration_seconds": (datetime.now(timezone.utc) - t0).total_seconds(),
             "old_props_cleared": old_count,
