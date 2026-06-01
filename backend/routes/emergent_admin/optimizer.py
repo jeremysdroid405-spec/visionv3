@@ -1920,6 +1920,13 @@ async def save_as_candidates(run_id: str, body: SaveBody, request: Request,
     run = await db[OPTIMIZER_RUNS].find_one({"run_id": run_id}, {"_id": 0})
     if run is None:
         raise HTTPException(404, f"run_id not found: {run_id}")
+    # Pull provenance off the persisted run record (not hardcoded).
+    # `request` is the OptimizerRunBody we stored at queue time.
+    _req = run.get("request") or {}
+    run_sport     = _req.get("sport") or "UNKNOWN"
+    run_prop_type = _req.get("prop_type", "player")
+    run_start     = _req.get("start")
+    run_end       = _req.get("end")
     # Same deterministic sort as /results — saved candidates must
     # match what the operator sees in the Top-K table.
     cur = db[OPTIMIZER_RESULTS].find(
@@ -1936,7 +1943,9 @@ async def save_as_candidates(run_id: str, body: SaveBody, request: Request,
             "candidate_id": f"{run_id}_{i:03d}",
             "source_run_id": run_id,
             "rank": i + 1,
-            "sport": "MLB",
+            "sport": run_sport,
+            "prop_type": run_prop_type,
+            "run_window": {"start": run_start, "end": run_end},
             "tier": r.get("tier"),
             "stat_family": r.get("stat_family"),
             "odds_bucket": r.get("odds_bucket"),
@@ -1965,9 +1974,11 @@ async def save_as_candidates(run_id: str, body: SaveBody, request: Request,
                                        {"$set": d}, upsert=True))
         await db[CANDIDATE_THRESH].bulk_write(ops, ordered=False)
     await audit_log(request, action="optimizer_save_candidates",
-                      params={"run_id": run_id, "top_k": body.top_k},
+                      params={"run_id": run_id, "top_k": body.top_k,
+                                  "sport": run_sport, "prop_type": run_prop_type},
                       response_summary={"saved": len(docs)}, **auth)
     return {"ok": True, "saved": len(docs),
+              "sport": run_sport, "prop_type": run_prop_type,
               "candidate_ids": [d["candidate_id"] for d in docs]}
 
 
