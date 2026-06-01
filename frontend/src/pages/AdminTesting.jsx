@@ -3082,12 +3082,18 @@ const OPTIMIZER_GOALS = [
 ];
 
 const OPTIMIZER_AXES = [
-  { key: 'hr_l20_min', label: 'HR L20 min', default: '0.55, 0.65, 0.70, 0.75, 0.80' },
-  { key: 'hr_l10_min', label: 'HR L10 min', default: '0.55, 0.65, 0.70' },
-  { key: 'hr_l5_min',  label: 'HR L5 min',  default: '0.50, 0.60, 0.70' },
-  { key: 'cv_max',     label: 'CV max',     default: '0.50, 0.70, 0.90, 1.10' },
-  { key: 'edge_min',   label: 'Edge min',   default: '0.02, 0.05, 0.08, 0.10' },
-  { key: 'tp_min',     label: 'TP min',     default: '0.50, 0.55, 0.60, 0.65' },
+  // 2026-06-01 — Per operator directive, default ALL threshold values
+  // blank. The backend brute-forces every combination on its internal
+  // `DEFAULT_GRID` regardless of what's typed here; these fields are
+  // ONLY a client-side post-display filter (applied to the Top-N table
+  // when `applyGridFilter=true`). Starting blank prevents the form
+  // from looking like a pre-search configuration.
+  { key: 'hr_l20_min', label: 'HR L20 min', default: '' },
+  { key: 'hr_l10_min', label: 'HR L10 min', default: '' },
+  { key: 'hr_l5_min',  label: 'HR L5 min',  default: '' },
+  { key: 'cv_max',     label: 'CV max',     default: '' },
+  { key: 'edge_min',   label: 'Edge min',   default: '' },
+  { key: 'tp_min',     label: 'TP min',     default: '' },
 ];
 
 const OPTIMIZER_FILTERS = [
@@ -3489,7 +3495,19 @@ function OptimizerTab({ token }) {
           </Field>
         </div>
 
-        <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Grid axes (comma-separated values per axis)</div>
+        <div data-testid="opt-grid-help" style={{
+            background: SURFACE_2, border: `1px solid ${BORDER}`, borderRadius: 6,
+            padding: '8px 10px', marginBottom: 8, fontSize: 11, color: TEXT, lineHeight: 1.4,
+          }}>
+          <span style={{ fontWeight: 700, color: ACCENT_2 }}>How the optimizer runs:</span>{' '}
+          The backend brute-forces <em>every</em> threshold combination on its
+          internal grid for the selected tiers and stat families — typing into
+          the boxes below does <strong>not</strong> change what gets searched.
+          These axes are a <strong>post-display filter</strong>: leave blank to
+          see the absolute Top-N from the brute-force search; fill them in to
+          shrink the displayed table only.
+        </div>
+        <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', marginBottom: 6 }}>Grid axes (post-display filter — blank = no filter)</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8, marginBottom: 12 }}>
           {OPTIMIZER_AXES.map(ax => (
             <Field key={ax.key} label={ax.label}>

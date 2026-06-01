@@ -1,0 +1,321 @@
+{
+  "run_id": "audit_2026-06-01T16-45-09Z_82eb53269f",
+  "started_at": "2026-06-01T16:45:09.415383+00:00",
+  "completed_at": "2026-06-01T16:45:54.188110+00:00",
+  "duration_ms": 44746,
+  "git_commit": "050f60ac",
+  "pod_hostname": "agent-env-2c8658b7-1e6f-4971-8051-37345db57ddd",
+  "mongo_db": "pick_vision",
+  "artifact_dir": "/app/memory/forensic_audit/2026-06-01T16-45-09Z_82eb53269f",
+  "n_tests": 34,
+  "n_passed": 34,
+  "n_failed": 0,
+  "tests": [
+    {
+      "test_id": "FA-001",
+      "category": "infrastructure",
+      "description": "Mongo connectivity (count users coll)",
+      "passed": true,
+      "latency_ms": 3,
+      "sha256": "360783071a4a61b4ea0d9b3bfa1773390ee1ad0850d72c6dc8fb88058346d990",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-002",
+      "category": "infrastructure",
+      "description": "Required env vars present (MONGO_URL/DB_NAME/BDL_API_KEY/EMERGENT_ADMIN_TOKEN)",
+      "passed": true,
+      "latency_ms": 0,
+      "sha256": "695f02dd1626ca83478bb5992d56a7cd2eb1e86fba792eb01bc64a63c8ffa062",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-003",
+      "category": "infrastructure",
+      "description": "Backend whoami returns 200 with admin token",
+      "passed": true,
+      "latency_ms": 19184,
+      "sha256": "e6e6b66e7799921e26e5b19190f67fafa203e358f6ab3f78941931b75fbaa4b2",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-010",
+      "category": "auth",
+      "description": "whoami without token returns 401/403",
+      "passed": true,
+      "latency_ms": 1,
+      "sha256": "9887540841030929bcc3570ee343876154659dd1c62464bc7a94fa7291ab451f",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-011",
+      "category": "auth",
+      "description": "whoami with bogus token returns 401",
+      "passed": true,
+      "latency_ms": 2,
+      "sha256": "c7cbb3ba14bceca072fdc0bece87571d96f19b4b8e8056e1882f9c50b9b8ea18",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-020",
+      "category": "data_sanity",
+      "description": "Users collection exists (>=0 docs)",
+      "passed": true,
+      "latency_ms": 0,
+      "sha256": "d2bc991f824201104c64b10b53a437f1d082ccdd76b866a588961e42283f2a32",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-021",
+      "category": "data_sanity",
+      "description": "Some audit-log collection exists",
+      "passed": true,
+      "latency_ms": 1,
+      "sha256": "06bce434597c7aaae6b14028cdd1dd7bec9619bfc8138b7d561a883b3af426a7",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-030",
+      "category": "score_backfill",
+      "description": "NFL matchups scored via BDL (>=500)",
+      "passed": true,
+      "latency_ms": 1,
+      "sha256": "78f39f5b48131d7874322159df5ccb3590c65d6634cc7cd50afa9f888a0c4c6a",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-031",
+      "category": "score_backfill",
+      "description": "MLB matchups scored via BDL (>=5000)",
+      "passed": true,
+      "latency_ms": 9,
+      "sha256": "58ae7153b861ee165454d457612db77db3dca38bfd86e2986087f4a891e5978e",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-032",
+      "category": "score_backfill",
+      "description": "NBA matchups scored via BDL (>=2000)",
+      "passed": true,
+      "latency_ms": 5,
+      "sha256": "c9130e190288b1616230c013c6d0ac447f6f8b3f64f661b12567493318d91e62",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-040",
+      "category": "team_phase1",
+      "description": "NFL outcomes built (>=100k)",
+      "passed": true,
+      "latency_ms": 34,
+      "sha256": "965c46f1f6f3da3744c2df4c743d9459e375edfc35c9c7c647b23c5e064fd5a4",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-041",
+      "category": "team_phase1",
+      "description": "MLB outcomes built (>=800k)",
+      "passed": true,
+      "latency_ms": 234,
+      "sha256": "02317163ecace71df98830d5db578c7c20e4d248156ae69f07a44dd2fdc92538",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-042",
+      "category": "team_phase1",
+      "description": "NBA outcomes built (>=400k)",
+      "passed": true,
+      "latency_ms": 112,
+      "sha256": "b4e0b8030892f5e167269fc2227bcd0efc2bb88dd0a604d616ec09715bf98f74",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-043",
+      "category": "team_phase1",
+      "description": "NFL outcome resolution rate >= 85%",
+      "passed": true,
+      "latency_ms": 184,
+      "sha256": "bb2a0b3a244819291aba4e232680c3fbaa6a120c7f319cc36447b2f687440b60",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-044",
+      "category": "team_phase1",
+      "description": "Outcomes balanced (wins/losses ~50/50)",
+      "passed": true,
+      "latency_ms": 2653,
+      "sha256": "f3b42fd27dbc0b93f764996740873b504fcbfcfa8e981073041e48d027574513",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-050",
+      "category": "team_phase2a",
+      "description": "Team feature rows present (>=10k)",
+      "passed": true,
+      "latency_ms": 7,
+      "sha256": "203e38f615f14c185cf502a81a371d47efb4c23760ab2f027e55aefdfa92056e",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-051",
+      "category": "team_phase2a",
+      "description": "Unique index uniq_sport_team_asof present",
+      "passed": true,
+      "latency_ms": 0,
+      "sha256": "bd515283e90ab01fe227a7f6d521a8b6e662b1d4eb023d28bd98b335b80be362",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-052",
+      "category": "team_phase2a",
+      "description": "Features exist for all 3 sports (NFL+MLB+NBA)",
+      "passed": true,
+      "latency_ms": 6,
+      "sha256": "304fd7257f93d34be25d36888c9e2c07d4f64bcb6473f07060a6188e341e62b9",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-053",
+      "category": "team_phase2a",
+      "description": "Leakage guard: sample_size <= prior games (spot-check 20)",
+      "passed": true,
+      "latency_ms": 635,
+      "sha256": "f6d41502376f11ffa819ce24bb02fe0e1ad0dd6755f76b2a060da6c1b1eeee91",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-054",
+      "category": "team_phase2a",
+      "description": "No computed_at < as_of_date (spot-check 100)",
+      "passed": true,
+      "latency_ms": 8,
+      "sha256": "573998ba38e161a9f13a7ce202783af4486b88607c790bf2b7e8e21787c7dd91",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-060",
+      "category": "team_phase2b",
+      "description": "Prop-feature rows present (>=1M)",
+      "passed": true,
+      "latency_ms": 869,
+      "sha256": "e7ae0c134574b5a9885fcea610a40a1434b21612e6f343688591cf88461d002b",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-061",
+      "category": "team_phase2b",
+      "description": "Unique index uniq_prop_decision present",
+      "passed": true,
+      "latency_ms": 0,
+      "sha256": "1191a760f14d42587acd21c9593ec31ca5cd8d97a0440592fc272746e072e598",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-062",
+      "category": "team_phase2b",
+      "description": "Every resolved row carries outcome_numeric",
+      "passed": true,
+      "latency_ms": 2932,
+      "sha256": "d5ee7a989e445d929bf2573fe2700b575d2ee6d1df068005bc7715bd0c148426",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-070",
+      "category": "team_reshape",
+      "description": "Replay collection has team rows (>=1M)",
+      "passed": true,
+      "latency_ms": 382,
+      "sha256": "16538a817113fc4cc844ca8ec54044fb96dc69d4c808a27dc41127d740ee18f5",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-071",
+      "category": "team_reshape",
+      "description": "All team rows carry pipeline_version=team_v1",
+      "passed": true,
+      "latency_ms": 1818,
+      "sha256": "752217ab893b1d01b995af64d4a6366afc0df579c7d66f73f2d5cc4235acee6a",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-072",
+      "category": "team_reshape",
+      "description": "All canonical odds_buckets populated on team rows",
+      "passed": true,
+      "latency_ms": 2392,
+      "sha256": "2b7f22d66c91d64b896ae0b0b2d07281cd917f37e6c9d0503caec2560a4f9c3b",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-080",
+      "category": "optimizer_endpoints",
+      "description": "/preflight NFL prop_type=team returns >=10k rows",
+      "passed": true,
+      "latency_ms": 305,
+      "sha256": "ca674c8afdcdebe35da2433fc0f913bd2bb08af87bd8ba641e0044cf32df08fc",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-081",
+      "category": "optimizer_endpoints",
+      "description": "/preflight returns tier breakdown",
+      "passed": true,
+      "latency_ms": 344,
+      "sha256": "4105376367a0b159a7ed46b9b6c33c4d4c52c6084059d92ec7bab6fd1ed5e283",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-082",
+      "category": "optimizer_endpoints",
+      "description": "/preflight returns stat_family breakdown",
+      "passed": true,
+      "latency_ms": 344,
+      "sha256": "a55aeda6aaadb6b87ed07aef5d51aa9781230a7785bcb0736e43db09e109f0eb",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-083",
+      "category": "optimizer_endpoints",
+      "description": "/run prop_type=team queues a job (200 OK)",
+      "passed": true,
+      "latency_ms": 55,
+      "sha256": "136b709688ea4690774bfcab20a4b6ee97244eff3e8bbb984db053b3862b4df5",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-090",
+      "category": "optimizer_filter",
+      "description": "prop_type=team returns team rows (MLB)",
+      "passed": true,
+      "latency_ms": 986,
+      "sha256": "17558dce7147d46623f6f41f5f361443622f3d696c5fdb368d8f6fa04413eacc",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-091",
+      "category": "optimizer_filter",
+      "description": "prop_type=player default returns 409 (no player data on preview)",
+      "passed": true,
+      "latency_ms": 43,
+      "sha256": "0dbf70079bd233d2fb4c68bccaebb1ce18b614b34ad965d15cd5d17df996c92d",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-092",
+      "category": "optimizer_filter",
+      "description": "prop_type=all includes team rows",
+      "passed": true,
+      "latency_ms": 11038,
+      "sha256": "56cde615faf31eaf8ec3f70a018d9596512f7082cf7809ce8bd2eb73e14f4035",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-100",
+      "category": "frontend_smoke",
+      "description": "Frontend root reachable (2xx/3xx)",
+      "passed": true,
+      "latency_ms": 159,
+      "sha256": "4587fdd2db33080915f27a6f8234f42df5f33cb943a288ad8b3549f3cc94a782",
+      "failure_reason": null
+    }
+  ]
+}

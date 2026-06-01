@@ -1,0 +1,60 @@
+{
+  "run_id": "audit_2026-06-01T16-46-44Z_850b4bb19e",
+  "started_at": "2026-06-01T16:46:44.030922+00:00",
+  "completed_at": "2026-06-01T16:46:47.123276+00:00",
+  "duration_ms": 3085,
+  "git_commit": "050f60ac",
+  "pod_hostname": "agent-env-2c8658b7-1e6f-4971-8051-37345db57ddd",
+  "mongo_db": "pick_vision",
+  "artifact_dir": "/app/memory/forensic_audit/2026-06-01T16-46-44Z_850b4bb19e",
+  "n_tests": 5,
+  "n_passed": 5,
+  "n_failed": 0,
+  "tests": [
+    {
+      "test_id": "FA-040",
+      "category": "team_phase1",
+      "description": "NFL outcomes built (>=100k)",
+      "passed": true,
+      "latency_ms": 35,
+      "sha256": "6b82c0b641ef0c31e74ded374a31ad3b4286fead5663e28a622ade2de6560a0e",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-041",
+      "category": "team_phase1",
+      "description": "MLB outcomes built (>=800k)",
+      "passed": true,
+      "latency_ms": 234,
+      "sha256": "5630615bdffb831be45bac15f6a19d125d8f170423d27e1e80759abc7ed16d7a",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-042",
+      "category": "team_phase1",
+      "description": "NBA outcomes built (>=400k)",
+      "passed": true,
+      "latency_ms": 110,
+      "sha256": "3c045091a52b216cc2e558bcf92158ad05ebc71708323fc9d94beca1312f1e26",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-043",
+      "category": "team_phase1",
+      "description": "NFL outcome resolution rate >= 85%",
+      "passed": true,
+      "latency_ms": 185,
+      "sha256": "cacbc1cef742a44ce81a1dfe56be0839ab001b6baccfae9b6604358cfeba5408",
+      "failure_reason": null
+    },
+    {
+      "test_id": "FA-044",
+      "category": "team_phase1",
+      "description": "Outcomes balanced (wins/losses ~50/50)",
+      "passed": true,
+      "latency_ms": 2521,
+      "sha256": "70d61278b3f0d20f906df14bf1efd9fa46beaf350b884392544c6f647e9f32f8",
+      "failure_reason": null
+    }
+  ]
+}

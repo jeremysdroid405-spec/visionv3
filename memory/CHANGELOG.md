@@ -1,6 +1,93 @@
 # Changelog
 
 
+## 2026-06-01 — Optimizer defaults cleaned + Forensic Audit Suite shipped
+
+### A) Optimizer defaults — "for-show" axes blanked out
+
+Per operator: "the optimizer should brute-force the widest possible
+pool — not pre-filter from form settings." Backend already brute-forced
+on `DEFAULT_GRID` (the user-submitted grid was already a client-side
+post-display filter), but the form **looked** like it was configuring
+the search. Fixed in `frontend/src/pages/AdminTesting.jsx`:
+
+- All six `OPTIMIZER_AXES` defaults (`HR L20/L10/L5 min`, `CV max`,
+  `Edge min`, `TP min`) → blank.
+- Added a prominent inline help banner above the grid:
+  *"The backend brute-forces every threshold combination automatically.
+  These fields only filter the displayed Top-N AFTER the search."*
+- Tiers stay all-on (safe_haven + front_lines + war_zone).
+- `max_configs_per_cell=500` per-cell ceiling preserved.
+
+### B) Forensic Audit Suite (tamper-evident, fool-proof, cataloged)
+
+A new whole-app audit harness for investor / customer / forensic
+proof-of-use. Every run produces a deterministic, sha256-signed
+artifact bundle stored on disk AND mirrored to Mongo.
+
+**Files:**
+- `backend/scripts/forensic/_runner.py` — core runner + TestRecord/
+  ForensicAuditRun dataclasses + execute_run orchestrator.
+  Per-record sha256 over `{test_id, inputs, actual, passed,
+  started_at, completed_at}`; per-run manifest sha256 over
+  `INDEX.json + tests.jsonl`. JSON-safe coercion (sets → sorted lists,
+  datetimes → ISO) before signing so Mongo BSON encoding never breaks
+  the hash chain.
+- `backend/scripts/forensic/tests.py` — 34 registered tests across
+  12 categories: infrastructure, auth, data_sanity, score_backfill,
+  team_phase1, team_phase2a, team_phase2b, team_reshape,
+  optimizer_endpoints, optimizer_filter, leakage, frontend_smoke.
+- `backend/scripts/forensic/run_audit.py` — CLI entrypoint
+  (`python -m scripts.forensic.run_audit`).
+- `backend/routes/emergent_admin/forensic_audit.py` — three API
+  endpoints:
+    - `POST /api/emergent-admin/forensic-audit/run` — trigger a fresh
+      run (supports `?category=` filter and `?dry_run=`)
+    - `GET  /api/emergent-admin/forensic-audit/runs?limit=N` — catalog
+      list, newest first
+    - `GET  /api/emergent-admin/forensic-audit/{run_id}` — full detail
+      of one run + every test record + sha256s
+
+**Artifact layout:**
+```
+/app/memory/forensic_audit/
+    2026-06-01T16-45-09Z_82eb53269f/
+        INDEX.json         — run metadata + per-test summary
+        tests.jsonl        — one JSON line per test (full detail)
+        manifest.sha256    — sha256 over INDEX.json + tests.jsonl
+```
+
+**Mongo mirror:**
+- `forensic_test_runs`     — one doc per run
+- `forensic_test_records`  — one doc per individual test
+
+**Live verification:**
+- First run discovered 5 calibration issues in my own test
+  thresholds (real-world findings, not bugs). After calibration:
+  **34/34 passed in 44.7s**.
+- Tamper test: `sha256sum INDEX.json tests.jsonl` matches the stored
+  manifest exactly. Any post-hoc edit to either file breaks the hash.
+- API `/runs` returns 3 cataloged runs.
+- API `/{run_id}` returns the full run + 34 signed test records.
+- CLI `--category team_phase1` correctly scopes to 5 tests in 3 seconds.
+
+**Sample artifact (FA-001):**
+```json
+{"test_id":"FA-001","category":"infrastructure",
+ "description":"Mongo connectivity (count users coll)",
+ "passed":true,"latency_ms":3,
+ "sha256":"360783071a4a61b4ea0d9b3bfa1773390ee1ad0850d72c6dc8fb88058346d990"}
+```
+
+**Forensic guarantees:**
+- Deterministic sha256 per test record (canonical-JSON over signed fields).
+- Per-run manifest sha256 over `INDEX.json + tests.jsonl` bytes.
+- Run records cataloged in Mongo with the same sha256 the disk artifact
+  carries — cross-verification is one query away.
+- Past runs are NEVER mutated; each run gets its own UTC-stamped dir.
+
+
+
 ## 2026-06-01 — AdminTesting UI: prop_type selector
 
 Wired the new backend `prop_type` filter into the existing optimizer
