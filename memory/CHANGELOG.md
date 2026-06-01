@@ -1,6 +1,23 @@
 # Changelog
 
 
+## 2026-06-01 — AdminTesting UI: prop_type selector
+
+Wired the new backend `prop_type` filter into the existing optimizer
+form in `frontend/src/pages/AdminTesting.jsx`:
+
+- New `propType` state (default `"player"`) — same default the backend
+  uses for back-compat.
+- New `<select data-testid="opt-prop-type-select">` dropdown placed
+  inline with the existing book-filter row, options:
+    "Player props (default)" · "Team props (h2h / spread / total)" ·
+    "All (player + team)".
+- Wired into both the preflight payload (auto-refires when changed)
+  and the `/optimizer/run` launch body.
+- Lint clean; same UI behavior path operators already know.
+
+
+
 ## 2026-06-01 — Phase 3 wire-up: team props feed the EXISTING optimizer (no new framework)
 
 Per operator directive — **do not build a standalone backtesting harness**.

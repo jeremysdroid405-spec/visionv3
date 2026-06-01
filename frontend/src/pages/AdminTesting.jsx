@@ -3171,10 +3171,14 @@ function OptimizerTab({ token }) {
   const [diagBusy, setDiagBusy]   = useState(false);
   const [preflight, setPreflight] = useState(null);
   const [preflightBusy, setPreflightBusy] = useState(false);
-  const [enforceTierGates, setEnforceTierGates] = useState(false);
-  // 2026-05-24 — Multi-book universe filter. "any" = best-available
+  const [enforceTierGates, setEnforceTierGates] = useState(false);  // 2026-05-24 — Multi-book universe filter. "any" = best-available
   // (rec); other values filter to a single book or to multi-book consensus.
   const [bookFilter, setBookFilter] = useState('any');
+  // 2026-06-01 — Team-prop wire-up. "player" (default) preserves
+  // legacy player-only backtests; "team" filters to the team rows
+  // produced by `scripts.sgo.reshape_team_props_to_replay`; "all"
+  // sweeps both. Same optimizer + reporting code path for either.
+  const [propType, setPropType] = useState('player');
   const [busy, setBusy] = useState(false);
   const [cachedWindow, setCachedWindow] = useState(null);
   const [windowAutofilled, setWindowAutofilled] = useState(false);
@@ -3190,17 +3194,18 @@ function OptimizerTab({ token }) {
           sport: form.sport, start: form.start, end: form.end,
           enforce_tier_gates: enforceTierGates,
           book_filter: bookFilter,
+          prop_type: propType,
         }),
       });
       setPreflight(r);
     } catch (e) { toast.error(`Preflight: ${e.message}`); }
     finally { setPreflightBusy(false); }
-  }, [token, form.sport, form.start, form.end, enforceTierGates, bookFilter]);
+  }, [token, form.sport, form.start, form.end, enforceTierGates, bookFilter, propType]);
 
-  // Auto-run preflight every time the window / strict-gates / book filter changes
+  // Auto-run preflight every time the window / strict-gates / book filter / prop type changes
   useEffect(() => {
     if (token && form.start && form.end) runPreflight();
-  }, [token, form.sport, form.start, form.end, enforceTierGates, bookFilter, runPreflight]);
+  }, [token, form.sport, form.start, form.end, enforceTierGates, bookFilter, propType, runPreflight]);
 
   const loadOutcomeCoverage = useCallback(async () => {
     if (!token || !form.sport || !form.start || !form.end) return;
@@ -3262,6 +3267,7 @@ function OptimizerTab({ token }) {
           .filter(([, v]) => v !== null && !Number.isNaN(v))),
         enforce_tier_gates: enforceTierGates,
         book_filter: bookFilter,
+        prop_type: propType,
       };
       const res = await apiFetch(token, '/optimizer/run', {
         method: 'POST', body: JSON.stringify(body),
@@ -3525,6 +3531,17 @@ function OptimizerTab({ token }) {
             </div>
             <div style={{ color: TEXT, marginBottom: 6, fontFamily: 'monospace' }}>{preflight.diagnosis}</div>
             <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label data-testid="opt-prop-type" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: TEXT }}>
+                <span>Prop type:</span>
+                <select data-testid="opt-prop-type-select"
+                        value={propType}
+                        onChange={(e) => setPropType(e.target.value)}
+                        style={{ background: SURFACE_3, color: TEXT, border: `1px solid ${BORDER}`, padding: '2px 6px', fontSize: 11, fontFamily: 'monospace' }}>
+                  <option value="player">Player props (default)</option>
+                  <option value="team">Team props (h2h / spread / total)</option>
+                  <option value="all">All (player + team)</option>
+                </select>
+              </label>
               <label data-testid="opt-book-filter" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: TEXT }}>
                 <span>Book filter:</span>
                 <select data-testid="opt-book-filter-select"
