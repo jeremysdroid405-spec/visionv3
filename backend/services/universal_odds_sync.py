@@ -2282,6 +2282,11 @@ class UniversalOddsSyncService:
                         ck = prop.get("canonical_key") or prop.get("_id")
                         if not ck:
                             continue
+                        # The extracted prop dict already carries
+                        # `updated_at`. Strip it so $currentDate owns
+                        # the field and avoid the conflict-on-path
+                        # bulk-write error.
+                        prop.pop("updated_at", None)
                         upserts.append(UpdateOne(
                             {"canonical_key": ck},
                             {"$set": prop,

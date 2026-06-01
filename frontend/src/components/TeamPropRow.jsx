@@ -84,6 +84,15 @@ const TeamPropRow = memo(({ tier, onPickClick, onQuickAdd }) => {
   // visual noise during Phase 1.
   if (picks.length === 0) return null;
 
+  // 2026-06-01 — caption now reflects model state. Once the trained
+  // XGB scorer has populated model_probability on the row, drop the
+  // "model pending" caption and surface model_version instead.
+  const scored = picks.some(
+    (p) => p && p.model_version && p.model_probability != null);
+  const captionText = scored
+    ? `xgb · ${picks[0].model_version}`
+    : 'model pending — odds-routed';
+
   return (
     <div
       className="team-prop-row mt-3 mb-2"
@@ -100,7 +109,7 @@ const TeamPropRow = memo(({ tier, onPickClick, onQuickAdd }) => {
           className="text-[10px] uppercase tracking-wider text-zinc-500 italic"
           data-testid={`team-prop-row-pending-${tier}`}
         >
-          model pending — odds-routed
+          {captionText}
         </span>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">

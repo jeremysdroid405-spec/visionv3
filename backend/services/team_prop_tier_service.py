@@ -156,16 +156,20 @@ def _hydrate_card(score: Dict[str, Any],
         "tier_label":          score.get("tier_label"),
         "badges":              score.get("badges") or [],
 
-        # Model fields — explicitly None per directive (no fakes)
-        "vision_score":        None,
-        "intel_score":         None,
+        # Model fields — populated when the XGB scorer has run (set by
+        # services.team_live_xgb_scorer). Until then they're None and
+        # `team_model_pending=True` keeps the card in its pending state.
+        "vision_score":        score.get("vision_score"),
+        "intel_score":         score.get("intel_score"),
         "intel_verdict":       None,
         "intel_suite":         None,
         "vision_intel":        None,
-        "confidence":          None,
-        "edge":                None,
-        "edge_pct":            None,
-        "true_probability":    None,
+        "confidence":          score.get("confidence"),
+        "model_probability":   score.get("model_probability"),
+        "true_probability":    score.get("true_probability"),
+        "implied_probability": score.get("implied_probability"),
+        "edge":                score.get("edge"),
+        "edge_pct":            score.get("edge_pct"),
         "projection":          None,
         "cv":                  None,
         "vk_predicted":        None,
@@ -174,19 +178,23 @@ def _hydrate_card(score: Dict[str, Any],
         "hit_rate_l10":        None,
         "hit_rate_l20":        None,
         "context_badges":      [],
-        "is_vision_enriched":  False,
+        "is_vision_enriched":  bool(score.get("model_probability") is not None),
         "validation":          {"is_fully_validated": False,
                                  "has_mlr": False,
                                  "has_gemini": False},
         "playable_on_pp":      True,
 
         # Flags / lineage
-        "team_model_pending":  True,
+        "team_model_pending":  bool(score.get("team_model_pending", True)),
+        "model_version":       score.get("model_version"),
+        "market_category":     score.get("market_category"),
+        "gate_reasons":        score.get("gate_reasons") or [],
         "routing_source":      score.get("routing_source") or "odds",
         "odds_routed":         True,
         "snapshot_iso":        score.get("snapshot_iso"),
         "ingested_at":         score.get("ingested_at"),
         "passthrough_at":      score.get("passthrough_at"),
+        "scored_at":           score.get("scored_at"),
     }
 
 
@@ -208,6 +216,24 @@ async def get_team_prop_picks(db, *, sport: str, tier_name: str,
     if n_in_scores == 0:
         passthrough_audit = await passthrough_team_live_to_scores(
             db, sport=sport_l)
+
+    # 2026-06-01: lazy XGB scoring. If any rows for this sport are
+    # still unscored (model_probability is None), kick off a bounded
+    # batch score so the cards arrive with real model fields. This is
+    # idempotent — already-scored rows are filtered out at query time.
+    score_audit: Optional[Dict[str, Any]] = None
+    n_unscored = await db[SCORES_COLL].count_documents(
+        {"sport": sport_l, "prop_type": "team",
+         "model_probability": None})
+    if n_unscored > 0:
+        try:
+            from services.team_live_xgb_scorer import score_team_live_props
+            score_audit = await score_team_live_props(
+                db, sport=sport_l, max_rows=5000)
+        except Exception:
+            logger.exception(
+                "[team_prop_tier] lazy XGB score failed — falling back "
+                "to pending cards")
 
     score_rows: List[Dict[str, Any]] = []
     cur = db[SCORES_COLL].find(
@@ -260,9 +286,12 @@ async def get_team_prop_picks(db, *, sport: str, tier_name: str,
             "source":             SCORES_COLL,
             "passthrough_from":   "team_live_props",
             "odds_routed":        True,
-            "team_model_pending": True,
-            "routing_source":     "odds",
+            "team_model_pending": False,
+            "routing_source":     "odds_then_xgb",
+            "model_version":      (
+                cards[0].get("model_version") if cards else None),
         },
         "lazy_passthrough":  passthrough_audit,
+        "lazy_xgb_score":    score_audit,
         "generated_at":      datetime.now(timezone.utc).isoformat(),
     }
