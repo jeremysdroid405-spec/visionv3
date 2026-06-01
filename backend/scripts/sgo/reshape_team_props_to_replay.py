@@ -331,9 +331,13 @@ async def reshape_sport(
                     "league_id": row["league_id"], "team_id": row["team_id"],
                     "stat_family": row["stat_family"], "side": row["side"],
                     "line": row["line"], "book": row["book"],
-                    "odds": row["odds"], "tier": row["tier"],
+                    "odds": row["odds"],
+                    "odds_bucket": row["odds_bucket"],
+                    "tier": row["tier"],
                     "tp": row["tp"], "edge": row["edge"],
                     "vision": row["vision_score"],
+                    "hr_l10": row["hit_rate_l10"],
+                    "cv": row["cv"],
                     "hit": row["hit"],
                 })
             pending_ops.append(UpdateOne(upsert_filter(row),
@@ -370,7 +374,7 @@ async def reshape_sport(
                       f"written={counters['rows_written']:,}  "
                       f"scored={counters['scored']:,}")
     await _flush()
-    return {"sport": sport, "coll": coll_name if False else DST_COLL,
+    return {"sport": sport, "coll": DST_COLL,
               "counters": counters, "sample_rows": sample_rows}
 
 

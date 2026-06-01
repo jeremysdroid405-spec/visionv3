@@ -1,6 +1,53 @@
 # Changelog
 
 
+## 2026-06-01 — Team Props XGB scoring wired into optimizer (sprint complete)
+
+**Success condition met:** team props are scored by the trained XGB models
+and can be compared against player props inside the existing optimizer.
+
+### Steps run
+1. `pytest backend/tests/test_reshape_team_props_to_replay.py` — **23/23 passed.**
+2. Two small bug-fixes in `scripts/sgo/reshape_team_props_to_replay.py`:
+   - `_print_summary` referenced `odds_bucket / hr_l10 / cv` keys that were
+     not in the `sample_rows` dict (KeyError on completion). Sample-row
+     dict was extended to include them.
+   - Cleanup of leftover `coll_name if False else DST_COLL` no-op.
+3. `python -m scripts.sgo.reshape_team_props_to_replay --sport all` — wrote
+   **1,333,464** scored team rows into `sgo_propvision_full_pipeline_replay`:
+   - MLB 825,794 / NBA 391,851 / NFL 115,819
+   - 100% non-null on `model_probability / tp / edge / vision_score /
+     tier / gate_reasons / implied_probability / model_version`
+   - tier dist: safe_haven 841,842 · war_zone 318,842 · front_lines 172,780
+   - avg model_probability=0.503, avg edge=-0.029 (matches calibrated XGB)
+4. Cleaned up **1,333,464** stale unscored `team_v1` rows that pre-dated
+   the `team_v1_scored` pipeline_version bump. Reshape is idempotent on
+   the new version going forward.
+5. Triggered `/api/emergent-admin/optimizer/run` with `prop_type=team`
+   sport=NBA 2025-01-01..2025-01-31 — **succeeded.**
+   - 16,236 team rows in window, 51,840 combos tested, 455 results
+     persisted, 0 failures.
+   - Best combo overall: NBA `team_total` / `front_lines` / `odds_+0_+150`
+     — 82 distinct bets, hit_rate **0.890**, ROI **+0.838**, profit
+     **+68.69u** over 25 days (`tp_min=0.65`, daily_consistency 0.96).
+   - WAR_ZONE `game_total` / `odds_+300p` — 32 bets, hr 0.312, ROI +0.938.
+   - SAFE_HAVEN sample sizes are tiny in this window (expected at -200+
+     moneylines).
+6. h2h and spread cells were filtered out at the `n_with_payout` /
+   low-sample gates due to NBA's extreme moneyline odds (-100,000+ on
+   season-end blowouts). Not a scoring bug — the props were scored
+   correctly, the optimizer just refuses cells that can't produce
+   gradable payouts. Documented as a known artifact.
+
+### No live API calls
+Reshape script imports verified — only `motor / pymongo /
+scripts.sgo.historical_full_pipeline_replay._odds_bucket /
+services.team_xgb_loader / scripts.sgo.train_team_xgb`. No
+`httpx / requests / aiohttp` or external endpoints. The Odds API and
+BDL were not touched.
+
+
+
 ## 2026-06-01 — Optimizer defaults cleaned + Forensic Audit Suite shipped
 
 ### A) Optimizer defaults — "for-show" axes blanked out

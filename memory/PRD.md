@@ -22,6 +22,16 @@ controlling historical replay pipelines via the Emergent Admin API.
 - `sgo_propvision_full_pipeline_replay`, `..._replay_diff`
 - `candidate_thresholds`, `emergent_admin_jobs`
 
+
+### 2026-06-01 — Team Props XGB scoring wired (sprint complete)
+- `scripts.sgo.reshape_team_props_to_replay` batched + executed → 1,333,464
+  scored team rows in `sgo_propvision_full_pipeline_replay`
+  (`pipeline_version=team_v1_scored`)
+- 12 trained per-(sport, market_category) XGB artifacts loaded via
+  `services.team_xgb_loader.score_team_props_batch`
+- Optimizer `/api/emergent-admin/optimizer/run` accepts `prop_type=team`
+  and produced full per-tier results (NBA Jan-2025: best combo +83.8% ROI)
+
 ## What's been implemented (chronological)
 ### 2026-05 — Quant Terminal foundation
 - `/admin/testing` (sweeps, replay, results, coverage, optimizer, deploy)
