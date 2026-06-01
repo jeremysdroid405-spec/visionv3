@@ -1,6 +1,42 @@
 # Changelog
 
 
+## 2026-06-01 — Phase 2B: Per-Prop Features Layer (all 3 sports)
+
+**Shipped:** `backend/scripts/sgo/build_team_prop_features.py` — joins
+every resolved `team_historical_outcomes` row with the team's AND the
+opponent's Phase 2A rolling priors (snapshotted at `as_of_date = game_date`,
+which is leakage-safe by construction). Emits one denormalized
+`team_model_prop_features` doc per "bet decision" — direct input for
+Phase 3 backtesting.
+
+- Idempotent upserts keyed by
+  `(event_id, team_id, market_key, side, line, book)`.
+- 99% prior-cache hit rate (in-memory LRU collapses
+  same-(team, date) lookups across the ~50 outcomes per event).
+- Bulk writes via pymongo `UpdateOne` in chunks of 1,000 (ordered=False).
+- 11/11 unit tests pass (stable_key, assemble, priors-cache,
+  orchestrator dry-run / live / both-missing / chunking / max-props).
+- Indexes: `uniq_prop_decision` (unique composite), `sport_game_date`,
+  `sport_market_category`.
+
+**Live results (preview pod):**
+- NFL: **115,819 rows written (~80s)** · 84,995 with both team & opp priors · 30,824 game-total markets correctly missing priors (team_id="game" by design).
+- NBA: **391,851 rows written (~4 min)** · 289,871 with both team & opp priors · 101,980 game-total.
+- MLB: **825,794 rows written (~6 min)** · 611,608 with team priors, 607,626 with opp priors · ~214k game-total.
+- **Total: 1,333,464 prop-feature rows across all 3 sports.**
+
+**Sample mature MLB prop (mlb_sea HOME -6.5 vs mlb_nym, 2024-08-10):**
+- Team (mlb_sea) priors: μ=4.1, σ=3.29, cv=0.80, win_rate_l5=0.2 (cold), home_win_rate=0.27, tempo_l10=4.8, run_trend_l10=+0.2.
+- Opp (mlb_nym) priors: μ=4.41, σ=3.28, cv=0.74, win_rate_l5=0.6 (hot), away_win_rate=0.64, tempo_l10=4.05, run_trend_l10=+1.19.
+- Outcome: LOSS (cold team failed to cover -6.5). All values realistic, both snapshots leakage-tight.
+
+**Next:** Phase 3 backtesting can now read directly from
+`team_model_prop_features` — every row carries the bet + the priors
+known at decision time + the actual outcome.
+
+
+
 ## 2026-06-01 — Team Model Phase 1 (MLB+NBA scores) + Phase 2A (rolling priors) shipped
 
 **Step A — Phase 1 completion for MLB and NBA:**
