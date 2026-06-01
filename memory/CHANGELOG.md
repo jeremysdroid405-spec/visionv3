@@ -1,5 +1,61 @@
 # Changelog
 
+
+## 2026-06-01 — Odds API team-matchup score backfill (NFL-first)
+
+**Trigger:** the SGO bulk-finalized-events feed does NOT carry final
+scores in a shape `build_team_historical_outcomes` can consume — even
+after 30-day date chunking, `scores_found` stayed 0. Per operator
+directive ("abandon SGO for team scores"), pivoted to The Odds API
+`/v4/sports/{sport}/scores` endpoint.
+
+**Shipped:**
+- `backend/scripts/sgo/backfill_team_matchup_scores_oddsapi.py` — NEW
+  - Single `/scores?daysFrom=3` call per sport (1 credit per call).
+  - Pure-function helpers: `normalize_team_name`, `commence_date_iso`,
+    `extract_scores_from_odds_event`, `build_event_index`.
+  - Two-tier lookup: (date, home, away) primary → (home, away)
+    fallback for ±1-day UTC drift.
+  - Idempotent `$set` on `nfl_matchups` / `team_matchups` with
+    `score_source="odds_api_scores"`. Skips already-scored rows
+    unless `--force`.
+  - Default dry-run; `--yes` required to write.
+  - Sport allowlist: `nfl`, `mlb`, `nba`. NCAAF intentionally absent.
+- `backend/tests/test_backfill_team_matchup_scores_oddsapi.py` — NEW
+  - 47 cases covering normalization, score extraction (order-
+    independent), index construction, completed/score-present
+    predicates, dry-run vs. live, idempotency, force, fallback
+    date-mismatch, not-in-window, no-team-names, found-but-not-
+    completed, sport-config contract. All passing.
+- SGO sibling `backfill_team_matchup_scores.py` retained as
+  fallback per user instruction.
+
+**End-to-end dry-run (NFL, Feb 2026):**
+- API returned 75 events (4,898,455 credits remaining, 2-credit cost).
+- 659 candidate matchups → 70 matched, 66 of which were
+  `found_but_not_completed` (Super Bowl + adjacent week,
+  upcoming/live), 589 fell outside the 3-day window.
+- 0 scores written this run because the calendar moment had no
+  completed games within `daysFrom=3`.
+
+**KNOWN LIMITATION (flagged loudly):**
+The Odds API `/scores` endpoint is hard-capped at `daysFrom ≤ 3`.
+There is no deep-historical scores endpoint on The Odds API.
+To unblock `build_team_historical_outcomes` against the 2024 season,
+either:
+  (a) Run this script weekly during live season so scores flow in
+      as they finalize, or
+  (b) Use an alternate score source for backfill. Worth noting:
+      `nfl_matchups.status_raw.displayShort` already carries the
+      score string (e.g., "25-22") from SGO `/v2/events`. Parsing
+      that field in-place would unblock historical NFL backfill
+      with zero external API calls — to be evaluated in a follow-up
+      PR if the operator approves.
+
+**Operator next step:** run `--yes` weekly on prod once the regular
+season resumes; verify `events_with_final_scores` climbs.
+
+
 ## 2026-06-02 — Hotfix: SGO 401 (auth method + URL contract) + `--raw` flag
 
 **Trigger:** operator ran first real dry-run fetch → SGO HTTP 401. RCA:
