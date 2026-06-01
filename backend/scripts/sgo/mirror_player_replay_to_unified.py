@@ -344,28 +344,45 @@ async def ensure_indexes(db) -> None:
 
 # ─── preflight report ─────────────────────────────────────────────
 async def preflight_report(db) -> Dict[str, Any]:
+    """Aggregations are defensive: legacy/null `prop_type`,
+    null `league_id`, and null `tier` are all tolerated. Mongo
+    returns `_id: null` (not a dict) when ALL grouping fields are
+    missing — every access uses `.get()` with a default.
+    """
+    def _id_get(_id, key, default=None):
+        if isinstance(_id, dict):
+            return _id.get(key, default)
+        return default
+
     pipe_pt_sp = [
-        {"$group": {"_id": {"pt": "$prop_type", "sp": "$league_id"},
+        {"$group": {"_id": {"pt":  {"$ifNull": ["$prop_type", "legacy"]},
+                              "sp":  {"$ifNull": ["$league_id",
+                                                  {"$toUpper":
+                                                   {"$ifNull": ["$sport",
+                                                                "unknown"]}}]}},
                      "n": {"$sum": 1}}},
         {"$sort": {"_id.pt": 1, "_id.sp": 1}},
     ]
     by_pt_sport: List[Dict[str, Any]] = []
     async for r in db[UNIFIED_COLL].aggregate(pipe_pt_sp):
         by_pt_sport.append({
-            "prop_type": r["_id"]["pt"], "sport": r["_id"]["sp"],
-            "n": r["n"],
+            "prop_type": _id_get(r["_id"], "pt", "legacy"),
+            "sport":     _id_get(r["_id"], "sp", "UNKNOWN"),
+            "n":         r["n"],
         })
 
     pipe_tier = [
-        {"$group": {"_id": {"pt": "$prop_type", "tier": "$tier"},
+        {"$group": {"_id": {"pt":   {"$ifNull": ["$prop_type", "legacy"]},
+                              "tier": {"$ifNull": ["$tier", "none"]}},
                      "n": {"$sum": 1}}},
         {"$sort": {"_id.pt": 1, "_id.tier": 1}},
     ]
     by_tier: List[Dict[str, Any]] = []
     async for r in db[UNIFIED_COLL].aggregate(pipe_tier):
         by_tier.append({
-            "prop_type": r["_id"]["pt"], "tier": r["_id"]["tier"],
-            "n": r["n"],
+            "prop_type": _id_get(r["_id"], "pt", "legacy"),
+            "tier":      _id_get(r["_id"], "tier", "none"),
+            "n":         r["n"],
         })
 
     total = await db[UNIFIED_COLL].estimated_document_count()
@@ -373,6 +390,7 @@ async def preflight_report(db) -> Dict[str, Any]:
         {"prop_type": "player"})
     team_total = await db[UNIFIED_COLL].count_documents(
         {"prop_type": "team"})
+    other_total = total - player_total - team_total
 
     sample_player = await db[UNIFIED_COLL].find_one(
         {"prop_type": "player"}, projection={"_id": 0})
@@ -381,8 +399,10 @@ async def preflight_report(db) -> Dict[str, Any]:
         "prop_type_filter":  "player|team",
         "eligible_total":    total,
         "by_prop_type":      {
-            "player": player_total, "team": team_total,
-            "all":    total,
+            "player":  player_total,
+            "team":    team_total,
+            "legacy":  other_total,    # null/missing prop_type
+            "all":     total,
         },
         "by_prop_type_sport": by_pt_sport,
         "by_tier":           by_tier,
@@ -467,6 +487,8 @@ async def main_async(args) -> int:
     logger.info(f"  source:           {report['source']}")
     logger.info(f"  prop_type=player: {report['by_prop_type']['player']:,}")
     logger.info(f"  prop_type=team:   {report['by_prop_type']['team']:,}")
+    logger.info(f"  prop_type=legacy: {report['by_prop_type']['legacy']:,}"
+                  "  (null/missing prop_type — should be 0 after commit)")
     logger.info(f"  prop_type=all:    {report['by_prop_type']['all']:,}")
     logger.info(f"  by_prop_type_sport:")
     for r in report["by_prop_type_sport"]:
