@@ -174,7 +174,7 @@ async def test_backfill_runtime_makes_real_method_calls(
     a = _Args()
     a.sport = "nfl"; a.start = None; a.end = None
     a.yes = True; a.dry_run = False; a.force = False
-    a.max_events = 100
+    a.max_events = 100; a.chunk_days = 30
     rc = await B.amain(a)
     assert rc == 0
 
@@ -194,6 +194,50 @@ async def test_backfill_runtime_makes_real_method_calls(
     # The not-found row stayed unscored
     row3 = await db[mt].find_one({"event_id": "EID_NOT_FOUND"})
     assert row3.get("home_score") is None
+
+
+@pytest.mark.asyncio
+async def test_backfill_invokes_bulk_iter_once_per_chunk(
+        db_and_patch, monkeypatch):
+    """When the auto-derived date window spans multiple chunk_days
+    intervals, the bulk iterator must be invoked once PER chunk —
+    this is what prevents the SGO transport timeout on multi-season
+    pulls."""
+    db, mt = db_and_patch
+    # Seed 2 matchups 90 days apart → auto-window spans ~90 days
+    # With chunk_days=30 we expect ~3-4 chunks
+    await db[mt].insert_many([
+        {"event_id": "EID_A", "game_date": "2024-09-07",
+         "sport": "nfl", "status": "completed"},
+        {"event_id": "EID_B", "game_date": "2024-12-06",
+         "sport": "nfl", "status": "completed"},
+    ])
+
+    stub_instances: list = []
+    class _Tracker(_StubSGOClient):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            stub_instances.append(self)
+    monkeypatch.setattr(B, "SGOClient", _Tracker)
+
+    class _Args: pass
+    a = _Args()
+    a.sport = "nfl"; a.start = None; a.end = None
+    a.yes = False; a.dry_run = True; a.force = False
+    a.max_events = 100; a.chunk_days = 30
+    await B.amain(a)
+
+    assert stub_instances, "SGOClient not instantiated"
+    n_calls = len(stub_instances[0].calls)
+    # 91 days @ 30/chunk → 4 chunks (1-30, 31-60, 61-90, 91)
+    assert 3 <= n_calls <= 5, (
+        f"Expected 3-5 bulk-iter calls (one per 30-day chunk over "
+        f"~91-day window), got {n_calls}: {stub_instances[0].calls}")
+    # Each call must carry its own non-overlapping date window
+    seen_windows = [(c["starts_after"], c["starts_before"])
+                    for c in stub_instances[0].calls]
+    assert len(set(seen_windows)) == len(seen_windows), (
+        f"Chunks must have unique windows; saw duplicates: {seen_windows}")
 
 
 @pytest.mark.asyncio
@@ -220,7 +264,7 @@ async def test_backfill_runtime_idempotent_skips_already_scored(
     a = _Args()
     a.sport = "nfl"; a.start = None; a.end = None
     a.yes = True; a.dry_run = False; a.force = False
-    a.max_events = 100
+    a.max_events = 100; a.chunk_days = 30
     await B.amain(a)
     # Bulk iterator IS called once (preloads the index) — that's fine.
     # The point of idempotency is that ALREADY-SCORED rows are SKIPPED

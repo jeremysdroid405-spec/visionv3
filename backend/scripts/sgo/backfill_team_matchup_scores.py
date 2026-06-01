@@ -146,12 +146,50 @@ def _completed_filter() -> Dict[str, Any]:
     return {"status": {"$in": list(COMPLETED_STATUSES)}}
 
 
+def _chunk_date_window(starts_after: Optional[str],
+                         starts_before: Optional[str],
+                         chunk_days: int,
+                         ) -> List[Tuple[Optional[str], Optional[str]]]:
+    """Split [starts_after, starts_before] into chunks of at most
+    `chunk_days` calendar days. Each chunk is [start, end] inclusive
+    on the left, exclusive on the right of the chunk window but
+    inclusive of `starts_before` on the final chunk.
+
+    If either bound is None or both bounds aren't ISO 'YYYY-MM-DD',
+    we return a single passthrough chunk — chunking is a defensive
+    optimization, not a requirement.
+
+    Pure function — easy to unit-test.
+    """
+    if not starts_after or not starts_before or chunk_days <= 0:
+        return [(starts_after, starts_before)]
+    try:
+        d_start = datetime.strptime(starts_after[:10], "%Y-%m-%d").date()
+        d_end = datetime.strptime(starts_before[:10], "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return [(starts_after, starts_before)]
+    if d_end < d_start:
+        return [(starts_after, starts_before)]
+
+    from datetime import timedelta
+    chunks: List[Tuple[Optional[str], Optional[str]]] = []
+    cur = d_start
+    while cur <= d_end:
+        # Inclusive end of this chunk (calendar-days span = chunk_days)
+        nxt = cur + timedelta(days=chunk_days)
+        if nxt > d_end:
+            nxt = d_end + timedelta(days=1)   # so final chunk closes at d_end
+        chunks.append((cur.isoformat(), nxt.isoformat()))
+        cur = nxt
+    return chunks
+
+
 async def _load_finalized_score_index(
     sgo: SGOClient, *, league_id: str,
     starts_after: Optional[str], starts_before: Optional[str],
-    max_pages: int,
+    max_pages: int, chunk_days: int = 30,
 ) -> Dict[str, Tuple[Optional[float], Optional[float]]]:
-    """Bulk-pull finalized events from SGO once, build
+    """Bulk-pull finalized events from SGO, build
     {event_id → (home_score, away_score)}.
 
     Uses the `iter_finalized_events_with_results` paginated path —
@@ -159,27 +197,45 @@ async def _load_finalized_score_index(
     and the only one that reliably returns populated `results` blocks
     (the singular `get_event_with_results` endpoint returns events
     without scores for older NFL finals — observed empirically).
+
+    A full-season window can be >500 days; SGO times out on those
+    via the load-balancer transport. We therefore CHUNK the window
+    into `chunk_days`-day slices (default 30) and merge per-chunk
+    results into one dict. Each chunk gets the same per-call retries
+    that `iter_finalized_events_with_results` already applies.
     """
-    print(f"  [{league_id}] bulk-loading finalized events with results "
+    chunks = _chunk_date_window(starts_after, starts_before, chunk_days)
+    print(f"  [{league_id}] bulk-loading finalized events with results — "
+          f"split into {len(chunks)} chunk(s) of ≤{chunk_days} days each "
           f"(starts_after={starts_after}, starts_before={starts_before})…")
     out: Dict[str, Tuple[Optional[float], Optional[float]]] = {}
-    n_events = 0
-    n_with_scores = 0
-    async for ev in sgo.iter_finalized_events_with_results(
-        league_id, starts_after=starts_after,
-        starts_before=starts_before, max_pages=max_pages,
-    ):
-        n_events += 1
-        eid = ev.get("eventID") or ev.get("event_id") or ev.get("id")
-        if not eid:
-            continue
-        hs, as_ = extract_scores_from_sgo_event(ev)
-        if hs is not None and as_ is not None:
-            n_with_scores += 1
-        out[str(eid)] = (hs, as_)
-    print(f"  [{league_id}] bulk index: {n_events:,} finalized events "
-          f"({n_with_scores:,} with both scores, "
-          f"{n_events - n_with_scores:,} missing).")
+    tot_events = 0
+    tot_with_scores = 0
+    for idx, (ws, we) in enumerate(chunks, 1):
+        n_events = 0
+        n_with_scores = 0
+        async for ev in sgo.iter_finalized_events_with_results(
+            league_id, starts_after=ws,
+            starts_before=we, max_pages=max_pages,
+        ):
+            n_events += 1
+            eid = ev.get("eventID") or ev.get("event_id") or ev.get("id")
+            if not eid:
+                continue
+            hs, as_ = extract_scores_from_sgo_event(ev)
+            if hs is not None and as_ is not None:
+                n_with_scores += 1
+            # Last-write-wins is fine — same eventID across chunks
+            # cannot happen because windows are disjoint, but be safe.
+            out[str(eid)] = (hs, as_)
+        tot_events += n_events
+        tot_with_scores += n_with_scores
+        print(f"    [{league_id}] chunk {idx}/{len(chunks)}: "
+              f"window_start={ws}  window_end={we}  "
+              f"events_loaded={n_events:,}  scores_found={n_with_scores:,}")
+    print(f"  [{league_id}] bulk index complete: {tot_events:,} events "
+          f"({tot_with_scores:,} with both scores, "
+          f"{tot_events - tot_with_scores:,} missing).")
     return out
 
 
@@ -215,7 +271,7 @@ async def _derive_date_window(
 async def backfill_sport(
     sgo: SGOClient, db: AsyncIOMotorDatabase, *,
     sport: str, start: Optional[str], end: Optional[str],
-    dry_run: bool, force: bool, max_events: int,
+    dry_run: bool, force: bool, max_events: int, chunk_days: int,
 ) -> Dict[str, Any]:
     coll_name, league_id = SPORT_CONFIG[sport]
     print(f"\n  [{sport.upper()}] backfilling final scores into {coll_name}")
@@ -235,7 +291,7 @@ async def backfill_sport(
     score_idx = await _load_finalized_score_index(
         sgo, league_id=league_id,
         starts_after=starts_after, starts_before=starts_before,
-        max_pages=4000)
+        max_pages=4000, chunk_days=chunk_days)
 
     match: Dict[str, Any] = _completed_filter()
     if sport != "nfl":
@@ -379,7 +435,8 @@ async def amain(args: argparse.Namespace) -> int:
                 sgo, db, sport=sp,
                 start=args.start, end=args.end,
                 dry_run=dry_run, force=args.force,
-                max_events=args.max_events)
+                max_events=args.max_events,
+                chunk_days=args.chunk_days)
             _print_summary(r)
             all_results.append(r)
 
@@ -424,6 +481,10 @@ def main() -> int:
                           "away_score are already set.")
     p.add_argument("--max-events", type=int, default=10_000,
                     help="Safety cap on matchups processed per sport.")
+    p.add_argument("--chunk-days", type=int, default=30,
+                    help="Split the SGO bulk-pull date window into "
+                          "chunks of this many days to avoid transport "
+                          "timeouts on multi-season ranges (default 30).")
     return asyncio.run(amain(p.parse_args()))
 
 
