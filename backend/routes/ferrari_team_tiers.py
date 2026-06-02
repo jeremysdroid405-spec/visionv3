@@ -41,7 +41,9 @@ def init_router(db) -> None:
     _db = db
 
 
-_SUPPORTED_SPORTS = ("mlb", "nba", "nfl", "ncaaf")
+# 2026-06-02 — NCAAF removed; not built yet. See team_live_sync.py
+# for the rationale. Re-add when NCAAF team-prop pipeline ships.
+_SUPPORTED_SPORTS = ("mlb", "nba", "nfl")
 
 
 def _validate_sport(s: str) -> str:

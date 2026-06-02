@@ -34,6 +34,7 @@ import UniversalPlayerCard from '../components/dashboard/UniversalPlayerCard';
 import TeamPropRow from '../components/TeamPropRow';
 import { ParlayTicket } from '../components/dashboard/ParlayTicket';
 import { PlayerDetailPage } from '../components/dashboard/PlayerDetailPage';
+import TeamDetailPage from '../components/dashboard/TeamDetailPage';
 import CommandPost from '../components/dashboard/CommandPost';
 import IntelligenceModal from '../components/dashboard/IntelligenceModal';
 import SportSwitcher from '../components/dashboard/SportSwitcher';
@@ -1650,47 +1651,88 @@ const Dashboard = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [selectedPlayer, expandedParlay, savedScrollPosition]);
   
+  // 2026-06-02 — Resolve the identity slot for a generic pick (player
+  // or team). Team picks carry `team_name` / `team_abbr` instead of
+  // `player_name`. Used by handleRadarClick / handleVaultClick to
+  // route clicks into PlayerDetailPage (players) or TeamDetailPage
+  // (teams) via the shared `selectedPlayer` state.
+  const _resolvePickIdentity = useCallback((pick) => {
+    const isTeam =
+      pick?.prop_type === 'team' ||
+      pick?.is_team_prop === true;
+    if (isTeam) {
+      return {
+        identity: pick.team_name || pick.team_abbr || pick.team || 'Team',
+        photoUrl: pick.team_logo_url || pick.photo_url || null,
+        isTeam: true,
+      };
+    }
+    return {
+      identity: pick.player_name,
+      photoUrl: pick.photo_url || pick.headshot_url || null,
+      isTeam: false,
+    };
+  }, []);
+
   const handleRadarClick = useCallback((pick) => {
+    const { identity, photoUrl, isTeam } = _resolvePickIdentity(pick);
     const lineValue = pick.demon_line || pick.line;
-    const highlightKey = `${pick.stat_type}|${lineValue}|${pick.direction || pick.recommendation || 'Over'}`;
-    
-    // Transform pick into player format expected by PlayerDetailPage
+    const highlightKey = `${pick.stat_type || pick.market_key || pick.market}|${lineValue}|${pick.direction || pick.recommendation || pick.side || 'OVER'}`;
+
+    // Transform pick into player format expected by PlayerDetailPage /
+    // TeamDetailPage. TeamDetailPage re-adapts the team-shaped pick
+    // internally (team_name → player_name, team_logo_url → photo_url),
+    // so we pass the RAW team pick through here.
     const playerData = {
-      name: pick.player_name,
-      player_name: pick.player_name,
-      team: pick.team || pick.away_team || pick.home_team,
-      photo_url: pick.photo_url || pick.headshot_url,
+      name: identity,
+      player_name: identity,
+      team: pick.team || pick.team_abbr || pick.away_team || pick.home_team,
+      photo_url: photoUrl,
+      prop_type: isTeam ? 'team' : (pick.prop_type || 'player'),
+      is_team_prop: isTeam,
+      sport: pick.sport,
+      event_id: pick.event_id,
+      commence_time: pick.commence_time,
+      home_team: pick.home_team,
+      away_team: pick.away_team,
       props: [{
         ...pick,
-        stat_type_extracted: pick.stat_type,
-        direction: pick.direction || pick.recommendation || 'Over',
-        market: pick.market_key || pick.stat_type,
-      }]
+        stat_type_extracted: pick.stat_type || pick.market_key || pick.market,
+        direction: pick.direction || pick.recommendation || pick.side || 'OVER',
+        market: pick.market_key || pick.stat_type || pick.market,
+      }],
     };
-    
-    handlePlayerClick(pick.player_name, highlightKey, 'demon', playerData);
-  }, [handlePlayerClick]);
-  
+
+    handlePlayerClick(identity, highlightKey, 'demon', playerData);
+  }, [handlePlayerClick, _resolvePickIdentity]);
+
   const handleVaultClick = useCallback((pick) => {
+    const { identity, photoUrl, isTeam } = _resolvePickIdentity(pick);
     const lineValue = pick.goblin_line || pick.line;
-    const highlightKey = `${pick.stat_type}|${lineValue}|${pick.direction || pick.recommendation || 'Over'}`;
-    
-    // Transform pick into player format expected by PlayerDetailPage
+    const highlightKey = `${pick.stat_type || pick.market_key || pick.market}|${lineValue}|${pick.direction || pick.recommendation || pick.side || 'OVER'}`;
+
     const playerData = {
-      name: pick.player_name,
-      player_name: pick.player_name,
-      team: pick.team || pick.away_team || pick.home_team,
-      photo_url: pick.photo_url || pick.headshot_url,
+      name: identity,
+      player_name: identity,
+      team: pick.team || pick.team_abbr || pick.away_team || pick.home_team,
+      photo_url: photoUrl,
+      prop_type: isTeam ? 'team' : (pick.prop_type || 'player'),
+      is_team_prop: isTeam,
+      sport: pick.sport,
+      event_id: pick.event_id,
+      commence_time: pick.commence_time,
+      home_team: pick.home_team,
+      away_team: pick.away_team,
       props: [{
         ...pick,
-        stat_type_extracted: pick.stat_type,
-        direction: pick.direction || pick.recommendation || 'Over',
-        market: pick.market_key || pick.stat_type,
-      }]
+        stat_type_extracted: pick.stat_type || pick.market_key || pick.market,
+        direction: pick.direction || pick.recommendation || pick.side || 'OVER',
+        market: pick.market_key || pick.stat_type || pick.market,
+      }],
     };
-    
-    handlePlayerClick(pick.player_name, highlightKey, 'goblin', playerData);
-  }, [handlePlayerClick]);
+
+    handlePlayerClick(identity, highlightKey, 'goblin', playerData);
+  }, [handlePlayerClick, _resolvePickIdentity]);
   
   const handleParlayClick = useCallback((parlay, sectionType) => {
     setSavedScrollPosition(window.scrollY);
@@ -1746,8 +1788,20 @@ const Dashboard = () => {
   
   // If player is selected, show detail page
   if (selectedPlayer) {
+    // 2026-06-02 — Team picks (prop_type='team') route to
+    // `TeamDetailPage`, a thin clone-wrapper that adapts team
+    // identity (team_name / team_logo_url / team_abbr) into the
+    // player shape `PlayerDetailPage` consumes. Same visual shell,
+    // different inputs — per user directive: clone working features,
+    // swap inputs.
+    const isTeamDetail =
+      (selectedPlayerData && selectedPlayerData.prop_type === 'team') ||
+      (selectedPlayerData && selectedPlayerData.props &&
+       selectedPlayerData.props[0] &&
+       selectedPlayerData.props[0].prop_type === 'team');
+    const DetailComponent = isTeamDetail ? TeamDetailPage : PlayerDetailPage;
     return (
-      <PlayerDetailPage 
+      <DetailComponent
         playerName={selectedPlayer}
         playerData={selectedPlayerData}
         onBack={handleBackFromPlayer}

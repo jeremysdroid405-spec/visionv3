@@ -1110,6 +1110,45 @@ async def scheduled_hourly_full_sync():
     await run_scheduled_master_sync("nba")
 
 
+async def scheduled_team_live_sync(sport: str):
+    """Hourly team live odds sync for `sport`.
+
+    Pulls h2h / spreads / totals / team_totals from The Odds API for
+    LIVE upcoming events, writes per-row docs to `team_live_props`,
+    and passthroughs to `team_prop_scores` (where the Ferrari team
+    tier endpoints read from). Wired into the scheduler 2026-06-02
+    so NBA team props (and MLB / NFL) populate without manual
+    `POST /api/v3/team-live-sync/{sport}` invocations.
+
+    Sport allow-list mirrors `routes/team_live_sync._SUPPORTED_SPORTS`
+    — MLB, NBA, NFL only. NCAAF is intentionally excluded until the
+    pipeline is built end-to-end.
+    """
+    if sport not in ("mlb", "nba", "nfl"):
+        logger.warning(
+            "[SCHEDULER] team_live_sync called for unsupported sport=%r — "
+            "skipping (pipeline not built yet)", sport)
+        return
+    logger.info("=" * 70)
+    logger.info("[SCHEDULER] TEAM LIVE SYNC — sport=%s", sport.upper())
+    logger.info("[SCHEDULER] Time: %s", datetime.now(timezone.utc).isoformat())
+    logger.info("=" * 70)
+    try:
+        from services.team_live_sync_service import sync_team_live_for_sport
+        audit = await sync_team_live_for_sport(
+            db, sport=sport, do_passthrough=True,
+        )
+        logger.info(
+            "[SCHEDULER] team_live_sync %s done — events=%s props=%s "
+            "scores=%s status=%s",
+            sport, audit.get("events_seen"), audit.get("props_written"),
+            audit.get("scores_promoted"), audit.get("status"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "[SCHEDULER] team_live_sync %s FAILED: %s", sport, exc)
+
+
 async def scheduled_hourly_badge_sync():
     """
     HOURLY CONTEXT BADGE SYNC (The Intel)
@@ -2194,6 +2233,48 @@ async def startup_event():
         replace_existing=True
     )
     
+    # ── Team Live Odds Sync (every 15 min, staggered per sport). ─
+    # 2026-06-02 — wired so the Ferrari team-tier endpoints
+    # (/api/v3/ferrari/team/{safe-haven,front-lines,war-zone})
+    # actually have NBA / NFL data. Previously the only sport that
+    # ever populated `team_live_props` was MLB, and only via manual
+    # `POST /api/v3/team-live-sync/mlb` invocations. The team live
+    # sync service pulls h2h / spreads / totals / team_totals from
+    # The Odds API and passthroughs into `team_prop_scores`.
+    #
+    # NBA Finals start TOMORROW — without this scheduler block the
+    # team panels render `null` on the dashboard. Cadence is 15 min
+    # to keep up with line movement; per-sport offset so the three
+    # HTTP fetches don't overlap.
+    #
+    # MLB  → :00, :15, :30, :45  (existing, codified here)
+    # NBA  → :05, :20, :35, :50
+    # NFL  → :10, :25, :40, :55
+    scheduler.add_job(
+        scheduled_team_live_sync,
+        CronTrigger(minute='0,15,30,45', timezone=SCHEDULER_TIMEZONE),
+        id='team_live_sync_mlb',
+        name='Every 15 min — MLB Team Live Odds Sync',
+        kwargs={"sport": "mlb"},
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        scheduled_team_live_sync,
+        CronTrigger(minute='5,20,35,50', timezone=SCHEDULER_TIMEZONE),
+        id='team_live_sync_nba',
+        name='Every 15 min — NBA Team Live Odds Sync',
+        kwargs={"sport": "nba"},
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        scheduled_team_live_sync,
+        CronTrigger(minute='10,25,40,55', timezone=SCHEDULER_TIMEZONE),
+        id='team_live_sync_nfl',
+        name='Every 15 min — NFL Team Live Odds Sync',
+        kwargs={"sport": "nfl"},
+        replace_existing=True,
+    )
+
     # Forward-Testing: multi-phase daily prop captures (2026-05-08 upgrade).
     # Replaces the single 22:30 UTC / 6:30 PM ET legacy capture with three
     # market-state snapshots per sport so we can measure edge decay and

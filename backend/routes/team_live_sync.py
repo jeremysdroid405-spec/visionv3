@@ -29,7 +29,13 @@ def init_router(db) -> None:
     _db = db
 
 
-_SUPPORTED_SPORTS = ("mlb", "nba", "nfl", "ncaaf")
+# 2026-06-02 — NCAAF removed from the supported-sports allow-list.
+# NCAAF live team-prop ingest is NOT built yet — keeping it in the
+# allow-list silently produced empty `team_odds_ingest_runs` rows
+# (one observed in prod). Re-add ONLY when the NCAAF SGO endpoints
+# + scoring path are explicitly wired (services.team_master_hub +
+# scheduler).
+_SUPPORTED_SPORTS = ("mlb", "nba", "nfl")
 
 
 def _validate_sport(s: str) -> str:

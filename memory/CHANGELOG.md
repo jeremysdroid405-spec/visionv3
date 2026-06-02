@@ -1,6 +1,128 @@
 # Changelog
 
 
+## 2026-06-02 — NBA Finals team props: live ingest wiring + TeamDetailPage clone
+
+### What the user reported
+> "teams are missing from nba even though game one of finals is
+> tomorrow. they aren't displaying any relevant info, no graph, hr,
+> they aren't even clickable events."
+>
+> Clarification: "ODDS_API_KEY is already updated in production. So
+> this is not an API-key issue. The problem is that team props are
+> not wired to be pulled/scored for NBA live board."
+>
+> Additional: "why is NCAAF showing in team_odds_ingest_runs? Make
+> sure production live team ingest only runs enabled sports."
+
+### Diagnosis
+Three stacked issues, all root-cause:
+
+1. **No scheduler job ever invoked `sync_team_live_for_sport()`** —
+   for any sport. The team-live-sync route existed
+   (`POST /api/v3/team-live-sync/{sport}`) but was only triggered by
+   manual curl. That's why `team_live_props.{sport:"nba"}` was 0
+   while MLB had data from someone's manual invocation. NBA Finals
+   tomorrow → live board renders `null`.
+
+2. **NCAAF was in the supported-sports allow-list** for both
+   `routes/team_live_sync.py` and `routes/ferrari_team_tiers.py`
+   even though no NCAAF pipeline exists. One stale NCAAF row was
+   sitting in `team_odds_ingest_runs` from someone testing.
+
+3. **Click router crashed on team picks** — `Dashboard.jsx`
+   `handleRadarClick` / `handleVaultClick` called
+   `handlePlayerClick(pick.player_name, ...)`, but team picks carry
+   `team_name` / `team_abbr`, not `player_name`. Clicks routed to
+   PlayerDetailPage with `name=undefined` → blank page.
+
+### Fix
+
+**Backend** (`/app/backend/server.py`):
+- Added `scheduled_team_live_sync(sport)` wrapper that invokes
+  `services.team_live_sync_service.sync_team_live_for_sport(db,
+  sport=...)` with `do_passthrough=True` (writes
+  `team_live_props` → `team_prop_scores` in one pass).
+- Registered three APScheduler cron jobs (every 15 min, per-sport
+  offset so HTTP fetches don't overlap):
+  - MLB at `:00, :15, :30, :45`
+  - NBA at `:05, :20, :35, :50`
+  - NFL at `:10, :25, :40, :55`
+- NCAAF intentionally omitted — pipeline not built.
+
+**Sport allow-list cleanup**:
+- `routes/team_live_sync.py:_SUPPORTED_SPORTS`: NCAAF removed.
+- `routes/ferrari_team_tiers.py:_SUPPORTED_SPORTS`: NCAAF removed.
+- Comments document the rationale for future maintainers.
+
+**Frontend — Click router** (`/app/frontend/src/pages/Dashboard.jsx`):
+- New `_resolvePickIdentity()` helper detects `prop_type === "team"`
+  / `is_team_prop === true` and returns the correct identity slot
+  (`team_name` for teams, `player_name` for players).
+- `handleRadarClick` / `handleVaultClick` rewritten on top of the
+  resolver. Both now carry full team context through `playerData`
+  (sport, event_id, commence_time, home/away teams, team logo,
+  opponent) so TeamDetailPage has everything it needs.
+- Detail-component routing: top-level conditional inspects
+  `selectedPlayerData.prop_type` and renders `TeamDetailPage` (new)
+  vs `PlayerDetailPage` (existing) accordingly.
+
+**Frontend — TeamDetailPage clone**
+(`/app/frontend/src/components/dashboard/TeamDetailPage.jsx`, NEW):
+- Per user directive: *"team detail card should be a clone of player
+  detail card with different inputs, teams badgesets, etc."*
+- Thin wrapper that imports `PlayerDetailPage` and feeds it a
+  team-adapted payload (`adaptTeamPickToPlayerShape`):
+  - `team_name` → `player_name`
+  - `team_logo_url` → `photo_url` / `headshot_url`
+  - `team_abbr` → `team`
+  - Falls back to `getTeamLogo(sport, team_abbr)` when
+    `team_logo_url` is missing.
+  - Preserves `prop_type='team'` / `is_team_prop=true` on every
+    nested level so PlayerDetailPage can add team-specific
+    branching later without further wiring changes.
+- Separate file so any future team-specific surface (team historical
+  hit-rate chart, team scoring/conceding splits, team-vs-team
+  matchup analysis) lands here without polluting
+  `PlayerDetailPage.jsx`.
+
+### Verification
+Triggered manual NBA team-live-sync immediately to validate end-to-
+end (Finals start TOMORROW, can't wait for the next :05/:20/:35/:50
+cron):
+```
+POST /api/v3/team-live-sync/nba?do_passthrough=true
+{
+  "n_events_fetched": 1,
+  "n_events_with_odds": 1,
+  "n_rows_normalized": 146,
+  "n_rows_upserted": 146,
+  "passthrough.n_upserted": 146,
+  "status": "succeeded"
+}
+```
+
+Ferrari team endpoints now serve NBA picks:
+```
+GET /api/v3/ferrari/team/front-lines?sport=nba
+  3 picks: Spurs team_totals over 112.5 (+102),
+            Knicks spreads -4.5 (-104),
+            Knicks team_totals over 107.5 (-104)
+```
+
+Scheduler will keep this fresh every 15 min. Frontend lint passes
+(both `Dashboard.jsx` and `TeamDetailPage.jsx`).
+
+### Cross-sport reusability
+- Same scheduler pattern reused for MLB and NFL (drop-in).
+- `TeamDetailPage` wrapper-clone pattern reused for any future
+  team-prop surfaces (NCAAF when built, NHL, etc.) — change the
+  data-source hook, keep the visual shell.
+- `_resolvePickIdentity` is sport-agnostic — works for any pick
+  carrying `prop_type='team'`.
+
+
+
 ## 2026-06-02 — Production-scorer replay-safety: fantasy_score + blank availability + disable_availability_guard
 
 ### What the user reported
