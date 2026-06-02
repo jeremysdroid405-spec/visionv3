@@ -392,17 +392,6 @@ async def get_team_prop_picks(db, *, sport: str, tier_name: str,
         if c is not None:
             cards.append(c)
 
-    # 2026-06-02 — Enrich every card with REAL historical hit rates +
-    # deterministic vision intel + scout badges. Same SSOT helpers
-    # `routes/team_with_badges.py` uses, so the board card and the
-    # team detail page agree on every number.
-    #
-    # Batch by team_id so we fetch each team's game history (used for
-    # baseline averages) at most once. Per-prop hit-rate query stays
-    # one round-trip — small (<= 200 rows) and capped at the request
-    # limit (10 cards × 3 tiers = 30 props max).
-    cards = await _enrich_cards_with_history(db, cards, sport_l)
-
     # Dedupe by canonical compound key
     seen: set = set()
     deduped: List[Dict[str, Any]] = []
@@ -422,6 +411,14 @@ async def get_team_prop_picks(db, *, sport: str, tier_name: str,
         deduped.sort(key=lambda x: abs(x["odds"] or 0))
 
     cards = deduped[:limit]
+
+    # 2026-06-02 — Enrich the FINAL N cards (post-dedupe + limit) with
+    # REAL historical hit rates + deterministic vision intel + scout
+    # badges. Same SSOT helpers `routes/team_with_badges.py` uses, so
+    # the board card and the team detail page agree on every number.
+    # Per-team game-history query is cached so it runs at most once
+    # per team (1-3 queries) + one hit-rate query per returned card.
+    cards = await _enrich_cards_with_history(db, cards, sport_l)
     return {
         "tier":         tier_name,
         "tier_label":   f"{_TIER_LABEL[tier_name]} "

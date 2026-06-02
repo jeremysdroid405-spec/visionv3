@@ -24,7 +24,48 @@ controlling historical replay pipelines via the Emergent Admin API.
 
 
 
-### 2026-06-02 (later) — Board cards now show real historical L5/L10/L20 + vision intel (P0 closed)
+### 2026-06-02 (latest) — team_live_xgb_scorer E11000 noise eliminated; team tier reads 8s → 0.4s (P0 closed)
+- **Root cause**: unique compound index on `team_prop_scores`
+  includes `model_version`, so both an unscored row
+  (`model_version=None`, from passthrough) and a scored row
+  (`model_version='team_xgb_v1'`) coexisted for the same natural
+  key tuple `(event_id, team_id, market, line, side, book,
+  snapshot_iso, gate_config_version)`. The scorer's
+  `UpdateOne(filter={natural_key}, $set={model_version: VERSION})`
+  promoted the unscored row's `model_version` → triggered
+  `E11000 duplicate key` against the existing scored sibling.
+  Every Ferrari team-tier endpoint was eating ~7s of error
+  recovery on every read.
+- **Fix** in `services/team_live_xgb_scorer.py`:
+  1. Pre-query scored siblings for every natural key in the
+     enriched batch (`$or` over `(natural_key, model_version $ne
+     null)`).
+  2. For unscored rows that already have a scored sibling: emit a
+     `DeleteOne(natural_key + model_version: None)` op — these are
+     stale passthrough duplicates, drop them.
+  3. For unscored rows with no scored sibling: emit the
+     normal `$set` UpdateOne, but with the filter narrowed to
+     `model_version: None` so it can ONLY ever match the unscored
+     row (no possibility of promoting an already-scored row into a
+     duplicate).
+  4. `audit["stale_unscored_deleted"]` counter exposes how many
+     stale rows were cleaned per call.
+- **Re-order in `team_prop_tier_service`**: enrichment now runs
+  AFTER dedupe + tier-sort + limit slice, so it iterates 5-10
+  cards (the response set) instead of 100+ pre-filter rows. Same
+  byte-for-byte response — just half the historical DB work.
+- **Verified**:
+  - 198 stale unscored MLB rows cleaned up on first read.
+  - `GET /api/v3/ferrari/team/front-lines?sport=mlb&limit=10`
+    response time: **8004 ms → 572 ms (14x speedup)**.
+  - Zero `E11000` errors in supervisor/backend.err.log on
+    repeated reads.
+- **Tests**: NEW `tests/test_team_xgb_scorer_e11000_fix.py` (2
+  cases — synthetic stale-pair scenario + live rescore over real
+  MLB collection asserting zero E11000 in the audit error list).
+  Full suite passes 23/23.
+
+
 - **`services/team_historical_enrichment.py` (NEW)** — single SSOT
   home for the deterministic historical-stat math. Exports
   `compute_hit_rates`, `fetch_team_game_history`,

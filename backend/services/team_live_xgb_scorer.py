@@ -29,7 +29,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from pymongo import UpdateOne
+from pymongo import DeleteOne, UpdateOne
 
 from services.team_xgb_loader import score_team_props_batch, VERSION
 
@@ -267,16 +267,80 @@ async def score_team_live_props(
     scores = score_team_props_batch(enriched)
     audit["scored"] = sum(1 for s in scores if s is not None)
 
+    # 2026-06-02 — Stale-duplicate guard.
+    #
+    # The unique compound index (`event_id, team_id, market, line,
+    # side, book, snapshot_iso, model_version, gate_config_version`)
+    # allows BOTH an unscored row (`model_version=None`, from the
+    # passthrough) AND a previously-scored row
+    # (`model_version='team_xgb_v1'`) to coexist for the same natural
+    # key. A naive `$set: {model_version: VERSION}` on the unscored
+    # row triggers `E11000` because the resulting compound key
+    # duplicates the scored sibling.
+    #
+    # Fix: for each unscored row we want to promote, first check if a
+    # scored sibling already exists. If yes, the unscored row is a
+    # stale passthrough duplicate — drop it. If no, promote it.
+    # Either way the unique index stays consistent.
+    natural_keys = [
+        (p["_event_id"], p["_team_id"], p["_market"],
+         p["_line"], p["_side"], p["_book"])
+        for p in enriched
+    ]
+    scored_sibling_keys: set = set()
+    if natural_keys:
+        or_clauses = [
+            {
+                "event_id": k[0], "team_id": k[1], "market": k[2],
+                "line":     k[3], "side":    k[4], "book":   k[5],
+                "model_version": {"$ne": None},
+            }
+            for k in natural_keys
+        ]
+        async for r in db[SCORES_COLL].find(
+            {"$or": or_clauses},
+            projection={
+                "_id": 0, "event_id": 1, "team_id": 1, "market": 1,
+                "line": 1, "side": 1, "book": 1,
+            },
+        ):
+            scored_sibling_keys.add((
+                r.get("event_id"), r.get("team_id"), r.get("market"),
+                r.get("line"), r.get("side"), r.get("book"),
+            ))
+
+    audit["stale_unscored_deleted"] = 0
+
     # Build bulk update ops; addressing key is the natural
     # `(event_id, team_id, market, line, side, book)` tuple. We DO NOT
     # touch the unique-index columns (model_version /
     # gate_config_version) on the existing rows — we only $set the
     # model output fields and a couple of derived display flags.
-    ops: List[UpdateOne] = []
+    ops: List = []
     now_iso = datetime.now(timezone.utc).isoformat()
     for payload, score in zip(enriched, scores):
         if score is None:
             continue
+        nk = (payload["_event_id"], payload["_team_id"],
+              payload["_market"], payload["_line"],
+              payload["_side"], payload["_book"])
+
+        # Stale unscored duplicate: a scored sibling already exists
+        # for this natural key. Drop the unscored row so the index is
+        # clean. The scored sibling carries the canonical fields.
+        if nk in scored_sibling_keys:
+            ops.append(DeleteOne({
+                "event_id":      payload["_event_id"],
+                "team_id":       payload["_team_id"],
+                "market":        payload["_market"],
+                "line":          payload["_line"],
+                "side":          payload["_side"],
+                "book":          payload["_book"],
+                "model_version": None,
+            }))
+            audit["stale_unscored_deleted"] += 1
+            continue
+
         # Tier stays driven by the odds-bucket router in the
         # passthrough — we DO NOT override it here. The model fields
         # are additive.
@@ -299,14 +363,19 @@ async def score_team_live_props(
                 "scored_at":          now_iso,
             },
         }
+        # Filter narrowed to `model_version: None` so the update can
+        # only ever touch the unscored row. If somehow a scored
+        # sibling slipped through the dedup pass, the filter won't
+        # match and the op becomes a no-op (no E11000).
         ops.append(UpdateOne(
             {
-                "event_id": payload["_event_id"],
-                "team_id":  payload["_team_id"],
-                "market":   payload["_market"],
-                "line":     payload["_line"],
-                "side":     payload["_side"],
-                "book":     payload["_book"],
+                "event_id":      payload["_event_id"],
+                "team_id":       payload["_team_id"],
+                "market":        payload["_market"],
+                "line":          payload["_line"],
+                "side":          payload["_side"],
+                "book":          payload["_book"],
+                "model_version": None,
             },
             update,
             upsert=False,
