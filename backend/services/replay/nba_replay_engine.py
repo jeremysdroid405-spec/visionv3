@@ -431,22 +431,63 @@ async def replay_date(
         upsert=True,
     )
 
-    # 1. Load all per-book odds rows for this slate.
-    cursor = db[odds_collection].find(
-        {"sport": "nba",
-         "game_date": replay_date_str,
-         "snapshot_iso": snapshot_iso},
-        projection={"_id": 0},
+    # 1. Resolve the snapshot_iso through the cross-sport fallback
+    #    policy so we NEVER silently score zero rows when the
+    #    orchestrator-supplied snapshot tag doesn't match the
+    #    ingest-time label. Three tiers (exact → latest-for-date →
+    #    any-for-date) — see services/replay/snapshot_resolver.py.
+    from services.replay.snapshot_resolver import (
+        resolve_snapshot_iso,
+        SNAPSHOT_TIER_EXACT, SNAPSHOT_TIER_ANY_DATE, SNAPSHOT_TIER_NONE,
     )
+    resolved_snap, snap_tier, snap_telemetry = await resolve_snapshot_iso(
+        db, sport="nba", game_date=replay_date_str,
+        requested_snapshot_iso=snapshot_iso,
+        odds_collection=odds_collection,
+    )
+    logger.info(
+        "[nba_replay] %s/%s snapshot resolution: tier=%s telemetry=%s",
+        replay_date_str, snapshot_iso, snap_tier, snap_telemetry,
+    )
+
+    # Build the read filter based on the resolved tier.
+    if snap_tier == SNAPSHOT_TIER_NONE:
+        # No rows in the odds collection for this date at all.
+        read_filter = None
+    elif snap_tier == SNAPSHOT_TIER_ANY_DATE:
+        # Legacy ingest without snapshot_iso labels — read the whole
+        # date without constraining.
+        read_filter = {"sport": "nba", "game_date": replay_date_str}
+    else:
+        read_filter = {"sport": "nba",
+                       "game_date": replay_date_str,
+                       "snapshot_iso": resolved_snap}
+
     odds_rows: List[Dict[str, Any]] = []
-    async for r in cursor:
-        odds_rows.append(r)
+    if read_filter is not None:
+        cursor = db[odds_collection].find(
+            read_filter, projection={"_id": 0},
+        )
+        async for r in cursor:
+            odds_rows.append(r)
     n_odds = len(odds_rows)
+
+    # If we fell back to a different snapshot, use that as the
+    # canonical snapshot_iso for downstream Layer-3 row keying so
+    # the unique index stamps the actual snapshot the data lives
+    # under (not the orchestrator's wishful tag).
+    effective_snapshot_iso = (
+        resolved_snap if resolved_snap is not None else snapshot_iso
+    )
 
     if n_odds == 0:
         finished_at = datetime.now(timezone.utc)
         summary = {
-            "date": replay_date_str, "snapshot_iso": snapshot_iso,
+            "date": replay_date_str,
+            "snapshot_iso": snapshot_iso,
+            "snapshot_iso_resolved": resolved_snap,
+            "snapshot_resolution_tier": snap_tier,
+            "snapshot_resolution_telemetry": snap_telemetry,
             "alt_odds_rows_seen": 0, "model_outputs_written": 0,
             "props_built": 0, "score_docs_returned": 0,
             "elapsed_s": (finished_at - started_at).total_seconds(),
@@ -457,6 +498,28 @@ async def replay_date(
             s_filter, {"$set": {"status": "completed",
                                 "completed_at": finished_at, **summary}},
         )
+        # Replay invariant: NEVER silently score zero without
+        # surfacing WHY. The telemetry above is the answer.
+        if snap_tier == SNAPSHOT_TIER_NONE:
+            logger.warning(
+                "[nba_replay] %s/%s zero rows: no historical odds ever "
+                "ingested for this date. Verify "
+                "`sgo_replay_alt_odds_raw` was populated for the "
+                "window before scheduling the replay.",
+                replay_date_str, snapshot_iso,
+            )
+        else:
+            # Defensive — we reached n_odds==0 even though the
+            # resolver picked a non-NONE tier. Indicates an exotic
+            # race or filter mismatch; loud telemetry over silent
+            # zero.
+            logger.error(
+                "[nba_replay] %s/%s zero rows after fallback "
+                "resolution (tier=%s, resolved=%s, telemetry=%s). "
+                "This should NEVER happen — investigate.",
+                replay_date_str, snapshot_iso, snap_tier,
+                resolved_snap, snap_telemetry,
+            )
         return summary
 
     # 2. Build the bdl_player_id name → id index once per replay.
@@ -465,7 +528,8 @@ async def replay_date(
 
     # 3. Reshape per-book odds rows into one live-prop dict per canonical key.
     props, src_by_key, reshape_skipped = _reshape_to_live_props(
-        odds_rows, bdl_id_index=bdl_id_idx, snapshot_iso=snapshot_iso,
+        odds_rows, bdl_id_index=bdl_id_idx,
+        snapshot_iso=effective_snapshot_iso,
     )
     n_props = len(props)
     logger.info(
@@ -477,7 +541,11 @@ async def replay_date(
     if n_props == 0:
         finished_at = datetime.now(timezone.utc)
         summary = {
-            "date": replay_date_str, "snapshot_iso": snapshot_iso,
+            "date": replay_date_str,
+            "snapshot_iso": snapshot_iso,
+            "snapshot_iso_resolved": resolved_snap,
+            "snapshot_resolution_tier": snap_tier,
+            "snapshot_resolution_telemetry": snap_telemetry,
             "alt_odds_rows_seen": n_odds, "model_outputs_written": 0,
             "props_built": 0, "score_docs_returned": 0,
             "reshape_skipped": reshape_skipped,
@@ -563,7 +631,7 @@ async def replay_date(
             continue
         for src in src_rows:
             row = _project_score_doc_to_layer3_row(
-                sd, odds_row=src, snapshot_iso=snapshot_iso,
+                sd, odds_row=src, snapshot_iso=effective_snapshot_iso,
             )
             buffer.append(row)
             if len(buffer) >= 500:
@@ -587,6 +655,14 @@ async def replay_date(
     summary = {
         "date": replay_date_str,
         "snapshot_iso": snapshot_iso,
+        # ── Snapshot resolution telemetry ──────────────────────────
+        # The orchestrator passes a CANDIDATE snapshot_iso; the
+        # resolver picks the actual one to read. Tier explains
+        # which fallback served (exact / latest_for_date /
+        # any_for_date / none). See snapshot_resolver.py.
+        "snapshot_iso_resolved": resolved_snap,
+        "snapshot_resolution_tier": snap_tier,
+        "snapshot_resolution_telemetry": snap_telemetry,
         # ── Volume telemetry (stage by stage) ──────────────────────
         # 1) Raw per-book per-side historical odds rows in scope.
         "alt_odds_rows_seen": n_odds,

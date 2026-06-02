@@ -1,6 +1,81 @@
 # Changelog
 
 
+## 2026-06-02 — Snapshot fallback policy (replay never silently scores zero)
+
+### What the user reported
+Layer-3 entered correctly with 3,789,764 rows in
+`sgo_replay_alt_odds_raw`, but `nba_replay_model_outputs` returned
+0. Root cause: the engine's read filter
+```python
+{"sport": "nba", "game_date": replay_date_str,
+ "snapshot_iso": snapshot_iso}
+```
+was over-constrained on `snapshot_iso`. The orchestrator passes a
+CANDIDATE snapshot tag (e.g. `{game_date}T11:00:00Z` for the 11:00
+UTC ladder), but historical ingest may have stamped a different
+hour (or no snapshot at all on legacy rows). An exact match
+collapsed silently to zero.
+
+### Fix — three-tier fallback policy
+- `services/replay/snapshot_resolver.py` (NEW): SSOT for the
+  cross-sport snapshot resolution. Three tiers in order:
+  1. **exact** — requested `snapshot_iso` matches data.
+  2. **latest_for_date** — sort distinct `snapshot_iso` values for
+     `(sport, game_date)` lexicographically (ISO 8601 lex order =
+     chronological), take the largest.
+  3. **any_for_date** — legacy ingest without snapshot labels;
+     read the whole date with no snapshot constraint.
+  4. **none** — no rows exist for `game_date` at all; loud
+     warning + zero return with `rows_for_date=0` telemetry so
+     the operator can see WHY.
+- Every tier choice surfaces telemetry on the engine summary:
+  - `snapshot_iso_resolved`
+  - `snapshot_resolution_tier`
+  - `snapshot_resolution_telemetry` =
+    `{rows_for_date, rows_for_exact_snapshot,
+      distinct_snapshots_for_date, resolved_snapshot_iso,
+      rows_for_resolved_snapshot}`
+- Layer-3 rows are keyed under the RESOLVED snapshot (not the
+  orchestrator's wishful tag) so the compound unique index stamps
+  the actual data location.
+
+### Cross-sport policy
+Same contract MLB / NBA / NFL / NCAAF / future sports. Any new
+replay engine that reads a date-keyed historical odds source MUST
+use `services.replay.snapshot_resolver.resolve_snapshot_iso(...)`
+instead of a hard-coded exact-match filter.
+
+### Verification
+`tests/test_nba_replay_snapshot_fallback.py` (NEW) — three
+scenarios:
+- **Scenario A (mismatch → fallback)**: requested
+  `2025-10-22T11:00:00Z`, ingested at `2025-10-22T15:00:00Z` →
+  resolver reports `tier='latest_for_date'`,
+  `snapshot_iso_resolved='2025-10-22T15:00:00Z'`,
+  `rows_for_exact_snapshot=0`, `rows_for_date=4`. Engine reads 4
+  rows, scores 2 canonical props, persists 4 Layer-3 rows. The
+  rows are keyed under the RESOLVED snapshot (not the requested
+  one) — verified by direct count.
+- **Scenario B (exact match)**: regression — tier=`exact`,
+  4 rows written.
+- **Scenario C (no data)**: tier=`none`,
+  `rows_for_date=0`, 0 rows written. Loud warning logged:
+  *"NO rows in sgo_replay_alt_odds_raw for this date — nothing to
+  replay. Verify ingest ran for this slate."*
+
+All three pre-existing tests (bypass_eligibility,
+engine_smoke, infrastructure_contract) still pass.
+
+### Effect
+The user's reported regression is fixed at the root: the engine
+will now find and score the 3.7M-row universe regardless of which
+snapshot label the historical ingest happened to stamp. The
+engine summary surfaces the resolution tier on every run so any
+future drift becomes immediately visible (no more silent zeros).
+
+
+
 ## 2026-06-02 — Replay eligibility bypass promoted to cross-sport infrastructure policy
 
 ### What the user requested

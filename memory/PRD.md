@@ -23,6 +23,23 @@ controlling historical replay pipelines via the Emergent Admin API.
 - `candidate_thresholds`, `emergent_admin_jobs`
 
 
+### 2026-06-02 — Snapshot fallback policy (replay never silently scores zero)
+- `services/replay/snapshot_resolver.py` (NEW): cross-sport
+  three-tier fallback (`exact` → `latest_for_date` →
+  `any_for_date` → `none`). Replaces hard-coded `{snapshot_iso}`
+  exact-match filter in `nba_replay_engine`. Same contract for
+  MLB / NBA / NFL / NCAAF / future sports.
+- Engine summary now carries `snapshot_iso_resolved`,
+  `snapshot_resolution_tier`, and `snapshot_resolution_telemetry`
+  ({rows_for_date, rows_for_exact_snapshot, distinct_snapshots,
+  resolved_snapshot_iso, rows_for_resolved_snapshot}) so any
+  future drift surfaces immediately on every run.
+- Layer-3 rows are keyed under the RESOLVED snapshot, not the
+  orchestrator's candidate, so the unique index stamps the
+  actual data location.
+- `tests/test_nba_replay_snapshot_fallback.py` (NEW): verifies
+  exact/fallback/no-data scenarios.
+
 ### 2026-06-02 — Replay eligibility bypass promoted to cross-sport infrastructure policy
 - `services/replay/contract.py` (NEW): SSOT for the cross-sport
   replay invariant `score → persist → optimize`. Exports
