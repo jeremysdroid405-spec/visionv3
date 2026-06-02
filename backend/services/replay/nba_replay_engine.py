@@ -253,6 +253,9 @@ def _reshape_to_live_props(
 
 
 # ── Output projection (score doc → per-book Layer-3 row) ──────────────
+_QUALIFIED_TIERS = frozenset({"safe_haven", "front_lines", "war_zone"})
+
+
 def _project_score_doc_to_layer3_row(
     score_doc: Dict[str, Any],
     *,
@@ -336,13 +339,17 @@ def _project_score_doc_to_layer3_row(
         "hit_rate_l10": score_doc.get("hit_rate_l10"),
         "hit_rate_l20": score_doc.get("hit_rate_l20"),
         "hit_rate_sample_size": score_doc.get("hit_rate_sample_size"),
-        # Production gate decision (computed by Universal Gate Engine)
+        # Production gate decision (computed by Universal Gate Engine).
+        # `gate_pass=True` ONLY when production landed the prop in one
+        # of the three qualifying tiers (safe_haven / front_lines /
+        # war_zone). `unqualified` and `rejected` both stamp False —
+        # they carry distinct semantic signal through `tier_reason`.
         "vision_score":     score_doc.get("vision_score"),
         "vision_score_raw": score_doc.get("vision_score_raw"),
         "tier":             score_doc.get("tier"),
         "tier_reason":      score_doc.get("tier_reason"),
-        "gate_pass":        bool(score_doc.get("tier") and
-                                 score_doc.get("tier") != "rejected"),
+        "gate_pass":        bool(
+            score_doc.get("tier") in _QUALIFIED_TIERS),
         "tier_gate_results": score_doc.get("tier_gate_results"),
         # Production p_true diagnostics
         "p_true_active":    score_doc.get("p_true_active"),
@@ -489,6 +496,15 @@ async def replay_date(
         db, sport="nba", version_tag=version_tag,
         dry_run=True, write_mode="upsert",
         props=props,
+        bypass_eligibility=True,   # ◀ REPLAY CONTRACT.
+        # The eligibility chain (`filter_priceable` +
+        # `filter_pp_playable`) drops PP-only props and non-PP-anchored
+        # props. That's correct for live serving (don't surface
+        # un-playable props on the board) but VIOLATES the replay
+        # contract: the optimizer needs every scored prop with
+        # coverage_class/tier kept as METADATA so it can search
+        # threshold candidates that include rejected pools. See
+        # CHANGELOG 2026-06-02.
     )
     score_docs = recompute_result.get("score_docs") or []
     rss_after_score = _rss_mb()
@@ -570,20 +586,46 @@ async def replay_date(
     summary = {
         "date": replay_date_str,
         "snapshot_iso": snapshot_iso,
+        # ── Volume telemetry (stage by stage) ──────────────────────
+        # 1) Raw per-book per-side historical odds rows in scope.
         "alt_odds_rows_seen": n_odds,
+        # 2) Reshape collapses per-book rows by (event, player,
+        #    stat, line, side) into canonical "live-prop dicts" the
+        #    NBA scorer consumes. Each canonical key carries every
+        #    book quote in its layer slots.
         "props_built": n_props,
+        # 3) Reasons reshape dropped any rows.
         "reshape_skipped": reshape_skipped,
+        # 4) Production `recompute_sport` returns one score doc per
+        #    canonical (player, stat, line, side) it could score.
+        #    `bypass_eligibility=True` so PP-only and non-PP props
+        #    are NOT dropped — they score with tier=rejected /
+        #    coverage_gate=fail as METADATA, never row-dropped.
         "score_docs_returned": len(score_docs),
+        "recompute_processed": recompute_result.get("processed", 0),
+        "recompute_skipped":   recompute_result.get("skipped", 0),
+        # 5) Layer-3 rows written: one per (book, side) tuple in
+        #    `nba_replay_model_outputs`. Each book inherits the
+        #    score doc's μ/σ/p_model/cv/HR/tier and computes
+        #    book-specific implied_probability + edge.
         "model_outputs_written": written,
+        # 6) Audit: source rows whose canonical key did not produce
+        #    a score doc (should be 0 with bypass_eligibility=True;
+        #    if non-zero, indicates `build_context` returned None
+        #    for that prop — typically missing player_name / line /
+        #    stat_type, which is a legitimate drop).
         "candidates_skipped_no_score_doc": no_score_doc,
+        # ── Memory + timing ─────────────────────────────────────────
         "rss_mb_start": round(rss0, 1),
         "rss_mb_after_index": round(rss_after_idx, 1),
         "rss_mb_after_score": round(rss_after_score, 1),
         "rss_mb_end": round(_rss_mb(), 1),
         "elapsed_s": elapsed,
+        # ── Versioning ──────────────────────────────────────────────
         "scoring_config_version": SCORING_CONFIG_VERSION,
         "source_version": SOURCE_VERSION,
         "production_recompute_version_tag": version_tag,
+        "bypass_eligibility": True,   # replay contract
     }
     await db[STATUS_COLL].update_one(
         s_filter, {"$set": {"status": "completed",

@@ -23,6 +23,33 @@ controlling historical replay pipelines via the Emergent Admin API.
 - `candidate_thresholds`, `emergent_admin_jobs`
 
 
+### 2026-06-02 — Replay eligibility bypass: PP-only props now scored
+- Root cause of 1.46% survival rate (588k unique candidates → 8.5k
+  outputs): `apply_production_eligibility` inside
+  `recompute_sport` was dropping PP-only props (`filter_priceable`:
+  `book_count==0`) and non-PP props (`filter_pp_playable`).
+  Appropriate for live serving, fatal for historical replay
+  (~90% of NBA historical universe is PP-only).
+- `services/scoring/recompute.py`: new kwarg
+  `bypass_eligibility: bool = False`. When True, skip the filter
+  chain entirely; still stamps `book_count`/`coverage_class`/
+  `books_anchored` via `classify_coverage` so the scoring stack's
+  `coverage_gate` can still CLASSIFY tier as
+  "rejected"/"unqualified"/"war_zone"/"front_lines"/"safe_haven"
+  — but never DROPS the prop.
+- `services/replay/nba_replay_engine.py`: passes
+  `bypass_eligibility=True`. Adds stage-by-stage volume telemetry
+  to the summary (`alt_odds_rows_seen`, `props_built`,
+  `score_docs_returned`, `recompute_processed`,
+  `recompute_skipped`, `model_outputs_written`,
+  `candidates_skipped_no_score_doc`, `reshape_skipped`).
+- Fixed Layer-3 `gate_pass` semantics: now True ONLY when
+  production landed the prop in one of the three qualifying tiers.
+- `tests/test_nba_replay_bypass_eligibility.py` (NEW): verifies
+  PP-only props score with `projection_mu` / `model_probability`
+  populated and `tier="unqualified"` / `gate_pass=False` /
+  `coverage_class="pp_only"` as metadata.
+
 ### 2026-06-02 — NFL stat_id → market mapping (Issue 2 closed)
 - `scripts/sgo/reshape_sgo_to_replay_odds.py`: added
   `_STAT_ID_TO_MARKET_NFL` (50 SGO stat_id variants → Odds API

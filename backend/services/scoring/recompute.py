@@ -300,6 +300,7 @@ async def recompute_sport(
     write_mode: str = "replace",
     props: Optional[List[Dict[str, Any]]] = None,
     only_canonical_keys: Optional[Set[str]] = None,
+    bypass_eligibility: bool = False,
 ) -> Dict[str, Any]:
     """Recompute scoring stack for a single sport.
 
@@ -344,6 +345,62 @@ async def recompute_sport(
     # 1. Load live props (read-only) — unless caller supplied them
     if props is None:
         props = await adapter.load_live_props(db, limit=limit)
+    elif bypass_eligibility:
+        # 2026-06-02 — REPLAY CONTRACT BYPASS.
+        # The historical / replay testing pipeline must score EVERY
+        # caller-supplied prop, even ones that fail today's production
+        # `filter_priceable` (`book_count==0`, i.e. PP-only with no
+        # sportsbook quotes) or `filter_pp_playable` (PP not present).
+        # Those filters are CORRECT for live serving — don't surface
+        # props the board can't price/play — but in replay mode they
+        # silently drop the bulk of historical universe (often >90%
+        # of NBA props ship PP-only). The optimizer needs every scored
+        # prop with `coverage_class` / `tier` / `gate_pass` kept as
+        # METADATA so it can search threshold candidates that include
+        # rejected pools. See CHANGELOG 2026-06-02.
+        #
+        # Companion map is still built — multi-book de-vig depends on
+        # the same-line OVER companion for an UNDER row. We use the
+        # caller-supplied props as the companion universe (the live
+        # board pool does not exist for a historical slate).
+        try:
+            from services.scoring.tp_engine import build_companion_map
+            adapter._companion_map = build_companion_map(props)
+            # Stamp `book_count` / `coverage_class` / `books_anchored`
+            # WITHOUT running the priceable/pp-playable filters. The
+            # scoring stack reads these fields for the `coverage_gate`
+            # — letting it CLASSIFY the prop's tier as
+            # "rejected"/"war_zone"/"front_lines"/"safe_haven" based
+            # on real coverage, but never DROP the prop from the
+            # output.
+            from services.scoring.coverage_filter import classify_coverage
+            for p in props:
+                classify_coverage(p)
+            adapter.last_coverage_stats = {
+                "bypass_eligibility": True,
+                "total_props_in": len(props),
+                "total_props_remaining": len(props),
+            }
+            adapter.last_pp_playable_stats = {
+                "bypass_eligibility": True,
+                "total_props_in": len(props),
+                "total_props_remaining": len(props),
+            }
+            logger.info(
+                f"[RECOMPUTE:{sport}] bypass_eligibility=True — "
+                f"caller-supplied props={len(props)} ALL retained; "
+                f"companion_map built from subset only "
+                f"(size={len(adapter._companion_map)}); "
+                f"book_count/coverage_class stamped via classify_coverage "
+                f"so the scoring stack still computes tier honestly."
+            )
+        except Exception as bypass_exc:  # noqa: BLE001
+            logger.error(
+                f"[RECOMPUTE:{sport}] bypass_eligibility=True but "
+                f"companion_map / classify_coverage failed "
+                f"({bypass_exc}); proceeding with raw input — "
+                f"coverage-derived gate decisions may degrade"
+            )
     else:
         # 2026-05-17 — SSOT eligibility chain. The caller-supplied
         # path bypasses `adapter.load_live_props`, so we re-run the

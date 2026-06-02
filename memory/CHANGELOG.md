@@ -1,6 +1,98 @@
 # Changelog
 
 
+## 2026-06-02 — Replay eligibility bypass: PP-only props now scored
+
+### What the user reported
+Window 2025-10-21 → 2026-04-15, NBA:
+- `sgo_replay_alt_odds_raw`: 3,789,764 rows
+- unique replay candidates: 588,969
+- `nba_propvision_full_pipeline_outputs`: 8,585
+- **1.46% survival rate** — violates the replay contract that says
+  every scored prop must persist with gate state as metadata only.
+
+### Root cause
+`services.scoring.recompute.recompute_sport` invokes
+`apply_production_eligibility` on caller-supplied props. That chain
+applies TWO filters appropriate for LIVE serving but fatal for
+historical replay:
+1. **`filter_priceable`** drops `book_count == 0` props.
+   `book_count` is computed by `coverage_filter.classify_coverage`
+   which counts SPORTSBOOKS only (`_BOOK_FIELDS` — PP is
+   intentionally NOT in that list). Most historical NBA props ship
+   PP-only → book_count==0 → dropped.
+2. **`filter_pp_playable`** drops `playable_on_pp == False` props.
+   Any prop without a PP quote is dropped.
+
+Combined: only PP+sportsbook props survive. ~90%+ of NBA historical
+universe is PP-only → dropped before scoring. The NBA replay engine
+then had no score doc for those canonical keys, so the per-(book,
+side) fan-out skipped them. The 99% loss is entirely upstream of
+Layer-4.
+
+### Fix
+- `services.scoring.recompute.recompute_sport`: new kwarg
+  `bypass_eligibility: bool = False`. When True:
+  - Skip `apply_production_eligibility` entirely.
+  - Build companion_map from the caller-supplied props only (no
+    live-board query — there is no live board for a historical
+    slate).
+  - Run `coverage_filter.classify_coverage` on every prop so
+    `book_count` / `coverage_class` / `books_anchored` are STAMPED
+    (not used as a filter). The scoring stack's `coverage_gate`
+    still reads them and classifies the prop's tier accordingly —
+    `tier="unqualified"` / `"rejected"` is the right metadata
+    signal — but the prop is NEVER dropped from the output.
+- `services.replay.nba_replay_engine.replay_date`: passes
+  `bypass_eligibility=True` to `recompute_sport`. Adds stage-by-
+  stage volume telemetry to the summary (`alt_odds_rows_seen`,
+  `props_built`, `score_docs_returned`, `recompute_processed`,
+  `recompute_skipped`, `model_outputs_written`,
+  `candidates_skipped_no_score_doc`, `reshape_skipped`,
+  `bypass_eligibility`).
+- NBA Layer-3 row's `gate_pass` now reads True ONLY when production
+  landed the prop in one of the three qualifying tiers
+  (safe_haven/front_lines/war_zone). `unqualified` / `rejected`
+  both stamp `gate_pass=False`. Previously `gate_pass=True`
+  for "unqualified" — wrong semantic signal.
+
+### Verification
+`tests/test_nba_replay_bypass_eligibility.py` (NEW) — seeds:
+- Player A: PP-only prop (book_count==0 under production filters)
+- Player B: PP + DK + FD (production-eligible control)
+
+Runs `nba_replay_engine.replay_date()` and asserts:
+- 4/4 canonical props scored (was 2/4 pre-fix — Player A would
+  have been dropped at `filter_priceable`).
+- 8/8 Layer-3 rows persisted (Player A's 2 PP rows + Player B's
+  6 per-book rows).
+- Player A rows carry `projection_mu=21.13`,
+  `model_probability=0.6136`, `tier="unqualified"`,
+  `coverage_class="pp_only"`, `book_count=0`,
+  `gate_pass=False`. Fully scored, gate state as metadata.
+
+### Volume trace per stage (telemetry now in engine summary)
+For a hypothetical 100-prop slate the user can read directly off
+the summary dict:
+```
+  alt_odds_rows_seen        300   ← raw per-book per-side rows
+  props_built               100   ← canonical (event,player,stat,line,side) groups
+  score_docs_returned       100   ← bypass=True ⇒ all scored (was ~10 pre-fix)
+  recompute_processed       100
+  recompute_skipped           0
+  model_outputs_written     300   ← fan-out per (book, side)
+  candidates_skipped_no_score_doc 0
+```
+
+### Contract guarantee
+> `nba_propvision_full_pipeline_outputs.count` ≈ `model_outputs_written`
+> ≈ raw `sgo_replay_alt_odds_raw` row count for the window
+> (after blocked-book / outcome-resolved filters in the mirror).
+> Survival rate target: ~95%+ depending on master_hub coverage,
+> not 1.46%.
+
+
+
 ## 2026-06-02 — NFL stat_id → market mapping (Issue 2 closed)
 
 ### Backlog item resolved
