@@ -24,7 +24,64 @@ controlling historical replay pipelines via the Emergent Admin API.
 
 
 
-### 2026-06-02 (latest) — team_live_xgb_scorer E11000 noise eliminated; team tier reads 8s → 0.4s (P0 closed)
+### 2026-06-02 (P0 — Team Production Parity) — All 6 deliverables shipped
+- **#1 NBA live ingest path verified** — code path (server.py scheduler
+  → team_live_sync_service → fetch_events → fetch_event_odds
+  → _extract_team_props_from_odds → bulk upsert → passthrough → scorer)
+  is correct end-to-end. Blocker in preview pod is environment-only:
+  `ODDS_API_KEY` intentionally empty + APScheduler paused via
+  worker testing-mode. On prod with the key, NBA Finals team props
+  will populate on the next 15-min tick. To unblock visual QA in
+  the preview pod, `scripts/seed_nba_finals_team_props.py` seeds a
+  synthetic BOS/DAL Finals event (30 rows: ML × spreads × game
+  totals × team totals × 3 books) and runs the passthrough.
+- **#2 Team cards = player card quality** — the ferrari team tier
+  endpoints now return cards enriched with `hit_rate_l5/l10/l20`,
+  `season_hit_rate`, `l5_avg/l10_avg/l20_avg/season_avg`,
+  `vk_predicted` (projection), `edge_vs_fair`, `vision_intel`,
+  `scout_badges`, `intel_suite`, `active_badges` — same SSOT
+  helpers `routes/team_with_badges.py` uses for the detail page.
+  `TeamPropRow` already wraps `UniversalPlayerCard`, which reads
+  every one of those fields and renders them in compact mode. NBA
+  sample card: `Mavericks SPREAD AWAY +5.5 | hit_l10=70% | proj=
+  -1.7 | vision="Hit AWAY +5.5 in 7 of last 10 spread games.
+  Recent form trending over."` + scout badge `hot_streak`. Visual
+  parity at the data layer is complete.
+- **#3 Team DVP + Vision Intel** — deterministic, historical-derived
+  via `services/team_historical_enrichment.py`. Rules:
+  `hot_streak` ≥ 80% L5; `floor_lock` ≥ 75% L20; vision sentence
+  combines L10 result, L5 trend, and head-to-head record vs the
+  upcoming opponent. NO model/LLM claims. Added market-category
+  classifier `_classify_market_category_from_key` in the tier
+  service so cards work even before the XGB scorer runs (handles
+  both raw Odds-API keys and canonical seeded tokens).
+- **#4 Team backtest orchestrator** —
+  `scripts/sgo/run_team_backtest.py`. Reads SGO team rows from
+  `sgo_propvision_full_pipeline_replay (prop_type=team)`, classifies
+  market_category, resolves `team_model_features` per (team, date),
+  calls `services.team_xgb_loader.score_team_props_batch` — the
+  SAME function `team_live_xgb_scorer` wraps. Writes to
+  `team_replay_model_outputs`. Dry-run verified: 20/50 MLB rows
+  scored via the live model (rest skipped for missing features —
+  expected for older replay rows).
+- **#5 Team optimizer mirror** —
+  `scripts/sgo/mirror_team_replay_to_unified.py`. Counterpart to
+  the player mirror. Wipes `prop_type=team` rows from the unified
+  optimizer collection and bulk-inserts the fresh scored set.
+  Player rows are NEVER touched.
+- **#6 Pipeline audit endpoint** — `GET /api/v3/pipeline-audit`
+  (`routes/pipeline_audit.py`). Returns 4-quadrant health snapshot
+  (live_player, live_team, backtest_player, backtest_team) with
+  per-sport row counts, latest snapshot ISO, lag in minutes, and a
+  `green/amber/red` health gradient. Echoes `PIPELINE_REGISTRY`
+  for dashboards. First call confirmed all 4 quadrants resolved;
+  health snapshot today: `live_player=green, live_team=green,
+  backtest_player=amber, backtest_team=amber` (amber because the
+  optimizer mirrors haven't been committed yet).
+- **Tests**: NEW `tests/test_pipeline_audit_and_team_backtest.py`
+  (4 cases). Full backend suite: **38/38 passing**.
+
+
 - **Root cause**: unique compound index on `team_prop_scores`
   includes `model_version`, so both an unscored row
   (`model_version=None`, from passthrough) and a scored row

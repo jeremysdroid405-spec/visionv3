@@ -27,6 +27,7 @@ from .ferrari_team_tiers import router as ferrari_team_router, init_router as se
 from .team_live_sync import router as team_live_sync_router, init_router as set_team_live_sync_db
 from .team_historical import router as team_historical_router
 from .team_with_badges import router as team_with_badges_router, set_team_with_badges_db
+from .pipeline_audit import router as pipeline_audit_router, set_pipeline_audit_db
 from .player import router as player_router, set_player_db
 from .vacuum import router as vacuum_router, set_vacuum_db
 from .mlb_vacuum import router as mlb_vacuum_router, set_mlb_vacuum_db
@@ -161,6 +162,12 @@ def register_all_routes(
     if db is not None:
         set_team_with_badges_db(db)
     app.include_router(team_with_badges_router, prefix="/api")
+
+    # Pipeline audit (2026-06-02) — surfaces the locked 4-quadrant
+    # health snapshot at `/api/v3/pipeline-audit`.
+    if db is not None:
+        set_pipeline_audit_db(db)
+    app.include_router(pipeline_audit_router, prefix="/api")
 
     # Universal Player endpoint (restored post Hard Consolidation)
     if db is not None:

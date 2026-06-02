@@ -40,6 +40,45 @@ from services.team_historical_enrichment import (
     split_team_id,
 )
 
+
+def _classify_market_category_from_key(market_key):
+    """Mirror of `team_live_xgb_scorer.classify_market_category` —
+    duplicated here to avoid an import cycle and keep this service
+    self-contained.
+
+      *-ml-*                       → h2h
+      *-sp-*                       → spread
+      *-all-game-ou-*              → game_total
+      *-home-game-ou-*/-away-game-ou-* → team_total
+
+    `market_key` here is what the live sync writes — either the raw
+    Odds API key (`h2h` / `spreads` / `totals` / `team_totals`) or
+    the canonical seeded `points-{side}-game-{type}` token. We
+    accept both shapes.
+    """
+    if not market_key:
+        return None
+    s = str(market_key).lower()
+    # Odds-API raw keys (live sync writes these on team_live_props).
+    if s == "h2h":
+        return "h2h"
+    if s == "spreads":
+        return "spread"
+    if s == "totals":
+        return "game_total"
+    if s == "team_totals":
+        return "team_total"
+    # Canonical seeded / scorer token shape.
+    if "-ml-" in s:
+        return "h2h"
+    if "-sp-" in s:
+        return "spread"
+    if "-all-game-ou-" in s:
+        return "game_total"
+    if "-home-game-ou-" in s or "-away-game-ou-" in s:
+        return "team_total"
+    return None
+
 logger = logging.getLogger(__name__)
 
 MATCHUP_COLL_BY_SPORT: Dict[str, str] = {
@@ -248,7 +287,16 @@ async def _enrich_cards_with_history(
         tid = c.get("team_id")
         if not tid:
             continue
-        market_category = c.get("market_category") or ""
+        # market_category lands on the row from the XGB scorer; the
+        # passthrough output (pre-scorer) and seeded synthetic rows
+        # don't carry it. Derive on-the-fly from market_key when
+        # missing so enrichment works on both code paths.
+        market_category = (
+            c.get("market_category")
+            or _classify_market_category_from_key(c.get("market_key"))
+            or ""
+        )
+        c["market_category"] = market_category
         side = (c.get("side") or "").upper()
         try:
             line = float(c["line"]) if c.get("line") is not None else None
