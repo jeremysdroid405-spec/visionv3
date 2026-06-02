@@ -1,6 +1,59 @@
 # Changelog
 
 
+## 2026-06-02 — NFL stat_id → market mapping (Issue 2 closed)
+
+### Backlog item resolved
+NFL reshape (`scripts/sgo/reshape_sgo_to_replay_odds.py`) had no
+`_STAT_ID_TO_MARKET_NFL` table — so when a user ran NFL through the
+SSOT pipeline, 100% of rows skipped with `no_market`. The NBA fix on
+2026-06-01 added league dispatch but only populated MLB + NBA tables.
+
+### What shipped
+- `_STAT_ID_TO_MARKET_NFL`: 50-entry mapping enumerating every SGO
+  stat_id variant cataloged in
+  `services/replay/nfl_stat_family_map.NFL_FAMILY_ALIASES` (the
+  team's existing SSOT for NFL stat_id shapes observed in raw SGO
+  payloads) → Odds API canonical `player_*` market names
+  (`player_pass_yds`, `player_pass_tds`, `player_rush_yds`,
+  `player_reception_yds`, `player_targets`,
+  `player_reception_longest`, `player_field_goals`, etc.). Values
+  follow the Odds API naming convention so the future NFL scoring
+  adapter can route through `canonical_stat_type` with no rename.
+- `_STAT_ID_TO_MARKET_BY_LEAGUE` now includes `"NFL"`.
+- `_resolve_market`: added a case-insensitive lookup fallback so
+  unexpected SGO casing variants (e.g. `PassingYards`,
+  `PASS_YARDS`, `RECEIVINGYARDS`) resolve correctly instead of
+  silently dropping rows.
+- All 15 canonical NFL families from `NFL_FAMILIES` are covered.
+
+### Verification
+`tests/test_reshape_sgo_nfl.py` (NEW) — 10 tests, all passing:
+- Every canonical family in `NFL_FAMILIES` has a SGO stat_id variant
+  mapping to a recognisable Odds API market.
+- Exact-match snake_case lookups resolve correctly
+  (`passing_yards` → `player_pass_yds`).
+- camelCase variants resolve correctly (`receivingTargets` →
+  `player_targets`).
+- Case-insensitive fallback catches casing drift (`PassingYards`,
+  `PASS_YARDS`, etc.).
+- MLB / NBA paths untouched — no regression.
+- NFL never accidentally falls through to the MLB-only
+  `stat_family` legacy fallback.
+
+64/67 `test_reshape_sgo_*` tests passing. The 3 pre-existing failures
+in `test_reshape_sgo_to_replay_odds.py` are unrelated (legacy
+single-book reshape vs 2026-06-02 multi-book reshape — `reshape_row`
+deprecation).
+
+### Contract
+NFL reshape is now identical to the NBA / MLB shape — when the future
+NFL scoring adapter and historical data ingestion land, the reshape
+script is ready and no further changes are needed to unblock the
+testing pipeline.
+
+
+
 ## 2026-06-02 — Optimizer input contract: write every scored row (no gate pre-filter)
 
 ### What the user reported

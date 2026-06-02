@@ -23,6 +23,25 @@ controlling historical replay pipelines via the Emergent Admin API.
 - `candidate_thresholds`, `emergent_admin_jobs`
 
 
+### 2026-06-02 — NFL stat_id → market mapping (Issue 2 closed)
+- `scripts/sgo/reshape_sgo_to_replay_odds.py`: added
+  `_STAT_ID_TO_MARKET_NFL` (50 SGO stat_id variants → Odds API
+  canonical `player_*` market names: `player_pass_yds`,
+  `player_pass_tds`, `player_pass_interceptions`,
+  `player_rush_yds`, `player_rush_attempts`, `player_rush_tds`,
+  `player_receptions`, `player_reception_yds`,
+  `player_reception_tds`, `player_targets`,
+  `player_reception_longest`, `player_field_goals`,
+  `player_extra_points`). Registered in
+  `_STAT_ID_TO_MARKET_BY_LEAGUE`.
+- `_resolve_market`: case-insensitive fallback so SGO casing drift
+  (`PassingYards`, `PASS_YARDS`) doesn't silently drop rows.
+- All 15 canonical NFL families from
+  `services/replay/nfl_stat_family_map.NFL_FAMILIES` are covered.
+- `tests/test_reshape_sgo_nfl.py` (NEW): 10 tests, all passing.
+  64/67 `test_reshape_sgo_*` tests pass (3 pre-existing failures
+  unrelated to NFL).
+
 ### 2026-06-02 — Optimizer input contract: research_mode default-True for testing pipeline
 - `scripts/sgo/historical_full_pipeline_replay.py`: `--research-mode`
   flipped to default-True. Testing/optimizer pipeline no longer

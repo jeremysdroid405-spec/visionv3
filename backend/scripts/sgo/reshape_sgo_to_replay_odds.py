@@ -140,11 +140,91 @@ _STAT_ID_TO_MARKET_NBA: Dict[str, str] = {
     "fantasyScore":                      "fantasy_score",
 }
 
+# 2026-06-02 — NFL stat_id mappings. Source: build_pp_research_core
+# writes canonical NFL stat_ids into doc["stat_id"]. Values follow the
+# Odds API canonical NFL player-prop market naming convention so the
+# future NFL scoring adapter can route through `canonical_stat_type`
+# with no rename. Variants enumerated here are the SAME ones cataloged
+# in `services/replay/nfl_stat_family_map.py.NFL_FAMILY_ALIASES`
+# (single source of truth for SGO NFL stat_id shapes observed in
+# raw SGO payloads).
+#
+# Mapping policy:
+#   • Lowercase (snake / camel / dash insensitivity is handled by the
+#     resolver's normalizer; keys here use the canonical SGO spelling).
+#   • Every SGO variant maps to ONE Odds API market name — same target
+#     even when multiple SGO names refer to the same stat.
+#   • Composite / scoring (anytime-TD, kicking points) is intentionally
+#     OUT of scope until the NFL scoring adapter lands; the optimizer
+#     can decide later whether to ingest them.
+_STAT_ID_TO_MARKET_NFL: Dict[str, str] = {
+    # ── Passing ────────────────────────────────────────────────
+    "passing_yards":          "player_pass_yds",
+    "pass_yards":             "player_pass_yds",
+    "passingYards":           "player_pass_yds",
+    "qb_passing_yards":       "player_pass_yds",
+    "passing_attempts":       "player_pass_attempts",
+    "pass_attempts":          "player_pass_attempts",
+    "passingAttempts":        "player_pass_attempts",
+    "passing_completions":    "player_pass_completions",
+    "pass_completions":       "player_pass_completions",
+    "passingCompletions":     "player_pass_completions",
+    "passing_touchdowns":     "player_pass_tds",
+    "pass_touchdowns":        "player_pass_tds",
+    "passingTouchdowns":      "player_pass_tds",
+    "passing_tds":            "player_pass_tds",
+    "passing_interceptions":  "player_pass_interceptions",
+    "interceptions":          "player_pass_interceptions",
+    "passingInterceptions":   "player_pass_interceptions",
+    "ints":                   "player_pass_interceptions",
+    "qb_ints":                "player_pass_interceptions",
+    # ── Rushing ────────────────────────────────────────────────
+    "rushing_yards":          "player_rush_yds",
+    "rush_yards":             "player_rush_yds",
+    "rushingYards":           "player_rush_yds",
+    "rushing_attempts":       "player_rush_attempts",
+    "rush_attempts":          "player_rush_attempts",
+    "rushingAttempts":        "player_rush_attempts",
+    "carries":                "player_rush_attempts",
+    "rushing_touchdowns":     "player_rush_tds",
+    "rush_touchdowns":        "player_rush_tds",
+    "rushingTouchdowns":      "player_rush_tds",
+    "rush_tds":               "player_rush_tds",
+    # ── Receiving ──────────────────────────────────────────────
+    "receptions":             "player_receptions",
+    "rec":                    "player_receptions",
+    "receiving_yards":        "player_reception_yds",
+    "rec_yards":              "player_reception_yds",
+    "receivingYards":         "player_reception_yds",
+    "receiving_touchdowns":   "player_reception_tds",
+    "rec_touchdowns":         "player_reception_tds",
+    "receivingTouchdowns":    "player_reception_tds",
+    "rec_tds":                "player_reception_tds",
+    "receiving_targets":      "player_targets",
+    "targets":                "player_targets",
+    "receivingTargets":       "player_targets",
+    "longest_reception":      "player_reception_longest",
+    "longestReception":       "player_reception_longest",
+    "rec_longest":            "player_reception_longest",
+    "longest_rec":            "player_reception_longest",
+    # ── Kicking ────────────────────────────────────────────────
+    "field_goals_made":       "player_field_goals",
+    "fgm":                    "player_field_goals",
+    "fieldGoalsMade":         "player_field_goals",
+    "field_goals":            "player_field_goals",
+    "extra_points_made":      "player_extra_points",
+    "xpm":                    "player_extra_points",
+    "extraPointsMade":        "player_extra_points",
+    # ── Composites & scoring (kept as-is; optimizer decides) ──
+    "fantasyScore":           "fantasy_score",
+}
+
 # League-aware lookup. The runtime resolver consults the right map
 # based on the `--league` CLI flag.
 _STAT_ID_TO_MARKET_BY_LEAGUE: Dict[str, Dict[str, str]] = {
     "MLB": _STAT_ID_TO_MARKET_MLB,
     "NBA": _STAT_ID_TO_MARKET_NBA,
+    "NFL": _STAT_ID_TO_MARKET_NFL,
 }
 
 # Legacy alias — anything that still imports `_STAT_ID_TO_MARKET` (e.g.
@@ -253,6 +333,16 @@ def _resolve_market(d: Dict[str, Any], league: str = "MLB") -> Optional[str]:
         (league or "").upper(), _STAT_ID_TO_MARKET_MLB)
     if sid and sid in sid_map:
         return sid_map[sid]
+    # 2026-06-02 — Case-insensitive fallback for NFL, where SGO payloads
+    # have been observed using camelCase variants we haven't enumerated
+    # explicitly (e.g. `PassingYards` vs `passingYards`). Build a
+    # lowercased lookup ONCE per resolver call (cheap; tiny dicts).
+    if sid:
+        sid_norm = str(sid).strip().lower()
+        if sid_norm:
+            for k, v in sid_map.items():
+                if k.lower() == sid_norm:
+                    return v
     # Legacy stat_family fallback is MLB-only by content. NEVER apply it
     # to non-MLB leagues — those would silently get a wrong market name.
     if (league or "").upper() == "MLB":
