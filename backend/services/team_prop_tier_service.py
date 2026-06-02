@@ -169,6 +169,39 @@ def _hydrate_card(score: Dict[str, Any],
                     else matchup.get("home_team_name"))
     market_label = _market_label(score)
 
+    # Fallback opponent resolution: when `events` doesn't have the
+    # event (e.g. synthetic seeds or rows missing the master_hub
+    # entry), use `home_team` / `away_team` strings stamped on the
+    # score row by the live ingest.
+    if not opp_name:
+        home_team_str = score.get("home_team") or ""
+        away_team_str = score.get("away_team") or ""
+        team_abbr = (this_team.get("team_abbr") or "").upper()
+        team_id_abbr = (tid or "").split("_", 1)[-1].upper()
+        # If `home_team` string ends with this team's name or matches
+        # the abbr, the team is HOME and opp = away_team_str.
+        if home_team_str and team_id_abbr and (
+                team_id_abbr in home_team_str.upper()
+                or team_abbr and team_abbr in home_team_str.upper()):
+            opp_name = away_team_str or opp_name
+            is_home = True
+        elif away_team_str and team_id_abbr and (
+                team_id_abbr in away_team_str.upper()
+                or team_abbr and team_abbr in away_team_str.upper()):
+            opp_name = home_team_str or opp_name
+            is_home = False
+
+    # Derive opponent abbr from the resolved opponent display name —
+    # downstream `_resolve_opp_def_rank` keys on the abbr.
+    opp_abbr = None
+    if opp_name:
+        # team_master_hub stores `team_abbr`; if the opponent isn't
+        # in the hub, take the last word (e.g. "Mavericks").
+        for v in teams.values():
+            if (v.get("team_name") or v.get("team_short")) == opp_name:
+                opp_abbr = v.get("team_abbr")
+                break
+
     return {
         # Identity
         "prop_type":          "team",
@@ -179,6 +212,7 @@ def _hydrate_card(score: Dict[str, Any],
         "team_colors":        this_team.get("team_colors") or {},
         "team":               team_name,
         "opponent":           opp_name,
+        "opponent_abbr":      opp_abbr,
         "home_away":          "home" if is_home else "away",
         "is_home":            is_home,
         "player_id":          None,
@@ -250,6 +284,58 @@ def _hydrate_card(score: Dict[str, Any],
         "passthrough_at":      score.get("passthrough_at"),
         "scored_at":           score.get("scored_at"),
     }
+
+
+async def _resolve_opp_def_rank(
+    db, *, sport: str, opp_team_abbr: Optional[str],
+) -> Optional[int]:
+    """Rank the opponent's points-allowed average against all other
+    teams in the same sport. Cheap: a single aggregation over
+    `team_historical_outcomes` keyed on `opponent_team_id`. Cached
+    per request via the LRU in this module.
+    """
+    if not opp_team_abbr:
+        return None
+    sport_l = (sport or "").lower()
+    cache_key = sport_l
+    ranks = _OPP_DEF_RANK_CACHE.get(cache_key)
+    if ranks is None:
+        # Aggregate: for every team, the mean of `home_score_used +
+        # away_score_used` filtered to games where THIS team was the
+        # OPPONENT. Lower mean = tougher defense = lower rank (#1).
+        pipeline = [
+            {"$match": {
+                "sport": sport_l,
+                "outcome_resolved": True,
+                "home_score_used": {"$ne": None},
+                "away_score_used": {"$ne": None},
+                "opponent_team_id": {"$ne": None},
+            }},
+            {"$group": {
+                "_id": "$opponent_team_id",
+                "n": {"$sum": 1},
+                # The opponent's points scored = (this team's row's
+                # opponent_score_used). The row stores BOTH scores
+                # already so we just use total - team_score.
+                "total_points_avg": {"$avg": {"$add": [
+                    "$home_score_used", "$away_score_used"]}},
+            }},
+            {"$match": {"n": {"$gte": 5}}},
+            {"$sort": {"total_points_avg": 1}},  # lowest = tougher
+        ]
+        ranks = {}
+        i = 0
+        async for r in db["team_historical_outcomes"].aggregate(pipeline):
+            i += 1
+            tid = (r["_id"] or "").lower()
+            # Convert tid like "nba_bos" → "BOS" abbreviation
+            abbr = tid.split("_", 1)[-1].upper()
+            ranks[abbr] = i
+        _OPP_DEF_RANK_CACHE[cache_key] = ranks
+    return ranks.get((opp_team_abbr or "").upper())
+
+
+_OPP_DEF_RANK_CACHE: Dict[str, Dict[str, int]] = {}
 
 
 async def _enrich_cards_with_history(
@@ -352,22 +438,102 @@ async def _enrich_cards_with_history(
             hit_l5=hit_l5, hit_l10=hit_l10, hit_l20=hit_l20,
         )
 
+        # ── Display tokens UniversalPlayerCard reads. The card's
+        # `formatStatType(stat_type)` call drives the visible
+        # "STAT_TYPE LINE" headline. For team props, stat_type is None
+        # on the raw row (no XGB scorer write) — we substitute the
+        # human-friendly bucket name so the headline reads
+        # "Team Total 110.5", "Spread -5.5", etc.
+        stat_label = {
+            "team_total": "Team Total",
+            "game_total": "Game Total",
+            "spread":     "Spread",
+            "h2h":        "Moneyline",
+        }.get(market_category, market_category.replace("_", " ").title())
+
+        # Direction display: HOME / AWAY / OVER / UNDER → Over/Under
+        # mapping so the existing `vk_recommendation` chip renders
+        # the same colour gradient as player cards.
+        if side in ("OVER", "HOME"):
+            vk_rec, side_label = "OVER", "Over"
+        elif side in ("UNDER", "AWAY"):
+            vk_rec, side_label = "UNDER", "Under"
+        elif side == "ML":
+            # Moneyline — use HOME / AWAY semantics from the row
+            ha = (c.get("home_away") or "").upper()
+            if ha == "HOME":
+                vk_rec, side_label = "OVER", "Home ML"
+            else:
+                vk_rec, side_label = "UNDER", "Away ML"
+        else:
+            vk_rec, side_label = "OVER", side.title() if side else ""
+
+        # Headline strings the card renders verbatim.
+        if line is not None:
+            stat_line = f"{stat_label} {line}"
+            big_pick = f"{side_label.upper()} {line} {stat_label.upper()}"
+        else:
+            stat_line = stat_label
+            big_pick = f"{side_label.upper()} {stat_label.upper()}"
+
+        # True-probability synthesis: in the player pipeline `tp` is
+        # the consensus de-vigged probability. For teams (no model
+        # yet) we use `season_hit_rate` as the consensus baseline so
+        # the TP chip on the card has a real, deterministic number.
+        # Fallback ladder: season_hr → l20 → l10 → 50.
+        tp_pct = season_hr if season_hr is not None else (
+            hit_l20 if hit_l20 is not None else (
+                hit_l10 if hit_l10 is not None else 50.0
+            ))
+
+        # PrizePicks-style multiplier label heuristic (goblin /
+        # balanced / demon) bound to historical hit-rate confidence.
+        if hit_l20 is not None and hit_l20 >= 70:
+            pp_label = "goblin"
+        elif hit_l20 is not None and hit_l20 <= 35:
+            pp_label = "demon"
+        else:
+            pp_label = "balanced"
+
+        # Opponent allowance rank — team analog of player DVP. Reads
+        # `OPP_TOTAL.season_avg` for the opponent (computed below).
+        # Stored on the card as `opponent_defensive_rank` so the
+        # existing DVP chip on UniversalPlayerCard renders for teams.
+        opp_def_rank: Optional[int] = None
+        opp_def_source: Optional[str] = None
+        if c.get("opponent"):
+            # Get all teams' OPP_TOTAL season_avg for this sport →
+            # rank our opponent's "points allowed" baseline. Lower
+            # rank = tougher defense (better for unders). Cheap:
+            # 30 teams, single query, no per-card cost.
+            opp_def_rank = await _resolve_opp_def_rank(
+                db, sport=sport, opp_team_abbr=c.get("opponent"))
+            opp_def_source = "team_historical_outcomes" if opp_def_rank else None
+
         # Stamp the canonical player-card fields so UniversalPlayerCard
         # / TeamPropRow render real numbers instead of nulls.
         c["hit_rate_l5"]  = hit_l5
         c["hit_rate_l10"] = hit_l10
         c["hit_rate_l20"] = hit_l20
+        c["hit_rate_over"] = hit_l20 if side in ("OVER", "HOME", "ML") else None
+        c["hit_rate_under"] = hit_l20 if side in ("UNDER", "AWAY") else None
         c["season_hit_rate"] = season_hr
         c["hit_rate_sample_size"] = hr.get("sample_size")
+        c["hit_rate_status"]  = "computed" if hit_l20 is not None else "no_data"
         c["l5_avg"]   = l5_avg
         c["l10_avg"]  = l10_avg
         c["l20_avg"]  = l20_avg
+        c["avg"]      = l10_avg
         c["season_avg"] = season_avg
         c["vk_predicted"] = projection
+        c["vk2_projection"] = projection
         c["projection"]   = projection
+        c["model_projection"] = projection
         c["edge_vs_fair"] = edge_vs_fair
+        c["total_edge"]   = edge_vs_fair
         c["vision_intel"] = vision_text
         c["vision_summary"] = vision_text
+        c["short_sentence"] = vision_text
         c["scout_badges"] = scout
         c["active_badges"] = [b["badge_key"] for b in scout]
         c["intel_suite"] = {
@@ -380,6 +546,28 @@ async def _enrich_cards_with_history(
             "context_badges": [],
         }
         c["is_vision_enriched"] = vision_text is not None
+
+        # Display-binding fields (the ones the card actually reads to
+        # render the visible headline / TP / DVP / pp_multiplier).
+        c["stat_type"]            = stat_label
+        c["stat_type_canonical"]  = stat_label
+        c["stat_line"]            = stat_line
+        c["big_pick_text"]        = big_pick
+        c["recommendation"]       = side_label
+        c["vk_recommendation"]    = vk_rec
+        c["tp"]                   = round(tp_pct, 1) if tp_pct is not None else None
+        c["confidence_score"]     = round((tp_pct or 0) / 100.0, 4)
+        c["pp_multiplier_label"]  = pp_label
+        c["pp_multiplier_source"] = "historical_hit_rate"
+        c["opponent_defensive_rank"]      = opp_def_rank
+        c["opponent_defensive_source"]    = opp_def_source
+        c["opponent_defensive_stat_type"] = stat_label
+        c["opponent_abbr"]                = c.get("opponent")
+        # Vision score % synthesis: same TP-anchored value so the
+        # green-circle chip on the card has a real number.
+        c["vision_score"]    = round(tp_pct, 1) if tp_pct is not None else None
+        c["vision_score_v2"] = c["vision_score"]
+        c["intel_score"]     = c["vision_score"]
 
     return cards
 

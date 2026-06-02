@@ -61,6 +61,7 @@ async def main() -> None:
         rows.append({
             "event_id":        event_id,
             "team_id":         f"nba_{HOME_ABBR}",
+            "opponent_team_id": f"nba_{AWAY_ABBR}",
             "market":          "points-home-game-ml-home",
             "market_key":      "h2h",
             "market_label":    "Moneyline",
@@ -79,6 +80,7 @@ async def main() -> None:
         rows.append({
             "event_id":        event_id,
             "team_id":         f"nba_{AWAY_ABBR}",
+            "opponent_team_id": f"nba_{HOME_ABBR}",
             "market":          "points-away-game-ml-away",
             "market_key":      "h2h",
             "market_label":    "Moneyline",

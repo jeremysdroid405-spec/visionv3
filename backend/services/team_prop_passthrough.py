@@ -142,6 +142,13 @@ def _normalize_team_row(
         "reference_only":       row.get("reference_only") in (True, "True"),
         "blocked":              row.get("blocked") in (True, "True"),
 
+        # Matchup display strings — passed through so the tier
+        # service / detail page can resolve opponent identity even
+        # when `team_master_hub` doesn't carry the event yet
+        # (synthetic seeds, brand-new sports, etc.).
+        "home_team":            row.get("home_team"),
+        "away_team":            row.get("away_team"),
+
         # Tier + badges
         "tier":                 tier,
         "tier_label":           {"safe_haven":  "Safe Haven",
