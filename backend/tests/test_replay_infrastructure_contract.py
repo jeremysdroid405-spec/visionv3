@@ -35,6 +35,8 @@ sys.path.insert(0, "/app/backend")
 from services.replay.contract import (
     COMPLIANT_REPLAY_ENGINES,
     REPLAY_RECOMPUTE_KWARGS,
+    PIPELINE_REGISTRY,
+    PIPELINE_MODES,
 )
 
 
@@ -184,6 +186,78 @@ def test_recompute_sport_signature_carries_bypass_kwarg():
         f"production filtering. Replay callers opt in by passing "
         f"`bypass_eligibility=True` (via REPLAY_RECOMPUTE_KWARGS). "
         f"Got default: {p.default!r}"
+    )
+
+
+# ── 2-Pipeline contract (locked 2026-06-02). ─────────────────────────
+def test_pipeline_registry_has_exactly_two_pipelines():
+    """PropVision has exactly TWO pipelines: PLAYER and TEAM.
+    Adding a third is an architecture red flag — new surfaces MUST
+    consume the output of one of the two pipelines, not introduce
+    a third. See /app/memory/ARCHITECTURE.md."""
+    assert set(PIPELINE_REGISTRY.keys()) == {"player", "team"}, (
+        "PIPELINE_REGISTRY must contain EXACTLY two pipelines "
+        f"(`player`, `team`). Got: {sorted(PIPELINE_REGISTRY.keys())}. "
+        "Adding a new pipeline is an architecture-level decision — "
+        "see /app/memory/ARCHITECTURE.md before changing this."
+    )
+
+
+def test_every_pipeline_has_live_and_backtest_modes():
+    """Each pipeline must have a LIVE mode and a BACKTEST mode. The
+    BACKTEST mode is production-pipeline replay — same predictor,
+    same Vision pipeline, different input/output endpoints."""
+    for name, pipeline in PIPELINE_REGISTRY.items():
+        assert set(pipeline.keys()) == {"live", "backtest"}, (
+            f"Pipeline {name!r} must declare `live` and `backtest` "
+            f"modes. Got: {sorted(pipeline.keys())}."
+        )
+
+
+def test_pipeline_modes_covers_all_four_quadrants():
+    """`PIPELINE_MODES` enumerates (pipeline, mode) tuples used by
+    audit loops. It must include exactly 4 entries — the cross of
+    {player, team} × {live, backtest}."""
+    assert set(PIPELINE_MODES) == {
+        ("player", "live"), ("player", "backtest"),
+        ("team",   "live"), ("team",   "backtest"),
+    }, f"PIPELINE_MODES drift: {PIPELINE_MODES!r}"
+
+
+def test_player_pipeline_uses_recompute_sport_for_both_modes():
+    """Locks Rule 2: LIVE and BACKTEST player pipelines share the
+    same predictor entry point (`recompute_sport`). The ONLY thing
+    that changes is input/output endpoints + REPLAY_RECOMPUTE_KWARGS."""
+    live = PIPELINE_REGISTRY["player"]["live"]
+    bt = PIPELINE_REGISTRY["player"]["backtest"]
+    assert live["predictor_entry_point"] == bt["predictor_entry_point"], (
+        "Player LIVE and BACKTEST must share predictor entry point. "
+        f"Got LIVE={live['predictor_entry_point']!r}, "
+        f"BACKTEST={bt['predictor_entry_point']!r}."
+    )
+    assert bt.get("predictor_kwargs") == "REPLAY_RECOMPUTE_KWARGS", (
+        "Player BACKTEST mode must declare `predictor_kwargs = "
+        "'REPLAY_RECOMPUTE_KWARGS'` so it gets the eligibility-bypass "
+        "shape. Got: " + repr(bt.get("predictor_kwargs"))
+    )
+
+
+def test_team_pipeline_uses_team_scorer_for_both_modes():
+    """Locks Rule 2 for the team pipeline: LIVE wraps the team
+    scorer; BACKTEST must call the SAME underlying team model
+    (`team_xgb_loader.score_team_props_batch`)."""
+    live = PIPELINE_REGISTRY["team"]["live"]
+    bt = PIPELINE_REGISTRY["team"]["backtest"]
+    # LIVE wraps the scorer.
+    assert "team_live_xgb_scorer" in live["predictor_entry_point"], (
+        f"Team LIVE predictor entry point drifted: "
+        f"{live['predictor_entry_point']!r}"
+    )
+    # BACKTEST calls the same underlying batch predictor.
+    assert "team_xgb_loader" in bt["predictor_entry_point"], (
+        f"Team BACKTEST must use `team_xgb_loader.score_team_props_batch` "
+        f"(the same model wrapped by the LIVE scorer). Got: "
+        f"{bt['predictor_entry_point']!r}"
     )
 
 

@@ -155,3 +155,133 @@ Without sacrificing: performance, enrichment, failure isolation, sport-specific 
 - Every future PR / patch that touches scoring, board, tiers, or freshness MUST be checked against this directive.
 - Every `integration_playbook_expert_v2` or feature call that implies new sport-specific pipelines MUST first run the pre-fork checklist.
 - `services/board_snapshot_publisher.py::publish_board_snapshot` is the designated chokepoint. Bypassing it is a bug.
+
+
+---
+
+## Pipeline Contract (locked 2026-06-02)
+
+There are **exactly TWO pipelines**: PLAYER and TEAM. Each has a
+LIVE mode and a BACKTEST mode. Both modes share the same predictor
+and the same Vision pipeline; only the input/output endpoints
+change.
+
+### Pipeline 1 — Player
+
+```
+LIVE                                BACKTEST / REPLAY
+─────────────────────────           ─────────────────────────
+live player props                   SGO historical player props
+        │                                   │
+        ▼                                   ▼
+PLAYER PREDICTION MODEL    == SAME == PLAYER PREDICTION MODEL
+        │                                   │
+        ▼                                   ▼
+VISION PIPELINE            == SAME == VISION PIPELINE
+        │                                   │
+        ▼                                   ▼
+scored ({sport}_prop_scores)        scored (replay output)
+        │                                   │
+        ▼                                   ▼
+tiered                              OPTIMIZER DATASET
+        │                           (best thresholds across
+        ▼                            sport × stat × market)
+board / cards / detail
+```
+
+### Pipeline 2 — Team
+
+```
+LIVE                                BACKTEST / REPLAY
+─────────────────────────           ─────────────────────────
+live team props                     SGO historical team props
+        │                                   │
+        ▼                                   ▼
+TEAM PREDICTION MODEL      == SAME == TEAM PREDICTION MODEL
+        │                                   │
+        ▼                                   ▼
+VISION PIPELINE            == SAME == VISION PIPELINE
+        │                                   │
+        ▼                                   ▼
+scored (team_prop_scores)           scored (replay output)
+        │                                   │
+        ▼                                   ▼
+tiered                              OPTIMIZER DATASET
+        │                           (best thresholds across
+        ▼                            sport × stat × market)
+board / cards / detail
+```
+
+Every sport (NBA, MLB, NFL, and all future sports — NCAAF, WNBA,
+NHL, …) plugs into these two pipelines via sport-specific adapters
+and models. There is no sport-specific pipeline, no sport-specific
+testing logic, and no team-vs-player divergence in the orchestration.
+
+### Hard rules
+
+1. **Exactly two pipelines.** `services/scoring/recompute_sport` is
+   the player spine. `services/team_xgb_loader` +
+   `services/team_live_xgb_scorer` is the team spine. No third
+   pipeline. New surfaces must consume the output of one of the two,
+   not introduce a new one.
+
+2. **Backtest = production-pipeline replay.** The only things that
+   change between LIVE and BACKTEST are the input collection and the
+   output sink. Predictor, Vision pipeline, and intermediate shape
+   are identical.
+
+3. **Production gates do NOT filter optimizer input.** The optimizer
+   exists to FIND BETTER thresholds than today's gates. If the gates
+   pre-filter its input, it can only re-discover today's gates.
+   Every replay engine scores every prop it can; `tier`,
+   `gate_pass`, `failed_gates`, `coverage_class` are METADATA
+   stamped on the row, never row drops. Enforced today via
+   `services/replay/contract.py::REPLAY_RECOMPUTE_KWARGS`
+   (`bypass_eligibility=True`).
+
+4. **No per-sport or team-vs-player divergence.** If MLB's replay
+   engine does X, NBA's must do X, NFL's must do X. Same for team
+   vs player: identical orchestrator, identical contract, identical
+   bypass behavior, identical optimizer-output shape. The only
+   divergence is the predictor swap (player model ↔ team model) and
+   the per-sport adapter that reshapes input rows.
+
+5. **Surface clone (board / cards / detail).** Team detail page MUST
+   be a 1:1 visual clone of the player detail page. Different
+   inputs, identical structure. Enforced today by
+   `TeamDetailPage` being a thin wrapper that forwards a
+   player-shaped payload from `/api/v3/team-with-badges/{team_id}`
+   to `PlayerDetailPage` verbatim.
+
+### Compliance audit (2026-06-02)
+
+| Pipeline           | Status | Notes                                                                                                  |
+|--------------------|--------|--------------------------------------------------------------------------------------------------------|
+| LIVE Player        | ✅     | `recompute_sport` per sport → `{sport}_prop_scores` → ferrari tier → board / cards / detail            |
+| LIVE Team          | ✅     | `team_live_xgb_scorer` → `team_prop_scores` → ferrari team tier → board / cards / detail               |
+| BACKTEST Player    | ✅     | `services/replay/nba_replay_engine.py` + `mlb_replay_engine.py` → `recompute_sport(**REPLAY_RECOMPUTE_KWARGS)` |
+| BACKTEST Team      | 🟡     | `scripts/sgo/reshape_team_props_to_replay.py` exists; orchestrator that runs the same team scorer over SGO data and emits to the optimizer dataset is the next P1 item. |
+| Optimizer mirror   | 🟡     | Player: `scripts/sgo/mirror_player_replay_to_unified.py` exists (uncommitted). Team: no mirror script yet. |
+
+### Open gaps
+
+1. **Team backtest orchestrator** — wire
+   `reshape_team_props_to_replay.py` output through
+   `team_xgb_loader.score_team_props_batch` (the SAME team model
+   used live) and into an optimizer-compatible dataset.
+2. **Optimizer-output mirror** — both pipelines must land scored
+   rows in `optimizer_input` (or equivalent) so the threshold
+   search has a single shared dataset.
+3. **NFL / NCAAF backtest engines** — when added, MUST register in
+   `services/replay/contract.py::COMPLIANT_REPLAY_ENGINES` and pass
+   `**REPLAY_RECOMPUTE_KWARGS`.
+
+### How to use this contract
+
+1. Before adding any new sport adapter, read this doc.
+2. Register the engine in `COMPLIANT_REPLAY_ENGINES`.
+3. Pass `**REPLAY_RECOMPUTE_KWARGS` to `recompute_sport` (or the
+   team scorer entry point).
+4. Stamp `**REPLAY_PROP_FLAGS` on every prop dict the engine emits.
+5. Add a test in `tests/test_replay_infrastructure_contract.py`
+   that imports the new engine and asserts compliance.

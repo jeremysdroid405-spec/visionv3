@@ -153,8 +153,63 @@ COMPLIANT_REPLAY_ENGINES: dict[str, str] = {
 }
 
 
+# ── Pipeline registry (locked 2026-06-02). ─────────────────────
+# PropVision has EXACTLY two pipelines: PLAYER and TEAM. Each has a
+# LIVE and a BACKTEST mode. Both modes share the same predictor and
+# Vision pipeline; only the input collection and output sink change.
+#
+# See `/app/memory/ARCHITECTURE.md` for the full contract.
+#
+# Adding a new pipeline (e.g. parlay scoring, combo cards) is a
+# design red flag — new surfaces MUST consume the output of one of
+# these two pipelines, not introduce a third.
+PIPELINE_REGISTRY = MappingProxyType({
+    "player": MappingProxyType({
+        "live": MappingProxyType({
+            "input_collection_template":  "{sport}_live_props",
+            "predictor_entry_point":      "services.scoring.recompute.recompute_sport",
+            "output_collection_template": "{sport}_prop_scores",
+            "surface":                    "ferrari player tier endpoints + /api/v3/player-with-badges/{name}",
+        }),
+        "backtest": MappingProxyType({
+            "input_collection_template":  "{sport}_historical_props (SGO archive)",
+            "predictor_entry_point":      "services.scoring.recompute.recompute_sport",
+            "predictor_kwargs":           "REPLAY_RECOMPUTE_KWARGS",
+            "output_sink":                "optimizer dataset (mirror_player_replay_to_unified.py)",
+            "engines":                    ("services.replay.nba_replay_engine",
+                                            "services.replay.mlb_replay_engine"),
+        }),
+    }),
+    "team": MappingProxyType({
+        "live": MappingProxyType({
+            "input_collection":           "team_live_props",
+            "predictor_entry_point":      "services.team_live_xgb_scorer.score_team_live_props",
+            "output_collection":          "team_prop_scores",
+            "surface":                    "ferrari team tier endpoints + /api/v3/team-with-badges/{team_id}",
+        }),
+        "backtest": MappingProxyType({
+            "input_script":               "scripts/sgo/reshape_team_props_to_replay.py",
+            "predictor_entry_point":      "services.team_xgb_loader.score_team_props_batch",
+            "output_sink":                "optimizer dataset (TODO: mirror_team_replay_to_unified.py)",
+            "status":                     "P1 — orchestrator + mirror script pending",
+        }),
+    }),
+})
+
+
+# Convenience: list of every pipeline-mode pair for audit/iteration.
+PIPELINE_MODES: tuple[tuple[str, str], ...] = (
+    ("player", "live"),
+    ("player", "backtest"),
+    ("team",   "live"),
+    ("team",   "backtest"),
+)
+
+
 __all__ = [
     "REPLAY_RECOMPUTE_KWARGS",
     "REPLAY_PROP_FLAGS",
     "COMPLIANT_REPLAY_ENGINES",
+    "PIPELINE_REGISTRY",
+    "PIPELINE_MODES",
 ]
