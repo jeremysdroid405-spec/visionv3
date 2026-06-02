@@ -90,7 +90,7 @@ REFERENCE_ONLY_BOOKS = {"prizepicks", "underdog"}
 # Canonical SGO stat_id → production replay `market` name. These keys are
 # the values build_pp_research_core writes into doc["stat_id"]; the values
 # match what the production replay adapter expects in `market`.
-_STAT_ID_TO_MARKET: Dict[str, str] = {
+_STAT_ID_TO_MARKET_MLB: Dict[str, str] = {
     # batting
     "batting_hits":               "batter_hits",
     "batting_runs":               "batter_runs_scored",
@@ -120,6 +120,37 @@ _STAT_ID_TO_MARKET: Dict[str, str] = {
     # composite — kept as-is so optimizer can choose to exclude them
     "fantasyScore":               "fantasy_score",
 }
+
+# 2026-06-02 — NBA stat_id mappings. Source: build_pp_research_core
+# writes canonical NBA stat_ids into doc["stat_id"]. Production replay
+# adapter expects the values shown on the right.
+_STAT_ID_TO_MARKET_NBA: Dict[str, str] = {
+    "points":                            "player_points",
+    "rebounds":                          "player_rebounds",
+    "assists":                           "player_assists",
+    "points+rebounds+assists":           "player_points_rebounds_assists",
+    "points+rebounds":                   "player_points_rebounds",
+    "points+assists":                    "player_points_assists",
+    "rebounds+assists":                  "player_rebounds_assists",
+    "threePointersMade":                 "player_threes",
+    "steals":                            "player_steals",
+    "blocks":                            "player_blocks",
+    "blocks+steals":                     "player_blocks_steals",
+    "turnovers":                         "player_turnovers",
+    "fantasyScore":                      "fantasy_score",
+}
+
+# League-aware lookup. The runtime resolver consults the right map
+# based on the `--league` CLI flag.
+_STAT_ID_TO_MARKET_BY_LEAGUE: Dict[str, Dict[str, str]] = {
+    "MLB": _STAT_ID_TO_MARKET_MLB,
+    "NBA": _STAT_ID_TO_MARKET_NBA,
+}
+
+# Legacy alias — anything that still imports `_STAT_ID_TO_MARKET` (e.g.
+# external tooling) gets the MLB map. Real callers go through
+# `_resolve_market(d, league=...)`.
+_STAT_ID_TO_MARKET = _STAT_ID_TO_MARKET_MLB
 
 # Best-effort fallback: also accept the bucket-name shorthand
 # (build_historical_outcomes.STAT_FAMILY values) in case any upstream
@@ -185,20 +216,58 @@ def _safe_float_line(raw: Any) -> Optional[float]:
         return None
 
 
-def _resolve_market(d: Dict[str, Any]) -> Optional[str]:
-    """Map a source doc to the production replay `market` string.
+# 2026-06-02 — Per-league destination defaults. The destination row's
+# `sport` / `sport_key` / `league` fields are written from this map
+# based on the `--league` CLI flag. The previous implementation
+# hardcoded these to MLB, causing NBA reshape runs to write NBA rows
+# tagged as MLB (and skip ~95% of them via the MLB-only stat_id map).
+LEAGUE_CONFIG: Dict[str, Dict[str, str]] = {
+    "MLB":   {"sport": "mlb",   "sport_key": "baseball_mlb"},
+    "NBA":   {"sport": "nba",   "sport_key": "basketball_nba"},
+    "NFL":   {"sport": "nfl",   "sport_key": "americanfootball_nfl"},
+    "NCAAF": {"sport": "ncaaf", "sport_key": "americanfootball_ncaaf"},
+}
 
-    Priority: direct stat_id → fallback bucket name → upstream-set `market`.
+
+def _league_dest(league: str) -> Dict[str, str]:
+    cfg = LEAGUE_CONFIG.get((league or "").upper())
+    if cfg is None:
+        raise ValueError(
+            f"unsupported --league={league!r}. Supported: "
+            f"{sorted(LEAGUE_CONFIG)}")
+    return cfg
+
+
+def _resolve_market(d: Dict[str, Any], league: str = "MLB") -> Optional[str]:
+    """Map a source doc to the production replay `market` string for
+    the given league.
+
+    Priority:
+      1. league-specific stat_id map (NBA / MLB / …)
+      2. legacy stat_family fallback (MLB-only — NBA never wrote
+         stat_family)
+      3. upstream-set `market` field if present
     """
     sid = d.get("stat_id")
-    if sid and sid in _STAT_ID_TO_MARKET:
-        return _STAT_ID_TO_MARKET[sid]
-    sf = d.get("stat_family")
-    if sf and sf in _STAT_FAMILY_FALLBACK:
-        return _STAT_FAMILY_FALLBACK[sf]
+    sid_map = _STAT_ID_TO_MARKET_BY_LEAGUE.get(
+        (league or "").upper(), _STAT_ID_TO_MARKET_MLB)
+    if sid and sid in sid_map:
+        return sid_map[sid]
+    # Legacy stat_family fallback is MLB-only by content. NEVER apply it
+    # to non-MLB leagues — those would silently get a wrong market name.
+    if (league or "").upper() == "MLB":
+        sf = d.get("stat_family")
+        if sf and sf in _STAT_FAMILY_FALLBACK:
+            return _STAT_FAMILY_FALLBACK[sf]
     if d.get("market"):
         return d["market"]
     return None
+
+
+def _legacy_resolve_market(d: Dict[str, Any]) -> Optional[str]:
+    """Backwards-compat wrapper for any internal call sites that still
+    invoke the single-arg signature. Defaults to MLB lookup."""
+    return _resolve_market(d, league="MLB")
 
 
 def _resolve_odds(d: Dict[str, Any]) -> tuple[Optional[int], str]:
@@ -285,19 +354,19 @@ async def _ensure_indexes(db) -> None:
             print(f"  ! secondary index '{k}' skipped: {e!r}", flush=True)
 
 
-def reshape_row(d: Dict[str, Any], now: datetime) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+def reshape_row(d: Dict[str, Any], now: datetime, *, league: str = "MLB") -> tuple[Optional[Dict[str, Any]], Optional[str]]:
     """Backwards-compat: returns the FIRST reshaped row (best book) for the
     legacy unit test and any caller that still expects a single doc.
 
     New code should use `reshape_rows` (plural) below — it yields ONE row
     per book in `books[]`, which is what the multi-book optimizer needs."""
-    rows, reason = reshape_rows(d, now)
+    rows, reason = reshape_rows(d, now, league=league)
     if not rows:
         return None, reason
     return rows[0], None
 
 
-def reshape_rows(d: Dict[str, Any], now: datetime) -> tuple[List[Dict[str, Any]], Optional[str]]:
+def reshape_rows(d: Dict[str, Any], now: datetime, *, league: str = "MLB") -> tuple[List[Dict[str, Any]], Optional[str]]:
     """Transform ONE enriched-core doc into a LIST of alt-odds rows —
     one per book in `books[]` plus one fallback row when `books[]` is
     empty (legacy / unenriched docs).
@@ -326,7 +395,7 @@ def reshape_rows(d: Dict[str, Any], now: datetime) -> tuple[List[Dict[str, Any]]
     if not d.get("event_id"):
         return [], "no_event_id"
 
-    market = _resolve_market(d)
+    market = _resolve_market(d, league=league)
     if not market:
         return [], "no_market"
 
@@ -372,10 +441,11 @@ def reshape_rows(d: Dict[str, Any], now: datetime) -> tuple[List[Dict[str, Any]]
             return [], f"blocked_book:{bk}"
         quotes.append((bk, o, src))
 
+    _ld = _league_dest(league)
     base = {
-        "sport": "mlb",
-        "sport_key": "baseball_mlb",
-        "league": "MLB",
+        "sport":     _ld["sport"],
+        "sport_key": _ld["sport_key"],
+        "league":    league.upper(),
         "game_date": d["game_date"],
         "event_id": d["event_id"],
         "home_team": d.get("home_team"),
@@ -417,7 +487,7 @@ def reshape_rows(d: Dict[str, Any], now: datetime) -> tuple[List[Dict[str, Any]]
     return out, None
 
 
-def _legacy_reshape_row_single_book(d: Dict[str, Any], now: datetime) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+def _legacy_reshape_row_single_book(d: Dict[str, Any], now: datetime, *, league: str = "MLB") -> tuple[Optional[Dict[str, Any]], Optional[str]]:
     """Legacy single-row reshape kept for reference. Do not use in new code."""
     if not d.get("league_id"):
         return None, "no_league"
@@ -426,7 +496,7 @@ def _legacy_reshape_row_single_book(d: Dict[str, Any], now: datetime) -> tuple[O
     if not d.get("event_id"):
         return None, "no_event_id"
 
-    market = _resolve_market(d)
+    market = _resolve_market(d, league=league)
     if not market:
         return None, "no_market"
 
@@ -452,15 +522,16 @@ def _legacy_reshape_row_single_book(d: Dict[str, Any], now: datetime) -> tuple[O
     snapshot_iso = f"{d['game_date']}T{SNAPSHOT_HOUR_UTC:02d}:00:00Z"
     commence_time = d.get("commence_time") or f"{d['game_date']}T22:00:00Z"
 
+    _ld = _league_dest(league)
     row = {
-        "sport": "mlb",
-        "sport_key": "baseball_mlb",
+        "sport":     _ld["sport"],
+        "sport_key": _ld["sport_key"],
         # `league` mirrors the upstream sgo_pp_research_core_enriched
         # `league_id` field. Production canonical schema doesn't use it
-        # (that uses `sport: "mlb"`), but we carry it through anyway so the
-        # collection is self-describing and joinable with grading data
-        # (sgo_pp_research_outcomes uses `league_id: "MLB"`).
-        "league": "MLB",
+        # (that uses `sport: "mlb"` / `"nba"`), but we carry it through
+        # anyway so the collection is self-describing and joinable with
+        # grading data (sgo_pp_research_outcomes uses `league_id`).
+        "league":    league.upper(),
         "game_date": d["game_date"],
         "event_id": d["event_id"],
         "home_team": d.get("home_team"),
@@ -682,7 +753,7 @@ async def _run_body(args: argparse.Namespace, db) -> int:
                           f"first = {d['books'][0] if d['books'] else None!r}")
 
         try:
-            rows, reason = reshape_rows(d, now)
+            rows, reason = reshape_rows(d, now, league=args.league)
         except Exception as row_exc:
             reason = f"row_exception:{row_exc!r}"
             rows = []
@@ -723,8 +794,9 @@ async def _run_body(args: argparse.Namespace, db) -> int:
         await _flush_buf()
 
     # ── POST-RUN VERIFICATION ───────────────────────────────────────────
+    _ld = _league_dest(args.league)
     n_dest = await db[DEST].count_documents({
-        "sport": "mlb",
+        "sport": _ld["sport"],
         "game_date": {"$gte": args.start, "$lte": args.end},
     })
 
@@ -734,7 +806,7 @@ async def _run_body(args: argparse.Namespace, db) -> int:
     print(f"  rows written         {n_written}")
     print(f"  bulk write errors    {n_bulk_err}")
     print(f"  destination rows now {n_dest}  "
-              f"(sport='mlb', game_date in window)")
+              f"(sport='{_ld['sport']}', game_date in window)")
     print()
     if skip_reasons:
         print("  SKIPPED rows by reason:")
