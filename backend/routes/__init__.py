@@ -26,6 +26,7 @@ from .ferrari_tiers import router as ferrari_router, set_ferrari_db
 from .ferrari_team_tiers import router as ferrari_team_router, init_router as set_ferrari_team_db
 from .team_live_sync import router as team_live_sync_router, init_router as set_team_live_sync_db
 from .team_historical import router as team_historical_router
+from .team_with_badges import router as team_with_badges_router, set_team_with_badges_db
 from .player import router as player_router, set_player_db
 from .vacuum import router as vacuum_router, set_vacuum_db
 from .mlb_vacuum import router as mlb_vacuum_router, set_mlb_vacuum_db
@@ -152,6 +153,14 @@ def register_all_routes(
     # route imports `db` from `server` directly, same SSOT path
     # every other team route uses).
     app.include_router(team_historical_router, prefix="/api")
+
+    # Team-with-badges (2026-06-02) — the team analog of
+    # `/api/v3/player-with-badges/{name}`. Returns a player-shaped
+    # payload so `TeamDetailPage` can forward directly to
+    # `PlayerDetailPage` (1:1 clone, no team-specific UI).
+    if db is not None:
+        set_team_with_badges_db(db)
+    app.include_router(team_with_badges_router, prefix="/api")
 
     # Universal Player endpoint (restored post Hard Consolidation)
     if db is not None:

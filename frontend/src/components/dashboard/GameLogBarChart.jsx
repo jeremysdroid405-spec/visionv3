@@ -105,6 +105,23 @@ const STAT_FIELD_MAP = {
   'HITS+RUNS+RBIS': ['hits', 'runs', 'rbis'],
   'HRR': ['hits', 'runs', 'rbis'],
   'batter_hits_runs_rbis': ['hits', 'runs', 'rbis'],
+  // ---- Team Props (TeamDetailPage clone of PlayerDetailPage) -----
+  // SSOT tokens emitted by GET /api/v3/team-with-badges/{team_id}.
+  // Each token resolves to a field already attached to the team's
+  // game-log row (team_score / opp_score / total_score / margin),
+  // so GameLogBarChart renders unchanged.
+  'TEAM_TOTAL': 'team_score',
+  'team_total': 'team_score',
+  'OPP_TOTAL':  'opp_score',
+  'opp_total':  'opp_score',
+  'GAME_TOTAL': 'total_score',
+  'game_total': 'total_score',
+  'SPREAD':     'margin',
+  'spread':     'margin',
+  // MONEYLINE has no continuous projection; route the bar chart to
+  // the team's own score so the visual still has meaningful bars.
+  'MONEYLINE':  'team_score',
+  'h2h':        'team_score',
 };
 
 const getStatValue = (game, statType) => {

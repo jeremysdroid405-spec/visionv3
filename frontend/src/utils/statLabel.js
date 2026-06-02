@@ -99,6 +99,22 @@ const _SHORT = {
   PRA: 'PRA', PR: 'P+R', PA: 'P+A', RA: 'R+A',
   'P+R': 'P+R', 'P+A': 'P+A', 'R+A': 'R+A',
   BLST: 'BLST', '2PM': '2PM',
+
+  // ---- Team-prop SSOT tokens (team_with_badges endpoint) ----------------
+  // TeamDetailPage reuses PlayerDetailPage 1:1; these tokens flow through
+  // getStatLabel + CATEGORY_ORDER + GameLogBarChart.STAT_FIELD_MAP so the
+  // section headings, prop-row labels, and bar chart all key on the same
+  // canonical string.
+  TEAM_TOTAL: 'Team Total',
+  team_total: 'Team Total',
+  GAME_TOTAL: 'Game Total',
+  game_total: 'Game Total',
+  SPREAD: 'Spread',
+  spread: 'Spread',
+  MONEYLINE: 'Moneyline',
+  h2h: 'Moneyline',
+  OPP_TOTAL: 'Opp Total',
+  opp_total: 'Opp Total',
   Hits: 'Hits', Runs: 'Runs', RBIs: 'RBIs',
   'Total Bases': 'Total Bases', Singles: 'Singles',
   Doubles: 'Doubles', Triples: 'Triples',
@@ -131,6 +147,12 @@ const _LONG = {
   SB: 'Stolen Bases', 'BB Allowed': 'Walks Allowed',
   'Hits Allowed': 'Hits Allowed', ER: 'Earned Runs',
   Outs: 'Outs', 'H+R+RBI': 'Hits+Runs+RBIs',
+  // Team-prop long labels (TeamDetailPage section headings).
+  'Team Total': 'Team Total',
+  'Game Total': 'Game Total',
+  Spread:       'Spread',
+  Moneyline:    'Moneyline',
+  'Opp Total':  'Opp Total',
 };
 
 // Suffix patterns that should be stripped before re-lookup. Order matters —

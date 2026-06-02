@@ -1,215 +1,175 @@
 /**
- * TeamDetailPage — clone of PlayerDetailPage for team props.
+ * TeamDetailPage — EXACT clone of PlayerDetailPage, powered by team data.
  *
- * Per user directive 2026-06-02:
- *   "team detail card should be a clone of player detail card with
- *    different inputs, teams badgesets, etc. Moving forward
- *    everything we build should just be replicas of already working
- *    features with minor changes."
+ * Per user directive (2026-06-02):
+ *   "all team related cards should be exact clones of player cards.
+ *    the pick card, the player card, ect. they should be exactly
+ *    alike, contain all of the same info. ... no pick glowing yellow
+ *    like on players."
  *
  * Architecture:
- *   • Renders the SAME `PlayerDetailPage` shell (no visual divergence
- *     for now — same header / odds rows / books panel / matchup
- *     summary / quick-add tray).
- *   • Adapts a team pick into the `player`-shaped object
- *     `PlayerDetailPage` already consumes:
- *       team_name      → player_name
- *       team_logo_url  → photo_url / headshot_url
- *       team_abbr      → team (badge slot)
- *       opponent       → opposing team identity
- *       prop_type='team' is preserved so PlayerDetailPage's
- *       `is_team_prop` branches can skip player-only sections
- *       (game-log bar chart, NBA per-player badges) when added.
- *   • Lives in a separate file so any future TEAM-specific surface
- *     (team historical hit-rate chart, team scoring-conceding
- *     splits, team injury report) lands here without polluting
- *     `PlayerDetailPage.jsx`.
+ *   1. Fetch `/api/v3/team-with-badges/{team_id}?sport=...` once on
+ *      mount. Backend returns a player-shaped payload with ALL of
+ *      the team's available props (every market × line × side),
+ *      real historical `hit_rate_l5/l10/l20`, `l*_avg`, projection
+ *      (`vk_predicted`), deterministic `vision_intel`, and
+ *      `scout_badges`.
+ *   2. Forward the payload to `PlayerDetailPage` as `playerData`
+ *      with `props.length > 1` so PlayerDetailPage's internal
+ *      `useEffect` short-circuits (no second fetch). The shell,
+ *      header, prop rows, GameLogBarChart, and Vision Intel Suite
+ *      all render unchanged.
+ *   3. Pass `highlightProp={null}` so no row receives the yellow
+ *      Vision-pick glow. `props.is_vision_enriched` is never stamped
+ *      for teams, so the dynamic highlight path (line 845 of
+ *      PlayerDetailPage) is also a no-op.
  *
- * Identity-slot mapping mirrors `TeamPropRow.adaptTeamPickForCard`.
- * Same pattern used MLB / NBA / NFL / future sports.
+ * Identity resolution: `props[0]` carries the original team pick
+ * with `team_id` (e.g. `nba_bos`). Falls back to deriving the
+ * team_id from `team` / `team_abbr` + `sport` when an older click
+ * path doesn't supply it.
  */
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import PlayerDetailPage from './PlayerDetailPage';
-import TeamHistoricalSurfaces from './TeamHistoricalSurfaces';
-import { getTeamLogo } from './constants';
+import { BACKEND_URL } from './constants';
 
+const API = BACKEND_URL || process.env.REACT_APP_BACKEND_URL || '';
 
-/**
- * Convert a team pick (or `playerData`-shaped team payload) into the
- * shape `PlayerDetailPage` expects.
- *
- * Accepts the SAME `playerData` payload Dashboard.jsx already
- * synthesises for player picks (single-prop wrapper with
- * `name` / `team` / `photo_url` / `props=[pick]`), but with the
- * pick's identity slot mapped from team_name / team_abbr /
- * team_logo_url.
- */
-function adaptTeamPickToPlayerShape(pick, sport) {
-  if (!pick) return null;
+const _resolveTeamId = (pick, sportFallback) => {
+  if (!pick) return { teamId: null, sport: sportFallback || null };
+  const sport = (pick.sport || sportFallback || '').toLowerCase();
+  const explicit = pick.team_id;
+  if (explicit) {
+    return { teamId: String(explicit).toLowerCase(), sport };
+  }
+  const abbr = (pick.team_abbr || pick.team || '').toLowerCase();
+  if (sport && abbr) return { teamId: `${sport}_${abbr}`, sport };
+  return { teamId: null, sport };
+};
 
-  // Resolve a team logo. Prefer explicit team_logo_url; fall back to
-  // the shared `getTeamLogo(sport, team_abbr)` helper used by every
-  // other team-aware surface.
-  const teamAbbr = pick.team_abbr || pick.team || null;
-  const photoUrl =
-    pick.team_logo_url ||
-    pick.photo_url ||
-    (teamAbbr && sport ? getTeamLogo(sport, teamAbbr) : null);
-
-  const identityName =
-    pick.team_name ||
-    pick.team_abbr ||
-    pick.team ||
-    'Unknown Team';
-
-  const opponent =
-    pick.opponent ||
-    pick.opponent_team ||
-    pick.opp_team ||
-    null;
-
-  return {
-    // Identity slot
-    name: identityName,
-    player_name: identityName,
-    photo_url: photoUrl,
-    headshot_url: photoUrl,
-    team: teamAbbr,
-    opponent,
-    // Carry sport, event_id, commence_time straight through so
-    // PlayerDetailPage's matchup row / commence-time stamp render.
-    sport: pick.sport || sport,
-    event_id: pick.event_id,
-    commence_time: pick.commence_time,
-    home_team: pick.home_team,
-    away_team: pick.away_team,
-    // Wrap the original pick as a single-prop list (same shape player
-    // picks use in Dashboard.handleVaultClick / handleRadarClick).
-    props: [{
-      ...pick,
-      // SSOT identity-slot rebind (so any field-level renderer that
-      // reads `player_name` directly gets the team identity).
-      player_name: identityName,
-      photo_url: photoUrl,
-      headshot_url: photoUrl,
-      // Stat-type / market normalisation for the row label.
-      stat_type_extracted: pick.market_key || pick.stat_type || pick.market,
-      market: pick.market_key || pick.stat_type || pick.market,
-      direction: pick.direction || pick.recommendation || pick.side || 'OVER',
-      // Carry the prop-type flag so PlayerDetailPage can branch
-      // (skip game-log bar chart etc.) once the team-aware
-      // conditionals are wired in.
-      is_team_prop: true,
-      prop_type: 'team',
-    }],
-    // Top-level is_team_prop flag for easy detection in
-    // PlayerDetailPage if it adds team-specific branching later.
-    is_team_prop: true,
-    prop_type: 'team',
-  };
-}
-
-
-/**
- * TeamDetailPage — same signature as PlayerDetailPage so Dashboard.jsx
- * can swap the component in place (Dashboard already passes
- * `playerData` as the 4th arg of `handlePlayerClick`).
- *
- * Props mirror PlayerDetailPage. The only adaptation happens to
- * `player`/`playerData`: we route the team pick through
- * `adaptTeamPickToPlayerShape` before forwarding.
- */
 const TeamDetailPage = (props) => {
-  const { player, playerData, sport } = props;
-  // playerData is the canonical payload (built in Dashboard.jsx); fall
-  // back to `player` if a caller passes the pick directly.
-  const sourcePick = useMemo(() => {
-    if (playerData && playerData.props && playerData.props[0]) {
-      // playerData carries the team pick at props[0].
-      return playerData.props[0];
-    }
-    return player;
-  }, [player, playerData]);
+  const {
+    playerData,    // wrapper built by Dashboard.handleRadarClick /
+                   // handleVaultClick — `props[0]` is the clicked team pick
+    onBack,
+    onQuickAdd,
+  } = props;
 
-  const adaptedPlayer = useMemo(
-    () => adaptTeamPickToPlayerShape(sourcePick, sport),
-    [sourcePick, sport],
+  // 1) Resolve the team_id + sport from the wrapper / clicked pick.
+  const sourcePick = useMemo(() => {
+    if (playerData?.props && playerData.props[0]) return playerData.props[0];
+    return playerData || null;
+  }, [playerData]);
+
+  const { teamId, sport } = useMemo(
+    () => _resolveTeamId(sourcePick, playerData?.sport),
+    [sourcePick, playerData],
   );
 
-  // Resolve the team_id / opponent_team_id for the team-historical
-  // surfaces. The pick payload uses sport-prefixed slugs (e.g.
-  // `nba_bos`) — same shape the backend `team_historical_outcomes`
-  // collection is keyed by. Fall back to lowercased abbr when no
-  // explicit id is supplied (legacy ingest paths).
-  const teamId = useMemo(() => {
-    if (!sourcePick) return null;
-    const explicit = sourcePick.team_id;
-    if (explicit) return String(explicit).toLowerCase();
-    const sportLow = (sourcePick.sport || sport || '').toLowerCase();
-    const abbr = (sourcePick.team_abbr || sourcePick.team || '').toLowerCase();
-    if (sportLow && abbr) return `${sportLow}_${abbr}`;
-    return null;
-  }, [sourcePick, sport]);
+  // 2) Fetch the team-with-badges payload.
+  const [teamPayload, setTeamPayload] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const opponentTeamId = useMemo(() => {
-    if (!sourcePick) return null;
-    const explicit = sourcePick.opponent_team_id;
-    if (explicit) return String(explicit).toLowerCase();
-    const sportLow = (sourcePick.sport || sport || '').toLowerCase();
-    const opp = (
-      sourcePick.opponent ||
-      sourcePick.opponent_team ||
-      sourcePick.opp_team ||
-      ''
-    ).toLowerCase();
-    if (sportLow && opp) return `${sportLow}_${opp}`;
-    return null;
-  }, [sourcePick, sport]);
+  useEffect(() => {
+    if (!teamId || !sport) {
+      setLoading(false);
+      setError('Missing team_id / sport');
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const url = `${API}/api/v3/team-with-badges/${encodeURIComponent(teamId)}?sport=${encodeURIComponent(sport)}`;
+    fetch(url, { headers: { Accept: 'application/json' } })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data) => {
+        if (cancelled) return;
+        if (data && data.success && data.player) {
+          setTeamPayload(data.player);
+        } else {
+          setError('No team data available');
+        }
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e?.message || 'Failed to load team data');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [teamId, sport]);
 
-  // Market category routes the hit-rate chart to the right slice of
-  // outcomes. h2h | spread | totals | team_total — backend slugs
-  // match the pick's `market_key`/`market_category` field.
-  const marketCategory = useMemo(() => {
-    if (!sourcePick) return null;
+  // 3) Build the `playerData` PlayerDetailPage consumes. We keep the
+  //    backend's returned shape verbatim — every field the player
+  //    page reads (`player_name`, `team`, `photo_url`, `props`,
+  //    `baseline_stats`, `game_logs`, `is_team_prop`) is already in
+  //    `teamPayload`. PlayerDetailPage's fetch short-circuits when
+  //    `playerData?.props?.length !== 1`, so passing the full payload
+  //    here means NO second fetch (and no /api/v3/player-with-badges
+  //    404 for the team's display name).
+  const adaptedPlayerData = useMemo(() => {
+    if (!teamPayload) return null;
+    return {
+      ...teamPayload,
+      // PlayerDetailPage reads `name`/`player_name` interchangeably.
+      name: teamPayload.player_name,
+      // Ensure props.length !== 1 so the fetch effect skips. When the
+      // team has 0 props (NBA pre-Finals-ingest), we still want the
+      // header + game history + baseline_stats to render — so we pad
+      // an empty array. PlayerDetailPage handles props.length === 0
+      // cleanly (renders "No available Bets today").
+      props: Array.isArray(teamPayload.props) ? teamPayload.props : [],
+    };
+  }, [teamPayload]);
+
+  // 4) Render states.
+  if (loading) {
     return (
-      sourcePick.market_category ||
-      sourcePick.market_key ||
-      sourcePick.market ||
-      null
+      <div
+        className="min-h-screen bg-zinc-950 flex items-center justify-center"
+        data-testid="team-detail-loading"
+      >
+        <div className="text-zinc-400 text-sm">Loading team props…</div>
+      </div>
     );
-  }, [sourcePick]);
+  }
+  if (error || !adaptedPlayerData) {
+    return (
+      <div
+        className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center gap-3 p-8"
+        data-testid="team-detail-error"
+      >
+        <div className="text-zinc-400 text-sm">
+          {error || 'No team data available'}
+        </div>
+        <button
+          onClick={onBack}
+          className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+          data-testid="team-detail-error-back"
+        >
+          Go Back
+        </button>
+      </div>
+    );
+  }
 
-  if (!adaptedPlayer) return null;
-
-  const teamSport = (sourcePick?.sport || sport || '').toLowerCase();
-
+  // 5) Forward to PlayerDetailPage. Pass `highlightProp={null}` so
+  //    NO yellow Vision-pick glow appears on the team detail view —
+  //    explicit user directive.
   return (
     <div data-testid="team-detail-page" data-prop-type="team">
       <PlayerDetailPage
-        {...props}
-        player={adaptedPlayer}
-        playerData={adaptedPlayer}
+        playerName={adaptedPlayerData.player_name}
+        playerData={adaptedPlayerData}
+        onBack={onBack}
+        highlightProp={null}
+        highlightType={null}
+        onQuickAdd={onQuickAdd}
       />
-      {/* Team-specific surfaces — live in TeamDetailPage only,
-          never touch PlayerDetailPage. Renders the last-N hit-rate
-          bar, scoring/conceding split, and head-to-head history
-          when an opponent_team_id resolves. Backed by
-          `useTeamMasterStats` → `/api/v3/team/historical`. */}
-      {teamId && teamSport && (
-        <div
-          data-testid="team-detail-historical-block"
-          className="mt-4 px-4 pb-6 space-y-3">
-          <div className="text-xs uppercase tracking-wider text-white/60 font-semibold mb-1">
-            Team Historical Edge
-          </div>
-          <TeamHistoricalSurfaces
-            teamId={teamId}
-            sport={teamSport}
-            opponentTeamId={opponentTeamId}
-            marketCategory={marketCategory}
-          />
-        </div>
-      )}
     </div>
   );
 };
@@ -217,4 +177,3 @@ const TeamDetailPage = (props) => {
 TeamDetailPage.displayName = 'TeamDetailPage';
 
 export default TeamDetailPage;
-export { adaptTeamPickToPlayerShape };

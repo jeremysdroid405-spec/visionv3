@@ -56,6 +56,8 @@ const CATEGORY_ORDER = [
   'Walks', 'Ks', 'H+R+RBI',
   // MLB Pitcher
   'Outs', 'Hits Allowed', 'ER', 'BB Allowed',
+  // Team-prop categories (TeamDetailPage reuses PlayerDetailPage 1:1)
+  'Team Total', 'Game Total', 'Spread', 'Moneyline', 'Opp Total',
 ];
 
 // ==================== PLAYER HEADSHOT ====================

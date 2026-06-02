@@ -24,22 +24,62 @@ controlling historical replay pipelines via the Emergent Admin API.
 
 
 
-### 2026-06-02 — TeamDetailPage enhancement: 3 team-only historical surfaces
-- Backend: `routes/team_historical.py` (NEW) — `GET /api/v3/team/historical/{team_id}`
-  returns `recent_outcomes` + `scoring_split` + `h2h_outcomes` +
-  `summary.last_10_hit_rate` from `team_historical_outcomes`
-  (391k NBA / 879k MLB / 124k NFL graded rows). Mounted via
-  `routes/__init__.py:register_all_routes`.
-- Frontend: `hooks/useTeamMasterStats.js` (NEW) — team analog of
-  `useMasterStats`, 24h cache contract.
-- Frontend: `components/dashboard/TeamHistoricalSurfaces.jsx` (NEW)
-  — three visual components (TeamHitRateBar, TeamScoringSplit,
-  TeamH2HHistory) plus a composite shell.
-- Frontend: `TeamDetailPage.jsx` extended to render the surfaces
-  beneath the PlayerDetailPage shell. `PlayerDetailPage.jsx`
-  untouched (wrapper-clone pattern preserved).
-- 7-test endpoint suite (`tests/test_team_historical_endpoint.py`)
-  passes 100%.
+### 2026-06-02 — TeamDetailPage is now an EXACT clone of PlayerDetailPage (P0 closed)
+- **Rejected custom surfaces removed.** `TeamHistoricalSurfaces.jsx`
+  and `useTeamMasterStats.js` deleted (user rejected as
+  over-engineered). `TeamDetailPage.jsx` rewritten as a thin
+  wrapper that fetches the new team endpoint and forwards the
+  result to `PlayerDetailPage` verbatim.
+- **Backend `GET /api/v3/team-with-badges/{team_id}?sport=` (NEW)**
+  — `routes/team_with_badges.py`. Returns a player-shaped payload
+  for a team. Every field PlayerDetailPage / PropRow /
+  GameLogBarChart / Vision Intel Suite consumes is populated:
+  `player_name`, `team`, `photo_url`, `props[]` (every market ×
+  line × side combo) with `stat_type`, `line`, `direction`,
+  `hit_rate_l5/l10/l20`, `season_hit_rate`, `l5_avg/l10_avg/
+  l20_avg/season_avg`, `vk_predicted`, `edge_vs_fair`,
+  `best_book`, `best_book_odds`, `vision_intel`, `scout_badges`,
+  `intel_suite`, `game_logs`, plus `baseline_stats` (Team PTS /
+  TEAM_TOTAL / OPP_TOTAL / GAME_TOTAL / SPREAD averages) and
+  `game_logs` (last-25 games with team_score / opp_score /
+  total_score / margin / opponent).
+- **Real numbers, not models.** Hit rates / averages / projection
+  are computed deterministically from `team_historical_outcomes`
+  (413k NBA / 879k MLB / 124k NFL rows). `vision_intel` is a
+  rules-based sentence string (e.g. "Hit OVER 110.5 in 7 of last
+  10 team total games. Recent form trending over. vs DET: 23/35
+  hits on this market."). `scout_badges` are derived from
+  hit-rate thresholds (`hot_streak` ≥ 80% L5, `floor_lock` ≥ 75%
+  L20). NO AI/model claims.
+- **No yellow Vision-pick glow on teams.** TeamDetailPage passes
+  `highlightProp={null}` to PlayerDetailPage; team props don't
+  carry `is_vision_enriched=true`, so neither highlight path
+  fires (`PlayerDetailPage::isHighlightedProp`).
+- **Frontend canonical tokens added** to
+  `utils/statLabel.js::_SHORT/_LONG`,
+  `components/dashboard/GameLogBarChart.STAT_FIELD_MAP`, and
+  `PlayerDetailPage.CATEGORY_ORDER`:
+  `TEAM_TOTAL → team_score`, `GAME_TOTAL → total_score`,
+  `SPREAD → margin`, `MONEYLINE → team_score`,
+  `OPP_TOTAL → opp_score`. Section labels: "Team Total",
+  "Game Total", "Spread", "Moneyline", "Opp Total".
+- **Click routing**: `Dashboard.handleRadarClick` /
+  `handleVaultClick` already forward team picks
+  (`prop_type='team'`) to TeamDetailPage with `team_id` carried
+  on `props[0]`. No router changes needed.
+- **Tests**: `tests/test_team_with_badges_endpoint.py` (11 cases,
+  all passing) — unit tests for the deterministic Vision-Intel +
+  scout-badge builders, identity helpers (`_split_team_id`,
+  `_team_display_name`), and integration tests against the real
+  `team_historical_outcomes` collection asserting the
+  player-shape contract every PlayerDetailPage reader depends
+  on. Backend total: previous 7 team_historical tests still pass.
+- **Live-ingest dependency**: NBA `team_prop_scores` currently has
+  0 rows (live NBA Finals ingest not yet producing). The team
+  detail page renders the header + season stats + 25-game history
+  for NBA today; props grid will populate as soon as the
+  scheduled live ingest writes rows. MLB has 5 props per team and
+  renders the full grid + vision intel today.
 
 ### 2026-06-02 — NBA Finals team props: live ingest wiring + TeamDetailPage clone
 - See CHANGELOG.md for full details. Adds:
