@@ -12,6 +12,12 @@ PRODUCTION ROUTING RULES (this module is held to them):
     into `team_prop_scores`. The future live-ingest pipeline can also
     call the passthrough explicitly after its writes.
   * Model fields stay None. Cards display `team_model_pending=true`.
+  * 2026-06-02 — every card is enriched with REAL historical hit
+    rates (l5/l10/l20), team averages, projection, deterministic
+    vision_intel + scout_badges from `team_historical_outcomes`
+    via `services/team_historical_enrichment.py`. Same SSOT helpers
+    `routes/team_with_badges.py` uses, so the board cards and the
+    detail page can never disagree on the numbers.
 """
 from __future__ import annotations
 
@@ -23,6 +29,15 @@ import logging
 from services.team_prop_passthrough import (
     SCORES_COLL,
     passthrough_team_live_to_scores,
+)
+from services.team_historical_enrichment import (
+    compute_hit_rates,
+    fetch_team_game_history,
+    compute_baseline_stats,
+    market_category_to_stat_token,
+    build_vision_intel,
+    build_scout_badges,
+    split_team_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -198,6 +213,129 @@ def _hydrate_card(score: Dict[str, Any],
     }
 
 
+async def _enrich_cards_with_history(
+    db, cards: List[Dict[str, Any]], sport: str,
+) -> List[Dict[str, Any]]:
+    """Stamp REAL historical hit_rate_l5/l10/l20 + season avg +
+    projection + vision_intel + scout_badges on every card.
+
+    Pulled from `team_historical_outcomes` via shared SSOT helpers so
+    the board card and the detail page are byte-equal on the numbers
+    they display.
+
+    Cost: one game-history query per UNIQUE team (cached), one
+    hit-rate query per prop. For a typical tier read (10 cards), this
+    is 1-2 team queries + 10 prop queries on a small graded-row index
+    — well under 100ms.
+    """
+    if not cards:
+        return cards
+
+    # 1. Per-team game history (used for baseline averages).
+    by_team: Dict[str, List[Dict[str, Any]]] = {}
+    for c in cards:
+        tid = c.get("team_id")
+        if tid:
+            by_team.setdefault(tid, []).append(c)
+    baseline_by_team: Dict[str, Dict[str, Any]] = {}
+    for tid in by_team.keys():
+        logs = await fetch_team_game_history(
+            db, team_id=tid, sport=sport, limit=25)
+        baseline_by_team[tid] = compute_baseline_stats(logs)
+
+    # 2. Per-card hit-rate + intel enrichment.
+    for c in cards:
+        tid = c.get("team_id")
+        if not tid:
+            continue
+        market_category = c.get("market_category") or ""
+        side = (c.get("side") or "").upper()
+        try:
+            line = float(c["line"]) if c.get("line") is not None else None
+        except (TypeError, ValueError):
+            line = None
+        stat_token = market_category_to_stat_token(market_category)
+
+        # Opponent abbr (for h2h hit rate sentence). Cards don't carry
+        # `opponent_team_id`, only `opponent` name — h2h slice is left
+        # to the team-detail endpoint where opp_team_id is resolved.
+        opp_abbr = (c.get("opponent") or "")
+
+        # Historical hit rates @ this (category, side, ~line).
+        hr = await compute_hit_rates(
+            db,
+            team_id=tid, sport=sport,
+            market_category=market_category,
+            side=side, line=line,
+        )
+        hit_l5 = hr.get("hit_rate_l5")
+        hit_l10 = hr.get("hit_rate_l10")
+        hit_l20 = hr.get("hit_rate_l20")
+        season_hr = hr.get("season_hit_rate")
+
+        # Baseline avg for this stat token (projection input).
+        bs = (baseline_by_team.get(tid) or {}).get(stat_token, {}) or {}
+        l5_avg = bs.get("l5_avg")
+        l10_avg = bs.get("l10_avg")
+        l20_avg = bs.get("l20_avg")
+        season_avg = bs.get("season_avg")
+
+        # Projection: use l10 avg (no model). Edge vs line ratio.
+        projection = l10_avg
+        edge_vs_fair: Optional[float] = None
+        if (projection is not None and line not in (None, 0)
+                and market_category != "h2h"):
+            edge_vs_fair = round((projection - line) / line, 4)
+
+        # H2H — opponent_team_id isn't stamped on team_prop_scores
+        # today, so we skip the h2h slice for board cards. The team
+        # detail page (team_with_badges) does include it because the
+        # endpoint resolves opp_team_id from event_id + master_hub.
+        opp_hr = None
+        opp_sample = 0
+
+        vision_text = build_vision_intel(
+            stat_token=stat_token, side=side, line=line,
+            hit_l5=hit_l5, hit_l10=hit_l10, hit_l20=hit_l20,
+            season_hr=season_hr,
+            opp_abbr=opp_abbr, opp_hit_pct=opp_hr, opp_sample=opp_sample,
+        )
+        scout = build_scout_badges(
+            hit_l5=hit_l5, hit_l10=hit_l10, hit_l20=hit_l20,
+        )
+
+        # Stamp the canonical player-card fields so UniversalPlayerCard
+        # / TeamPropRow render real numbers instead of nulls.
+        c["hit_rate_l5"]  = hit_l5
+        c["hit_rate_l10"] = hit_l10
+        c["hit_rate_l20"] = hit_l20
+        c["season_hit_rate"] = season_hr
+        c["hit_rate_sample_size"] = hr.get("sample_size")
+        c["l5_avg"]   = l5_avg
+        c["l10_avg"]  = l10_avg
+        c["l20_avg"]  = l20_avg
+        c["season_avg"] = season_avg
+        c["vk_predicted"] = projection
+        c["projection"]   = projection
+        c["edge_vs_fair"] = edge_vs_fair
+        c["vision_intel"] = vision_text
+        c["vision_summary"] = vision_text
+        c["scout_badges"] = scout
+        c["active_badges"] = [b["badge_key"] for b in scout]
+        c["intel_suite"] = {
+            "lasso": (
+                {"projection": projection,
+                 "confidence_tier": "HISTORICAL"}
+                if projection is not None else None
+            ),
+            "scout_badges": scout,
+            "context_badges": [],
+        }
+        c["is_vision_enriched"] = vision_text is not None
+
+    return cards
+
+
 async def get_team_prop_picks(db, *, sport: str, tier_name: str,
                                    limit: int = 10,
                                    sort: Optional[str] = None,
@@ -253,6 +391,17 @@ async def get_team_prop_picks(db, *, sport: str, tier_name: str,
         c = _hydrate_card(r, teams, events)
         if c is not None:
             cards.append(c)
+
+    # 2026-06-02 — Enrich every card with REAL historical hit rates +
+    # deterministic vision intel + scout badges. Same SSOT helpers
+    # `routes/team_with_badges.py` uses, so the board card and the
+    # team detail page agree on every number.
+    #
+    # Batch by team_id so we fetch each team's game history (used for
+    # baseline averages) at most once. Per-prop hit-rate query stays
+    # one round-trip — small (<= 200 rows) and capped at the request
+    # limit (10 cards × 3 tiers = 30 props max).
+    cards = await _enrich_cards_with_history(db, cards, sport_l)
 
     # Dedupe by canonical compound key
     seen: set = set()

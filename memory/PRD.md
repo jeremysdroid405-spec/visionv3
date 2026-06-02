@@ -24,7 +24,59 @@ controlling historical replay pipelines via the Emergent Admin API.
 
 
 
-### 2026-06-02 — TeamDetailPage is now an EXACT clone of PlayerDetailPage (P0 closed)
+### 2026-06-02 (later) — Board cards now show real historical L5/L10/L20 + vision intel (P0 closed)
+- **`services/team_historical_enrichment.py` (NEW)** — single SSOT
+  home for the deterministic historical-stat math. Exports
+  `compute_hit_rates`, `fetch_team_game_history`,
+  `compute_baseline_stats`, `build_vision_intel`,
+  `build_scout_badges`, `market_category_to_stat_token`,
+  `split_team_id`. Both `routes/team_with_badges.py` and
+  `services/team_prop_tier_service.py` consume from here so the
+  numbers shown on the board and the detail page can never drift.
+- **`services/team_prop_tier_service._enrich_cards_with_history`
+  (NEW)** — async enrichment pass that runs after `_hydrate_card`.
+  Stamps every Ferrari team-tier card with `hit_rate_l5/l10/l20`,
+  `season_hit_rate`, `l5_avg/l10_avg/l20_avg/season_avg`,
+  `vk_predicted` (projection), `edge_vs_fair`, `vision_intel`,
+  `scout_badges`, `active_badges`, `intel_suite`. Per-team
+  game-history query is cached for the request so it runs at most
+  once per team (typical 3-10 cards = 1-3 history queries).
+- **Verified live**: `GET /api/v3/ferrari/team/front-lines?sport=mlb`
+  now returns every card with real numbers (e.g. Seattle Mariners
+  HOME h2h: `hit_rate_l5=100, hit_rate_l10=100, hit_rate_l20=100`,
+  scout badges `[hot_streak, floor_lock]`, vision_intel `"Hit HOME
+  in 10 of last 10 moneyline games. Recent form trending over."`).
+- **Drift guard**: new `tests/test_team_tier_enrichment.py` (3
+  cases, all passing) — verifies every card carries the full key
+  set, at least one card produces a real vision_intel sentence,
+  and the `hit_rate_l10` value from the board endpoint matches the
+  detail endpoint byte-for-byte for the same (team, category,
+  side, line) tuple.
+
+### 2026-06-02 — Live NBA team ingest blockers documented (handled separately)
+- Confirmed code path is wired correctly:
+  - APScheduler registers `scheduled_team_live_sync` for each of
+    `mlb/nba/nfl` at server startup (server.py L2261-2268).
+  - `services/team_live_sync_service.sync_team_live_for_sport`
+    handles NBA sport key, fetches events, writes
+    `team_live_props`, runs the passthrough into `team_prop_scores`,
+    triggers the scorer, audit-logs to `team_odds_ingest_runs`.
+- Environment-side blockers (intentional, NOT code bugs):
+  - `ODDS_API_KEY` is intentionally empty in `/app/backend/.env`
+    per handoff ("DO NOT ADD IT BACK unless requested. This is a
+    mocked environment now.").
+  - APScheduler is currently PAUSED via the worker testing-mode
+    endpoint (per handoff, to prevent runaway Odds API calls).
+- **Result in this preview env**: NBA `team_live_props` /
+  `team_prop_scores` have 0 rows; NBA team detail page renders
+  header + season stats + 25-game history correctly, but the props
+  grid is empty until the live pipeline runs in production.
+- **Action for prod**: provision `ODDS_API_KEY` and unpause the
+  worker; the ingest pipeline will populate `team_live_props` →
+  `team_prop_scores` → ferrari team endpoints on the next 15-min
+  tick.
+
+
 - **Rejected custom surfaces removed.** `TeamHistoricalSurfaces.jsx`
   and `useTeamMasterStats.js` deleted (user rejected as
   over-engineered). `TeamDetailPage.jsx` rewritten as a thin
