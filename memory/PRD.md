@@ -23,6 +23,33 @@ controlling historical replay pipelines via the Emergent Admin API.
 - `candidate_thresholds`, `emergent_admin_jobs`
 
 
+### 2026-06-02 — Production-scorer replay-safety (fantasy_score + availability + blank-dates)
+- `services/scoring/canonical_stats.py`: registered fantasy_score
+  variants (`fantasy_score`, `fantasyScore`,
+  `player_fantasy_score`) → canonical `FANTASY` → family `pra`.
+  Zero `STAT_REGISTRY_MISS` log spam.
+- `services/scoring/adapters/nba_scoring.py`:
+  `_classify_availability` skips blank/missing log dates instead
+  of raising `ValueError: Invalid isoformat string: ''`.
+- `services/scoring/adapters/nba_scoring.py`:
+  `_maybe_apply_availability_guard` honors per-prop
+  `disable_availability_guard=True` flag (early-return) so replay
+  doesn't double-count the target game's own restriction signal.
+- `services/replay/contract.py`: NEW `REPLAY_PROP_FLAGS` immutable
+  dict — replay engines stamp these on every prop. NFL/NCAAF
+  future engines reuse the same flag set.
+- `services/replay/nba_replay_engine.py`: stamps
+  `**REPLAY_PROP_FLAGS` on every canonical prop; projects
+  `availability_guard_reason` on Layer-3 output rows.
+- `scripts/sgo/reshape_sgo_to_replay_odds.py`: NBA + NFL maps emit
+  Odds-API-canonical `player_fantasy_score` market key.
+- 3 NEW regression test files:
+  - `test_nba_replay_fantasy_score.py` (5 tests)
+  - `test_nba_replay_blank_availability.py` (4 tests)
+  - `test_nba_replay_recompute.py` (end-to-end E2E with the
+    PRODUCTION scorer; 6/6 rows reach `model_probability`,
+    `projection_mu`, `stat_family='pra'` for fantasy_score)
+
 ### 2026-06-02 — Snapshot fallback policy (replay never silently scores zero)
 - `services/replay/snapshot_resolver.py` (NEW): cross-sport
   three-tier fallback (`exact` → `latest_for_date` →

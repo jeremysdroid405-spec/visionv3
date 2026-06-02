@@ -56,6 +56,12 @@ _NBA_STAT_FIELD_MAP = {
     "pts_ast":   ["pts", "ast"],
     "reb_ast":   ["reb", "ast"],
     "turnovers": ["turnover"],
+    # 2026-06-02 — fantasy_score resolves to the PRA family in
+    # `services/scoring/canonical_stats.py`, so the actuals lookup
+    # falls back to PRA. This map only sees the canonical family
+    # name post-`stat_family("nba", ...)`, so an explicit "fantasy"
+    # key is unnecessary; the resolver routes it to "pra" before
+    # `fetch_actuals` keys into this dict.
 }
 
 

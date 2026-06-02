@@ -625,8 +625,17 @@ class NBAScoringAdapter(ScoringAdapter):
         try:
             n_check = min(cls._AVAIL_GAP_LOOKBACK, len(logs) - 1)
             for i in range(n_check):
-                d1 = datetime.fromisoformat((logs[i].get("date") or "")[:10])
-                d2 = datetime.fromisoformat((logs[i + 1].get("date") or "")[:10])
+                # 2026-06-02 — Skip log pairs with blank/missing dates
+                # instead of crashing `fromisoformat("")`. Historical
+                # `bdl_game_logs` rows occasionally have empty `date`
+                # fields (legacy ingest gaps); replay must NEVER throw
+                # on this — same contract for live production.
+                d1_str = (logs[i].get("date") or "")[:10]
+                d2_str = (logs[i + 1].get("date") or "")[:10]
+                if not d1_str or not d2_str:
+                    continue
+                d1 = datetime.fromisoformat(d1_str)
+                d2 = datetime.fromisoformat(d2_str)
                 gap_days = (d1 - d2).days
                 if gap_days >= cls._AVAIL_RETURN_GAP_DAYS:
                     return_game_number = i + 1
@@ -776,6 +785,20 @@ class NBAScoringAdapter(ScoringAdapter):
         OUT / GTD data the heuristic cannot derive from logs alone.
         """
         if mu_in is None or stat_type not in self._AVAIL_GUARD_TARGET_STATS:
+            return mu_in
+        # 2026-06-02 — Cross-sport replay contract:
+        # `prop["disable_availability_guard"] = True` is the per-prop
+        # opt-out signal that replay engines stamp during reshape.
+        # Replay does not have access to a live injury-status feed
+        # (the heuristic depends on minute trends in the most recent
+        # log days, which are themselves the data we're scoring
+        # AGAINST). Live production keeps the guard ON; replay
+        # turns it OFF deterministically. Same contract for any
+        # future sport with an availability heuristic — NFL inactive
+        # designations, NCAAF practice reports, etc.
+        if prop.get("disable_availability_guard"):
+            prop["availability_guard_applied"] = False
+            prop["availability_guard_reason"] = "disabled_by_replay"
             return mu_in
         if bdl_player_id is None:
             return mu_in

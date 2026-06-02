@@ -137,7 +137,8 @@ _STAT_ID_TO_MARKET_NBA: Dict[str, str] = {
     "blocks":                            "player_blocks",
     "blocks+steals":                     "player_blocks_steals",
     "turnovers":                         "player_turnovers",
-    "fantasyScore":                      "fantasy_score",
+    "fantasyScore":                      "player_fantasy_score",
+    "fantasy_score":                     "player_fantasy_score",
 }
 
 # 2026-06-02 — NFL stat_id mappings. Source: build_pp_research_core
@@ -216,7 +217,8 @@ _STAT_ID_TO_MARKET_NFL: Dict[str, str] = {
     "xpm":                    "player_extra_points",
     "extraPointsMade":        "player_extra_points",
     # ── Composites & scoring (kept as-is; optimizer decides) ──
-    "fantasyScore":           "fantasy_score",
+    "fantasyScore":           "player_fantasy_score",
+    "fantasy_score":          "player_fantasy_score",
 }
 
 # League-aware lookup. The runtime resolver consults the right map

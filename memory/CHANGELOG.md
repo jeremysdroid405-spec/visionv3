@@ -1,6 +1,127 @@
 # Changelog
 
 
+## 2026-06-02 — Production-scorer replay-safety: fantasy_score + blank availability + disable_availability_guard
+
+### What the user reported
+Replay was reaching the production NBA scorer correctly, but
+crashing on three classes of live-only assumptions:
+
+```
+[STAT_REGISTRY_MISS] sport='nba' stat_type='fantasy_score' → _default
+[ERR:_classify_availability] ValueError: Invalid isoformat string: ''
+vegas_killer_model.predict → hub.find_one(...)   ← hung under load
+```
+
+### Four-part fix (cross-sport replay contract, NOT NBA-special)
+
+#### 1. fantasy_score canonical registration
+- `services/scoring/canonical_stats.py`:
+  - `_NBA_MARKET_TO_STAT` now maps `fantasy_score` / `fantasyScore`
+    / `player_fantasy_score` → canonical token `"FANTASY"`.
+  - `_NBA_STAT_TO_FAMILY` maps `fantasy` / `fantasy_score` /
+    `fantasyscore` AND long-form `player_fantasy_score` /
+    `player_fantasy_score_alternate` → family `"pra"` (closest
+    combo predictor — `PTS + REB + AST`).
+  - `_NBA_STAT_TO_MODEL` routes `fantasy` → `pra` model artefact.
+  - `_NBA_STAT_TO_DISPLAY` adds `Fantasy` label.
+- `scripts/sgo/reshape_sgo_to_replay_odds.py`:
+  - `_STAT_ID_TO_MARKET_NBA`: `fantasyScore` / `fantasy_score` →
+    `player_fantasy_score` (Odds-API-canonical market key).
+  - `_STAT_ID_TO_MARKET_NFL`: same for symmetry.
+- `services/replay/providers/nba_adapter.py._NBA_STAT_FIELD_MAP`:
+  fantasy routes to `pra` via the resolver before key lookup; no
+  explicit `"fantasy"` entry needed.
+
+Result: every fantasy_score variant resolves deterministically.
+Zero STAT_REGISTRY_MISS warnings (verified by log capture in
+`test_nba_replay_fantasy_score.py`).
+
+#### 2. `_classify_availability` blank-date safety
+- `services/scoring/adapters/nba_scoring.py:_classify_availability`:
+  skip log pairs with blank/missing `date` fields instead of
+  crashing `datetime.fromisoformat("")`. Production behaviour
+  unchanged for valid dates.
+- Verified by `test_nba_replay_blank_availability.py` against four
+  pathological log shapes (blank, missing, all-blank, mixed with
+  before_date cutoff). Replay never raises.
+
+#### 3. `disable_availability_guard` — per-prop replay flag
+- `services/replay/contract.py:REPLAY_PROP_FLAGS` (NEW): immutable
+  `MappingProxyType({"disable_availability_guard": True, …})`.
+  Replay engines stamp these flags on every prop dict they pass
+  into `recompute_sport(props=...)`. Future replay-only flags
+  (e.g. `disable_live_only_features`) plug into this map and
+  auto-propagate to every replay engine without further edits.
+- `services/scoring/adapters/nba_scoring.py
+  ._maybe_apply_availability_guard`: early-returns `mu_in`
+  unchanged when `prop["disable_availability_guard"]` is truthy,
+  stamping `availability_guard_applied=False` /
+  `availability_guard_reason="disabled_by_replay"` as audit
+  signal.
+- `services/replay/nba_replay_engine.py` reshape stamps
+  `**dict(REPLAY_PROP_FLAGS)` on every canonical prop.
+- Cross-sport contract: NFL / NCAAF / future sports honor the same
+  flag in their own availability-guard hooks.
+
+Rationale: the availability heuristic operates on the same
+recent-minutes window we're trying to SCORE against. Leaving it
+on at historical replay time means the guard double-counts the
+target game's restriction signal. Live production keeps it ON;
+replay turns it OFF deterministically.
+
+#### 4. Layer-3 output projection
+- `nba_replay_engine._project_score_doc_to_layer3_row` now
+  projects `availability_guard_reason` (in addition to
+  `availability_guard_applied`) so downstream auditors can verify
+  the bypass per-row.
+
+### Regression tests (3 new files, all passing)
+- `tests/test_nba_replay_fantasy_score.py`: 5 tests verifying
+  fantasy variants resolve to FANTASY/pra with zero
+  STAT_REGISTRY_MISS, reshape emits player_fantasy_score, replay
+  adapter normalizes correctly.
+- `tests/test_nba_replay_blank_availability.py`: 4 tests verifying
+  `_classify_availability` survives blank/missing/all-blank/cutoff
+  log shapes.
+- `tests/test_nba_replay_recompute.py`: end-to-end recompute
+  against the live production scorer with synthetic data
+  exercising fantasy_score + blank-date logs + availability
+  bypass. 6/6 Layer-3 rows persist; 2 fantasy_score rows reach
+  `model_probability=0.3507` / `projection_mu=32.95` /
+  `stat_family='pra'`; every row carries
+  `availability_guard_applied=False` /
+  `availability_guard_reason='disabled_by_replay'`.
+
+All 7 replay test suites pass:
+`test_replay_infrastructure_contract`, `test_nba_replay_engine_smoke`,
+`test_nba_replay_bypass_eligibility`, `test_nba_replay_snapshot_fallback`,
+`test_nba_replay_fantasy_score`, `test_nba_replay_blank_availability`,
+`test_nba_replay_recompute`.
+
+### Cross-sport reusability
+None of the fixes are NBA-special. The same patterns plug into
+NFL / NCAAF / WNBA / NHL when their scoring adapters land:
+- Stat registration via `register_sport` / `_NBA_…` analog tables
+  (one-time per sport).
+- Blank-date / missing-field guards in availability hooks — same
+  defensive pattern.
+- `prop["disable_availability_guard"]` flag — replay engines
+  stamp it; sport adapters honor it.
+- `REPLAY_PROP_FLAGS` is the single source of truth — new flags
+  added there auto-propagate to every replay engine.
+
+### NOT addressed in this fork
+- `vegas_killer_model.predict → hub.find_one(...)` per-prop sync
+  DB calls. This is the performance ceiling (~30k seconds for the
+  full 588k-prop NBA window). The fix requires either (a) caching
+  the master_hub lookup across props in one recompute run, or
+  (b) refactoring `vk.predict` to consume pre-loaded player rows.
+  Both are larger changes — flagged as P0 backlog. Per-prop
+  scoring still WORKS; just slow.
+
+
+
 ## 2026-06-02 — Snapshot fallback policy (replay never silently scores zero)
 
 ### What the user reported

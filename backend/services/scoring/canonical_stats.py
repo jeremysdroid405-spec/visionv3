@@ -460,6 +460,17 @@ _NBA_MARKET_TO_STAT: Dict[str, str] = {
     # Optional combo (BLK+STL); registered for future activation
     "player_blocks_steals":                         "BLST",
     "player_blocks_steals_alternate":               "BLST",
+    # 2026-06-02 — `fantasy_score` is a PrizePicks-only composite
+    # (PTS + 1.2·REB + 1.5·AST + 3·STL + 3·BLK − TO, roughly). No
+    # dedicated model exists, so we map it to the PRA model family —
+    # the closest available combo predictor (PTS+REB+AST). Production
+    # scorer treats it as a synthetic combo: μ falls back to the PRA
+    # μ, σ follows the same family path. Replay must resolve this
+    # deterministically (no `_default` fallback / no STAT_REGISTRY_MISS
+    # spam) — same contract for live serving.
+    "fantasy_score":                                "FANTASY",
+    "player_fantasy_score":                         "FANTASY",
+    "fantasyScore":                                 "FANTASY",
 }
 
 _NBA_STAT_TO_FAMILY: Dict[str, str] = {
@@ -476,6 +487,12 @@ _NBA_STAT_TO_FAMILY: Dict[str, str] = {
     "pa":    "pts_ast",
     "ra":    "reb_ast",
     "blst":  "blocks_steals",
+    # 2026-06-02 — fantasy_score resolves to the `pra` family so the
+    # gate-threshold and scoring paths use the closest available
+    # combo predictor. See `_NBA_MARKET_TO_STAT["fantasy_score"]`.
+    "fantasy":         "pra",
+    "fantasy_score":   "pra",
+    "fantasyscore":    "pra",
     # Legacy long-form aliases — kept for any code path that still emits
     # the Odds API market key as `stat_type`. Removing these requires
     # confirming zero call sites still pass the long form.
@@ -503,16 +520,24 @@ _NBA_STAT_TO_FAMILY: Dict[str, str] = {
     "player_blocks_steals_alternate":               "blocks_steals",
     "player_turnovers":                             "turnovers",
     "player_turnovers_alternate":                   "turnovers",
+    # 2026-06-02 — long-form aliases for fantasy_score so the
+    # registry resolves the Odds-API canonical market key directly
+    # (no STAT_REGISTRY_MISS during `stat_family` resolution).
+    "player_fantasy_score":                         "pra",
+    "player_fantasy_score_alternate":               "pra",
 }
 
 _NBA_STAT_TO_MODEL: Dict[str, str] = {
     "pts": "pts", "reb": "reb", "ast": "ast", "3pm": "3pm", "pra": "pra",
+    # 2026-06-02 — fantasy_score routes through the PRA model artefact.
+    "fantasy": "pra",
 }
 
 _NBA_STAT_TO_DISPLAY: Dict[str, str] = {
     "pts": "PTS", "reb": "REB", "ast": "AST", "pra": "PRA", "3pm": "3PM",
     "stl": "STL", "blk": "BLK", "to": "TO",
     "pr":  "P+R", "pa":  "P+A", "ra":  "R+A", "blst": "BLK+STL",
+    "fantasy": "Fantasy",
 }
 
 # ---- MLB ----

@@ -43,6 +43,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import psutil
 from pymongo import ASCENDING, UpdateOne
 
+from services.replay.contract import REPLAY_PROP_FLAGS
 from services.replay.historical_alt_odds_ingest import normalize_player_name
 from services.scoring.canonical_stats import canonical_stat_type, stat_family as canonical_stat_family
 
@@ -229,6 +230,13 @@ def _reshape_to_live_props(
                 "_snapshot_iso": snapshot_iso,
                 "_game_date": r.get("game_date"),
                 "sport": "nba",
+                # ── REPLAY CONTRACT (cross-sport) ──────────────────
+                # Stamp every per-prop replay flag from the central
+                # contract module. Today this is
+                # `disable_availability_guard=True`; new flags added
+                # to `REPLAY_PROP_FLAGS` auto-propagate to every
+                # replay engine without further edits.
+                **dict(REPLAY_PROP_FLAGS),
             }
 
         prop = by_key[k]
@@ -380,6 +388,7 @@ def _project_score_doc_to_layer3_row(
         "mu_recency_blended":       score_doc.get("mu_recency_blended"),
         "availability_status":      score_doc.get("availability_status"),
         "availability_guard_applied": score_doc.get("availability_guard_applied"),
+        "availability_guard_reason": score_doc.get("availability_guard_reason"),
         "rate_model_applied":       score_doc.get("rate_model_applied"),
         "expected_minutes":         score_doc.get("expected_minutes"),
         # Provenance

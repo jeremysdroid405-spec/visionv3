@@ -112,6 +112,28 @@ REPLAY_RECOMPUTE_KWARGS = MappingProxyType({
 })
 
 
+# ── Per-prop replay flags (stamped during reshape). ──────────────
+# Replay engines that consume historical odds rows MUST stamp these
+# on every prop dict they pass into `recompute_sport(props=...)`.
+# Same contract MLB / NBA / NFL / NCAAF / future sports.
+#
+# `disable_availability_guard = True`:
+#   Live production runs an availability heuristic on each player's
+#   recent minutes trend to detect OUT / DNP / load-managed states.
+#   In replay, the heuristic operates on the SAME log window we're
+#   scoring against — leaving it on means the guard double-counts
+#   the target game's own restriction signal. Replay turns it OFF
+#   deterministically. Per-sport scoring adapters honor the flag
+#   via an early-return in their availability-guard hook.
+#
+# `disable_live_only_features = True` (reserved):
+#   For future use when individual live-only feature paths need
+#   per-prop opt-out without a full bypass kwarg.
+REPLAY_PROP_FLAGS = MappingProxyType({
+    "disable_availability_guard": True,
+})
+
+
 # ── Sport adapter registration for compliance audit. ─────────────
 # When a new replay engine for a sport is added, register the sport
 # here. Lint test in `tests/test_replay_infrastructure_contract.py`
@@ -133,5 +155,6 @@ COMPLIANT_REPLAY_ENGINES: dict[str, str] = {
 
 __all__ = [
     "REPLAY_RECOMPUTE_KWARGS",
+    "REPLAY_PROP_FLAGS",
     "COMPLIANT_REPLAY_ENGINES",
 ]
