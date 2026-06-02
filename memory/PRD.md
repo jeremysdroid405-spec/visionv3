@@ -23,6 +23,36 @@ controlling historical replay pipelines via the Emergent Admin API.
 - `candidate_thresholds`, `emergent_admin_jobs`
 
 
+### 2026-06-02 — NBA Layer-3 replay wrap (production scorer reuse, no new model)
+- `services/replay/nba_replay_engine.py` (NEW): thin wrapper around the
+  PRODUCTION NBA scorer. Reads `sgo_replay_alt_odds_raw`, reshapes per-book
+  rows into live-prop shape, calls
+  `recompute_sport(db, "nba", dry_run=True)` to score via the SAME
+  `NBAScoringAdapter` / `compute_scoring_stack` / universal gate engine
+  path live serving uses, fans the returned score docs out per
+  `(book, side)` into `nba_replay_model_outputs`. `nba_prop_scores` is
+  never mutated.
+- `services/replay/providers/nba_adapter.py`: fleshed out
+  (`normalize_stat_family`, `fetch_actuals` from
+  `nba_master_hub_2026.bdl_game_logs`, sport-agnostic `grade_outcome`).
+  `predict` raises with the canonical "use `replay_date`" message;
+  `load_model` returns `NBAScoringAdapter()` for adapter-contract
+  parity.
+- `services/replay/production_replay_runner.py`: NBA wired across
+  `_run_layer3`, `_layer3_outputs_collection_name`,
+  `_resolve_scoring_versions`, `_resolve_model_versions`,
+  `gate_path="universal"` per-row dispatch (uses production-stamped
+  fields directly — no second gate-engine pass), per-row odds-bucket
+  routing (uses production-decided tier), and grading (sport-aware
+  actuals lookup).
+- `tests/test_nba_replay_engine_smoke.py` (NEW): end-to-end smoke test
+  against real production scorer (Phase 1 = engine alone; Phase 2 =
+  full `run_production_replay`). PASSES — 16 universal SSOT fields
+  populated on output docs (`projection_mu`, `sigma`,
+  `model_probability`, `edge`, `hit_rate_l5/10/20`, `cv`, `tp`,
+  `tp_source`, `edge_pct`, `tier`, `gate_pass`, `vision_score`,
+  `p_model`, `p_true_active`).
+
 ### 2026-06-01 — Team Props XGB scoring wired (sprint complete)
 - `scripts.sgo.reshape_team_props_to_replay` batched + executed → 1,333,464
   scored team rows in `sgo_propvision_full_pipeline_replay`

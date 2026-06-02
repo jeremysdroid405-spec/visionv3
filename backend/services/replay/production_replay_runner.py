@@ -82,6 +82,12 @@ from services.replay.mlb_replay_engine import (
     SOURCE_VERSION as MLB_LAYER3_SRC_V,
 )
 from services.replay.mlb_replay_engine import _american_to_implied
+from services.replay.nba_replay_engine import (
+    replay_date as nba_layer3_replay_date,
+    OUT_COLL as NBA_LAYER3_OUT_COLL,
+    SCORING_CONFIG_VERSION as NBA_SCORING_CFG_V,
+    SOURCE_VERSION as NBA_LAYER3_SRC_V,
+)
 from services.replay.mlb_replay_gate_eval import (
     evaluate_gates as mlb_layer4_evaluate_gates,
     GATE_CONFIG_VERSION as MLB_GATE_CFG_V,
@@ -150,6 +156,19 @@ def _resolve_scoring_versions(adapter: SportReplayAdapter) -> Dict[str, str]:
             "gate_config_version": MLB_GATE_CFG_V,
             "layer3_source_version": MLB_LAYER3_SRC_V,
         }
+    if adapter.SPORT == "nba":
+        # NBA reuses the universal gate engine (`compute_scoring_stack`
+        # → `tier_evaluator.evaluate_tier_with_overrides`) live serving
+        # uses, so `gate_config_version` is the SAME pin MLB carries
+        # when `gate_path="universal"`. `feature_cache_version` is
+        # absent (NBA reads master_hub directly), recorded as
+        # "nba_no_feature_cache".
+        return {
+            "scoring_config_version": NBA_SCORING_CFG_V,
+            "feature_cache_version": "nba_no_feature_cache",
+            "gate_config_version": MLB_GATE_CFG_V,
+            "layer3_source_version": NBA_LAYER3_SRC_V,
+        }
     return {
         "scoring_config_version": f"{adapter.SPORT}_unimplemented",
         "feature_cache_version": f"{adapter.SPORT}_unimplemented",
@@ -162,6 +181,14 @@ def _resolve_model_versions(adapter: SportReplayAdapter) -> Dict[str, str]:
     """Map stat_family → model module SHA. MLB uses one shared model."""
     if adapter.SPORT == "mlb":
         return {"mlb_high_friction_model": adapter.adapter_version()}
+    if adapter.SPORT == "nba":
+        # NBA scoring pulls μ from legacy VK + VK2 artefacts. The
+        # adapter's own SHA covers the integration code path; the
+        # per-artefact SHAs are loaded lazily inside
+        # `NBAScoringAdapter` so we don't enumerate them here. Bumped
+        # implicitly via `production_pipeline_version` whenever the
+        # underlying model file or scorer changes.
+        return {"nba_scoring_adapter": adapter.adapter_version()}
     return {}
 
 
@@ -259,6 +286,15 @@ async def _run_layer3(adapter: SportReplayAdapter, db, *,
             force=force,
             odds_collection=oc,
         )
+    if adapter.SPORT == "nba":
+        oc = odds_collection or adapter.config.odds_collection
+        return await nba_layer3_replay_date(
+            db, game_date,
+            snapshot_iso=snapshot_iso,
+            mem_limit_mb=mem_limit_mb,
+            force=force,
+            odds_collection=oc,
+        )
     raise NotImplementedError(
         f"Layer-3 not yet implemented for sport={adapter.SPORT!r}"
     )
@@ -267,6 +303,8 @@ async def _run_layer3(adapter: SportReplayAdapter, db, *,
 def _layer3_outputs_collection_name(adapter: SportReplayAdapter) -> str:
     if adapter.SPORT == "mlb":
         return MLB_LAYER3_OUT_COLL
+    if adapter.SPORT == "nba":
+        return NBA_LAYER3_OUT_COLL
     raise NotImplementedError(adapter.SPORT)
 
 
@@ -562,28 +600,50 @@ async def run_production_replay(
     # SAME ref_odds live serving sees. None when `gate_path=="legacy_wz"`.
     ref_odds_map: Dict[Any, Any] = {}
     if gate_path == "universal":
-        if adapter.SPORT != "mlb":
+        if adapter.SPORT == "mlb":
+            book_inventory = await load_book_inventory(
+                db, sport=adapter.SPORT,
+                game_date=game_date, snapshot_iso=snapshot_iso,
+            )
+            player_game_logs = await load_player_game_logs_as_of(
+                db, game_date=game_date,
+            )
+            ref_odds_map = await load_reference_odds_for_snapshot(
+                db, sport=adapter.SPORT,
+                game_date=game_date, snapshot_iso=snapshot_iso,
+            )
+            logger.info(
+                "[prod_replay_runner][phase4] hydrators loaded: "
+                "book_inventory=%d keys, player_game_logs=%d players, "
+                "ref_odds_map=%d (prop,side) keys",
+                len(book_inventory), len(player_game_logs), len(ref_odds_map),
+            )
+        elif adapter.SPORT == "nba":
+            # NBA Layer-3 rows are produced by the PRODUCTION scoring
+            # stack (`nba_replay_engine.replay_date` →
+            # `recompute_sport(db, "nba", dry_run=True)`), so the
+            # universal gate decisions (`tier`, `gate_pass`,
+            # `vision_score`, `tp`, `tp_source`, `edge_pct`, `cv`,
+            # `hit_rate_l5/10/20`) are ALREADY stamped on each row.
+            # No second metrics builder / second gate-engine pass —
+            # consume the pre-computed decisions verbatim. This is
+            # the only valid contract for NBA replay: same production
+            # scorer, same gates, historical inputs.
+            logger.info(
+                "[prod_replay_runner][nba] universal gate path uses "
+                "PRODUCTION-stamped row fields (tier/gate_pass/"
+                "vision_score/tp/edge_pct/cv/hit_rate_*). No second "
+                "gate-engine pass."
+            )
+        else:
             raise NotImplementedError(
                 f"gate_path=universal not yet implemented for "
                 f"sport={adapter.SPORT!r}"
             )
-        book_inventory = await load_book_inventory(
-            db, sport=adapter.SPORT,
-            game_date=game_date, snapshot_iso=snapshot_iso,
-        )
-        player_game_logs = await load_player_game_logs_as_of(
-            db, game_date=game_date,
-        )
-        ref_odds_map = await load_reference_odds_for_snapshot(
-            db, sport=adapter.SPORT,
-            game_date=game_date, snapshot_iso=snapshot_iso,
-        )
-        logger.info(
-            "[prod_replay_runner][phase4] hydrators loaded: "
-            "book_inventory=%d keys, player_game_logs=%d players, "
-            "ref_odds_map=%d (prop,side) keys",
-            len(book_inventory), len(player_game_logs), len(ref_odds_map),
-        )
+    if gate_path == "universal" and adapter.SPORT == "mlb":
+        # Backwards-compat: keep the explicit log line that existed
+        # before the NBA branch was added.
+        pass
 
     def _resolve_universal_gate_cfg_version(stat_family: str, side: str) -> str:
         cache_key = f"{adapter.SPORT}|{tier}|{stat_family}|{side}"
@@ -720,7 +780,23 @@ async def run_production_replay(
             # 2026-04-29 hard contract: "each pick evaluated ONLY
             # within its routed odds tier; failing routed tier → REJECTED").
             cp_for_routing = row.get("__canonical_prop__")
-            if cp_for_routing is not None:
+            if adapter.SPORT == "nba":
+                # NBA: the production scorer's `tier` decision already
+                # combines odds-bucket routing AND gate pass status
+                # (live serving uses the same universal gate engine that
+                # ran inside `recompute_sport`). Use that decision as
+                # the routed tier so the runner's per-tier filter
+                # (`routed_tier == tier`) reproduces the production
+                # routing exactly. Use the per-book row.odds as the
+                # ref_odds for audit visibility.
+                routed_tier_for_row = (row.get("tier") or "").lower() or None
+                if row.get("odds") is not None:
+                    try:
+                        ref_odds_for_row = int(row["odds"])
+                    except (TypeError, ValueError):
+                        ref_odds_for_row = None
+                ref_book_for_row = row.get("book")
+            elif cp_for_routing is not None:
                 # Canonical path: route on the canonical best price for
                 # this side. ref_book is the best-book the canonical
                 # engine picked; ref_odds is its American price.
@@ -730,6 +806,7 @@ async def run_production_replay(
                 else:
                     ref_odds_for_row = cp_for_routing.best_under_price
                     ref_book_for_row = cp_for_routing.best_under_book
+                routed_tier_for_row = get_odds_bucket(ref_odds_for_row)
             else:
                 ref_key = (
                     str(row.get("event_id")),
@@ -741,7 +818,7 @@ async def run_production_replay(
                 ref_pair = ref_odds_map.get(ref_key)
                 if ref_pair:
                     ref_odds_for_row, ref_book_for_row = ref_pair
-            routed_tier_for_row = get_odds_bucket(ref_odds_for_row)
+                routed_tier_for_row = get_odds_bucket(ref_odds_for_row)
             # 2026-05-22 RESEARCH MODE: in research_mode we never reject
             # rows by odds-bucket routing. The bucket becomes a LABEL
             # ({safe_haven,front_lines,war_zone,unknown_odds}_candidate)
@@ -754,6 +831,87 @@ async def run_production_replay(
                 gate_pass = False
                 failed = [TIER_ODDS_BUCKET_FAIL]
                 # Don't build metrics / call gate engine — short-circuit.
+            elif adapter.SPORT == "nba":
+                # ── NBA universal gate path ───────────────────────────
+                # Layer-3 row carries the PRODUCTION-decided tier (from
+                # `compute_scoring_stack` invoked inside the NBA replay
+                # engine's `recompute_sport` call). The row qualifies
+                # for THIS tier iff `row.tier == tier`. No second gate
+                # eval is run — that would double-evaluate the same
+                # production decision. Per-test override knobs operate
+                # against the row's already-stamped tp / edge_pct /
+                # hit_rate_l20 / cv fields.
+                prod_tier = (row.get("tier") or "").lower()
+                prod_gate_pass = bool(row.get("gate_pass"))
+                gate_pass = (prod_tier == tier) and prod_gate_pass
+                failed = []
+                if not gate_pass:
+                    # Stamp a single canonical failure reason so the
+                    # output's `failed_gates` field carries semantic
+                    # signal (matches MLB's `failed_gates` list shape).
+                    if prod_tier == "rejected" or prod_tier == "":
+                        failed = ["production_tier_rejected"]
+                    elif prod_tier != tier:
+                        failed = [f"production_tier_is_{prod_tier}"]
+                    else:
+                        failed = ["production_gate_pass_false"]
+                # SH tp_gate min override — operate on row.tp directly.
+                # Row.tp is on the 0..100 pp scale (per
+                # `_project_score_doc_to_layer3_row`). Drop the
+                # `production_tier_*` failure tag when override floor
+                # is met.
+                row_tp = row.get("tp")
+                if (sh_tp_gate_min_override is not None
+                        and tier in ("safe_haven", "front_lines", "war_zone")
+                        and failed
+                        and isinstance(row_tp, (int, float))
+                        and float(row_tp) >= float(sh_tp_gate_min_override)):
+                    failed = []
+                    gate_pass = True
+                    tp_gate_override_applied_row = True
+                    tp_gate_override_count += 1
+                row_edge_pct = row.get("edge_pct")
+                if (sh_edge_gate_min_override is not None
+                        and tier in ("safe_haven", "front_lines", "war_zone")
+                        and failed
+                        and isinstance(row_edge_pct, (int, float))
+                        and float(row_edge_pct) >= float(sh_edge_gate_min_override)):
+                    failed = []
+                    gate_pass = True
+                    edge_gate_override_applied_row = True
+                    edge_gate_override_count += 1
+                row_hr = row.get("hit_rate_l20")
+                if (sh_hit_rate_gate_min_override is not None
+                        and tier in ("safe_haven", "front_lines", "war_zone")
+                        and failed
+                        and isinstance(row_hr, (int, float))
+                        and float(row_hr) >= float(sh_hit_rate_gate_min_override)):
+                    failed = []
+                    gate_pass = True
+                    hit_rate_gate_override_applied_row = True
+                    hit_rate_gate_override_count += 1
+                row_cv = row.get("cv")
+                if (sh_cv_gate_max_override is not None
+                        and tier in ("safe_haven", "front_lines", "war_zone")
+                        and failed
+                        and isinstance(row_cv, (int, float))
+                        and float(row_cv) <= float(sh_cv_gate_max_override)):
+                    failed = []
+                    gate_pass = True
+                    cv_gate_override_applied_row = True
+                    cv_gate_override_count += 1
+                # All-gates accuracy-test bypass.
+                if disable_all_gates_for_accuracy_test:
+                    if failed:
+                        for g in failed:
+                            if g not in accuracy_bypass_gates:
+                                accuracy_bypass_gates.append(g)
+                        failed = []
+                    gate_pass = True
+                # Per-row gate_config_version: NBA universal carries one
+                # cfg pin for the whole run (matches MLB single-tier
+                # behaviour when only one (family,side) is evaluated).
+                row_gate_cfg_version = versions["gate_config_version"]
             else:
                 metrics = build_metrics_from_replay_row(
                     row, tier=tier, sport=adapter.SPORT,
@@ -990,6 +1148,35 @@ async def run_production_replay(
                 bool(metrics.is_alt) if metrics.is_alt is not None
                 else bool(row.get("is_alternate"))
             )
+        elif adapter.SPORT == "nba" and gate_path == "universal":
+            # NBA universal path: inherit the SSOT scoring fields the
+            # PRODUCTION scorer already stamped on the Layer-3 row. No
+            # metrics object exists (no second eval pass).
+            out_doc["tp"] = row.get("tp")
+            out_doc["tp_source"] = row.get("tp_source")
+            out_doc["edge_pct"] = row.get("edge_pct")
+            out_doc["is_alternate_market"] = bool(row.get("is_alternate"))
+            # SSOT mirror fields read by the downstream mirror in
+            # `scripts.sgo.historical_full_pipeline_replay._mirror_to_legacy`.
+            # These come straight from the production scorer
+            # (`recompute_sport` → `compute_scoring_stack`); the runner
+            # passes them through verbatim so the legacy collection
+            # contains the same fields live serving uses.
+            out_doc["vision_score"] = row.get("vision_score")
+            out_doc["vision_score_raw"] = row.get("vision_score_raw")
+            out_doc["p_model"] = row.get("model_probability")
+            out_doc["p_true_active"] = row.get("p_true_active")
+            out_doc["p_true_method"] = row.get("p_true_method")
+            # Override the runner-tier stamp (= caller's `tier` arg) with
+            # the production-decided tier from the Layer-3 row. The
+            # `gate_pass` reflects whether `row.tier == tier`, but the
+            # `tier` field stays the production decision so audit tools
+            # can see what tier the prop ACTUALLY landed in.
+            prod_tier = row.get("tier")
+            if prod_tier:
+                out_doc["tier"] = prod_tier
+            # devig_method passes through from the score doc.
+            out_doc["devig_method"] = row.get("devig_method")
         else:
             out_doc["tp"] = None
             out_doc["tp_source"] = None
@@ -1093,7 +1280,7 @@ async def run_production_replay(
         # so audits and downstream consumers always read SSOT names.
         from services.scoring.canonical_stats import canonical_family
         out_doc["stat_family"] = canonical_family(
-            "mlb", out_doc.get("stat_family"))
+            adapter.SPORT, out_doc.get("stat_family"))
         if cp_attached_doc is not None:
             # ── Phase 6 Phase 4 audit fields ──────────────────────
             out_doc["devig_method"] = cp_attached_doc.devig_method
@@ -1127,17 +1314,26 @@ async def run_production_replay(
         )
         if should_grade:
             pdoc = actuals.get(row["player_name_normalized"]) or {}
-            # 2026-05-18 — canonicalise the family AND fall back through
-            # both family-key and statcast-field-key actuals shapes so
-            # batter_strikeouts / walks_allowed grade correctly.
             from services.scoring.canonical_stats import canonical_family
-            from services.replay.mlb_feature_cache import _STAT_FIELD_MAP
-            stat_fam = canonical_family("mlb", row["stat_family"])
-            if stat_fam in pdoc:
-                actual_val = pdoc[stat_fam]
+            if adapter.SPORT == "mlb":
+                # 2026-05-18 — canonicalise the family AND fall back through
+                # both family-key and statcast-field-key actuals shapes so
+                # batter_strikeouts / walks_allowed grade correctly.
+                from services.replay.mlb_feature_cache import _STAT_FIELD_MAP
+                stat_fam = canonical_family("mlb", row["stat_family"])
+                if stat_fam in pdoc:
+                    actual_val = pdoc[stat_fam]
+                else:
+                    _fld = _STAT_FIELD_MAP.get(stat_fam, stat_fam)
+                    actual_val = pdoc.get(_fld)
             else:
-                _fld = _STAT_FIELD_MAP.get(stat_fam, stat_fam)
-                actual_val = pdoc.get(_fld)
+                # NBA / other sports: the adapter's `fetch_actuals` is
+                # keyed by the canonical family name directly. No
+                # statcast-field fallback needed.
+                stat_fam = canonical_family(adapter.SPORT, row["stat_family"])
+                actual_val = pdoc.get(stat_fam)
+                if actual_val is None:
+                    actual_val = pdoc.get(row["stat_family"])
             grade = adapter.grade_outcome(
                 actual=actual_val,
                 line=float(row["line"]),

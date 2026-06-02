@@ -1,6 +1,102 @@
 # Changelog
 
 
+## 2026-06-02 — NBA Layer-3 replay wrap (thin reuse of production scorer)
+
+### What the user asked for
+Reuse the EXACT production NBA scoring path
+(`NBAScoringAdapter` → `compute_scoring_stack` → universal gate
+engine) in historical replay. Do NOT build a separate NBA model. Do
+NOT mirror `nba_prop_scores` as fake backtest data. Historical
+inputs → live scorer → replay outputs.
+
+### Implementation (thin wrap, no duplicated logic)
+1. **NEW `services/replay/nba_replay_engine.py`** — Layer-3 wrapper:
+   - Reads `sgo_replay_alt_odds_raw` rows for one `(game_date,
+     snapshot_iso)`.
+   - Reshapes per-book flat rows into the live-prop dict
+     `NBAScoringAdapter.build_context()` already consumes (PP +
+     sportsbook layers, `commence_time` cutoff, `bdl_player_id` from
+     master hub).
+   - Calls `services.scoring.recompute.recompute_sport(db, "nba",
+     props=…, dry_run=True, write_mode="upsert")` — captures the
+     `score_docs` list directly without mutating `nba_prop_scores`.
+   - Fans out per (book, side) into `nba_replay_model_outputs`,
+     inheriting μ/σ/p_model/cv/HR/vision_score/tier/gate_pass from
+     the score doc and computing book-specific implied_probability +
+     edge from the row's odds.
+
+2. **`services/replay/providers/nba_adapter.py`** — concrete adapter:
+   - `normalize_stat_family` / `list_stat_families` via
+     `canonical_stats`.
+   - `fetch_actuals` aggregates `nba_master_hub_2026.bdl_game_logs`
+     by game_date.
+   - `grade_outcome` sport-agnostic OVER/UNDER/push logic.
+   - `load_model` returns `NBAScoringAdapter()` for adapter-contract
+     parity; `predict` raises with a clear "use replay_date" message.
+
+3. **`services/replay/production_replay_runner.py`** — wired NBA:
+   - `_run_layer3()` dispatches to `nba_replay_engine.replay_date()`.
+   - `_layer3_outputs_collection_name()` returns
+     `nba_replay_model_outputs` for NBA.
+   - `_resolve_scoring_versions` / `_resolve_model_versions` pin NBA
+     SHAs.
+   - `gate_path="universal"` now supports NBA: per-row dispatch reads
+     the PRODUCTION-decided `tier` / `gate_pass` / `vision_score` /
+     `tp` / `edge_pct` / `cv` / `hit_rate_*` directly from each
+     Layer-3 row (no second metrics builder / gate-engine pass —
+     would double-evaluate the same production decision).
+   - Per-row odds-bucket routing for NBA uses the production tier
+     (since `NBAScoringAdapter`'s `compute_scoring_stack` already
+     combines odds-bucket + gate-pass into one decision); routing
+     reproduces production-tier assignment exactly.
+   - Grading block sport-aware (NBA uses canonical-family-keyed
+     actuals from `fetch_actuals`; MLB-only `_STAT_FIELD_MAP` import
+     gated behind `sport == "mlb"`).
+
+### Verification
+- `/app/backend/tests/test_nba_replay_engine_smoke.py` — end-to-end
+  integration test against the real production scorer:
+  - Phase 1: `nba_replay_engine.replay_date()` alone — 6 odds rows
+    (PP/DK/FD × OVER/UNDER) → 2 canonical props → 2 production
+    score docs → 6 fanned-out Layer-3 rows. Verified SSOT fields:
+    `projection_mu=21.237`, `sigma=5.8`, `model_probability=0.6205`,
+    `edge=0.086`, `hit_rate_l5/10/20=80.0`, `cv=0.1319`,
+    **`tier=front_lines`**, `gate_pass=True`, `vision_score=100`,
+    `tp=52.9`, `tp_source="one_sided"`, `stat_family="pts"`.
+  - Phase 2: full `run_production_replay(sport="nba",
+    tier="front_lines", gate_path="universal")` — scanned 6 rows,
+    qualified 3 (the OVER side of the front_lines-routed prop
+    across DK/FD/PP), persisted to
+    `nba_propvision_full_pipeline_outputs` with all 16 universal
+    SSOT fields populated. 1 card displayed.
+- `nba_prop_scores` is NEVER mutated (replay engine calls
+  `recompute_sport` with `dry_run=True`).
+
+### Contract guarantees
+- **Same scoring logic** — `NBAScoringAdapter.build_context` invoked
+  via `recompute_sport`, unchanged from live serving.
+- **Same gate engine** — `compute_scoring_stack` →
+  `evaluate_tier_with_overrides` runs INSIDE `recompute_sport`.
+- **Same vision_score normalisation** — slate-wide percentile via
+  `_apply_vision_score_normalization` + post-vision tier re-eval.
+- **Different input** — historical `sgo_replay_alt_odds_raw` rows
+  (per-book flat) instead of live `nba_live_props` (canonical).
+- **Different output** — `nba_replay_model_outputs` /
+  `nba_propvision_full_pipeline_outputs` instead of
+  `nba_prop_scores`.
+
+### Leakage guard
+Each reshaped prop carries `commence_time = `
+`"{game_date}T22:00:00Z"`. `NBAScoringAdapter` extracts
+`before_date = commence_time[:10]` and uses it as the strict
+"do-not-peek" cutoff in `_compute_recency_baselines`,
+`_classify_availability`, `_compute_rate_components`, and
+`_compute_shadow_recency_E`. The target-game stat line is filtered
+out at every game-log read.
+
+
+
 ## 2026-06-01 — Odds API: third fix — scheduled_cron fanout eliminated
 
 ### What the user reported
