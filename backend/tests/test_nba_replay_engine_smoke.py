@@ -225,38 +225,57 @@ async def main():
         db, sport="nba",
         game_date=GAME_DATE,
         snapshot_iso=SNAPSHOT_ISO,
-        tier="front_lines",
+        tier="safe_haven",      # deliberately mismatched: production scored
+                                # this prop as `front_lines`. Research-mode
+                                # contract: ALL scored rows still persist
+                                # (gate_pass/tier as metadata only).
         gate_path="universal",
         output_namespace="propvision_full_pipeline",
         dry_run=False,
+        research_mode=True,     # SSOT testing-pipeline default — every
+                                # scored row written, optimizer decides.
         notes="nba_replay_engine smoke test",
         odds_collection="sgo_replay_alt_odds_raw",
     )
-    print("\n  run_production_replay summary:")
+    print("\n  run_production_replay summary (research_mode=True, tier=safe_haven):")
     for k in ("serial", "sport", "rows_scanned", "rows_qualified",
               "wins", "losses", "pushes", "ungraded", "hit_rate_pct",
               "roi_pct", "cards_displayed", "elapsed_s"):
         print(f"    {k:24s} = {runner_summary.get(k)!r}")
 
-    assert runner_summary.get("rows_scanned") >= 1, (
-        f"runner scanned 0 rows, got "
+    # Research-mode contract: every scanned row must be persisted to the
+    # outputs collection regardless of gate_pass / tier match. The
+    # optimizer's input pool = the full scored universe.
+    persisted = await db.nba_propvision_full_pipeline_outputs.count_documents(
+        {"replay_serial": runner_summary["serial"]})
+    print(f"    rows persisted in nba_propvision_full_pipeline_outputs = {persisted}")
+    assert runner_summary.get("rows_scanned") == 6, (
+        f"runner should scan all 6 Layer-3 rows, got "
         f"{runner_summary.get('rows_scanned')}")
-    assert runner_summary.get("rows_qualified") >= 1, (
-        f"runner qualified 0 rows on tier=front_lines, got "
-        f"{runner_summary.get('rows_qualified')} "
-        f"(expected ≥1 since Phase 1 row tier was front_lines)")
+    assert persisted == 6, (
+        f"research_mode contract violated: scanned {runner_summary.get('rows_scanned')} "
+        f"but persisted only {persisted}. The testing pipeline MUST write "
+        f"every scored row (gate_pass/tier as metadata only).")
+    # The 18-front_lines prop production-tier-mismatches the requested
+    # safe_haven tier — rows_qualified should be 0 (proves we kept the
+    # production gate decision as a label, didn't override it).
+    assert runner_summary.get("rows_qualified") == 0, (
+        f"production scored prop as 'front_lines' but requested tier was "
+        f"'safe_haven'; expected 0 qualified, got "
+        f"{runner_summary.get('rows_qualified')}")
 
-    # Verify the per-tier output doc carries the SSOT NBA fields.
+    # Verify gate-state metadata is preserved on every persisted row.
     out_doc = await db.nba_propvision_full_pipeline_outputs.find_one(
-        {"replay_serial": runner_summary["serial"], "gate_pass": True},
+        {"replay_serial": runner_summary["serial"]},
         projection={"_id": 0},
     )
-    assert out_doc is not None, "no gate_pass=True output doc persisted"
+    assert out_doc is not None, "no output doc persisted"
     runner_required_fields = (
         "tp", "tp_source", "edge_pct", "tier", "gate_pass",
         "vision_score", "p_model", "p_true_active",
         "model_probability", "projection_mu", "sigma", "edge",
         "hit_rate_l5", "hit_rate_l10", "hit_rate_l20", "cv",
+        "failed_gates", "routed_tier", "research_mode",
     )
     missing_r = [f for f in runner_required_fields if f not in out_doc]
     assert not missing_r, (
@@ -264,6 +283,14 @@ async def main():
     print("\n  Sample propvision output SSOT fields:")
     for f in runner_required_fields:
         print(f"    {f:24s} = {out_doc.get(f)!r}")
+    assert out_doc.get("research_mode") is True, (
+        "research_mode flag must be stamped on every output doc")
+    assert out_doc.get("tier") == "front_lines", (
+        "production tier decision must survive as metadata "
+        f"(expected 'front_lines', got {out_doc.get('tier')!r})")
+    assert out_doc.get("gate_pass") is False, (
+        "gate_pass must reflect tier mismatch "
+        f"(expected False, got {out_doc.get('gate_pass')!r})")
 
     # Cleanup runner collections too.
     await db.nba_propvision_full_pipeline_outputs.delete_many(

@@ -1,6 +1,71 @@
 # Changelog
 
 
+## 2026-06-02 — Optimizer input contract: write every scored row (no gate pre-filter)
+
+### What the user reported
+NBA Layer-3 scored 109 rows on 2025-10-22 (18 `front_lines`, 91
+`unqualified`), but `nba_propvision_full_pipeline_outputs` contained
+0 rows. The user clarified the SSOT contract for the
+testing/optimizer pipeline:
+
+> The optimizer's job is to find better stat- and prop-specific
+> thresholds than the current production gates. If the testing
+> dataset is pre-filtered by today's gates, the optimizer can ONLY
+> see rows production already approves — losing the rejected /
+> unqualified rows that may score well under different thresholds.
+
+Therefore for ALL sports (MLB, NBA, NFL, teams, future sports):
+- Score every available prop.
+- Grade every prop with a known outcome.
+- Write every scored row to `*_propvision_full_pipeline_outputs`.
+- `tier` / `gate_pass` / `failed_gates` / `grade_status` are
+  METADATA only — the optimizer decides thresholds later.
+- The production board (live serving) still filters by gates; only
+  the testing/optimizer pipeline opts out.
+
+### Investigation result
+The replay runner's `research_mode` flag already implements this
+contract — it skips the `tier_odds_bucket_fail` short-circuit, grades
+every row with a known outcome, and persists every scored row
+regardless of gate decision. The bug was that
+`research_mode` defaulted to **False** in
+`scripts/sgo/historical_full_pipeline_replay.py`, so the testing
+pipeline was applying production gates to its own optimizer input.
+
+### Fix
+- `scripts/sgo/historical_full_pipeline_replay.py`:
+  - Flipped `--research-mode` default to **True**. Testing/optimizer
+    pipeline no longer pre-filters by today's gates.
+  - Added `--apply-production-gates` opt-out flag for parity audits
+    against pre-2026-06-02 runs.
+  - Run banner now surfaces the research-mode state explicitly so the
+    operator can never accidentally feed a gate-filtered dataset into
+    the optimizer.
+
+### Verification
+`tests/test_nba_replay_engine_smoke.py` Phase 2 now intentionally
+requests `tier="safe_haven"` against a prop the production scorer
+landed in `front_lines` — and verifies the runner:
+- Scans 6 Layer-3 rows.
+- Persists all 6 to `nba_propvision_full_pipeline_outputs` (research-
+  mode contract).
+- Reports `rows_qualified = 0` (production decision survives intact).
+- Stamps every row with `gate_pass=False`, `tier="front_lines"`
+  (production decision), `failed_gates=['production_tier_is_front_lines']`,
+  `routed_tier="front_lines"`, `research_mode=True`.
+- Carries all 16 universal SSOT scoring fields (μ, σ,
+  model_probability, edge, hit_rate_l5/10/20, cv, tp, tp_source,
+  edge_pct, vision_score, p_model, p_true_active, …).
+
+### Contract guarantee (applies to MLB / NBA / NFL / teams / future)
+> `*_propvision_full_pipeline_outputs.count == Layer-3 rows scanned`
+> for every testing-pipeline run. The optimizer pool = the full
+> scored universe. Gate state is kept as metadata so cohort analysis
+> can route by it, but it never DROPS rows.
+
+
+
 ## 2026-06-02 — NBA Layer-3 replay wrap (thin reuse of production scorer)
 
 ### What the user asked for

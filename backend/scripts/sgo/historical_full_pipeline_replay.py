@@ -849,6 +849,14 @@ async def _run_body(args: argparse.Namespace, db) -> int:
               f"tier routing happens downstream by odds-range, not by "
               f"3× gate-eval re-runs). Use --multi-tier-gates to restore "
               f"the legacy 3-tier scan.")
+    # 2026-06-02 — Surface research_mode in the run banner.
+    if args.research_mode:
+        print(f"  research_mode=TRUE — runner will score & persist EVERY "
+              f"prop (gate_pass/tier/failed_gates kept as metadata). "
+              f"Optimizer pool = full scored universe.")
+    else:
+        print(f"  research_mode=FALSE — runner will filter rows by today's "
+              f"production gates (legacy mode). Use only for parity audits.")
 
     all_serials: List[str] = []
     grand = {"runs_ok": 0, "runs_failed": 0,
@@ -952,16 +960,39 @@ def _parse() -> argparse.Namespace:
     p.add_argument("--gate-path",       default="universal",
                       choices=VALID_GATE_PATHS)
     p.add_argument("--canonical-path",  action="store_true")
+    # 2026-06-02 — `research_mode` defaults to True for the historical
+    # testing pipeline. Rationale: the optimizer's job is to FIND better
+    # thresholds than the current production gates. If the testing
+    # dataset filters by today's gates (`gate_pass=True`, tier match),
+    # the optimizer can only see rows the production gates already
+    # approve — losing visibility into rejected/unqualified props that
+    # might score well under different thresholds. Per user directive
+    # (2026-06-02): "score every available prop, grade every prop with
+    # an outcome, write every scored row to the full_pipeline_outputs
+    # collection; tier/gate_pass/failed_gates remain metadata only."
+    # Applies to MLB, NBA, NFL, teams, and all future sports. Production
+    # board (live serving) still filters by gates — only the
+    # testing/optimizer pipeline opts out. Use
+    # `--apply-production-gates` to restore the legacy gate-filtering
+    # behaviour for audit / parity runs.
     p.add_argument("--research-mode", action="store_true",
-                      dest="research_mode",
-                      help="Score every prop; do NOT short-circuit on "
-                              "tier_odds_bucket_fail; grade every row that "
-                              "has a known outcome (not only "
+                      dest="research_mode", default=True,
+                      help="[DEFAULT — TRUE] Score every prop; do NOT "
+                              "short-circuit on tier_odds_bucket_fail; grade "
+                              "every row that has a known outcome (not only "
                               "production-gate-pass rows). For grid sweep / "
                               "candidate optimization research.")
     p.add_argument("--skip-production-gates", action="store_true",
                       dest="research_mode",
                       help="Alias for --research-mode.")
+    p.add_argument("--apply-production-gates", action="store_false",
+                      dest="research_mode",
+                      help="OPT-OUT — restore the legacy behaviour of "
+                              "filtering rows by today's production gates "
+                              "(`gate_pass=True` / tier-bucket match). Only "
+                              "use for parity audits against pre-2026-06-02 "
+                              "runs; the optimizer cannot find better "
+                              "thresholds when its input is gate-filtered.")
     p.add_argument("--snapshot-hour",   type=int, default=11)
     p.add_argument("--limit-dates",     type=int, default=None)
     p.add_argument("--no-mirror-to-legacy", action="store_true")

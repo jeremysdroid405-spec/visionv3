@@ -23,6 +23,17 @@ controlling historical replay pipelines via the Emergent Admin API.
 - `candidate_thresholds`, `emergent_admin_jobs`
 
 
+### 2026-06-02 — Optimizer input contract: research_mode default-True for testing pipeline
+- `scripts/sgo/historical_full_pipeline_replay.py`: `--research-mode`
+  flipped to default-True. Testing/optimizer pipeline no longer
+  pre-filters its input by today's production gates — every scored
+  row lands in `*_propvision_full_pipeline_outputs` with
+  `tier`/`gate_pass`/`failed_gates`/`grade_status` kept as metadata.
+  Optimizer decides thresholds later. New opt-out flag
+  `--apply-production-gates` for parity audits.
+- Applies uniformly to MLB, NBA, NFL, teams, and all future sports.
+  Production board (live serving) still filters by gates.
+
 ### 2026-06-02 — NBA Layer-3 replay wrap (production scorer reuse, no new model)
 - `services/replay/nba_replay_engine.py` (NEW): thin wrapper around the
   PRODUCTION NBA scorer. Reads `sgo_replay_alt_odds_raw`, reshapes per-book
