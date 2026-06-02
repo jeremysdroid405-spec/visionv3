@@ -94,9 +94,36 @@ SGO_OUTCOMES_COLL   = "sgo_pp_research_outcomes"     # grading source
 LEGACY_OUT_COLL     = "sgo_propvision_full_pipeline_replay"   # UI reads
 DIFF_COLL           = "sgo_propvision_full_pipeline_replay_diff"
 OUTPUT_NAMESPACE    = "propvision_full_pipeline"
-# Resolves at runtime to mlb_propvision_full_pipeline_{runs,outputs,cards}
-RUNNER_OUTPUTS      = "mlb_propvision_full_pipeline_outputs"
-RUNNER_RUNS         = "mlb_propvision_full_pipeline_runs"
+
+# 2026-06-02 — Per-league destination. RUNNER_OUTPUTS / RUNNER_RUNS were
+# previously hardcoded to MLB. NBA & NFL runs now resolve their runner
+# namespace + sport tag through this map. Add a new league by extending
+# both this and `LEAGUE_TO_SPORT` below.
+LEAGUE_TO_SPORT: Dict[str, str] = {
+    "MLB":   "mlb",
+    "NBA":   "nba",
+    "NFL":   "nfl",
+    "NCAAF": "ncaaf",
+}
+
+
+def _runner_ns(league: str, *, kind: str) -> str:
+    """Return `{sport}_propvision_full_pipeline_{kind}` for the given
+    league. `kind ∈ {runs, outputs, cards}`."""
+    sport = LEAGUE_TO_SPORT.get(league.upper())
+    if sport is None:
+        raise ValueError(
+            f"unsupported --league={league!r}. Supported: "
+            f"{sorted(LEAGUE_TO_SPORT)}")
+    return f"{sport}_{OUTPUT_NAMESPACE}_{kind}"
+
+
+def _runner_outputs_coll(league: str) -> str:
+    return _runner_ns(league, kind="outputs")
+
+
+def _runner_runs_coll(league: str) -> str:
+    return _runner_ns(league, kind="runs")
 
 PIPELINE_VERSION    = "ppv_ssot_2026_05_21"
 
@@ -135,7 +162,8 @@ async def _preflight(db, *, league: str, start: str, end: str) -> None:
     reads downstream. Querying on `league: "MLB"` was a 2026-05-21 bug that
     falsely hard-failed even when reshape had written rows.
     """
-    sport_canonical = "mlb" if league.upper() == "MLB" else league.lower()
+    sport_canonical = LEAGUE_TO_SPORT.get(
+        league.upper(), league.lower())
     n_odds = await db[SGO_ODDS_COLL].count_documents({
         "sport": sport_canonical,
         "game_date": {"$gte": start, "$lte": end},
@@ -361,7 +389,7 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
     # event_ids known to have outcomes, dropping the dead-weight V2
     # rows at the SOURCE of the mirror instead of writing junk.
     game_dates: set = set()
-    async for r in db[RUNNER_RUNS].find(
+    async for r in db[_runner_runs_coll(league)].find(
         {"serial": {"$in": replay_serials}},
         projection={"_id": 0, "game_date": 1},
     ):
@@ -475,7 +503,7 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
     #   2) per group → lookup using the normalized key set
     groups: List[Dict[str, Any]] = []
     event_ids_seen: set = set()
-    async for g in db[RUNNER_OUTPUTS].aggregate(pipe, allowDiskUse=True):
+    async for g in db[_runner_outputs_coll(league)].aggregate(pipe, allowDiskUse=True):
         groups.append(g)
         eid = (g.get("_id") or {}).get("event_id")
         if eid:
@@ -553,7 +581,7 @@ async def _mirror_to_legacy(db, *, replay_serials: List[str],
             "period_id": (outcome or {}).get("period_id"),
             "game_date": g.get("game_date"),
             "league_id": (outcome or {}).get("league_id") or league,
-            "sport":     "mlb",
+            "sport":     LEAGUE_TO_SPORT[league.upper()],
             "stat_family": g.get("stat_family"),
             "player_name": g.get("player_name"),
             "player_name_normalized": k["player_name_normalized"],
@@ -833,7 +861,7 @@ async def _run_body(args: argparse.Namespace, db) -> int:
         for tier in runner_tiers:
             try:
                 summary = await run_production_replay(
-                    db, sport="mlb",
+                    db, sport=LEAGUE_TO_SPORT[args.league.upper()],
                     game_date=gd, snapshot_iso=snapshot_iso, tier=tier,
                     gate_path=args.gate_path,
                     canonical_path=bool(args.canonical_path),
