@@ -30,6 +30,7 @@
  */
 import React, { useMemo } from 'react';
 import PlayerDetailPage from './PlayerDetailPage';
+import TeamHistoricalSurfaces from './TeamHistoricalSurfaces';
 import { getTeamLogo } from './constants';
 
 
@@ -135,7 +136,52 @@ const TeamDetailPage = (props) => {
     [sourcePick, sport],
   );
 
+  // Resolve the team_id / opponent_team_id for the team-historical
+  // surfaces. The pick payload uses sport-prefixed slugs (e.g.
+  // `nba_bos`) — same shape the backend `team_historical_outcomes`
+  // collection is keyed by. Fall back to lowercased abbr when no
+  // explicit id is supplied (legacy ingest paths).
+  const teamId = useMemo(() => {
+    if (!sourcePick) return null;
+    const explicit = sourcePick.team_id;
+    if (explicit) return String(explicit).toLowerCase();
+    const sportLow = (sourcePick.sport || sport || '').toLowerCase();
+    const abbr = (sourcePick.team_abbr || sourcePick.team || '').toLowerCase();
+    if (sportLow && abbr) return `${sportLow}_${abbr}`;
+    return null;
+  }, [sourcePick, sport]);
+
+  const opponentTeamId = useMemo(() => {
+    if (!sourcePick) return null;
+    const explicit = sourcePick.opponent_team_id;
+    if (explicit) return String(explicit).toLowerCase();
+    const sportLow = (sourcePick.sport || sport || '').toLowerCase();
+    const opp = (
+      sourcePick.opponent ||
+      sourcePick.opponent_team ||
+      sourcePick.opp_team ||
+      ''
+    ).toLowerCase();
+    if (sportLow && opp) return `${sportLow}_${opp}`;
+    return null;
+  }, [sourcePick, sport]);
+
+  // Market category routes the hit-rate chart to the right slice of
+  // outcomes. h2h | spread | totals | team_total — backend slugs
+  // match the pick's `market_key`/`market_category` field.
+  const marketCategory = useMemo(() => {
+    if (!sourcePick) return null;
+    return (
+      sourcePick.market_category ||
+      sourcePick.market_key ||
+      sourcePick.market ||
+      null
+    );
+  }, [sourcePick]);
+
   if (!adaptedPlayer) return null;
+
+  const teamSport = (sourcePick?.sport || sport || '').toLowerCase();
 
   return (
     <div data-testid="team-detail-page" data-prop-type="team">
@@ -144,6 +190,26 @@ const TeamDetailPage = (props) => {
         player={adaptedPlayer}
         playerData={adaptedPlayer}
       />
+      {/* Team-specific surfaces — live in TeamDetailPage only,
+          never touch PlayerDetailPage. Renders the last-N hit-rate
+          bar, scoring/conceding split, and head-to-head history
+          when an opponent_team_id resolves. Backed by
+          `useTeamMasterStats` → `/api/v3/team/historical`. */}
+      {teamId && teamSport && (
+        <div
+          data-testid="team-detail-historical-block"
+          className="mt-4 px-4 pb-6 space-y-3">
+          <div className="text-xs uppercase tracking-wider text-white/60 font-semibold mb-1">
+            Team Historical Edge
+          </div>
+          <TeamHistoricalSurfaces
+            teamId={teamId}
+            sport={teamSport}
+            opponentTeamId={opponentTeamId}
+            marketCategory={marketCategory}
+          />
+        </div>
+      )}
     </div>
   );
 };

@@ -23,6 +23,31 @@ controlling historical replay pipelines via the Emergent Admin API.
 - `candidate_thresholds`, `emergent_admin_jobs`
 
 
+
+### 2026-06-02 — TeamDetailPage enhancement: 3 team-only historical surfaces
+- Backend: `routes/team_historical.py` (NEW) — `GET /api/v3/team/historical/{team_id}`
+  returns `recent_outcomes` + `scoring_split` + `h2h_outcomes` +
+  `summary.last_10_hit_rate` from `team_historical_outcomes`
+  (391k NBA / 879k MLB / 124k NFL graded rows). Mounted via
+  `routes/__init__.py:register_all_routes`.
+- Frontend: `hooks/useTeamMasterStats.js` (NEW) — team analog of
+  `useMasterStats`, 24h cache contract.
+- Frontend: `components/dashboard/TeamHistoricalSurfaces.jsx` (NEW)
+  — three visual components (TeamHitRateBar, TeamScoringSplit,
+  TeamH2HHistory) plus a composite shell.
+- Frontend: `TeamDetailPage.jsx` extended to render the surfaces
+  beneath the PlayerDetailPage shell. `PlayerDetailPage.jsx`
+  untouched (wrapper-clone pattern preserved).
+- 7-test endpoint suite (`tests/test_team_historical_endpoint.py`)
+  passes 100%.
+
+### 2026-06-02 — NBA Finals team props: live ingest wiring + TeamDetailPage clone
+- See CHANGELOG.md for full details. Adds:
+  - Cron-scheduled `sync_team_live_for_sport` for MLB / NBA / NFL.
+  - NCAAF removed from sport allow-list.
+  - Frontend click router routes team picks to TeamDetailPage.
+  - TeamDetailPage.jsx wrapper-clone of PlayerDetailPage.
+
 ### 2026-06-02 — Production-scorer replay-safety (fantasy_score + availability + blank-dates)
 - `services/scoring/canonical_stats.py`: registered fantasy_score
   variants (`fantasy_score`, `fantasyScore`,

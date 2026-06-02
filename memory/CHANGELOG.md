@@ -1,6 +1,99 @@
 # Changelog
 
 
+## 2026-06-02 — TeamDetailPage enhancement: 3 team-only historical surfaces
+
+### Backlog item accepted by user
+> *"Backlog (optional, when ready): enhance TeamDetailPage with
+> team-specific surfaces that don't exist for players yet — team
+> last-N over/under hit-rate chart, scoring/conceding split,
+> head-to-head history. The wrapper-clone pattern means each
+> addition lives in TeamDetailPage.jsx only, never touches
+> PlayerDetailPage.jsx."*
+
+User confirmed → shipped.
+
+### What shipped
+
+**Backend** — `routes/team_historical.py` (NEW):
+- `GET /api/v3/team/historical/{team_id}` returns three surfaces in
+  one shot, all sourced from `team_historical_outcomes` (391k NBA
+  + 879k MLB + 124k NFL rows graded by
+  `workers/team/team_outcomes_grader.py`):
+  - `recent_outcomes` — last-N graded outcomes, last-game first.
+  - `scoring_split`   — per-game `team_score` / `opp_score` / `diff`,
+    distinct on `event_id` so multi-market games don't
+    double-count.
+  - `h2h_outcomes`    — same shape as `recent`, filtered by
+    `opponent_team_id` (only populated when caller supplies).
+  - `summary.last_10_hit_rate` — pre-computed `{n, wins, hit_pct}`
+    over the headline window so the client doesn't recompute.
+- Sport allow-list = `(mlb, nba, nfl)` — same SSOT as
+  `routes/team_live_sync._SUPPORTED_SPORTS` and
+  `routes/ferrari_team_tiers._SUPPORTED_SPORTS`.
+- Optional `market_category` query filter narrows
+  `recent_outcomes` to one of `team_total | spread | game_total
+  | h2h` so the hit-rate chart can stay aligned with the current
+  pick context (e.g. team_total chart for a team_total pick).
+- Registered through `routes/__init__.py:register_all_routes`
+  (same SSOT pattern as `team_live_sync_router` and
+  `ferrari_team_tiers`).
+- Lazy DB resolver (`_get_db()`) to break circular import with
+  `server.py` at startup.
+
+**Frontend** — `hooks/useTeamMasterStats.js` (NEW):
+- Team analog of `useMasterStats`. Same React Query contract
+  (`staleTime: 24h`, no auto-refetch). Future sport launches
+  (NHL / NCAAF / WNBA) reuse this hook by passing their sport
+  slug.
+
+**Frontend** — `components/dashboard/TeamHistoricalSurfaces.jsx` (NEW):
+- Three exported visual components + one composite shell:
+  - `<TeamHitRateBar>`   — green/red/neutral last-10 bars with
+    hover labels, headline `hits/total + %`.
+  - `<TeamScoringSplit>` — twin blue/orange bars per game
+    (team score vs opp score), averaged headline + margin colour-
+    coded.
+  - `<TeamH2HHistory>`   — compact row list (sparse data, table
+    fits better than a chart); only renders when an opponent
+    resolves.
+  - `<TeamHistoricalSurfaces>` — composite shell consumed by
+    `TeamDetailPage`; one query, three surfaces.
+- All surfaces emit `data-testid="..."` slots for automated
+  testing.
+
+**Frontend** — `components/dashboard/TeamDetailPage.jsx` (EXTENDED):
+- Resolves `team_id`/`opponent_team_id`/`market_category` from the
+  team pick. Falls back to `${sport}_${team_abbr}` when no
+  explicit id is supplied (matches the SGO ingest naming).
+- Renders `<TeamHistoricalSurfaces>` AFTER the existing
+  PlayerDetailPage shell — wrapper-clone pattern preserved.
+  `PlayerDetailPage.jsx` is untouched.
+
+### Verification
+- `tests/test_team_historical_endpoint.py` (NEW, 7 tests):
+  endpoint behaviour, grading fields, scoring breakdown,
+  H2H filter, market_category filter, unsupported sport rejected,
+  blank team_id rejected. All 7 pass against localhost:8001.
+- Real-world smoke: `nba_nyk` vs `nba_sas` (NBA Finals tomorrow)
+  returns:
+  - `recent_outcomes: 10`
+  - `scoring_split:   10`
+  - `h2h_outcomes:    10`
+  - `last_10_hit_rate: {n:10, wins:10, hit_pct:100.0}`
+- Frontend lint clean (TeamDetailPage, TeamHistoricalSurfaces,
+  useTeamMasterStats).
+
+### Reusability
+- New sports (NHL / NCAAF / WNBA) inherit this entire stack
+  automatically once they appear in `_SUPPORTED_SPORTS` and have
+  graded rows in `team_historical_outcomes`.
+- Future team surfaces (rest days, B2B record, ATS streak)
+  drop into `TeamHistoricalSurfaces.jsx` as new exported
+  components — no `PlayerDetailPage.jsx` edits required.
+
+
+
 ## 2026-06-02 — NBA Finals team props: live ingest wiring + TeamDetailPage clone
 
 ### What the user reported

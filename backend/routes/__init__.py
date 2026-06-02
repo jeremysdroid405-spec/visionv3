@@ -25,6 +25,7 @@ from .image_proxy import router as image_proxy_router
 from .ferrari_tiers import router as ferrari_router, set_ferrari_db
 from .ferrari_team_tiers import router as ferrari_team_router, init_router as set_ferrari_team_db
 from .team_live_sync import router as team_live_sync_router, init_router as set_team_live_sync_db
+from .team_historical import router as team_historical_router
 from .player import router as player_router, set_player_db
 from .vacuum import router as vacuum_router, set_vacuum_db
 from .mlb_vacuum import router as mlb_vacuum_router, set_mlb_vacuum_db
@@ -143,6 +144,14 @@ def register_all_routes(
     if db is not None:
         set_team_live_sync_db(db)
     app.include_router(team_live_sync_router, prefix="/api")
+
+    # Team Historical surfaces (2026-06-02) — consumed by
+    # `useTeamMasterStats` / `TeamDetailPage` for last-N hit-rate
+    # chart, scoring/conceding split, and head-to-head history.
+    # Reads `team_historical_outcomes` (no DB dep injection — the
+    # route imports `db` from `server` directly, same SSOT path
+    # every other team route uses).
+    app.include_router(team_historical_router, prefix="/api")
 
     # Universal Player endpoint (restored post Hard Consolidation)
     if db is not None:
