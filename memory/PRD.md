@@ -23,6 +23,21 @@ controlling historical replay pipelines via the Emergent Admin API.
 - `candidate_thresholds`, `emergent_admin_jobs`
 
 
+### 2026-06-02 — Replay eligibility bypass promoted to cross-sport infrastructure policy
+- `services/replay/contract.py` (NEW): SSOT for the cross-sport
+  replay invariant `score → persist → optimize`. Exports
+  `REPLAY_RECOMPUTE_KWARGS` (immutable `MappingProxyType` —
+  `dry_run=True` / `write_mode="upsert"` /
+  `bypass_eligibility=True`) and `COMPLIANT_REPLAY_ENGINES` registry.
+- Every replay engine declares `REPLAY_CONTRACT_COMPLIANT = True`
+  at module scope (MLB / NBA / Teams today). NFL / NCAAF future
+  engines must follow the same pattern.
+- NBA replay engine now uses `**REPLAY_RECOMPUTE_KWARGS` instead of
+  inline kwargs — one SSOT call shape for the contract.
+- `tests/test_replay_infrastructure_contract.py` (NEW): 6 static
+  audit tests catch contract violations at CI time (no DB,
+  milliseconds).
+
 ### 2026-06-02 — Replay eligibility bypass: PP-only props now scored
 - Root cause of 1.46% survival rate (588k unique candidates → 8.5k
   outputs): `apply_production_eligibility` inside

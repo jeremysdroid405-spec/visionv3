@@ -14,6 +14,14 @@ DESIGN
       Returns None if no model is available for that (sport, mc).
     • The vision_score composite mirrors the player-side pattern:
       `vision_score = round(model_prob * (1 + max(0, edge)), 4)`.
+
+Replay-contract compliance (`services.replay.contract`):
+    ✅ Pure XGB inference; no `apply_production_eligibility` chain
+       is ever invoked here. Every row with a valid (sport,
+       market_category) tuple AND a loadable artifact gets a score
+       doc. Rows with missing artifacts return None — that's a
+       data-coverage signal, not a gate filter. The replay
+       contract is satisfied by construction.
 """
 from __future__ import annotations
 import pickle
@@ -28,6 +36,10 @@ from scripts.sgo.train_team_xgb import (
     feature_columns, row_to_features,
     _american_implied_prob, VERSION,
 )
+
+# Replay-contract compliance flag — read by
+# `tests/test_replay_infrastructure_contract.py` for static audit.
+REPLAY_CONTRACT_COMPLIANT = True
 
 
 ARTIFACT_ROOT = Path("/app/backend/models/team_xgb")

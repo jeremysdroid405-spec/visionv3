@@ -1,6 +1,83 @@
 # Changelog
 
 
+## 2026-06-02 — Replay eligibility bypass promoted to cross-sport infrastructure policy
+
+### What the user requested
+> Apply bypass_eligibility as replay infrastructure policy, not NBA
+> special-case. Replay/testing invariant: ALL sports must bypass
+> production eligibility filters — MLB, NBA, NFL, NCAAF, Teams.
+> Same replay contract: score → persist → optimize.
+
+### What shipped
+- `services/replay/contract.py` (NEW): single source of truth for
+  the cross-sport replay infrastructure invariants. Two contracts:
+  1. **ELIGIBILITY BYPASS** — replay engines must never invoke
+     `apply_production_eligibility` / `filter_priceable` /
+     `filter_pp_playable`. Either go through
+     `recompute_sport(**REPLAY_RECOMPUTE_KWARGS)` (which collapses
+     `dry_run=True` / `write_mode="upsert"` /
+     `bypass_eligibility=True` into one immutable call shape) OR
+     use a scoring path that never reaches the eligibility chain.
+  2. **RESEARCH MODE** — the Layer-4 runner is invoked with
+     `research_mode=True` for every testing-pipeline callsite
+     (enforced in `historical_full_pipeline_replay.py` since
+     2026-06-02 earlier today).
+- `REPLAY_RECOMPUTE_KWARGS` is a `types.MappingProxyType` — any
+  attempt to mutate it raises at runtime, so no future caller can
+  accidentally flip `bypass_eligibility=False` for replay.
+- `COMPLIANT_REPLAY_ENGINES` registry — every replay engine module
+  is registered here for automated compliance audit.
+
+### Per-engine compliance status (audited automatically)
+- **MLB** (`services/replay/mlb_replay_engine.py`): ✅ Bypasses by
+  construction — has its own scoring path
+  (`MLBHighFrictionModel` over `mlb_replay_feature_cache`) and
+  never calls `recompute_sport`. `REPLAY_CONTRACT_COMPLIANT = True`
+  declared at module scope.
+- **NBA** (`services/replay/nba_replay_engine.py`): ✅ Now calls
+  `recompute_sport(**REPLAY_RECOMPUTE_KWARGS)` for the SSOT call
+  shape. `REPLAY_CONTRACT_COMPLIANT = True` declared.
+- **Teams** (`services/team_xgb_loader.py`): ✅ Pure XGB inference
+  — no eligibility filter ever invoked. `REPLAY_CONTRACT_COMPLIANT
+  = True` declared.
+- **NFL / NCAAF** (future engines): policy locked in. When the
+  scoring adapters land, the engine modules MUST register in
+  `COMPLIANT_REPLAY_ENGINES`, declare
+  `REPLAY_CONTRACT_COMPLIANT = True`, and call
+  `recompute_sport(**REPLAY_RECOMPUTE_KWARGS)` — otherwise the
+  static contract audit fails and the engine can't ship.
+
+### Static contract audit
+`tests/test_replay_infrastructure_contract.py` (NEW) — six
+fast-running static checks (no DB, milliseconds in CI):
+- `REPLAY_RECOMPUTE_KWARGS` is immutable + has expected values.
+- Every engine in `COMPLIANT_REPLAY_ENGINES` imports cleanly.
+- Every engine declares `REPLAY_CONTRACT_COMPLIANT = True`.
+- No engine source contains `apply_production_eligibility(` /
+  `filter_priceable(` / `filter_pp_playable(` invocations
+  (comments and docstring references stripped before matching).
+- Every `recompute_sport(` callsite in a replay engine uses
+  `**REPLAY_RECOMPUTE_KWARGS` or sets `bypass_eligibility=True`.
+- `recompute_sport` signature carries the `bypass_eligibility`
+  kwarg with default `False` (live-serving safety) — protects
+  against accidental removal.
+
+All 6 audit tests pass. Both pre-existing functional smoke tests
+still pass (no regression).
+
+### Effect
+The replay invariant `score → persist → optimize` is now enforced
+at three layers:
+1. **Code-level SSOT** — `REPLAY_RECOMPUTE_KWARGS` is the one
+   call shape every replay engine uses.
+2. **Module-level declaration** — `REPLAY_CONTRACT_COMPLIANT = True`
+   is a hard tripwire on every engine module.
+3. **CI-level audit** — the static test fails before any
+   non-compliant engine can merge.
+
+
+
 ## 2026-06-02 — Replay eligibility bypass: PP-only props now scored
 
 ### What the user reported

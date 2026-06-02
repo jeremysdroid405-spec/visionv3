@@ -7,7 +7,16 @@ Thin wrapper around the PRODUCTION NBA scorer
 `NBAScoringAdapter.build_context` → `compute_scoring_stack` →
 Universal Gate Engine).
 
-Contract:
+Honours the cross-sport replay infrastructure contract — see
+`services.replay.contract` for the SSOT policy. Specifically:
+  - `bypass_eligibility=True` (no `filter_priceable` /
+    `filter_pp_playable` row drops; tier as METADATA only)
+  - `dry_run=True`             (production `nba_prop_scores` never
+    mutated by a replay run)
+  - `write_mode="upsert"`      (score docs returned directly)
+
+Contract: same scoring logic, historical inputs, replay outputs.
+
   * Input  : `sgo_replay_alt_odds_raw` rows (per-book per-side flat
              rows) for one `(game_date, snapshot_iso)`.
   * Output : per-(book, side) rows in `nba_replay_model_outputs`,
@@ -18,13 +27,6 @@ Contract:
              `vision_score_raw`, `tp`, `tp_source`, `edge_pct`,
              `model_projection`, `model_sigma`, …) computed by the
              SAME scoring pipeline live serving uses.
-
-The engine does NOT build a separate NBA model. There is no
-duplicated math. Historical inputs are reshaped to the live-prop
-shape `NBAScoringAdapter` already consumes, fed through the
-production `recompute_sport` with `dry_run=True` so
-`nba_prop_scores` is NOT mutated, and the returned score docs are
-captured directly.
 
 Leakage safety: each reshaped prop carries `commence_time = `
 `{game_date}T{HH}:00:00Z`. `NBAScoringAdapter` extracts
@@ -45,6 +47,10 @@ from services.replay.historical_alt_odds_ingest import normalize_player_name
 from services.scoring.canonical_stats import canonical_stat_type, stat_family as canonical_stat_family
 
 logger = logging.getLogger(__name__)
+
+# Compliance flag read by `tests/test_replay_infrastructure_contract.py`
+# to enforce the cross-sport replay contract via static audit.
+REPLAY_CONTRACT_COMPLIANT = True
 
 OUT_COLL = "nba_replay_model_outputs"
 STATUS_COLL = "nba_replay_model_status"
@@ -485,26 +491,21 @@ async def replay_date(
         )
         return summary
 
-    # 4. Run the production NBA scorer in dry_run+upsert mode so we get
-    #    `score_docs` back without writing to `nba_prop_scores`.
+    # 4. Run the production NBA scorer through the REPLAY CONTRACT
+    #    (services.replay.contract.REPLAY_RECOMPUTE_KWARGS). This is
+    #    cross-sport SSOT — `dry_run=True`, `write_mode="upsert"`,
+    #    `bypass_eligibility=True` — so the optimizer pool receives
+    #    every scored prop with gate state as METADATA.
     from services.scoring.recompute import recompute_sport
+    from services.replay.contract import REPLAY_RECOMPUTE_KWARGS
     version_tag = (
         f"nba_replay_{replay_date_str}_"
         f"{snapshot_iso.replace(':', '').replace('-', '')}"
     )
     recompute_result = await recompute_sport(
         db, sport="nba", version_tag=version_tag,
-        dry_run=True, write_mode="upsert",
         props=props,
-        bypass_eligibility=True,   # ◀ REPLAY CONTRACT.
-        # The eligibility chain (`filter_priceable` +
-        # `filter_pp_playable`) drops PP-only props and non-PP-anchored
-        # props. That's correct for live serving (don't surface
-        # un-playable props on the board) but VIOLATES the replay
-        # contract: the optimizer needs every scored prop with
-        # coverage_class/tier kept as METADATA so it can search
-        # threshold candidates that include rejected pools. See
-        # CHANGELOG 2026-06-02.
+        **REPLAY_RECOMPUTE_KWARGS,
     )
     score_docs = recompute_result.get("score_docs") or []
     rss_after_score = _rss_mb()

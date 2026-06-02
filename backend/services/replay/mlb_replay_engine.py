@@ -24,10 +24,21 @@ Layer 3 produces:
 
 UNDER alt-line replay is intentionally skipped — historical alt markets
 are OVER-only (see `audits/replay_market_coverage_rule_2026_05_16.md`).
+
+Replay-contract compliance (`services.replay.contract`):
+  ✅ Does NOT call `recompute_sport`. Has its own scoring path
+     (μ/σ from `mlb_replay_feature_cache` → `MLBHighFrictionModel`).
+  ✅ No `apply_production_eligibility` chain — bypasses by
+     construction. Every prop in the cache that successfully
+     produces μ is persisted to Layer-3.
 """
 from __future__ import annotations
 import gc
 import logging
+
+# Replay-contract compliance flag — read by
+# `tests/test_replay_infrastructure_contract.py` for static audit.
+REPLAY_CONTRACT_COMPLIANT = True
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
