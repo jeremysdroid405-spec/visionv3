@@ -292,6 +292,84 @@ def _windowed_avg(
 
 
 # ── Hit-rate over a market_category at the row's line/side ───────────
+async def _fetch_team_outcomes_bulk(
+    team_id: str, sport: str,
+) -> List[Dict[str, Any]]:
+    """One-shot fetch of all graded outcomes for the team across every
+    market_category. Caller filters in Python to compute per-prop hit
+    rates without N+1 queries.
+
+    2026-06-03 — prod was timing out at 60s on team-with-badges because
+    `_hit_rates_for_market` was issuing 2× DB queries per (market,
+    line, side) tuple — 30+ tuples × ~500ms cold-collection latency.
+    Bulk fetch keeps the route under 1s.
+    """
+    if _db is None:
+        return []
+    out: List[Dict[str, Any]] = []
+    cur = _db["team_historical_outcomes"].find(
+        {
+            "sport": sport, "team_id": team_id,
+            "outcome_resolved": True,
+        },
+        {
+            "_id": 0, "hit": 1, "commence_time": 1,
+            "market_category": 1, "side": 1, "line": 1,
+            "opponent_team_id": 1,
+        },
+    ).sort("commence_time", -1).limit(2000)
+    async for r in cur:
+        out.append(r)
+    return out
+
+
+def _hit_rates_in_memory(
+    outcomes: List[Dict[str, Any]],
+    market_category: str, side: str, line: Optional[float],
+    opp_team_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """In-memory equivalent of `_hit_rates_for_market`, fed by the
+    bulk outcomes list. Same line-window (± 1.5) and same h2h ignore
+    rules — preserves the previous numeric output exactly."""
+    side_up = (side or "").upper()
+    try:
+        line_f = float(line) if line is not None else None
+    except (TypeError, ValueError):
+        line_f = None
+    rows: List[Dict[str, Any]] = []
+    for r in outcomes:
+        if r.get("market_category") != market_category:
+            continue
+        if side_up and (r.get("side") or "").upper() != side_up:
+            continue
+        if (
+            market_category != "h2h"
+            and line_f is not None
+        ):
+            rl = r.get("line")
+            if rl is None:
+                continue
+            try:
+                rlf = float(rl)
+            except (TypeError, ValueError):
+                continue
+            if not (line_f - 1.5 <= rlf <= line_f + 1.5):
+                continue
+        if opp_team_id and r.get("opponent_team_id") != opp_team_id:
+            continue
+        rows.append(r)
+        if len(rows) >= 200:
+            break
+    return {
+        "hit_rate_l5":  _hit_rate(rows[:5]),
+        "hit_rate_l10": _hit_rate(rows[:10]),
+        "hit_rate_l20": _hit_rate(rows[:20]),
+        "season_hit_rate": _hit_rate(rows),
+        "sample_size":  len(rows),
+    }
+
+
+# ── Hit-rate over a market_category at the row's line/side ───────────
 async def _hit_rates_for_market(
     team_id: str, sport: str, market_category: str,
     side: str, line: Optional[float], opp_team_id: Optional[str] = None,
@@ -482,6 +560,11 @@ async def get_team_with_badges(
     # 2) Game history (always available if historical data exists)
     game_logs = await _fetch_team_game_history(tid, sport, limit=25)
 
+    # 2.5) Bulk outcomes — one query for the entire team. Per-prop hit
+    # rates are computed in-memory below to avoid the prod 504 timeout
+    # we hit when each (market, line, side) row issued its own query.
+    team_outcomes = await _fetch_team_outcomes_bulk(tid, sport)
+
     # 3) Compute baseline_stats — team-level rollups for the header strip
     team_pts = [g["team_score"] for g in game_logs if g.get("team_score") is not None]
     opp_pts = [g["opp_score"] for g in game_logs if g.get("opp_score") is not None]
@@ -593,21 +676,22 @@ async def get_team_with_badges(
         else:
             direction_norm = _side_up or "OVER"
         best_book, best_odds = _bucket_best_book(rows)
-        # Historical hit rates @ this (category, side, ~line)
-        hr = await _hit_rates_for_market(
-            tid, sport, market_category, side, line_v,
+        # Historical hit rates @ this (category, side, ~line) — fed by
+        # the bulk outcomes list (one query for the entire team).
+        hr = _hit_rates_in_memory(
+            team_outcomes, market_category, side, line_v,
         )
         hit_l5 = hr.get("hit_rate_l5")
         hit_l10 = hr.get("hit_rate_l10")
         hit_l20 = hr.get("hit_rate_l20")
         season_hr = hr.get("season_hit_rate")
 
-        # H2H hit rate
+        # H2H hit rate (same bulk list, filtered by opponent_team_id)
         opp_hr = None
         opp_sample = 0
         if opp_team_id:
-            h2h = await _hit_rates_for_market(
-                tid, sport, market_category, side, line_v,
+            h2h = _hit_rates_in_memory(
+                team_outcomes, market_category, side, line_v,
                 opp_team_id=opp_team_id,
             )
             opp_hr = h2h.get("season_hit_rate")

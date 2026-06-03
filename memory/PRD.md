@@ -2214,3 +2214,43 @@ intel_suite presence, and reference odds parity. 3/3 pass.
 ⚠️ Deployment required to land all today's fixes on
 `https://propvision.bet`.
 
+
+
+### 2026-06-03 — Team Detail Endpoint 504 Timeout Fix (P0)
+User report: "team info card still broken. no bar graph, no hr, no
+vision intel, just loading. i know the data is there i dont think
+its looking in the right place for rendering it."
+
+Root cause: `team-with-badges` was issuing **2 sequential DB queries
+per (market, line, side) tuple** in `_hit_rates_for_market`. A team
+with 30+ tuples × ~500ms cold-collection latency = 15-60s, hitting
+prod's 60s gateway timeout → HTTP 504 → frontend stuck on
+"Loading team props…" forever. Local Mongo (small/warm) returned
+sub-second, masking the issue.
+
+Verified the 504: `curl https://propvision.bet/api/v3/team-with-badges/nba_nyk?sport=nba`
+returned **HTTP 504 after 60.27s** (both nba_nyk and nba_bos). The user
+was right — "looking in the wrong place" = the route was hammering the
+DB instead of filtering an in-memory list.
+
+Fix shipped (`backend/routes/team_with_badges.py`):
+- New `_fetch_team_outcomes_bulk(team_id, sport)` — one indexed query
+  pulling up to 2,000 graded outcomes for the team across all
+  market_categories.
+- New `_hit_rates_in_memory(outcomes, category, side, line, opp_team_id)`
+  — pure-Python equivalent of `_hit_rates_for_market`. Same line
+  window (± 1.5), same h2h ignore, same 200-row cap.
+- Route handler calls bulk once, then filters in-memory per prop.
+- N queries reduced from `2 × |props|` (60+) to `1` total.
+
+Verification:
+- Local timing: 75ms (was already fast but now structurally bounded).
+- Regression test `tests/test_team_detail_perf.py` — pins the
+  endpoint at <5s and confirms hit rates still populate. 1/1 pass.
+- All 4 prior regression tests still green (parity, perf, jit_reaper).
+
+⚠️ Deployment required so `https://propvision.bet/api/v3/team-with-badges/*`
+stops 504-timing-out. After deploy, user clicks → endpoint returns in
+<1s → TeamDetailPage clears loading → all the prior fixes (categories,
+chart, auto-scroll, intel suite modal) light up immediately.
+
