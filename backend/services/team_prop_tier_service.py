@@ -1392,6 +1392,26 @@ async def _enrich_cards_with_history(
         c["game_id"]        = c.get("event_id")
         c["opponent_team"]  = c.get("opponent")
         c["best_book"]      = c.get("best_book") or c.get("book")
+
+        # ── Reference-odds fields the card chip reads. ─────────────
+        # Player cards render the primary odds chip from
+        # `display_reference_*` → `tier_reference_*` → per-book
+        # fallback (see UniversalPlayerCard::resolveDisplayOdds).
+        # Team rows only carry `odds` + `book` (single book that hit
+        # the tier threshold) — stamp those into the canonical chip
+        # fields so the chip renders the real American price instead
+        # of `—`. `best_book_odds` mirrors `odds` so the BEST BET row
+        # also shows the price.
+        _row_odds = c.get("odds")
+        _row_book = (c.get("book") or "").lower() or None
+        if c.get("tier_reference_odds") is None:
+            c["tier_reference_odds"] = _row_odds
+            c["tier_reference_book"] = _row_book
+        if c.get("display_reference_odds") is None:
+            c["display_reference_odds"] = _row_odds
+            c["display_reference_book"] = _row_book
+        if c.get("best_book_odds") is None:
+            c["best_book_odds"] = _row_odds
         # Activity timestamp — players use `active_changed_at` for the
         # "X min ago" chip; team rows have `snapshot_iso`/`ingested_at`.
         c["active_changed_at"] = (
