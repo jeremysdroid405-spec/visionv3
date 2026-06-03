@@ -195,12 +195,25 @@ def _hydrate_card(score: Dict[str, Any],
     # downstream `_resolve_opp_def_rank` keys on the abbr.
     opp_abbr = None
     if opp_name:
-        # team_master_hub stores `team_abbr`; if the opponent isn't
-        # in the hub, take the last word (e.g. "Mavericks").
+        # First try team_master_hub.
         for v in teams.values():
             if (v.get("team_name") or v.get("team_short")) == opp_name:
                 opp_abbr = v.get("team_abbr")
                 break
+        if opp_abbr is None:
+            # Fallback: reverse the canonical NBA/MLB name maps in
+            # `routes.team_with_badges`. Cheap, single dict lookup.
+            try:
+                from routes.team_with_badges import (
+                    _NBA_ABBR_TO_NAME, _MLB_ABBR_TO_NAME,
+                )
+                for abbr, name in {**_NBA_ABBR_TO_NAME,
+                                       **_MLB_ABBR_TO_NAME}.items():
+                    if name == opp_name:
+                        opp_abbr = abbr.upper()
+                        break
+            except Exception:
+                pass
 
     return {
         # Identity
@@ -213,6 +226,8 @@ def _hydrate_card(score: Dict[str, Any],
         "team":               team_name,
         "opponent":           opp_name,
         "opponent_abbr":      opp_abbr,
+        "home_team":          score.get("home_team"),
+        "away_team":          score.get("away_team"),
         "home_away":          "home" if is_home else "away",
         "is_home":            is_home,
         "player_id":          None,
@@ -336,6 +351,640 @@ async def _resolve_opp_def_rank(
 
 
 _OPP_DEF_RANK_CACHE: Dict[str, Dict[str, int]] = {}
+# League-wide ranking cache. Keyed by sport. Contains ALL the rank
+# tables team scout badges need:
+#   team_score_rank, opp_score_rank, total_score_rank,
+#   home_win_pct_rank, away_win_pct_rank, cover_rate_l10,
+#   total_over_rate_l10.
+# Computed once per process (refresh by restart). Cheap: <100ms for
+# all 4 aggregations at startup; zero per-request cost thereafter.
+_LEAGUE_RANKS_CACHE: Dict[str, Dict[str, Dict[str, Any]]] = {}
+
+
+async def _compute_league_ranks(db, sport: str) -> Dict[str, Dict[str, Any]]:
+    """Aggregate league-wide ranking tables for the badge system.
+
+    Returns:
+        {
+          "team_score_rank":     {"BOS": 3, "DAL": 17, ...},
+          "opp_score_rank":      {"BOS": 5, ...},
+          "total_score_rank":    {...},          # pace proxy
+          "home_win_pct":        {"BOS": 0.72, ...},
+          "away_win_pct":        {"BOS": 0.55, ...},
+          "home_win_rank":       {...},
+          "away_win_rank":       {...},
+        }
+
+    Every value is rank 1 = best (lowest opp_score = best D; highest
+    team_score = best O; highest pace = #1 fast lane).
+    """
+    sport_l = (sport or "").lower()
+    if sport_l in _LEAGUE_RANKS_CACHE:
+        return _LEAGUE_RANKS_CACHE[sport_l]
+
+    coll = db["team_historical_outcomes"]
+    base_match = {
+        "sport": sport_l, "outcome_resolved": True,
+        "home_score_used": {"$ne": None},
+        "away_score_used": {"$ne": None},
+    }
+
+    # ── Per-team aggregates (avg team_score, opp_score, total). ──
+    pipeline = [
+        {"$match": base_match},
+        # Dedupe: one row per (event, team) — `team_historical_outcomes`
+        # has many rows per event (one per market×line), so we group
+        # to event-level first to avoid biasing toward popular markets.
+        {"$group": {
+            "_id": {"event": "$event_id", "team": "$team_id"},
+            "home_score": {"$first": "$home_score_used"},
+            "away_score": {"$first": "$away_score_used"},
+            "home_away":  {"$first": "$home_away"},
+        }},
+        {"$project": {
+            "team_id": "$_id.team",
+            "team_score": {"$cond": [
+                {"$eq": ["$home_away", "home"]},
+                "$home_score", "$away_score",
+            ]},
+            "opp_score": {"$cond": [
+                {"$eq": ["$home_away", "home"]},
+                "$away_score", "$home_score",
+            ]},
+            "total_score": {"$add": ["$home_score", "$away_score"]},
+            "home_away": 1,
+        }},
+        {"$group": {
+            "_id":         "$team_id",
+            "n":           {"$sum": 1},
+            "team_avg":    {"$avg": "$team_score"},
+            "opp_avg":     {"$avg": "$opp_score"},
+            "total_avg":   {"$avg": "$total_score"},
+            "home_wins":   {"$sum": {"$cond": [
+                {"$and": [
+                    {"$eq": ["$home_away", "home"]},
+                    {"$gt": ["$team_score", "$opp_score"]},
+                ]}, 1, 0]}},
+            "home_games":  {"$sum": {"$cond": [
+                {"$eq": ["$home_away", "home"]}, 1, 0]}},
+            "away_wins":   {"$sum": {"$cond": [
+                {"$and": [
+                    {"$eq": ["$home_away", "away"]},
+                    {"$gt": ["$team_score", "$opp_score"]},
+                ]}, 1, 0]}},
+            "away_games":  {"$sum": {"$cond": [
+                {"$eq": ["$home_away", "away"]}, 1, 0]}},
+        }},
+        {"$match": {"n": {"$gte": 10}}},
+    ]
+
+    teams: List[Dict[str, Any]] = []
+    async for r in coll.aggregate(pipeline, allowDiskUse=True):
+        tid_abbr = (r["_id"] or "").split("_", 1)[-1].upper()
+        teams.append({
+            "abbr":         tid_abbr,
+            "team_avg":     r["team_avg"],
+            "opp_avg":      r["opp_avg"],
+            "total_avg":    r["total_avg"],
+            "home_win_pct": (r["home_wins"] / r["home_games"]
+                              if r["home_games"] else 0.0),
+            "away_win_pct": (r["away_wins"] / r["away_games"]
+                              if r["away_games"] else 0.0),
+        })
+
+    def _rank_desc(field: str) -> Dict[str, int]:
+        return {t["abbr"]: i + 1
+                 for i, t in enumerate(sorted(
+                     teams, key=lambda t: -t[field]))}
+
+    def _rank_asc(field: str) -> Dict[str, int]:
+        return {t["abbr"]: i + 1
+                 for i, t in enumerate(sorted(
+                     teams, key=lambda t: t[field]))}
+
+    out = {
+        "team_score_rank":   _rank_desc("team_avg"),
+        "opp_score_rank":    _rank_asc("opp_avg"),   # lower = better D
+        "total_score_rank":  _rank_desc("total_avg"),  # pace proxy
+        "home_win_rank":     _rank_desc("home_win_pct"),
+        "away_win_rank":     _rank_desc("away_win_pct"),
+        "team_avg":          {t["abbr"]: t["team_avg"]   for t in teams},
+        "opp_avg":           {t["abbr"]: t["opp_avg"]    for t in teams},
+        "total_avg":         {t["abbr"]: t["total_avg"]  for t in teams},
+    }
+    _LEAGUE_RANKS_CACHE[sport_l] = out
+    return out
+
+
+async def _compute_spread_total_rates(
+    db, team_id: str, sport: str,
+) -> Dict[str, Optional[float]]:
+    """L10 cover rate (spread) and L10 over rate (total). Both
+    derived from `team_historical_outcomes` so they ride the SSOT.
+    """
+    coll = db["team_historical_outcomes"]
+    out: Dict[str, Optional[float]] = {
+        "cover_rate_l10": None, "total_over_rate_l10": None,
+    }
+
+    # Spread cover rate L10 (this team, spread market, last 10).
+    rows: List[Dict[str, Any]] = []
+    async for r in coll.find(
+        {"sport": sport, "team_id": team_id,
+         "market_category": "spread", "outcome_resolved": True},
+        {"_id": 0, "hit": 1, "commence_time": 1},
+    ).sort("commence_time", -1).limit(10):
+        rows.append(r)
+    if rows:
+        out["cover_rate_l10"] = round(
+            sum(1 for r in rows if r.get("hit") is True) / len(rows), 3)
+
+    # Total OVER rate L10 (this team, game_total OVER side).
+    rows = []
+    async for r in coll.find(
+        {"sport": sport, "team_id": team_id,
+         "market_category": "game_total", "side": "OVER",
+         "outcome_resolved": True},
+        {"_id": 0, "hit": 1, "commence_time": 1},
+    ).sort("commence_time", -1).limit(10):
+        rows.append(r)
+    if rows:
+        out["total_over_rate_l10"] = round(
+            sum(1 for r in rows if r.get("hit") is True) / len(rows), 3)
+
+    return out
+
+
+def _build_team_scout_badges(
+    *,
+    sport: str,
+    team_abbr: Optional[str],
+    market_category: str,
+    side: str,
+    is_home: Optional[bool],
+    l5_avg: Optional[float],
+    season_avg: Optional[float],
+    hit_l5: Optional[float],
+    hit_l10: Optional[float],
+    hit_l20: Optional[float],
+    cover_rate_l10: Optional[float],
+    total_over_rate_l10: Optional[float],
+    league_ranks: Dict[str, Dict[str, Any]],
+    tp_pct: Optional[float],
+    edge_pct: Optional[float],
+    vision_score: Optional[float],
+) -> List[Dict[str, Any]]:
+    """Build the canonical deterministic team scout badge list.
+
+    Returns at most 3 badges, sorted by `priority` descending. Every
+    badge matches the schema in the directive:
+        {label, reason, metric, value, threshold,
+         source_collection, priority}
+    """
+    sport_l = (sport or "").lower()
+    abbr = (team_abbr or "").upper()
+    out: List[Dict[str, Any]] = []
+
+    # Helper to push a badge dict.
+    def _push(label, reason, metric, value, threshold, priority,
+                source="team_historical_outcomes", icon=None, color="amber"):
+        out.append({
+            "label":             label,
+            "reason":            reason,
+            "metric":            metric,
+            "value":             value,
+            "threshold":         threshold,
+            "source_collection": source,
+            "priority":          priority,
+            "icon":              icon,
+            "color":             color,
+            # back-compat with the player scout_badges renderer
+            "badge_key":         label.lower().replace(" ", "_"),
+            "name":              label,
+            "description":       reason,
+            "display":           label,
+        })
+
+    # ── Crown Play (priority 100, gold glow trigger). ─────────────
+    if (vision_score is not None and tp_pct is not None
+            and edge_pct is not None
+            and vision_score >= 80 and tp_pct >= 65 and edge_pct >= 5):
+        _push(
+            "Crown Play",
+            f"Vision {vision_score:.0f} · TP {tp_pct:.0f}% · "
+            f"Edge {edge_pct:+.1f}%",
+            "composite", vision_score,
+            {"vision": 80, "tp": 65, "edge": 5}, 100,
+            source="team_prop_scores", icon="Crown", color="gold",
+        )
+
+    # ── Trap Detector (priority 10) — large edge & disagreement. ──
+    # We approximate "market direction != model direction" by
+    # checking if edge_pct is materially positive (model > market)
+    # AND the recommended side is contrarian against hit_l20.
+    if edge_pct is not None and edge_pct >= 8:
+        _push(
+            "Trap Detector",
+            f"Edge {edge_pct:+.1f}% vs market",
+            "edge_pct", edge_pct, 8, 10,
+            source="team_prop_scores", icon="Brain", color="purple",
+        )
+
+    # ── Freight Train / Spread dominance (priority 10). ───────────
+    if cover_rate_l10 is not None and cover_rate_l10 >= 0.70:
+        _push(
+            "Freight Train",
+            f"Covered {int(round(cover_rate_l10 * 10))} of last 10",
+            "cover_rate_l10", cover_rate_l10, 0.70, 10,
+            icon="Train", color="amber",
+        )
+
+    # ── Sport-specific rank-based badges. ─────────────────────────
+    team_score_rank   = league_ranks.get("team_score_rank", {}).get(abbr)
+    opp_score_rank    = league_ranks.get("opp_score_rank", {}).get(abbr)
+    total_score_rank  = league_ranks.get("total_score_rank", {}).get(abbr)
+    home_win_rank     = league_ranks.get("home_win_rank", {}).get(abbr)
+    away_win_rank     = league_ranks.get("away_win_rank", {}).get(abbr)
+
+    if sport_l == "nba":
+        # Burn Rate (priority 8) — L5 recent > season + 7.
+        if l5_avg is not None and season_avg is not None \
+                and l5_avg >= season_avg + 7:
+            _push(
+                "Burn Rate",
+                "Recent scoring exceeds baseline",
+                "l5_minus_season", round(l5_avg - season_avg, 1), 7, 8,
+                icon="Flame", color="red",
+            )
+        # Brick Wall (priority 9) — opp_score_rank top-5.
+        if opp_score_rank is not None and opp_score_rank <= 5:
+            _push(
+                "Brick Wall", "Opponent scoring suppressed",
+                "opp_score_rank", opp_score_rank, "≤ 5", 9,
+                icon="ShieldCheck", color="zinc",
+            )
+        # Fast Lane (priority 7) — top pace.
+        if total_score_rank is not None and total_score_rank <= 5:
+            _push(
+                "Fast Lane", "Top pace environment",
+                "total_score_rank", total_score_rank, "≤ 5", 7,
+                icon="Zap", color="yellow",
+            )
+        # Deadeye (priority 8) — top scoring efficiency proxy via
+        # team_score_rank (no offensive_rating table yet).
+        if team_score_rank is not None and team_score_rank <= 5:
+            _push(
+                "Deadeye", "Scoring efficiency advantage",
+                "team_score_rank", team_score_rank, "≤ 5", 8,
+                icon="Target", color="green",
+            )
+        # Green Wave (priority 7) — totals over.
+        if total_over_rate_l10 is not None \
+                and total_over_rate_l10 >= 0.70:
+            _push(
+                "Green Wave", "Totals consistently clearing",
+                "total_over_rate_l10",
+                total_over_rate_l10, 0.70, 7,
+                icon="TrendingUp", color="green",
+            )
+        # Fortress (priority 6) — top-5 home.
+        if home_win_rank is not None and home_win_rank <= 5 \
+                and is_home is True:
+            _push(
+                "Fortress", "Strong home environment",
+                "home_win_rank", home_win_rank, "≤ 5", 6,
+                icon="Home", color="blue",
+            )
+        # Jet Fuel (priority 6) — top-5 away.
+        if away_win_rank is not None and away_win_rank <= 5 \
+                and is_home is False:
+            _push(
+                "Jet Fuel", "Travel performance advantage",
+                "away_win_rank", away_win_rank, "≤ 5", 6,
+                icon="Plane", color="blue",
+            )
+        # Wolf Pack (priority 8) — L5 recent_form > season AND hit_l5
+        # supports the side.
+        if (hit_l5 is not None and hit_l5 >= 60
+                and l5_avg is not None and season_avg is not None
+                and l5_avg > season_avg + 2):
+            _push(
+                "Wolf Pack", "Recent form acceleration",
+                "l5_form", hit_l5, 60, 8,
+                icon="Wand", color="purple",
+            )
+
+    elif sport_l == "mlb":
+        # Barrel Club (priority 8) — top run creation.
+        if team_score_rank is not None and team_score_rank <= 5:
+            _push(
+                "Barrel Club", "Top run environment",
+                "team_score_rank", team_score_rank, "≤ 5", 8,
+                icon="Crosshair", color="amber",
+            )
+        # Icebox (priority 9) — top run suppression.
+        if opp_score_rank is not None and opp_score_rank <= 5:
+            _push(
+                "Icebox", "Opponent run suppression",
+                "opp_score_rank", opp_score_rank, "≤ 5", 9,
+                icon="Snowflake", color="blue",
+            )
+        # Scorched Earth (priority 8) — L5 runs > season + 1.5
+        if l5_avg is not None and season_avg is not None \
+                and l5_avg >= season_avg + 1.5:
+            _push(
+                "Scorched Earth", "Recent production surge",
+                "l5_minus_season", round(l5_avg - season_avg, 2),
+                1.5, 8,
+                icon="Flame", color="red",
+            )
+        # Wave Rider (priority 7) — total over rate.
+        if total_over_rate_l10 is not None \
+                and total_over_rate_l10 >= 0.70:
+            _push(
+                "Wave Rider", "Totals consistently trending",
+                "total_over_rate_l10",
+                total_over_rate_l10, 0.70, 7,
+                icon="TrendingUp", color="cyan",
+            )
+        # Fortress / Night Shift (home / away splits).
+        if home_win_rank is not None and home_win_rank <= 5 \
+                and is_home is True:
+            _push(
+                "Fortress", "Home split advantage",
+                "home_win_rank", home_win_rank, "≤ 5", 6,
+                icon="Home", color="blue",
+            )
+        if away_win_rank is not None and away_win_rank <= 5 \
+                and is_home is False:
+            _push(
+                "Night Shift", "Travel performance advantage",
+                "away_win_rank", away_win_rank, "≤ 5", 6,
+                icon="Moon", color="indigo",
+            )
+        # Sharpshooter (priority 9) — TP >= 65 AND edge >= 5
+        if tp_pct is not None and edge_pct is not None \
+                and tp_pct >= 65 and edge_pct >= 5:
+            _push(
+                "Sharpshooter", "Model strongly aligned",
+                "tp+edge", f"{tp_pct:.0f}% / {edge_pct:+.1f}%",
+                "tp≥65 · edge≥5", 9,
+                source="team_prop_scores", icon="Target", color="green",
+            )
+        # Blueprint (priority 7) — historical repeat rate (use L20
+        # as a proxy when ≥ 70%).
+        if hit_l20 is not None and hit_l20 >= 70:
+            _push(
+                "Blueprint", "Historically repeatable setup",
+                "hit_rate_l20", hit_l20, 70, 7,
+                icon="BookOpen", color="zinc",
+            )
+
+    elif sport_l == "nfl":
+        # NFL keeps the same hierarchy with sport-specific labels.
+        if team_score_rank is not None and team_score_rank <= 5:
+            _push(
+                "High-Powered", "Top scoring offense",
+                "team_score_rank", team_score_rank, "≤ 5", 8,
+                icon="Rocket", color="red",
+            )
+        if opp_score_rank is not None and opp_score_rank <= 5:
+            _push(
+                "Stout Defense", "Top defensive unit",
+                "opp_score_rank", opp_score_rank, "≤ 5", 9,
+                icon="ShieldCheck", color="zinc",
+            )
+        if total_over_rate_l10 is not None \
+                and total_over_rate_l10 >= 0.70:
+            _push(
+                "Green Wave", "Totals consistently clearing",
+                "total_over_rate_l10",
+                total_over_rate_l10, 0.70, 7,
+                icon="TrendingUp", color="green",
+            )
+
+    # ── Killshot (MLB) / Dragon (rare composite) — fires when 3+
+    # other badges are already in the list. Bumps composite badge
+    # priority above the lower individual badges so it always wins
+    # the cap.
+    if sport_l == "mlb" and len(out) >= 3:
+        _push(
+            "Killshot", "Multiple elite signals aligned",
+            "badge_count", len(out), "≥ 3", 20,
+            source="team_prop_scores", icon="Skull", color="red",
+        )
+
+    # ── Cap @ 3 by priority descending. ──────────────────────────
+    out.sort(key=lambda b: -b["priority"])
+    return out[:3]
+
+
+def _build_team_intel_suite(
+    *,
+    sport: str,
+    market_category: str,
+    side: str,
+    line: Optional[float],
+    l5_avg: Optional[float],
+    l10_avg: Optional[float],
+    l20_avg: Optional[float],
+    season_avg: Optional[float],
+    league_ranks: Dict[str, Dict[str, Any]],
+    team_abbr: Optional[str],
+    opp_abbr: Optional[str],
+    opp_def_rank: Optional[int],
+    projection: Optional[float],
+    hit_l10: Optional[float],
+    game_logs: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Build the team analog of the player `intel_suite` dict.
+
+    Returns the same key shape PlayerDetailPage reads — `usage_ripple`,
+    `pace_delta`/`tempo`, `blowout_risk`, `matchup_dvp`,
+    `momentum_data`, `matchup_analysis`, `variance`, `lasso`. Each
+    tile gracefully degrades to None / "Standard" when the underlying
+    data is missing, mirroring player-suite behaviour.
+    """
+    abbr = (team_abbr or "").upper()
+    sport_l = (sport or "").lower()
+    # ── Variance: std dev of last-20 team scores (game_logs[:20]).
+    team_scores = [g["team_score"] for g in game_logs[:20]
+                    if g.get("team_score") is not None]
+    cv = None
+    vol_score = None
+    vol_label = None
+    if len(team_scores) >= 5:
+        mean = sum(team_scores) / len(team_scores)
+        if mean > 0:
+            var = sum((x - mean) ** 2 for x in team_scores) / len(team_scores)
+            std = var ** 0.5
+            cv = round(std / mean, 3)
+            # Map CV → 0-100 volatility score. CV typically 0.05-0.30
+            # for team totals — scale to 0-100.
+            vol_score = max(0, min(100, round(cv * 300, 1)))
+            vol_label = (
+                "low"  if vol_score <= 40 else
+                "mid"  if vol_score <= 70 else
+                "high"
+            )
+
+    # ── Tempo / Pace Delta: total_avg vs league baseline.
+    total_avg_team = (league_ranks.get("total_avg") or {}).get(abbr)
+    all_totals = list((league_ranks.get("total_avg") or {}).values())
+    league_total_avg = (
+        sum(all_totals) / len(all_totals) if all_totals else None)
+    tempo_pct = None
+    tempo_label = "Standard"
+    if total_avg_team is not None and league_total_avg:
+        delta = total_avg_team - league_total_avg
+        tempo_pct = round(100 * delta / league_total_avg, 1)
+        if tempo_pct >= 5:
+            tempo_label = "Fast"
+        elif tempo_pct <= -5:
+            tempo_label = "Slow"
+        else:
+            tempo_label = "Neutral"
+    pace_rank = (league_ranks.get("total_score_rank") or {}).get(abbr)
+
+    # ── Usage Ripple (team-volume analog).
+    volume_label = "Standard Volume"
+    bump_pct = 0
+    shift_label = ""
+    reasoning = ""
+    if l5_avg is not None and season_avg is not None and season_avg > 0:
+        bump_pct = round(100 * (l5_avg - season_avg) / season_avg, 1)
+        if bump_pct >= 5:
+            volume_label = "Elevated Volume"
+            shift_label  = "+VOLUME"
+            reasoning    = (
+                f"L5 average {l5_avg:.1f} runs {bump_pct:+.1f}% above "
+                f"season baseline {season_avg:.1f}."
+            )
+        elif bump_pct <= -5:
+            volume_label = "Suppressed Volume"
+            shift_label  = "-VOLUME"
+            reasoning    = (
+                f"L5 average {l5_avg:.1f} runs {bump_pct:+.1f}% below "
+                f"season baseline {season_avg:.1f}."
+            )
+        else:
+            shift_label  = "STANDARD"
+            reasoning    = (
+                f"L5 average {l5_avg:.1f} ~ season baseline "
+                f"{season_avg:.1f}."
+            )
+
+    # ── Blowout Risk (NBA-leaning, derived from margin variance).
+    margins = [g["margin"] for g in game_logs[:10]
+                if g.get("margin") is not None]
+    blowout_level = "NONE"
+    team_record  = None
+    opp_record   = None
+    if margins:
+        mean_margin = sum(margins) / len(margins)
+        if abs(mean_margin) >= 12:
+            blowout_level = "HIGH"
+        elif abs(mean_margin) >= 7:
+            blowout_level = "MEDIUM"
+        wins = sum(1 for g in game_logs[:20]
+                    if (g.get("margin") or 0) > 0)
+        team_record = (
+            f"{wins}-{min(len(game_logs), 20) - wins} L20")
+
+    # ── Matchup DVP (team analog).
+    matchup_dvp = None
+    if opp_def_rank is not None:
+        matchup_dvp = {
+            "opponent":         opp_abbr or "OPP",
+            "rank":             opp_def_rank,
+            "stat_type":        (market_category or "").upper(),
+            "label": (
+                "Elite"   if opp_def_rank <= 5 else
+                "Tough"   if opp_def_rank <= 10 else
+                "Neutral" if opp_def_rank <= 20 else
+                "Soft"
+            ),
+        }
+
+    # ── Momentum data (NBA — MomentumTrackerFull reads this).
+    momentum_data = None
+    if sport_l == "nba" and margins:
+        recent_5 = margins[:5]
+        recent_5_avg = (sum(recent_5) / len(recent_5)) if recent_5 else None
+        trend = (
+            "ACCELERATING" if (recent_5_avg or 0) > 3 else
+            "DECELERATING" if (recent_5_avg or 0) < -3 else
+            "STABLE"
+        )
+        momentum_data = {
+            "trend":         trend,
+            "recent_margin": (round(recent_5_avg, 1)
+                              if recent_5_avg is not None else None),
+            "season_margin": (round(sum(margins) / len(margins), 1)
+                              if margins else None),
+            "opponent":      opp_abbr or "OPP",
+            "stat_type":     (market_category or "").upper(),
+        }
+
+    # ── MLB Matchup Analysis (placeholder until split data lands).
+    matchup_analysis = None
+    if sport_l == "mlb" and opp_def_rank is not None:
+        matchup_analysis = {
+            "opponent":     opp_abbr or "OPP",
+            "stat_type":    (market_category or "").upper(),
+            "splits": [
+                {"split":  "vs Opponent",
+                  "rank":   opp_def_rank,
+                  "label":  "Tough" if opp_def_rank <= 10 else "Soft"},
+            ],
+        }
+
+    return {
+        "usage_ripple": {
+            "display":           volume_label,
+            "reasoning":         reasoning,
+            "bump_percent":      bump_pct,
+            "shift_label":       shift_label,
+            "injuries_affecting": [],
+        },
+        "pace_delta": {
+            "display":      (f"{tempo_pct:+.1f}%"
+                              if tempo_pct is not None else "—"),
+            "total_pct":    tempo_pct,
+            "possessions":  tempo_pct,
+            "tempo_label":  tempo_label,
+            "factors": (
+                [{"name": f"Pace rank #{pace_rank}"}]
+                if pace_rank is not None else []
+            ),
+        },
+        "tempo": {
+            "display":      (f"{tempo_pct:+.1f}%"
+                              if tempo_pct is not None else "—"),
+            "total_pct":    tempo_pct,
+            "tempo_label":  tempo_label,
+            "factors": (
+                [{"name": f"Pace rank #{pace_rank}"}]
+                if pace_rank is not None else []
+            ),
+        },
+        "blowout_risk": {
+            "risk_level":              blowout_level,
+            "player_team_record":      team_record or "—",
+            "opponent_team_record":    opp_record or "—",
+        } if blowout_level != "NONE" else None,
+        "matchup_dvp":      matchup_dvp,
+        "momentum_data":    momentum_data,
+        "matchup_analysis": matchup_analysis,
+        "variance": {
+            "cv":                cv,
+            "volatility_score":  vol_score,
+            "volatility_label":  vol_label,
+        },
+        "lasso": ({"projection":      projection,
+                    "confidence_tier": "HISTORICAL"}
+                   if projection is not None else None),
+    }
 
 
 async def _enrich_cards_with_history(
@@ -363,10 +1012,12 @@ async def _enrich_cards_with_history(
         if tid:
             by_team.setdefault(tid, []).append(c)
     baseline_by_team: Dict[str, Dict[str, Any]] = {}
+    logs_by_team: Dict[str, List[Dict[str, Any]]] = {}
     for tid in by_team.keys():
         logs = await fetch_team_game_history(
             db, team_id=tid, sport=sport, limit=25)
         baseline_by_team[tid] = compute_baseline_stats(logs)
+        logs_by_team[tid] = logs
 
     # 2. Per-card hit-rate + intel enrichment.
     for c in cards:
@@ -568,6 +1219,166 @@ async def _enrich_cards_with_history(
         c["vision_score"]    = round(tp_pct, 1) if tp_pct is not None else None
         c["vision_score_v2"] = c["vision_score"]
         c["intel_score"]     = c["vision_score"]
+
+        # ── Glow drivers (mirror player cards exactly). ─────────────
+        # `UniversalPlayerCard::getHighestTier` keys off `tier_label`
+        # (UPPERCASE, e.g. "SAFE_HAVEN"/"FRONT_LINE"/"WAR_ZONE"),
+        # `is_goblin`/`is_demon`/`is_standard` booleans, and
+        # `sharp_movement` / `trap_risk`. Team rows were not setting
+        # these — cards fell through to STANDARD theme (no glow).
+        tier = (c.get("tier") or "").lower()
+        TIER_LABEL_MAP = {
+            "safe_haven":  "SAFE_HAVEN",
+            "front_lines": "FRONT_LINE",
+            "war_zone":    "WAR_ZONE",
+        }
+        c["tier_label"] = TIER_LABEL_MAP.get(tier, "STANDARD")
+        c["is_goblin"]   = (tier == "safe_haven")
+        c["is_demon"]    = (tier == "war_zone")
+        c["is_standard"] = (tier not in ("safe_haven", "front_lines", "war_zone"))
+        # Sharp-movement / trap-risk: team pipeline doesn't compute
+        # these (live-line micro-movement is a player-prop only signal
+        # for now). Stamp explicit False so the card's hot path
+        # short-circuits cleanly.
+        c["sharp_movement"] = False
+        c["trap_risk"]      = False
+
+        # ── Tier-gate metadata (player cards bind to these). ────────
+        # Team rows reach a tier through `_route_tier` in the
+        # passthrough; a row that landed in the tier passed every
+        # tier rule. Stamp the SAME shape player cards consume.
+        c["gate_pass"]      = (tier in ("safe_haven", "front_lines", "war_zone"))
+        c["failed_gates"]   = c.get("failed_gates") or []
+        c["gate_reasons"]   = c.get("gate_reasons") or []
+        c["safe_haven_pass"]  = (tier == "safe_haven")
+        c["front_lines_pass"] = (tier == "front_lines")
+        c["war_zone_pass"]    = (tier == "war_zone")
+
+        # ── Probability fields. Synthesised from historical hit-rate
+        # baseline + odds so the card's TP%/edge chips render real
+        # numbers until the team XGB model finishes for this row.
+        # `tp_pct` is already the deterministic baseline (season HR).
+        tp_frac = (tp_pct or 0) / 100.0
+        c["model_probability"] = c.get("model_probability") or tp_frac
+        c["true_probability"]  = c.get("true_probability")  or tp_frac
+        c["fair_probability"]  = c.get("fair_probability")  or tp_frac
+        # Implied probability from American odds (decimal-form math).
+        odds_val = c.get("odds")
+        if odds_val is not None and c.get("implied_probability") is None:
+            try:
+                o = float(odds_val)
+                if o < 0:
+                    c["implied_probability"] = round(-o / (-o + 100.0), 4)
+                else:
+                    c["implied_probability"] = round(100.0 / (o + 100.0), 4)
+            except (TypeError, ValueError):
+                c["implied_probability"] = None
+        c["edge"] = c.get("edge") if c.get("edge") is not None else (
+            round(c["model_probability"] - c["implied_probability"], 4)
+            if c.get("implied_probability") is not None else None)
+        c["edge_pct"] = c.get("edge_pct") if c.get("edge_pct") is not None else (
+            round(100.0 * c["edge"], 2) if c.get("edge") is not None else None)
+
+        # ── DVP alias fields (player-card duals). The player card
+        # reads `dvp_rank` / `dvp_value` / `matchup_badge` for the
+        # matchup chip. For teams we mirror the opponent allowance
+        # rank into those alias slots so the chip renders identically.
+        c["dvp_rank"]      = opp_def_rank
+        c["dvp_value"]     = opp_def_rank
+        c["dvp_stat_type"] = stat_label
+        if opp_def_rank is not None:
+            rank_label = (
+                "elite" if opp_def_rank <= 5 else
+                "tough" if opp_def_rank <= 10 else
+                "neutral" if opp_def_rank <= 20 else
+                "soft"
+            )
+            c["matchup_badge"] = {
+                "rank": opp_def_rank,
+                "label": rank_label,
+                "stat_type": stat_label,
+            }
+        else:
+            c["matchup_badge"] = None
+
+        # ── Sport-specific deterministic scout badges (replaces old
+        # context_badges placeholders). Same renderer the player card
+        # uses for `scout_badges`. Capped at 3 by priority. The badge
+        # builder requires league-wide ranks + L10 spread/total rates,
+        # which we compute below.
+        league_ranks = await _compute_league_ranks(db, sport)
+        rates = await _compute_spread_total_rates(db, tid, sport)
+        team_badges = _build_team_scout_badges(
+            sport=sport, team_abbr=(c.get("team_abbr") or "").upper(),
+            market_category=market_category, side=side,
+            is_home=c.get("is_home"),
+            l5_avg=l5_avg, season_avg=season_avg,
+            hit_l5=hit_l5, hit_l10=hit_l10, hit_l20=hit_l20,
+            cover_rate_l10=rates.get("cover_rate_l10"),
+            total_over_rate_l10=rates.get("total_over_rate_l10"),
+            league_ranks=league_ranks,
+            tp_pct=tp_pct, edge_pct=c.get("edge_pct"),
+            vision_score=c.get("vision_score"),
+        )
+        c["scout_badges"]  = team_badges
+        c["active_badges"] = [b["badge_key"] for b in team_badges]
+        c["context_badges"] = team_badges
+        # ── Crown Play → gold glow override. ─────────────────────
+        # Per directive: golden glow ONLY triggers on Crown Play.
+        # When the badge fires we elevate the card to SAFE_HAVEN
+        # tier theme (gold ring + green accent), independent of
+        # the original tier.
+        if any(b["badge_key"] == "crown_play" for b in team_badges):
+            c["tier_label"]   = "SAFE_HAVEN"
+            c["is_goblin"]    = True
+            c["is_demon"]     = False
+            c["is_standard"]  = False
+            c["is_crown_play"] = True
+        else:
+            c["is_crown_play"] = False
+
+        # ── Full Vision Intel Suite payload (matches player shape).
+        # Each tile of the player suite has a team analog so the same
+        # PlayerDetailPage renders without conditionals.
+        team_logs = logs_by_team.get(tid) or []
+        suite = _build_team_intel_suite(
+            sport=sport, market_category=market_category, side=side,
+            line=line, l5_avg=l5_avg, l10_avg=l10_avg,
+            season_avg=season_avg, l20_avg=l20_avg,
+            league_ranks=league_ranks,
+            team_abbr=(c.get("team_abbr") or "").upper(),
+            opp_abbr=opp_abbr, opp_def_rank=opp_def_rank,
+            projection=projection, hit_l10=hit_l10,
+            game_logs=team_logs,
+        )
+        # Merge badge slots into the suite (player suite carries
+        # `scout_badges` + `context_badges` at this level).
+        suite["scout_badges"]   = team_badges
+        suite["context_badges"] = team_badges
+        c["intel_suite"] = suite
+        # Variance tile fields used DIRECTLY on the prop (not the
+        # suite) by PlayerDetailPage::variance-tile.
+        c["cv"]               = suite["variance"]["cv"]
+        c["cv_raw"]           = suite["variance"]["cv"]
+        c["volatility_score"] = suite["variance"]["volatility_score"]
+        c["volatility_label"] = suite["variance"]["volatility_label"]
+        # MomentumTracker (NBA) reads `momentum_data` directly off the
+        # prop. Carry from the suite so the existing component renders.
+        c["momentum_data"]      = suite.get("momentum_data")
+        # MLB MatchupAnalysis reads `matchup_analysis` directly.
+        c["matchup_analysis"]   = suite.get("matchup_analysis")
+
+        # ── Identity carry. Match player-card field name conventions.
+        c["is_team_prop"]   = True
+        c["game_id"]        = c.get("event_id")
+        c["opponent_team"]  = c.get("opponent")
+        c["best_book"]      = c.get("best_book") or c.get("book")
+        # Activity timestamp — players use `active_changed_at` for the
+        # "X min ago" chip; team rows have `snapshot_iso`/`ingested_at`.
+        c["active_changed_at"] = (
+            c.get("scored_at") or c.get("snapshot_iso")
+            or c.get("ingested_at") or c.get("passthrough_at")
+        )
 
     return cards
 
