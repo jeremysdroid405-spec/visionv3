@@ -188,10 +188,17 @@ PIPELINE_REGISTRY = MappingProxyType({
             "surface":                    "ferrari team tier endpoints + /api/v3/team-with-badges/{team_id}",
         }),
         "backtest": MappingProxyType({
-            "input_script":               "scripts/sgo/reshape_team_props_to_replay.py",
+            # SSOT: the unified `sgo_propvision_full_pipeline_replay`
+            # collection is the OPTIMIZER INPUT for team backtest.
+            # Rows there are ALREADY scored by `team_xgb_v1` (the
+            # SAME model the live scorer wraps), partitioned by
+            # `prop_type=team`. No separate orchestrator, no
+            # separate mirror — the dataset is the input.
+            "optimizer_collection":       "sgo_propvision_full_pipeline_replay",
+            "row_filter":                 {"prop_type": "team"},
             "predictor_entry_point":      "services.team_xgb_loader.score_team_props_batch",
-            "output_sink":                "optimizer dataset (TODO: mirror_team_replay_to_unified.py)",
-            "status":                     "P1 — orchestrator + mirror script pending",
+            "model_version":              "team_xgb_v1",
+            "ssot_source":                "team_prop_features",
         }),
     }),
 })

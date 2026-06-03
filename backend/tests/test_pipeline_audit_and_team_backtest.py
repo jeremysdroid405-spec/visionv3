@@ -66,33 +66,50 @@ async def test_pipeline_audit_carries_registry_snapshot():
         )
 
 
-def test_run_team_backtest_imports_cleanly():
-    """The team backtest orchestrator MUST import the SAME team
-    predictor `score_team_props_batch` the live scorer wraps —
-    enforces Rule 4 of the 2-pipeline contract (no separate replay
-    scorer for teams)."""
-    import importlib
-    mod = importlib.import_module("scripts.sgo.run_team_backtest")
-    assert hasattr(mod, "run_sport"), "run_team_backtest missing run_sport()"
-    src = open(mod.__file__).read()
-    assert "from services.team_xgb_loader import score_team_props_batch" in src, (
-        "Team backtest orchestrator must import "
-        "`services.team_xgb_loader.score_team_props_batch` — the "
-        "same predictor wrapped by the live scorer. No separate "
-        "replay-only scorer per the locked pipeline contract."
+def test_unified_collection_is_team_backtest_ssot():
+    """The team backtest pipeline reads from the UNIFIED collection
+    `sgo_propvision_full_pipeline_replay` (partitioned by
+    `prop_type=team`) — NOT a separate `team_replay_model_outputs`
+    collection. Locked 2026-06-02 after a duplicate-path drift was
+    rolled back.
+
+    Production audit (5,787,461 rows total in unified) was confirmed
+    SSOT. Any future code reintroducing `run_team_backtest.py` or
+    `mirror_team_replay_to_unified.py` is architecture drift.
+    """
+    from services.replay.contract import PIPELINE_REGISTRY
+    bt = PIPELINE_REGISTRY["team"]["backtest"]
+    assert bt.get("optimizer_collection") == \
+            "sgo_propvision_full_pipeline_replay", (
+        "Team backtest SSOT MUST be the unified collection. "
+        f"Got: {bt.get('optimizer_collection')!r}"
+    )
+    assert bt.get("row_filter") == {"prop_type": "team"}, (
+        f"Team backtest row filter drifted: {bt.get('row_filter')!r}"
+    )
+    assert bt.get("model_version") == "team_xgb_v1", (
+        "Unified rows are scored by `team_xgb_v1` (the SAME live "
+        "team model). If the model_version changes, the live "
+        "scorer and unified rows must move together — drift "
+        f"detected: {bt.get('model_version')!r}"
     )
 
 
-def test_mirror_team_replay_imports_cleanly():
-    """The team mirror script lands rows in the shared optimizer
-    collection — the same one the player mirror writes to."""
-    import importlib
-    mod = importlib.import_module(
-        "scripts.sgo.mirror_team_replay_to_unified")
-    assert hasattr(mod, "UNIFIED_COLL")
-    assert mod.UNIFIED_COLL == "sgo_propvision_full_pipeline_replay", (
-        "Team mirror must write to the unified collection "
-        "`sgo_propvision_full_pipeline_replay` so player + team rows "
-        "share one optimizer dataset (Rule 1 of the locked "
-        "pipeline contract)."
-    )
+def test_deprecated_team_backtest_scripts_are_removed():
+    """Negative test: `run_team_backtest.py` and
+    `mirror_team_replay_to_unified.py` were a duplicate path that
+    overlapped with the unified SSOT. They were removed 2026-06-02
+    after a production audit confirmed unified is sufficient. Reject
+    any reintroduction at the file-system level."""
+    import os
+    deleted = [
+        "/app/backend/scripts/sgo/run_team_backtest.py",
+        "/app/backend/scripts/sgo/mirror_team_replay_to_unified.py",
+    ]
+    for p in deleted:
+        assert not os.path.exists(p), (
+            f"{p} was deleted as a duplicate-path drift; "
+            "re-introducing it duplicates the unified optimizer "
+            "dataset. Use `sgo_propvision_full_pipeline_replay` "
+            "with `prop_type=team` instead."
+        )

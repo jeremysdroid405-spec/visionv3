@@ -125,73 +125,40 @@ async def _quadrant_live_team() -> Dict[str, Any]:
 
 
 async def _quadrant_backtest_player() -> Dict[str, Any]:
-    """BACKTEST Player: SGO historical row count per sport + replay
-    output (NBA replay model outputs) + optimizer rows (if mirror
-    has run)."""
+    """BACKTEST Player: row counts from the unified optimizer
+    collection `sgo_propvision_full_pipeline_replay`, partitioned by
+    `prop_type=player`. This is the SSOT optimizer input — same
+    collection serves BOTH player and team backtest quadrants.
+    """
     out: Dict[str, Any] = {
         "by_sport": {},
-        "totals": {"historical": 0, "replay_scored": 0, "optimizer_rows": 0},
+        "totals": {"optimizer_rows": 0},
+        "ssot_collection": "sgo_propvision_full_pipeline_replay",
     }
-    # Optimizer dataset is the same collection both pipelines write
-    # to; for player rows we filter `prop_type=player`.
-    try:
-        opt_player = await _db["optimizer_input"].count_documents(
-            {"prop_type": "player"})
-    except Exception:
-        opt_player = 0
     for sp in _SUPPORTED_SPORTS:
-        hist_coll = f"{sp}_historical_props"
-        try:
-            n_hist = await _db[hist_coll].count_documents({})
-        except Exception:
-            n_hist = 0
-        # NBA has a dedicated replay model output collection.
-        n_replay = 0
-        if sp == "nba":
-            try:
-                n_replay = await _db["nba_replay_model_outputs"].count_documents({})
-            except Exception:
-                n_replay = 0
-        out["by_sport"][sp] = {
-            "historical_props": n_hist,
-            "replay_scored":    n_replay,
-        }
-        out["totals"]["historical"] += n_hist
-        out["totals"]["replay_scored"] += n_replay
-    out["totals"]["optimizer_rows"] = opt_player
+        n = await _db["sgo_propvision_full_pipeline_replay"].count_documents(
+            {"prop_type": "player", "sport": sp})
+        out["by_sport"][sp] = {"optimizer_rows": n}
+        out["totals"]["optimizer_rows"] += n
     return out
 
 
 async def _quadrant_backtest_team() -> Dict[str, Any]:
-    """BACKTEST Team: historical team props per sport + scored team
-    historical outcomes + optimizer rows (prop_type=team)."""
+    """BACKTEST Team: row counts from the SAME unified optimizer
+    collection, partitioned by `prop_type=team`. Rows there are
+    already scored by `team_xgb_v1` (the SAME model the live scorer
+    wraps) — no separate orchestrator, no separate mirror.
+    """
     out: Dict[str, Any] = {
         "by_sport": {},
-        "totals": {"historical": 0, "scored_outcomes": 0, "optimizer_rows": 0},
+        "totals": {"optimizer_rows": 0},
+        "ssot_collection": "sgo_propvision_full_pipeline_replay",
     }
-    try:
-        opt_team = await _db["optimizer_input"].count_documents(
-            {"prop_type": "team"})
-    except Exception:
-        opt_team = 0
     for sp in _SUPPORTED_SPORTS:
-        try:
-            n_hist = await _db["team_historical_props"].count_documents(
-                {"sport": sp})
-        except Exception:
-            n_hist = 0
-        try:
-            n_outcomes = await _db["team_historical_outcomes"].count_documents(
-                {"sport": sp})
-        except Exception:
-            n_outcomes = 0
-        out["by_sport"][sp] = {
-            "historical_props":  n_hist,
-            "scored_outcomes":   n_outcomes,
-        }
-        out["totals"]["historical"] += n_hist
-        out["totals"]["scored_outcomes"] += n_outcomes
-    out["totals"]["optimizer_rows"] = opt_team
+        n = await _db["sgo_propvision_full_pipeline_replay"].count_documents(
+            {"prop_type": "team", "sport": sp})
+        out["by_sport"][sp] = {"optimizer_rows": n}
+        out["totals"]["optimizer_rows"] += n
     return out
 
 
@@ -240,9 +207,10 @@ async def get_pipeline_audit():
                 health[q] = "green"
     for q in ("backtest_player", "backtest_team"):
         totals = quadrants[q]["totals"]
-        if totals["historical"] == 0:
+        rows = totals.get("optimizer_rows", 0)
+        if rows == 0:
             health[q] = "red"
-        elif totals.get("optimizer_rows", 0) == 0:
+        elif rows < 10_000:
             health[q] = "amber"
         else:
             health[q] = "green"

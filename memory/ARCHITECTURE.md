@@ -253,26 +253,45 @@ testing logic, and no team-vs-player divergence in the orchestration.
    player-shaped payload from `/api/v3/team-with-badges/{team_id}`
    to `PlayerDetailPage` verbatim.
 
-### Compliance audit (2026-06-02)
+### Compliance audit (2026-06-02, post-cleanup)
 
-| Pipeline           | Status | Notes                                                                                                  |
-|--------------------|--------|--------------------------------------------------------------------------------------------------------|
-| LIVE Player        | ✅     | `recompute_sport` per sport → `{sport}_prop_scores` → ferrari tier → board / cards / detail            |
-| LIVE Team          | ✅     | `team_live_xgb_scorer` → `team_prop_scores` → ferrari team tier → board / cards / detail               |
-| BACKTEST Player    | ✅     | `services/replay/nba_replay_engine.py` + `mlb_replay_engine.py` → `recompute_sport(**REPLAY_RECOMPUTE_KWARGS)` |
-| BACKTEST Team      | 🟡     | `scripts/sgo/reshape_team_props_to_replay.py` exists; orchestrator that runs the same team scorer over SGO data and emits to the optimizer dataset is the next P1 item. |
-| Optimizer mirror   | 🟡     | Player: `scripts/sgo/mirror_player_replay_to_unified.py` exists (uncommitted). Team: no mirror script yet. |
+| Pipeline       | Status | SSOT                                                                                                           |
+|----------------|--------|----------------------------------------------------------------------------------------------------------------|
+| LIVE Player    | ✅     | `recompute_sport` → `{sport}_prop_scores` → ferrari → board / cards / detail                                   |
+| LIVE Team      | ✅     | `team_live_xgb_scorer` → `team_prop_scores` → ferrari team → board / cards / detail                            |
+| BACKTEST Player| ✅     | `sgo_propvision_full_pipeline_replay` (prop_type=player) — already scored by player model. Optimizer input.    |
+| BACKTEST Team  | ✅     | `sgo_propvision_full_pipeline_replay` (prop_type=team)   — already scored by `team_xgb_v1`. Optimizer input.   |
+
+The unified `sgo_propvision_full_pipeline_replay` collection is the
+SSOT optimizer input for both pipelines. Confirmed production
+counts (2026-06-02): player MLB 719,862; player NBA 3,734,135;
+team MLB 825,794; team NBA 391,851; team NFL 115,819; total
+5,787,461. NO duplicate orchestrator or mirror script. NO separate
+replay scorer. Rows are scored by the SAME live models
+(`team_xgb_v1` for team, player model for player) and persisted in
+the unified collection during scheduled ingest.
+
+### Forbidden (architecture drift sentinels)
+
+The following are NOT permitted and have a failing CI test guarding
+re-introduction:
+* `scripts/sgo/run_team_backtest.py` — duplicates work already done
+  in the unified collection. Deleted 2026-06-02.
+* `scripts/sgo/mirror_team_replay_to_unified.py` — would wipe the
+  unified team partition and replace it with re-scored rows.
+  Catastrophic. Deleted 2026-06-02.
+* A separate `team_replay_model_outputs` collection — duplicate of
+  unified team partition. Confirmed empty in both preview and
+  production.
 
 ### Open gaps
 
-1. **Team backtest orchestrator** — wire
-   `reshape_team_props_to_replay.py` output through
-   `team_xgb_loader.score_team_props_batch` (the SAME team model
-   used live) and into an optimizer-compatible dataset.
-2. **Optimizer-output mirror** — both pipelines must land scored
-   rows in `optimizer_input` (or equivalent) so the threshold
-   search has a single shared dataset.
-3. **NFL / NCAAF backtest engines** — when added, MUST register in
+1. **Optimizer mirror — player side** —
+   `scripts/sgo/mirror_player_replay_to_unified.py` exists. If
+   preview's player partition diverges from production, re-mirror
+   to align. Team side is N/A (no mirror script — unified IS the
+   source).
+2. **NFL / NCAAF backtest engines** — when added, MUST register in
    `services/replay/contract.py::COMPLIANT_REPLAY_ENGINES` and pass
    `**REPLAY_RECOMPUTE_KWARGS`.
 
