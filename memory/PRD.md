@@ -2405,3 +2405,88 @@ Regression: `tests/test_team_detail_hr_ssot.py` pins:
 2. Side with avg above line must have hit rate ≥ 50%
 **20/20 team tests pass.**
 
+
+
+### 2026-06-03 — Odds API Book Policy Cleanup (P0)
+User directive after read-only audit:
+  "Remove all those books that you listed in step 3 except Caesars
+   and PrizePicks. Confirm PrizePicks is used for reference only and
+   that nothing from that PrizePicks book is entering the model or
+   used in any kind of mathematical equation."
+
+Audit findings (read-only, no changes shipped at that stage):
+- 100% of NBA + MLB scored picks had `anchor_book = "prizepicks"`.
+- ~200 NBA + 60 MLB Best-Bet picks were SOLO-book picks driven by
+  betparx / betonline / betrivers / fliff with positive edges.
+- `team_live_props` contained 50+ international books (1xbet,
+  sportsbet, leovegas, casumo, virginbet, paddypower, ladbrokes,
+  marathonbet, nordicbet, etc.) that never belong on a US-facing
+  live board.
+
+Fixes shipped (3 files):
+
+1. `scripts/sgo/reshape_sgo_to_replay_odds.py::BLOCKED_BOOKS` — the
+   canonical SSOT (re-exported by `services/team_policy.py`).
+   Added: betparx, betonline, betonlineag, betrivers, ballybet +
+   46 international books (1xbet, 888sport, bet365, betfair,
+   betfairexchange, betsson, betvictor, betway, bookmakereu,
+   bovada, boylesports, casumo, circa, coolbet, coral, everygame,
+   fourwinds, grosvenor, gtbets, ladbrokes, leovegas, livescorebet,
+   lowvig, marathonbet, matchbook, neds, nordicbet, paddypower,
+   playup, pointsbet, prophetexchange, sportsbet, sporttrade,
+   sugarhouse, tab, tabtouch, thescorebet, tipico, unibet,
+   virginbet, windcreek, betrsportsbook, betcris, betus,
+   betanysports, prizepicks STAYS in REFERENCE_ONLY).
+
+2. `services/scoring/tp_engine.py::_BOOKS / _OPP_FIELDS` — pruned
+   from 11 → 6 books. Removed BOL, BRV, PRX, BLY, FLF. Kept:
+   DK, FD, MGM, CSR, EB, HRB. **PrizePicks (PP) is NOT in this
+   tuple** — confirmed by `test_prizepicks_not_in_scoring_tp_books_tuple`.
+   Devig / fair-prob / best_book all read exclusively from these
+   6 approved US books.
+
+3. `services/universal_odds_sync.py` —
+   - `DEFAULT_BOOKMAKERS`: PP + DK/FD/MGM/Pinnacle (BOL removed).
+   - `USER_SHARP_BOOKMAKERS` / `MLB_BOOKMAKERS`: pruned to the 6
+     approved US books + PP for the MLB list (line anchor only).
+   - Added a guard at the raw-ingest layer
+     (`for bm in odds_data.get("bookmakers")`) that drops any book
+     whose key is in BLOCKED_BOOKS before it can land in
+     `dg_raw_odds_markets`.
+
+4. `services/team_live_sync_service.py` — same guard at the
+   `team_live_props` ingest, with an ADDITIONAL filter dropping
+   REFERENCE_ONLY books too (DFS pricing has no place on a team
+   prop live board).
+
+PrizePicks reference-only confirmation:
+- `prizepicks` ∈ `REFERENCE_ONLY_BOOKS`, ∉ `BLOCKED_BOOKS`.
+- `prizepicks` is NEVER in `_BOOKS` (scoring math tuple).
+- `prizepicks` is NEVER in `_OPP_FIELDS` (devig pairing).
+- `prizepicks` IS still fetched from the Odds API → lives in
+  `dg_raw_odds_markets` purely for line-pool anchor labeling
+  (`anchor_book = "prizepicks"`). Its pricing never enters any
+  aggregation. Test
+  `test_prizepicks_not_in_scoring_tp_books_tuple` guards this.
+
+Regression: `tests/test_book_policy_enforcement.py` — 12 tests
+covering:
+  • PrizePicks REFERENCE_ONLY, not in math
+  • Underdog REFERENCE_ONLY, not in math
+  • Blocked books removed from `_BOOKS` + `_OPP_FIELDS`
+  • Exact set of 6 approved US books in scoring
+  • Tier-3 US books in BLOCKED
+  • International books in BLOCKED
+  • Approved books not accidentally blocked
+  • Live ingest gates import the policy
+  • Request lists don't contain blocked books
+
+**All 32 team + policy tests pass.** Backend restarts cleanly,
+live endpoints respond in <1s.
+
+⚠️ Note: existing data in `dg_raw_odds_markets`, `nba_prop_scores`,
+`mlb_prop_scores`, `team_live_props` still contains rows from
+blocked books (we only stopped NEW ingestion). A separate cleanup
+job is needed to delete already-stored blocked-book rows from
+these collections.
+

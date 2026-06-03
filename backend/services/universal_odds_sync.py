@@ -42,6 +42,10 @@ def hourly_count_safe() -> int:
 from config.db_config import get_collection_name, validate_sport, SPORT_CONFIG
 from services.config.collection_names import COLL
 from services.market_catalog import MarketCatalog
+# 2026-06-03 — block-list guard at the raw-ingest layer. See
+# `scripts/sgo/reshape_sgo_to_replay_odds.py::BLOCKED_BOOKS` for
+# the canonical set.
+from services.team_policy import BLOCKED_BOOKS
 
 logger = logging.getLogger(__name__)
 
@@ -339,30 +343,29 @@ BOOKMAKER_CONFIG = {
 }
 
 # Default bookmakers to fetch (prioritized list)
-DEFAULT_BOOKMAKERS = ["prizepicks", "draftkings", "fanduel", "betonlineag", "pinnacle"]
-SHARP_BOOKMAKERS = ["pinnacle", "circa", "betcris"]
+# 2026-06-03: pruned per Odds API audit. PrizePicks kept (reference-
+# only line pool, never enters math). BetOnline (`betonlineag`)
+# removed — was contaminating consensus + 107 NBA fake-edge picks.
+DEFAULT_BOOKMAKERS = ["prizepicks", "draftkings", "fanduel", "betmgm", "pinnacle"]
+SHARP_BOOKMAKERS = ["pinnacle"]  # circa + betcris dropped (not in approved US set)
 
 # Sports-book quintet the user asked us to pull "all markets" from.
 # Applied to both NBA and MLB sharp-enrichment paths.
-#   - BetMGM added 2026-04-22 after the "what about BetMGM?" follow-up.
-#   - Caesars (williamhill_us) added 2026-05-11 after the live-probe
-#     audit confirmed Caesars is included free in the us-region pull
-#     and was the only book quoting ~9% of standard NBA props on the
-#     Jan-15-2025 probe slate.
-#   - 2026-05-13: ESPN BET / Hard Rock / BetRivers / BetParx / BallyBet
-#     / Fliff added after "pull from all books" directive — all share
-#     the same `us` region so they're free credit-wise.
+# 2026-06-03 — pruned to the 6 approved US books per Odds API audit:
+#   DK / FD / MGM / Caesars (williamhill_us) / ESPN BET / Hard Rock.
+# REMOVED: betonlineag, betrivers, betparx, ballybet, fliff (all
+# now in BLOCKED_BOOKS — see scripts/sgo/reshape_sgo_to_replay_odds.py).
 USER_SHARP_BOOKMAKERS = [
-    "draftkings", "fanduel", "betonlineag", "betmgm", "williamhill_us",
-    "espnbet", "hardrockbet", "betrivers", "betparx", "ballybet", "fliff",
+    "draftkings", "fanduel", "betmgm", "williamhill_us",
+    "espnbet", "hardrockbet",
 ]
 
-# MLB-specific: PrizePicks anchor + DK/FD/BOL/MGM/CSR + 6 new books
-# (2026-05-13 — "pull from all books" expansion).
+# MLB-specific: PrizePicks anchor (reference-only) + 6 approved US books.
+# 2026-06-03 — pruned per Odds API audit (same as USER_SHARP_BOOKMAKERS).
 MLB_BOOKMAKERS = [
     "prizepicks",
-    "draftkings", "fanduel", "betonlineag", "betmgm", "williamhill_us",
-    "espnbet", "hardrockbet", "betrivers", "betparx", "ballybet", "fliff",
+    "draftkings", "fanduel", "betmgm", "williamhill_us",
+    "espnbet", "hardrockbet",
 ]
 
 # =============================================================================
@@ -860,6 +863,16 @@ class UniversalOddsSyncService:
         for bm in odds_data.get("bookmakers") or []:
             bm_key = bm.get("key")
             if not bm_key:
+                continue
+            # 2026-06-03 book policy guard at raw-ingest layer.
+            # BLOCKED books (non-US / wild-pricing / fixed-payout)
+            # never reach `dg_raw_odds_markets` so no downstream
+            # consumer can accidentally read them. REFERENCE_ONLY
+            # books (prizepicks/underdog) are STILL written here so
+            # they remain available for line-pool anchor labeling,
+            # but the scoring `_BOOKS` tuple (tp_engine) excludes
+            # them from math.
+            if bm_key.lower() in BLOCKED_BOOKS:
                 continue
             for market in bm.get("markets") or []:
                 mkey = market.get("key")

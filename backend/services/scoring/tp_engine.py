@@ -49,21 +49,22 @@ TP_SOURCE_ONE_SIDED = "one_sided"
 
 # Canonical (legacy_price_field, universal_odds_field, short_code) per book.
 # Either field, if not None, yields the book's American odds.
-# 2026-05-13: extended from 4 → 11 books to capture the "pull from all
-# books" expansion (Caesars + ESPN BET + Hard Rock + BetRivers + BetParx
-# + BallyBet + Fliff). Every additional book improves de-vig precision.
+#
+# 2026-06-03: pruned from 11 → 6 books per Odds API audit. Removed
+# BetOnline (BOL), BetRivers (BRV), BetParx (PRX), BallyBet (BLY),
+# Fliff (FLF) — all blocked at ingest as low-quality / wild-pricing
+# sources that were inflating fake edges and contaminating consensus.
+# PrizePicks (PP) was already excluded from this tuple — kept that
+# way per "reference only, never enters math" policy.
+# Final book set:
+#   DK / FD / MGM / CSR / EB / HRB (six approved US sportsbooks).
 _BOOKS = (
     ("draftkings_price", "dk_odds",  "DK"),
     ("fanduel_price",    "fd_odds",  "FD"),
     ("betmgm_price",     "mgm_odds", "MGM"),
-    ("betonline_price",  "bol_odds", "BOL"),
     ("caesars_price",    "csr_odds", "CSR"),
     ("espnbet_price",    "eb_odds",  "EB"),
     ("hardrockbet_price","hrb_odds", "HRB"),
-    ("betrivers_price",  "brv_odds", "BRV"),
-    ("betparx_price",    "prx_odds", "PRX"),
-    ("ballybet_price",   "bly_odds", "BLY"),
-    ("fliff_price",      "flf_odds", "FLF"),
 )
 
 # Path-1 self/opp maps (per-book OVER/UNDER pairing for de-vig). Each
@@ -72,14 +73,9 @@ _OPP_FIELDS = {
     "DK":  ("dk_odds",  "dk_odds_opp",  "draftkings_price"),
     "FD":  ("fd_odds",  "fd_odds_opp",  "fanduel_price"),
     "MGM": ("mgm_odds", "mgm_odds_opp", "betmgm_price"),
-    "BOL": ("bol_odds", "bol_odds_opp", "betonline_price"),
     "CSR": ("csr_odds", "csr_odds_opp", "caesars_price"),
     "EB":  ("eb_odds",  "eb_odds_opp",  "espnbet_price"),
     "HRB": ("hrb_odds", "hrb_odds_opp", "hardrockbet_price"),
-    "BRV": ("brv_odds", "brv_odds_opp", "betrivers_price"),
-    "PRX": ("prx_odds", "prx_odds_opp", "betparx_price"),
-    "BLY": ("bly_odds", "bly_odds_opp", "ballybet_price"),
-    "FLF": ("flf_odds", "flf_odds_opp", "fliff_price"),
 }
 
 

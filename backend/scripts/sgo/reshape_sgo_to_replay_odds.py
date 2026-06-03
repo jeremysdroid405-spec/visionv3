@@ -83,7 +83,55 @@ ANCHOR_BOOK = "prizepicks"
 # REFERENCE_ONLY_BOOKS. Keep these sets in sync with the canonical
 # `routes/emergent_admin/policy.py::REFERENCE_ONLY_BOOKS` and the
 # scoring sibling modules.
-BLOCKED_BOOKS = {"fliff", "mybookie", "unknown"}
+# 2026-06-03 — Production book policy (per ODDS API audit).
+#
+# BLOCKED_BOOKS: hard-removed from ingestion AND every downstream
+# calculation (devig, fair-prob, edge, best_book, consensus, peer
+# median, integrity filter). These books either:
+#   • are not real money / fixed-payout social apps (fliff, mybookie)
+#   • have stale or wild pricing flagged in the live audit
+#     (betparx, betonline/betonlineag, betrivers, ballybet)
+#   • are non-US / international books that don't belong on a
+#     US-facing live board (1xbet, sportsbet, playup, livescorebet,
+#     leovegas, casumo, virginbet, tabtouch, grosvenor, thescorebet,
+#     betsson, paddypower, ladbrokes, boylesports, betvictor,
+#     betfairexchange, marathonbet, nordicbet, etc.)
+#   • have garbled labels we can't grade ("unknown")
+#
+# REFERENCE_ONLY_BOOKS: kept in the warehouse for playability
+# tracking, but every mathematical aggregation (de-vig, fair-
+# probability, ROI / HR in the optimizer, peer median, integrity
+# filter) MUST exclude them. These books post fixed +100 / +PP-
+# multiplier payouts that are NOT real sportsbook quotes — including
+# them in math systematically pulls every estimate toward +100.
+#   • prizepicks : DFS pick'em; fixed payout multipliers. ALLOWED
+#                  for line-pool anchor labeling (`anchor_book`) ONLY.
+#                  PrizePicks pricing MUST NEVER enter devig, edge,
+#                  consensus, or best_book selection. The scoring
+#                  engine's `_BOOKS` tuple intentionally omits PP.
+#   • underdog   : DFS pick'em; same fixed-payout model.
+#
+# Keep these sets in sync with the canonical
+# `routes/emergent_admin/policy.py::REFERENCE_ONLY_BOOKS` and the
+# scoring sibling modules.
+BLOCKED_BOOKS = {
+    # ── Original blocks
+    "fliff", "mybookie", "unknown",
+    # ── 2026-06-03 audit additions (US tier-3 / wild pricing)
+    "betparx", "betonline", "betonlineag",
+    "betrivers", "ballybet",
+    # ── International / non-US (never belong on US live board)
+    "1xbet", "888sport", "bet365", "betanysports", "betfair",
+    "betfairexchange", "betsson", "betus", "betvictor", "betway",
+    "bookmakereu", "bovada", "boylesports", "casumo", "circa",
+    "coolbet", "coral", "everygame", "fourwinds", "grosvenor",
+    "gtbets", "ladbrokes", "leovegas", "livescorebet", "lowvig",
+    "marathonbet", "matchbook", "neds", "nordicbet", "paddypower",
+    "playup", "pointsbet", "prophetexchange", "sportsbet",
+    "sporttrade", "sugarhouse", "tab", "tabtouch", "thescorebet",
+    "tipico", "unibet", "virginbet", "windcreek", "betrsportsbook",
+    "betcris",  # sharp but EU-only — not part of approved US set
+}
 REFERENCE_ONLY_BOOKS = {"prizepicks", "underdog"}
 
 

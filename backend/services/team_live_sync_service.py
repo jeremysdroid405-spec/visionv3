@@ -37,6 +37,9 @@ from typing import Any, Dict, List, Optional, Tuple
 from pymongo import UpdateOne
 
 from services.universal_odds_sync import UniversalOddsSyncService
+# 2026-06-03 — block low-quality / non-US bookmakers at ingest so they
+# never reach `team_live_props` or any downstream math/best-bet logic.
+from services.team_policy import BLOCKED_BOOKS, REFERENCE_ONLY_BOOKS
 from services.team_prop_passthrough import (
     passthrough_team_live_to_scores,
 )
@@ -143,6 +146,16 @@ def _extract_team_props_from_odds(
     for bm in odds_data.get("bookmakers") or []:
         book = bm.get("key") or bm.get("title")
         if not book:
+            continue
+        # ── 2026-06-03 book policy guard ──────────────────────────
+        # Drop any blocked book (low-quality / non-US / wild-pricing)
+        # before it can enter `team_live_props`. Without this filter
+        # ~50 international books (1xbet, sportsbet, leovegas, etc.)
+        # leak through The Odds API response into the live board.
+        # Reference-only books (prizepicks, underdog) are ALSO not
+        # written here — team props never use DFS pick'em pricing.
+        book_lc = book.lower()
+        if book_lc in BLOCKED_BOOKS or book_lc in REFERENCE_ONLY_BOOKS:
             continue
         for market in bm.get("markets") or []:
             mk = market.get("key")
