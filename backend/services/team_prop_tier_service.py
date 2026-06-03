@@ -266,7 +266,9 @@ def _hydrate_card(score: Dict[str, Any],
         "intel_score":         score.get("intel_score"),
         "intel_verdict":       None,
         "intel_suite":         None,
-        "vision_intel":        None,
+        "vision_intel":        score.get("vision_intel"),
+        "vision_intel_content_hash":  score.get("vision_intel_content_hash"),
+        "vision_intel_generated_at":  score.get("vision_intel_generated_at"),
         "confidence":          score.get("confidence"),
         "model_probability":   score.get("model_probability"),
         "true_probability":    score.get("true_probability"),
@@ -1079,12 +1081,29 @@ async def _enrich_cards_with_history(
         opp_hr = None
         opp_sample = 0
 
-        vision_text = build_vision_intel(
-            stat_token=stat_token, side=side, line=line,
-            hit_l5=hit_l5, hit_l10=hit_l10, hit_l20=hit_l20,
-            season_hr=season_hr,
-            opp_abbr=opp_abbr, opp_hit_pct=opp_hr, opp_sample=opp_sample,
-        )
+        # ── Vision Intel — mirror player ferrari_tiers pattern.
+        # Player flow (routes/ferrari_tiers.py L1082):
+        #   1) `vision_intel` arrives on the pick from cached_board /
+        #      `{sport}_prop_scores` (written by master_sync Gemini
+        #      orchestrator).
+        #   2) `_apply_field_ownership_overlay` passes through ONLY
+        #      when the pick has no `vision_intel` yet.
+        #   3) Deterministic fallback runs ONLY for picks without
+        #      Gemini text.
+        # We mirror that here exactly. `c.get("vision_intel")` is
+        # populated by `_hydrate_card` from `team_prop_scores`. Use
+        # it as the canonical UX string; only call the deterministic
+        # builder when the score row carries nothing.
+        score_intel = (c.get("vision_intel") or "").strip()
+        if score_intel:
+            vision_text = score_intel
+        else:
+            vision_text = build_vision_intel(
+                stat_token=stat_token, side=side, line=line,
+                hit_l5=hit_l5, hit_l10=hit_l10, hit_l20=hit_l20,
+                season_hr=season_hr,
+                opp_abbr=opp_abbr, opp_hit_pct=opp_hr, opp_sample=opp_sample,
+            )
         scout = build_scout_badges(
             hit_l5=hit_l5, hit_l10=hit_l10, hit_l20=hit_l20,
         )

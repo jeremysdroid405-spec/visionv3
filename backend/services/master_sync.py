@@ -319,6 +319,29 @@ async def run_master_sync(
             )
             metrics["errors"].append(f"vision_intel_enrichment: {exc}")
 
+        # ── Step 6.5 — TEAM Gemini Vision Intel enrichment.
+        # Same Gemini model + same prompt + same content-hash cache
+        # as the player path. The team orchestrator just feeds
+        # team-shaped picks into `VisionIntelService.analyze_tier_batch`
+        # and writes results back to `team_prop_scores`. Cached. No
+        # blank shells.
+        try:
+            from services.team_vision_intel_enrichment import (
+                enrich_team_board_vision_intel,
+            )
+            ts = datetime.now(timezone.utc)
+            tvi_metrics = await enrich_team_board_vision_intel(db, sport)
+            tvi_metrics["duration_seconds"] = (
+                datetime.now(timezone.utc) - ts
+            ).total_seconds()
+            metrics["steps"][f"6b_team_vision_intel_enrichment_{sport}"] = tvi_metrics
+        except Exception as exc:
+            logger.exception(
+                f"[MASTER_SYNC:{sport}] team vision_intel enrichment failed"
+            )
+            metrics["errors"].append(
+                f"team_vision_intel_enrichment: {exc}")
+
     # -----------------------------------------------------------------
     # Step 7 — publish cached_board as a materialized snapshot of
     # prop_scores[final-{sport}-rt] (2026-05-08 architecture fix).
