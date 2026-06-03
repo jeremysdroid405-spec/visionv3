@@ -305,6 +305,82 @@ def _windowed_avg(
     return _avg([g.get(field) for g in game_logs[:n]])
 
 
+# ── SSOT hit rate from raw game_logs ─────────────────────────────────
+# User report 2026-06-03: "these hr numbers dont make sense use the
+# same ssot". A prop showing L5=121.4 / L10=119.9 / SEASON=116.0 cannot
+# coexist with a hit rate of 20% on OVER 112.5 — because every game in
+# the window scored above 112.5. The mismatch came from
+# `_hit_rates_in_memory` reading `team_historical_outcomes.hit`, which
+# was graded against THAT GAME'S book line at the time (e.g. OVER 119
+# might have been graded as a loss even though the team scored 121),
+# not against the CURRENT prop line (112.5).
+#
+# This helper re-grades the SAME game_logs the averages are built from,
+# against the CURRENT line. Result: hit rate, L5 avg, L10 avg, and
+# season avg now all derive from the same source and are arithmetically
+# consistent ("if avg is above the line, hit rate must be majority").
+def _hit_rate_from_game_logs(
+    game_logs: List[Dict[str, Any]],
+    market_category: str,
+    side: str,
+    line: Optional[float],
+    n: Optional[int] = None,
+) -> Optional[float]:
+    """Hit % over the first N games (None = season).
+
+    Uses the same per-prop game_logs the averages use:
+      • TEAM_TOTAL → game.team_score vs line
+      • GAME_TOTAL → game.total_score vs line
+      • SPREAD    → game.margin vs (-line)  [team covers if margin > -line]
+      • H2H/MONEYLINE → game.team_score > game.opp_score (team won)
+    """
+    if not game_logs:
+        return None
+    rows = game_logs[:n] if n else game_logs
+    side_up = (side or "").upper()
+    cat = (market_category or "").lower()
+
+    try:
+        line_f = float(line) if line is not None else None
+    except (TypeError, ValueError):
+        line_f = None
+
+    wins = 0
+    graded = 0
+    for g in rows:
+        stat: Optional[float] = None
+        threshold: Optional[float] = line_f
+
+        if cat == "team_total":
+            stat = g.get("team_score")
+        elif cat == "game_total":
+            stat = g.get("total_score")
+        elif cat == "spread":
+            stat = g.get("margin")
+            threshold = -line_f if line_f is not None else None
+        elif cat == "h2h":
+            # team wins iff margin > 0
+            stat = g.get("margin")
+            threshold = 0.0
+            side_up = "OVER"  # treat ML as OVER threshold=0
+        else:
+            continue
+
+        if stat is None or threshold is None:
+            continue
+        graded += 1
+        if side_up in ("OVER", "HOME", "ML"):
+            if stat > threshold:
+                wins += 1
+        elif side_up in ("UNDER", "AWAY"):
+            if stat < threshold:
+                wins += 1
+
+    if graded == 0:
+        return None
+    return round(wins / graded * 100.0, 1)
+
+
 # ── Hit-rate over a market_category at the row's line/side ───────────
 async def _fetch_team_outcomes_bulk(
     team_id: str, sport: str,
@@ -682,11 +758,9 @@ async def get_team_with_badges(
         wins = sum(1 for x in graded if x.get("hit") is True)
         return round(wins / len(graded), 3)
 
-    cover_rate_l10      = _rate_for("spread")
-    total_over_rate_l10 = (
-        _rate_for("game_total", "OVER")
-        or _rate_for("team_total", "OVER")
-    )
+    # Note: per-prop cover_rate / total_over_rate are recomputed from
+    # game_logs vs the row's line below (SSOT). The pre-computed values
+    # here are kept as fallbacks for when game_logs are sparse.
 
     for (mkt, line_v, side), rows in grouped.items():
         head = rows[0]
@@ -729,26 +803,33 @@ async def get_team_with_badges(
         else:
             direction_norm = _side_up or "OVER"
         best_book, best_odds = _bucket_best_book(rows)
-        # Historical hit rates @ this (category, side, ~line) — fed by
-        # the bulk outcomes list (one query for the entire team).
-        hr = _hit_rates_in_memory(
-            team_outcomes, market_category, side, line_v,
-        )
-        hit_l5 = hr.get("hit_rate_l5")
-        hit_l10 = hr.get("hit_rate_l10")
-        hit_l20 = hr.get("hit_rate_l20")
-        season_hr = hr.get("season_hit_rate")
+        # SSOT hit rate — re-grade the SAME `game_logs` the averages are
+        # built from, against the CURRENT line. Keeps avg + hit rate
+        # arithmetically consistent (avg above line ⇒ majority hit).
+        # The old `team_historical_outcomes`-based hit rate compared
+        # team_score to THAT GAME'S book line — irrelevant for the
+        # current detail card.
+        hit_l5  = _hit_rate_from_game_logs(
+            game_logs, market_category, side, line_v, n=5)
+        hit_l10 = _hit_rate_from_game_logs(
+            game_logs, market_category, side, line_v, n=10)
+        hit_l20 = _hit_rate_from_game_logs(
+            game_logs, market_category, side, line_v, n=20)
+        season_hr = _hit_rate_from_game_logs(
+            game_logs, market_category, side, line_v, n=None)
 
-        # H2H hit rate (same bulk list, filtered by opponent_team_id)
+        # H2H hit rate — restrict game_logs to games against the same
+        # opponent, then re-grade with the same rule.
         opp_hr = None
         opp_sample = 0
         if opp_team_id:
-            h2h = _hit_rates_in_memory(
-                team_outcomes, market_category, side, line_v,
-                opp_team_id=opp_team_id,
-            )
-            opp_hr = h2h.get("season_hit_rate")
-            opp_sample = h2h.get("sample_size", 0)
+            h2h_logs = [
+                g for g in game_logs
+                if g.get("opponent_team_id") == opp_team_id
+            ]
+            opp_hr = _hit_rate_from_game_logs(
+                h2h_logs, market_category, side, line_v, n=None)
+            opp_sample = len(h2h_logs)
 
         # Baseline avg for this stat token (so projection cell renders)
         bs = baseline_stats.get(stat_token, {})
@@ -800,6 +881,23 @@ async def get_team_with_badges(
             )
         elif hit_l20 is not None:
             vision_score = hit_l20
+
+        # Per-prop SSOT cover/total rates — re-graded from game_logs
+        # against THIS row's line, so the badge thresholds the rich
+        # builder uses (Freight Train ≥ 70%, Green Wave ≥ 70%) reflect
+        # what the user actually sees on the chart.
+        cover_rate_l10 = None
+        total_over_rate_l10 = None
+        if market_category == "spread":
+            _v = _hit_rate_from_game_logs(
+                game_logs, "spread", side, line_v, n=10)
+            cover_rate_l10 = (
+                round(_v / 100.0, 3) if _v is not None else None)
+        elif market_category in ("game_total", "team_total"):
+            _v = _hit_rate_from_game_logs(
+                game_logs, market_category, "OVER", line_v, n=10)
+            total_over_rate_l10 = (
+                round(_v / 100.0, 3) if _v is not None else None)
 
         # Rich, board-parity team scout badges (Brick Wall / Green Wave
         # / Fortress / Wolf Pack / etc.). All wording is team-centric.
@@ -882,7 +980,7 @@ async def get_team_with_badges(
             "hit_rate_l10":        hit_l10,
             "hit_rate_l20":        hit_l20,
             "season_hit_rate":     season_hr,
-            "hit_rate_sample_size": hr.get("sample_size"),
+            "hit_rate_sample_size": len(game_logs),
             "l5_avg":              l5_avg,
             "l10_avg":             l10_avg,
             "l20_avg":             l20_avg,

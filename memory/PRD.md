@@ -2367,3 +2367,41 @@ magnitude with opposite signs.
 Regression: `tests/test_compute_team_edge_pct.py` — 14 cases pin
 every (sport, category, side) combination. **20/20 team tests pass.**
 
+
+
+### 2026-06-03 — Team Hit Rate: Same SSOT as Averages (P0)
+User screenshot: OVER 112.5 Team Total · L5=121.4 · L10=119.9 · SEASON=116.0 ·
+HR L20=10% · L10=20% · L5=20%. Comment: "these hr numbers dont make
+sense use the same ssot".
+
+Root cause: averages came from `game_logs` (raw team_score values),
+hit rates came from `team_historical_outcomes.hit` (graded against
+THAT GAME'S book line at the time). Different sources, contradictory
+output: every game scored above 112.5 but only 20% were marked as
+hits because the book offered 119.5 OVER that day.
+
+Fix: new `_hit_rate_from_game_logs(game_logs, market_category, side,
+line, n)` in `routes/team_with_badges.py`. Re-grades the SAME
+game_logs the averages use against the CURRENT line. Each category
+reads the right field:
+- TEAM_TOTAL → `team_score` vs `line`
+- GAME_TOTAL → `total_score` vs `line`
+- SPREAD    → `margin` vs `-line` (team covers if margin > threshold)
+- H2H       → `margin > 0` (team won)
+
+Per-prop `cover_rate_l10` and `total_over_rate_l10` also re-graded
+from game_logs so Freight Train / Green Wave badges agree with the
+chart.
+
+Verification — `nba_bos` after fix:
+- TEAM_TOTAL OVER 110.5, L10=107.9 → hit rate **40%** (was 20%) ✓
+- TEAM_TOTAL UNDER 110.5, L10=107.9 → hit rate **60%** ✓
+- GAME_TOTAL UNDER 215.5, L10=210.2 → hit rate **70%** ✓
+- SPREAD OVER -5.5, margin=5.6 → hit rate **50%** (barely covers) ✓
+- OVER + UNDER sum to ~100% on every pair (every game graded once) ✓
+
+Regression: `tests/test_team_detail_hr_ssot.py` pins:
+1. OVER% + UNDER% ≈ 100% on every pair
+2. Side with avg above line must have hit rate ≥ 50%
+**20/20 team tests pass.**
+
