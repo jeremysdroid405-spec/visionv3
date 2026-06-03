@@ -590,6 +590,14 @@ async def get_team_with_badges(
             "best_book":           best_book,
             "best_book_odds":      best_odds,
             "odds":                best_odds,
+            # Reference odds — UniversalPlayerCard::resolveDisplayOdds
+            # reads these to render the primary odds chip. For team
+            # detail rows the chosen `best_book` IS the reference book
+            # (no DK→FD→MGM chain; we already picked the best price).
+            "tier_reference_odds":    best_odds,
+            "tier_reference_book":    best_book,
+            "display_reference_odds": best_odds,
+            "display_reference_book": best_book,
             # Historical SSOT stats
             "hit_rate_l5":         hit_l5,
             "hit_rate_l10":        hit_l10,

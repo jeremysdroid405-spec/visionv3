@@ -2083,3 +2083,39 @@ inventory.
 - Next P0 unblocker: grading / outcomes are 0 across the board —
   Phase 1.A.4b (post-game results/settlement) is the obvious next
   step once user authorises feature work to resume.
+
+
+
+### 2026-06-03 — Team Card Odds Chip Parity (P0)
+User report: "team cards still not displaying anything" on the
+dashboard. Investigation showed the cards DID render (NBA Front Lines
+section with 10 Knicks/Spurs cards visible), but the primary odds chip
+on each team card displayed `— —` (null) where the player card chip
+shows e.g. `-440 FD`.
+
+Root cause: `UniversalPlayerCard::resolveDisplayOdds` reads
+`display_reference_odds` → `tier_reference_odds` → per-book fallback.
+Team pick payloads carried only `odds` + `book`, never the three
+reference fields. The per-book fallback chain doesn't include the
+single book that won the team tier gate, so the chip rendered `—`.
+
+Fix (parity with player card contract):
+- `services/team_prop_tier_service._enrich_cards_with_history` —
+  stamp `tier_reference_odds`, `tier_reference_book`,
+  `display_reference_odds`, `display_reference_book`, and
+  `best_book_odds` from the row's own `odds`/`book` (which IS the
+  reference for team picks since they already won the gate).
+- `routes/team_with_badges.py` — same five fields stamped on every
+  prop in the team detail payload so the team detail card chip
+  matches the board card.
+
+Verification:
+- `tests/test_team_card_odds_chip_parity.py` — 2 tests pass against
+  local Mongo (board + detail).
+- Local backend curl confirms `-110/-105/etc.` now appears under
+  `tier_reference_odds`/`display_reference_odds`/`best_book_odds`.
+
+⚠️ Deployment required: frontend `REACT_APP_BACKEND_URL=https://propvision.bet`
+points to the prod backend. Local preview now reads through the fix,
+but `propvision.bet` keeps the old payload until the backend is
+redeployed. User aware.
