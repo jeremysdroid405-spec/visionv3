@@ -185,16 +185,16 @@ async def run_jit_vision_intel_reaper_for_sport(
     metrics["uncovered_visible"] = len(uncovered)
 
     # ── Cheap no-op path when nothing is uncovered ────────────────────
+    # Player path has nothing to do, but the team path still needs to
+    # be checked — team picks have their own cache-hash filter and
+    # short-circuit cheaply when fresh, so we fall through to that step
+    # rather than early-returning.
     if not uncovered:
         metrics["skipped_reason"] = "no_uncovered_visible_picks"
-        metrics["duration_seconds"] = (
-            datetime.now(timezone.utc) - started
-        ).total_seconds()
         logger.info(
-            f"[JIT_VI:{sport}] no-op (0 uncovered visible picks) "
-            f"in {metrics['duration_seconds']:.2f}s"
+            f"[JIT_VI:{sport}] no uncovered player picks — "
+            f"team path still runs (cache-cheap)"
         )
-        return metrics
 
     # ── Hard ceiling per run as a defense-in-depth Gemini-cost cap ───
     if len(uncovered) > max_picks_per_run:
@@ -211,36 +211,74 @@ async def run_jit_vision_intel_reaper_for_sport(
     #   • writes to BOTH live tags via the writer fix-D
     #   • mirrors to cached_board
     # We pass `uncovered` only as a logging hint via metrics.
-    metrics["would_call_enrichment"] = True
+    # Skip when no uncovered player picks (saves Gemini cost).
+    if uncovered:
+        metrics["would_call_enrichment"] = True
+        try:
+            if sport == "nba":
+                from services.master_sync import _enrich_nba_board_vision_intel
+                enrich_metrics = await _enrich_nba_board_vision_intel(db)
+            else:  # mlb
+                from services.master_sync import _enrich_mlb_board_vision_intel
+                enrich_metrics = await _enrich_mlb_board_vision_intel(db)
+            metrics["enrichment_metrics"] = {
+                "to_call":              enrich_metrics.get("to_call", 0),
+                "cache_hits":           enrich_metrics.get("cache_hits", 0),
+                "gemini_calls":         enrich_metrics.get("gemini_calls", 0),
+                "gemini_returned":      enrich_metrics.get("gemini_returned", 0),
+                "gemini_empty_or_failed": enrich_metrics.get("gemini_empty_or_failed", 0),
+                "score_docs_written":   enrich_metrics.get("score_docs_written", 0),
+                "cached_board_writes":  enrich_metrics.get("cached_board_writes", 0),
+            }
+        except Exception as exc:
+            logger.exception(f"[JIT_VI:{sport}] enrichment crashed: {exc}")
+            metrics["skipped_reason"] = f"enrichment_error:{exc.__class__.__name__}"
+
+    # ── Team enrichment (JIT parity with player path). ───────────────
+    # 2026-06-03 — Teams previously only got Vision Intel on the 60-min
+    # master_sync cycle, leaving the 0–60 min window where new team
+    # picks surfaced to the dashboard without Gemini narratives. JIT
+    # reaper now drives team enrichment on the SAME 5-min cadence as
+    # players, using the SAME `VisionIntelService.analyze_tier_batch`
+    # under the hood. Cache-hit short-circuits keep this cheap.
     try:
-        if sport == "nba":
-            from services.master_sync import _enrich_nba_board_vision_intel
-            enrich_metrics = await _enrich_nba_board_vision_intel(db)
-        else:  # mlb
-            from services.master_sync import _enrich_mlb_board_vision_intel
-            enrich_metrics = await _enrich_mlb_board_vision_intel(db)
-        metrics["enrichment_metrics"] = {
-            "to_call":              enrich_metrics.get("to_call", 0),
-            "cache_hits":           enrich_metrics.get("cache_hits", 0),
-            "gemini_calls":         enrich_metrics.get("gemini_calls", 0),
-            "gemini_returned":      enrich_metrics.get("gemini_returned", 0),
-            "gemini_empty_or_failed": enrich_metrics.get("gemini_empty_or_failed", 0),
-            "score_docs_written":   enrich_metrics.get("score_docs_written", 0),
-            "cached_board_writes":  enrich_metrics.get("cached_board_writes", 0),
+        from services.team_vision_intel_enrichment import (
+            enrich_team_board_vision_intel,
+        )
+        team_metrics = await enrich_team_board_vision_intel(db, sport)
+        metrics["team_enrichment_metrics"] = {
+            "total_visible_picks":  team_metrics.get("total_visible_picks", 0),
+            "cache_hits":           team_metrics.get("cache_hits", 0),
+            "to_call":              team_metrics.get("to_call", 0),
+            "gemini_calls":         team_metrics.get("gemini_calls", 0),
+            "gemini_returned":      team_metrics.get("gemini_returned", 0),
+            "gemini_empty_or_failed": team_metrics.get("gemini_empty_or_failed", 0),
+            "score_docs_written":   team_metrics.get("score_docs_written", 0),
         }
     except Exception as exc:
-        logger.exception(f"[JIT_VI:{sport}] enrichment crashed: {exc}")
-        metrics["skipped_reason"] = f"enrichment_error:{exc.__class__.__name__}"
+        logger.exception(
+            f"[JIT_VI:{sport}] team enrichment crashed: {exc}"
+        )
+        metrics.setdefault("team_enrichment_metrics", {})
+        metrics["team_enrichment_metrics"]["error"] = (
+            f"{exc.__class__.__name__}: {exc}"
+        )
 
     metrics["duration_seconds"] = (
         datetime.now(timezone.utc) - started
     ).total_seconds()
+    _em = metrics.get("enrichment_metrics") or {}
+    _tm = metrics.get("team_enrichment_metrics") or {}
     logger.info(
         f"[JIT_VI:{sport}] uncovered_visible={metrics['uncovered_visible']} "
-        f"to_call={(metrics['enrichment_metrics'] or {}).get('to_call', 0)} "
-        f"gemini_calls={(metrics['enrichment_metrics'] or {}).get('gemini_calls', 0)} "
-        f"gemini_returned={(metrics['enrichment_metrics'] or {}).get('gemini_returned', 0)} "
-        f"score_writes={(metrics['enrichment_metrics'] or {}).get('score_docs_written', 0)} "
+        f"player_to_call={_em.get('to_call', 0)} "
+        f"player_gemini_calls={_em.get('gemini_calls', 0)} "
+        f"player_gemini_returned={_em.get('gemini_returned', 0)} "
+        f"player_score_writes={_em.get('score_docs_written', 0)} "
+        f"team_to_call={_tm.get('to_call', 0)} "
+        f"team_gemini_calls={_tm.get('gemini_calls', 0)} "
+        f"team_gemini_returned={_tm.get('gemini_returned', 0)} "
+        f"team_score_writes={_tm.get('score_docs_written', 0)} "
         f"in {metrics['duration_seconds']:.2f}s"
     )
     return metrics

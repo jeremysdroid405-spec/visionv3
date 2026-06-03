@@ -2119,3 +2119,47 @@ Verification:
 points to the prod backend. Local preview now reads through the fix,
 but `propvision.bet` keeps the old payload until the backend is
 redeployed. User aware.
+
+
+### 2026-06-03 — Team Vision Intel JIT Parity (P1)
+User directive: route team `vision_intel` through Gemini on the SAME
+cadence as players — "Scheduled batch every 15 min like player intel".
+
+**Audit finding:** Team Vision Intel was already wired into
+`master_sync` Step 6.5 (60-min cycle). But the **JIT reaper** —
+which keeps Vision Intel fresh on the 5-min cadence between
+`master_sync` ticks — only invoked the player enrichers
+(`_enrich_nba_board_vision_intel` / `_enrich_mlb_board_vision_intel`).
+Result: newly-surfaced team picks went 0–60 min showing the
+deterministic fallback sentence ("Hit AWAY 4.5 in 10 of last 10
+spread games. Recent form trending over.") instead of Gemini prose.
+
+**Fix:** `services/jit_vision_intel_reaper.py::run_jit_vision_intel_reaper_for_sport`
+- After the player enrichment block, unconditionally call
+  `enrich_team_board_vision_intel(db, sport)` (same Gemini model,
+  same `analyze_tier_batch`, same `vision_intel_content_hash` cache).
+- Restructured the "no uncovered picks" early-return so the team
+  path still runs (its own cache filter keeps it cheap when fresh).
+- Added `team_enrichment_metrics` to the returned metrics dict
+  alongside `enrichment_metrics`, with parallel field names.
+
+**Verification (local):** Reaper invocation on MLB:
+`visible=17 cache_hits=10 to_call=7 gemini_calls=2 returned=7 writes=7`.
+Sample Gemini-authored team prose: "Home field advantage is paramount
+here as the Mariners enter this matchup with strong form in these
+spots. Their winning efficiency creates a 73.0% probability of
+clearing the moneyline, making this a high conviction play."
+
+**Regression:** `tests/test_jit_reaper_team_parity.py` — pins the
+team enrichment metrics into the reaper's return contract.
+
+### 2026-06-03 — NBA Finals Production Smoke (P2)
+Curl audit of `https://propvision.bet/api/v3/ferrari/team/*?sport=nba`:
+- `safe-haven` → 0 picks (no team props at safe-haven thresholds)
+- `front-lines` → 5 picks (Knicks spreads/team_totals real event
+  `1aae688472781f1a1aaf3efdb38e884b`)
+- Confirms `ODDS_API_KEY` is live and the NBA team ingest +
+  passthrough + scoring chain is healthy in prod.
+- Caveat: `tier_reference_odds` still null on prod (the P0 fix from
+  earlier today needs deployment).
+
