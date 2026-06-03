@@ -52,15 +52,33 @@ MATCHUP_COLL_BY_SPORT: Dict[str, str] = {
 def classify_market_category(market_key: Optional[str]) -> Optional[str]:
     """Map `market_key` token to the model's market_category bucket.
 
-    Rules derived from `team_model_prop_features`:
-      * `<stat>-<all|home|away>-game-ml-*`   → h2h
-      * `<stat>-<home|away>-game-sp-*`       → spread
-      * `<stat>-all-game-ou-*`               → game_total
-      * `<stat>-<home|away>-game-ou-*`       → team_total
+    Handles BOTH short aliases and long-format keys:
+      Short aliases (The Odds API top-level market):
+        * `h2h`                                → h2h
+        * `spreads` | `spread`                 → spread
+        * `totals` | `total`                   → game_total
+        * `team_totals` | `team_total`         → team_total
+      Long-format (per-outcome SGO market):
+        * `<stat>-<all|home|away>-game-ml-*`   → h2h
+        * `<stat>-<home|away>-game-sp-*`       → spread
+        * `<stat>-all-game-ou-*`               → game_total
+        * `<stat>-<home|away>-game-ou-*`       → team_total
     """
     if not isinstance(market_key, str):
         return None
-    s = market_key.lower()
+    s = market_key.lower().strip()
+    if not s:
+        return None
+    # ── Short aliases ────────────────────────────────────────────
+    if s == "h2h":
+        return "h2h"
+    if s in ("spread", "spreads"):
+        return "spread"
+    if s in ("total", "totals"):
+        return "game_total"
+    if s in ("team_total", "team_totals"):
+        return "team_total"
+    # ── Long-format keys ────────────────────────────────────────
     if "-ml-" in s:
         return "h2h"
     if "-sp-" in s:

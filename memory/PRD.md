@@ -2559,3 +2559,63 @@ Fix: `frontend/src/components/dashboard/GameLogBarChart.jsx`
 `PlayerDetailPage.jsx` now passes `direction={prop.direction}` so
 both player and team chart instances honor the pick's side.
 
+
+
+### 2026-06-03 — Totals XGB Model Coverage (P0)
+User directive: "Train a totals-side XGB model so the 18 OVER/UNDER
+game-total / team-total picks currently passing through (no model
+coverage) also go through the symmetric gate."
+
+Diagnosis: the training pipeline (`scripts/sgo/train_team_xgb.py`)
+ALREADY produces `game_total.pkl` and `team_total.pkl` artifacts
+for NBA and MLB. The XGB scoring code (`team_xgb_loader.py`) ALSO
+already handles totals. But ZERO totals rows on the live board had
+`model_probability` populated — they were sitting in `front_lines`
+with `market_category=None`, bypassing the symmetric gate.
+
+Root cause: `classify_market_category` in
+`services/team_live_xgb_scorer.py` only handled the LONG-format
+`market_key` strings (`points-all-game-ou-over`, etc.). But the
+live ingest writes the SHORT alias straight from The Odds API
+(`market_key="totals"` / `"team_totals"` / `"h2h"` / `"spreads"`).
+Classifier returned None for short aliases → scorer skipped them
+→ `market_category=None` → no model output → bypass gate.
+
+Fix shipped — `classify_market_category` now handles BOTH:
+- Short aliases: `h2h`, `spread`(`s`), `total`(`s`), `team_total`(`s`)
+- Long format: `*-ml-*` / `*-sp-*` / `*-all-game-ou-*` / `*-{home,away}-game-ou-*`
+
+Result on Finals slate (rescored):
+- 30 previously unscored rows (mc=None) now have model output
+- 6 `team_total UNDER` picks → front_lines (avg_p=**0.777**, avg_edge=**+25.3%**)
+- 6 `team_total OVER` picks → demoted to None (avg_p=0.262, edge=−26.2%)
+- 3 `game_total OVER` + 3 `game_total UNDER` → demoted (borderline,
+  edge close to zero)
+- 97 total losers retroactively demoted (HOME-side already passed,
+  AWAY/OVER losers eliminated)
+
+Final active-tier board (all winners by model):
+| mc | tier | side | n | avg p | avg edge |
+|---|---|---|---:|---:|---:|
+| h2h | front_lines | HOME | 49 | 0.981 | — |
+| h2h | front_lines | ML   |  3 | 0.963 | +57% |
+| spread | front_lines | HOME | 27 | 0.821 | — |
+| spread | safe_haven  | HOME | 10 | 0.953 | — |
+| spread | war_zone    | HOME |  7 | 0.719 | — |
+| spread | front_lines | AWAY |  3 | 0.546 | +2.2% |
+| **team_total** | **front_lines** | **UNDER** | **6** | **0.777** | **+25.3%** |
+| h2h | safe_haven | HOME | 3 | 0.981 | — |
+| h2h | war_zone   | HOME | 2 | 0.981 | — |
+
+UNDER totals are now first-class picks — surfaced because the model
+says they're winners, not because the math was sign-flipped.
+
+Regression: `tests/test_totals_model_coverage.py` — 5 tests:
+1. Classifier handles short aliases
+2. Classifier handles long format
+3. All 8 artifacts (4 markets × 2 sports) exist on disk
+4. No totals row sits in active tier without model coverage
+5. Loser OVERs demoted symmetrically with loser UNDERs
+
+**41/41 team tests pass.**
+
