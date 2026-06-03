@@ -53,6 +53,8 @@ const TeamDetailPage = (props) => {
                    // handleVaultClick — `props[0]` is the clicked team pick
     onBack,
     onQuickAdd,
+    highlightProp, // pass-through so PlayerDetailPage auto-scrolls
+                   // to the clicked pick (the gold bet)
   } = props;
 
   // 1) Resolve the team_id + sport from the wrapper / clicked pick.
@@ -157,16 +159,20 @@ const TeamDetailPage = (props) => {
     );
   }
 
-  // 5) Forward to PlayerDetailPage. Pass `highlightProp={null}` so
-  //    NO yellow Vision-pick glow appears on the team detail view —
-  //    explicit user directive.
+  // 5) Forward to PlayerDetailPage. Pass the original `highlightProp`
+  //    so the page auto-scrolls to the clicked pick (the "gold bet
+  //    we recommend"). `highlightType={null}` keeps the yellow Vision-
+  //    pick GLOW off teams while still allowing the scroll to fire —
+  //    PlayerDetailPage uses `highlightProp` to find the row and
+  //    `highlightType` only to color the glow. Per user directive:
+  //    "scrolls to the gold bet we recommend".
   return (
     <div data-testid="team-detail-page" data-prop-type="team">
       <PlayerDetailPage
         playerName={adaptedPlayerData.player_name}
         playerData={adaptedPlayerData}
         onBack={onBack}
-        highlightProp={null}
+        highlightProp={highlightProp || null}
         highlightType={null}
         onQuickAdd={onQuickAdd}
       />

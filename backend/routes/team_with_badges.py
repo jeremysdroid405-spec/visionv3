@@ -71,6 +71,40 @@ _MARKET_CATEGORY_TO_STAT_TOKEN = {
 }
 
 
+def _classify_market_category_from_key(market_key: Optional[str]) -> str:
+    """Classify a raw market_key → canonical market_category.
+
+    Mirrors `services.team_prop_tier_service._classify_market_category_from_key`.
+    Necessary because `team_prop_scores` rows from the live passthrough
+    don't always stamp `market_category`. Without this, every prop
+    falls to the `TEAM_PROP` fallback token and the chart / hit-rate
+    / section grouping all break.
+    """
+    mk = (market_key or "").lower()
+    if not mk:
+        return ""
+    # NBA-style markets (the_odds_api returns these tokens verbatim)
+    if mk == "h2h":
+        return "h2h"
+    if mk in ("spreads", "spread"):
+        return "spread"
+    if mk in ("totals", "total"):
+        return "game_total"
+    if "team_total" in mk or "team-total" in mk:
+        return "team_total"
+    # Odds-API extended (MLB/NBA): "points-{home|away}-game-{ml|sp|tt}-{home|away}"
+    if "-ml-" in mk:
+        return "h2h"
+    if "-sp-" in mk:
+        return "spread"
+    if "-tt-" in mk or "team-total" in mk:
+        return "team_total"
+    if "-game-total" in mk or "game-total" in mk:
+        return "game_total"
+    # "first/innings" subset markets — keep as-is, not exposed today.
+    return ""
+
+
 # ── DB handle ─────────────────────────────────────────────────────────
 _db = None
 
@@ -520,10 +554,44 @@ async def get_team_with_badges(
 
     for (mkt, line_v, side), rows in grouped.items():
         head = rows[0]
-        market_category = head.get("market_category") or ""
+        market_category = (
+            head.get("market_category")
+            or _classify_market_category_from_key(mkt)
+            or _classify_market_category_from_key(head.get("market"))
+            or ""
+        )
         stat_token = _MARKET_CATEGORY_TO_STAT_TOKEN.get(
             market_category, market_category.upper() or "TEAM_PROP",
         )
+
+        # Direction normalization — mirror team_prop_tier_service so the
+        # SAME pick clicked from the board and the detail row share an
+        # identical `(stat_type, line, direction)` triplet. Without this
+        # the detail page's `isHighlightedProp` match fails and the
+        # auto-scroll to the clicked "gold bet" silently no-ops.
+        # Rules:
+        #   • OVER  → "OVER"
+        #   • UNDER → "UNDER"
+        #   • HOME  → "OVER"   (favorite-side for spread / home team total)
+        #   • AWAY  → "UNDER"  (underdog-side for spread / away team total)
+        #   • ML    → "OVER" if the row's home_team matches our team,
+        #             else "UNDER" — keeps moneyline picks routable.
+        _side_up = (side or "").upper()
+        if _side_up in ("OVER", "HOME"):
+            direction_norm = "OVER"
+        elif _side_up in ("UNDER", "AWAY"):
+            direction_norm = "UNDER"
+        elif _side_up == "ML":
+            _ha = (head.get("home_away") or "").upper()
+            if _ha == "HOME" or (
+                home_team
+                and str(home_team).upper().endswith(abbr_upper)
+            ):
+                direction_norm = "OVER"
+            else:
+                direction_norm = "UNDER"
+        else:
+            direction_norm = _side_up or "OVER"
         best_book, best_odds = _bucket_best_book(rows)
         # Historical hit rates @ this (category, side, ~line)
         hr = await _hit_rates_for_market(
@@ -583,8 +651,9 @@ async def get_team_with_badges(
             "market_key":          mkt,
             "market_category":     market_category,
             "line":                line_v,
-            "direction":           side,
-            "recommendation":      side,
+            "direction":           direction_norm,
+            "side":                _side_up,
+            "recommendation":      direction_norm,
             # Books / odds
             "book":                best_book,
             "best_book":           best_book,

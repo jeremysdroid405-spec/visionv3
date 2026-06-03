@@ -2163,3 +2163,54 @@ Curl audit of `https://propvision.bet/api/v3/ferrari/team/*?sport=nba`:
 - Caveat: `tier_reference_odds` still null on prod (the P0 fix from
   earlier today needs deployment).
 
+
+
+### 2026-06-03 — Team Detail Page: Full E2E Click-Flow Parity
+User feedback (frustrated): "dont consider it done until you click on
+a team card. the team card opens displaying all props with a hr graph
+for the last to. it then scrolls to the gold bet we recomend and the
+vision intel suite opens when you click on it. nothing less."
+
+Root cause audit — every step in the click flow was broken:
+1. ❌ stat_type was the fallback `"TEAM_PROP"` → no category grouping,
+   no chart resolution (STAT_FIELD_MAP key miss)
+2. ❌ hit_rate / l5_avg / l10_avg / season_avg all `null` (because
+   `_hit_rates_for_market` was called with empty market_category)
+3. ❌ direction was raw "HOME"/"AWAY" → no match against the board
+   click-key ("Over"/"Under") → auto-scroll silently no-oped
+4. ❌ `TeamDetailPage` passed `highlightProp={null}` → scroll-to-pick
+   suppressed entirely
+5. ❌ Bare intel_suite missing tiles → Vision Intel Suite modal usable
+   but thin
+
+Fixes shipped:
+- `routes/team_with_badges.py` — added `_classify_market_category_from_key`
+  fallback (mirrors `team_prop_tier_service`); now every prop gets a
+  canonical SSOT token (TEAM_TOTAL / GAME_TOTAL / SPREAD / MONEYLINE)
+  → chart resolves + sections group correctly.
+- Same file — normalised `direction` to canonical OVER / UNDER so the
+  board click-key matches the detail-page row triplet.
+- `components/dashboard/TeamDetailPage.jsx` — now forwards
+  `highlightProp` to `PlayerDetailPage` (was `null` before).
+  `highlightType={null}` keeps the yellow Vision glow scoped to the
+  clicked row only; the auto-scroll fires unconditionally.
+
+Verification — visual e2e flow (screenshot tool, local backend
+fetch-intercept):
+- Click Celtics SPREAD OVER -5.5 card →
+- Boston Celtics detail page renders with 4 categories, 6 lines, 111.2 PPG
+- 10 game-log bars per prop with real team scores
+- Page auto-scrolls (scrollY=1603) to `prop-row-SPREAD--5.5-vision`
+  with amber glow + "VISION" badge + "Click for Intel Suite"
+- Click → "VISION INTEL SUITE" modal opens with OVER -5.5, L5/L10/
+  SEASON avgs, Add Pick to Command Center, Environmental Factors,
+  Performance Indicators
+- All 4 user requirements satisfied
+
+Regression: `tests/test_team_detail_full_parity.py` — pins
+stat_type tokens, direction normalisation, per-prop game_logs,
+intel_suite presence, and reference odds parity. 3/3 pass.
+
+⚠️ Deployment required to land all today's fixes on
+`https://propvision.bet`.
+
