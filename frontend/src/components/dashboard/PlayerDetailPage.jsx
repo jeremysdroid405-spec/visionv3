@@ -1161,7 +1161,93 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                 </button>
               )}
               
-              {/* ===== CONTEXT BADGES - Sport-Specific Indicators ===== */}
+              {/* ===== TEAM SIGNALS — backend-built deterministic team badges =====
+                  When this modal is opened for a team prop, the player
+                  Environmental Factors + Performance Indicators player
+                  badges (Injured / Legal Noise / Hot Streak / etc.) are
+                  irrelevant. Instead we render the team-specific
+                  scout_badges the backend already supplies (Crown Play,
+                  Brick Wall, Green Wave, Wolf Pack, Barrel Club, Icebox,
+                  Freight Train, Fortress, Jet Fuel, etc. — see
+                  `services/team_prop_tier_service._build_team_scout_badges`).
+                  Each badge already carries label / reason / metric /
+                  value / threshold / icon / color, so we render them
+                  directly without going through BADGE_REGISTRY. */}
+              {selectedVisionProp.is_team_prop && (() => {
+                const teamBadges =
+                  selectedVisionProp.scout_badges ||
+                  selectedVisionProp.intel_suite?.scout_badges ||
+                  [];
+                const colorPalette = {
+                  gold:   { bg: 'bg-amber-500/20',  border: 'border-amber-500/40',  text: 'text-amber-300',  glow: 'shadow-amber-500/30'  },
+                  amber:  { bg: 'bg-amber-500/20',  border: 'border-amber-500/40',  text: 'text-amber-300',  glow: 'shadow-amber-500/30'  },
+                  red:    { bg: 'bg-red-500/20',    border: 'border-red-500/40',    text: 'text-red-300',    glow: 'shadow-red-500/30'    },
+                  green:  { bg: 'bg-green-500/20',  border: 'border-green-500/40',  text: 'text-green-300',  glow: 'shadow-green-500/30'  },
+                  blue:   { bg: 'bg-blue-500/20',   border: 'border-blue-500/40',   text: 'text-blue-300',   glow: 'shadow-blue-500/30'   },
+                  cyan:   { bg: 'bg-cyan-500/20',   border: 'border-cyan-500/40',   text: 'text-cyan-300',   glow: 'shadow-cyan-500/30'   },
+                  purple: { bg: 'bg-purple-500/20', border: 'border-purple-500/40', text: 'text-purple-300', glow: 'shadow-purple-500/30' },
+                  indigo: { bg: 'bg-indigo-500/20', border: 'border-indigo-500/40', text: 'text-indigo-300', glow: 'shadow-indigo-500/30' },
+                  yellow: { bg: 'bg-yellow-500/20', border: 'border-yellow-500/40', text: 'text-yellow-300', glow: 'shadow-yellow-500/30' },
+                  zinc:   { bg: 'bg-zinc-500/20',   border: 'border-zinc-500/40',   text: 'text-zinc-300',   glow: 'shadow-zinc-500/30'   },
+                };
+                return (
+                  <div
+                    className="bg-gradient-to-r from-zinc-900 to-zinc-800/50 border border-zinc-700 rounded-lg p-4"
+                    data-testid="team-signals-section"
+                  >
+                    <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                      <Target className="w-4 h-4 text-amber-400" />
+                      TEAM SIGNALS
+                    </h3>
+                    <p className="text-xs text-zinc-500 mb-4">
+                      Deterministic indicators built from this team&rsquo;s
+                      historical outcomes, league ranks, and recent form
+                    </p>
+                    {teamBadges.length === 0 ? (
+                      <div className="text-xs text-zinc-500 italic py-2">
+                        No team signals fired for this prop.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3">
+                        {teamBadges.map((b, idx) => {
+                          const palette = colorPalette[b.color] || colorPalette.amber;
+                          return (
+                            <div
+                              key={b.badge_key || b.label || idx}
+                              className={`flex items-start gap-2 p-2 rounded-lg border ${palette.bg} ${palette.border} shadow-lg ${palette.glow}`}
+                              data-testid={`team-signal-${b.badge_key || idx}`}
+                            >
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${palette.bg} flex-shrink-0`}>
+                                <Target size={16} className={palette.text} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className={`text-xs font-bold ${palette.text}`}>
+                                  {b.label || b.name}
+                                </div>
+                                <div className="text-[10px] text-white leading-tight mt-0.5">
+                                  {b.reason || b.description}
+                                </div>
+                                {b.metric && (b.value !== undefined && b.value !== null) && (
+                                  <div className="text-[9px] font-mono text-zinc-400 mt-1">
+                                    {b.metric}: <span className="text-zinc-200">{String(b.value)}</span>
+                                    {b.threshold !== undefined && b.threshold !== null && (
+                                      <span className="text-zinc-500"> · thr {String(b.threshold)}</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <div className={`w-2 h-2 rounded-full ${palette.bg.replace('/20', '')} animate-pulse mt-1`} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* ===== CONTEXT BADGES - Sport-Specific Indicators (PLAYER ONLY) ===== */}
+              {!selectedVisionProp.is_team_prop && (
               <div className="bg-gradient-to-r from-zinc-900 to-zinc-800/50 border border-zinc-700 rounded-lg p-4">
                 <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
                   <Target className="w-4 h-4 text-amber-400" />
@@ -1232,9 +1318,10 @@ export const PlayerDetailPage = ({ playerName, playerData = null, onBack, highli
                   );
                 })()}
               </div>
+              )}
               
-              {/* ===== SCOUT BADGES - AI & Model-Driven Indicators ===== */}
-              {(() => {
+              {/* ===== SCOUT BADGES - AI & Model-Driven Indicators (PLAYER ONLY) ===== */}
+              {!selectedVisionProp.is_team_prop && (() => {
                 const scoutBadges = selectedVisionProp.scout_badges || selectedVisionProp.intel_suite?.scout_badges || [];
                 const SCOUT_KEYS = ['hot_streak', 'floor_lock', 'lasso_high_edge', 'high_fidelity_model', 'soft_matchup', 'usage_spike', 'volatility_extreme'];
                 const activeBadgeKeys = scoutBadges.map(b => typeof b === 'string' ? b : b.badge_key || b.id || '');

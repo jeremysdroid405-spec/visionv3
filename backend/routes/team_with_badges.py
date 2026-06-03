@@ -55,6 +55,19 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Query
 
+# Reuse the rich, SSOT team badge + intel-suite builders from the
+# board pipeline so the detail card stays in sync with the pick card.
+# `_build_team_scout_badges` produces sport-specific labels (Brick
+# Wall / Green Wave / Fortress / Wolf Pack / etc.) — wording is team-
+# centric throughout, no "player" references. `_build_team_intel_suite`
+# produces the rich usage_ripple / pace_delta / blowout_risk /
+# momentum_data / matchup_analysis tiles the modal renders.
+from services.team_prop_tier_service import (
+    _build_team_scout_badges as _build_rich_team_scout_badges,
+    _build_team_intel_suite as _build_rich_team_intel_suite,
+    _compute_league_ranks as _compute_team_league_ranks,
+)
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["team-with-badges"])
 
@@ -565,6 +578,13 @@ async def get_team_with_badges(
     # we hit when each (market, line, side) row issued its own query.
     team_outcomes = await _fetch_team_outcomes_bulk(tid, sport)
 
+    # 2.6) League-wide ranks — SAME pre-computed table the board pipeline
+    # uses. Cached after first call, so this is free on subsequent
+    # requests. Without this `_build_team_scout_badges` can't fire any
+    # rank-based badges (Brick Wall / Fast Lane / Deadeye / Fortress /
+    # Jet Fuel / Barrel Club / Icebox / Stout Defense).
+    league_ranks = await _compute_team_league_ranks(_db, sport)
+
     # 3) Compute baseline_stats — team-level rollups for the header strip
     team_pts = [g["team_score"] for g in game_logs if g.get("team_score") is not None]
     opp_pts = [g["opp_score"] for g in game_logs if g.get("opp_score") is not None]
@@ -634,6 +654,38 @@ async def get_team_with_badges(
     opp_team_id = None
     if opp_abbr:
         opp_team_id = f"{sport}_{(opp_abbr or '').lower()}"
+
+    # ── Pre-compute league-wide rates the rich badge builder needs ──
+    # `cover_rate_l10`      = team's last-10 spread win rate (any side
+    #                        — for nba_bos rows are HOME/AWAY, not
+    #                        OVER/UNDER, so we filter by category only)
+    # `total_over_rate_l10` = % of last-10 team_total OVER rows hit
+    #                        (game_total rows aren't always graded
+    #                        per-team; team_total is the safer proxy)
+    # In-memory pass over `team_outcomes` keeps this O(N) once.
+    def _rate_for(category: str, side_filter: Optional[str] = None) -> Optional[float]:
+        rows: List[Dict[str, Any]] = []
+        for r in team_outcomes:
+            if r.get("market_category") != category:
+                continue
+            if side_filter and (r.get("side") or "").upper() != side_filter:
+                continue
+            rows.append(r)
+            if len(rows) >= 10:
+                break
+        if not rows:
+            return None
+        graded = [x for x in rows if x.get("hit") in (True, False)]
+        if not graded:
+            return None
+        wins = sum(1 for x in graded if x.get("hit") is True)
+        return round(wins / len(graded), 3)
+
+    cover_rate_l10      = _rate_for("spread")
+    total_over_rate_l10 = (
+        _rate_for("game_total", "OVER")
+        or _rate_for("team_total", "OVER")
+    )
 
     for (mkt, line_v, side), rows in grouped.items():
         head = rows[0]
@@ -717,15 +769,84 @@ async def get_team_with_badges(
             hit_l5, hit_l10, hit_l20, season_hr,
             opp_abbr, opp_hr, opp_sample,
         )
-        scout_badges = _build_scout_badges(hit_l5, hit_l10, hit_l20)
-        intel_suite = {
-            "lasso": {
-                "projection": projection,
-                "confidence_tier": "HISTORICAL" if hit_l20 is not None else None,
-            } if projection is not None else None,
-            "scout_badges": scout_badges,
-            "context_badges": [],
-        }
+
+        # Determine is_home for THIS row so home/away-conditioned badges
+        # (Fortress / Jet Fuel / Night Shift) fire correctly.
+        _row_home_team = head.get("home_team")
+        is_home_for_row: Optional[bool] = None
+        if _row_home_team:
+            is_home_for_row = (
+                str(_row_home_team).upper().endswith(abbr_upper)
+            )
+
+        # Derive vision_score / tp_pct / edge_pct from local signals so
+        # Crown Play / Trap Detector / Sharpshooter can fire.
+        tp_pct = season_hr  # season hit-rate proxy for TP%
+        edge_pct = (
+            round(edge_vs_fair * 100.0, 1)
+            if edge_vs_fair is not None else None
+        )
+        # Composite vision_score: weighted blend of hit_l20 + edge%.
+        vision_score: Optional[float] = None
+        if hit_l20 is not None and edge_pct is not None:
+            vision_score = round(
+                min(100.0, hit_l20 * 0.7 + max(0.0, edge_pct) * 3),
+                1,
+            )
+        elif hit_l20 is not None:
+            vision_score = hit_l20
+
+        # Rich, board-parity team scout badges (Brick Wall / Green Wave
+        # / Fortress / Wolf Pack / etc.). All wording is team-centric.
+        # `league_ranks` now comes from the SAME cached aggregation the
+        # board uses — rank-based badges fire normally.
+        scout_badges = _build_rich_team_scout_badges(
+            sport=sport,
+            team_abbr=abbr_upper,
+            market_category=market_category,
+            side=_side_up,
+            is_home=is_home_for_row,
+            l5_avg=l5_avg,
+            season_avg=season_avg,
+            hit_l5=hit_l5,
+            hit_l10=hit_l10,
+            hit_l20=hit_l20,
+            cover_rate_l10=cover_rate_l10,
+            total_over_rate_l10=total_over_rate_l10,
+            league_ranks=league_ranks,
+            tp_pct=tp_pct,
+            edge_pct=edge_pct,
+            vision_score=vision_score,
+        )
+
+        # Rich intel_suite — usage_ripple / pace_delta / blowout_risk /
+        # momentum_data / matchup_analysis / variance / lasso tiles.
+        # Player-style modal sections all light up.
+        intel_suite = _build_rich_team_intel_suite(
+            sport=sport,
+            market_category=market_category,
+            side=_side_up,
+            line=line_v,
+            l5_avg=l5_avg,
+            l10_avg=l10_avg,
+            l20_avg=l20_avg,
+            season_avg=season_avg,
+            league_ranks=league_ranks,
+            team_abbr=abbr_upper,
+            opp_abbr=opp_abbr,
+            opp_def_rank=(
+                league_ranks.get("opp_score_rank", {}).get(
+                    (opp_abbr or "").upper())
+                if opp_abbr else None
+            ),
+            projection=projection,
+            hit_l10=hit_l10,
+            game_logs=game_logs,
+        )
+        # Carry the rich scout_badges INTO the suite so the modal's
+        # legacy `intel_suite.scout_badges` fallback ALSO finds them.
+        intel_suite["scout_badges"]  = scout_badges
+        intel_suite["context_badges"] = scout_badges
 
         props.append({
             # SSOT identity fields (mirror player props)

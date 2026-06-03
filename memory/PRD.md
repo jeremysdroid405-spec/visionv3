@@ -2254,3 +2254,69 @@ stops 504-timing-out. After deploy, user clicks → endpoint returns in
 <1s → TeamDetailPage clears loading → all the prior fixes (categories,
 chart, auto-scroll, intel suite modal) light up immediately.
 
+
+
+### 2026-06-03 — Team Vision Intel Suite: Reuse SSOT Calculations (P0)
+User feedback (after seeing player Environmental/Performance badges
+inside the team modal): "the vision intel suite is loading player
+badges for teams. not the ones we created for teams" → followed by
+"if these are the badges it needs to use wording in the description as
+the the team or this team not the player or player" → then sharply:
+"we already do these calculations, dvp matchups, bullpen matchups
+etc. they are calculated in player vision intel and can be easily
+mirrored".
+
+User was 100% right. The detail endpoint had its own thin local
+builders (`_build_scout_badges` returning hot_streak/floor_lock only,
+`intel_suite` reduced to `{lasso, scout_badges, context_badges}`).
+Meanwhile the BOARD pipeline already had:
+- `services.team_prop_tier_service._compute_league_ranks(db, sport)`
+  — cached aggregation of team_score_rank / opp_score_rank /
+  total_score_rank / home_win_rank / away_win_rank / total_avg /
+  opp_avg / team_avg — across the entire league.
+- `_build_team_scout_badges` — Brick Wall, Green Wave, Fortress,
+  Jet Fuel, Wolf Pack, Burn Rate, Fast Lane, Deadeye, Crown Play,
+  Trap Detector, Freight Train, Sharpshooter, Blueprint, Killshot,
+  Barrel Club, Icebox, Scorched Earth, Wave Rider, Night Shift,
+  High-Powered, Stout Defense (sport-specific).
+- `_build_team_intel_suite` — full tile set (usage_ripple, pace_delta,
+  tempo, blowout_risk, matchup_dvp, momentum_data, matchup_analysis,
+  variance, lasso).
+- All wording team-centric ("Opponent scoring suppressed", "Travel
+  performance advantage", "L5 average 7.8 runs +44.4% above season
+  baseline 5.4") — zero "player" references.
+
+Fixes shipped:
+1. `routes/team_with_badges.py` — imports the 3 board functions and
+   calls them directly (no re-implementation). Threads cached
+   `league_ranks` through both builders so rank-based badges (Brick
+   Wall, Jet Fuel, etc.) fire and `matchup_dvp.rank` resolves.
+2. Per-prop `is_home`, `tp_pct`, `edge_pct`, `vision_score` derived
+   locally so edge/model badges (Crown Play, Trap Detector,
+   Sharpshooter) can fire too.
+3. `cover_rate_l10` filter fixed — was filtering on side="OVER" for
+   spreads but the historical rows use HOME/AWAY. Now drops the
+   side filter for spreads and falls back to team_total OVER for
+   total rates.
+4. `frontend/components/dashboard/PlayerDetailPage.jsx` — TEAM SIGNALS
+   section that renders the rich `scout_badges` directly (no
+   BADGE_REGISTRY filter), with team-specific badge labels and
+   color palette. Wraps the player Environmental + Performance
+   sections in `!is_team_prop` so they don't render for teams.
+
+Verification (visual + curl):
+- Warmed call: 75 ms.
+- Modal now shows: "Brick Wall — Opponent scoring suppressed
+  (opp_score_rank: 1 · thr ≤ 5)" and "Jet Fuel — Travel performance
+  advantage (away_win_rank: 2 · thr ≤ 5)". Operational Volume:
+  "Elevated Volume · L5 7.8 runs +44.4% above season baseline 5.4".
+  Tempo: "-3.6% Neutral · Pace rank #28". Target-Lock Rationale:
+  "Hit HOME -5.5 in 0 of last 10 spread games. Recent form trending
+  under."
+
+Regression: `tests/test_team_detail_rich_parity.py` — pins that the
+detail endpoint reuses the board's rich builders (full intel_suite
+tile set required, at least one rank-based badge must fire, and
+matchup_dvp.rank must resolve via league_ranks). 1/1 pass. All 5
+team tests green.
+
