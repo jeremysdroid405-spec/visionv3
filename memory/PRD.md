@@ -2320,3 +2320,50 @@ tile set required, at least one rank-based badge must fire, and
 matchup_dvp.rank must resolve via league_ranks). 1/1 pass. All 5
 team tests green.
 
+
+
+### 2026-06-03 — Team Edge Math: SSOT Fix (P0)
+User: "we shouldn't be recommending an UNDER line when the projection
+is OVER. it looks like all of the math and logic is off on teams
+despite it working now."
+
+Root cause: BOTH the board pipeline (`team_prop_tier_service`) and the
+detail endpoint (`team_with_badges`) used the naive formula
+`(projection - line) / line` for edge. This is wrong for teams because:
+1. Spread lines are SIGNED (negative for favorites, positive for
+   underdogs). The formula gave `-201.8%` on a `+0.1` cover.
+2. The formula didn't flip sign for UNDER/AWAY picks → the same edge
+   value appeared on both sides → recommendations contradicted the
+   projection direction.
+
+Fix shipped — single SSOT helper `compute_team_edge_pct` in
+`services/team_prop_tier_service.py`:
+- SPREAD: `threshold = -line` (so HOME -5.5 → threshold 5.5 and
+  AWAY +5.5 → threshold -5.5). Both sides use the same formula since
+  `line` already encodes the side. `edge = (projection - threshold)
+  / max(|threshold|, 1) * 100`.
+- TEAM_TOTAL / GAME_TOTAL: positive `line`. OVER →
+  `(projection - line) / line * 100`. UNDER → flip sign.
+- H2H / MONEYLINE: returns None (no line).
+
+Both code paths now call this helper. The signed edge_pct also feeds
+the rich badge builder (`_build_team_scout_badges`) so model-edge
+badges (Crown Play / Trap Detector / Sharpshooter) fire on the
+correct side and `vision_score` is a board-detail-parity composite.
+
+Verification — same Boston/Dallas Finals data, before vs after:
+| Pick | Proj | Before | After | Verdict |
+|---|---|---|---|---|
+| BOS HOME -5.5 | 5.6 | -201.8% | **+1.8%** | barely covers ✓ |
+| DAL AWAY +5.5 | -1.7 | +30.9% (wrong magnitude) | **+69.1%** | covers easily ✓ |
+| BOS TT OVER 110.5 | 107.9 | -2.4% | **-2.4%** | OVER disagrees ✓ |
+| BOS TT UNDER 110.5 | 107.9 | -2.4% (no flip) | **+2.4%** | UNDER agrees ✓ |
+| DAL TT OVER 105.5 | 116.6 | +10.5% (no flip) | **+10.5%** | OVER agrees ✓ |
+| DAL TT UNDER 105.5 | 116.6 | +10.5% (wrong) | **-10.5%** | UNDER disagrees ✓ |
+
+Symmetry restored: OVER and UNDER on the same total are now equal
+magnitude with opposite signs.
+
+Regression: `tests/test_compute_team_edge_pct.py` — 14 cases pin
+every (sport, category, side) combination. **20/20 team tests pass.**
+

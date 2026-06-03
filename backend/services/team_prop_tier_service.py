@@ -81,6 +81,73 @@ def _classify_market_category_from_key(market_key):
 
 logger = logging.getLogger(__name__)
 
+
+# ── Edge math (SSOT) ─────────────────────────────────────────────────
+# A single source of truth for team-prop edge calculation. Used by
+# BOTH the board (this module) and the detail endpoint
+# (`routes/team_with_badges.py`). The naive `(projection - line) / line`
+# produces garbage for spreads (line is signed) and never flips sign
+# for UNDER/AWAY picks — both bugs reported by the user 2026-06-03
+# ("we shouldn't be recommending an UNDER when projection is over").
+#
+# Returns edge as a SIGNED percentage:
+#   • positive  → projection AGREES with the side (good pick)
+#   • negative  → projection DISAGREES with the side (bad pick)
+#   • None      → not computable (no line / no projection / h2h)
+def compute_team_edge_pct(
+    projection: Optional[float],
+    line: Optional[float],
+    side: Optional[str],
+    market_category: Optional[str],
+) -> Optional[float]:
+    """Signed edge % for (projection, line, side, market_category).
+
+    SPREAD: `line` is signed for the SIDE you're betting.
+        - HOME -5.5 means: bet wins if team's margin > 5.5
+        - AWAY +5.5 means: bet wins if team's margin > -5.5
+        In BOTH cases the threshold = -line (since the projection is
+        the team's avg margin from team_historical_outcomes, which
+        flips for HOME vs AWAY rows). So:
+          edge = (projection - threshold) / max(|threshold|, 1) * 100
+        No side-flip needed for spreads — `line` already encodes side.
+
+    TEAM_TOTAL / GAME_TOTAL: `line` is positive (e.g. 110.5).
+        - OVER  → edge = (proj - line) / line * 100
+        - UNDER → flip sign (UNDER wins when proj < line)
+
+    H2H / MONEYLINE: no line → None.
+    """
+    if projection is None or line is None:
+        return None
+    cat = (market_category or "").lower()
+    if cat == "h2h":
+        return None
+    try:
+        line_f = float(line)
+    except (TypeError, ValueError):
+        return None
+    side_up = (side or "").upper()
+
+    if cat == "spread":
+        # Threshold for the side this row represents. For team_historical_outcomes
+        # the `hit` / `margin` fields are computed for THIS team's perspective,
+        # so `-line` is the correct threshold whether HOME (line<0) or AWAY
+        # (line>0). NO side-flip — the sign is in `line` already.
+        threshold = -line_f
+        baseline = max(abs(threshold), 1.0)
+        delta = projection - threshold
+        return round(delta / baseline * 100.0, 1)
+
+    # team_total / game_total / fallback (positive line, OVER/UNDER sides)
+    if line_f == 0:
+        return None
+    baseline = abs(line_f)
+    delta = projection - line_f
+    if side_up in ("UNDER", "AWAY"):
+        delta = -delta
+    return round(delta / baseline * 100.0, 1)
+
+
 MATCHUP_COLL_BY_SPORT: Dict[str, str] = {
     "mlb":   "team_matchups",
     "nba":   "team_matchups",
@@ -1067,12 +1134,19 @@ async def _enrich_cards_with_history(
         l20_avg = bs.get("l20_avg")
         season_avg = bs.get("season_avg")
 
-        # Projection: use l10 avg (no model). Edge vs line ratio.
+        # Projection: use l10 avg (no model). Edge via SSOT helper —
+        # mirrors `(margin proj vs threshold)` for spread and flips
+        # sign for UNDER/AWAY so the recommended side ALWAYS matches
+        # the projection (no more "UNDER but projection says OVER").
         projection = l10_avg
-        edge_vs_fair: Optional[float] = None
-        if (projection is not None and line not in (None, 0)
-                and market_category != "h2h"):
-            edge_vs_fair = round((projection - line) / line, 4)
+        edge_pct_signed = compute_team_edge_pct(
+            projection, line, side, market_category,
+        )
+        # Back-compat field still used by some UI chips.
+        edge_vs_fair: Optional[float] = (
+            round(edge_pct_signed / 100.0, 4)
+            if edge_pct_signed is not None else None
+        )
 
         # H2H — opponent_team_id isn't stamped on team_prop_scores
         # today, so we skip the h2h slice for board cards. The team
@@ -1295,8 +1369,17 @@ async def _enrich_cards_with_history(
         c["edge"] = c.get("edge") if c.get("edge") is not None else (
             round(c["model_probability"] - c["implied_probability"], 4)
             if c.get("implied_probability") is not None else None)
-        c["edge_pct"] = c.get("edge_pct") if c.get("edge_pct") is not None else (
-            round(100.0 * c["edge"], 2) if c.get("edge") is not None else None)
+        # SSOT edge: ALWAYS overwrite with our signed `edge_pct_signed`
+        # so the card chip displays the correctly-signed % (positive
+        # when projection agrees with the side, negative when it
+        # doesn't). The naive market-implied edge from upstream is
+        # misleading because it doesn't account for projection.
+        if edge_pct_signed is not None:
+            c["edge_pct"]     = edge_pct_signed
+            c["edge"]         = round(edge_pct_signed / 100.0, 4)
+        else:
+            c["edge_pct"] = c.get("edge_pct") if c.get("edge_pct") is not None else (
+                round(100.0 * c["edge"], 2) if c.get("edge") is not None else None)
 
         # ── DVP alias fields (player-card duals). The player card
         # reads `dvp_rank` / `dvp_value` / `matchup_badge` for the
@@ -1336,7 +1419,7 @@ async def _enrich_cards_with_history(
             cover_rate_l10=rates.get("cover_rate_l10"),
             total_over_rate_l10=rates.get("total_over_rate_l10"),
             league_ranks=league_ranks,
-            tp_pct=tp_pct, edge_pct=c.get("edge_pct"),
+            tp_pct=tp_pct, edge_pct=edge_pct_signed,
             vision_score=c.get("vision_score"),
         )
         c["scout_badges"]  = team_badges

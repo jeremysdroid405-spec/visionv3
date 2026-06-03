@@ -66,6 +66,7 @@ from services.team_prop_tier_service import (
     _build_team_scout_badges as _build_rich_team_scout_badges,
     _build_team_intel_suite as _build_rich_team_intel_suite,
     _compute_league_ranks as _compute_team_league_ranks,
+    compute_team_edge_pct,
 )
 
 logger = logging.getLogger(__name__)
@@ -757,12 +758,17 @@ async def get_team_with_badges(
         season_avg = bs.get("season_avg")
 
         # Projection: use l10 avg as the deterministic projection (no
-        # model). Edge vs line ratio is derivable.
+        # model). Edge via SSOT helper — handles signed spread lines
+        # and flips sign for UNDER/AWAY so the per-side `edge_pct`
+        # the modal renders ALWAYS aligns with projection direction.
         projection = l10_avg
-        edge_vs_fair: Optional[float] = None
-        if (projection is not None and line_v not in (None, 0)
-                and market_category != "h2h"):
-            edge_vs_fair = round((projection - line_v) / line_v, 4)
+        edge_pct_signed = compute_team_edge_pct(
+            projection, line_v, _side_up, market_category,
+        )
+        edge_vs_fair: Optional[float] = (
+            round(edge_pct_signed / 100.0, 4)
+            if edge_pct_signed is not None else None
+        )
 
         vision_intel = _build_vision_intel(
             stat_token, side, line_v,
@@ -782,15 +788,14 @@ async def get_team_with_badges(
         # Derive vision_score / tp_pct / edge_pct from local signals so
         # Crown Play / Trap Detector / Sharpshooter can fire.
         tp_pct = season_hr  # season hit-rate proxy for TP%
-        edge_pct = (
-            round(edge_vs_fair * 100.0, 1)
-            if edge_vs_fair is not None else None
-        )
-        # Composite vision_score: weighted blend of hit_l20 + edge%.
+        edge_pct = edge_pct_signed
+        # Composite vision_score: weighted blend of hit_l20 + signed
+        # edge%. Negative edge → vision_score drops; agreeing side
+        # gets the boost it deserves.
         vision_score: Optional[float] = None
         if hit_l20 is not None and edge_pct is not None:
             vision_score = round(
-                min(100.0, hit_l20 * 0.7 + max(0.0, edge_pct) * 3),
+                max(0.0, min(100.0, hit_l20 * 0.7 + edge_pct * 1.5)),
                 1,
             )
         elif hit_l20 is not None:
@@ -882,9 +887,14 @@ async def get_team_with_badges(
             "l10_avg":             l10_avg,
             "l20_avg":             l20_avg,
             "season_avg":          season_avg,
-            # Projection + edge
+            # Projection + edge (signed — flipped for UNDER/AWAY,
+            # threshold-aware for signed spread lines)
             "vk_predicted":        projection,
+            "projection":          projection,
             "edge_vs_fair":        edge_vs_fair,
+            "edge_pct":            edge_pct_signed,
+            "tp":                  tp_pct,
+            "vision_score":        vision_score,
             # Vision Intel (deterministic, no model)
             "vision_intel":        vision_intel,
             "vision_summary":      vision_intel,
