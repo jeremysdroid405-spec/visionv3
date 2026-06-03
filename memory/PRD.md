@@ -2490,3 +2490,72 @@ blocked books (we only stopped NEW ingestion). A separate cleanup
 job is needed to delete already-stored blocked-book rows from
 these collections.
 
+
+
+### 2026-06-03 — Symmetric Model-Quality Gate for Team Picks (P0)
+User directive: "This shouldn't just be a visual fix this is also a
+logic fix. The model needs to know its predicting unders and we need
+to know why we are recommending them. Don't want a bunch of loosers
+on the board just because they're unders."
+
+Audit revealed the actual scope:
+- The team XGB model is correctly side-aware. Training target is
+  `outcome_numeric=1` (= "the pick won"), with `is_over` as a
+  feature. So `model_probability` is THE PROBABILITY THIS SIDE
+  WINS — for OVER, UNDER, HOME, or AWAY. No flip required.
+- BUT the tier (safe_haven / front_lines / war_zone) was set
+  purely by the **odds-bucket router** based on PRICE. The model's
+  output (`model_probability`, `edge`) was stamped onto the doc
+  but NEVER used to demote losers.
+- Result: 99 AWAY/UNDER picks with `model_probability=0.107` and
+  `edge=−0.39` were sitting in `front_lines`. Model said they
+  lose 89% of the time — board surfaced them anyway.
+
+Fix shipped — `services/team_live_xgb_scorer.py` adds a symmetric
+demotion gate AFTER scoring:
+- `model_probability < 0.50`        → tier=None (clear loser)
+- `0.50 ≤ p < 0.55` AND `edge < +2%` → tier=None (borderline, no edge)
+- `model_probability is None` (h2h moneyline, no model) → keep
+  current tier (existing `team_model_pending` flow preserved).
+- Demotion stamps `model_demoted=True` and `gate_reasons=[reason]`
+  on the doc so users see WHY a pick is unranked.
+
+Same rules applied retroactively to existing rows (97 demoted).
+
+Final tier distribution on current Finals slate:
+- front_lines HOME: 79 picks, avg_p=0.924, avg_edge=+0.363 ✓
+- safe_haven  HOME: 13 picks, avg_p=0.959, avg_edge=+0.120 ✓
+- war_zone    HOME:  9 picks, avg_p=0.777, avg_edge=+0.652 ✓
+- (No AWAY/UNDER losers in any active tier)
+- 99 demoted (avg_p=0.107) → tier=None, hidden from board.
+
+The 36-pick OVER/UNDER/ML carve-out is preserved because those
+markets don't have an XGB model trained yet (totals + h2h) — they
+pass through with `model_probability=None` and rely on the existing
+hit-rate / edge gate. When you add total-side models, the same
+symmetric demotion will apply automatically.
+
+Regression: `tests/test_team_model_quality_gate.py` — 3 tests:
+- No obvious losers (`p<0.50`) in any active tier.
+- Borderline picks demoted when edge < +2%.
+- Gate threshold applied symmetrically (no asymmetric leak).
+
+**36/36 team tests pass.**
+
+### 2026-06-03 — UNDER-Aware Chart Bars (P1)
+User: "If under equals true reverse" — bars must invert green/red
+when the pick is UNDER.
+
+Fix: `frontend/src/components/dashboard/GameLogBarChart.jsx`
+- New `direction` prop (default `OVER`).
+- `isHitFn(value)` = `value > line` for OVER/HOME, `value < line`
+  for UNDER/AWAY.
+- Bar color, bar-height clamp logic, and labeled-value renderer
+  all use the side-aware predicate.
+- `hit_profile` short-circuit only applies for OVER (backend
+  `l10_hit_count` is OVER-only); UNDER falls back to local count
+  so the green-bar count and the displayed hit-rate stay in sync.
+
+`PlayerDetailPage.jsx` now passes `direction={prop.direction}` so
+both player and team chart instances honor the pick's side.
+

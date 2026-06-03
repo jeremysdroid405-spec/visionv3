@@ -341,9 +341,49 @@ async def score_team_live_props(
             audit["stale_unscored_deleted"] += 1
             continue
 
+        # 2026-06-03 — symmetric model-quality gate.
+        # Tier was previously driven by odds-bucket router (PRICE
+        # ONLY) and never demoted by the model's output. Result:
+        # UNDER/AWAY picks with model_probability ≈ 0.09 (model says
+        # they lose 91% of the time) were sitting in `front_lines`.
+        # User directive: "Don't want loosers on the board just
+        # because they're unders." The XGB model is already
+        # side-aware (training target = `outcome_numeric=1` = "the
+        # pick won"; `is_over` is a feature). So a low
+        # `model_probability` on either side is a clear loser
+        # signal, and we demote symmetrically.
+        #
+        # Demotion rules (applied AFTER tier routing):
+        #   • p < 0.50              → tier=None (model says this
+        #                              side is a loser)
+        #   • 0.50 ≤ p < 0.55       AND edge < +2%
+        #                           → tier=None (borderline, no
+        #                              positive edge)
+        # Anything else keeps its odds-routed tier.
+        #
+        # Moneyline / h2h picks have no model → model_probability is
+        # None and they bypass this gate (preserved per the existing
+        # `team_model_pending=True` flow).
+        _p_model = score["model_probability"]
+        _edge    = score["edge"]
+        _demote  = False
+        _demote_reason = None
+        if _p_model is not None:
+            if _p_model < 0.50:
+                _demote = True
+                _demote_reason = f"model_p_below_50:{_p_model:.3f}"
+            elif _p_model < 0.55 and (
+                _edge is None or _edge < 0.02
+            ):
+                _demote = True
+                _demote_reason = (
+                    f"borderline_p_no_edge:p={_p_model:.3f}"
+                    f"_edge={_edge}"
+                )
+
         # Tier stays driven by the odds-bucket router in the
-        # passthrough — we DO NOT override it here. The model fields
-        # are additive.
+        # passthrough EXCEPT when the model says it's a loser —
+        # then we override to `None` (unranked → never shown).
         update = {
             "$set": {
                 "market_category":    payload["market_category"],
@@ -358,11 +398,17 @@ async def score_team_live_props(
                 "true_probability":   score["model_probability"],
                 "confidence":         score["model_probability"],
                 "model_version":      score["model_version"],
-                "gate_reasons":       [],
+                "gate_reasons":       (
+                    [_demote_reason] if _demote and _demote_reason else []
+                ),
                 "team_model_pending": False,
+                "model_demoted":      _demote,
                 "scored_at":          now_iso,
             },
         }
+        if _demote:
+            update["$set"]["tier"]       = None
+            update["$set"]["tier_label"] = "unranked"
         # Filter narrowed to `model_version: None` so the update can
         # only ever touch the unscored row. If somehow a scored
         # sibling slipped through the dedup pass, the filter won't

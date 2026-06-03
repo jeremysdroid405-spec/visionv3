@@ -454,6 +454,7 @@ const PropRow = memo(({ prop, isHighlighted, highlightRef, onVisionClick, gameLo
               gameLogs={gameLogs}
               statType={statType}
               line={line}
+              direction={prop?.direction || prop?.recommendation || 'OVER'}
               showGames={10}
               height="100%"
               l5Avg={l5Avg}

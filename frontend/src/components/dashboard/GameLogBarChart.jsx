@@ -172,6 +172,11 @@ const GameLogBarChart = memo(({
   l5Avg = null,
   l10Avg = null,
   seasonAvg = null,
+  // 2026-06-03 — Side-aware hit logic. For UNDER picks, "hit" means
+  // the game finished BELOW the line, so the green/red bar colors
+  // and the hit-rate count must invert. Default is "OVER" to
+  // preserve legacy player-prop behaviour.
+  direction = 'OVER',
   // 2026-04-29 — Hit-Profile parity contract.
   // Backend stamps `hit_profile` (`l10_hit_count` / `l10_total` /
   // `l10_values`) on every dashboard pick. When available we use it
@@ -179,6 +184,17 @@ const GameLogBarChart = memo(({
   // the SAME single source of truth.
   hitProfile = null
 }) => {
+  // SSOT predicate: "did this game value HIT the prop?"
+  //   OVER side  → game.value >  line
+  //   UNDER side → game.value <  line
+  //   equal (push) is neither hit nor miss — treated as a miss here
+  //   so the bar stays red (matches the standard sportsbook grading
+  //   convention where a push doesn't pay out).
+  const dirUp = (typeof direction === 'string' ? direction : 'OVER')
+    .toUpperCase();
+  const isUnder = dirUp === 'UNDER' || dirUp === 'AWAY';
+  const isHitFn = (value) =>
+    isUnder ? value < line : value > line;
   const chartData = useMemo(() => {
     if (!gameLogs || !Array.isArray(gameLogs) || !statType || line === undefined) {
       return null;
@@ -234,11 +250,17 @@ const GameLogBarChart = memo(({
     const chartMax = maxValue * 1.25; // 25% padding above highest bar for value labels
     
     // ── Hit count: prefer backend hit_profile when present.
-    //    Otherwise fall back to local computation (same `>=` rule).
-    const localHits = values.filter(v => v.value >= line).length;
+    //    Otherwise fall back to local computation using the
+    //    direction-aware `isHitFn` (OVER vs UNDER).
+    const localHits = values.filter(v => isHitFn(v.value)).length;
     let hits = localHits;
     let total = values.length;
-    if (hitProfile && typeof hitProfile.l10_hit_count === 'number') {
+    if (hitProfile && typeof hitProfile.l10_hit_count === 'number'
+        && !isUnder) {
+      // Backend hit_profile is computed for the OVER side only.
+      // When the pick is UNDER, IGNORE the backend hit_profile and
+      // use the locally inverted count — otherwise the green-bar
+      // count and the displayed Hit Rate diverge for every UNDER.
       hits = hitProfile.l10_hit_count;
       total = hitProfile.l10_total || values.length;
       // Hard parity assertion: dev mode throws, prod logs.
@@ -246,7 +268,7 @@ const GameLogBarChart = memo(({
         const msg = (
           `[HIT_PROFILE PARITY] graph_local=${localHits} ` +
           `backend_l10_hit_count=${hits} ` +
-          `(stat=${statType}, line=${line}). ` +
+          `(stat=${statType}, line=${line}, dir=${dirUp}). ` +
           `Graph and Hit Rate would diverge.`
         );
         if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {
@@ -307,17 +329,31 @@ const GameLogBarChart = memo(({
         {/* Bars - all grow upward from bottom, fill entire container */}
         <div className="absolute inset-0 flex items-end justify-around px-1">
           {values.map((item, idx) => {
-            const isHit = item.value >= line;
-            // Calculate bar height as percentage - ensure visual accuracy
-            // For misses, cap the bar slightly below the line for visual clarity
+            const isHit = isHitFn(item.value);
+            // Calculate bar height as percentage - ensure visual accuracy.
+            // Visual contract:
+            //   • OVER  — green bars must visibly CROSS ABOVE the line,
+            //             red bars stay below.
+            //   • UNDER — green bars stay BELOW the line, red bars
+            //             visibly cross above.
             let barHeightPercent = (item.value / chartMax) * 100;
-            
-            // Ensure hits visually cross the line, misses stay visibly below
-            if (!isHit && barHeightPercent > linePosition - 3) {
-              // If miss is too close to line, reduce slightly for visual gap
-              barHeightPercent = Math.min(barHeightPercent, linePosition - 2);
+
+            if (isUnder) {
+              // UNDER: a "hit" (game went under line) must visually
+              // stay below the line. If it's too close to the line,
+              // push it down slightly so the line is clearly above.
+              if (isHit && barHeightPercent > linePosition - 3) {
+                barHeightPercent = Math.min(
+                  barHeightPercent, linePosition - 2);
+              }
+            } else {
+              // OVER: a miss (under line) must stay visibly below.
+              if (!isHit && barHeightPercent > linePosition - 3) {
+                barHeightPercent = Math.min(
+                  barHeightPercent, linePosition - 2);
+              }
             }
-            
+
             return (
               <div 
                 key={idx}
@@ -345,9 +381,17 @@ const GameLogBarChart = memo(({
         <div className="absolute inset-0 flex items-end justify-around px-1 pointer-events-none" style={{ zIndex: 20 }}>
           {values.map((item, idx) => {
             let barHeightPercent = (item.value / chartMax) * 100;
-            const isHit = item.value >= line;
-            if (!isHit && barHeightPercent > linePosition - 3) {
-              barHeightPercent = Math.min(barHeightPercent, linePosition - 2);
+            const isHit = isHitFn(item.value);
+            if (isUnder) {
+              if (isHit && barHeightPercent > linePosition - 3) {
+                barHeightPercent = Math.min(
+                  barHeightPercent, linePosition - 2);
+              }
+            } else {
+              if (!isHit && barHeightPercent > linePosition - 3) {
+                barHeightPercent = Math.min(
+                  barHeightPercent, linePosition - 2);
+              }
             }
             
             return (
