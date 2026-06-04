@@ -2619,3 +2619,43 @@ Regression: `tests/test_totals_model_coverage.py` — 5 tests:
 
 **41/41 team tests pass.**
 
+
+
+### 2026-06-03 — Stale Blocked-Book Rows Purged (P0)
+User: "why am i still getting a bunch of weird book coverage? i
+thought we fixed that?"
+
+The earlier book-policy fix only gated NEW ingestion. The 4 live
+collections still held 77,909 stale rows from previously-ingested
+blocked books — that's why the dashboard kept showing weird coverage
+even though no new blocked-book data could enter.
+
+Cleanup shipped — `scripts/cleanup_blocked_books.py` (idempotent
+one-shot purge):
+
+| Collection | Rows BEFORE | Deleted | Rows AFTER |
+|---|---:|---:|---:|
+| `dg_raw_odds_markets` | 590,201 | **76,463** | 513,738 |
+| `team_live_props` | 316 | 236 | 80 |
+| `nba_prop_scores` | 44,841 | 900 | 43,941 |
+| `mlb_prop_scores` | 87,050 | 146 | 86,904 |
+| `team_prop_scores` | 228 | 164 | 64 |
+| **TOTAL** | — | **77,909** | — |
+
+Approved books remaining in live data (post-cleanup):
+- Raw odds: DraftKings 139,174 / FanDuel 100,364 / BetMGM 78,221 /
+  HardRockBet 23,298 / ESPN BET 28,177 / PrizePicks 67,768
+  (REFERENCE_ONLY) / WilliamHill_US 9,872 (Caesars feed)
+- Team live: DK / FD / MGM / Caesars / ESPN BET / HardRockBet /
+  Fanatics / Pinnacle (added)
+- NBA scores: DK / FD / MGM / Caesars / ESPN BET / HardRockBet
+- MLB scores: DK / FD / MGM / Caesars / ESPN BET / HardRockBet
+- Team scores: DK / FD / MGM / Caesars / ESPN BET / HardRockBet /
+  Fanatics / Pinnacle
+
+Zero blocked books anywhere in live data. 41/41 team policy tests
+still pass.
+
+The cleanup script is idempotent and can be safely re-run at any
+time. Going forward, the ingest-layer guards prevent re-introduction.
+
