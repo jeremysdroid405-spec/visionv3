@@ -24,6 +24,39 @@ controlling historical replay pipelines via the Emergent Admin API.
 
 
 
+### 2026-06-04 — Team pipeline SSOT audit + MLB team grid backfill
+- **Built `/app/backend/scripts/team_pipeline_ssot_audit.py`** — single
+  command (`python -m scripts.team_pipeline_ssot_audit`) that prints
+  a per-sport parity matrix across all 8 stages (ingest / features /
+  outcomes / feature_cache / score adapter / reshape / replay /
+  grid) and exits non-zero on any gap.
+- **Closed MLB-team grid gap** — ran the in-process optimizer for
+  `sport=MLB, prop_type=team` on the 2025-07 window (51,840 combos,
+  60 cells). Run persists to `optimizer_runs` so the audit now
+  reports `grid=✓` for all three sports.
+- **Final SSOT audit (per-sport)**:
+  ```
+  Sport  Ingest  Features  Outcomes  FeatCache  Score  Reshape   Replay    Grid
+  MLB        48     6,057   879,931    825,794    ✓    825,794   825,794    ✓
+  NBA        30     3,283   413,454    391,851    ✓    391,851   391,851    ✓
+  NFL         0     1,212   124,287    115,819    ✓    115,819   115,819    ✓
+  ```
+  Every sport with `feature_cache>0` has full downstream parity.
+- **Forward-compat regression test** — `tests/test_team_pipeline_ssot_audit.py`
+  (15 cases) pins audit invariants: locked sport list (mlb/nba/nfl),
+  locked market_category list (h2h/spread/game_total/team_total),
+  artifact root identity with `services.team_xgb_loader.ARTIFACT_ROOT`,
+  reshape destination identity with
+  `scripts.sgo.reshape_team_props_to_replay.DST_COLL`, and every
+  gap-detection branch (missing artifact, zero reshape, partial
+  replay-scored, missing grid run).
+- **Live NBA team scoring smoke** — re-ran
+  `score_team_live_props(db, sport='nba', rescore=True)`: 30/30
+  rows scored, 4/4 NBA XGB artifacts loaded (h2h AUC 1.000, spread
+  0.925, game_total 0.571, team_total 0.755). Confirms the NBA
+  team SCORE adapter the previous handoff flagged as ✗ is in fact
+  fully operational.
+
 ### 2026-06-02 (P0 — Team Production Parity) — All 6 deliverables shipped
 - **#1 NBA live ingest path verified** — code path (server.py scheduler
   → team_live_sync_service → fetch_events → fetch_event_odds
