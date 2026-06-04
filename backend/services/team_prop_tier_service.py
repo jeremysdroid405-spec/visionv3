@@ -1343,6 +1343,37 @@ async def _enrich_cards_with_history(
         c["gate_pass"]      = (tier in ("safe_haven", "front_lines", "war_zone"))
         c["failed_gates"]   = c.get("failed_gates") or []
         c["gate_reasons"]   = c.get("gate_reasons") or []
+        # ── Model-vs-Projection Consistency Gate ─────────────────
+        # User reported 2026-06-03: "we are recommending UNDER 3.5
+        # with a projection of 3.8 — that's contradictory."
+        #
+        # The XGB model and the team's recent l10 average can
+        # disagree (model was trained on an older window where the
+        # team scored less). When that disagreement is STRONG, the
+        # model's recommendation is unreliable — the team's actual
+        # recent form is the stronger signal. Demote those picks.
+        #
+        # Rule: if projection-derived edge < −5%, the projection
+        # strongly disagrees with the picked side → demote.
+        #   • UNDER 110.5, l10 119.9  →  edge_pct = −8.5%  →  demote
+        #   • OVER  110.5, l10 105.0  →  edge_pct = −5.0%  →  demote
+        # Only fires when projection is available (l10_avg present).
+        # H2H / moneyline (edge_pct_signed is None) bypasses this gate.
+        if (edge_pct_signed is not None
+                and edge_pct_signed < -5.0
+                and tier in ("safe_haven", "front_lines", "war_zone")):
+            c["tier"]       = None
+            c["tier_label"] = "unranked"
+            c["model_demoted"] = True
+            c["gate_reasons"]  = (c.get("gate_reasons") or []) + [
+                f"projection_contradicts_side:"
+                f"edge_pct={edge_pct_signed:.1f}"
+            ]
+            c["safe_haven_pass"]  = False
+            c["front_lines_pass"] = False
+            c["war_zone_pass"]    = False
+            tier = None  # used by downstream gate flags
+
         c["safe_haven_pass"]  = (tier == "safe_haven")
         c["front_lines_pass"] = (tier == "front_lines")
         c["war_zone_pass"]    = (tier == "war_zone")
@@ -1588,6 +1619,13 @@ async def get_team_prop_picks(db, *, sport: str, tier_name: str,
     # Per-team game-history query is cached so it runs at most once
     # per team (1-3 queries) + one hit-rate query per returned card.
     cards = await _enrich_cards_with_history(db, cards, sport_l)
+
+    # 2026-06-03 — Drop cards demoted by the Model-vs-Projection
+    # Consistency Gate (enrichment step). The gate flips `tier=None`
+    # in-memory when the team's recent l10 average strongly disagrees
+    # with the picked side (edge_pct < −5%). Filter them out here so
+    # the board never shows "UNDER 110.5 when l10 avg is 119.9".
+    cards = [c for c in cards if c.get("tier") == tier_name]
     return {
         "tier":         tier_name,
         "tier_label":   f"{_TIER_LABEL[tier_name]} "

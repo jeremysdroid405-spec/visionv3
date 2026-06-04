@@ -2659,3 +2659,63 @@ still pass.
 The cleanup script is idempotent and can be safely re-run at any
 time. Going forward, the ingest-layer guards prevent re-introduction.
 
+
+
+### 2026-06-03 — Model-vs-Projection Consistency Gate (P0)
+User: "why are we recommending UNDER 3.5 with a projection of 3.8?
+that's contradictory."
+
+Diagnosis: the XGB model (`model_probability=0.78`, edge=+25%) was
+producing high-confidence UNDER recommendations on team_total/
+game_total markets where the team's actual recent l10 average was
+SIGNIFICANTLY above the line. e.g. DAL TT UNDER 105.5 with l10
+average 116.6 — model says win, but team's been scoring 11 runs
+above the line.
+
+Two ground-truths were disagreeing:
+- XGB output (from model features + odds)
+- Recent l10 average (from real game_logs)
+
+Without retraining the model on fresher data, the cleanest fix is a
+**consistency gate** — when the projection-derived edge strongly
+contradicts the picked side, demote the pick.
+
+Fix shipped — `services/team_prop_tier_service._enrich_cards_with_history`
+adds a check AFTER `edge_pct_signed` is computed (already SSOT via
+`compute_team_edge_pct`):
+
+```python
+if edge_pct_signed < -5.0 and tier in active_tiers:
+    c["tier"] = None
+    c["gate_reasons"] += [f"projection_contradicts_side:edge_pct={edge_pct_signed}"]
+```
+
+`get_team_prop_picks` then filters out demoted cards from the
+returned envelope so the board never surfaces them.
+
+Threshold rationale:
+- `−5%` is conservative — small projection misses (±2–3%) are
+  noise (model may be right). `−5%` requires the projection to
+  STRONGLY contradict (e.g. l10 119.9 vs line 110.5 = −8.5%).
+- H2H / moneyline returns `None` from `compute_team_edge_pct`
+  (no line) → gate cannot fire on those.
+
+Verification on Finals slate (before vs after):
+- BEFORE: 4 active picks, including DAL UNDER 105.5 with l10=116.6
+  (edge=-10.5%, model_p=0.78)
+- AFTER: 3 active picks — contradictory pick gone:
+  - DAL spread AWAY +5.5  (l10=−1.7, edge=+69.1%) ✓
+  - BOS TT UNDER 110.5    (l10=107.9, edge=+2.4%) ✓
+  - DAL h2h ML            (no line, model 96%) ✓
+
+Regression: `tests/test_team_projection_consistency_gate.py` —
+6 tests pin the contradiction rule:
+1. UNDER + high-l10 → flagged
+2. OVER + low-l10 → flagged
+3. UNDER + agreeing l10 → passes
+4. H2H bypass (no line → None)
+5. SPREAD disagreement caught
+6. SPREAD agreement passes
+
+**47/47 team tests pass.**
+
