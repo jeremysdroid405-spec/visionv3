@@ -1871,6 +1871,8 @@ async def startup_event():
     except Exception as _e:
         logger.warning(f"[COLL_HEALTH] Audit skipped due to error: {_e}")
 
+    await _warm_team_prop_cache(db)
+
     # ==========================================================================
     # UNIVERSAL BOARD ENGINE — Step 5: real-time 'new_props' subscriber
     # =========================================================================
@@ -2651,6 +2653,26 @@ async def check_and_run_initial_sync(db):
             
     except Exception as e:
         logger.error(f"[INITIAL_SYNC] Error during initial sync check: {e}")
+
+
+async def _warm_team_prop_cache(db) -> None:
+    """Pre-warm team prop caches so the first board request is fast.
+
+    Three module-level caches warm once per process:
+      * _compute_league_ranks  — per-sport aggregation (~3s cold)
+      * _resolve_opp_def_rank  — per-sport aggregation (~3s cold)
+    Both are keyed by sport; warming nba+mlb covers 99% of requests.
+    """
+    try:
+        from services.team_prop_tier_service import (
+            _compute_league_ranks, _resolve_opp_def_rank,
+        )
+        for sport in ("nba", "mlb"):
+            await _compute_league_ranks(db, sport)
+            await _resolve_opp_def_rank(db, sport=sport, opp_team_abbr="_warm")
+        logger.info("[STARTUP] team prop caches warmed (league_ranks + opp_def_rank) for nba+mlb")
+    except Exception as exc:
+        logger.warning(f"[STARTUP] team prop cache warm failed (non-fatal): {exc}")
 
 
 @app.on_event("shutdown")

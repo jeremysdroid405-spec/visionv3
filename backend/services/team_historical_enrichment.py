@@ -90,6 +90,11 @@ async def fetch_team_game_history(
     db, *, team_id: str, sport: str, limit: int = 25,
 ) -> List[Dict[str, Any]]:
     """Last-N graded games for a team — one row per event."""
+    # Early pre-limit: process only the most recent rows (indexed by
+    # commence_time DESC via ix_team_hist_game_history). MLB teams have
+    # ~130 docs per event — scanning limit*200 rows guarantees we cover
+    # the last `limit` unique events without scanning the full ~22K docs.
+    pre_limit = limit * 200
     pipeline = [
         {"$match": {
             "sport": sport,
@@ -99,6 +104,7 @@ async def fetch_team_game_history(
             "away_score_used": {"$ne": None},
         }},
         {"$sort": {"commence_time": -1}},
+        {"$limit": pre_limit},
         {"$group": {
             "_id": "$event_id",
             "game_date":        {"$first": "$game_date"},

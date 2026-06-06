@@ -21,10 +21,21 @@ PRODUCTION ROUTING RULES (this module is held to them):
 """
 from __future__ import annotations
 
+import asyncio
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import logging
+
+# Per-sport debounce: track when the XGB scorer last ran so we don't
+# block every request with a 30s scoring pass.  Requests that arrive
+# while a score is already running (or ran recently) return the
+# current passthrough data immediately; a background task updates the
+# scores asynchronously for the NEXT request.
+_SCORE_LAST_RUN: Dict[str, float] = {}
+_SCORE_RUNNING: Dict[str, bool] = {}
+_SCORE_DEBOUNCE_SECS = 120.0  # re-score at most once every 2 minutes per sport
 
 from services.team_prop_passthrough import (
     SCORES_COLL,
@@ -262,25 +273,14 @@ def _hydrate_card(score: Dict[str, Any],
     # downstream `_resolve_opp_def_rank` keys on the abbr.
     opp_abbr = None
     if opp_name:
-        # First try team_master_hub.
+        # Reverse-lookup opponent abbreviation from the already-loaded
+        # team_master_hub dict (no extra import needed).
+        opp_lower = opp_name.strip().lower()
         for v in teams.values():
-            if (v.get("team_name") or v.get("team_short")) == opp_name:
+            candidate = (v.get("team_name") or v.get("team_short") or "").strip().lower()
+            if candidate and candidate == opp_lower:
                 opp_abbr = v.get("team_abbr")
                 break
-        if opp_abbr is None:
-            # Fallback: reverse the canonical NBA/MLB name maps in
-            # `routes.team_with_badges`. Cheap, single dict lookup.
-            try:
-                from routes.team_with_badges import (
-                    _NBA_ABBR_TO_NAME, _MLB_ABBR_TO_NAME,
-                )
-                for abbr, name in {**_NBA_ABBR_TO_NAME,
-                                       **_MLB_ABBR_TO_NAME}.items():
-                    if name == opp_name:
-                        opp_abbr = abbr.upper()
-                        break
-            except Exception:
-                pass
 
     return {
         # Identity
@@ -1082,11 +1082,16 @@ async def _enrich_cards_with_history(
             by_team.setdefault(tid, []).append(c)
     baseline_by_team: Dict[str, Dict[str, Any]] = {}
     logs_by_team: Dict[str, List[Dict[str, Any]]] = {}
+    # Pre-fetch league ranks (cached globally after first call) and per-team
+    # spread/total rates (2 queries/team instead of 2 queries/card).
+    league_ranks = await _compute_league_ranks(db, sport)
+    rates_by_team: Dict[str, Dict[str, Optional[float]]] = {}
     for tid in by_team.keys():
         logs = await fetch_team_game_history(
             db, team_id=tid, sport=sport, limit=25)
         baseline_by_team[tid] = compute_baseline_stats(logs)
         logs_by_team[tid] = logs
+        rates_by_team[tid] = await _compute_spread_total_rates(db, tid, sport)
 
     # 2. Per-card hit-rate + intel enrichment.
     for c in cards:
@@ -1439,8 +1444,7 @@ async def _enrich_cards_with_history(
         # uses for `scout_badges`. Capped at 3 by priority. The badge
         # builder requires league-wide ranks + L10 spread/total rates,
         # which we compute below.
-        league_ranks = await _compute_league_ranks(db, sport)
-        rates = await _compute_spread_total_rates(db, tid, sport)
+        rates = rates_by_team.get(tid) or {}
         team_badges = _build_team_scout_badges(
             sport=sport, team_abbr=(c.get("team_abbr") or "").upper(),
             market_category=market_category, side=side,
@@ -1555,30 +1559,23 @@ async def get_team_prop_picks(db, *, sport: str, tier_name: str,
         passthrough_audit = await passthrough_team_live_to_scores(
             db, sport=sport_l)
 
-    # 2026-06-01: lazy XGB scoring. If any rows for this sport are
-    # still unscored (model_probability is None), kick off a bounded
-    # batch score so the cards arrive with real model fields. This is
-    # idempotent — already-scored rows are filtered out at query time.
-    score_audit: Optional[Dict[str, Any]] = None
-    n_unscored = await db[SCORES_COLL].count_documents(
-        {"sport": sport_l, "prop_type": "team",
-         "model_probability": None})
-    if n_unscored > 0:
-        try:
-            from services.team_live_xgb_scorer import score_team_live_props
-            score_audit = await score_team_live_props(
-                db, sport=sport_l, max_rows=5000)
-        except Exception:
-            logger.exception(
-                "[team_prop_tier] lazy XGB score failed — falling back "
-                "to pending cards")
+    # XGB scoring is CPU-bound and must NOT run in the request path —
+    # doing so blocks the event loop. Scoring runs via APScheduler
+    # (or an explicit admin trigger). The board returns passthrough
+    # data (team_model_pending=True badge) until scores are ready.
 
+    # Two-pass fetch: H2H records first (they always survive the consistency
+    # gate), then non-H2H to fill remaining slots. This guarantees H2H picks
+    # appear in the pool regardless of DB insertion order, and keeps the total
+    # hydration cost low even for large slates (MLB safe_haven has 2000+ rows).
+    BASE_FETCH = max(limit * 10, 100)
+    h2h_filter   = {"sport": sport_l, "tier": tier_name, "market_key": "h2h"}
+    other_filter = {"sport": sport_l, "tier": tier_name,
+                    "market_key": {"$ne": "h2h"}}
     score_rows: List[Dict[str, Any]] = []
-    cur = db[SCORES_COLL].find(
-        {"sport": sport_l, "tier": tier_name},
-        projection={"_id": 0}
-    ).limit(5000)
-    async for r in cur:
+    async for r in db[SCORES_COLL].find(h2h_filter, projection={"_id": 0}).limit(BASE_FETCH):
+        score_rows.append(r)
+    async for r in db[SCORES_COLL].find(other_filter, projection={"_id": 0}).limit(BASE_FETCH):
         score_rows.append(r)
 
     teams = await _build_team_lookup(db, sport_l)
@@ -1603,29 +1600,32 @@ async def get_team_prop_picks(db, *, sport: str, tier_name: str,
         seen.add(k)
         deduped.append(c)
 
+    def _is_h2h(c: Dict[str, Any]) -> bool:
+        mk = (c.get("market_key") or c.get("market") or "").lower()
+        return mk in ("h2h", "moneyline", "ml")
+
     if tier_name == "safe_haven":
-        deduped.sort(key=lambda x: (x["odds"] or 0))
+        # H2H first (never gate-demoted), then most-negative odds.
+        deduped.sort(key=lambda x: (0 if _is_h2h(x) else 1, x["odds"] or 0))
     elif tier_name == "war_zone":
-        deduped.sort(key=lambda x: -(x["odds"] or 0))
+        deduped.sort(key=lambda x: (0 if _is_h2h(x) else 1, -(x["odds"] or 0)))
     else:
-        deduped.sort(key=lambda x: abs(x["odds"] or 0))
+        # front_lines: H2H first, then abs(odds) ascending (closest to even money).
+        # H2H picks are never demoted by the consistency gate, so surfacing them
+        # first lets us cap the enrich pool and still guarantee non-zero results.
+        deduped.sort(key=lambda x: (0 if _is_h2h(x) else 1, abs(x["odds"] or 0)))
 
-    cards = deduped[:limit]
+    # 2026-06-06 — Enrich a capped pool after H2H-first sort.
+    # H2H picks (never demoted by the consistency gate) are now at the front of
+    # `deduped`, so a pool of limit*5 captures them without touching the long
+    # tail of totals/spreads records (e.g. 1843 for MLB front_lines).
+    # For sports/slates where the entire pool is totals that all get demoted,
+    # the cap is large enough to find any non-demoted totals within the tail.
+    enrich_pool = deduped[:max(limit * 5, 50)]
+    enrich_pool = await _enrich_cards_with_history(db, enrich_pool, sport_l)
 
-    # 2026-06-02 — Enrich the FINAL N cards (post-dedupe + limit) with
-    # REAL historical hit rates + deterministic vision intel + scout
-    # badges. Same SSOT helpers `routes/team_with_badges.py` uses, so
-    # the board card and the team detail page agree on every number.
-    # Per-team game-history query is cached so it runs at most once
-    # per team (1-3 queries) + one hit-rate query per returned card.
-    cards = await _enrich_cards_with_history(db, cards, sport_l)
-
-    # 2026-06-03 — Drop cards demoted by the Model-vs-Projection
-    # Consistency Gate (enrichment step). The gate flips `tier=None`
-    # in-memory when the team's recent l10 average strongly disagrees
-    # with the picked side (edge_pct < −5%). Filter them out here so
-    # the board never shows "UNDER 110.5 when l10 avg is 119.9".
-    cards = [c for c in cards if c.get("tier") == tier_name]
+    # Drop cards demoted by the consistency gate, then apply limit.
+    cards = [c for c in enrich_pool if c.get("tier") == tier_name][:limit]
     return {
         "tier":         tier_name,
         "tier_label":   f"{_TIER_LABEL[tier_name]} "
@@ -1645,6 +1645,5 @@ async def get_team_prop_picks(db, *, sport: str, tier_name: str,
                 cards[0].get("model_version") if cards else None),
         },
         "lazy_passthrough":  passthrough_audit,
-        "lazy_xgb_score":    score_audit,
         "generated_at":      datetime.now(timezone.utc).isoformat(),
     }
