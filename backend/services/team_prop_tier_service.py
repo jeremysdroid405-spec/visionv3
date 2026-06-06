@@ -1569,9 +1569,17 @@ async def get_team_prop_picks(db, *, sport: str, tier_name: str,
     # appear in the pool regardless of DB insertion order, and keeps the total
     # hydration cost low even for large slates (MLB safe_haven has 2000+ rows).
     BASE_FETCH = max(limit * 10, 100)
-    h2h_filter   = {"sport": sport_l, "tier": tier_name, "market_key": "h2h"}
+    # Only show games that haven't started yet (or started within the last
+    # 30 minutes — live betting window). Pre-game moneylines aren't
+    # actionable once a game is underway; past-day games have stale odds.
+    from datetime import timedelta
+    cutoff_dt = datetime.now(timezone.utc) - timedelta(minutes=30)
+    cutoff_iso = cutoff_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    h2h_filter   = {"sport": sport_l, "tier": tier_name, "market_key": "h2h",
+                    "commence_time": {"$gte": cutoff_iso}}
     other_filter = {"sport": sport_l, "tier": tier_name,
-                    "market_key": {"$ne": "h2h"}}
+                    "market_key": {"$ne": "h2h"},
+                    "commence_time": {"$gte": cutoff_iso}}
     score_rows: List[Dict[str, Any]] = []
     async for r in db[SCORES_COLL].find(h2h_filter, projection={"_id": 0}).limit(BASE_FETCH):
         score_rows.append(r)

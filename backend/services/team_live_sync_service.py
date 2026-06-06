@@ -167,6 +167,30 @@ def _extract_team_props_from_odds(
                 if price is None:
                     continue
 
+                # ── Odds sanity gate (all markets) ──────────────────
+                # Reject any price more extreme than ±1500 American odds.
+                # This catches:
+                #   • h2h: series/futures prices mislabelled as game odds
+                #   • team_totals/spreads: placeholder/error lines from
+                #     williamhill_us and others (e.g. -3300 team total,
+                #     which is physically impossible for a near-50/50 bet)
+                # Per-market realistic ceilings (for reference):
+                #   h2h       : ±1200 for MLB ace vs bad team
+                #   spreads   : ±130 typical, ±300 extreme alt lines
+                #   team_total: ±130 typical, ±300 extreme
+                # ±1500 is generous enough to pass all legitimate lines.
+                try:
+                    _price_abs = abs(int(price))
+                except (TypeError, ValueError):
+                    _price_abs = 0
+                if _price_abs > 1500:
+                    logger.warning(
+                        f"[TEAM_INGEST] Dropping extreme {mk} line "
+                        f"({book} {int(price)}) for event {event_id} — "
+                        "odds outside ±1500 threshold, likely placeholder."
+                    )
+                    continue
+
                 # ── Determine team and side / line per market shape ──
                 team_id_for_row: Optional[str] = None
                 side: str = ""

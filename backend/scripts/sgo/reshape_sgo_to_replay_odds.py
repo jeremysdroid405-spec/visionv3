@@ -120,6 +120,11 @@ BLOCKED_BOOKS = {
     # ── 2026-06-03 audit additions (US tier-3 / wild pricing)
     "betparx", "betonline", "betonlineag",
     "betrivers", "ballybet",
+    # ── 2026-06-06: William Hill US — consistently posts extreme placeholder
+    # lines across all markets (-3300 team total, -5000 series ML as game ML,
+    # -1400 for teams other books price at -115). All their legitimate lines
+    # are covered by FanDuel, DraftKings, BetMGM, HardRock, ESPNBet.
+    "williamhill_us", "williamhill",
     # ── International / non-US (never belong on US live board)
     "1xbet", "888sport", "bet365", "betanysports", "betfair",
     "betfairexchange", "betsson", "betus", "betvictor", "betway",
