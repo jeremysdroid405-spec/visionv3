@@ -28,6 +28,7 @@ from .team_live_sync import router as team_live_sync_router, init_router as set_
 from .team_historical import router as team_historical_router
 from .team_with_badges import router as team_with_badges_router, set_team_with_badges_db
 from .pipeline_audit import router as pipeline_audit_router, set_pipeline_audit_db
+from .team_ssot_audit import router as team_ssot_audit_router, set_team_ssot_audit_db
 from .player import router as player_router, set_player_db
 from .vacuum import router as vacuum_router, set_vacuum_db
 from .mlb_vacuum import router as mlb_vacuum_router, set_mlb_vacuum_db
@@ -168,6 +169,14 @@ def register_all_routes(
     if db is not None:
         set_pipeline_audit_db(db)
     app.include_router(pipeline_audit_router, prefix="/api")
+
+    # Team SSOT audit (2026-06-04) — drill-down team-prop pipeline
+    # health at `/api/v3/pipeline-audit/team-ssot`. Per-sport matrix
+    # across ingest/features/outcomes/feature_cache/score/reshape/
+    # replay/grid plus scheduler-pause state.
+    if db is not None:
+        set_team_ssot_audit_db(db)
+    app.include_router(team_ssot_audit_router, prefix="/api")
 
     # Universal Player endpoint (restored post Hard Consolidation)
     if db is not None:

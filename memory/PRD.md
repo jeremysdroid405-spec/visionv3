@@ -24,6 +24,46 @@ controlling historical replay pipelines via the Emergent Admin API.
 
 
 
+### 2026-06-04 — `/api/v3/pipeline-audit/team-ssot` endpoint shipped
+- **New route** `/api/v3/pipeline-audit/team-ssot` —
+  `/app/backend/routes/team_ssot_audit.py`. Surfaces the full team-prop
+  SSOT matrix to the Quant Terminal dashboard with per-sport stages,
+  latest dates / row counts, red/yellow/green health rollup, and
+  per-warning explanations. Wired through `routes/__init__.py` so it
+  inherits the standard `/api` prefix.
+- **Stale guards** (per-stage) baked in. Thresholds:
+  - `team_live_props` snapshot age > 60 min → yellow warning
+  - `team_prop_scores.scored_at` lag > 60 min → yellow warning
+  - latest succeeded optimizer run > 168 h → yellow warning
+  Adapter / reshape / replay / grid gaps remain red (block production).
+- **Scheduler-state visibility** — endpoint reads
+  `system_state.live_sync` and surfaces the operator pause toggle:
+  `paused`, `manual_override`, `reason`, `set_by`, `set_at`. Pause is
+  reported as a *global* warning that contributes to yellow but never
+  to red (the audit reflects DATA state, not process state).
+- **Root cause for NBA team odds being 33h stale (now resolved as
+  visible)**: `system_state.live_sync` has
+  `paused=true, manual_override=true, set_by='api:agent=e1-test',
+  set_at=2026-06-01T18:04`. A previous agent paused the scheduler 3
+  days ago and never resumed. The endpoint now surfaces this loudly.
+  Cron itself is wired correctly (15-min cadence per sport, staggered
+  :00/:15 MLB · :05/:20 NBA · :10/:25 NFL — server.py lines 2253-2276).
+  ODDS_API_KEY is set. Live team odds path is Odds-API-only:
+  `services.team_live_sync_service.sync_team_live_for_sport` →
+  `UniversalOddsSyncService` (no SGO live call site).
+- **Optimizer candidate visibility (per sport, prop_type=team)** —
+  ```
+  MLB: 825,794 candidates (latest 2025-10-21) — last succeeded run 2026-06-04
+  NBA: 391,851 candidates (latest 2026-02-08) — last succeeded run 2026-06-01
+  NFL: 115,819 candidates (latest 2026-02-08) — last succeeded run 2026-06-01
+  ```
+  Per-family breakdown (NBA team): h2h 129,186 · spread 99,744 ·
+  game_total 101,980 · team_total 60,941. All four categories
+  surfaced to the optimizer.
+- **Tests** — 12 new endpoint contract tests in
+  `tests/test_team_ssot_audit_endpoint.py`. Total 58/58 team-pipeline
+  tests pass (existing audit-script tests + new endpoint tests).
+
 ### 2026-06-04 — Team pipeline SSOT audit + MLB team grid backfill
 - **Built `/app/backend/scripts/team_pipeline_ssot_audit.py`** — single
   command (`python -m scripts.team_pipeline_ssot_audit`) that prints
