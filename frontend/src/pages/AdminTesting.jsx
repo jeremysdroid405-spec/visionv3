@@ -435,11 +435,9 @@ const SPORT_ADAPTERS = {
     steps: {
       ingest:   { module: 'scripts.sgo.ingest_historical_player_stats',     league: 'MLB' },
       features: { module: 'scripts.sgo.build_historical_model_features',    league: 'MLB' },
-      score:    { module: 'scripts.sgo.score_historical_with_live_mlb_hf',  league: 'MLB' },
       reshape:  { module: 'scripts.sgo.reshape_sgo_to_replay_odds',         league: 'MLB' },
       outcomes: { module: 'scripts.sgo.build_historical_outcomes',          league: 'MLB' },
       feature_cache: { module: 'scripts.mlb_replay_build_feature_cache',    league: 'MLB' },
-      replay:   { module: 'scripts.sgo.historical_full_pipeline_replay',    league: 'MLB' },
       grid:     { module: 'scripts.sgo.historical_gate_replay_grid',        league: 'MLB' },
     },
     statFamilies: [
@@ -454,8 +452,6 @@ const SPORT_ADAPTERS = {
     steps: {
       ingest:   { module: 'scripts.sgo.ingest_historical_player_stats',     league: 'NBA' },
       features: { module: 'scripts.sgo.build_historical_model_features',    league: 'NBA' },
-      score:    null, // no NBA score-historical job yet → flagged in Diagnostics
-      replay:   null, // pending universal NBA replay adapter
       grid:     { module: 'scripts.research.grid_sweep',                    league: 'NBA' },
     },
     statFamilies: [
@@ -468,8 +464,6 @@ const SPORT_ADAPTERS = {
     steps: {
       ingest:   { module: 'scripts.sgo.ingest_historical_player_stats', league: 'NFL' },
       features: null,
-      score:    null,
-      replay:   null,
       grid:     null,
     },
     statFamilies: [
@@ -516,10 +510,45 @@ const PIPELINE_STEPS = [
 function loadPipeline() { try { const r = localStorage.getItem(PIPELINE_KEY); return r ? JSON.parse(r) : null; } catch { return null; } }
 function savePipeline(p) { p === null ? localStorage.removeItem(PIPELINE_KEY) : localStorage.setItem(PIPELINE_KEY, JSON.stringify(p)); }
 
+// Steps wired universally — no per-sport adapter entry needed.
+// The underlying scripts accept --league and route internally.
+const UNIVERSAL_STEPS = ['score', 'replay'];
+
 function buildStepArgs(sportKey, stepKey, cfg) {
+  // score and replay: universal scripts that accept --league for any sport.
+  // historical_full_pipeline_replay has LEAGUE_TO_SPORT covering MLB/NBA/NFL/NCAAF.
+  // score_historical_with_live_mlb_hf reads features filtered by --league.
+  // Neither requires a per-sport adapter entry.
+  if (stepKey === 'score') {
+    return {
+      module: 'scripts.sgo.score_historical_with_live_mlb_hf',
+      args: ['--league', sportKey, '--start', cfg.start, '--end', cfg.end],
+    };
+  }
+  if (stepKey === 'replay') {
+    // 2026-05-22 — SSOT historical replay runs in RESEARCH MODE by
+    // default so the grid sweep can see every scored row. Without this,
+    // ~95% of rows get short-circuited as tier_odds_bucket_fail and the
+    // grid analyzes a tiny biased subset.
+    const a = ['--league', sportKey, '--start', cfg.start, '--end', cfg.end,
+                '--research-mode'];
+    if (cfg.excludeFamilies) a.push('--exclude-stat-family', cfg.excludeFamilies);
+    // SSOT audit toggle — default ON, size 200. Each run snapshots
+    // pre-existing legacy rows and writes a per-row diff doc into
+    // sgo_propvision_full_pipeline_replay_diff so the Results tab can
+    // prove that the new run is using the production SSOT pipeline
+    // and not legacy inlined gates.
+    if (cfg.sampleDiffEnabled && cfg.sampleDiffSize > 0)
+      a.push('--sample-diff', String(cfg.sampleDiffSize));
+    if (cfg.gatePath && cfg.gatePath !== 'universal')
+      a.push('--gate-path', cfg.gatePath);
+    return { module: 'scripts.sgo.historical_full_pipeline_replay', args: a };
+  }
+
   const adapter = SPORT_ADAPTERS[sportKey];
   const spec = adapter?.steps?.[stepKey];
   if (!spec) return null;
+
   // The MLB replay-feature-cache builder has a different CLI surface
   // — no --league, plus an --odds-collection it MUST receive so the
   // cache universe matches what Layer-3 reads (the SGO mirror).
@@ -535,30 +564,9 @@ function buildStepArgs(sportKey, stepKey, cfg) {
     };
   }
   const a = ['--league', spec.league, '--start', cfg.start, '--end', cfg.end];
-  if (stepKey === 'replay') {
-    // 2026-05-22 — SSOT historical replay runs in RESEARCH MODE by
-    // default so the grid sweep can see every scored row. Without this,
-    // ~95% of rows get short-circuited as tier_odds_bucket_fail and the
-    // grid analyzes a tiny biased subset.
-    a.push('--research-mode');
-  }
   if (stepKey === 'grid') {
     a.push('--mode', cfg.mode || 'player');
     a.push('--min-bets', String(cfg.minBets ?? (cfg.mode === 'team' ? 1 : 20)));
-  }
-  if (stepKey === 'replay') {
-    if (cfg.excludeFamilies) a.push('--exclude-stat-family', cfg.excludeFamilies);
-    // SSOT audit toggle — default ON, size 200. Each run snapshots
-    // pre-existing legacy rows and writes a per-row diff doc into
-    // sgo_propvision_full_pipeline_replay_diff so the Results tab can
-    // prove that the new run is using the production SSOT pipeline
-    // and not legacy inlined gates.
-    if (cfg.sampleDiffEnabled && cfg.sampleDiffSize > 0) {
-      a.push('--sample-diff', String(cfg.sampleDiffSize));
-    }
-    if (cfg.gatePath && cfg.gatePath !== 'universal') {
-      a.push('--gate-path', cfg.gatePath);
-    }
   }
   return { module: spec.module, args: a };
 }
@@ -901,7 +909,10 @@ function WorkflowTab({ token, onPipelineFinished }) {
 
       {/* Adapter coverage hint */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14, fontSize: 11 }}>
-        {Object.entries(adapter.steps).map(([k, v]) => (
+        {[
+          ...Object.entries(adapter.steps),
+          ...UNIVERSAL_STEPS.map(k => [k, true]),
+        ].map(([k, v]) => (
           <Badge key={k} color={v ? ACCENT_2 : BAD}>{k}: {v ? '✓' : '✗ no adapter'}</Badge>
         ))}
       </div>
