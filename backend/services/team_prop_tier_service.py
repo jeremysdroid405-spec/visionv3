@@ -367,6 +367,7 @@ def _hydrate_card(score: Dict[str, Any],
         "ingested_at":         score.get("ingested_at"),
         "passthrough_at":      score.get("passthrough_at"),
         "scored_at":           score.get("scored_at"),
+        "score_projection":    score.get("score_projection"),
     }
 
 
@@ -1143,15 +1144,34 @@ async def _enrich_cards_with_history(
         l20_avg = bs.get("l20_avg")
         season_avg = bs.get("season_avg")
 
-        # Projection: use l10 avg (no model). Edge via SSOT helper —
-        # mirrors `(margin proj vs threshold)` for spread and flips
-        # sign for UNDER/AWAY so the recommended side ALWAYS matches
-        # the projection (no more "UNDER but projection says OVER").
-        projection = l10_avg
-        # P1 fix: h2h cards show win probability not runs scored
-        if market_category == 'h2h':
-            mp = c.get('model_probability')
+        # Projection: prefer XGB score_projection when present, fall back
+        # to l10_avg. For spread the numeric projection is the team's
+        # predicted margin; for team/game total it's the predicted score.
+        # H2H shows win probability instead.
+        if market_category == "h2h":
+            mp = c.get("model_probability")
             projection = round(mp * 100, 1) if mp is not None else None
+        else:
+            sp = c.get("score_projection")  # {"home": x, "away": y}
+            if sp and sp.get("home") is not None and sp.get("away") is not None:
+                home_proj = sp["home"]
+                away_proj = sp["away"]
+                is_home_flag = c.get("is_home")
+                if market_category == "spread":
+                    projection = (round(home_proj - away_proj, 1) if is_home_flag
+                                  else round(away_proj - home_proj, 1))
+                    ht = c.get("home_team") or "Home"
+                    at = c.get("away_team") or "Away"
+                    c["projection_display"] = (
+                        f"{ht} {round(home_proj, 1)} – {at} {round(away_proj, 1)}")
+                elif market_category == "team_total":
+                    projection = round(home_proj if is_home_flag else away_proj, 1)
+                elif market_category == "game_total":
+                    projection = round(home_proj + away_proj, 1)
+                else:
+                    projection = l10_avg
+            else:
+                projection = l10_avg
         edge_pct_signed = compute_team_edge_pct(
             projection, line, side, market_category,
         )

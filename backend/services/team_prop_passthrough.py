@@ -43,8 +43,8 @@ SCORES_COLL = "team_prop_scores"
 # Unranked bucket below catches anything malformed so we don't ship
 # garbage to the board.
 SAFE_HAVEN_MAX_ODDS = -250
-FRONT_LINES_NEG_MIN = -245
-FRONT_LINES_POS_MAX = +250
+FRONT_LINES_NEG_MIN = -249
+FRONT_LINES_POS_MAX = +249
 WAR_ZONE_MIN_ODDS   = +250
 WAR_ZONE_MAX_ODDS   = +1500
 ODDS_HARD_MIN       = -10_000

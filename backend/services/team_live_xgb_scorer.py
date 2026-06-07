@@ -416,6 +416,7 @@ async def score_team_live_props(
                 "true_probability":   score["model_probability"],
                 "confidence":         score["model_probability"],
                 "model_version":      score["model_version"],
+                "score_projection":   score.get("score_projection"),
                 "gate_reasons":       (
                     [_demote_reason] if _demote and _demote_reason else []
                 ),

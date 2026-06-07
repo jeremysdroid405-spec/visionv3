@@ -65,7 +65,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import (brier_score_loss, log_loss, roc_auc_score)
 from sklearn.preprocessing import StandardScaler
-from xgboost import XGBClassifier
+from xgboost import XGBClassifier, XGBRegressor
 
 # Reuse the same odds-bucket helper player code uses — guarantees
 # bucket parity across player + team rows in the replay collection.
@@ -268,6 +268,7 @@ async def load_training_rows(
         "line": 1, "odds": 1, "is_alternate": 1,
         "home_away": 1, "side": 1,
         "outcome_numeric": 1,
+        "home_score_used": 1, "away_score_used": 1,
         "event_id": 1, "team_id": 1, "game_date": 1,
     }
     cur = db["team_model_prop_features"].find(match, proj).limit(max_rows)
@@ -291,6 +292,15 @@ def _train_one(
     odds_arr = np.array([float(r["odds"]) for r in rows], dtype=np.float64)
     rng = np.random.RandomState(seed)
     perm = rng.permutation(len(X))
+    # Extract raw scores in permuted order BEFORE the arrays are sliced.
+    raw_home = [rows[i].get("home_score_used") for i in perm]
+    raw_away = [rows[i].get("away_score_used") for i in perm]
+    home_scores_all = np.array(
+        [float(v) if v is not None else np.nan for v in raw_home],
+        dtype=np.float64)
+    away_scores_all = np.array(
+        [float(v) if v is not None else np.nan for v in raw_away],
+        dtype=np.float64)
     X = X[perm]
     y = y[perm]
     odds_arr = odds_arr[perm]
@@ -336,11 +346,45 @@ def _train_one(
         picks=[1] * len(y_te),   # team rows: always grade the as-bet side
     )
 
+    # ── Score regressors ──────────────────────────────────────────────
+    # Train one XGBRegressor each for home_score and away_score. Uses
+    # the same scaled X_tr_s / X_te_s so the scaler is shared. Rows
+    # where either score is NaN are excluded from regressor training.
+    reg_mask_tr = ~np.isnan(home_scores_all[:split]) & ~np.isnan(away_scores_all[:split])
+    reg_mask_te = ~np.isnan(home_scores_all[split:]) & ~np.isnan(away_scores_all[split:])
+    regressor_home = None
+    regressor_away = None
+    mae_home_te = None
+    mae_away_te = None
+    if reg_mask_tr.sum() >= 50:
+        X_reg_tr = X_tr_s[reg_mask_tr]
+        y_home_tr = home_scores_all[:split][reg_mask_tr]
+        y_away_tr = away_scores_all[:split][reg_mask_tr]
+        _reg_kwargs = dict(
+            n_estimators=200, max_depth=4, learning_rate=0.08,
+            subsample=0.8, colsample_bytree=0.8,
+            random_state=seed, verbosity=0, tree_method="hist",
+        )
+        regressor_home = XGBRegressor(**_reg_kwargs)
+        regressor_home.fit(X_reg_tr, y_home_tr)
+        regressor_away = XGBRegressor(**_reg_kwargs)
+        regressor_away.fit(X_reg_tr, y_away_tr)
+        X_reg_te = X_te_s[reg_mask_te]
+        if len(X_reg_te) > 0:
+            mae_home_te = float(np.mean(
+                np.abs(regressor_home.predict(X_reg_te) - home_scores_all[split:][reg_mask_te])))
+            mae_away_te = float(np.mean(
+                np.abs(regressor_away.predict(X_reg_te) - away_scores_all[split:][reg_mask_te])))
+        print(f"    regressors trained on {int(reg_mask_tr.sum())} rows  "
+              f"mae_home={mae_home_te!r}  mae_away={mae_away_te!r}")
+
     return {
         "ok": True,
         "model": model,
         "scaler": scaler,
         "features": cols,
+        "regressor_home": regressor_home,
+        "regressor_away": regressor_away,
         "version": VERSION,
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "sport": sport,
@@ -356,6 +400,8 @@ def _train_one(
             "calibration_deciles": cal,
             "roi": roi,
             "test_n_bets": int(len(y_te)),
+            "mae_home_test": round(mae_home_te, 3) if mae_home_te is not None else None,
+            "mae_away_test": round(mae_away_te, 3) if mae_away_te is not None else None,
         },
     }
 

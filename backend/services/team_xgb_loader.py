@@ -103,6 +103,14 @@ def score_team_prop(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 if isinstance(odds, (int, float)) and odds else None)
     edge = (p - implied) if implied is not None else None
     vision = round(p * (1.0 + max(0.0, edge or 0.0)), 4)
+    reg_home = art.get("regressor_home")
+    reg_away = art.get("regressor_away")
+    score_projection = None
+    if reg_home is not None and reg_away is not None:
+        score_projection = {
+            "home": round(float(reg_home.predict(vec_s)[0]), 1),
+            "away": round(float(reg_away.predict(vec_s)[0]), 1),
+        }
     return {
         "model_probability":    round(p, 4),
         "implied_probability":  (round(implied, 4)
@@ -111,6 +119,7 @@ def score_team_prop(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                                        if edge is not None else None),
         "vision_score":         vision,
         "model_version":        VERSION,
+        "score_projection":     score_projection,
     }
 
 
@@ -140,12 +149,16 @@ def score_team_props_batch(
             continue
         model = art["model"]
         scaler = art["scaler"]
+        reg_home = art.get("regressor_home")
+        reg_away = art.get("regressor_away")
         # Build a single matrix for the whole group.
         mat = np.array(
             [row_to_features(rows[i]) for i in idx_list],
             dtype=np.float64)
         mat_s = scaler.transform(mat)
         probs = model.predict_proba(mat_s)[:, 1]
+        home_preds = reg_home.predict(mat_s) if reg_home is not None else None
+        away_preds = reg_away.predict(mat_s) if reg_away is not None else None
         for j, i in enumerate(idx_list):
             p = float(probs[j])
             odds = rows[i].get("odds")
@@ -153,6 +166,12 @@ def score_team_props_batch(
                           if isinstance(odds, (int, float)) and odds else None)
             edge = (p - implied) if implied is not None else None
             vision = round(p * (1.0 + max(0.0, edge or 0.0)), 4)
+            sp = None
+            if home_preds is not None and away_preds is not None:
+                sp = {
+                    "home": round(float(home_preds[j]), 1),
+                    "away": round(float(away_preds[j]), 1),
+                }
             out[i] = {
                 "model_probability":    round(p, 4),
                 "implied_probability":  (round(implied, 4)
@@ -161,6 +180,7 @@ def score_team_props_batch(
                                               if edge is not None else None),
                 "vision_score":         vision,
                 "model_version":        VERSION,
+                "score_projection":     sp,
             }
     return out
 
