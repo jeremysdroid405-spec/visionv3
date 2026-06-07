@@ -42,7 +42,7 @@ from scripts.sgo.train_team_xgb import (
 REPLAY_CONTRACT_COMPLIANT = True
 
 
-ARTIFACT_ROOT = Path("/app/backend/models/team_xgb")
+ARTIFACT_ROOT = Path("/var/www/app/backend/models/team_xgb")
 _CACHE: Dict[tuple, Optional[Dict[str, Any]]] = {}
 _LOCK = threading.Lock()
 
