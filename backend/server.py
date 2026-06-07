@@ -1054,6 +1054,31 @@ async def scheduled_live_team_outcome_grader():
         logger.exception("[SCHEDULER] team_outcome_grader failed: %s", exc)
 
 
+async def scheduled_build_team_features():
+    """Runs at 5:00 AM EST (10:00 UTC) daily — after the 4:45 AM outcome grader.
+
+    Computes rolling team features from completed team_matchups and upserts
+    into team_model_features for NBA and MLB.
+    """
+    logger.info("[SCHEDULER] TEAM FEATURE BUILDER — NBA + MLB")
+    logger.info("[SCHEDULER] Time: %s", datetime.now(timezone.utc).isoformat())
+    try:
+        from services.team_feature_builder import build_team_features_for_sport
+        for _sport in ("nba", "mlb"):
+            audit = await build_team_features_for_sport(db, sport=_sport)
+            logger.info(
+                "[SCHEDULER] team_feature_builder %s — "
+                "teams=%s written=%s errors=%s as_of=%s",
+                _sport.upper(),
+                audit.get("n_teams_processed"),
+                audit.get("n_features_written"),
+                audit.get("n_errors"),
+                audit.get("as_of_date"),
+            )
+    except Exception as exc:
+        logger.exception("[SCHEDULER] team_feature_builder failed: %s", exc)
+
+
 async def scheduled_backfill_team_matchup_scores_bdl():
     """Runs at 4:30 AM EST daily — after BDL player syncs (4:15/4:18 AM).
 
@@ -2400,6 +2425,17 @@ async def startup_event():
         CronTrigger(hour=9, minute=45, timezone=SCHEDULER_TIMEZONE),
         id='live_team_outcome_grader',
         name='4:45 AM EST Team Outcome Grader (NBA + MLB)',
+        replace_existing=True
+    )
+
+    # Build rolling team model features from completed matchups.
+    # Runs at 5:00 AM EST (10:00 UTC) — after the 4:45 AM outcome grader so
+    # fresh game results are already graded before features are computed.
+    scheduler.add_job(
+        scheduled_build_team_features,
+        CronTrigger(hour=10, minute=0, timezone=SCHEDULER_TIMEZONE),
+        id='build_team_features',
+        name='5:00 AM EST Team Feature Builder (NBA + MLB)',
         replace_existing=True
     )
 

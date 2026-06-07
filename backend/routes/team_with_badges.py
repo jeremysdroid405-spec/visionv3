@@ -50,6 +50,7 @@ season stats, and game history still visible).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -381,81 +382,62 @@ def _hit_rate_from_game_logs(
     return round(wins / graded * 100.0, 1)
 
 
-# ── Hit-rate over a market_category at the row's line/side ───────────
-async def _fetch_team_outcomes_bulk(
-    team_id: str, sport: str,
-) -> List[Dict[str, Any]]:
-    """One-shot fetch of all graded outcomes for the team across every
-    market_category. Caller filters in Python to compute per-prop hit
-    rates without N+1 queries.
-
-    2026-06-03 — prod was timing out at 60s on team-with-badges because
-    `_hit_rates_for_market` was issuing 2× DB queries per (market,
-    line, side) tuple — 30+ tuples × ~500ms cold-collection latency.
-    Bulk fetch keeps the route under 1s.
-    """
-    if _db is None:
-        return []
-    out: List[Dict[str, Any]] = []
-    cur = _db["team_historical_outcomes"].find(
-        {
-            "sport": sport, "team_id": team_id,
-            "outcome_resolved": True,
-        },
-        {
-            "_id": 0, "hit": 1, "commence_time": 1,
-            "market_category": 1, "side": 1, "line": 1,
-            "opponent_team_id": 1,
-        },
-    ).sort("commence_time", -1).limit(2000)
-    async for r in cur:
-        out.append(r)
-    return out
-
-
-def _hit_rates_in_memory(
-    outcomes: List[Dict[str, Any]],
-    market_category: str, side: str, line: Optional[float],
+# ── Per-prop hit-rate aggregation (replaces bulk-fetch + in-memory filter) ──
+async def _hit_rates_for_prop(
+    db,
+    team_id: str,
+    sport: str,
+    market_category: str,
+    side: str,
+    line: Optional[float],
     opp_team_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """In-memory equivalent of `_hit_rates_for_market`, fed by the
-    bulk outcomes list. Same line-window (± 1.5) and same h2h ignore
-    rules — preserves the previous numeric output exactly."""
-    side_up = (side or "").upper()
-    try:
-        line_f = float(line) if line is not None else None
-    except (TypeError, ValueError):
-        line_f = None
+    """Aggregation-based hit rates for one (team, market_category, side,
+    ~line) tuple. Deduplicates by event_id (takes first hit per game),
+    matches within ±1.5 of the current line, caps at 200 games.
+    Mirrors services/team_historical_enrichment.py::compute_hit_rates.
+    """
+    if db is None:
+        return {}
+    base: Dict[str, Any] = {
+        "sport": sport,
+        "team_id": team_id,
+        "market_category": market_category,
+        "outcome_resolved": True,
+    }
+    if side:
+        base["side"] = side.upper()
+    if market_category != "h2h" and line is not None:
+        try:
+            line_f = float(line)
+        except (TypeError, ValueError):
+            line_f = None
+        if line_f is not None:
+            base["line"] = {"$gte": line_f - 1.5, "$lte": line_f + 1.5}
+    if opp_team_id:
+        base["opponent_team_id"] = opp_team_id
+
+    pipeline = [
+        {"$match": base},
+        {"$sort":  {"commence_time": -1}},
+        {"$group": {
+            "_id":           "$event_id",
+            "hit":           {"$first": "$hit"},
+            "commence_time": {"$first": "$commence_time"},
+        }},
+        {"$sort":  {"commence_time": -1}},
+        {"$limit": 200},
+    ]
     rows: List[Dict[str, Any]] = []
-    for r in outcomes:
-        if r.get("market_category") != market_category:
-            continue
-        if side_up and (r.get("side") or "").upper() != side_up:
-            continue
-        if (
-            market_category != "h2h"
-            and line_f is not None
-        ):
-            rl = r.get("line")
-            if rl is None:
-                continue
-            try:
-                rlf = float(rl)
-            except (TypeError, ValueError):
-                continue
-            if not (line_f - 1.5 <= rlf <= line_f + 1.5):
-                continue
-        if opp_team_id and r.get("opponent_team_id") != opp_team_id:
-            continue
+    async for r in db["team_historical_outcomes"].aggregate(pipeline):
         rows.append(r)
-        if len(rows) >= 200:
-            break
+
     return {
-        "hit_rate_l5":  _hit_rate(rows[:5]),
-        "hit_rate_l10": _hit_rate(rows[:10]),
-        "hit_rate_l20": _hit_rate(rows[:20]),
+        "hit_rate_l5":     _hit_rate(rows[:5]),
+        "hit_rate_l10":    _hit_rate(rows[:10]),
+        "hit_rate_l20":    _hit_rate(rows[:20]),
         "season_hit_rate": _hit_rate(rows),
-        "sample_size":  len(rows),
+        "sample_size":     len(rows),
     }
 
 
@@ -644,23 +626,12 @@ async def get_team_with_badges(
     abbr_lower, abbr_upper = _split_team_id(tid, sport)
     display_name = _team_display_name(tid, sport)
 
-    # 1) Live props (may be empty when ingest hasn't run for this sport)
-    live_rows = await _fetch_team_live_props(tid, sport)
-
-    # 2) Game history (always available if historical data exists)
-    game_logs = await _fetch_team_game_history(tid, sport, limit=25)
-
-    # 2.5) Bulk outcomes — one query for the entire team. Per-prop hit
-    # rates are computed in-memory below to avoid the prod 504 timeout
-    # we hit when each (market, line, side) row issued its own query.
-    team_outcomes = await _fetch_team_outcomes_bulk(tid, sport)
-
-    # 2.6) League-wide ranks — SAME pre-computed table the board pipeline
-    # uses. Cached after first call, so this is free on subsequent
-    # requests. Without this `_build_team_scout_badges` can't fire any
-    # rank-based badges (Brick Wall / Fast Lane / Deadeye / Fortress /
-    # Jet Fuel / Barrel Club / Icebox / Stout Defense).
-    league_ranks = await _compute_team_league_ranks(_db, sport)
+    # 1-2) Live props, game history, and league ranks — fetched in parallel.
+    live_rows, game_logs, league_ranks = await asyncio.gather(
+        _fetch_team_live_props(tid, sport),
+        _fetch_team_game_history(tid, sport, limit=25),
+        _compute_team_league_ranks(_db, sport),
+    )
 
     # 3) Compute baseline_stats — team-level rollups for the header strip
     team_pts = [g["team_score"] for g in game_logs if g.get("team_score") is not None]
@@ -732,44 +703,54 @@ async def get_team_with_badges(
     if opp_abbr:
         opp_team_id = f"{sport}_{(opp_abbr or '').lower()}"
 
-    # ── Pre-compute league-wide rates the rich badge builder needs ──
-    # `cover_rate_l10`      = team's last-10 spread win rate (any side
-    #                        — for nba_bos rows are HOME/AWAY, not
-    #                        OVER/UNDER, so we filter by category only)
-    # `total_over_rate_l10` = % of last-10 team_total OVER rows hit
-    #                        (game_total rows aren't always graded
-    #                        per-team; team_total is the safer proxy)
-    # In-memory pass over `team_outcomes` keeps this O(N) once.
-    def _rate_for(category: str, side_filter: Optional[str] = None) -> Optional[float]:
-        rows: List[Dict[str, Any]] = []
-        for r in team_outcomes:
-            if r.get("market_category") != category:
-                continue
-            if side_filter and (r.get("side") or "").upper() != side_filter:
-                continue
-            rows.append(r)
-            if len(rows) >= 10:
-                break
-        if not rows:
-            return None
-        graded = [x for x in rows if x.get("hit") in (True, False)]
-        if not graded:
-            return None
-        wins = sum(1 for x in graded if x.get("hit") is True)
-        return round(wins / len(graded), 3)
-
-    # Note: per-prop cover_rate / total_over_rate are recomputed from
-    # game_logs vs the row's line below (SSOT). The pre-computed values
-    # here are kept as fallbacks for when game_logs are sparse.
-
-    for (mkt, line_v, side), rows in grouped.items():
-        head = rows[0]
-        market_category = (
+    # 5.5) Pre-resolve market categories then gather all per-prop hit
+    # rates in parallel — one targeted aggregation per prop instead of
+    # bulk-loading 2,000 rows and filtering in Python.
+    _prop_groups: List[Dict[str, Any]] = []
+    for (mkt, line_v, side), grp_rows in grouped.items():
+        head = grp_rows[0]
+        mc = (
             head.get("market_category")
             or _classify_market_category_from_key(mkt)
             or _classify_market_category_from_key(head.get("market"))
             or ""
         )
+        _prop_groups.append({
+            "mkt": mkt, "line_v": line_v, "side": side,
+            "side_up": (side or "").upper(),
+            "rows": grp_rows, "market_category": mc,
+        })
+
+    _hr_tasks = [
+        _hit_rates_for_prop(
+            _db, tid, sport, pg["market_category"], pg["side_up"], pg["line_v"],
+        )
+        for pg in _prop_groups
+    ]
+    _opp_hr_tasks = [
+        _hit_rates_for_prop(
+            _db, tid, sport, pg["market_category"], pg["side_up"], pg["line_v"],
+            opp_team_id=opp_team_id,
+        )
+        for pg in _prop_groups
+    ] if opp_team_id else []
+
+    _all_gathered = await asyncio.gather(*_hr_tasks, *_opp_hr_tasks)
+    _hr_results = list(_all_gathered[:len(_prop_groups)])
+    _opp_hr_results = (
+        list(_all_gathered[len(_prop_groups):])
+        if opp_team_id else [{}] * len(_prop_groups)
+    )
+
+    for idx, pg in enumerate(_prop_groups):
+        mkt            = pg["mkt"]
+        line_v         = pg["line_v"]
+        side           = pg["side"]
+        _side_up       = pg["side_up"]
+        rows           = pg["rows"]
+        market_category = pg["market_category"]
+        head = rows[0]
+
         stat_token = _MARKET_CATEGORY_TO_STAT_TOKEN.get(
             market_category, market_category.upper() or "TEAM_PROP",
         )
@@ -786,7 +767,6 @@ async def get_team_with_badges(
         #   • AWAY  → "UNDER"  (underdog-side for spread / away team total)
         #   • ML    → "OVER" if the row's home_team matches our team,
         #             else "UNDER" — keeps moneyline picks routable.
-        _side_up = (side or "").upper()
         if _side_up in ("OVER", "HOME"):
             direction_norm = "OVER"
         elif _side_up in ("UNDER", "AWAY"):
@@ -803,33 +783,18 @@ async def get_team_with_badges(
         else:
             direction_norm = _side_up or "OVER"
         best_book, best_odds = _bucket_best_book(rows)
-        # SSOT hit rate — re-grade the SAME `game_logs` the averages are
-        # built from, against the CURRENT line. Keeps avg + hit rate
-        # arithmetically consistent (avg above line ⇒ majority hit).
-        # The old `team_historical_outcomes`-based hit rate compared
-        # team_score to THAT GAME'S book line — irrelevant for the
-        # current detail card.
-        hit_l5  = _hit_rate_from_game_logs(
-            game_logs, market_category, side, line_v, n=5)
-        hit_l10 = _hit_rate_from_game_logs(
-            game_logs, market_category, side, line_v, n=10)
-        hit_l20 = _hit_rate_from_game_logs(
-            game_logs, market_category, side, line_v, n=20)
-        season_hr = _hit_rate_from_game_logs(
-            game_logs, market_category, side, line_v, n=None)
+        # Per-prop hit rates from targeted aggregation (event_id-deduped,
+        # ±1.5 line window, 200-game cap) gathered in parallel above.
+        hr        = _hr_results[idx]
+        hit_l5    = hr.get("hit_rate_l5")
+        hit_l10   = hr.get("hit_rate_l10")
+        hit_l20   = hr.get("hit_rate_l20")
+        season_hr = hr.get("season_hit_rate")
 
-        # H2H hit rate — restrict game_logs to games against the same
-        # opponent, then re-grade with the same rule.
-        opp_hr = None
-        opp_sample = 0
-        if opp_team_id:
-            h2h_logs = [
-                g for g in game_logs
-                if g.get("opponent_team_id") == opp_team_id
-            ]
-            opp_hr = _hit_rate_from_game_logs(
-                h2h_logs, market_category, side, line_v, n=None)
-            opp_sample = len(h2h_logs)
+        # H2H hit rates from the parallel opp-restricted aggregation.
+        opp_hr_data = _opp_hr_results[idx]
+        opp_hr      = opp_hr_data.get("season_hit_rate") if opp_hr_data else None
+        opp_sample  = opp_hr_data.get("sample_size", 0) if opp_hr_data else 0
 
         # Baseline avg for this stat token (so projection cell renders)
         bs = baseline_stats.get(stat_token, {})
