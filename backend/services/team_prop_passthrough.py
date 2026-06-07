@@ -148,6 +148,8 @@ def _normalize_team_row(
         # (synthetic seeds, brand-new sports, etc.).
         "home_team":            row.get("home_team"),
         "away_team":            row.get("away_team"),
+        "home_team_id":         row.get("home_team_id"),
+        "away_team_id":         row.get("away_team_id"),
 
         # Tier + badges
         "tier":                 tier,

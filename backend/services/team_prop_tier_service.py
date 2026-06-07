@@ -1121,11 +1121,15 @@ async def _enrich_cards_with_history(
         opp_abbr = (c.get("opponent") or "")
 
         # Historical hit rates @ this (category, side, ~line).
+        # ML side must be translated to HOME/AWAY for historical lookup.
+        hr_side = side
+        if side == "ML":
+            hr_side = "HOME" if c.get("team_id") == c.get("home_team_id") else "AWAY"
         hr = await compute_hit_rates(
             db,
             team_id=tid, sport=sport,
             market_category=market_category,
-            side=side, line=line,
+            side=hr_side, line=line,
         )
         hit_l5 = hr.get("hit_rate_l5")
         hit_l10 = hr.get("hit_rate_l10")

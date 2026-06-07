@@ -46,9 +46,10 @@ from services.team_prop_passthrough import (
 
 logger = logging.getLogger(__name__)
 
-TEAM_LIVE_COLL  = "team_live_props"
-TEAM_RUNS_COLL  = "team_odds_ingest_runs"
-TEAM_MASTER     = "team_master_hub"
+TEAM_LIVE_COLL      = "team_live_props"
+TEAM_RUNS_COLL      = "team_odds_ingest_runs"
+TEAM_MASTER         = "team_master_hub"
+TEAM_MATCHUPS_COLL  = "team_matchups"
 
 # Phase 1 market scope — game/team only, no alternates.
 TEAM_MARKETS_PHASE1: List[str] = [
@@ -339,6 +340,62 @@ def _build_upserts(rows: List[Dict[str, Any]]) -> List[UpdateOne]:
 
 
 # ─────────────────────────────────────────────────────────────────────
+# team_matchups shell upserts — one row per unique event_id.
+# Writes only Odds API fields; never touches BDL score columns.
+# ─────────────────────────────────────────────────────────────────────
+async def _upsert_team_matchup_shells(
+    db,
+    all_rows: List[Dict[str, Any]],
+    *,
+    sport: str,
+    now_iso: str,
+) -> int:
+    """Upsert one shell row into `team_matchups` for each unique event_id
+    present in `all_rows`. BDL score fields are protected via $setOnInsert
+    for `score_source` (default null on first insert only).
+    Returns the count of upserted + modified rows."""
+    seen: Dict[str, Dict[str, Any]] = {}
+    for r in all_rows:
+        eid = r.get("event_id")
+        if not eid or eid in seen:
+            continue
+        seen[eid] = {
+            "event_id":        eid,
+            "sport":           sport,
+            "game_date":       r.get("game_date"),
+            "commence_time":   r.get("commence_time"),
+            "home_team_id":    r.get("home_team_id"),
+            "away_team_id":    r.get("away_team_id"),
+            "home_team":       r.get("home_team"),
+            "away_team":       r.get("away_team"),
+            "odds_api_event_id": eid,
+            "matchup_source":  "odds_api",
+        }
+
+    if not seen:
+        return 0
+
+    ops = [
+        UpdateOne(
+            {"event_id": eid},
+            {
+                "$set": shell,
+                "$setOnInsert": {"created_at": now_iso, "score_source": None},
+            },
+            upsert=True,
+        )
+        for eid, shell in seen.items()
+    ]
+
+    try:
+        rr = await db[TEAM_MATCHUPS_COLL].bulk_write(ops, ordered=False)
+        return len(rr.upserted_ids or {}) + int(rr.modified_count or 0)
+    except Exception:
+        logger.exception("[team_live_sync] team_matchups shell upsert failed")
+        return 0
+
+
+# ─────────────────────────────────────────────────────────────────────
 # Public entry point
 # ─────────────────────────────────────────────────────────────────────
 async def sync_team_live_for_sport(
@@ -444,6 +501,16 @@ async def sync_team_live_for_sport(
                 except Exception as exc:  # noqa: BLE001
                     audit["errors"].append(
                         {"chunk_start": i, "error": str(exc)[:240]})
+
+        # 3b. Upsert team_matchups shell rows (one per unique event_id).
+        #     BDL score fields are never touched here.
+        try:
+            n_shells = await _upsert_team_matchup_shells(
+                db, all_rows, sport=sport, now_iso=snapshot_iso)
+            audit["n_matchup_shells_upserted"] = n_shells
+        except Exception as exc:  # noqa: BLE001
+            audit["errors"].append(
+                {"stage": "matchup_shells", "error": str(exc)[:240]})
 
         # 4. Passthrough → team_prop_scores (idempotent)
         if do_passthrough and audit["n_rows_normalized"] > 0:
