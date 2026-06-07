@@ -1148,6 +1148,10 @@ async def _enrich_cards_with_history(
         # sign for UNDER/AWAY so the recommended side ALWAYS matches
         # the projection (no more "UNDER but projection says OVER").
         projection = l10_avg
+        # P1 fix: h2h cards show win probability not runs scored
+        if market_category == 'h2h':
+            mp = c.get('model_probability')
+            projection = round(mp * 100, 1) if mp is not None else None
         edge_pct_signed = compute_team_edge_pct(
             projection, line, side, market_category,
         )
