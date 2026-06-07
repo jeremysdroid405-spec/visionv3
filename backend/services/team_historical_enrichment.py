@@ -175,6 +175,7 @@ def compute_baseline_stats(
     return {
         "PTS":        _bs(team_pts),
         "TEAM_TOTAL": _bs(team_pts),
+        "MONEYLINE":  _bs(team_pts),
         "OPP_TOTAL":  _bs(opp_pts),
         "GAME_TOTAL": _bs(total_pts),
         "SPREAD":     _bs(margin),
