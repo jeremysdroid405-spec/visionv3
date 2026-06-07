@@ -79,6 +79,10 @@ _FEATURE_PROJECTION = {
     "spread_cover_rate_l10": 1, "ou_hit_rate_l10": 1,
     "home_win_rate": 1, "away_win_rate": 1,
     "rest_days": 1, "tempo_l10": 1, "run_trend_l10": 1,
+    # MLB SP rotation quality (null for non-MLB sports)
+    "sp_k_rate_avg": 1, "sp_woba_allowed_avg": 1,
+    "sp_hard_hit_rate_avg": 1, "sp_bb_rate_avg": 1,
+    "sp_xwoba_allowed_avg": 1,
 }
 
 # Fields lifted verbatim from the outcomes row into the prop_features doc.

@@ -3,6 +3,8 @@ Compute rolling team features from completed team_matchups and upsert
 into team_model_features (one doc per team_id + sport + as_of_date).
 
 Works identically for any sport — sport is always a parameter.
+For MLB, additionally enriches with SP rotation quality from
+mlb_statcast_pitcher_features via mlb_master_hub_2026 name join.
 Safe to run multiple times on the same day (idempotent via upsert).
 Missing values are stored as None/null, never as 0.
 """
@@ -11,7 +13,7 @@ from __future__ import annotations
 import logging
 import statistics
 from datetime import date, datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from pymongo import UpdateOne
 
@@ -19,6 +21,97 @@ logger = logging.getLogger(__name__)
 
 MATCHUPS_COLL = "team_matchups"
 FEATURES_COLL = "team_model_features"
+MASTER_HUB_COLL = "team_master_hub"
+MLB_MASTER_HUB_COLL = "mlb_master_hub_2026"
+STATCAST_COLL = "mlb_statcast_pitcher_features"
+
+
+async def _load_mlb_sp_lookup(db) -> Tuple[Dict, Dict, Dict]:
+    """Pre-load SP enrichment data for MLB.
+
+    Returns (team_id_to_abbr, team_abbr_to_pitchers, pitcher_name_to_stats).
+    Called once per build_team_features_for_sport run when sport='mlb'.
+    """
+    team_id_to_abbr: Dict[str, str] = {}
+    async for doc in db[MASTER_HUB_COLL].find(
+        {"sport": "mlb"}, {"team_id": 1, "display_names": 1}
+    ):
+        abbr = (doc.get("display_names") or {}).get("abbrev")
+        tid = doc.get("team_id")
+        if tid and abbr:
+            team_id_to_abbr[tid] = abbr
+
+    team_abbr_to_pitchers: Dict[str, List[str]] = {}
+    async for doc in db[MLB_MASTER_HUB_COLL].find(
+        {"position": {"$in": ["SP", "RP"]}},
+        {"team_abbr": 1, "player_name": 1},
+    ):
+        abbr = doc.get("team_abbr")
+        name = (doc.get("player_name") or "").strip().lower()
+        if abbr and name:
+            team_abbr_to_pitchers.setdefault(abbr, []).append(name)
+
+    pitcher_name_to_stats: Dict[str, List] = {}
+    async for doc in db[STATCAST_COLL].find(
+        {}, {"pitcher_name": 1, "game_date": 1, "rolling_14": 1}
+    ):
+        name = (doc.get("pitcher_name") or "").strip().lower()
+        gd = doc.get("game_date")
+        r14 = doc.get("rolling_14") or {}
+        if name and gd:
+            pitcher_name_to_stats.setdefault(name, []).append((gd, r14))
+    for name in pitcher_name_to_stats:
+        pitcher_name_to_stats[name].sort(key=lambda x: x[0])
+
+    return team_id_to_abbr, team_abbr_to_pitchers, pitcher_name_to_stats
+
+
+def _sp_features_for_team(
+    team_abbr: Optional[str],
+    as_of_date: str,
+    team_abbr_to_pitchers: Dict[str, List[str]],
+    pitcher_name_to_stats: Dict[str, List],
+) -> Dict[str, Optional[float]]:
+    """Average SP rotation quality for a team strictly before as_of_date."""
+    if not team_abbr:
+        return {}
+    pitchers = team_abbr_to_pitchers.get(team_abbr, [])
+    k_rates: List[float] = []
+    woba_vals: List[float] = []
+    hard_hit_vals: List[float] = []
+    bb_rates: List[float] = []
+    xwoba_vals: List[float] = []
+
+    for pitcher_name in pitchers:
+        stats = pitcher_name_to_stats.get(pitcher_name, [])
+        best = None
+        for gd, r14 in reversed(stats):
+            if gd < as_of_date:
+                best = r14
+                break
+        if best is None or (best.get("plate_appearances") or 0) < 10:
+            continue
+        if best.get("k_rate") is not None:
+            k_rates.append(best["k_rate"])
+        if best.get("wOBA_allowed") is not None:
+            woba_vals.append(best["wOBA_allowed"])
+        if best.get("hard_hit_allowed_rate") is not None:
+            hard_hit_vals.append(best["hard_hit_allowed_rate"])
+        if best.get("bb_rate") is not None:
+            bb_rates.append(best["bb_rate"])
+        if best.get("xwOBA_allowed") is not None:
+            xwoba_vals.append(best["xwOBA_allowed"])
+
+    def _avg(vals: List[float]) -> Optional[float]:
+        return round(sum(vals) / len(vals), 4) if vals else None
+
+    return {
+        "sp_k_rate_avg":        _avg(k_rates),
+        "sp_woba_allowed_avg":  _avg(woba_vals),
+        "sp_hard_hit_rate_avg": _avg(hard_hit_vals),
+        "sp_bb_rate_avg":       _avg(bb_rates),
+        "sp_xwoba_allowed_avg": _avg(xwoba_vals),
+    }
 
 
 def _slope(values: List[float]) -> Optional[float]:
@@ -166,6 +259,17 @@ async def build_team_features_for_sport(db, sport: str) -> Dict[str, Any]:
 
     logger.info("[TeamFeatureBuilder] %s — loading completed matchups", sport.upper())
 
+    # Pre-load MLB SP lookup for pitcher enrichment.
+    sp_enabled = (sport == "mlb")
+    team_id_to_abbr: Dict[str, str] = {}
+    team_abbr_to_pitchers: Dict[str, List[str]] = {}
+    pitcher_name_to_stats: Dict[str, List] = {}
+    if sp_enabled:
+        logger.info("[TeamFeatureBuilder] MLB — loading SP lookup data")
+        team_id_to_abbr, team_abbr_to_pitchers, pitcher_name_to_stats = (
+            await _load_mlb_sp_lookup(db)
+        )
+
     matchups: List[Dict] = await db[MATCHUPS_COLL].find(
         {
             "sport": sport,
@@ -250,6 +354,14 @@ async def build_team_features_for_sport(db, sport: str) -> Dict[str, Any]:
         try:
             games_sorted = sorted(games, key=_sort_key, reverse=True)
             features = _build_features(games_sorted, as_of)
+            # MLB: enrich with SP rotation quality features.
+            if sp_enabled:
+                team_abbr = team_id_to_abbr.get(team_id)
+                sp_feats = _sp_features_for_team(
+                    team_abbr, as_of_str,
+                    team_abbr_to_pitchers, pitcher_name_to_stats,
+                )
+                features.update(sp_feats)
             doc = {
                 "team_id":    team_id,
                 "sport":      sport,

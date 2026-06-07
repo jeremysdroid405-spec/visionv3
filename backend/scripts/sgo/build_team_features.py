@@ -128,6 +128,12 @@ class TeamAsOfFeatures:
     tempo_l10:             Optional[float]  # NBA pace proxy; MLB runs/g
     run_trend_l10:         Optional[float]  # MLB only; None otherwise
     feature_completeness:  str = FEATURE_VERSION
+    # MLB starting pitcher quality (rolling 14-day averages across rotation)
+    sp_k_rate_avg:          Optional[float] = None
+    sp_woba_allowed_avg:    Optional[float] = None
+    sp_hard_hit_rate_avg:   Optional[float] = None
+    sp_bb_rate_avg:         Optional[float] = None
+    sp_xwoba_allowed_avg:   Optional[float] = None
 
     def asdict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -348,6 +354,98 @@ def assert_no_future_games(
                 f"{as_of_date} (event_id={g.event_id})")
 
 
+# ───── SP enrichment (MLB only) ─────
+async def _load_sp_lookup(db: AsyncIOMotorDatabase):
+    """Pre-load all data needed for SP feature enrichment.
+
+    Returns (team_id_to_abbr, team_abbr_to_pitchers, pitcher_name_to_stats):
+      team_id_to_abbr:        'mlb_ari' → 'ARI'
+      team_abbr_to_pitchers:  'ARI' → ['zac gallen', ...]
+      pitcher_name_to_stats:  'zac gallen' → [(game_date, rolling_14), ...]
+                              sorted ascending by game_date
+    """
+    team_id_to_abbr: Dict[str, str] = {}
+    async for doc in db["team_master_hub"].find(
+        {"sport": "mlb"}, {"team_id": 1, "display_names": 1}
+    ):
+        abbr = (doc.get("display_names") or {}).get("abbrev")
+        tid = doc.get("team_id")
+        if tid and abbr:
+            team_id_to_abbr[tid] = abbr
+
+    team_abbr_to_pitchers: Dict[str, List[str]] = {}
+    async for doc in db["mlb_master_hub_2026"].find(
+        {"position": {"$in": ["SP", "RP"]}}, {"team_abbr": 1, "player_name": 1}
+    ):
+        abbr = doc.get("team_abbr")
+        name = (doc.get("player_name") or "").strip().lower()
+        if abbr and name:
+            team_abbr_to_pitchers.setdefault(abbr, []).append(name)
+
+    pitcher_name_to_stats: Dict[str, List] = {}
+    async for doc in db["mlb_statcast_pitcher_features"].find(
+        {}, {"pitcher_name": 1, "game_date": 1, "rolling_14": 1}
+    ):
+        name = (doc.get("pitcher_name") or "").strip().lower()
+        gd = doc.get("game_date")
+        r14 = doc.get("rolling_14") or {}
+        if name and gd:
+            pitcher_name_to_stats.setdefault(name, []).append((gd, r14))
+    for name in pitcher_name_to_stats:
+        pitcher_name_to_stats[name].sort(key=lambda x: x[0])
+
+    return team_id_to_abbr, team_abbr_to_pitchers, pitcher_name_to_stats
+
+
+def _sp_features_for_team(
+    team_abbr: Optional[str],
+    as_of_date: str,
+    team_abbr_to_pitchers: Dict[str, List[str]],
+    pitcher_name_to_stats: Dict[str, List],
+) -> Dict[str, Optional[float]]:
+    """Compute average SP rotation quality for a team as of a given date.
+    Uses pitcher stats from the rolling_14 window strictly before as_of_date."""
+    if not team_abbr:
+        return {}
+    pitchers = team_abbr_to_pitchers.get(team_abbr, [])
+    k_rates: List[float] = []
+    woba_vals: List[float] = []
+    hard_hit_vals: List[float] = []
+    bb_rates: List[float] = []
+    xwoba_vals: List[float] = []
+
+    for pitcher_name in pitchers:
+        stats = pitcher_name_to_stats.get(pitcher_name, [])
+        best = None
+        for gd, r14 in reversed(stats):
+            if gd < as_of_date:
+                best = r14
+                break
+        if best is None or (best.get("plate_appearances") or 0) < 10:
+            continue
+        if best.get("k_rate") is not None:
+            k_rates.append(best["k_rate"])
+        if best.get("wOBA_allowed") is not None:
+            woba_vals.append(best["wOBA_allowed"])
+        if best.get("hard_hit_allowed_rate") is not None:
+            hard_hit_vals.append(best["hard_hit_allowed_rate"])
+        if best.get("bb_rate") is not None:
+            bb_rates.append(best["bb_rate"])
+        if best.get("xwOBA_allowed") is not None:
+            xwoba_vals.append(best["xwOBA_allowed"])
+
+    def _avg(vals: List[float]) -> Optional[float]:
+        return round(sum(vals) / len(vals), 4) if vals else None
+
+    return {
+        "sp_k_rate_avg":        _avg(k_rates),
+        "sp_woba_allowed_avg":  _avg(woba_vals),
+        "sp_hard_hit_rate_avg": _avg(hard_hit_vals),
+        "sp_bb_rate_avg":       _avg(bb_rates),
+        "sp_xwoba_allowed_avg": _avg(xwoba_vals),
+    }
+
+
 # ───── DB orchestration ─────
 async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     """Idempotent — same tolerant pattern as the rest of the SGO scripts."""
@@ -423,6 +521,21 @@ async def build_features_for_sport(
     if not dry_run:
         await _ensure_indexes(db)
 
+    # Pre-load SP lookup for MLB enrichment.
+    sp_enabled = (sport == "mlb")
+    team_id_to_abbr: Dict[str, str] = {}
+    team_abbr_to_pitchers: Dict[str, List[str]] = {}
+    pitcher_name_to_stats: Dict[str, List] = {}
+    if sp_enabled:
+        print(f"  [{sport.upper()}] loading SP lookup data…")
+        team_id_to_abbr, team_abbr_to_pitchers, pitcher_name_to_stats = (
+            await _load_sp_lookup(db)
+        )
+        print(f"  [{sport.upper()}] SP lookup: "
+              f"{len(team_id_to_abbr)} teams, "
+              f"{sum(len(v) for v in team_abbr_to_pitchers.values())} pitchers, "
+              f"{len(pitcher_name_to_stats)} statcast names")
+
     counters = {
         "teams_processed":      0,
         "team_dates_emitted":   0,
@@ -438,12 +551,10 @@ async def build_features_for_sport(
         if not games:
             continue
         counters["teams_processed"] += 1
+        team_abbr = team_id_to_abbr.get(team_id) if sp_enabled else None
         team_game_dates = sorted({g.game_date for g in games if g.game_date})
         for as_of in team_game_dates:
             try:
-                # Leakage guard: features must be computed from games
-                # STRICTLY before as_of_date. The compute function already
-                # filters; this is the defensive assertion.
                 prior_games = [g for g in games if g.game_date < as_of]
                 assert_no_future_games(prior_games, as_of_date=as_of)
             except RuntimeError as e:
@@ -452,6 +563,17 @@ async def build_features_for_sport(
                 continue
             feat = compute_team_as_of_features(
                 games, as_of_date=as_of, sport=sport)
+            # MLB: enrich with SP rotation quality.
+            if sp_enabled and team_abbr:
+                sp = _sp_features_for_team(
+                    team_abbr, as_of,
+                    team_abbr_to_pitchers, pitcher_name_to_stats,
+                )
+                feat.sp_k_rate_avg        = sp.get("sp_k_rate_avg")
+                feat.sp_woba_allowed_avg  = sp.get("sp_woba_allowed_avg")
+                feat.sp_hard_hit_rate_avg = sp.get("sp_hard_hit_rate_avg")
+                feat.sp_bb_rate_avg       = sp.get("sp_bb_rate_avg")
+                feat.sp_xwoba_allowed_avg = sp.get("sp_xwoba_allowed_avg")
             counters["team_dates_emitted"] += 1
             if len(sample_rows) < 5 and feat.sample_size > 0:
                 sample_rows.append({

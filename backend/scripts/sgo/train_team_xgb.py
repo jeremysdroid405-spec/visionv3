@@ -86,6 +86,9 @@ PRIOR_FIELDS = (
     "spread_cover_rate_l10", "ou_hit_rate_l10",
     "home_win_rate", "away_win_rate",
     "rest_days", "tempo_l10", "run_trend_l10",
+    # MLB SP rotation quality (null/missing for non-MLB sports)
+    "sp_k_rate_avg", "sp_woba_allowed_avg",
+    "sp_hard_hit_rate_avg", "sp_bb_rate_avg", "sp_xwoba_allowed_avg",
 )
 
 BET_SHAPE_FIELDS = ("line", "is_alternate_int", "is_home_int",
