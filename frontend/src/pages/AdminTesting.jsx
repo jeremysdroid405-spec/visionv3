@@ -428,18 +428,11 @@ function RebootServicesButton({ token }) {
   );
 }
 
-// ── Universal sport adapters ────────────────────────────────────────
+// ── Sport metadata (stat families + display labels) ─────────────────
+// Steps are no longer stored here — all dispatch is in buildStepArgs.
 const SPORT_ADAPTERS = {
   MLB: {
     label: 'MLB',
-    steps: {
-      ingest:   { module: 'scripts.sgo.ingest_historical_player_stats',     league: 'MLB' },
-      features: { module: 'scripts.sgo.build_historical_model_features',    league: 'MLB' },
-      reshape:  { module: 'scripts.sgo.reshape_sgo_to_replay_odds',         league: 'MLB' },
-      outcomes: { module: 'scripts.sgo.build_historical_outcomes',          league: 'MLB' },
-      feature_cache: { module: 'scripts.mlb_replay_build_feature_cache',    league: 'MLB' },
-      grid:     { module: 'scripts.sgo.historical_gate_replay_grid',        league: 'MLB' },
-    },
     statFamilies: [
       'hits', 'total_bases', 'hits_runs_rbis', 'rbis', 'runs', 'home_runs',
       'singles', 'doubles', 'batter_strikeouts', 'pitcher_strikeouts',
@@ -449,11 +442,6 @@ const SPORT_ADAPTERS = {
   },
   NBA: {
     label: 'NBA',
-    steps: {
-      ingest:   { module: 'scripts.sgo.ingest_historical_player_stats',     league: 'NBA' },
-      features: { module: 'scripts.sgo.build_historical_model_features',    league: 'NBA' },
-      grid:     { module: 'scripts.research.grid_sweep',                    league: 'NBA' },
-    },
     statFamilies: [
       'points', 'rebounds', 'assists', 'three_pointers_made',
       'steals', 'blocks', 'turnovers', 'pra', 'pr', 'pa', 'ra',
@@ -461,11 +449,6 @@ const SPORT_ADAPTERS = {
   },
   NFL: {
     label: 'NFL',
-    steps: {
-      ingest:   { module: 'scripts.sgo.ingest_historical_player_stats', league: 'NFL' },
-      features: null,
-      grid:     null,
-    },
     statFamilies: [
       'passing_yards', 'rushing_yards', 'receiving_yards', 'receptions',
       'passing_tds', 'rushing_tds', 'receiving_tds', 'interceptions',
@@ -510,19 +493,49 @@ const PIPELINE_STEPS = [
 function loadPipeline() { try { const r = localStorage.getItem(PIPELINE_KEY); return r ? JSON.parse(r) : null; } catch { return null; } }
 function savePipeline(p) { p === null ? localStorage.removeItem(PIPELINE_KEY) : localStorage.setItem(PIPELINE_KEY, JSON.stringify(p)); }
 
-// Steps wired universally — no per-sport adapter entry needed.
-// The underlying scripts accept --league and route internally.
-const UNIVERSAL_STEPS = ['score', 'replay'];
-
 function buildStepArgs(sportKey, stepKey, cfg) {
-  // score and replay: universal scripts that accept --league for any sport.
-  // historical_full_pipeline_replay has LEAGUE_TO_SPORT covering MLB/NBA/NFL/NCAAF.
-  // score_historical_with_live_mlb_hf reads features filtered by --league.
-  // Neither requires a per-sport adapter entry.
+  const s = cfg.start;
+  const e = cfg.end;
+
+  if (stepKey === 'ingest') {
+    return {
+      module: 'scripts.sgo.ingest_historical_player_stats',
+      args: ['--league', sportKey, '--start', s, '--end', e],
+    };
+  }
+  if (stepKey === 'features') {
+    return {
+      module: 'scripts.sgo.build_historical_model_features',
+      args: ['--league', sportKey, '--start', s, '--end', e],
+    };
+  }
   if (stepKey === 'score') {
     return {
       module: 'scripts.sgo.score_historical_with_live_mlb_hf',
-      args: ['--league', sportKey, '--start', cfg.start, '--end', cfg.end],
+      args: ['--league', sportKey, '--start', s, '--end', e],
+    };
+  }
+  if (stepKey === 'reshape') {
+    return {
+      module: 'scripts.sgo.reshape_sgo_to_replay_odds',
+      args: ['--league', sportKey, '--start', s, '--end', e],
+    };
+  }
+  if (stepKey === 'outcomes') {
+    return {
+      module: 'scripts.sgo.build_historical_outcomes',
+      args: ['--league', sportKey, '--start', s, '--end', e],
+    };
+  }
+  if (stepKey === 'feature_cache') {
+    return {
+      module: 'scripts.mlb_replay_build_feature_cache',
+      args: [
+        '--start', s, '--end', e,
+        '--odds-collection', 'sgo_replay_alt_odds_raw',
+        '--feature-source', 'sgo_player_stats',
+        '--league', sportKey,
+      ],
     };
   }
   if (stepKey === 'replay') {
@@ -530,8 +543,7 @@ function buildStepArgs(sportKey, stepKey, cfg) {
     // default so the grid sweep can see every scored row. Without this,
     // ~95% of rows get short-circuited as tier_odds_bucket_fail and the
     // grid analyzes a tiny biased subset.
-    const a = ['--league', sportKey, '--start', cfg.start, '--end', cfg.end,
-                '--research-mode'];
+    const a = ['--league', sportKey, '--start', s, '--end', e, '--research-mode'];
     if (cfg.excludeFamilies) a.push('--exclude-stat-family', cfg.excludeFamilies);
     // SSOT audit toggle — default ON, size 200. Each run snapshots
     // pre-existing legacy rows and writes a per-row diff doc into
@@ -544,31 +556,24 @@ function buildStepArgs(sportKey, stepKey, cfg) {
       a.push('--gate-path', cfg.gatePath);
     return { module: 'scripts.sgo.historical_full_pipeline_replay', args: a };
   }
-
-  const adapter = SPORT_ADAPTERS[sportKey];
-  const spec = adapter?.steps?.[stepKey];
-  if (!spec) return null;
-
-  // The MLB replay-feature-cache builder has a different CLI surface
-  // — no --league, plus an --odds-collection it MUST receive so the
-  // cache universe matches what Layer-3 reads (the SGO mirror).
-  if (stepKey === 'feature_cache') {
+  if (stepKey === 'grid') {
+    // MLB uses the hit-rate gate sweep; all other sports use the
+    // PP-free market calibration sweep (grid_sweep).
+    if (sportKey === 'MLB') {
+      return {
+        module: 'scripts.sgo.historical_gate_replay_grid',
+        args: ['--league', sportKey, '--start', s, '--end', e,
+               '--mode', cfg.mode || 'player',
+               '--min-bets', String(cfg.minBets ?? (cfg.mode === 'team' ? 1 : 20))],
+      };
+    }
     return {
-      module: spec.module,
-      args: [
-        '--start', cfg.start, '--end', cfg.end,
-        '--odds-collection', 'sgo_replay_alt_odds_raw',
-        '--feature-source', 'sgo_player_stats',
-        '--league', spec.league,
-      ],
+      module: 'scripts.research.grid_sweep',
+      args: ['--league', sportKey, '--start', s, '--end', e,
+             '--min-bets', String(cfg.minBets ?? 20)],
     };
   }
-  const a = ['--league', spec.league, '--start', cfg.start, '--end', cfg.end];
-  if (stepKey === 'grid') {
-    a.push('--mode', cfg.mode || 'player');
-    a.push('--min-bets', String(cfg.minBets ?? (cfg.mode === 'team' ? 1 : 20)));
-  }
-  return { module: spec.module, args: a };
+  return null;
 }
 
 // ── Month picker helpers (Workflow tab) ──────────────────────────
@@ -860,11 +865,10 @@ function WorkflowTab({ token, onPipelineFinished }) {
     catch (e) { toast.error(`Cancel failed: ${e.message}`); }
   };
   const active = pipeline?.steps.find(s => ['running','queued','claimed'].includes(s.status));
-  const adapter = SPORT_ADAPTERS[config.sport];
 
   return (
     <Section testId="pipeline-section" accent={ACCENT} title="Guided Workflow"
-      subtitle="Single click runs the entire historical → grid pipeline using the sport's adapter."
+      subtitle="Single click runs the entire historical → grid pipeline."
       right={pipeline && (
         <div style={{ display: 'flex', gap: 8 }}>
           {active && <Btn variant="danger" onClick={cancel} testId="pipeline-cancel">Cancel</Btn>}
@@ -907,13 +911,10 @@ function WorkflowTab({ token, onPipelineFinished }) {
           onChange={(e) => setConfig({ ...config, excludeFamilies: e.target.value })} placeholder="fantasy_score,points" /></Field>
       </div>
 
-      {/* Adapter coverage hint */}
+      {/* Step coverage hint — all steps are universal */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14, fontSize: 11 }}>
-        {[
-          ...Object.entries(adapter.steps),
-          ...UNIVERSAL_STEPS.map(k => [k, true]),
-        ].map(([k, v]) => (
-          <Badge key={k} color={v ? ACCENT_2 : BAD}>{k}: {v ? '✓' : '✗ no adapter'}</Badge>
+        {PIPELINE_STEPS.filter(s => s.stepKey).map(s => (
+          <Badge key={s.stepKey} color={ACCENT_2}>{s.stepKey}: ✓</Badge>
         ))}
       </div>
 
@@ -1151,7 +1152,7 @@ function defaultSweep(sport) {
     for (const ax of SWEEP_AXES) fams[f].thresholds[ax.key] = ax.default;
   }
   return {
-    sport, start: '', end: '', league: SPORT_ADAPTERS[sport].steps.grid?.league || sport,
+    sport, start: '', end: '', league: sport,
     tiers: { safe_haven: true, front_lines: true, war_zone: true },
     odds_buckets: ['odds_-200_-100','odds_-100_-0','odds_+0_+150','odds_+150_+300']
       .reduce((m, k) => { m[k] = true; return m; }, {}),
