@@ -542,7 +542,10 @@ function buildStepArgs(sportKey, stepKey, cfg) {
     // grid analyzes a tiny biased subset.
     a.push('--research-mode');
   }
-  if (stepKey === 'grid') a.push('--min-bets', String(cfg.minBets || 20));
+  if (stepKey === 'grid') {
+    a.push('--mode', cfg.mode || 'player');
+    a.push('--min-bets', String(cfg.minBets ?? (cfg.mode === 'team' ? 1 : 20)));
+  }
   if (stepKey === 'replay') {
     if (cfg.excludeFamilies) a.push('--exclude-stat-family', cfg.excludeFamilies);
     // SSOT audit toggle — default ON, size 200. Each run snapshots
@@ -612,6 +615,7 @@ function WorkflowTab({ token, onPipelineFinished }) {
     // We treat them as the SOURCE OF TRUTH; the dropdowns derive
     // from / write to them via setMonthWindow().
     start: _initStart, end: _initEnd,
+    mode: 'player',
     minBets: 20,
     excludeFamilies: 'fantasy_score',
     skip: { ingest_stats: true, build_features: true, score_model: true },
@@ -864,6 +868,17 @@ function WorkflowTab({ token, onPipelineFinished }) {
           <Select testId="pipe-sport" value={config.sport}
             onChange={(e) => setConfig({ ...config, sport: e.target.value })}
             options={Object.keys(SPORT_ADAPTERS)} />
+        </Field>
+        <Field label="Mode" hint="grid step only">
+          <Select testId="pipe-mode" value={config.mode || 'player'}
+            onChange={(e) => {
+              const m = e.target.value;
+              setConfig(c => ({ ...c, mode: m, minBets: m === 'team' ? 1 : 20 }));
+            }}
+            options={[
+              { value: 'player', label: 'Player (default)' },
+              { value: 'team',   label: 'Team' },
+            ]} />
         </Field>
         <Field label="Month">
           <Select testId="pipe-month" value={String(_mw.month)}
