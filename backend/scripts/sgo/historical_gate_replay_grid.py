@@ -59,6 +59,12 @@ DEFAULT_GRID: Dict[str, List[float]] = {
     "tp_min":       [0.50, 0.55, 0.60, 0.65],
 }
 
+TEAM_GRID: Dict[str, List[float]] = {
+    "model_probability_min": [0.50, 0.52, 0.55, 0.58, 0.60, 0.62, 0.65, 0.68, 0.70, 0.75],
+    "edge_min":              [0.00, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.10],
+}
+TOP_N_TEAM = 5
+
 TIERS = ("safe_haven", "front_lines", "war_zone")
 
 
@@ -166,6 +172,207 @@ def _iter_grid(g: Dict[str, List[float]]):
                         yield h20, h5, cv, e, t
 
 
+async def _load_team(db, *, start: str, end: str, league: str) -> List[Dict[str, Any]]:
+    match: Dict[str, Any] = {
+        "prop_type": "team",
+        "league_id": league,
+        "game_date": {"$gte": start, "$lte": end},
+    }
+    proj = {"_id": 0, "market_category": 1, "model_probability": 1,
+            "edge": 1, "implied_probability": 1, "fair_probability": 1,
+            "outcome_numeric": 1, "game_date": 1, "event_id": 1, "side": 1}
+    rows: List[Dict[str, Any]] = []
+    async for r in db[REPLAY].find(match, proj):
+        r["_prob"]    = _f(r.get("model_probability"))
+        r["_edge"]    = _f(r.get("edge"))
+        implied       = _f(r.get("implied_probability"))
+        r["_implied"] = implied if implied is not None else _f(r.get("fair_probability"))
+        rows.append(r)
+    return rows
+
+
+def _eval_team(rows: List[Dict[str, Any]],
+               prob_min: float, edge_min: float) -> Dict[str, Any]:
+    n = w = 0
+    total_profit = 0.0
+    sum_prob = sum_edge = 0.0
+
+    for r in rows:
+        if r["_prob"]    is None or r["_prob"]    < prob_min: continue
+        if r["_edge"]    is None or r["_edge"]    < edge_min: continue
+        if r["_implied"] is None or r["_implied"] <= 0:       continue
+        oc = r.get("outcome_numeric")
+        if oc == 0.5:
+            continue
+        n += 1
+        if oc == 1:
+            w += 1
+            total_profit += (1.0 / r["_implied"]) - 1.0
+        else:
+            total_profit -= 1.0
+        sum_prob += r["_prob"]
+        sum_edge += r["_edge"]
+
+    if n == 0:
+        return {"prob_min": prob_min, "edge_min": edge_min,
+                "n_bets": 0, "n_wins": 0, "hit_rate": None,
+                "total_profit": None, "roi": None,
+                "avg_model_prob": None, "avg_edge": None}
+
+    return {
+        "prob_min":       prob_min,
+        "edge_min":       edge_min,
+        "n_bets":         n,
+        "n_wins":         w,
+        "hit_rate":       w / n,
+        "total_profit":   total_profit,
+        "roi":            total_profit / n,
+        "avg_model_prob": sum_prob / n,
+        "avg_edge":       sum_edge / n,
+    }
+
+
+def _iter_team_grid(g: Dict[str, List[float]]):
+    for prob in g["model_probability_min"]:
+        for e in g["edge_min"]:
+            yield prob, e
+
+
+async def _run_team(args: argparse.Namespace, db) -> int:
+    run_id = str(uuid.uuid4())
+    started = datetime.now(timezone.utc)
+    methodology = "per_market_category_team"
+
+    await db[RUNS].insert_one({
+        "run_id": run_id, "version": VERSION, "methodology": methodology,
+        "mode": "team",
+        "params": {"league": args.league, "start": args.start,
+                   "end": args.end, "min_bets": args.min_bets,
+                   "grid": TEAM_GRID},
+        "status": "running", "started_at": started, "finished_at": None,
+    })
+
+    print("=" * 78)
+    print(f"  TEAM MODE — PER-MARKET_CATEGORY GRID  v{VERSION}")
+    print(f"  run_id={run_id}")
+    print(f"  league={args.league} window={args.start}..{args.end} "
+          f"min_bets={args.min_bets}")
+    print(f"  grid axes:")
+    for k, v in TEAM_GRID.items():
+        print(f"    {k:<26} {v}")
+    print("=" * 78)
+
+    rows = await _load_team(db, start=args.start, end=args.end, league=args.league)
+    print(f"  team rows in replay collection: {len(rows):,}")
+    if not rows:
+        await db[RUNS].update_one(
+            {"run_id": run_id},
+            {"$set": {"status": "succeeded_empty",
+                      "finished_at": datetime.now(timezone.utc)}})
+        return 0
+
+    by_market: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        cat = r.get("market_category") or "_unknown"
+        by_market[cat].append(r)
+
+    print()
+    for cat, pool in sorted(by_market.items()):
+        print(f"  {cat:<30} universe size = {len(pool):,}")
+
+    FLUSH_EVERY = 1000
+    write_buffer: List[Dict[str, Any]] = []
+    n_cells_total = 0
+
+    async def _flush():
+        if write_buffer and not args.dry_run:
+            await db[RESULTS].insert_many(write_buffer, ordered=False)
+        write_buffer.clear()
+
+    # top_per_market: market_category -> list of up to TOP_N_TEAM best cells
+    top_per_market: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
+    for cat, pool in by_market.items():
+        for prob_min, edge_min in _iter_team_grid(TEAM_GRID):
+            n_cells_total += 1
+            metrics = _eval_team(pool, prob_min, edge_min)
+            cell = {
+                "run_id": run_id, "version": VERSION,
+                "methodology": methodology, "mode": "team",
+                "market_category": cat,
+                **metrics,
+            }
+            write_buffer.append(cell)
+            if len(write_buffer) >= FLUSH_EVERY:
+                await _flush()
+
+            if (metrics["n_bets"] or 0) < args.min_bets:
+                continue
+            if metrics["total_profit"] is None:
+                continue
+
+            bucket = top_per_market[cat]
+            bucket.append(cell)
+            bucket.sort(key=lambda x: -(x["total_profit"] or 0))
+            if len(bucket) > TOP_N_TEAM:
+                bucket.pop()
+
+    await _flush()
+
+    # Save top-N per market_category to candidate_gate_configs
+    saved_candidates: List[Dict[str, Any]] = []
+    if not args.dry_run:
+        for cat, bucket in top_per_market.items():
+            for rank, c in enumerate(bucket, start=1):
+                saved_candidates.append({
+                    "run_id":          run_id,
+                    "league":          args.league,
+                    "mode":            "team",
+                    "methodology":     methodology,
+                    "market_category": cat,
+                    "rank":            rank,
+                    "params": {
+                        "prob_min": c["prob_min"],
+                        "edge_min": c["edge_min"],
+                    },
+                    "metrics": {k: c[k] for k in
+                                ("n_bets", "n_wins", "hit_rate",
+                                 "total_profit", "roi",
+                                 "avg_model_prob", "avg_edge")},
+                    "created_at": datetime.now(timezone.utc),
+                })
+        if saved_candidates:
+            await db["candidate_gate_configs"].insert_many(
+                saved_candidates, ordered=False)
+
+    await db[RUNS].update_one(
+        {"run_id": run_id},
+        {"$set": {"status": "succeeded",
+                  "finished_at": datetime.now(timezone.utc),
+                  "n_cells_total": n_cells_total,
+                  "n_candidates_saved": len(saved_candidates)}})
+
+    # Print summary table per market
+    print()
+    for cat, bucket in sorted(top_per_market.items()):
+        print(f"\n  ── {cat} ───────────────────────────────────────────")
+        print(f"  {'rank':>4}  {'n':>5}  {'profit':>8}  {'roi':>7}  "
+              f"{'hit%':>6}  {'prob_min':>8}  {'edge_min':>8}")
+        for rank, c in enumerate(bucket, start=1):
+            print(f"  {rank:>4}  {c['n_bets']:>5}  "
+                  f"{(c['total_profit'] or 0):>+8.2f}  "
+                  f"{(c['roi'] or 0)*100:>+6.2f}%  "
+                  f"{(c['hit_rate'] or 0)*100:>5.1f}%  "
+                  f"{c['prob_min']:>8.2f}  "
+                  f"{c['edge_min']:>8.2f}")
+
+    print()
+    print(f"  run_id={run_id}")
+    print(f"  → research_grid_results  ({n_cells_total:,} docs)")
+    print(f"  → candidate_gate_configs ({len(saved_candidates)} docs)")
+    return 0
+
+
 async def _run(args: argparse.Namespace) -> int:
     # 2026-05-26 — Wrap entire body in try/finally + client.close() so
     # `asyncio.run(_run())` can actually exit. Without this motor
@@ -180,6 +387,10 @@ async def _run(args: argparse.Namespace) -> int:
 
 
 async def _run_body(args: argparse.Namespace, db) -> int:
+    if args.min_bets is None:
+        args.min_bets = 1 if args.mode == "team" else 20
+    if args.mode == "team":
+        return await _run_team(args, db)
     grid = dict(DEFAULT_GRID)
     run_id = str(uuid.uuid4())
     started = datetime.now(timezone.utc)
@@ -380,7 +591,9 @@ def _parse():
     p.add_argument("--league",   default="MLB")
     p.add_argument("--start",    required=True)
     p.add_argument("--end",      required=True)
-    p.add_argument("--min-bets", type=int, default=20)
+    p.add_argument("--mode",     choices=["player", "team"], default="player")
+    p.add_argument("--min-bets", type=int, default=None,
+                   help="minimum bets per cell to qualify (default: 20 for player, 1 for team)")
     p.add_argument("--dry-run",  action="store_true")
     return p.parse_args()
 
