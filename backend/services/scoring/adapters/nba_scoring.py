@@ -135,7 +135,7 @@ class NBAScoringAdapter(ScoringAdapter):
     # Sigma is preserved (per-stat empirical residual SD). Gate/TP
     # logic untouched.
     # ---------------------------------------------------------------
-    _EXPECTED_MINUTES_PATH = "/app/backend/models/nba_expected_minutes.pkl"
+    _EXPECTED_MINUTES_PATH = "/var/www/app/backend/models/nba_expected_minutes.pkl"
     _MIN_COMPOSITION_STATS = {"PTS", "PRA"}
     _MIN_BENCH_THRESHOLD = 20.0   # min_played_L10_mean cutoff
     _MIN_PER_MIN_RATE_CAP = 5.0   # sanity-clamp on historical per-min rate

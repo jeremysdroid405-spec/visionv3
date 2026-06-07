@@ -55,7 +55,7 @@ VERSION = "UNIVERSAL_ECDF_v1"
 DEFAULT_N_BUCKETS = 10
 DEFAULT_MIN_BUCKET_N = 20          # predict-time safety floor
 DEFAULT_MIN_BUCKET_N_WARN = 200    # fit-time warning threshold
-DEFAULT_ROOT = "/app/backend/models/probability/ecdf"
+DEFAULT_ROOT = "/var/www/app/backend/models/probability/ecdf"
 
 
 @dataclass

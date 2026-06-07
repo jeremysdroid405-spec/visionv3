@@ -43,8 +43,8 @@ from .base import (
 logger = logging.getLogger(__name__)
 
 
-MINUTES_MODEL_PATH = "/app/backend/models/expected_minutes.pkl"
-LOW_MIN_CLASSIFIER_PATH = "/app/backend/models/low_minutes_classifier.pkl"
+MINUTES_MODEL_PATH = "/var/www/app/backend/models/expected_minutes.pkl"
+LOW_MIN_CLASSIFIER_PATH = "/var/www/app/backend/models/low_minutes_classifier.pkl"
 
 # Bucket thresholds (from 2026-04-23 minutes-threshold analysis).
 HIGH_MIN_THRESHOLD = 26.0

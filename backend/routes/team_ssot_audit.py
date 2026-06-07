@@ -80,7 +80,7 @@ _db = None
 # ── Constants pulled from the CLI audit so the two never drift. ──
 SPORTS = ("mlb", "nba", "nfl")
 MARKET_CATEGORIES = ("h2h", "spread", "game_total", "team_total")
-ARTIFACT_ROOT = Path("/app/backend/models/team_xgb")
+ARTIFACT_ROOT = Path("/var/www/app/backend/models/team_xgb")
 REPLAY_COLL = "sgo_propvision_full_pipeline_replay"
 
 # Stale thresholds (minutes / hours). Live odds + scores should be

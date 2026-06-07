@@ -49,7 +49,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("mlb_lineup_resolver")
 
-WORKDIR = "/app/backend/models/mlb_hf/_phase2b_workdir"
+WORKDIR = "/var/www/app/backend/models/mlb_hf/_phase2b_workdir"
 RESOLVER_PATH = os.path.join(WORKDIR, "lineup_resolver.pkl")
 
 

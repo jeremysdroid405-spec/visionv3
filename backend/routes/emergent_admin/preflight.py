@@ -58,15 +58,15 @@ RESEARCH_DEPS: Dict[str, Dict[str, str]] = {
 MODEL_DIRS: Dict[str, List[str]] = {
     "MLB": [
         "/var/www/app/backend/models/mlb_hf",
-        "/app/backend/models/mlb_hf",
+        "/var/www/app/backend/models/mlb_hf",
     ],
     "NBA": [
         "/var/www/app/backend/models/nba",
-        "/app/backend/models/nba",
+        "/var/www/app/backend/models/nba",
     ],
     "NFL": [
         "/var/www/app/backend/models/nfl",
-        "/app/backend/models/nfl",
+        "/var/www/app/backend/models/nfl",
     ],
 }
 

@@ -21,7 +21,7 @@ import json
 import os
 from typing import List, Optional
 
-LOCK_DIR = "/app/backend/models/mlb_hf"
+LOCK_DIR = "/var/www/app/backend/models/mlb_hf"
 LOCK_FILE = os.path.join(LOCK_DIR, ".LOCKED")
 
 

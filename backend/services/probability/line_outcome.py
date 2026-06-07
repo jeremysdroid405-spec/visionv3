@@ -37,7 +37,7 @@ import threading
 from typing import Any, Dict, Optional, Tuple
 
 
-LOM_ARTIFACT_DIR = "/app/backend/models/probability/lom"
+LOM_ARTIFACT_DIR = "/var/www/app/backend/models/probability/lom"
 
 
 def _safe_family_path(family: str) -> str:

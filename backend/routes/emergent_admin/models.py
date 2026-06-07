@@ -12,7 +12,7 @@ Document shape:
   family:          "HF",                             # MLB-HF, NBA-VK2, NFL-…
   version:         "v3.2_phase2b",
   mode:            "production" | "research" | "candidate" | "archived",
-  artifact_path:   "/app/backend/models/mlb_hf/_phase2a_workdir/...",
+  artifact_path:   "/var/www/app/backend/models/mlb_hf/_phase2a_workdir/...",
   feature_schema_version: "phase2b_lineup_v1",
   compatible_stat_families: ["hits", "total_bases", ...],
   validation_status: "untested" | "passed" | "failed",
