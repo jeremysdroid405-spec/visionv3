@@ -1026,6 +1026,70 @@ async def scheduled_mlb_game_logs_sync():
         logger.error(f"[SCHEDULER] MLB BDL game logs sync failed: {e}")
 
 
+async def scheduled_live_team_outcome_grader():
+    """Runs at 4:45 AM EST daily — 15 min after the BDL score backfill.
+
+    Grades all completed team matchups (h2h, spreads, team_totals) for
+    both NBA and MLB and upserts results into team_historical_outcomes.
+    Never overwrites rows that are already outcome_resolved=True.
+    """
+    logger.info("[SCHEDULER] TEAM OUTCOME GRADER — NBA + MLB")
+    logger.info("[SCHEDULER] Time: %s", datetime.now(timezone.utc).isoformat())
+    try:
+        from services.team_live_outcome_grader import grade_completed_team_matchups
+        for _sport in ("nba", "mlb"):
+            audit = await grade_completed_team_matchups(db, sport=_sport)
+            logger.info(
+                "[SCHEDULER] team_outcome_grader %s — "
+                "matchups=%s props_graded=%s already_resolved=%s "
+                "upserted=%s errors=%s",
+                _sport.upper(),
+                audit.get("n_matchups_scanned"),
+                audit.get("n_props_graded"),
+                audit.get("n_already_resolved"),
+                audit.get("n_upserted"),
+                audit.get("n_errors"),
+            )
+    except Exception as exc:
+        logger.exception("[SCHEDULER] team_outcome_grader failed: %s", exc)
+
+
+async def scheduled_backfill_team_matchup_scores_bdl():
+    """Runs at 4:30 AM EST daily — after BDL player syncs (4:15/4:18 AM).
+
+    Backfills final scores into team_matchups rows that were created by
+    team_live_sync but still lack home_score/away_score. Covers NBA + MLB.
+    Idempotent: skips rows already scored unless --force is passed.
+    """
+    logger.info("[SCHEDULER] team_matchups BDL score backfill starting "
+                "(NBA + MLB)")
+    api_key = os.environ.get("BDL_API_KEY") or os.environ.get(
+        "BALLDONTLIE_API_KEY")
+    if not api_key:
+        logger.error("[SCHEDULER] backfill_team_matchup_scores_bdl: "
+                     "BDL_API_KEY not set — skipping")
+        return
+    try:
+        from scripts.sgo.backfill_team_matchup_scores_bdl import backfill_sport
+        for sport in ("nba", "mlb"):
+            result = await backfill_sport(
+                db, sport=sport, api_key=api_key,
+                start=None, end=None, seasons=None,
+                dry_run=False, force=False, max_events=10_000,
+            )
+            c = result.get("counters") or {}
+            logger.info(
+                "[SCHEDULER] %s team_matchups score backfill: "
+                "scanned=%s  updated=%s  scores_found=%s  not_in_bdl=%s",
+                sport.upper(),
+                c.get("scanned", 0), c.get("updated", 0),
+                c.get("scores_found", 0), c.get("not_in_bdl", 0),
+            )
+    except Exception as exc:
+        logger.exception(
+            "[SCHEDULER] backfill_team_matchup_scores_bdl failed: %s", exc)
+
+
 async def scheduled_mlb_daily_sync():
     """
     MLB Daily Sync — routes through Rebuild Coordinator → UnifiedPipeline(MLBAdapter).
@@ -2316,6 +2380,29 @@ async def startup_event():
         replace_existing=True
     )
 
+    # Backfill final BDL scores into team_matchups shell rows.
+    # Runs at 4:30 AM EST (same window as pra_audit_settle, different job).
+    # Covers NBA + MLB. Idempotent — skips already-scored rows.
+    scheduler.add_job(
+        scheduled_backfill_team_matchup_scores_bdl,
+        CronTrigger(hour=4, minute=30, timezone=SCHEDULER_TIMEZONE),
+        id='backfill_team_matchup_scores_bdl',
+        name='4:30 AM EST team_matchups BDL Score Backfill (NBA + MLB)',
+        replace_existing=True
+    )
+
+    # Grade completed team matchups → team_historical_outcomes.
+    # Runs at 4:45 AM EST (09:45 UTC) — 15 min after the BDL score
+    # backfill has populated home_score/away_score on team_matchups.
+    # Covers NBA + MLB in a single job.
+    scheduler.add_job(
+        scheduled_live_team_outcome_grader,
+        CronTrigger(hour=9, minute=45, timezone=SCHEDULER_TIMEZONE),
+        id='live_team_outcome_grader',
+        name='4:45 AM EST Team Outcome Grader (NBA + MLB)',
+        replace_existing=True
+    )
+
     # ----------------------------------------------------------------------
     # Phase 4 — Migrate MLB host-cron into APScheduler  (2026-04-28)
     # ----------------------------------------------------------------------
@@ -2458,7 +2545,7 @@ async def startup_event():
     logger.info(f"[SCHEDULER] 4:20 AM EST - NBA Daily Pipeline  | 4:23 AM - MLB (recalc HR)")
     logger.info(f"[SCHEDULER] 4:26 AM EST - Ticker Sync")
     logger.info(f"[SCHEDULER] Forward-Test Captures: NBA 11/14/17 ET, MLB 12/15/18 ET (6 jobs)")
-    logger.info(f"[SCHEDULER] 4:30 AM EST - PRA Dual-Projection Audit Settle")
+    logger.info(f"[SCHEDULER] 4:30 AM EST - PRA Dual-Projection Audit Settle + team_matchups BDL Score Backfill (NBA+MLB)")
     logger.info(f"[SCHEDULER] Sunday 00:00 UTC - Weekly Roster Sync")
     
     # AUTO-SYNC: Check if database is empty and trigger initial population
