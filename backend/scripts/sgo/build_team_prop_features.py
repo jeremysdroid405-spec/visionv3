@@ -83,6 +83,15 @@ _FEATURE_PROJECTION = {
     "sp_k_rate_avg": 1, "sp_woba_allowed_avg": 1,
     "sp_hard_hit_rate_avg": 1, "sp_bb_rate_avg": 1,
     "sp_xwoba_allowed_avg": 1,
+    # NBA advanced rolling features (null for non-NBA sports)
+    "pace_l5": 1, "pace_l10": 1, "pace_l20": 1, "pace_stddev_l10": 1,
+    "off_rating_l5": 1, "off_rating_l10": 1, "off_rating_l20": 1,
+    "off_rating_stddev_l10": 1,
+    "def_rating_l5": 1, "def_rating_l10": 1, "def_rating_l20": 1,
+    "ts_pct_l10": 1, "def_reb_pct_l10": 1,
+    "pct_pts_paint_l10": 1, "pct_pts_fast_break_l10": 1,
+    "scoring_trend_l5_l20": 1,
+    "is_back_to_back": 1, "games_in_last_7": 1,
 }
 
 # Fields lifted verbatim from the outcomes row into the prop_features doc.
@@ -95,10 +104,36 @@ _OUTCOME_FIELDS = (
     "outcome", "hit", "push", "outcome_resolved", "outcome_numeric",
     "margin_vs_line", "home_score_used", "away_score_used",
     "actual_value",
+    # game-level combined feature (game_total rows only, None otherwise)
+    "combined_pace",
 )
 
 
 # ───── pure helpers (unit-tested) ─────
+def _average_priors(
+    home: Optional[Dict[str, Any]],
+    away: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Return a synthetic prior for game-total rows by averaging home + away.
+
+    Uses whichever side is non-None as the base. Fields present in only one
+    side keep that side's value; fields in both sides are averaged. Returns
+    None only when both inputs are None.
+    """
+    if home is None and away is None:
+        return None
+    if home is None:
+        return dict(away)  # type: ignore[arg-type]
+    if away is None:
+        return dict(home)
+    merged: Dict[str, Any] = dict(home)
+    for k, hv in home.items():
+        av = away.get(k)
+        if isinstance(hv, (int, float)) and isinstance(av, (int, float)):
+            merged[k] = (hv + av) / 2.0
+    return merged
+
+
 def stable_key(row: Dict[str, Any]) -> Dict[str, Any]:
     """The composite unique key for one prop_features doc. Stable across
     re-runs so upserts are idempotent. Pure function — nothing dynamic.
@@ -220,6 +255,21 @@ async def build_prop_features_for_sport(
         {"sport": sport, "outcome_resolved": True})
     print(f"  [{sport.upper()}] resolved outcomes to process: {n_outcomes:,}")
 
+    # Build event_id → {home_team_id, away_team_id} lookup for game-total rows.
+    matchup_lookup: Dict[str, Dict[str, Optional[str]]] = {}
+    async for m in db["team_matchups"].find(
+        {"sport": sport},
+        projection={"_id": 0, "event_id": 1,
+                    "home_team_id": 1, "away_team_id": 1},
+    ):
+        eid = m.get("event_id")
+        if eid:
+            matchup_lookup[eid] = {
+                "home": m.get("home_team_id"),
+                "away": m.get("away_team_id"),
+            }
+    print(f"  [{sport.upper()}] matchup lookup loaded: {len(matchup_lookup):,} events")
+
     counters = {
         "scanned":             0,
         "team_priors_missing": 0,
@@ -265,9 +315,40 @@ async def build_prop_features_for_sport(
         opp_id  = o.get("opponent_team_id")
         if not (gd and team_id):
             continue
-        team_pri = await cache.get(sport=sport, team_id=team_id, as_of_date=gd)
-        opp_pri  = (await cache.get(sport=sport, team_id=opp_id, as_of_date=gd)
-                     if opp_id else None)
+
+        if team_id == "game":
+            # Game-total row: no single team owner. Look up home + away from
+            # matchup table, fetch both priors, and average into one synthetic
+            # feature vector so the game_total XGB model has real signal.
+            matchup = matchup_lookup.get(o.get("event_id") or "")
+            home_id = matchup.get("home") if matchup else None
+            away_id = matchup.get("away") if matchup else None
+            home_pri = (await cache.get(sport=sport, team_id=home_id,
+                                        as_of_date=gd)
+                        if home_id else None)
+            away_pri = (await cache.get(sport=sport, team_id=away_id,
+                                        as_of_date=gd)
+                        if away_id else None)
+            team_pri = _average_priors(home_pri, away_pri)
+            opp_pri  = None  # both teams are folded into team_pri
+            # combined_pace: home_pace_l10 × away_pace_l10 / 100
+            # Captures total-scoring tempo signal for game_total props.
+            home_pace = (home_pri or {}).get("pace_l10")
+            away_pace = (away_pri or {}).get("pace_l10")
+            combined_pace: Optional[float] = (
+                home_pace * away_pace / 100.0
+                if home_pace is not None and away_pace is not None
+                else None
+            )
+            # Tag the outcome row so downstream can identify game-total rows.
+            o = {**o, "home_away": "game", "combined_pace": combined_pace}
+        else:
+            team_pri = await cache.get(sport=sport, team_id=team_id,
+                                       as_of_date=gd)
+            opp_pri  = (await cache.get(sport=sport, team_id=opp_id,
+                                        as_of_date=gd)
+                        if opp_id else None)
+
         if team_pri is None and opp_pri is None:
             counters["both_priors_missing"] += 1
         elif team_pri is None:

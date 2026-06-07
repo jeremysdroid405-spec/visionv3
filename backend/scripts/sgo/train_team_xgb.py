@@ -89,6 +89,14 @@ PRIOR_FIELDS = (
     # MLB SP rotation quality (null/missing for non-MLB sports)
     "sp_k_rate_avg", "sp_woba_allowed_avg",
     "sp_hard_hit_rate_avg", "sp_bb_rate_avg", "sp_xwoba_allowed_avg",
+    # NBA advanced rolling features (null/missing for non-NBA sports)
+    "pace_l5", "pace_l10", "pace_l20", "pace_stddev_l10",
+    "off_rating_l5", "off_rating_l10", "off_rating_l20",
+    "def_rating_l5", "def_rating_l10", "def_rating_l20",
+    "ts_pct_l10", "def_reb_pct_l10",
+    "pct_pts_paint_l10", "pct_pts_fast_break_l10",
+    "scoring_trend_l5_l20",
+    "is_back_to_back", "games_in_last_7",
 )
 
 BET_SHAPE_FIELDS = ("line", "is_alternate_int", "is_home_int",
@@ -136,6 +144,9 @@ def feature_columns() -> List[str]:
         cols.append(f)
     cols.extend(("team_minus_opp_mu", "team_minus_opp_win_l10",
                   "team_minus_opp_tempo_l10"))
+    # game-level combined feature (game_total rows only; missing flag handles others)
+    cols.append("combined_pace")
+    cols.append("combined_pace_missing")
     return cols
 
 
@@ -160,6 +171,10 @@ def row_to_features(row: Dict[str, Any]) -> List[float]:
     vec.append(_f(tf.get("mu_points_scored")) - _f(of.get("mu_points_scored")))
     vec.append(_f(tf.get("win_rate_l10")) - _f(of.get("win_rate_l10")))
     vec.append(_f(tf.get("tempo_l10")) - _f(of.get("tempo_l10")))
+    # combined_pace: game-level; present only for game_total rows
+    cp = row.get("combined_pace")
+    vec.append(_f(cp))
+    vec.append(_missing_flag(cp))
     return vec
 
 
@@ -270,6 +285,7 @@ async def load_training_rows(
         "outcome_numeric": 1,
         "home_score_used": 1, "away_score_used": 1,
         "event_id": 1, "team_id": 1, "game_date": 1,
+        "combined_pace": 1,
     }
     cur = db["team_model_prop_features"].find(match, proj).limit(max_rows)
     rows = [d async for d in cur]
