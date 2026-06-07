@@ -33,7 +33,7 @@ import numpy as np
 
 # Re-export the trainer helpers — same code path on both ends.
 from scripts.sgo.train_team_xgb import (
-    feature_columns, row_to_features,
+    feature_columns, row_to_features, get_prior_fields,
     _american_implied_prob, VERSION,
 )
 
@@ -67,7 +67,7 @@ def load_artifact(sport: str,
         with p.open("rb") as f:
             payload = pickle.load(f)
         # Sanity: ensure feature contract matches.
-        if payload.get("features") != feature_columns():
+        if payload.get("features") != feature_columns(payload.get("sport", "")):
             print(f"  [team_xgb_loader] WARNING: feature mismatch on "
                   f"{p} — refusing to load.")
             _CACHE[key] = None
@@ -95,7 +95,7 @@ def score_team_prop(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     model = art["model"]
     scaler = art["scaler"]
-    vec = np.array([row_to_features(row)], dtype=np.float64)
+    vec = np.array([row_to_features(row, sport)], dtype=np.float64)
     vec_s = scaler.transform(vec)
     p = float(model.predict_proba(vec_s)[0, 1])
     odds = row.get("odds")
@@ -153,7 +153,7 @@ def score_team_props_batch(
         reg_away = art.get("regressor_away")
         # Build a single matrix for the whole group.
         mat = np.array(
-            [row_to_features(rows[i]) for i in idx_list],
+            [row_to_features(rows[i], sport) for i in idx_list],
             dtype=np.float64)
         mat_s = scaler.transform(mat)
         probs = model.predict_proba(mat_s)[:, 1]

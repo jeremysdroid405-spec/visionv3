@@ -75,9 +75,8 @@ VERSION = "team_xgb_v1"
 ARTIFACT_ROOT = Path("/app/backend/models/team_xgb")
 SUPPORTED_SPORTS = ("mlb", "nba", "nfl")
 
-# Features lifted from team_features and opponent_features dicts.
-# Kept stable as the model's feature contract; reused at scoring time.
-PRIOR_FIELDS = (
+# Base features shared across all sports.
+BASE_PRIOR_FIELDS = (
     "sample_size",
     "mu_points_scored", "sigma_points_scored", "cv_points_scored",
     "win_rate_l5", "win_rate_l10", "win_rate_season",
@@ -89,7 +88,10 @@ PRIOR_FIELDS = (
     # MLB SP rotation quality (null/missing for non-MLB sports)
     "sp_k_rate_avg", "sp_woba_allowed_avg",
     "sp_hard_hit_rate_avg", "sp_bb_rate_avg", "sp_xwoba_allowed_avg",
-    # NBA advanced rolling features (null/missing for non-NBA sports)
+)
+
+# NBA-only advanced rolling features.
+_NBA_EXTRA_FIELDS = (
     "pace_l5", "pace_l10", "pace_l20", "pace_stddev_l10",
     "off_rating_l5", "off_rating_l10", "off_rating_l20",
     "def_rating_l5", "def_rating_l10", "def_rating_l20",
@@ -98,6 +100,14 @@ PRIOR_FIELDS = (
     "scoring_trend_l5_l20",
     "is_back_to_back", "games_in_last_7",
 )
+
+
+def get_prior_fields(sport: str) -> tuple:
+    """Return the sport-specific prior field list.
+    NBA gets base + advanced rolling features; all others get base only."""
+    if sport == "nba":
+        return BASE_PRIOR_FIELDS + _NBA_EXTRA_FIELDS
+    return BASE_PRIOR_FIELDS
 
 BET_SHAPE_FIELDS = ("line", "is_alternate_int", "is_home_int",
                       "is_over_int")
@@ -132,12 +142,12 @@ def _missing_flag(v: Any) -> float:
     return 1.0 if v is None else 0.0
 
 
-def feature_columns() -> List[str]:
-    """Stable, deterministic column order. Saved with the model so
-    scoring can rebuild the same row order."""
+def feature_columns(sport: str) -> List[str]:
+    """Stable, deterministic column order for the given sport. Saved with
+    the model so scoring can rebuild the same row order."""
     cols: List[str] = []
     for who in ("team", "opp"):
-        for f in PRIOR_FIELDS:
+        for f in get_prior_fields(sport):
             cols.append(f"{who}_{f}")
             cols.append(f"{who}_{f}_missing")
     for f in BET_SHAPE_FIELDS:
@@ -150,14 +160,14 @@ def feature_columns() -> List[str]:
     return cols
 
 
-def row_to_features(row: Dict[str, Any]) -> List[float]:
+def row_to_features(row: Dict[str, Any], sport: str) -> List[float]:
     """Convert one `team_model_prop_features` doc into a feature vector
-    matching `feature_columns()`. Pure function."""
+    matching `feature_columns(sport)`. Pure function."""
     tf = row.get("team_features") or {}
     of = row.get("opponent_features") or {}
     vec: List[float] = []
     for who, src in (("team", tf), ("opp", of)):
-        for f in PRIOR_FIELDS:
+        for f in get_prior_fields(sport):
             vec.append(_f(src.get(f)))
             vec.append(_missing_flag(src.get(f)))
     line = _f(row.get("line"))
@@ -302,8 +312,8 @@ def _train_one(
     if len(rows) < 200:
         return {"ok": False, "reason":
                 f"too few rows: {len(rows)} (<200)"}
-    cols = feature_columns()
-    X = np.array([row_to_features(r) for r in rows], dtype=np.float64)
+    cols = feature_columns(sport)
+    X = np.array([row_to_features(r, sport) for r in rows], dtype=np.float64)
     y = np.array([int(r["outcome_numeric"]) for r in rows], dtype=np.int64)
     odds_arr = np.array([float(r["odds"]) for r in rows], dtype=np.float64)
     rng = np.random.RandomState(seed)
