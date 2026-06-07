@@ -91,7 +91,8 @@ class _SportSpec:
                   is_final,
                   season_deriver,
                   seasons_in_url_when_empty: bool = True,
-                  matchups_sport_filter):
+                  matchups_sport_filter,
+                  fetch_postseason: bool = False):
         self.url = url
         self.matchups_coll = matchups_coll
         self.away_team_key = away_team_key
@@ -100,6 +101,7 @@ class _SportSpec:
         self.is_final = is_final
         self.season_deriver = season_deriver
         self.matchups_sport_filter = matchups_sport_filter
+        self.fetch_postseason = fetch_postseason
 
 
 def _num(v: Any) -> Optional[float]:
@@ -153,6 +155,9 @@ _NICKNAME_OVERRIDES = {
     "stlouisrams":             "losangelesrams",
     "sandiegochargers":        "losangeleschargers",
     "clevelandindians":        "clevelandguardians",
+    # BDL uses abbreviated city names that differ from our DB's full names.
+    "laclippers":              "losangelesclippers",
+    "lalakers":                "losangeleslakers",
 }
 
 
@@ -382,6 +387,7 @@ _SPORT_SPECS: Dict[str, _SportSpec] = {
         is_final=_nba_is_final,
         season_deriver=derive_calendar_year_seasons,
         matchups_sport_filter={"sport": "nba"},
+        fetch_postseason=True,
     ),
     "mlb": _SportSpec(
         url="https://api.balldontlie.io/mlb/v1/games",
@@ -405,6 +411,7 @@ async def fetch_bdl_games(
     api_key: str, *, url: str, seasons: List[int],
     per_page: int = 100, rate_sleep_ms: int = 250,
     timeout_s: float = 30.0, max_429_retries: int = 5,
+    postseason: Optional[bool] = None,
 ) -> List[Dict[str, Any]]:
     """Page through a BDL `/games` endpoint for the given seasons.
 
@@ -412,6 +419,9 @@ async def fetch_bdl_games(
     (e.g. "https://api.balldontlie.io/nfl/v1/games"). Returns a flat
     list of game dicts. Raises RuntimeError on non-2xx (except 429,
     which is retried with exponential backoff up to `max_429_retries`).
+
+    When `postseason` is not None, adds `postseason=true/false` to the
+    request params so BDL filters to only that phase.
 
     Kept thin so tests can monkeypatch this single function via the
     `fetcher=` kwarg on `backfill_sport`."""
@@ -423,6 +433,8 @@ async def fetch_bdl_games(
     params: List[Tuple[str, Any]] = [("per_page", per_page)]
     for s in seasons:
         params.append(("seasons[]", s))
+    if postseason is not None:
+        params.append(("postseason", "true" if postseason else "false"))
     headers = {"Authorization": api_key}
     out: List[Dict[str, Any]] = []
     page = 0
@@ -510,10 +522,17 @@ async def backfill_sport(
     dry_run: bool, force: bool, max_events: int,
     rate_sleep_ms: int = 250,
     fetcher: Any = None,
+    postseason: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Pull BDL games for the inferred (or user-supplied) seasons, then
     update matchups in-place. Dispatches all sport-specific shape
     differences through `_SPORT_SPECS[sport]`.
+
+    For sports with `spec.fetch_postseason=True` (NBA), when `postseason`
+    is None the fetch runs twice — once for regular season
+    (postseason=false) and once for playoffs (postseason=true) — and the
+    results are combined before indexing. Pass `postseason=True` or
+    `postseason=False` to force a single phase.
 
     `fetcher` mirrors `fetch_bdl_games`'s signature, with the FIRST two
     positional args being `(api_key, url)`. Tests pass a stub that
@@ -540,8 +559,22 @@ async def backfill_sport(
                 "sample_updates": []}
     print(f"  [{sport.upper()}] BDL seasons to pull: {effective_seasons}")
 
-    games = await fetcher(api_key, url=spec.url, seasons=effective_seasons,
-                            rate_sleep_ms=rate_sleep_ms)
+    if spec.fetch_postseason and postseason is None:
+        print(f"  [{sport.upper()}] fetching regular season games…")
+        reg_games = await fetcher(api_key, url=spec.url,
+                                   seasons=effective_seasons,
+                                   rate_sleep_ms=rate_sleep_ms,
+                                   postseason=False)
+        print(f"  [{sport.upper()}] fetching postseason games…")
+        ps_games = await fetcher(api_key, url=spec.url,
+                                  seasons=effective_seasons,
+                                  rate_sleep_ms=rate_sleep_ms,
+                                  postseason=True)
+        games = reg_games + ps_games
+    else:
+        games = await fetcher(api_key, url=spec.url, seasons=effective_seasons,
+                               rate_sleep_ms=rate_sleep_ms,
+                               postseason=postseason)
     finals = [g for g in games if spec.is_final(g)]
     print(f"  [{sport.upper()}] received {len(games):,} game(s) from BDL; "
           f"{len(finals):,} are final.")
@@ -705,6 +738,7 @@ async def amain(args: argparse.Namespace) -> int:
           f"backfill_team_matchup_scores_bdl  version={BACKFILL_VERSION}")
     print(f"  sports={sports}  yes={args.yes}  dry_run={dry_run}  "
           f"force={args.force}  seasons={args.seasons}  "
+          f"postseason={args.postseason}  "
           f"max_events_per_sport={args.max_events}")
     print("  CONTRACT: in-place $set updates to matchup docs; preserves "
           "all other fields; idempotent. score_source = "
@@ -722,6 +756,7 @@ async def amain(args: argparse.Namespace) -> int:
                 dry_run=dry_run, force=args.force,
                 max_events=args.max_events,
                 rate_sleep_ms=args.rate_sleep_ms,
+                postseason=args.postseason,
             )
             _print_summary(r)
             all_results.append(r)
@@ -771,6 +806,14 @@ def main() -> int:
                          "(safe for ALL-STAR tier @ 60 req/min).")
     p.add_argument("--max-events", type=int, default=10_000,
                     help="Safety cap on matchups processed per sport.")
+    ps_group = p.add_mutually_exclusive_group()
+    ps_group.add_argument(
+        "--postseason", dest="postseason", action="store_true", default=None,
+        help="Fetch only postseason (playoff) games from BDL.")
+    ps_group.add_argument(
+        "--no-postseason", dest="postseason", action="store_false",
+        help="Fetch only regular-season games from BDL.")
+    p.set_defaults(postseason=None)
     return asyncio.run(amain(p.parse_args()))
 
 
