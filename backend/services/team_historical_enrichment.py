@@ -68,13 +68,20 @@ async def compute_hit_rates(
     if opp_team_id:
         base["opponent_team_id"] = opp_team_id
 
+    pipeline = [
+        {"$match": base},
+        {"$sort": {"commence_time": -1}},
+        {"$group": {
+            "_id": "$event_id",
+            "hit":          {"$first": "$hit"},
+            "commence_time": {"$first": "$commence_time"},
+            "line":         {"$first": "$line"},
+        }},
+        {"$sort": {"commence_time": -1}},
+        {"$limit": sample_cap},
+    ]
     rows: List[Dict[str, Any]] = []
-    async for r in (
-        db[_HIST_COLL]
-        .find(base, {"_id": 0, "hit": 1, "commence_time": 1, "line": 1})
-        .sort("commence_time", -1)
-        .limit(sample_cap)
-    ):
+    async for r in db[_HIST_COLL].aggregate(pipeline):
         rows.append(r)
 
     return {
