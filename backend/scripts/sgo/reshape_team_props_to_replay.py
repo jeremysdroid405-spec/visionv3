@@ -69,6 +69,40 @@ from pymongo import UpdateOne
 
 # Reuse the SAME odds-bucket helper player props use — never re-implement.
 from scripts.sgo.historical_full_pipeline_replay import _odds_bucket
+from services.replay.markets import REPLAY_BOOK_WHITELIST_PHASE1
+
+TEAM_ID_TO_NAME = {
+    "mlb_ari": "arizona diamondbacks", "mlb_atl": "atlanta braves",
+    "mlb_bal": "baltimore orioles", "mlb_bos": "boston red sox",
+    "mlb_chc": "chicago cubs", "mlb_chw": "chicago white sox",
+    "mlb_cin": "cincinnati reds", "mlb_cle": "cleveland guardians",
+    "mlb_col": "colorado rockies", "mlb_det": "detroit tigers",
+    "mlb_hou": "houston astros", "mlb_kcr": "kansas city royals",
+    "mlb_laa": "los angeles angels", "mlb_lad": "los angeles dodgers",
+    "mlb_mia": "miami marlins", "mlb_mil": "milwaukee brewers",
+    "mlb_min": "minnesota twins", "mlb_nym": "new york mets",
+    "mlb_nyy": "new york yankees", "mlb_oak": "oakland athletics",
+    "mlb_phi": "philadelphia phillies", "mlb_pit": "pittsburgh pirates",
+    "mlb_sdp": "san diego padres", "mlb_sea": "seattle mariners",
+    "mlb_sfg": "san francisco giants", "mlb_stl": "st. louis cardinals",
+    "mlb_tbr": "tampa bay rays", "mlb_tex": "texas rangers",
+    "mlb_tor": "toronto blue jays", "mlb_wsn": "washington nationals",
+    "nba_atl": "atlanta hawks", "nba_bkn": "brooklyn nets",
+    "nba_bos": "boston celtics", "nba_cha": "charlotte hornets",
+    "nba_chi": "chicago bulls", "nba_cle": "cleveland cavaliers",
+    "nba_dal": "dallas mavericks", "nba_den": "denver nuggets",
+    "nba_det": "detroit pistons", "nba_gsw": "golden state warriors",
+    "nba_hou": "houston rockets", "nba_ind": "indiana pacers",
+    "nba_lac": "la clippers", "nba_lal": "los angeles lakers",
+    "nba_mem": "memphis grizzlies", "nba_mia": "miami heat",
+    "nba_mil": "milwaukee bucks", "nba_min": "minnesota timberwolves",
+    "nba_nop": "new orleans pelicans", "nba_nyk": "new york knicks",
+    "nba_okc": "oklahoma city thunder", "nba_orl": "orlando magic",
+    "nba_phi": "philadelphia 76ers", "nba_phx": "phoenix suns",
+    "nba_por": "portland trail blazers", "nba_sac": "sacramento kings",
+    "nba_sas": "san antonio spurs", "nba_tor": "toronto raptors",
+    "nba_uta": "utah jazz", "nba_was": "washington wizards",
+}
 
 PIPELINE_VERSION = "team_v1_scored"
 SSOT_SOURCE = "team_prop_features"
@@ -128,9 +162,28 @@ def project_hit_rates_from_team_features(
     return {"hit_rate_l5": None, "hit_rate_l10": None, "hit_rate_l20": None}
 
 
-def assemble_replay_row(
+async def _lookup_odds_api_implied(db, team_id, opponent_team_id, game_date, side):
+    team_name = TEAM_ID_TO_NAME.get(team_id)
+    opp_name = TEAM_ID_TO_NAME.get(opponent_team_id)
+    if not team_name or not opp_name:
+        return None
+    doc = await db["odds_api_team_h2h"].find_one({
+        "game_date": game_date,
+        "$or": [
+            {"home_team": team_name, "away_team": opp_name},
+            {"home_team": opp_name, "away_team": team_name}
+        ]
+    })
+    if not doc:
+        return None
+    is_home = doc["home_team"] == team_name
+    return doc["consensus_home_implied"] if is_home else doc["consensus_away_implied"]
+
+
+async def assemble_replay_row(
     prop: Dict[str, Any],
     *, model_score: Optional[Dict[str, Any]] = None,
+    db=None,
 ) -> Dict[str, Any]:
     """Translate one `team_model_prop_features` doc into one replay row
     matching the player schema. Pure function — easy to unit-test.
@@ -158,6 +211,13 @@ def assemble_replay_row(
 
     model_prob   = (model_score or {}).get("model_probability")
     implied_prob = (model_score or {}).get("implied_probability")
+    if db is not None:
+        odds_api_implied = await _lookup_odds_api_implied(
+            db, prop.get("team_id"), prop.get("opponent_team_id"),
+            prop.get("game_date"), prop.get("side")
+        )
+        if odds_api_implied is not None:
+            implied_prob = odds_api_implied
     edge         = (model_score or {}).get("edge")
     vision_score = (model_score or {}).get("vision_score")
     model_ver    = (model_score or {}).get("model_version")
@@ -324,7 +384,7 @@ async def reshape_sport(
         scores = (score_team_props_batch(pending_props)
                   if score_team_props_batch else [None] * len(pending_props))
         for prop, score in zip(pending_props, scores):
-            row = assemble_replay_row(prop, model_score=score)
+            row = await assemble_replay_row(prop, model_score=score, db=db)
             counters["scored" if score is not None else "unscored"] += 1
             if len(sample_rows) < 5 and score is not None:
                 sample_rows.append({
@@ -365,6 +425,8 @@ async def reshape_sport(
             continue
         if not p.get("team_id"):
             counters["missing_team_id"] += 1
+            continue
+        if p.get("book") not in REPLAY_BOOK_WHITELIST_PHASE1:
             continue
         pending_props.append(p)
         if len(pending_props) >= bulk_chunk:

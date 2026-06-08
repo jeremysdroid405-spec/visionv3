@@ -43,6 +43,7 @@ for env_path in ("/var/www/app/backend/.env", "/app/backend/.env"):
         load_dotenv(env_path); break
 
 from motor.motor_asyncio import AsyncIOMotorClient
+from services.replay.markets import REPLAY_BOOK_WHITELIST_PHASE1
 
 REPLAY  = "sgo_propvision_full_pipeline_replay"
 RUNS    = "research_grid_runs"
@@ -95,14 +96,31 @@ async def _load(db, *, start: str, end: str, league: str,
             "model_probability": 1, "projection_margin": 1,
             "fair_probability": 1, "implied_probability": 1,
             "safe_haven_pass": 1, "front_lines_pass": 1, "war_zone_pass": 1}
-    rows: List[Dict[str, Any]] = []
+    # One row per book in the replay collection → group by unique bet so
+    # n_bets isn't inflated ~18x.  _implied = best (max) odds across books;
+    # _consensus_implied = avg across books; all other fields from first row.
+    groups: Dict[tuple, List[Dict[str, Any]]] = defaultdict(list)
     async for r in db[REPLAY].find(match, proj):
+        key = (
+            r.get("event_id"),
+            r.get("player_id"),
+            r.get("stat_family"),
+            (r.get("side") or "").upper(),
+        )
+        groups[key].append(r)
+    rows: List[Dict[str, Any]] = []
+    for group in groups.values():
+        r = group[0]
+        implieds = [v for v in (_f(g.get("implied_probability")) for g in group)
+                    if v is not None]
         r["_hr20"] = _f(r.get("hit_rate_l20"))
         r["_hr5"]  = _f(r.get("hit_rate_l5"))
         r["_cv"]   = _f(r.get("cv"))
         r["_edge"] = _f(r.get("edge"))
         r["_tp"]   = _f(r.get("tp")) or _f(r.get("model_probability"))
         r["_fair"] = _f(r.get("fair_probability"))
+        r["_implied"]           = max(implieds) if implieds else None
+        r["_consensus_implied"] = sum(implieds) / len(implieds) if implieds else None
         rows.append(r)
     return rows
 
@@ -177,16 +195,33 @@ async def _load_team(db, *, start: str, end: str, league: str) -> List[Dict[str,
         "prop_type": "team",
         "league_id": league,
         "game_date": {"$gte": start, "$lte": end},
+        "book": {"$in": list(REPLAY_BOOK_WHITELIST_PHASE1)},
     }
     proj = {"_id": 0, "market_category": 1, "model_probability": 1,
             "edge": 1, "implied_probability": 1, "fair_probability": 1,
             "outcome_numeric": 1, "game_date": 1, "event_id": 1, "side": 1}
-    rows: List[Dict[str, Any]] = []
+    # One row per book in the replay collection → group by unique bet so
+    # n_bets / profit / ROI aren't inflated ~18x.  Same dedup logic as _load:
+    # _implied = best (max) odds across books (fallback to fair_probability);
+    # _consensus_implied = avg implied across books.
+    groups: Dict[tuple, List[Dict[str, Any]]] = defaultdict(list)
     async for r in db[REPLAY].find(match, proj):
-        r["_prob"]    = _f(r.get("model_probability"))
-        r["_edge"]    = _f(r.get("edge"))
-        implied       = _f(r.get("implied_probability"))
-        r["_implied"] = implied if implied is not None else _f(r.get("fair_probability"))
+        key = (
+            r.get("event_id"),
+            (r.get("side") or "").upper(),
+            r.get("market_category"),
+        )
+        groups[key].append(r)
+    rows: List[Dict[str, Any]] = []
+    for group in groups.values():
+        r = group[0]
+        implieds = [v for v in (_f(g.get("implied_probability")) for g in group)
+                    if v is not None]
+        r["_prob"]              = _f(r.get("model_probability"))
+        r["_edge"]              = _f(r.get("edge"))
+        r["_implied"]           = (max(implieds) if implieds
+                                   else _f(r.get("fair_probability")))
+        r["_consensus_implied"] = sum(implieds) / len(implieds) if implieds else None
         rows.append(r)
     return rows
 

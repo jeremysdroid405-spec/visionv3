@@ -174,6 +174,8 @@ def aggregate_team_games(
             as_ = _num(r.get("away_score_used"))
             scored = hs if is_home else as_
             allowed = as_ if is_home else hs
+            if scored is None and allowed is None:
+                continue
             by_event[eid] = TeamGameRecord(
                 event_id=eid,
                 game_date=r.get("game_date") or "",

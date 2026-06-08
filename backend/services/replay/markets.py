@@ -36,15 +36,26 @@ REPLAY_NBA_MARKETS: List[str] = [
 ]
 
 
-# Phase 1 books — Pinnacle deferred to Phase 2 (EU region cost).
-# DK + FD + BetOnline + Caesars (williamhill_us) + MGM. Caesars is the
-# canonical replacement for the legacy `williamhill_us` Odds API key.
 REPLAY_BOOK_WHITELIST_PHASE1: List[str] = [
     "draftkings",
     "fanduel",
-    "betonlineag",
-    "williamhill_us",   # Caesars
     "betmgm",
+    "caesars",
+    "espnbet",
+    "fanatics",
+    "betrivers",
+    "betparx",
+    "hardrockbet",
+    "ballybet",
+    "pinnacle",
+    "lowvig",
+    "novig",
+    "prophetexchange",
+    "circa",
+    "sugarhouse",
+    "sporttrade",
+    "windcreek",
+    "fourwinds",
 ]
 
 
