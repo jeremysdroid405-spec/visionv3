@@ -162,28 +162,172 @@ def project_hit_rates_from_team_features(
     return {"hit_rate_l5": None, "hit_rate_l10": None, "hit_rate_l20": None}
 
 
-async def _lookup_odds_api_implied(db, team_id, opponent_team_id, game_date, side):
+def _lookup_odds_api_implied(
+    odds_api_cache: Dict, team_id, opponent_team_id, game_date, side, market_category,
+    *, event_id: str = None, event_team_cache: Dict = None, prop_line: float = None,
+):
+    """Dict lookup into a pre-loaded cache keyed by (game_date, home_team, away_team).
+
+    When team_id is "game" (or otherwise unmapped), falls back to
+    event_team_cache[event_id] to resolve home/away names.
+    For game_total the OVER/UNDER side logic needs no is_home; for h2h/spread
+    with an unmapped team_id we return None.
+
+    When prop_line is provided, checks alternate_totals_books (game_total) or
+    alternate_spreads_books (spread) first; falls back to consensus fields.
+    """
+    mc = (market_category or "").lower()
+    if mc == "team_total":
+        return None
     team_name = TEAM_ID_TO_NAME.get(team_id)
     opp_name = TEAM_ID_TO_NAME.get(opponent_team_id)
     if not team_name or not opp_name:
+        if event_id and event_team_cache:
+            pair = event_team_cache.get(event_id)
+            if pair and mc == "game_total":
+                ht, at = pair
+                doc = odds_api_cache.get((game_date, ht, at)) or odds_api_cache.get((game_date, at, ht))
+                if doc:
+                    if prop_line is not None:
+                        alt_books = doc.get("alternate_totals_books") or {}
+                        imp_key = "over_implied" if (side or "").upper() == "OVER" else "under_implied"
+                        for book in _ODDS_BOOK_PRIORITY:
+                            for entry in (alt_books.get(book) or []):
+                                if entry.get("line") == prop_line:
+                                    val = entry.get(imp_key)
+                                    if val is not None:
+                                        return val
+                    return doc.get("consensus_over_implied") if (side or "").upper() == "OVER" else doc.get("consensus_under_implied")
         return None
-    doc = await db["odds_api_team_h2h"].find_one({
-        "game_date": game_date,
-        "$or": [
-            {"home_team": team_name, "away_team": opp_name},
-            {"home_team": opp_name, "away_team": team_name}
-        ]
-    })
+    doc = (
+        odds_api_cache.get((game_date, team_name, opp_name))
+        or odds_api_cache.get((game_date, opp_name, team_name))
+    )
     if not doc:
         return None
+    if mc == "game_total":
+        if prop_line is not None:
+            alt_books = doc.get("alternate_totals_books") or {}
+            imp_key = "over_implied" if (side or "").upper() == "OVER" else "under_implied"
+            for book in _ODDS_BOOK_PRIORITY:
+                for entry in (alt_books.get(book) or []):
+                    if entry.get("line") == prop_line:
+                        val = entry.get(imp_key)
+                        if val is not None:
+                            return val
+        return doc.get("consensus_over_implied") if (side or "").upper() == "OVER" else doc.get("consensus_under_implied")
     is_home = doc["home_team"] == team_name
-    return doc["consensus_home_implied"] if is_home else doc["consensus_away_implied"]
+    if mc == "spread":
+        if prop_line is not None:
+            alt_books = doc.get("alternate_spreads_books") or {}
+            imp_key = "home_spread_implied" if is_home else "away_spread_implied"
+            for book in _ODDS_BOOK_PRIORITY:
+                for entry in (alt_books.get(book) or []):
+                    if entry.get("line") == prop_line:
+                        val = entry.get(imp_key)
+                        if val is not None:
+                            return val
+        return doc.get("consensus_home_spread_implied") if is_home else doc.get("consensus_away_spread_implied")
+    # h2h (default)
+    return doc.get("consensus_home_implied") if is_home else doc.get("consensus_away_implied")
+
+
+_ODDS_BOOK_PRIORITY = [
+    "draftkings", "fanduel", "betmgm", "betrivers", "fanatics", "lowvig", "betonlineag",
+]
+
+
+def _lookup_odds_api_odds(
+    odds_api_cache: Dict, team_id, opponent_team_id, game_date, side, market_category,
+    *, event_id: str = None, event_team_cache: Dict = None, prop_line: float = None,
+) -> Optional[int]:
+    """Return a clean American odds integer from the Odds API cache using book priority.
+
+    Falls back to event_team_cache[event_id] when team_id is unmapped ("game");
+    only game_total is resolved via that path (h2h/spread need a known side).
+
+    When prop_line is provided, checks alternate_totals_books (game_total) or
+    alternate_spreads_books (spread) before the standard book dicts.
+    """
+    mc = (market_category or "").lower()
+    if mc == "team_total":
+        return None
+    team_name = TEAM_ID_TO_NAME.get(team_id)
+    opp_name = TEAM_ID_TO_NAME.get(opponent_team_id)
+    if not team_name or not opp_name:
+        if event_id and event_team_cache:
+            pair = event_team_cache.get(event_id)
+            if pair and mc == "game_total":
+                ht, at = pair
+                doc = odds_api_cache.get((game_date, ht, at)) or odds_api_cache.get((game_date, at, ht))
+                if doc:
+                    key = "over_odds" if (side or "").upper() == "OVER" else "under_odds"
+                    if prop_line is not None:
+                        alt_books = doc.get("alternate_totals_books") or {}
+                        for book in _ODDS_BOOK_PRIORITY:
+                            for entry in (alt_books.get(book) or []):
+                                if entry.get("line") == prop_line:
+                                    val = entry.get(key)
+                                    if val is not None:
+                                        return val
+                    totals_books = doc.get("totals_books") or {}
+                    for book in _ODDS_BOOK_PRIORITY:
+                        val = (totals_books.get(book) or {}).get(key)
+                        if val is not None:
+                            return val
+        return None
+    doc = (
+        odds_api_cache.get((game_date, team_name, opp_name))
+        or odds_api_cache.get((game_date, opp_name, team_name))
+    )
+    if not doc:
+        return None
+    is_home = doc.get("home_team") == team_name
+    if mc == "h2h":
+        key = "home_odds_american" if is_home else "away_odds_american"
+        books = doc.get("books") or {}
+        for book in _ODDS_BOOK_PRIORITY:
+            val = (books.get(book) or {}).get(key)
+            if val is not None:
+                return val
+    elif mc == "spread":
+        key = "home_spread_odds" if is_home else "away_spread_odds"
+        if prop_line is not None:
+            alt_books = doc.get("alternate_spreads_books") or {}
+            for book in _ODDS_BOOK_PRIORITY:
+                for entry in (alt_books.get(book) or []):
+                    if entry.get("line") == prop_line:
+                        val = entry.get(key)
+                        if val is not None:
+                            return val
+        spread_books = doc.get("spread_books") or {}
+        for book in _ODDS_BOOK_PRIORITY:
+            val = (spread_books.get(book) or {}).get(key)
+            if val is not None:
+                return val
+    elif mc == "game_total":
+        key = "over_odds" if (side or "").upper() == "OVER" else "under_odds"
+        if prop_line is not None:
+            alt_books = doc.get("alternate_totals_books") or {}
+            for book in _ODDS_BOOK_PRIORITY:
+                for entry in (alt_books.get(book) or []):
+                    if entry.get("line") == prop_line:
+                        val = entry.get(key)
+                        if val is not None:
+                            return val
+        totals_books = doc.get("totals_books") or {}
+        for book in _ODDS_BOOK_PRIORITY:
+            val = (totals_books.get(book) or {}).get(key)
+            if val is not None:
+                return val
+    return None
 
 
 async def assemble_replay_row(
     prop: Dict[str, Any],
     *, model_score: Optional[Dict[str, Any]] = None,
-    db=None,
+    odds_api_cache: Optional[Dict] = None,
+    event_team_cache: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """Translate one `team_model_prop_features` doc into one replay row
     matching the player schema. Pure function — easy to unit-test.
@@ -192,7 +336,10 @@ async def assemble_replay_row(
     `score_team_prop`), populates `model_probability`, `edge`, etc.
     If not, the function calls the single-row scorer itself so callers
     using the legacy 1-arg API still get scoring (the orchestrator
-    now uses the batch path for speed)."""
+    now uses the batch path for speed).
+
+    `odds_api_cache` is a pre-loaded dict keyed by
+    (game_date, home_team, away_team) built once in `reshape_sport`."""
     sport = prop.get("sport") or ""
     tf = prop.get("team_features") or None
     hrs = project_hit_rates_from_team_features(
@@ -211,13 +358,22 @@ async def assemble_replay_row(
 
     model_prob   = (model_score or {}).get("model_probability")
     implied_prob = (model_score or {}).get("implied_probability")
-    if db is not None:
-        odds_api_implied = await _lookup_odds_api_implied(
-            db, prop.get("team_id"), prop.get("opponent_team_id"),
-            prop.get("game_date"), prop.get("side")
+    eid = prop.get("event_id")
+    if odds_api_cache is not None:
+        odds_api_implied = _lookup_odds_api_implied(
+            odds_api_cache, prop.get("team_id"), prop.get("opponent_team_id"),
+            prop.get("game_date"), prop.get("side"), prop.get("market_category"),
+            event_id=eid, event_team_cache=event_team_cache,
+            prop_line=prop.get("line"),
         )
         if odds_api_implied is not None:
             implied_prob = odds_api_implied
+    odds_api_odds = _lookup_odds_api_odds(
+        odds_api_cache, prop.get("team_id"), prop.get("opponent_team_id"),
+        prop.get("game_date"), prop.get("side"), prop.get("market_category"),
+        event_id=eid, event_team_cache=event_team_cache,
+        prop_line=prop.get("line"),
+    ) if odds_api_cache is not None else None
     edge         = (model_score or {}).get("edge")
     vision_score = (model_score or {}).get("vision_score")
     model_ver    = (model_score or {}).get("model_version")
@@ -258,6 +414,7 @@ async def assemble_replay_row(
         "line":                   prop.get("line"),
         "book":                   prop.get("book"),
         "odds":                   prop.get("odds"),
+        "clean_odds":             odds_api_odds,
         "odds_bucket":            bucket,
         "is_alternate":           prop.get("is_alternate"),
         "is_alternate_market":    prop.get("is_alternate"),
@@ -369,6 +526,36 @@ async def reshape_sport(
     pending_props: List[Dict[str, Any]] = []   # raw prop docs awaiting batch-score
     pending_ops:   List[UpdateOne] = []
 
+    # Pre-load the entire odds_api_team_h2h collection once so
+    # _lookup_odds_api_implied can do a plain dict lookup per row
+    # instead of a MongoDB find_one (eliminates ~7 k round-trips/chunk).
+    print(f"  [{sport.upper()}] loading odds_api_team_h2h cache …")
+    odds_api_cache: Dict[tuple, Any] = {}
+    async for doc in db["odds_api_team_h2h"].find(
+        {},
+        {"game_date": 1, "home_team": 1, "away_team": 1,
+         "consensus_home_implied": 1, "consensus_away_implied": 1,
+         "consensus_over_implied": 1, "consensus_under_implied": 1,
+         "consensus_home_spread_implied": 1, "consensus_away_spread_implied": 1,
+         "books": 1, "spread_books": 1, "totals_books": 1,
+         "alternate_totals_books": 1, "alternate_spreads_books": 1},
+    ):
+        odds_api_cache[(doc["game_date"], doc["home_team"], doc["away_team"])] = doc
+    print(f"  [{sport.upper()}] odds_api_team_h2h cache: {len(odds_api_cache):,} entries")
+
+    # event_id → (home_team_name_lower, away_team_name_lower)
+    event_team_cache: Dict[str, tuple] = {}
+    async for doc in db["team_matchups"].find(
+        {"sport": sport},
+        {"event_id": 1, "home_team_name": 1, "away_team_name": 1, "_id": 0},
+    ):
+        eid = doc.get("event_id")
+        ht = (doc.get("home_team_name") or "").lower()
+        at = (doc.get("away_team_name") or "").lower()
+        if eid and ht and at:
+            event_team_cache[eid] = (ht, at)
+    print(f"  [{sport.upper()}] event_team_cache: {len(event_team_cache):,} entries")
+
     # Lazy-import the batch scorer so the unit tests stay fast.
     try:
         from services.team_xgb_loader import score_team_props_batch
@@ -384,7 +571,9 @@ async def reshape_sport(
         scores = (score_team_props_batch(pending_props)
                   if score_team_props_batch else [None] * len(pending_props))
         for prop, score in zip(pending_props, scores):
-            row = await assemble_replay_row(prop, model_score=score, db=db)
+            row = await assemble_replay_row(prop, model_score=score,
+                                            odds_api_cache=odds_api_cache,
+                                            event_team_cache=event_team_cache)
             counters["scored" if score is not None else "unscored"] += 1
             if len(sample_rows) < 5 and score is not None:
                 sample_rows.append({

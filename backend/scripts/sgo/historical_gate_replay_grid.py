@@ -196,10 +196,11 @@ async def _load_team(db, *, start: str, end: str, league: str) -> List[Dict[str,
         "league_id": league,
         "game_date": {"$gte": start, "$lte": end},
         "book": {"$in": list(REPLAY_BOOK_WHITELIST_PHASE1)},
+        "clean_odds": {"$exists": True, "$ne": None},
     }
     proj = {"_id": 0, "market_category": 1, "model_probability": 1,
             "edge": 1, "implied_probability": 1, "fair_probability": 1,
-            "outcome_numeric": 1, "game_date": 1, "event_id": 1, "side": 1}
+            "outcome_numeric": 1, "game_date": 1, "event_id": 1, "side": 1, "clean_odds": 1}
     # One row per book in the replay collection → group by unique bet so
     # n_bets / profit / ROI aren't inflated ~18x.  Same dedup logic as _load:
     # _implied = best (max) odds across books (fallback to fair_probability);

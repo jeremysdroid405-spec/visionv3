@@ -113,7 +113,7 @@ async def fetch_event_odds(
     params = {
         "apiKey": api_key,
         "regions": "us",
-        "markets": "h2h",
+        "markets": "h2h,spreads,totals,alternate_spreads,alternate_totals",
         "date": f"{date_str}T18:00:00Z",
     }
     resp = await client.get(url, params=params, timeout=30)
@@ -164,6 +164,155 @@ def parse_books(event_data: Dict[str, Any], home_team: str, away_team: str) -> D
     return books
 
 
+def parse_spreads_totals(
+    event_data: Dict[str, Any], home_team: str, away_team: str
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Extract per-book spreads and totals from event data.
+    Returns (spread_books, totals_books) dicts keyed by book key.
+    """
+    spread_books: Dict[str, Any] = {}
+    totals_books: Dict[str, Any] = {}
+    bookmakers = event_data.get("bookmakers", []) or []
+
+    for bm in bookmakers:
+        key = bm.get("key", "")
+        if key not in WHITELISTED_BOOKS:
+            continue
+
+        markets = bm.get("markets", []) or []
+
+        spreads_market = next((m for m in markets if m.get("key") == "spreads"), None)
+        if spreads_market:
+            outcomes = {o["name"].lower(): o for o in spreads_market.get("outcomes", [])}
+            home_out = outcomes.get(home_team)
+            away_out = outcomes.get(away_team)
+            if home_out and away_out:
+                home_line = home_out.get("point")
+                home_dec = home_out.get("price")
+                away_dec = away_out.get("price")
+                if home_line is not None and home_dec and away_dec:
+                    spread_books[key] = {
+                        "home_spread_line": home_line,
+                        "home_spread_odds": decimal_to_american(home_dec),
+                        "away_spread_odds": decimal_to_american(away_dec),
+                        "home_spread_implied": round(decimal_to_implied(home_dec), 6),
+                        "away_spread_implied": round(decimal_to_implied(away_dec), 6),
+                    }
+
+        totals_market = next((m for m in markets if m.get("key") == "totals"), None)
+        if totals_market:
+            outcomes = {o["name"].lower(): o for o in totals_market.get("outcomes", [])}
+            over_out = outcomes.get("over")
+            under_out = outcomes.get("under")
+            if over_out and under_out:
+                total_line = over_out.get("point")
+                over_dec = over_out.get("price")
+                under_dec = under_out.get("price")
+                if total_line is not None and over_dec and under_dec:
+                    totals_books[key] = {
+                        "total_line": total_line,
+                        "over_odds": decimal_to_american(over_dec),
+                        "under_odds": decimal_to_american(under_dec),
+                        "over_implied": round(decimal_to_implied(over_dec), 6),
+                        "under_implied": round(decimal_to_implied(under_dec), 6),
+                    }
+
+    return spread_books, totals_books
+
+
+def parse_alternates(
+    event_data: Dict[str, Any], home_team: str, away_team: str
+) -> tuple[Dict[str, Any], Dict[str, Any], List[float], List[float]]:
+    """
+    Extract per-book alternate spreads and totals.
+    Returns (alt_spread_books, alt_totals_books, alt_spread_lines, alt_total_lines).
+    Each books dict is keyed by book key; values are lists of line entries sorted by line.
+    """
+    alt_spread_books: Dict[str, List[Dict[str, Any]]] = {}
+    alt_totals_books: Dict[str, List[Dict[str, Any]]] = {}
+    all_spread_lines: set = set()
+    all_total_lines: set = set()
+
+    bookmakers = event_data.get("bookmakers", []) or []
+
+    for bm in bookmakers:
+        key = bm.get("key", "")
+        if key not in WHITELISTED_BOOKS:
+            continue
+
+        markets = bm.get("markets", []) or []
+
+        alt_totals_market = next((m for m in markets if m.get("key") == "alternate_totals"), None)
+        if alt_totals_market:
+            by_line: Dict[float, Dict[str, float]] = {}
+            for o in alt_totals_market.get("outcomes", []):
+                point = o.get("point")
+                name = (o.get("name") or "").lower()
+                price = o.get("price")
+                if point is None or price is None:
+                    continue
+                by_line.setdefault(point, {})[name] = price
+
+            book_lines = []
+            for line, sides in sorted(by_line.items()):
+                over_dec = sides.get("over")
+                under_dec = sides.get("under")
+                if over_dec is None or under_dec is None:
+                    continue
+                book_lines.append({
+                    "line": line,
+                    "over_odds": decimal_to_american(over_dec),
+                    "under_odds": decimal_to_american(under_dec),
+                    "over_implied": round(decimal_to_implied(over_dec), 6),
+                    "under_implied": round(decimal_to_implied(under_dec), 6),
+                })
+                all_total_lines.add(line)
+
+            if book_lines:
+                alt_totals_books[key] = book_lines
+
+        alt_spreads_market = next((m for m in markets if m.get("key") == "alternate_spreads"), None)
+        if alt_spreads_market:
+            # Key by home spread line; away outcome's point is the away spread so home = -point
+            by_home_line: Dict[float, Dict[str, Any]] = {}
+            for o in alt_spreads_market.get("outcomes", []):
+                point = o.get("point")
+                name = (o.get("name") or "").lower()
+                price = o.get("price")
+                if point is None or price is None:
+                    continue
+                if name == home_team:
+                    by_home_line.setdefault(point, {})["home_dec"] = price
+                elif name == away_team:
+                    by_home_line.setdefault(-point, {})["away_dec"] = price
+
+            book_lines = []
+            for home_line, sides in sorted(by_home_line.items()):
+                home_dec = sides.get("home_dec")
+                away_dec = sides.get("away_dec")
+                if home_dec is None or away_dec is None:
+                    continue
+                book_lines.append({
+                    "line": home_line,
+                    "home_odds": decimal_to_american(home_dec),
+                    "away_odds": decimal_to_american(away_dec),
+                    "home_implied": round(decimal_to_implied(home_dec), 6),
+                    "away_implied": round(decimal_to_implied(away_dec), 6),
+                })
+                all_spread_lines.add(home_line)
+
+            if book_lines:
+                alt_spread_books[key] = book_lines
+
+    return (
+        alt_spread_books,
+        alt_totals_books,
+        sorted(all_spread_lines),
+        sorted(all_total_lines),
+    )
+
+
 def build_document(
     event: Dict[str, Any],
     odds_data: Dict[str, Any],
@@ -175,6 +324,10 @@ def build_document(
     away_team = (odds_data.get("away_team") or event.get("away_team", "")).lower()
 
     books = parse_books(odds_data, home_team, away_team)
+    spread_books, totals_books = parse_spreads_totals(odds_data, home_team, away_team)
+    alt_spread_books, alt_totals_books, alt_spread_lines, alt_total_lines = parse_alternates(
+        odds_data, home_team, away_team
+    )
 
     home_implieds = [v["home_implied"] for v in books.values()]
     away_implieds = [v["away_implied"] for v in books.values()]
@@ -183,6 +336,14 @@ def build_document(
     consensus_away = round(sum(away_implieds) / len(away_implieds), 6) if away_implieds else None
     best_home = round(max(home_implieds), 6) if home_implieds else None
     best_away = round(max(away_implieds), 6) if away_implieds else None
+
+    spread_lines = [v["home_spread_line"] for v in spread_books.values()]
+    spread_home_imp = [v["home_spread_implied"] for v in spread_books.values()]
+    spread_away_imp = [v["away_spread_implied"] for v in spread_books.values()]
+
+    total_lines = [v["total_line"] for v in totals_books.values()]
+    over_imp = [v["over_implied"] for v in totals_books.values()]
+    under_imp = [v["under_implied"] for v in totals_books.values()]
 
     return {
         "odds_api_event_id": event["id"],
@@ -196,6 +357,18 @@ def build_document(
         "consensus_away_implied": consensus_away,
         "best_home_implied": best_home,
         "best_away_implied": best_away,
+        "spread_books": spread_books,
+        "consensus_home_spread_line": round(sum(spread_lines) / len(spread_lines), 4) if spread_lines else None,
+        "consensus_home_spread_implied": round(sum(spread_home_imp) / len(spread_home_imp), 6) if spread_home_imp else None,
+        "consensus_away_spread_implied": round(sum(spread_away_imp) / len(spread_away_imp), 6) if spread_away_imp else None,
+        "totals_books": totals_books,
+        "consensus_total_line": round(sum(total_lines) / len(total_lines), 4) if total_lines else None,
+        "consensus_over_implied": round(sum(over_imp) / len(over_imp), 6) if over_imp else None,
+        "consensus_under_implied": round(sum(under_imp) / len(under_imp), 6) if under_imp else None,
+        "alternate_spreads_books": alt_spread_books,
+        "alternate_totals_books": alt_totals_books,
+        "alternate_spread_lines": alt_spread_lines,
+        "alternate_total_lines": alt_total_lines,
         "ingested_at": datetime.utcnow(),
     }
 
