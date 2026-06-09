@@ -33,7 +33,7 @@ import numpy as np
 
 # Re-export the trainer helpers — same code path on both ends.
 from scripts.sgo.train_team_xgb import (
-    feature_columns, row_to_features, get_prior_fields,
+    feature_columns, row_to_features,
     _american_implied_prob, VERSION,
 )
 
@@ -98,6 +98,8 @@ def score_team_prop(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     vec = np.array([row_to_features(row, sport)], dtype=np.float64)
     vec_s = scaler.transform(vec)
     p = float(model.predict_proba(vec_s)[0, 1])
+    if mc in ("game_total", "team_total") and row.get("side") == "UNDER":
+        p = 1.0 - p
     odds = row.get("odds")
     implied = (_american_implied_prob(float(odds))
                 if isinstance(odds, (int, float)) and odds else None)
@@ -161,6 +163,8 @@ def score_team_props_batch(
         away_preds = reg_away.predict(mat_s) if reg_away is not None else None
         for j, i in enumerate(idx_list):
             p = float(probs[j])
+            if mc in ("game_total", "team_total") and rows[i].get("side") == "UNDER":
+                p = 1.0 - p
             odds = rows[i].get("odds")
             implied = (_american_implied_prob(float(odds))
                           if isinstance(odds, (int, float)) and odds else None)

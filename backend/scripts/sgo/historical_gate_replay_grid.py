@@ -119,7 +119,7 @@ async def _load(db, *, start: str, end: str, league: str,
         r["_edge"] = _f(r.get("edge"))
         r["_tp"]   = _f(r.get("tp")) or _f(r.get("model_probability"))
         r["_fair"] = _f(r.get("fair_probability"))
-        r["_implied"]           = max(implieds) if implieds else None
+        r["_implied"]           = min(implieds) if implieds else None
         r["_consensus_implied"] = sum(implieds) / len(implieds) if implieds else None
         rows.append(r)
     return rows
@@ -220,7 +220,7 @@ async def _load_team(db, *, start: str, end: str, league: str) -> List[Dict[str,
                     if v is not None]
         r["_prob"]              = _f(r.get("model_probability"))
         r["_edge"]              = _f(r.get("edge"))
-        r["_implied"]           = (max(implieds) if implieds
+        r["_implied"]           = (min(implieds) if implieds
                                    else _f(r.get("fair_probability")))
         r["_consensus_implied"] = sum(implieds) / len(implieds) if implieds else None
         rows.append(r)

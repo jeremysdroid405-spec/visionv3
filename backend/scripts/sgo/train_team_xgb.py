@@ -75,53 +75,47 @@ VERSION = "team_xgb_v1"
 ARTIFACT_ROOT = Path("/app/backend/models/team_xgb")
 SUPPORTED_SPORTS = ("mlb", "nba", "nfl")
 
-# Base features shared across all sports.
-BASE_PRIOR_FIELDS = (
-    "sample_size",
-    "mu_points_scored", "sigma_points_scored", "cv_points_scored",
+_BASE_PRIOR_FIELDS: Tuple[str, ...] = (
+    "sample_size", "mu_points_scored", "sigma_points_scored", "cv_points_scored",
     "win_rate_l5", "win_rate_l10", "win_rate_season",
     "avg_scored_l5", "avg_scored_l10", "avg_scored_season",
     "avg_allowed_l5", "avg_allowed_l10", "avg_allowed_season",
-    "spread_cover_rate_l10", "ou_hit_rate_l10",
+    "spread_cover_rate_l10", "spread_cover_rate_l5",
+    "ou_hit_rate_l10", "ou_hit_rate_l5",
     "home_win_rate", "away_win_rate",
     "rest_days", "tempo_l10", "run_trend_l10",
-    # MLB SP rotation quality (null/missing for non-MLB sports)
-    "sp_k_rate_avg", "sp_woba_allowed_avg",
-    "sp_hard_hit_rate_avg", "sp_bb_rate_avg", "sp_xwoba_allowed_avg",
+    "sp_k_rate_avg", "sp_woba_allowed_avg", "sp_hard_hit_rate_avg",
+    "sp_bb_rate_avg", "sp_xwoba_allowed_avg",
 )
 
-# NBA-only advanced rolling features.
-_NBA_EXTRA_FIELDS = (
-    "pace_l5", "pace_l10", "pace_l20", "pace_stddev_l10",
-    "off_rating_l5", "off_rating_l10", "off_rating_l20",
-    "def_rating_l5", "def_rating_l10", "def_rating_l20",
-    "ts_pct_l10", "def_reb_pct_l10",
-    "pct_pts_paint_l10", "pct_pts_fast_break_l10",
-    "scoring_trend_l5_l20",
-    "is_back_to_back", "games_in_last_7",
+_BDL_FIELDS: Tuple[str, ...] = (
+    "batting_avg", "batting_obp", "batting_slg", "batting_ops",
+    "batting_k_rate", "batting_bb_rate", "batting_hr_rate",
+    "pitching_era", "pitching_whip", "pitching_k_per_9",
+    "pitching_bb_per_9", "pitching_hr_per_9", "pitching_qs_rate",
+    "fielding_fp",
+    "runs_scored_l5_bdl", "runs_scored_l10_bdl", "runs_scored_l20_bdl",
+    "runs_allowed_l5_bdl", "runs_allowed_l10_bdl", "runs_allowed_l20_bdl",
+    "first5_runs_l5", "first5_runs_l10", "first5_runs_l20",
+    "first_inning_score_rate", "total_runs_l10_avg",
 )
 
+_LINE_SPREAD_FIELDS: Tuple[str, ...] = (
+    "spread_cover_neg1_5_l5", "spread_cover_neg1_5_l10",
+    "spread_cover_1_5_l5",    "spread_cover_1_5_l10",
+    "spread_cover_neg2_5_l5", "spread_cover_neg2_5_l10",
+    "spread_cover_2_5_l5",    "spread_cover_2_5_l10",
+    "spread_cover_neg3_5_l5", "spread_cover_neg3_5_l10",
+    "spread_cover_3_5_l5",    "spread_cover_3_5_l10",
+)
 
-def get_prior_fields(sport: str) -> tuple:
-    """Return the sport-specific prior field list.
-    NBA gets base + advanced rolling features; all others get base only."""
-    if sport == "nba":
-        return BASE_PRIOR_FIELDS + _NBA_EXTRA_FIELDS
-    return BASE_PRIOR_FIELDS
+_BET_SHAPE_FIELDS: Tuple[str, ...] = (
+    "line", "is_alternate_int", "is_home_int", "is_over_int",
+)
 
-BET_SHAPE_FIELDS = ("line", "is_alternate_int", "is_home_int",
-                      "is_over_int")
-# NOTE: `odds` is INTENTIONALLY EXCLUDED from the feature set.
-#
-# The book's price is by construction the market's best estimate of
-# the outcome probability — including it makes the classifier trivially
-# learn the price and produces AUC ≈ market efficiency (0.99 in the
-# preview), which is leakage from the trader's perspective: the model
-# must NOT have the right answer handed to it at scoring time.
-#
-# We retain odds separately so ROI grading + implied-probability + edge
-# computation can still use them, but the model's predictive signal is
-# strictly the priors + line + side + alt flag + home/away.
+_DIFF_FIELDS: Tuple[str, ...] = (
+    "team_minus_opp_mu", "team_minus_opp_win_l10", "team_minus_opp_tempo_l10",
+)
 
 
 # ───── feature extraction (unit-testable) ─────
@@ -142,46 +136,51 @@ def _missing_flag(v: Any) -> float:
     return 1.0 if v is None else 0.0
 
 
+def get_prior_fields(sport: str) -> Tuple[str, ...]:
+    """Return the ordered list of per-team prior fields for the given sport."""
+    fields: List[str] = list(_BASE_PRIOR_FIELDS)
+    if sport == "mlb":
+        fields.extend(_BDL_FIELDS)
+        fields.extend(_LINE_SPREAD_FIELDS)
+    return tuple(fields)
+
+
 def feature_columns(sport: str) -> List[str]:
-    """Stable, deterministic column order for the given sport. Saved with
-    the model so scoring can rebuild the same row order."""
+    """Canonical column order — must stay in sync with row_to_features."""
     cols: List[str] = []
-    for who in ("team", "opp"):
-        for f in get_prior_fields(sport):
-            cols.append(f"{who}_{f}")
-            cols.append(f"{who}_{f}_missing")
-    for f in BET_SHAPE_FIELDS:
-        cols.append(f)
-    cols.extend(("team_minus_opp_mu", "team_minus_opp_win_l10",
-                  "team_minus_opp_tempo_l10"))
-    # game-level combined feature (game_total rows only; missing flag handles others)
+    for f in get_prior_fields(sport):
+        cols.append(f"team_{f}")
+        cols.append(f"team_{f}_missing")
+        cols.append(f"opp_{f}")
+        cols.append(f"opp_{f}_missing")
+    cols.extend(_BET_SHAPE_FIELDS)
+    cols.extend(_DIFF_FIELDS)
     cols.append("combined_pace")
     cols.append("combined_pace_missing")
     return cols
 
 
 def row_to_features(row: Dict[str, Any], sport: str) -> List[float]:
-    """Convert one `team_model_prop_features` doc into a feature vector
-    matching `feature_columns(sport)`. Pure function."""
     tf = row.get("team_features") or {}
     of = row.get("opponent_features") or {}
     vec: List[float] = []
-    for who, src in (("team", tf), ("opp", of)):
-        for f in get_prior_fields(sport):
-            vec.append(_f(src.get(f)))
-            vec.append(_missing_flag(src.get(f)))
-    line = _f(row.get("line"))
-    is_alt = 1.0 if row.get("is_alternate") else 0.0
-    is_home = 1.0 if (row.get("home_away") == "home") else 0.0
-    side = (row.get("side") or "").upper()
-    is_over = 1.0 if side in ("OVER", "HOME") else 0.0
-    vec.extend((line, is_alt, is_home, is_over))
-    # Differential signals — give the model a direct comparative shot
-    # without forcing it to learn the diff from scratch.
+    for f in get_prior_fields(sport):
+        tv = tf.get(f)
+        ov = of.get(f)
+        vec.append(_f(tv))
+        vec.append(_missing_flag(tv))
+        vec.append(_f(ov))
+        vec.append(_missing_flag(ov))
+    # bet shape
+    vec.append(_f(row.get("line")))
+    vec.append(1.0 if row.get("is_alternate") else 0.0)
+    vec.append(1.0 if (row.get("home_away") == "home") else 0.0)
+    vec.append(1.0 if (row.get("side") == "over") else 0.0)
+    # differential signals
     vec.append(_f(tf.get("mu_points_scored")) - _f(of.get("mu_points_scored")))
     vec.append(_f(tf.get("win_rate_l10")) - _f(of.get("win_rate_l10")))
     vec.append(_f(tf.get("tempo_l10")) - _f(of.get("tempo_l10")))
-    # combined_pace: game-level; present only for game_total rows
+    # combined pace
     cp = row.get("combined_pace")
     vec.append(_f(cp))
     vec.append(_missing_flag(cp))
@@ -286,12 +285,16 @@ async def load_training_rows(
         "push": False,
         "outcome_numeric": {"$in": [0, 1]},
         "odds": {"$ne": None},
+        "game_date": {"$gte": "2025-01-01"},
+        "implied_probability": {"$ne": None},
     }
+    if market_category in ("game_total", "team_total"):
+        match["side"] = "OVER"
     proj = {
         "_id": 0,
         "team_features": 1, "opponent_features": 1,
         "line": 1, "odds": 1, "is_alternate": 1,
-        "home_away": 1, "side": 1,
+        "home_away": 1, "side": 1, "implied_probability": 1,
         "outcome_numeric": 1,
         "home_score_used": 1, "away_score_used": 1,
         "event_id": 1, "team_id": 1, "game_date": 1,
@@ -339,18 +342,20 @@ def _train_one(
     X_tr_s = scaler.transform(X_tr)
     X_te_s = scaler.transform(X_te)
 
-    # Inner XGBClassifier with conservative defaults — matches the
-    # player retrain script's depth/lr/regularization choices.
+    # Strongly regularized to prevent memorization on ~300K-row sports data.
+    # Shallow trees + high min_child_weight + heavy L1/L2 + aggressive subsampling
+    # push calibrated output into the realistic 0.45-0.75 range.
     inner = XGBClassifier(
-        n_estimators=200, max_depth=5, learning_rate=0.08,
-        subsample=0.8, colsample_bytree=0.8,
-        reg_alpha=0.1, reg_lambda=1.0,
+        n_estimators=150, max_depth=3, learning_rate=0.03,
+        subsample=0.6, colsample_bytree=0.6,
+        min_child_weight=50, gamma=2.0,
+        reg_alpha=2.0, reg_lambda=10.0,
         random_state=seed, verbosity=0,
         objective="binary:logistic",
         eval_metric="logloss",
         tree_method="hist",
     )
-    model = CalibratedClassifierCV(inner, method="isotonic", cv=3)
+    model = CalibratedClassifierCV(inner, method="isotonic", cv=5)
     model.fit(X_tr_s, y_tr)
 
     p_tr = model.predict_proba(X_tr_s)[:, 1]
@@ -363,13 +368,18 @@ def _train_one(
         auc_te = float(roc_auc_score(y_te, p_te))
     except ValueError:
         auc_te = None
+    if auc_te is not None and auc_te > 0.75:
+        print(f"  WARNING: AUC_test={auc_te:.4f} > 0.75 — model likely overfit for sports data")
+    out_of_range = float(np.mean((p_te < 0.35) | (p_te > 0.65)))
+    if out_of_range > 0.10:
+        print(f"  WARNING: {out_of_range:.1%} of test predictions are outside [0.35, 0.65] — check calibration")
     ll_tr = float(log_loss(y_tr, p_tr, labels=[0, 1]))
     ll_te = float(log_loss(y_te, p_te, labels=[0, 1]))
     brier_te = float(brier_score_loss(y_te, p_te))
     cal = calibration_deciles(y_te, p_te)
     roi = compute_roi_breakdowns(
         odds_te.tolist(), y_te.tolist(),
-        picks=[1] * len(y_te),   # team rows: always grade the as-bet side
+        picks=[1 if p >= 0.55 else 0 for p in p_te],   # only grade high-confidence predictions
     )
 
     # ── Score regressors ──────────────────────────────────────────────

@@ -64,6 +64,7 @@ BUILDER_VERSION = "team_prop_v1"
 SRC_OUTCOMES = "team_historical_outcomes"
 SRC_FEATURES = "team_model_features"
 DST_COLL = "team_model_prop_features"
+REPLAY_COLL = "sgo_propvision_full_pipeline_replay"
 
 SUPPORTED_SPORTS = ("mlb", "nba", "nfl")
 
@@ -77,6 +78,7 @@ _FEATURE_PROJECTION = {
     "avg_scored_l5": 1, "avg_scored_l10": 1, "avg_scored_season": 1,
     "avg_allowed_l5": 1, "avg_allowed_l10": 1, "avg_allowed_season": 1,
     "spread_cover_rate_l10": 1, "ou_hit_rate_l10": 1,
+    "spread_cover_rate_l5": 1, "ou_hit_rate_l5": 1,
     "home_win_rate": 1, "away_win_rate": 1,
     "rest_days": 1, "tempo_l10": 1, "run_trend_l10": 1,
     # MLB SP rotation quality (null for non-MLB sports)
@@ -92,6 +94,25 @@ _FEATURE_PROJECTION = {
     "pct_pts_paint_l10": 1, "pct_pts_fast_break_l10": 1,
     "scoring_trend_l5_l20": 1,
     "is_back_to_back": 1, "games_in_last_7": 1,
+    # BDL MLB batting/pitching/fielding season stats
+    "batting_avg": 1, "batting_obp": 1, "batting_slg": 1, "batting_ops": 1,
+    "batting_k_rate": 1, "batting_bb_rate": 1, "batting_hr_rate": 1,
+    "pitching_era": 1, "pitching_whip": 1,
+    "pitching_k_per_9": 1, "pitching_bb_per_9": 1,
+    "pitching_hr_per_9": 1, "pitching_qs_rate": 1,
+    "fielding_fp": 1,
+    # BDL MLB rolling boxscore windows
+    "runs_scored_l5_bdl": 1, "runs_scored_l10_bdl": 1, "runs_scored_l20_bdl": 1,
+    "runs_allowed_l5_bdl": 1, "runs_allowed_l10_bdl": 1, "runs_allowed_l20_bdl": 1,
+    "first5_runs_l5": 1, "first5_runs_l10": 1, "first5_runs_l20": 1,
+    "first_inning_score_rate": 1, "total_runs_l10_avg": 1,
+    # Line-specific spread cover rates
+    "spread_cover_neg1_5_l5": 1, "spread_cover_neg1_5_l10": 1,
+    "spread_cover_1_5_l5": 1, "spread_cover_1_5_l10": 1,
+    "spread_cover_neg2_5_l5": 1, "spread_cover_neg2_5_l10": 1,
+    "spread_cover_2_5_l5": 1, "spread_cover_2_5_l10": 1,
+    "spread_cover_neg3_5_l5": 1, "spread_cover_neg3_5_l10": 1,
+    "spread_cover_3_5_l5": 1, "spread_cover_3_5_l10": 1,
 }
 
 # Fields lifted verbatim from the outcomes row into the prop_features doc.
@@ -270,6 +291,26 @@ async def build_prop_features_for_sport(
             }
     print(f"  [{sport.upper()}] matchup lookup loaded: {len(matchup_lookup):,} events")
 
+    # Bulk-load clean_odds / implied_probability from replay collection.
+    # Keyed by (event_id, team_id, market_category, side, line, book);
+    # line=None is a valid tuple element so no sentinel needed.
+    replay_cache: Dict[Tuple, Dict[str, Any]] = {}
+    async for r in db[REPLAY_COLL].find(
+        {"prop_type": "team", "league_id": "MLB"},
+        projection={
+            "_id": 0, "event_id": 1, "team_id": 1,
+            "market_category": 1, "side": 1, "line": 1, "book": 1,
+            "clean_odds": 1, "implied_probability": 1,
+        },
+    ):
+        rk = (
+            r.get("event_id"), r.get("team_id"),
+            r.get("market_category"), r.get("side"),
+            r.get("line"), r.get("book"),
+        )
+        replay_cache[rk] = r
+    print(f"  [{sport.upper()}] replay cache loaded: {len(replay_cache):,} entries")
+
     counters = {
         "scanned":             0,
         "team_priors_missing": 0,
@@ -358,6 +399,14 @@ async def build_prop_features_for_sport(
 
         doc = assemble_prop_features_doc(
             o, team_features=team_pri, opponent_features=opp_pri)
+        rk = (
+            o.get("event_id"), o.get("team_id"),
+            o.get("market_category"), o.get("side"),
+            o.get("line"), o.get("book"),
+        )
+        cache_hit = replay_cache.get(rk) or {}
+        doc["clean_odds"] = cache_hit.get("clean_odds")
+        doc["implied_probability"] = cache_hit.get("implied_probability")
         key = stable_key(o)
         if len(sample_rows) < 5:
             sample_rows.append({

@@ -77,6 +77,7 @@ import pymongo
 FEATURE_VERSION = "team_v1_priors"
 SRC_COLL = "team_historical_outcomes"
 DST_COLL = "team_model_features"
+BDL_GAME_FEATURES_COLL = "bdl_mlb_team_game_features"
 
 SUPPORTED_SPORTS = ("mlb", "nba", "nfl")
 
@@ -94,7 +95,7 @@ class TeamGameRecord:
     points_allowed:  Optional[float]
     won_h2h:         Optional[bool]
     # Per-market hits / lines collected across all books for this game:
-    spread_outcomes: List[Optional[bool]] = field(default_factory=list)
+    spread_outcomes: List[Tuple[Optional[float], Optional[bool]]] = field(default_factory=list)
     ou_outcomes:     List[Optional[bool]] = field(default_factory=list)
 
 
@@ -127,6 +128,8 @@ class TeamAsOfFeatures:
     # Tempo / sport-specific
     tempo_l10:             Optional[float]  # NBA pace proxy; MLB runs/g
     run_trend_l10:         Optional[float]  # MLB only; None otherwise
+    spread_cover_rate_l5:  Optional[float] = None
+    ou_hit_rate_l5:        Optional[float] = None
     feature_completeness:  str = FEATURE_VERSION
     # MLB starting pitcher quality (rolling 14-day averages across rotation)
     sp_k_rate_avg:          Optional[float] = None
@@ -134,6 +137,47 @@ class TeamAsOfFeatures:
     sp_hard_hit_rate_avg:   Optional[float] = None
     sp_bb_rate_avg:         Optional[float] = None
     sp_xwoba_allowed_avg:   Optional[float] = None
+
+    # BDL MLB features (from bdl_mlb_team_game_features; None for non-MLB sports)
+    batting_avg:              Optional[float] = None
+    batting_obp:              Optional[float] = None
+    batting_slg:              Optional[float] = None
+    batting_ops:              Optional[float] = None
+    batting_k_rate:           Optional[float] = None
+    batting_bb_rate:          Optional[float] = None
+    batting_hr_rate:          Optional[float] = None
+    pitching_era:             Optional[float] = None
+    pitching_whip:            Optional[float] = None
+    pitching_k_per_9:         Optional[float] = None
+    pitching_bb_per_9:        Optional[float] = None
+    pitching_hr_per_9:        Optional[float] = None
+    pitching_qs_rate:         Optional[float] = None
+    fielding_fp:              Optional[float] = None
+    runs_scored_l5_bdl:       Optional[float] = None
+    runs_scored_l10_bdl:      Optional[float] = None
+    runs_scored_l20_bdl:      Optional[float] = None
+    runs_allowed_l5_bdl:      Optional[float] = None
+    runs_allowed_l10_bdl:     Optional[float] = None
+    runs_allowed_l20_bdl:     Optional[float] = None
+    first5_runs_l5:           Optional[float] = None
+    first5_runs_l10:          Optional[float] = None
+    first5_runs_l20:          Optional[float] = None
+    first_inning_score_rate:  Optional[float] = None
+    total_runs_l10_avg:       Optional[float] = None
+
+    # Line-specific spread cover rates (L5 and L10 windows)
+    spread_cover_neg1_5_l5:   Optional[float] = None
+    spread_cover_neg1_5_l10:  Optional[float] = None
+    spread_cover_1_5_l5:      Optional[float] = None
+    spread_cover_1_5_l10:     Optional[float] = None
+    spread_cover_neg2_5_l5:   Optional[float] = None
+    spread_cover_neg2_5_l10:  Optional[float] = None
+    spread_cover_2_5_l5:      Optional[float] = None
+    spread_cover_2_5_l10:     Optional[float] = None
+    spread_cover_neg3_5_l5:   Optional[float] = None
+    spread_cover_neg3_5_l10:  Optional[float] = None
+    spread_cover_3_5_l5:      Optional[float] = None
+    spread_cover_3_5_l10:     Optional[float] = None
 
     def asdict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -197,9 +241,9 @@ def aggregate_team_games(
                 rec.won_h2h = bool(hit)
         elif cat == "spread":
             if outcome_resolved and not push and isinstance(hit, bool):
-                rec.spread_outcomes.append(bool(hit))
+                rec.spread_outcomes.append((r.get("line"), bool(hit)))
             elif push:
-                rec.spread_outcomes.append(None)
+                rec.spread_outcomes.append((r.get("line"), None))
         elif cat == "game_total":
             if outcome_resolved and not push and isinstance(hit, bool):
                 rec.ou_outcomes.append(bool(hit))
@@ -294,11 +338,17 @@ def compute_team_as_of_features(
     home_wins = [g.won_h2h for g in season if g.is_home]
     away_wins = [g.won_h2h for g in season if not g.is_home]
 
-    spread_l10: List[Any] = []
+    spread_l10_tuples: List[Tuple[Optional[float], Optional[bool]]] = []
     ou_l10: List[Any] = []
     for g in last_10:
-        spread_l10.extend(g.spread_outcomes)
+        spread_l10_tuples.extend(g.spread_outcomes)
         ou_l10.extend(g.ou_outcomes)
+
+    spread_l5_tuples: List[Tuple[Optional[float], Optional[bool]]] = []
+    ou_l5: List[Any] = []
+    for g in last_5:
+        spread_l5_tuples.extend(g.spread_outcomes)
+        ou_l5.extend(g.ou_outcomes)
 
     rest = _rest_days(prior[-1].game_date if prior else None, as_of_date)
 
@@ -321,6 +371,15 @@ def compute_team_as_of_features(
     def _r(x: Optional[float], nd: int = 4) -> Optional[float]:
         return round(x, nd) if x is not None else None
 
+    STANDARD_SPREAD_LINES = [-1.5, 1.5, -2.5, 2.5, -3.5, 3.5]
+    _line_feats: Dict[str, Optional[float]] = {}
+    for _lv in STANDARD_SPREAD_LINES:
+        _key = str(_lv).replace('.', '_').replace('-', 'neg')
+        _hits_l5  = [hit for ln, hit in spread_l5_tuples  if ln == _lv and hit is not None]
+        _hits_l10 = [hit for ln, hit in spread_l10_tuples if ln == _lv and hit is not None]
+        _line_feats[f"spread_cover_{_key}_l5"]  = _r(_rate(_hits_l5))
+        _line_feats[f"spread_cover_{_key}_l10"] = _r(_rate(_hits_l10))
+
     return TeamAsOfFeatures(
         sample_size=n,
         mu_points_scored=_r(mu, 3),
@@ -335,13 +394,16 @@ def compute_team_as_of_features(
         avg_allowed_l5=_r(_mean(allowed_l5), 3),
         avg_allowed_l10=_r(_mean(allowed_l10), 3),
         avg_allowed_season=_r(_mean(allowed_all), 3),
-        spread_cover_rate_l10=_r(_rate(spread_l10)),
+        spread_cover_rate_l10=_r(_rate([hit for _, hit in spread_l10_tuples])),
         ou_hit_rate_l10=_r(_rate(ou_l10)),
+        spread_cover_rate_l5=_r(_rate([hit for _, hit in spread_l5_tuples])),
+        ou_hit_rate_l5=_r(_rate(ou_l5)),
         home_win_rate=_r(_rate(home_wins)),
         away_win_rate=_r(_rate(away_wins)),
         rest_days=rest,
         tempo_l10=_r(tempo_l10, 3),
         run_trend_l10=run_trend_l10,
+        **_line_feats,
     )
 
 
@@ -448,6 +510,91 @@ def _sp_features_for_team(
     }
 
 
+# ───── BDL game features index ─────
+
+async def _load_bdl_index(
+    db: AsyncIOMotorDatabase,
+) -> Dict[str, List[Tuple[str, Dict[str, Any]]]]:
+    """Pre-load bdl_mlb_team_game_features into {mlb_team_id: [(game_date, doc), ...]}
+    sorted ascending by game_date. One bulk load; no per-row queries."""
+    index: Dict[str, List[Tuple[str, Dict[str, Any]]]] = {}
+    cursor = db[BDL_GAME_FEATURES_COLL].find(
+        {},
+        projection={
+            "_id": 0, "mlb_team_id": 1, "game_date": 1,
+            "batting_avg": 1, "batting_obp": 1, "batting_slg": 1, "batting_ops": 1,
+            "batting_k_rate": 1, "batting_bb_rate": 1, "batting_hr_rate": 1,
+            "pitching_era": 1, "pitching_whip": 1,
+            "pitching_k_per_9": 1, "pitching_bb_per_9": 1,
+            "pitching_hr_per_9": 1, "pitching_qs_rate": 1,
+            "fielding_fp": 1,
+            "runs_scored_l5": 1, "runs_scored_l10": 1, "runs_scored_l20": 1,
+            "runs_allowed_l5": 1, "runs_allowed_l10": 1, "runs_allowed_l20": 1,
+            "first5_runs_l5": 1, "first5_runs_l10": 1, "first5_runs_l20": 1,
+            "first_inning_score_rate": 1, "total_runs_l10_avg": 1,
+        },
+    ).batch_size(5000)
+    async for doc in cursor:
+        tid = doc.get("mlb_team_id")
+        gd = doc.get("game_date")
+        if not tid or not gd:
+            continue
+        index.setdefault(tid, []).append((gd, doc))
+    for lst in index.values():
+        lst.sort(key=lambda x: x[0])
+    return index
+
+
+def _bdl_lookup(
+    index: Dict[str, List[Tuple[str, Dict[str, Any]]]],
+    mlb_team_id: str,
+    as_of_date: str,
+) -> Optional[Dict[str, Any]]:
+    """Return the most recent BDL doc for mlb_team_id where game_date < as_of_date."""
+    entries = index.get(mlb_team_id)
+    if not entries:
+        return None
+    lo, hi = 0, len(entries)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if entries[mid][0] < as_of_date:
+            lo = mid + 1
+        else:
+            hi = mid
+    if lo == 0:
+        return None
+    return entries[lo - 1][1]
+
+
+def _merge_bdl_into_feat(feat: "TeamAsOfFeatures", bdl_doc: Dict[str, Any]) -> None:
+    """Copy BDL fields from a bdl_mlb_team_game_features doc into a TeamAsOfFeatures."""
+    feat.batting_avg             = bdl_doc.get("batting_avg")
+    feat.batting_obp             = bdl_doc.get("batting_obp")
+    feat.batting_slg             = bdl_doc.get("batting_slg")
+    feat.batting_ops             = bdl_doc.get("batting_ops")
+    feat.batting_k_rate          = bdl_doc.get("batting_k_rate")
+    feat.batting_bb_rate         = bdl_doc.get("batting_bb_rate")
+    feat.batting_hr_rate         = bdl_doc.get("batting_hr_rate")
+    feat.pitching_era            = bdl_doc.get("pitching_era")
+    feat.pitching_whip           = bdl_doc.get("pitching_whip")
+    feat.pitching_k_per_9        = bdl_doc.get("pitching_k_per_9")
+    feat.pitching_bb_per_9       = bdl_doc.get("pitching_bb_per_9")
+    feat.pitching_hr_per_9       = bdl_doc.get("pitching_hr_per_9")
+    feat.pitching_qs_rate        = bdl_doc.get("pitching_qs_rate")
+    feat.fielding_fp             = bdl_doc.get("fielding_fp")
+    feat.runs_scored_l5_bdl      = bdl_doc.get("runs_scored_l5")
+    feat.runs_scored_l10_bdl     = bdl_doc.get("runs_scored_l10")
+    feat.runs_scored_l20_bdl     = bdl_doc.get("runs_scored_l20")
+    feat.runs_allowed_l5_bdl     = bdl_doc.get("runs_allowed_l5")
+    feat.runs_allowed_l10_bdl    = bdl_doc.get("runs_allowed_l10")
+    feat.runs_allowed_l20_bdl    = bdl_doc.get("runs_allowed_l20")
+    feat.first5_runs_l5          = bdl_doc.get("first5_runs_l5")
+    feat.first5_runs_l10         = bdl_doc.get("first5_runs_l10")
+    feat.first5_runs_l20         = bdl_doc.get("first5_runs_l20")
+    feat.first_inning_score_rate = bdl_doc.get("first_inning_score_rate")
+    feat.total_runs_l10_avg      = bdl_doc.get("total_runs_l10_avg")
+
+
 # ───── DB orchestration ─────
 async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     """Idempotent — same tolerant pattern as the rest of the SGO scripts."""
@@ -478,7 +625,7 @@ async def _load_team_history(
         projection={
             "_id": 0, "event_id": 1, "game_date": 1,
             "home_away": 1, "home_score_used": 1, "away_score_used": 1,
-            "market_category": 1, "outcome_resolved": 1, "hit": 1,
+            "market_category": 1, "line": 1, "outcome_resolved": 1, "hit": 1,
             "push": 1,
         },
     ).batch_size(2000)
@@ -538,6 +685,13 @@ async def build_features_for_sport(
               f"{sum(len(v) for v in team_abbr_to_pitchers.values())} pitchers, "
               f"{len(pitcher_name_to_stats)} statcast names")
 
+    # Pre-load BDL game features index for MLB enrichment.
+    bdl_index: Dict[str, List[Tuple[str, Dict[str, Any]]]] = {}
+    if sport == "mlb":
+        print(f"  [{sport.upper()}] loading BDL team game features index…")
+        bdl_index = await _load_bdl_index(db)
+        print(f"  [{sport.upper()}] BDL index: {len(bdl_index)} teams")
+
     counters = {
         "teams_processed":      0,
         "team_dates_emitted":   0,
@@ -576,6 +730,11 @@ async def build_features_for_sport(
                 feat.sp_hard_hit_rate_avg = sp.get("sp_hard_hit_rate_avg")
                 feat.sp_bb_rate_avg       = sp.get("sp_bb_rate_avg")
                 feat.sp_xwoba_allowed_avg = sp.get("sp_xwoba_allowed_avg")
+            # MLB: enrich with BDL rolling boxscore + season stat features.
+            if sport == "mlb":
+                bdl_doc = _bdl_lookup(bdl_index, team_id, as_of)
+                if bdl_doc:
+                    _merge_bdl_into_feat(feat, bdl_doc)
             counters["team_dates_emitted"] += 1
             if len(sample_rows) < 5 and feat.sample_size > 0:
                 sample_rows.append({
