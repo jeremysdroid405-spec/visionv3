@@ -290,8 +290,6 @@ async def load_training_rows(
     }
     if market_category in ("game_total", "team_total"):
         match["side"] = "OVER"
-    if market_category == "h2h":
-        match["home_away"] = "home"
     proj = {
         "_id": 0,
         "team_features": 1, "opponent_features": 1,
