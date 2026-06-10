@@ -316,6 +316,8 @@ def _lookup_odds_api_odds(
                         val = entry.get(key)
                         if val is not None:
                             return val
+        if prop_line is not None:
+            return None
         totals_books = doc.get("totals_books") or {}
         for book in _ODDS_BOOK_PRIORITY:
             val = (totals_books.get(book) or {}).get(key)
@@ -415,7 +417,7 @@ async def assemble_replay_row(
         "line":                   prop.get("line"),
         "book":                   prop.get("book"),
         "odds":                   prop.get("odds"),
-        "clean_odds":             odds_api_odds if odds_api_odds is not None else prop.get("clean_odds"),
+        "clean_odds":             odds_api_odds,
         "odds_bucket":            bucket,
         "is_alternate":           prop.get("is_alternate"),
         "is_alternate_market":    prop.get("is_alternate"),
@@ -429,7 +431,7 @@ async def assemble_replay_row(
         "tp":                     model_prob,
         "edge":                   edge,
         "model_probability":      model_prob,
-        "implied_probability":    implied_prob if implied_prob is not None else prop.get("implied_probability"),
+        "implied_probability":    implied_prob,
         "fair_probability":       model_prob,
         "vision_score":           vision_score,
         "model_version":          model_ver,
@@ -725,4 +727,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    rc = main()
+    from scripts.sgo.handoff import update_handoff
+    update_handoff()
+    raise SystemExit(rc)

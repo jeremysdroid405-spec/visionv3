@@ -535,4 +535,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    rc = main()
+    from scripts.sgo.handoff import update_handoff
+    update_handoff()
+    raise SystemExit(rc)

@@ -636,4 +636,7 @@ def _parse():
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(_run(_parse())))
+    rc = asyncio.run(_run(_parse()))
+    from scripts.sgo.handoff import update_handoff
+    update_handoff()
+    sys.exit(rc)
