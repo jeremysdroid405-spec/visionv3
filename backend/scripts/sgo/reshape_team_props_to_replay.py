@@ -108,6 +108,7 @@ PIPELINE_VERSION = "team_v1_scored"
 SSOT_SOURCE = "team_prop_features"
 SRC_COLL = "team_model_prop_features"
 DST_COLL = "sgo_propvision_full_pipeline_replay"
+ARCHIVE_COLL = "sgo_propvision_full_pipeline_replay_archive"
 
 SUPPORTED_SPORTS = ("mlb", "nba", "nfl")
 
@@ -414,7 +415,7 @@ async def assemble_replay_row(
         "line":                   prop.get("line"),
         "book":                   prop.get("book"),
         "odds":                   prop.get("odds"),
-        "clean_odds":             odds_api_odds,
+        "clean_odds":             odds_api_odds if odds_api_odds is not None else prop.get("clean_odds"),
         "odds_bucket":            bucket,
         "is_alternate":           prop.get("is_alternate"),
         "is_alternate_market":    prop.get("is_alternate"),
@@ -428,7 +429,7 @@ async def assemble_replay_row(
         "tp":                     model_prob,
         "edge":                   edge,
         "model_probability":      model_prob,
-        "implied_probability":    implied_prob,
+        "implied_probability":    implied_prob if implied_prob is not None else prop.get("implied_probability"),
         "fair_probability":       model_prob,
         "vision_score":           vision_score,
         "model_version":          model_ver,
@@ -475,6 +476,25 @@ def upsert_filter(row: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# ───── one-time dirty-data migration ─────
+async def _archive_dirty(db: AsyncIOMotorDatabase) -> None:
+    """Move all team rows that have no clean_odds into the archive collection,
+    then delete them from the live replay collection.  One-time operation;
+    idempotent (re-running finds 0 docs and exits early)."""
+    print(f"\n[--archive-dirty] archiving prop_type=team rows with clean_odds=null …")
+    query = {"prop_type": "team", "clean_odds": None}
+    dirty_docs = await db[DST_COLL].find(query).to_list(length=None)
+    if not dirty_docs:
+        print("  nothing to archive — 0 docs matched.")
+        return
+    for doc in dirty_docs:
+        doc.pop("_id", None)
+    res = await db[ARCHIVE_COLL].insert_many(dirty_docs, ordered=False)
+    print(f"  archived {len(res.inserted_ids):,} docs → {ARCHIVE_COLL}")
+    del_res = await db[DST_COLL].delete_many(query)
+    print(f"  deleted  {del_res.deleted_count:,} docs from {DST_COLL}")
+
+
 # ───── DB orchestration ─────
 async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     """Tolerant index creation — same pattern as the rest of SGO scripts."""
@@ -513,14 +533,15 @@ async def reshape_sport(
         await _ensure_indexes(db)
 
     counters = {
-        "scanned":          0,
-        "rows_emitted":     0,
-        "rows_written":     0,
-        "missing_event_id": 0,
-        "missing_team_id":  0,
-        "scored":           0,
-        "unscored":         0,
-        "dry_run":          dry_run,
+        "scanned":               0,
+        "rows_emitted":          0,
+        "rows_written":          0,
+        "missing_event_id":      0,
+        "missing_team_id":       0,
+        "skipped_no_clean_odds": 0,
+        "scored":                0,
+        "unscored":              0,
+        "dry_run":               dry_run,
     }
     sample_rows: List[Dict[str, Any]] = []
     pending_props: List[Dict[str, Any]] = []   # raw prop docs awaiting batch-score
@@ -589,11 +610,18 @@ async def reshape_sport(
                     "cv": row["cv"],
                     "hit": row["hit"],
                 })
+            # Only write rows with clean Odds API odds — skip all other books
+            if row.get("clean_odds") is None:
+                counters["skipped_no_clean_odds"] = counters.get("skipped_no_clean_odds", 0) + 1
+                continue
             pending_ops.append(UpdateOne(upsert_filter(row),
                                               {"$set": row}, upsert=True))
         pending_props.clear()
         if dry_run:
             counters["rows_emitted"] += len(pending_ops)
+            pending_ops.clear()
+            return
+        if not pending_ops:
             pending_ops.clear()
             return
         res = await db[DST_COLL].bulk_write(pending_ops, ordered=False)
@@ -636,6 +664,7 @@ def _print_summary(r: Dict[str, Any]) -> None:
     print(f"     scanned:              {c['scanned']:,}")
     print(f"     missing event_id:     {c['missing_event_id']:,}")
     print(f"     missing team_id:      {c['missing_team_id']:,}")
+    print(f"     skipped (no clean_odds): {c.get('skipped_no_clean_odds', 0):,}")
     print(f"     rows emitted:         {c['rows_emitted']:,}")
     print(f"     rows written/changed: {c['rows_written']:,}  "
           f"({'DRY-RUN' if c['dry_run'] else 'live'})")
@@ -667,6 +696,8 @@ async def amain(args: argparse.Namespace) -> int:
     mongo = AsyncIOMotorClient(os.environ["MONGO_URL"])
     db = mongo[os.environ["DB_NAME"]]
     try:
+        if getattr(args, "archive_dirty", False):
+            await _archive_dirty(db)
         for sp in sports:
             r = await reshape_sport(
                 db, sport=sp, dry_run=dry_run,
@@ -684,6 +715,10 @@ def main() -> int:
     p.add_argument("--sport", choices=list(SUPPORTED_SPORTS) + ["all"],
                     default="all")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--archive-dirty", action="store_true",
+                   help="Before reshaping, move existing team rows with no "
+                        "clean_odds into the archive collection and delete "
+                        "them from the live replay collection.")
     p.add_argument("--max-props", type=int, default=10_000_000)
     p.add_argument("--bulk-chunk", type=int, default=1000)
     return asyncio.run(amain(p.parse_args()))

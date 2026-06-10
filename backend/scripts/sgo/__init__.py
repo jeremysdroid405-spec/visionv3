@@ -35,3 +35,46 @@ BDL_TEAM_ID_TO_MLG_TEAM_ID: dict[int, str] = {
     29: "mlb_tor",
     30: "mlb_wsn",
 }
+
+# BallDontLie numeric team_id → canonical nba_xxx team identifier.
+# Active 30 franchises only; historical/relocated teams omitted.
+BDL_NBA_TEAM_ID_TO_MLG_TEAM_ID: dict[int, str] = {
+    1:  'nba_atl',
+    2:  'nba_bos',
+    3:  'nba_bkn',
+    4:  'nba_cha',
+    5:  'nba_chi',
+    6:  'nba_cle',
+    7:  'nba_dal',
+    8:  'nba_den',
+    9:  'nba_det',
+    10: 'nba_gsw',
+    11: 'nba_hou',
+    12: 'nba_ind',
+    13: 'nba_lac',
+    14: 'nba_lal',
+    15: 'nba_mem',
+    16: 'nba_mia',
+    17: 'nba_mil',
+    18: 'nba_min',
+    19: 'nba_nop',
+    20: 'nba_nyk',
+    21: 'nba_okc',
+    22: 'nba_orl',
+    23: 'nba_phi',
+    24: 'nba_phx',
+    25: 'nba_por',
+    26: 'nba_sac',
+    27: 'nba_sas',
+    28: 'nba_tor',
+    29: 'nba_uta',
+    30: 'nba_was',
+}
+
+
+def get_bdl_team_mapping(sport: str) -> dict:
+    if sport == 'mlb':
+        return BDL_TEAM_ID_TO_MLG_TEAM_ID
+    elif sport == 'nba':
+        return BDL_NBA_TEAM_ID_TO_MLG_TEAM_ID
+    return {}

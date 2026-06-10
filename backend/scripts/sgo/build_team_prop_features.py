@@ -296,7 +296,7 @@ async def build_prop_features_for_sport(
     # line=None is a valid tuple element so no sentinel needed.
     replay_cache: Dict[Tuple, Dict[str, Any]] = {}
     async for r in db[REPLAY_COLL].find(
-        {"prop_type": "team", "league_id": "MLB"},
+        {"prop_type": "team", "league_id": {"$in": ["MLB", "NBA"]}},
         projection={
             "_id": 0, "event_id": 1, "team_id": 1,
             "market_category": 1, "side": 1, "line": 1, "book": 1,

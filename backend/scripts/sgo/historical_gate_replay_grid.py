@@ -110,7 +110,7 @@ async def _load(db, *, start: str, end: str, league: str,
         groups[key].append(r)
     rows: List[Dict[str, Any]] = []
     for group in groups.values():
-        r = group[0]
+        r = min(group, key=lambda x: x.get("implied_probability") or 1.0)
         implieds = [v for v in (_f(g.get("implied_probability")) for g in group)
                     if v is not None]
         r["_hr20"] = _f(r.get("hit_rate_l20"))
@@ -211,11 +211,12 @@ async def _load_team(db, *, start: str, end: str, league: str) -> List[Dict[str,
             r.get("event_id"),
             (r.get("side") or "").upper(),
             r.get("market_category"),
+            r.get("line"),
         )
         groups[key].append(r)
     rows: List[Dict[str, Any]] = []
     for group in groups.values():
-        r = group[0]
+        r = min(group, key=lambda x: x.get("implied_probability") or 1.0)
         implieds = [v for v in (_f(g.get("implied_probability")) for g in group)
                     if v is not None]
         r["_prob"]              = _f(r.get("model_probability"))
