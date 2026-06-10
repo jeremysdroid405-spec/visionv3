@@ -78,6 +78,7 @@ FEATURE_VERSION = "team_v1_priors"
 SRC_COLL = "team_historical_outcomes"
 DST_COLL = "team_model_features"
 BDL_GAME_FEATURES_COLL = "bdl_mlb_team_game_features"
+NBA_BDL_GAME_FEATURES_COLL = "bdl_nba_team_game_features"
 
 SUPPORTED_SPORTS = ("mlb", "nba", "nfl")
 
@@ -178,6 +179,24 @@ class TeamAsOfFeatures:
     spread_cover_neg3_5_l10:  Optional[float] = None
     spread_cover_3_5_l5:      Optional[float] = None
     spread_cover_3_5_l10:     Optional[float] = None
+
+    # BDL NBA features (from bdl_nba_team_game_features; None for non-NBA sports)
+    off_rating_l5:        Optional[float] = None
+    off_rating_l10:       Optional[float] = None
+    off_rating_l20:       Optional[float] = None
+    def_rating_l5:        Optional[float] = None
+    def_rating_l10:       Optional[float] = None
+    def_rating_l20:       Optional[float] = None
+    pace_l5:              Optional[float] = None
+    pace_l10:             Optional[float] = None
+    pace_l20:             Optional[float] = None
+    ts_pct_l10:           Optional[float] = None
+    fg_pct_l10:           Optional[float] = None
+    fg3_pct_l10:          Optional[float] = None
+    reb_pct_l10:          Optional[float] = None
+    ast_pct_l10:          Optional[float] = None
+    is_back_to_back:      Optional[int]   = None
+    games_in_last_7:      Optional[int]   = None
 
     def asdict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -595,6 +614,79 @@ def _merge_bdl_into_feat(feat: "TeamAsOfFeatures", bdl_doc: Dict[str, Any]) -> N
     feat.total_runs_l10_avg      = bdl_doc.get("total_runs_l10_avg")
 
 
+# ───── BDL NBA game features index ─────
+
+async def _load_nba_bdl_index(
+    db: AsyncIOMotorDatabase,
+) -> Dict[str, List[Tuple[str, Dict[str, Any]]]]:
+    """Pre-load bdl_nba_team_game_features into {nba_team_id: [(game_date, doc), ...]}
+    sorted ascending by game_date. One bulk load; no per-row queries."""
+    index: Dict[str, List[Tuple[str, Dict[str, Any]]]] = {}
+    cursor = db[NBA_BDL_GAME_FEATURES_COLL].find(
+        {},
+        projection={
+            "_id": 0, "nba_team_id": 1, "game_date": 1,
+            "off_rating_l5": 1, "off_rating_l10": 1, "off_rating_l20": 1,
+            "def_rating_l5": 1, "def_rating_l10": 1, "def_rating_l20": 1,
+            "pace_l5": 1, "pace_l10": 1, "pace_l20": 1,
+            "ts_pct_l10": 1,
+            "base_fg_pct": 1, "base_fg3_pct": 1,
+            "advanced_reb_pct": 1, "advanced_ast_pct": 1,
+            "is_back_to_back": 1, "games_in_last_7": 1,
+        },
+    ).batch_size(5000)
+    async for doc in cursor:
+        tid = doc.get("nba_team_id")
+        gd = doc.get("game_date")
+        if not tid or not gd:
+            continue
+        index.setdefault(tid, []).append((gd, doc))
+    for lst in index.values():
+        lst.sort(key=lambda x: x[0])
+    return index
+
+
+def _nba_bdl_lookup(
+    index: Dict[str, List[Tuple[str, Dict[str, Any]]]],
+    nba_team_id: str,
+    as_of_date: str,
+) -> Optional[Dict[str, Any]]:
+    """Return the most recent BDL doc for nba_team_id where game_date < as_of_date."""
+    entries = index.get(nba_team_id)
+    if not entries:
+        return None
+    lo, hi = 0, len(entries)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if entries[mid][0] < as_of_date:
+            lo = mid + 1
+        else:
+            hi = mid
+    if lo == 0:
+        return None
+    return entries[lo - 1][1]
+
+
+def _merge_nba_bdl_into_feat(feat: "TeamAsOfFeatures", bdl_doc: Dict[str, Any]) -> None:
+    """Copy BDL fields from a bdl_nba_team_game_features doc into a TeamAsOfFeatures."""
+    feat.off_rating_l5   = bdl_doc.get("off_rating_l5")
+    feat.off_rating_l10  = bdl_doc.get("off_rating_l10")
+    feat.off_rating_l20  = bdl_doc.get("off_rating_l20")
+    feat.def_rating_l5   = bdl_doc.get("def_rating_l5")
+    feat.def_rating_l10  = bdl_doc.get("def_rating_l10")
+    feat.def_rating_l20  = bdl_doc.get("def_rating_l20")
+    feat.pace_l5         = bdl_doc.get("pace_l5")
+    feat.pace_l10        = bdl_doc.get("pace_l10")
+    feat.pace_l20        = bdl_doc.get("pace_l20")
+    feat.ts_pct_l10      = bdl_doc.get("ts_pct_l10")
+    feat.fg_pct_l10      = bdl_doc.get("base_fg_pct")
+    feat.fg3_pct_l10     = bdl_doc.get("base_fg3_pct")
+    feat.reb_pct_l10     = bdl_doc.get("advanced_reb_pct")
+    feat.ast_pct_l10     = bdl_doc.get("advanced_ast_pct")
+    feat.is_back_to_back = bdl_doc.get("is_back_to_back")
+    feat.games_in_last_7 = bdl_doc.get("games_in_last_7")
+
+
 # ───── DB orchestration ─────
 async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     """Idempotent — same tolerant pattern as the rest of the SGO scripts."""
@@ -692,6 +784,13 @@ async def build_features_for_sport(
         bdl_index = await _load_bdl_index(db)
         print(f"  [{sport.upper()}] BDL index: {len(bdl_index)} teams")
 
+    # Pre-load BDL game features index for NBA enrichment.
+    nba_bdl_index: Dict[str, List[Tuple[str, Dict[str, Any]]]] = {}
+    if sport == "nba":
+        print(f"  [{sport.upper()}] loading BDL NBA team game features index…")
+        nba_bdl_index = await _load_nba_bdl_index(db)
+        print(f"  [{sport.upper()}] NBA BDL index: {len(nba_bdl_index)} teams")
+
     counters = {
         "teams_processed":      0,
         "team_dates_emitted":   0,
@@ -735,6 +834,11 @@ async def build_features_for_sport(
                 bdl_doc = _bdl_lookup(bdl_index, team_id, as_of)
                 if bdl_doc:
                     _merge_bdl_into_feat(feat, bdl_doc)
+            # NBA: enrich with BDL advanced team game features.
+            if sport == "nba":
+                nba_bdl_doc = _nba_bdl_lookup(nba_bdl_index, team_id, as_of)
+                if nba_bdl_doc:
+                    _merge_nba_bdl_into_feat(feat, nba_bdl_doc)
             counters["team_dates_emitted"] += 1
             if len(sample_rows) < 5 and feat.sample_size > 0:
                 sample_rows.append({
