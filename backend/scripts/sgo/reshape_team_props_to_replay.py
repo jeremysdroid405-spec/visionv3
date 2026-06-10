@@ -289,7 +289,7 @@ def _lookup_odds_api_odds(
         books = doc.get("books") or {}
         for book in _ODDS_BOOK_PRIORITY:
             val = (books.get(book) or {}).get(key)
-            if val is not None:
+            if val is not None and abs(val) <= 2000:
                 return val
     elif mc == "spread":
         key = "home_spread_odds" if is_home else "away_spread_odds"

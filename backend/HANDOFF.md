@@ -1,5 +1,5 @@
 # HANDOFF
-Generated: 2026-06-10T17:05:18.984889+00:00
+Generated: 2026-06-10T17:25:47.236351+00:00
 
 ## KEY RULES
 - `rescore=False` always
@@ -76,8 +76,8 @@ Generated: 2026-06-10T17:05:18.984889+00:00
 | team_historical_outcomes | 1,893,834 | 2024-07-05 | 2026-05-30 |
 | team_model_features | 13,588 | 2024-07-05 | 2026-06-10 |
 | team_model_prop_features | 1,798,949 | 2024-07-05 | 2026-05-30 |
-| sgo_propvision_full_pipeline_replay | 4,823,084 | 2024-07-05 | 2026-05-30 |
-| research_grid_results | 221,760 | None | None |
+| sgo_propvision_full_pipeline_replay | 4,822,829 | 2024-07-05 | 2026-05-30 |
+| research_grid_results | 222,300 | None | None |
 | bdl_mlb_game_boxscores | 5,783 | 2024-04-01 | 2026-06-08 |
 | odds_api_team_h2h | 7,390 | 2024-07-01 | 2026-06-11 |
 
