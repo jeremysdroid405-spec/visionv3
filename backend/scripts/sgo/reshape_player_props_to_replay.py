@@ -7,7 +7,7 @@ WHY THIS EXISTS
     `sgo_propvision_full_pipeline_replay`. Player prop ML results live in
     `player_model_prop_features` (Phase 2B). This adapter scores each
     row using the trained player XGB model, translates the result into
-    the unified replay schema, and upserts it with `prop_type="player"`.
+    the unified replay schema, and inserts it with `prop_type="player"`.
 
 WHAT IT DOES NOT DO
     - Does not touch prop_type="team" rows.
@@ -31,9 +31,10 @@ FIELD MAPPING (player_model_prop_features → replay row)
     outcome_resolved, outcome_numeric, hit  → lifted from prop row
     pipeline_version       = "player_xgb_v1_scored"
 
-UPSERT KEY
-    (prop_type="player", event_id, player_id, stat_family, side, line,
-     period_id, pipeline_version)
+WRITE STRATEGY
+    Delete all prop_type="player", league_id=sport.upper() rows at the
+    start of the run, then do plain InsertOne — 5-10x faster than upserts
+    on large collections because there is no per-document index lookup.
 
 USAGE
     python -m scripts.sgo.reshape_player_props_to_replay --sport nba --dry-run
@@ -43,6 +44,7 @@ USAGE
 from __future__ import annotations
 import argparse
 import asyncio
+from collections import defaultdict
 import os
 import pickle
 import sys
@@ -61,7 +63,7 @@ for _env in ("/var/www/app/backend/.env", "/app/backend/.env"):
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 import numpy as np
 import pymongo
-from pymongo import UpdateOne
+from pymongo import InsertOne
 
 from scripts.sgo.historical_full_pipeline_replay import _odds_bucket
 from scripts.sgo.train_player_xgb import FEATURE_COLS, row_to_features
@@ -73,7 +75,12 @@ SRC_COLL = "player_model_prop_features"
 DST_COLL = "sgo_propvision_full_pipeline_replay"
 
 SUPPORTED_SPORTS = ("nba", "mlb")
-ARTIFACT_ROOT = Path("/app/backend/models/player_xgb")
+
+_ARTIFACT_ROOTS = [
+    Path("/var/www/app/backend/models/player_xgb"),
+    Path("/app/backend/models/player_xgb"),
+]
+ARTIFACT_ROOT = next((p for p in _ARTIFACT_ROOTS if p.exists()), _ARTIFACT_ROOTS[0])
 
 
 # ───── tier routing (same universal thresholds as team pipeline) ─────
@@ -87,7 +94,7 @@ def tier_for_clean_odds(american_odds: Optional[int]) -> str:
     return "front_lines"
 
 
-# ───── model loader / scorer ─────
+# ───── model loader / batch scorer ─────
 class _PlayerModelCache:
     """Lazy-load and cache player XGB artifacts per (sport, stat_family)."""
 
@@ -95,15 +102,13 @@ class _PlayerModelCache:
         self._cache: Dict[str, Any] = {}
         self._missing: set = set()
 
-    def score(
-        self, prop: Dict[str, Any], sport: str,
-    ) -> Optional[Dict[str, Any]]:
-        sf = prop.get("stat_family") or ""
+    def _get_artifact(self, sport: str, sf: str) -> Optional[Any]:
         key = f"{sport}/{sf}"
         if key in self._missing:
             return None
         if key not in self._cache:
-            path = ARTIFACT_ROOT / sport / f"{sf.replace(' ', '_').replace('/', '_')}.pkl"
+            slug = sf.replace(" ", "_").replace("/", "_")
+            path = ARTIFACT_ROOT / sport / f"{slug}.pkl"
             if not path.exists():
                 self._missing.add(key)
                 return None
@@ -114,31 +119,49 @@ class _PlayerModelCache:
                 print(f"  [model] failed to load {path}: {e}")
                 self._missing.add(key)
                 return None
+        return self._cache[key]
 
-        artifact = self._cache[key]
-        model = artifact["model"]
-        scaler = artifact["scaler"]
-        stat_family_index = {sf2: i for i, sf2 in
-                             enumerate(artifact.get("stat_families") or [])}
+    def score_batch(
+        self, rows: List[Dict[str, Any]], sport: str,
+    ) -> List[Optional[Dict[str, Any]]]:
+        """Score a list of rows in one predict_proba call per stat_family.
+        Returns a list of score dicts (or None) in the same order as input."""
+        results: List[Optional[Dict[str, Any]]] = [None] * len(rows)
 
-        try:
-            vec = row_to_features(prop, stat_family_index)
-            X = np.array([vec], dtype=np.float64)
-            X_s = scaler.transform(X)
-            prob = float(model.predict_proba(X_s)[0, 1])
-        except Exception as e:
-            print(f"  [model] scoring error for {key}: {e}")
-            return None
+        # Group row indices by stat_family so each model is called once.
+        groups: Dict[str, List[int]] = defaultdict(list)
+        for i, row in enumerate(rows):
+            groups[row.get("stat_family") or ""].append(i)
 
-        implied = prop.get("implied_probability")
-        edge = (round(prob - implied, 4)
-                if implied is not None else None)
+        for sf, indices in groups.items():
+            artifact = self._get_artifact(sport, sf)
+            if artifact is None:
+                continue
+            model = artifact["model"]
+            scaler = artifact["scaler"]
+            sf_index = {s: i for i, s in
+                        enumerate(artifact.get("stat_families") or [])}
+            batch = [rows[i] for i in indices]
+            try:
+                X = np.array(
+                    [row_to_features(r, sf_index) for r in batch],
+                    dtype=np.float64,
+                )
+                probs = model.predict_proba(scaler.transform(X))[:, 1]
+                ver = artifact.get("version")
+                for orig_i, row, prob in zip(indices, batch, probs):
+                    implied = row.get("implied_probability")
+                    edge = (round(float(prob) - implied, 4)
+                            if implied is not None else None)
+                    results[orig_i] = {
+                        "model_probability": round(float(prob), 4),
+                        "edge": edge,
+                        "model_version": ver,
+                    }
+            except Exception as e:
+                print(f"  [model] batch scoring error for {sport}/{sf}: {e}")
 
-        return {
-            "model_probability": round(prob, 4),
-            "edge": edge,
-            "model_version": artifact.get("version"),
-        }
+        return results
 
 
 # ───── replay row assembly ─────
@@ -147,8 +170,7 @@ def assemble_replay_row(
     sport: str,
     model_score: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """Translate one player_model_prop_features doc into one replay row
-    matching the schema read by historical_gate_replay_grid.py."""
+    """Translate one player_model_prop_features doc into one replay row."""
     clean_odds = prop.get("clean_odds")
     tier = tier_for_clean_odds(clean_odds)
     bucket = _odds_bucket(clean_odds)
@@ -217,35 +239,9 @@ def assemble_replay_row(
     }
 
 
-def upsert_filter(row: Dict[str, Any]) -> Dict[str, Any]:
-    """Composite upsert key. prop_type="player" prevents collisions
-    with team rows on the same partial index."""
-    return {
-        "prop_type":        "player",
-        "event_id":         row["event_id"],
-        "player_id":        row["player_id"],
-        "stat_family":      row["stat_family"],
-        "side":             row["side"],
-        "line":             row["line"],
-        "period_id":        row["period_id"],
-        "pipeline_version": row["pipeline_version"],
-    }
-
-
 # ───── DB orchestration ─────
 async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     try:
-        await db[DST_COLL].create_index(
-            [("event_id",   pymongo.ASCENDING),
-             ("player_id",  pymongo.ASCENDING),
-             ("stat_family", pymongo.ASCENDING),
-             ("side",        pymongo.ASCENDING),
-             ("line",        pymongo.ASCENDING),
-             ("period_id",   pymongo.ASCENDING),
-             ("pipeline_version", pymongo.ASCENDING)],
-            name="player_upsert_key",
-            partialFilterExpression={"prop_type": "player"},
-        )
         await db[DST_COLL].create_index(
             [("prop_type",  pymongo.ASCENDING),
              ("league_id",  pymongo.ASCENDING),
@@ -261,7 +257,7 @@ async def reshape_sport(
     db: AsyncIOMotorDatabase,
     *,
     sport: str, dry_run: bool,
-    max_props: int, bulk_chunk: int,
+    max_props: int, chunk_size: int,
 ) -> Dict[str, Any]:
     print(f"\n  [{sport.upper()}] reshape player props → {DST_COLL}")
     n_total = await db[SRC_COLL].count_documents({"sport": sport})
@@ -269,11 +265,17 @@ async def reshape_sport(
 
     if not dry_run:
         await _ensure_indexes(db)
+        del_res = await db[DST_COLL].delete_many(
+            {"prop_type": "player", "league_id": sport.upper()})
+        print(f"  [{sport.upper()}] deleted {del_res.deleted_count:,} existing player rows")
 
     counters = {
         "scanned":                0,
+        "deleted":                0 if dry_run else del_res.deleted_count,
         "scored":                 0,
         "unscored":               0,
+        "skipped_no_event_id":    0,
+        "skipped_no_player_id":   0,
         "skipped_no_clean_odds":  0,
         "skipped_implied_filter": 0,
         "rows_emitted":           0,
@@ -282,20 +284,45 @@ async def reshape_sport(
     }
     sample_rows: List[Dict] = []
     model_cache = _PlayerModelCache()
-    pending: List[UpdateOne] = []
+    pending_props: List[Dict[str, Any]] = []
 
     async def _flush() -> None:
-        if not pending:
+        if not pending_props:
             return
-        if dry_run:
-            counters["rows_emitted"] += len(pending)
-            pending.clear()
+
+        scores = model_cache.score_batch(pending_props, sport)
+        ops: List[InsertOne] = []
+
+        for p, score in zip(pending_props, scores):
+            counters["scored" if score is not None else "unscored"] += 1
+            row = assemble_replay_row(p, sport, score)
+
+            if len(sample_rows) < 5 and score is not None:
+                sample_rows.append({
+                    "player_id":   row["player_id"],
+                    "game_date":   row["game_date"],
+                    "stat_family": row["stat_family"],
+                    "side":        row["side"],
+                    "line":        row["line"],
+                    "tier":        row["tier"],
+                    "tp":          row["tp"],
+                    "edge":        row["edge"],
+                    "hr_l20":      row["hit_rate_l20"],
+                    "cv":          row["cv"],
+                    "hit":         row["hit"],
+                })
+
+            ops.append(InsertOne(row))
+
+        counters["rows_emitted"] += len(ops)
+        pending_props.clear()
+
+        if dry_run or not ops:
             return
-        res = await db[DST_COLL].bulk_write(pending, ordered=False)
-        counters["rows_emitted"] += len(pending)
-        counters["rows_written"] += (
-            (res.upserted_count or 0) + (res.modified_count or 0))
-        pending.clear()
+
+        res = await db[DST_COLL].bulk_write(ops, ordered=False,
+                                             bypass_document_validation=True)
+        counters["rows_written"] += (res.inserted_count or 0)
 
     cursor = db[SRC_COLL].find({"sport": sport}).batch_size(2000)
     async for p in cursor:
@@ -305,50 +332,35 @@ async def reshape_sport(
             break
 
         if not p.get("event_id"):
+            counters["skipped_no_event_id"] += 1
             continue
         if not p.get("player_id"):
+            counters["skipped_no_player_id"] += 1
             continue
 
-        # implied bounds filter: same 0.10–0.90 as team pipeline
         ip = p.get("implied_probability")
         if ip is None or ip < 0.10 or ip > 0.90:
             counters["skipped_implied_filter"] += 1
             continue
 
-        # clean_odds required — same gate as team pipeline
         if p.get("clean_odds") is None:
             counters["skipped_no_clean_odds"] += 1
             continue
 
-        score = model_cache.score(p, sport)
-        counters["scored" if score is not None else "unscored"] += 1
+        pending_props.append(p)
 
-        row = assemble_replay_row(p, sport, score)
-
-        if len(sample_rows) < 5 and score is not None:
-            sample_rows.append({
-                "player_id":   row["player_id"],
-                "game_date":   row["game_date"],
-                "stat_family": row["stat_family"],
-                "side":        row["side"],
-                "line":        row["line"],
-                "tier":        row["tier"],
-                "tp":          row["tp"],
-                "edge":        row["edge"],
-                "hr_l20":      row["hit_rate_l20"],
-                "cv":          row["cv"],
-                "hit":         row["hit"],
-            })
-
-        pending.append(UpdateOne(upsert_filter(row), {"$set": row}, upsert=True))
-        if len(pending) >= bulk_chunk:
+        if len(pending_props) >= chunk_size:
             await _flush()
-            if counters["scanned"] % 50000 == 0:
+            if counters["scanned"] % 10000 == 0:
                 print(f"    [{sport.upper()}] scanned={counters['scanned']:,}  "
                       f"written={counters['rows_written']:,}  "
                       f"scored={counters['scored']:,}")
 
     await _flush()
+    # Final progress line
+    print(f"    [{sport.upper()}] scanned={counters['scanned']:,}  "
+          f"written={counters['rows_written']:,}  "
+          f"scored={counters['scored']:,}  (final)")
     return {"sport": sport, "counters": counters, "sample_rows": sample_rows}
 
 
@@ -356,7 +368,10 @@ def _print_summary(r: Dict[str, Any]) -> None:
     c = r["counters"]
     print()
     print(f"  ── {r['sport'].upper()} PLAYER RESHAPE SUMMARY ──")
+    print(f"     deleted (prior run):     {c['deleted']:,}")
     print(f"     scanned:                 {c['scanned']:,}")
+    print(f"     skipped (no event_id):   {c['skipped_no_event_id']:,}")
+    print(f"     skipped (no player_id):  {c['skipped_no_player_id']:,}")
     print(f"     skipped (no clean_odds): {c['skipped_no_clean_odds']:,}")
     print(f"     skipped (implied oob):   {c['skipped_implied_filter']:,}")
     print(f"     scored by model:         {c['scored']:,}")
@@ -385,9 +400,10 @@ async def amain(args: argparse.Namespace) -> int:
     print(f"[{datetime.now(timezone.utc).isoformat()}] "
           f"reshape_player_props_to_replay  pipeline_version={PIPELINE_VERSION}")
     print(f"  sports={sports}  dry_run={dry_run}  "
-          f"max_props={args.max_props}  bulk_chunk={args.bulk_chunk}")
-    print(f"  CONTRACT: idempotent upserts into {DST_COLL} with "
+          f"max_props={args.max_props}  chunk_size={args.chunk_size}")
+    print(f"  CONTRACT: delete+insert into {DST_COLL} with "
           "prop_type='player'. Team rows untouched.")
+    print(f"  ARTIFACT_ROOT: {ARTIFACT_ROOT}")
 
     mongo = AsyncIOMotorClient(os.environ["MONGO_URL"])
     db = mongo[os.environ["DB_NAME"]]
@@ -395,7 +411,7 @@ async def amain(args: argparse.Namespace) -> int:
         for sp in sports:
             r = await reshape_sport(
                 db, sport=sp, dry_run=dry_run,
-                max_props=args.max_props, bulk_chunk=args.bulk_chunk)
+                max_props=args.max_props, chunk_size=args.chunk_size)
             _print_summary(r)
         if dry_run:
             print("\n  DRY-RUN — no writes. Re-run without --dry-run to persist.")
@@ -410,7 +426,7 @@ def main() -> int:
                    default="all")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--max-props", type=int, default=10_000_000)
-    p.add_argument("--bulk-chunk", type=int, default=1000)
+    p.add_argument("--chunk-size", type=int, default=10_000)
     return asyncio.run(amain(p.parse_args()))
 
 

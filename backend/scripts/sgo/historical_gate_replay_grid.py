@@ -190,29 +190,37 @@ def _iter_grid(g: Dict[str, List[float]]):
                         yield h20, h5, cv, e, t
 
 
-async def _load_team(db, *, start: str, end: str, league: str) -> List[Dict[str, Any]]:
+async def _load_team(db, *, start: str, end: str, league: str,
+                     prop_type: str = "team") -> List[Dict[str, Any]]:
     match: Dict[str, Any] = {
-        "prop_type": "team",
+        "prop_type": prop_type,
         "league_id": league,
         "game_date": {"$gte": start, "$lte": end},
-        "book": {"$in": list(REPLAY_BOOK_WHITELIST_PHASE1)},
         "clean_odds": {"$exists": True, "$ne": None},
     }
+    if prop_type == "team":
+        match["book"] = {"$in": list(REPLAY_BOOK_WHITELIST_PHASE1)}
     proj = {"_id": 0, "market_category": 1, "model_probability": 1,
             "edge": 1, "implied_probability": 1, "fair_probability": 1,
-            "outcome_numeric": 1, "game_date": 1, "event_id": 1, "side": 1, "clean_odds": 1}
-    # One row per book in the replay collection → group by unique bet so
-    # n_bets / profit / ROI aren't inflated ~18x.  Same dedup logic as _load:
-    # _implied = best (max) odds across books (fallback to fair_probability);
-    # _consensus_implied = avg implied across books.
+            "outcome_numeric": 1, "game_date": 1, "event_id": 1, "side": 1,
+            "clean_odds": 1, "player_id": 1, "stat_family": 1, "line": 1}
     groups: Dict[tuple, List[Dict[str, Any]]] = defaultdict(list)
     async for r in db[REPLAY].find(match, proj):
-        key = (
-            r.get("event_id"),
-            (r.get("side") or "").upper(),
-            r.get("market_category"),
-            r.get("line"),
-        )
+        if prop_type == "player":
+            key = (
+                r.get("event_id"),
+                r.get("player_id"),
+                r.get("stat_family"),
+                (r.get("side") or "").upper(),
+                r.get("line"),
+            )
+        else:
+            key = (
+                r.get("event_id"),
+                (r.get("side") or "").upper(),
+                r.get("market_category"),
+                r.get("line"),
+            )
         groups[key].append(r)
     rows: List[Dict[str, Any]] = []
     for group in groups.values():
@@ -275,22 +283,25 @@ def _iter_team_grid(g: Dict[str, List[float]]):
             yield prob, e
 
 
-async def _run_team(args: argparse.Namespace, db) -> int:
+async def _run_team(args: argparse.Namespace, db,
+                    prop_type: str = "team") -> int:
     run_id = str(uuid.uuid4())
     started = datetime.now(timezone.utc)
-    methodology = "per_market_category_team"
+    methodology = ("per_stat_family_player" if prop_type == "player"
+                   else "per_market_category_team")
 
     await db[RUNS].insert_one({
         "run_id": run_id, "version": VERSION, "methodology": methodology,
-        "mode": "team",
+        "mode": prop_type,
         "params": {"league": args.league, "start": args.start,
                    "end": args.end, "min_bets": args.min_bets,
                    "grid": TEAM_GRID},
         "status": "running", "started_at": started, "finished_at": None,
     })
 
+    mode_label = "PLAYER" if prop_type == "player" else "TEAM"
     print("=" * 78)
-    print(f"  TEAM MODE — PER-MARKET_CATEGORY GRID  v{VERSION}")
+    print(f"  {mode_label} MODE — PER-MARKET_CATEGORY GRID  v{VERSION}")
     print(f"  run_id={run_id}")
     print(f"  league={args.league} window={args.start}..{args.end} "
           f"min_bets={args.min_bets}")
@@ -299,7 +310,8 @@ async def _run_team(args: argparse.Namespace, db) -> int:
         print(f"    {k:<26} {v}")
     print("=" * 78)
 
-    rows = await _load_team(db, start=args.start, end=args.end, league=args.league)
+    rows = await _load_team(db, start=args.start, end=args.end, league=args.league,
+                            prop_type=prop_type)
     print(f"  team rows in replay collection: {len(rows):,}")
     if not rows:
         await db[RUNS].update_one(
@@ -335,7 +347,7 @@ async def _run_team(args: argparse.Namespace, db) -> int:
             metrics = _eval_team(pool, prob_min, edge_min)
             cell = {
                 "run_id": run_id, "version": VERSION,
-                "methodology": methodology, "mode": "team",
+                "methodology": methodology, "mode": prop_type,
                 "market_category": cat,
                 **metrics,
             }
@@ -364,7 +376,7 @@ async def _run_team(args: argparse.Namespace, db) -> int:
                 saved_candidates.append({
                     "run_id":          run_id,
                     "league":          args.league,
-                    "mode":            "team",
+                    "mode":            prop_type,
                     "methodology":     methodology,
                     "market_category": cat,
                     "rank":            rank,
@@ -426,201 +438,7 @@ async def _run(args: argparse.Namespace) -> int:
 async def _run_body(args: argparse.Namespace, db) -> int:
     if args.min_bets is None:
         args.min_bets = 1 if args.mode == "team" else 20
-    if args.mode == "team":
-        return await _run_team(args, db)
-    grid = dict(DEFAULT_GRID)
-    run_id = str(uuid.uuid4())
-    started = datetime.now(timezone.utc)
-    await db[RUNS].insert_one({
-        "run_id": run_id, "version": VERSION, "methodology": METHODOLOGY,
-        "params": {"league": args.league, "start": args.start,
-                     "end": args.end, "min_bets": args.min_bets,
-                     "grid": grid},
-        "status": "running", "started_at": started, "finished_at": None,
-    })
-
-    print("=" * 78)
-    print(f"  PER-TIER × PER-STAT_FAMILY GRID  v{VERSION}")
-    print(f"  run_id={run_id}")
-    print(f"  league={args.league} window={args.start}..{args.end} "
-            f"min_bets={args.min_bets}")
-    print(f"  grid axes:")
-    for k, v in grid.items():
-        print(f"    {k:<14} {v}")
-    print("=" * 78)
-
-    rows = await _load(db, start=args.start, end=args.end,
-                          league=args.league, tier_filter=None)
-    print(f"  rows in replay collection: {len(rows):,}")
-    if not rows:
-        await db[RUNS].update_one(
-            {"run_id": run_id},
-            {"$set": {"status": "succeeded_empty",
-                        "finished_at": datetime.now(timezone.utc)}})
-        return 0
-
-    by_tier_fam_side: Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
-    by_tier_fam:      Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
-    by_tier:          Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    for r in rows:
-        # The live pipeline assigns one tier per row (SH > FL > WZ).
-        # For the sweep, we evaluate "what if the gate had been THIS
-        # threshold set instead of the live one" — so we sweep the
-        # universe of ALL rows that landed in each tier. A row in
-        # safe_haven counts for the SH sweep regardless of whether
-        # FL/WZ also passed (FL/WZ universe is everything they pass on,
-        # which by construction overlaps).
-        for tier in TIERS:
-            if r.get(f"{tier}_pass"):
-                by_tier[tier].append(r)
-                fam = r.get("stat_family") or "_unknown"
-                by_tier_fam[(tier, fam)].append(r)
-                sd = (r.get("side") or "").upper() or "?"
-                by_tier_fam_side[(tier, fam, sd)].append(r)
-
-    print()
-    for tier in TIERS:
-        n = len(by_tier[tier])
-        print(f"  {tier:<12} universe size = {n:,}")
-
-    # ── Sweep ──────────────────────────────────────────────────
-    # 2026-05-26 — STREAMING writes instead of accumulating the full
-    # bulk list in RAM. WHY:
-    #   The old code built `bulk: List[Dict]` over the entire sweep
-    #   (3,000 combos × ~66 tier×fam groups + ~132 tier×fam×side
-    #   groups ≈ 594,000 cells × ~1 KB each = ~600 MB resident).
-    #   Combined with the row dataset, motor pool buffers, and any
-    #   concurrent /results aggregation, peak RSS easily blew the
-    #   4 GiB worker rlimit and the kernel SIGKILL'd it. Symptom for
-    #   the operator: "optimizer 504'd and killed the OOM."
-    #
-    #   With streaming, peak buffer is bounded to FLUSH_EVERY × cell_size
-    #   (1 MB) regardless of how many combos × groups the sweep
-    #   produces.
-    n_cells_total = 0
-    n_cells_qualified = 0
-    candidates: List[Dict[str, Any]] = []
-    # For "best per (tier, family)" we need to remember the winning
-    # cells. Storing only the WINNERS (not all 594k cells) keeps the
-    # dict tiny — at most 3 tiers × ~22 fams = ~66 entries.
-    best_per_pair_hr: Dict[Any, Dict[str, Any]] = {}
-    best_per_pair_dl: Dict[Any, Dict[str, Any]] = {}
-    FLUSH_EVERY = 1000
-    write_buffer: List[Dict[str, Any]] = []
-
-    async def _flush():
-        if write_buffer and not args.dry_run:
-            await db[RESULTS].insert_many(write_buffer, ordered=False)
-        write_buffer.clear()
-
-    for (tier, fam), pool in by_tier_fam.items():
-        if len(pool) < args.min_bets: continue
-        for h20, h5, cv, e, t in _iter_grid(grid):
-            n_cells_total += 1
-            metrics = _eval(pool, h20, h5, cv, e, t)
-            cell = {"run_id": run_id, "version": VERSION,
-                     "methodology": METHODOLOGY,
-                     "slice": "TIER_FAMILY",
-                     "tier": tier, "stat_family": fam,
-                     **metrics}
-            write_buffer.append(cell)
-            if len(write_buffer) >= FLUSH_EVERY:
-                await _flush()
-            if (metrics["n_bets"] or 0) >= args.min_bets:
-                n_cells_qualified += 1
-                # Track best-per-(tier,fam) ON THE FLY so we don't have
-                # to hold the full bulk list to find winners later.
-                pk = (tier, fam)
-                hr = metrics.get("hit_rate") or -1
-                if pk not in best_per_pair_hr or hr > (best_per_pair_hr[pk]["hit_rate"] or -1):
-                    best_per_pair_hr[pk] = cell
-                dl = metrics.get("calibration_delta")
-                if dl is not None:
-                    if pk not in best_per_pair_dl or dl > (best_per_pair_dl[pk]["calibration_delta"] or -1):
-                        best_per_pair_dl[pk] = cell
-                if (metrics.get("calibration_delta") or -1) > 0:
-                    candidates.append(cell)
-
-    # Side-split for top tier+family combos
-    for (tier, fam, sd), pool in by_tier_fam_side.items():
-        if len(pool) < args.min_bets: continue
-        for h20, h5, cv, e, t in _iter_grid(grid):
-            n_cells_total += 1
-            metrics = _eval(pool, h20, h5, cv, e, t)
-            cell = {"run_id": run_id, "version": VERSION,
-                     "methodology": METHODOLOGY,
-                     "slice": "TIER_FAMILY_SIDE",
-                     "tier": tier, "stat_family": fam, "side": sd,
-                     **metrics}
-            write_buffer.append(cell)
-            if len(write_buffer) >= FLUSH_EVERY:
-                await _flush()
-            if (metrics["n_bets"] or 0) >= args.min_bets:
-                n_cells_qualified += 1
-
-    # Final flush
-    await _flush()
-
-    # Save candidates
-    saved_candidates: List[Dict[str, Any]] = []
-    if not args.dry_run:
-        for pk, c in best_per_pair_dl.items():
-            saved_candidates.append({
-                "run_id": run_id, "league": args.league,
-                "tier": c["tier"], "stat_family": c["stat_family"],
-                "params": {k: c[k] for k in
-                              ("hr_l20_min", "hr_l5_min", "cv_max",
-                               "edge_min", "tp_min")},
-                "metrics": {k: c[k] for k in
-                                ("n_bets", "hit_rate", "consensus_avg",
-                                 "calibration_delta", "avg_hr_l20",
-                                 "avg_cv", "avg_edge", "avg_tp",
-                                 "daily_consistency", "daily_days")},
-                "rank_by": "calibration_delta",
-                "created_at": datetime.now(timezone.utc),
-            })
-        if saved_candidates:
-            await db["candidate_gate_configs"].insert_many(
-                saved_candidates, ordered=False)
-
-    await db[RUNS].update_one(
-        {"run_id": run_id},
-        {"$set": {"status": "succeeded",
-                    "finished_at": datetime.now(timezone.utc),
-                    "n_cells_total": n_cells_total,
-                    "n_cells_qualified": n_cells_qualified,
-                    "n_candidates_saved": len(saved_candidates)}})
-
-    # Report
-    print()
-    print(f"  cells evaluated: {n_cells_total:,}  qualified (n≥{args.min_bets}): {n_cells_qualified:,}")
-    print()
-    print("  ── BEST (tier × stat_family) by HIT RATE ─────────────")
-    print(f"  {'tier':<12}{'stat_family':<22}{'n':>5}{'hit':>7}{'Δ':>7}"
-            f"{'edge':>7}{'cv':>6}{'tp':>6}")
-    for pk, c in sorted(best_per_pair_hr.items(),
-                          key=lambda kv: -(kv[1].get('hit_rate') or 0)):
-        print(f"  {c['tier']:<12}{c['stat_family']:<22}"
-                f"{c['n_bets']:>5}"
-                f"{(c.get('hit_rate') or 0)*100:>6.1f}%"
-                f"{(c.get('calibration_delta') or 0)*100:>+6.1f}"
-                f"{(c.get('avg_edge') or 0)*100:>+6.2f}"
-                f"{(c.get('avg_cv') or 0):>6.2f}"
-                f"{(c.get('avg_tp') or 0)*100:>5.1f}%")
-    print()
-    print("  ── BEST (tier × stat_family) by CALIBRATION DELTA ─────")
-    print(f"  {'tier':<12}{'stat_family':<22}{'n':>5}{'hit':>7}{'Δ':>7}")
-    for pk, c in sorted(best_per_pair_dl.items(),
-                          key=lambda kv: -(kv[1].get('calibration_delta') or -1)):
-        print(f"  {c['tier']:<12}{c['stat_family']:<22}"
-                f"{c['n_bets']:>5}"
-                f"{(c.get('hit_rate') or 0)*100:>6.1f}%"
-                f"{(c.get('calibration_delta') or 0)*100:>+6.1f}")
-    print()
-    print(f"  run_id={run_id}")
-    print(f"  → research_grid_results  ({n_cells_total:,} docs)")
-    print(f"  → candidate_gate_configs ({len(saved_candidates)} docs)")
-    return 0
+    return await _run_team(args, db, prop_type=args.mode)
 
 
 def _parse():

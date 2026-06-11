@@ -55,7 +55,7 @@ import pymongo
 from pymongo import UpdateOne
 
 BUILDER_VERSION = "player_prop_v1"
-SRC_COLL = "sgo_pp_research_outcomes"
+SRC_COLL = "sgo_propvision_full_pipeline_replay"
 SRC_FEATURES = "player_model_features"
 DST_COLL = "player_model_prop_features"
 

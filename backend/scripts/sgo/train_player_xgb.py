@@ -242,7 +242,7 @@ async def load_training_rows(
         "side": 1, "stat_family": 1, "game_date": 1,
         "outcome_numeric": 1,
     }
-    cur = db["player_model_prop_features"].find(match, proj).limit(max_rows)
+    cur = db["sgo_propvision_full_pipeline_replay"].find(match, proj).limit(max_rows)
     return [d async for d in cur]
 
 
@@ -397,7 +397,7 @@ async def train_for_sport(
     stat_families: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     if stat_families is None:
-        raw = await db["player_model_prop_features"].distinct(
+        raw = await db["sgo_propvision_full_pipeline_replay"].distinct(
             "stat_family", {"sport": sport})
         stat_families = sorted([s for s in raw if s])
 
