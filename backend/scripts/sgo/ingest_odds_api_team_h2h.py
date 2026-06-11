@@ -113,7 +113,7 @@ async def fetch_event_odds(
     params = {
         "apiKey": api_key,
         "regions": "us",
-        "markets": "h2h,spreads,totals,alternate_spreads,alternate_totals",
+        "markets": "h2h,spreads,totals,alternate_spreads,alternate_totals,team_totals,alternate_team_totals",
         "date": f"{date_str}T18:00:00Z",
     }
     resp = await client.get(url, params=params, timeout=30)
@@ -219,6 +219,98 @@ def parse_spreads_totals(
                     }
 
     return spread_books, totals_books
+
+
+def parse_team_totals(
+    event_data: Dict[str, Any], home_team: str, away_team: str
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Extract per-book team totals and alternate team totals from event data.
+    Returns (team_totals_books, alt_team_totals_books) dicts keyed by book key.
+
+    team_totals_books entries: {home_line, home_over_odds, home_under_odds,
+        home_over_implied, home_under_implied, away_line, away_over_odds,
+        away_under_odds, away_over_implied, away_under_implied}
+    alt_team_totals_books entries: list of {team, line, over_odds, under_odds,
+        over_implied, under_implied} — description field identifies team.
+    """
+    team_totals_books: Dict[str, Any] = {}
+    alt_team_totals_books: Dict[str, List[Dict[str, Any]]] = {}
+    bookmakers = event_data.get("bookmakers", []) or []
+
+    for bm in bookmakers:
+        key = bm.get("key", "")
+        if key not in WHITELISTED_BOOKS:
+            continue
+
+        markets = bm.get("markets", []) or []
+
+        tt_market = next((m for m in markets if m.get("key") == "team_totals"), None)
+        if tt_market:
+            by_team: Dict[str, Dict[str, Any]] = {}
+            for o in tt_market.get("outcomes", []):
+                desc = (o.get("description") or "").lower()
+                side_name = (o.get("name") or "").lower()
+                point = o.get("point")
+                price = o.get("price")
+                if not desc or not side_name or point is None or price is None:
+                    continue
+                by_team.setdefault(desc, {})[side_name] = {"point": point, "price": price}
+
+            entry: Dict[str, Any] = {}
+            home_data = by_team.get(home_team)
+            if home_data:
+                home_over = home_data.get("over")
+                home_under = home_data.get("under")
+                if home_over and home_under:
+                    entry["home_line"] = home_over["point"]
+                    entry["home_over_odds"] = decimal_to_american(home_over["price"])
+                    entry["home_under_odds"] = decimal_to_american(home_under["price"])
+                    entry["home_over_implied"] = round(decimal_to_implied(home_over["price"]), 6)
+                    entry["home_under_implied"] = round(decimal_to_implied(home_under["price"]), 6)
+            away_data = by_team.get(away_team)
+            if away_data:
+                away_over = away_data.get("over")
+                away_under = away_data.get("under")
+                if away_over and away_under:
+                    entry["away_line"] = away_over["point"]
+                    entry["away_over_odds"] = decimal_to_american(away_over["price"])
+                    entry["away_under_odds"] = decimal_to_american(away_under["price"])
+                    entry["away_over_implied"] = round(decimal_to_implied(away_over["price"]), 6)
+                    entry["away_under_implied"] = round(decimal_to_implied(away_under["price"]), 6)
+            if entry:
+                team_totals_books[key] = entry
+
+        att_market = next((m for m in markets if m.get("key") == "alternate_team_totals"), None)
+        if att_market:
+            by_team_line: Dict[tuple, Dict[str, float]] = {}
+            for o in att_market.get("outcomes", []):
+                desc = (o.get("description") or "").lower()
+                side_name = (o.get("name") or "").lower()
+                point = o.get("point")
+                price = o.get("price")
+                if not desc or not side_name or point is None or price is None:
+                    continue
+                by_team_line.setdefault((desc, point), {})[side_name] = price
+
+            book_lines = []
+            for (team_desc, line), sides in sorted(by_team_line.items()):
+                over_dec = sides.get("over")
+                under_dec = sides.get("under")
+                if over_dec is None or under_dec is None:
+                    continue
+                book_lines.append({
+                    "team": team_desc,
+                    "line": line,
+                    "over_odds": decimal_to_american(over_dec),
+                    "under_odds": decimal_to_american(under_dec),
+                    "over_implied": round(decimal_to_implied(over_dec), 6),
+                    "under_implied": round(decimal_to_implied(under_dec), 6),
+                })
+            if book_lines:
+                alt_team_totals_books[key] = book_lines
+
+    return team_totals_books, alt_team_totals_books
 
 
 def parse_alternates(
@@ -328,6 +420,7 @@ def build_document(
     alt_spread_books, alt_totals_books, alt_spread_lines, alt_total_lines = parse_alternates(
         odds_data, home_team, away_team
     )
+    team_totals_books, alt_team_totals_books = parse_team_totals(odds_data, home_team, away_team)
 
     home_implieds = [v["home_implied"] for v in books.values()]
     away_implieds = [v["away_implied"] for v in books.values()]
@@ -344,6 +437,11 @@ def build_document(
     total_lines = [v["total_line"] for v in totals_books.values()]
     over_imp = [v["over_implied"] for v in totals_books.values()]
     under_imp = [v["under_implied"] for v in totals_books.values()]
+
+    home_total_lines = [v["home_line"] for v in team_totals_books.values() if "home_line" in v]
+    away_total_lines = [v["away_line"] for v in team_totals_books.values() if "away_line" in v]
+    home_over_imps = [v["home_over_implied"] for v in team_totals_books.values() if "home_over_implied" in v]
+    away_over_imps = [v["away_over_implied"] for v in team_totals_books.values() if "away_over_implied" in v]
 
     return {
         "odds_api_event_id": event["id"],
@@ -369,6 +467,12 @@ def build_document(
         "alternate_totals_books": alt_totals_books,
         "alternate_spread_lines": alt_spread_lines,
         "alternate_total_lines": alt_total_lines,
+        "team_totals_books": team_totals_books,
+        "alt_team_totals_books": alt_team_totals_books,
+        "consensus_home_total_line": round(sum(home_total_lines) / len(home_total_lines), 4) if home_total_lines else None,
+        "consensus_away_total_line": round(sum(away_total_lines) / len(away_total_lines), 4) if away_total_lines else None,
+        "consensus_home_over_implied": round(sum(home_over_imps) / len(home_over_imps), 6) if home_over_imps else None,
+        "consensus_away_over_implied": round(sum(away_over_imps) / len(away_over_imps), 6) if away_over_imps else None,
         "ingested_at": datetime.utcnow(),
     }
 
@@ -488,10 +592,26 @@ async def main(league: str, start: str, end: str) -> None:
 
 
 if __name__ == "__main__":
+    _BACKFILL_RANGES = {
+        "MLB": ("2024-07-01", "2026-06-10"),
+        "NBA": ("2024-10-22", "2026-04-13"),
+    }
+
     parser = argparse.ArgumentParser(description="Ingest historical h2h odds from The Odds API.")
-    parser.add_argument("--league", required=True, choices=["MLB", "NBA"], help="League: MLB or NBA")
-    parser.add_argument("--start", required=True, help="Start date YYYY-MM-DD")
-    parser.add_argument("--end", required=True, help="End date YYYY-MM-DD")
+    grp = parser.add_mutually_exclusive_group(required=True)
+    grp.add_argument("--league", choices=["MLB", "NBA"], help="League: MLB or NBA")
+    grp.add_argument("--sport", choices=["mlb", "nba"], help="Sport lowercase alias for --league")
+    parser.add_argument("--start", help="Start date YYYY-MM-DD (required without --backfill)")
+    parser.add_argument("--end", help="End date YYYY-MM-DD (required without --backfill)")
+    parser.add_argument("--backfill", action="store_true", help="Ingest full historical season")
     args = parser.parse_args()
 
-    asyncio.run(main(args.league, args.start, args.end))
+    league = args.league or args.sport.upper()
+    if args.backfill:
+        start, end = _BACKFILL_RANGES[league]
+    else:
+        if not args.start or not args.end:
+            parser.error("--start and --end are required when --backfill is not set.")
+        start, end = args.start, args.end
+
+    asyncio.run(main(league, start, end))

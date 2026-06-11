@@ -357,7 +357,8 @@ def _train_one(
         eval_metric="logloss",
         tree_method="hist",
     )
-    model = CalibratedClassifierCV(inner, method="isotonic", cv=5)
+    cal_method = "isotonic" if len(X_tr) >= 20000 else "sigmoid"
+    model = CalibratedClassifierCV(inner, method=cal_method, cv=5)
     model.fit(X_tr_s, y_tr)
 
     p_tr = model.predict_proba(X_tr_s)[:, 1]

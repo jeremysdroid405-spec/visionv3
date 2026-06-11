@@ -114,14 +114,27 @@ SUPPORTED_SPORTS = ("mlb", "nba", "nfl")
 
 
 # ───── tier routing ─────
-# Mirrors `_tier_odds_filter` in routes/emergent_admin/optimizer.py.
-# Pure odds-bucket-based routing (per operator: "tier routing only").
+# Uses the SAME universal thresholds as production (UNIVERSAL_SAFE_HAVEN_MAX=-300,
+# UNIVERSAL_WAR_ZONE_MIN=150) so backtest and production route identically.
+from services.scoring.gates.thresholds import UNIVERSAL_SAFE_HAVEN_MAX, UNIVERSAL_WAR_ZONE_MIN
+
 def tier_for_odds_bucket(bucket: str) -> str:
+    # kept for legacy callers — delegates to resolve_target_tier
     if bucket in ("odds_-200_-100", "odds_lt_-200"):
         return "safe_haven"
     if bucket in ("odds_+150_+300", "odds_+300p"):
         return "war_zone"
-    return "front_lines"   # +0_+150, -100_-0, na
+    return "front_lines"
+
+def tier_for_clean_odds(american_odds: Optional[int]) -> str:
+    """Route using the same universal thresholds as production."""
+    if american_odds is None:
+        return "front_lines"
+    if american_odds <= UNIVERSAL_SAFE_HAVEN_MAX:
+        return "safe_haven"
+    if american_odds >= UNIVERSAL_WAR_ZONE_MIN:
+        return "war_zone"
+    return "front_lines"
 
 
 # ───── pure helpers (unit-tested) ─────
@@ -178,8 +191,6 @@ def _lookup_odds_api_implied(
     alternate_spreads_books (spread) first; falls back to consensus fields.
     """
     mc = (market_category or "").lower()
-    if mc == "team_total":
-        return None
     team_name = TEAM_ID_TO_NAME.get(team_id)
     opp_name = TEAM_ID_TO_NAME.get(opponent_team_id)
     if not team_name or not opp_name:
@@ -218,6 +229,30 @@ def _lookup_odds_api_implied(
                             return val
         return doc.get("consensus_over_implied") if (side or "").upper() == "OVER" else doc.get("consensus_under_implied")
     is_home = doc["home_team"] == team_name
+    if mc == "team_total":
+        team_key = "home" if is_home else "away"
+        imp_side_key = "over_implied" if (side or "").upper() == "OVER" else "under_implied"
+        tt_imp_key = f"{team_key}_{imp_side_key}"
+        if prop_line is not None:
+            tt_books = doc.get("team_totals_books") or {}
+            team_line_key = f"{team_key}_line"
+            for book in _ODDS_BOOK_PRIORITY:
+                entry = tt_books.get(book) or {}
+                if entry.get(team_line_key) == prop_line:
+                    val = entry.get(tt_imp_key)
+                    if val is not None:
+                        return val
+            att_books = doc.get("alt_team_totals_books") or {}
+            for book in _ODDS_BOOK_PRIORITY:
+                for entry in (att_books.get(book) or []):
+                    if entry.get("team") == team_name and entry.get("line") == prop_line:
+                        val = entry.get(imp_side_key)
+                        if val is not None:
+                            return val
+            return None
+        if (side or "").upper() == "OVER":
+            return doc.get(f"consensus_{team_key}_over_implied")
+        return None
     if mc == "spread":
         if prop_line is not None:
             alt_books = doc.get("alternate_spreads_books") or {}
@@ -251,8 +286,6 @@ def _lookup_odds_api_odds(
     alternate_spreads_books (spread) before the standard book dicts.
     """
     mc = (market_category or "").lower()
-    if mc == "team_total":
-        return None
     team_name = TEAM_ID_TO_NAME.get(team_id)
     opp_name = TEAM_ID_TO_NAME.get(opponent_team_id)
     if not team_name or not opp_name:
@@ -323,6 +356,32 @@ def _lookup_odds_api_odds(
             val = (totals_books.get(book) or {}).get(key)
             if val is not None:
                 return val
+    elif mc == "team_total":
+        team_key = "home" if is_home else "away"
+        side_key = "over" if (side or "").upper() == "OVER" else "under"
+        odds_key = f"{team_key}_{side_key}_odds"
+        if prop_line is not None:
+            tt_books = doc.get("team_totals_books") or {}
+            team_line_key = f"{team_key}_line"
+            for book in _ODDS_BOOK_PRIORITY:
+                entry = tt_books.get(book) or {}
+                if entry.get(team_line_key) == prop_line:
+                    val = entry.get(odds_key)
+                    if val is not None:
+                        return val
+            att_books = doc.get("alt_team_totals_books") or {}
+            for book in _ODDS_BOOK_PRIORITY:
+                for entry in (att_books.get(book) or []):
+                    if entry.get("team") == team_name and entry.get("line") == prop_line:
+                        val = entry.get(f"{side_key}_odds")
+                        if val is not None:
+                            return val
+            return None
+        tt_books = doc.get("team_totals_books") or {}
+        for book in _ODDS_BOOK_PRIORITY:
+            val = (tt_books.get(book) or {}).get(odds_key)
+            if val is not None:
+                return val
     return None
 
 
@@ -348,8 +407,8 @@ async def assemble_replay_row(
     hrs = project_hit_rates_from_team_features(
         prop.get("market_category"), tf)
     cv_team = (tf or {}).get("cv_points_scored")
-    bucket = _odds_bucket(prop.get("odds"))
-    tier = tier_for_odds_bucket(bucket)
+    bucket = _odds_bucket(prop.get("clean_odds") or prop.get("odds"))
+    tier = tier_for_clean_odds(prop.get("clean_odds"))
 
     # If caller already batch-scored, skip the single-row call.
     if model_score is None:
@@ -560,8 +619,11 @@ async def reshape_sport(
          "consensus_home_implied": 1, "consensus_away_implied": 1,
          "consensus_over_implied": 1, "consensus_under_implied": 1,
          "consensus_home_spread_implied": 1, "consensus_away_spread_implied": 1,
+         "consensus_home_total_line": 1, "consensus_away_total_line": 1,
+         "consensus_home_over_implied": 1, "consensus_away_over_implied": 1,
          "books": 1, "spread_books": 1, "totals_books": 1,
-         "alternate_totals_books": 1, "alternate_spreads_books": 1},
+         "alternate_totals_books": 1, "alternate_spreads_books": 1,
+         "team_totals_books": 1, "alt_team_totals_books": 1},
     ):
         odds_api_cache[(doc["game_date"], doc["home_team"], doc["away_team"])] = doc
     print(f"  [{sport.upper()}] odds_api_team_h2h cache: {len(odds_api_cache):,} entries")
@@ -615,6 +677,10 @@ async def reshape_sport(
             # Only write rows with clean Odds API odds — skip all other books
             if row.get("clean_odds") is None:
                 counters["skipped_no_clean_odds"] = counters.get("skipped_no_clean_odds", 0) + 1
+                continue
+            ip = row.get("implied_probability")
+            if ip is None or ip < 0.10 or ip > 0.90:
+                counters["skipped_implied_out_of_range"] = counters.get("skipped_implied_out_of_range", 0) + 1
                 continue
             pending_ops.append(UpdateOne(upsert_filter(row),
                                               {"$set": row}, upsert=True))
