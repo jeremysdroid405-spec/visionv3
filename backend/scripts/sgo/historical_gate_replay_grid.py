@@ -53,11 +53,11 @@ VERSION = 1
 METHODOLOGY = "per_tier_per_stat_family"
 
 DEFAULT_GRID: Dict[str, List[float]] = {
-    "hr_l20_min":   [0.55, 0.60, 0.65, 0.70, 0.75, 0.80],
-    "hr_l5_min":    [0.40, 0.50, 0.60, 0.70, 0.80],
-    "cv_max":       [0.50, 0.70, 0.90, 1.10, 1.30],
-    "edge_min":     [0.0, 0.025, 0.05, 0.075, 0.10],
-    "tp_min":       [0.50, 0.55, 0.60, 0.65],
+    "hr_l20_min":   [0.60, 0.65, 0.70, 0.75, 0.80],
+    "hr_l5_min":    [0.40, 0.60, 0.80],
+    "cv_max":       [0.50, 0.70, 0.90],
+    "edge_min":     [0.0, 0.05, 0.10],
+    "tp_min":       [0.55, 0.60, 0.65],
 }
 
 TEAM_GRID: Dict[str, List[float]] = {
