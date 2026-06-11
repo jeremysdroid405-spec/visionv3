@@ -350,7 +350,7 @@ async def _run_team(args: argparse.Namespace, db) -> int:
 
             bucket = top_per_market[cat]
             bucket.append(cell)
-            bucket.sort(key=lambda x: -(x["total_profit"] or 0))
+            bucket.sort(key=lambda x: -(x["roi"] or 0))
             if len(bucket) > TOP_N_TEAM:
                 bucket.pop()
 
