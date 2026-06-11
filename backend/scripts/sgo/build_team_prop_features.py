@@ -90,10 +90,17 @@ _FEATURE_PROJECTION = {
     "off_rating_l5": 1, "off_rating_l10": 1, "off_rating_l20": 1,
     "off_rating_stddev_l10": 1,
     "def_rating_l5": 1, "def_rating_l10": 1, "def_rating_l20": 1,
-    "ts_pct_l10": 1, "def_reb_pct_l10": 1,
+    "net_rating_l5": 1, "net_rating_l10": 1, "net_rating_l20": 1,
+    "ts_pct_l10": 1, "fg_pct_l10": 1, "fg3_pct_l10": 1,
+    "reb_pct_l10": 1, "ast_pct_l10": 1,
+    "def_reb_pct_l10": 1,
     "pct_pts_paint_l10": 1, "pct_pts_fast_break_l10": 1,
     "scoring_trend_l5_l20": 1,
     "is_back_to_back": 1, "games_in_last_7": 1,
+    "pie_l10": 1, "ft_pct_l10": 1,
+    "ast_l5": 1, "ast_l10": 1, "blk_l10": 1, "stl_l10": 1,
+    "tov_l10": 1, "tov_rate_l10": 1,
+    "first_half_scored_l5": 1, "first_half_scored_l10": 1, "first_half_scored_l20": 1,
     # BDL MLB batting/pitching/fielding season stats
     "batting_avg": 1, "batting_obp": 1, "batting_slg": 1, "batting_ops": 1,
     "batting_k_rate": 1, "batting_bb_rate": 1, "batting_hr_rate": 1,
@@ -127,6 +134,8 @@ _OUTCOME_FIELDS = (
     "actual_value",
     # game-level combined feature (game_total rows only, None otherwise)
     "combined_pace",
+    # NBA h2h differential features (team rows only, None otherwise)
+    "off_rating_diff", "net_rating_diff", "pace_diff",
 )
 
 
@@ -396,6 +405,26 @@ async def build_prop_features_for_sport(
             counters["team_priors_missing"] += 1
         elif opp_pri is None:
             counters["opponent_priors_missing"] += 1
+
+        # NBA differential features: only valid for distinct team vs opponent rows.
+        _off_diff: Optional[float] = None
+        _net_diff: Optional[float] = None
+        _pace_diff: Optional[float] = None
+        if team_id != "game" and team_pri is not None and opp_pri is not None:
+            _off_l10 = team_pri.get("off_rating_l10")
+            _def_opp_l10 = opp_pri.get("def_rating_l10")
+            if _off_l10 is not None and _def_opp_l10 is not None:
+                _off_diff = round(_off_l10 - _def_opp_l10, 4)
+            _net_t = team_pri.get("net_rating_l10")
+            _net_o = opp_pri.get("net_rating_l10")
+            if _net_t is not None and _net_o is not None:
+                _net_diff = round(_net_t - _net_o, 4)
+            _pace_t = team_pri.get("pace_l10")
+            _pace_o = opp_pri.get("pace_l10")
+            if _pace_t is not None and _pace_o is not None:
+                _pace_diff = round(abs(_pace_t - _pace_o), 4)
+        o = {**o, "off_rating_diff": _off_diff, "net_rating_diff": _net_diff,
+             "pace_diff": _pace_diff}
 
         doc = assemble_prop_features_doc(
             o, team_features=team_pri, opponent_features=opp_pri)

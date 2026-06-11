@@ -197,6 +197,20 @@ class TeamAsOfFeatures:
     ast_pct_l10:          Optional[float] = None
     is_back_to_back:      Optional[int]   = None
     games_in_last_7:      Optional[int]   = None
+    net_rating_l5:         Optional[float] = None
+    net_rating_l10:        Optional[float] = None
+    net_rating_l20:        Optional[float] = None
+    pie_l10:               Optional[float] = None
+    ft_pct_l10:            Optional[float] = None
+    ast_l5:                Optional[float] = None
+    ast_l10:               Optional[float] = None
+    blk_l10:               Optional[float] = None
+    stl_l10:               Optional[float] = None
+    tov_l10:               Optional[float] = None
+    tov_rate_l10:          Optional[float] = None
+    first_half_scored_l5:  Optional[float] = None
+    first_half_scored_l10: Optional[float] = None
+    first_half_scored_l20: Optional[float] = None
 
     def asdict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -628,11 +642,20 @@ async def _load_nba_bdl_index(
             "_id": 0, "nba_team_id": 1, "game_date": 1,
             "off_rating_l5": 1, "off_rating_l10": 1, "off_rating_l20": 1,
             "def_rating_l5": 1, "def_rating_l10": 1, "def_rating_l20": 1,
+            "net_rating_l5": 1, "net_rating_l10": 1, "net_rating_l20": 1,
             "pace_l5": 1, "pace_l10": 1, "pace_l20": 1,
             "ts_pct_l10": 1,
             "base_fg_pct": 1, "base_fg3_pct": 1,
             "advanced_reb_pct": 1, "advanced_ast_pct": 1,
             "is_back_to_back": 1, "games_in_last_7": 1,
+            "advanced_pie": 1,
+            "base_ft_pct": 1,
+            "base_ast": 1,
+            "base_blk": 1,
+            "base_stl": 1,
+            "base_tov": 1,
+            "base_pts": 1,
+            "first_half_scored_l5": 1, "first_half_scored_l10": 1, "first_half_scored_l20": 1,
         },
     ).batch_size(5000)
     async for doc in cursor:
@@ -669,22 +692,40 @@ def _nba_bdl_lookup(
 
 def _merge_nba_bdl_into_feat(feat: "TeamAsOfFeatures", bdl_doc: Dict[str, Any]) -> None:
     """Copy BDL fields from a bdl_nba_team_game_features doc into a TeamAsOfFeatures."""
-    feat.off_rating_l5   = bdl_doc.get("off_rating_l5")
-    feat.off_rating_l10  = bdl_doc.get("off_rating_l10")
-    feat.off_rating_l20  = bdl_doc.get("off_rating_l20")
-    feat.def_rating_l5   = bdl_doc.get("def_rating_l5")
-    feat.def_rating_l10  = bdl_doc.get("def_rating_l10")
-    feat.def_rating_l20  = bdl_doc.get("def_rating_l20")
-    feat.pace_l5         = bdl_doc.get("pace_l5")
-    feat.pace_l10        = bdl_doc.get("pace_l10")
-    feat.pace_l20        = bdl_doc.get("pace_l20")
-    feat.ts_pct_l10      = bdl_doc.get("ts_pct_l10")
-    feat.fg_pct_l10      = bdl_doc.get("base_fg_pct")
-    feat.fg3_pct_l10     = bdl_doc.get("base_fg3_pct")
-    feat.reb_pct_l10     = bdl_doc.get("advanced_reb_pct")
-    feat.ast_pct_l10     = bdl_doc.get("advanced_ast_pct")
-    feat.is_back_to_back = bdl_doc.get("is_back_to_back")
-    feat.games_in_last_7 = bdl_doc.get("games_in_last_7")
+    feat.off_rating_l5         = bdl_doc.get("off_rating_l5")
+    feat.off_rating_l10        = bdl_doc.get("off_rating_l10")
+    feat.off_rating_l20        = bdl_doc.get("off_rating_l20")
+    feat.def_rating_l5         = bdl_doc.get("def_rating_l5")
+    feat.def_rating_l10        = bdl_doc.get("def_rating_l10")
+    feat.def_rating_l20        = bdl_doc.get("def_rating_l20")
+    feat.net_rating_l5         = bdl_doc.get("net_rating_l5")
+    feat.net_rating_l10        = bdl_doc.get("net_rating_l10")
+    feat.net_rating_l20        = bdl_doc.get("net_rating_l20")
+    feat.pace_l5               = bdl_doc.get("pace_l5")
+    feat.pace_l10              = bdl_doc.get("pace_l10")
+    feat.pace_l20              = bdl_doc.get("pace_l20")
+    feat.ts_pct_l10            = bdl_doc.get("ts_pct_l10")
+    feat.fg_pct_l10            = bdl_doc.get("base_fg_pct")
+    feat.fg3_pct_l10           = bdl_doc.get("base_fg3_pct")
+    feat.reb_pct_l10           = bdl_doc.get("advanced_reb_pct")
+    feat.ast_pct_l10           = bdl_doc.get("advanced_ast_pct")
+    feat.is_back_to_back       = bdl_doc.get("is_back_to_back")
+    feat.games_in_last_7       = bdl_doc.get("games_in_last_7")
+    feat.pie_l10               = bdl_doc.get("advanced_pie")
+    feat.ft_pct_l10            = bdl_doc.get("base_ft_pct")
+    feat.ast_l5                = bdl_doc.get("base_ast")
+    feat.ast_l10               = bdl_doc.get("base_ast")
+    feat.blk_l10               = bdl_doc.get("base_blk")
+    feat.stl_l10               = bdl_doc.get("base_stl")
+    feat.tov_l10               = bdl_doc.get("base_tov")
+    _tov = bdl_doc.get("base_tov")
+    _pts = bdl_doc.get("base_pts")
+    if _tov is not None and _pts is not None:
+        _denom = _pts + _tov
+        feat.tov_rate_l10 = _tov / _denom if _denom > 0 else None
+    feat.first_half_scored_l5  = bdl_doc.get("first_half_scored_l5")
+    feat.first_half_scored_l10 = bdl_doc.get("first_half_scored_l10")
+    feat.first_half_scored_l20 = bdl_doc.get("first_half_scored_l20")
 
 
 # ───── DB orchestration ─────

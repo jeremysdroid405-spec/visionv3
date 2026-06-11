@@ -109,6 +109,20 @@ _LINE_SPREAD_FIELDS: Tuple[str, ...] = (
     "spread_cover_3_5_l5",    "spread_cover_3_5_l10",
 )
 
+_NBA_BDL_FIELDS: Tuple[str, ...] = (
+    "off_rating_l5", "off_rating_l10", "off_rating_l20",
+    "def_rating_l5", "def_rating_l10", "def_rating_l20",
+    "net_rating_l5", "net_rating_l10", "net_rating_l20",
+    "pace_l5", "pace_l10", "pace_l20",
+    "ts_pct_l10", "fg_pct_l10", "fg3_pct_l10",
+    "reb_pct_l10", "ast_pct_l10",
+    "pie_l10", "ft_pct_l10",
+    "ast_l5", "ast_l10",
+    "blk_l10", "stl_l10", "tov_l10", "tov_rate_l10",
+    "first_half_scored_l5", "first_half_scored_l10", "first_half_scored_l20",
+    "is_back_to_back", "games_in_last_7",
+)
+
 _BET_SHAPE_FIELDS: Tuple[str, ...] = (
     "line", "is_alternate_int", "is_home_int", "is_over_int",
 )
@@ -136,8 +150,19 @@ def _missing_flag(v: Any) -> float:
     return 1.0 if v is None else 0.0
 
 
+_NBA_BASE_FIELDS: Tuple[str, ...] = (
+    "sample_size", "mu_points_scored", "sigma_points_scored", "cv_points_scored",
+    "win_rate_l5", "win_rate_l10", "win_rate_season",
+    "avg_scored_l5", "avg_scored_l10", "avg_scored_season",
+    "avg_allowed_l5", "avg_allowed_l10", "avg_allowed_season",
+    "home_win_rate", "away_win_rate",
+    "rest_days", "run_trend_l10",
+)
+
 def get_prior_fields(sport: str) -> Tuple[str, ...]:
     """Return the ordered list of per-team prior fields for the given sport."""
+    if sport == "nba":
+        return tuple(list(_NBA_BASE_FIELDS) + list(_NBA_BDL_FIELDS))
     fields: List[str] = list(_BASE_PRIOR_FIELDS)
     if sport == "mlb":
         fields.extend(_BDL_FIELDS)
@@ -157,6 +182,12 @@ def feature_columns(sport: str) -> List[str]:
     cols.extend(_DIFF_FIELDS)
     cols.append("combined_pace")
     cols.append("combined_pace_missing")
+    cols.append("off_rating_diff")
+    cols.append("off_rating_diff_missing")
+    cols.append("net_rating_diff")
+    cols.append("net_rating_diff_missing")
+    cols.append("pace_diff")
+    cols.append("pace_diff_missing")
     return cols
 
 
@@ -184,6 +215,16 @@ def row_to_features(row: Dict[str, Any], sport: str) -> List[float]:
     cp = row.get("combined_pace")
     vec.append(_f(cp))
     vec.append(_missing_flag(cp))
+    # NBA h2h differential features (stored on row by build_team_prop_features)
+    _off_diff = row.get("off_rating_diff")
+    vec.append(_f(_off_diff))
+    vec.append(_missing_flag(_off_diff))
+    _net_diff = row.get("net_rating_diff")
+    vec.append(_f(_net_diff))
+    vec.append(_missing_flag(_net_diff))
+    _pace_diff = row.get("pace_diff")
+    vec.append(_f(_pace_diff))
+    vec.append(_missing_flag(_pace_diff))
     return vec
 
 
@@ -285,12 +326,12 @@ async def load_training_rows(
         "push": False,
         "outcome_numeric": {"$in": [0, 1]},
         "odds": {"$ne": None},
-        "game_date": {"$gte": "2025-01-01"},
+        "game_date": {"$gte": "2024-01-01" if sport == "nba" else "2025-01-01"},
         "implied_probability": {"$ne": None},
     }
     if market_category in ("game_total", "team_total"):
         match["side"] = "OVER"
-    if market_category == "h2h":
+    if market_category == "h2h" and sport == "mlb":
         match["home_away"] = "home"
     proj = {
         "_id": 0,
@@ -344,14 +385,24 @@ def _train_one(
     X_tr_s = scaler.transform(X_tr)
     X_te_s = scaler.transform(X_te)
 
-    # Strongly regularized to prevent memorization on ~300K-row sports data.
-    # Shallow trees + high min_child_weight + heavy L1/L2 + aggressive subsampling
-    # push calibrated output into the realistic 0.45-0.75 range.
+    # Regularization scaled to dataset size.
+    # Large datasets (MLB ~300K): heavy regularization to prevent memorization.
+    # Small datasets (NBA ~16K): lighter regularization to allow learning.
+    n_rows = len(X_tr)
+    if n_rows < 30000:
+        # Small dataset — shallower trees, moderate regularization
+        _params = dict(n_estimators=200, max_depth=2, learning_rate=0.02,
+                       subsample=0.7, colsample_bytree=0.5,
+                       min_child_weight=20, gamma=1.0,
+                       reg_alpha=1.0, reg_lambda=5.0)
+    else:
+        # Large dataset — heavy regularization
+        _params = dict(n_estimators=150, max_depth=3, learning_rate=0.03,
+                       subsample=0.6, colsample_bytree=0.6,
+                       min_child_weight=50, gamma=2.0,
+                       reg_alpha=2.0, reg_lambda=10.0)
     inner = XGBClassifier(
-        n_estimators=150, max_depth=3, learning_rate=0.03,
-        subsample=0.6, colsample_bytree=0.6,
-        min_child_weight=50, gamma=2.0,
-        reg_alpha=2.0, reg_lambda=10.0,
+        **_params,
         random_state=seed, verbosity=0,
         objective="binary:logistic",
         eval_metric="logloss",
