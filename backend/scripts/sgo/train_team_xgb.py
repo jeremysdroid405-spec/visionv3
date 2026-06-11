@@ -331,8 +331,9 @@ async def load_training_rows(
     }
     if market_category in ("game_total", "team_total"):
         match["side"] = "OVER"
-    if market_category == "h2h" and sport == "mlb":
-        match["home_away"] = "home"
+    # h2h: train both HOME and AWAY rows — no home_away filter
+    # The team is the team being bet on, opponent is the other team.
+    # is_home_int feature captures home court advantage.
     proj = {
         "_id": 0,
         "team_features": 1, "opponent_features": 1,

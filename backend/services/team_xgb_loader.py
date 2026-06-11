@@ -96,15 +96,10 @@ def score_team_prop(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     model = art["model"]
     scaler = art["scaler"]
     _row = row
-    if mc == "h2h" and row.get("home_away") == "away" and sport == "mlb":
-        _row = {**row, "team_features": row.get("opponent_features"),
-                "opponent_features": row.get("team_features"), "home_away": "home"}
     vec = np.array([row_to_features(_row, sport)], dtype=np.float64)
     vec_s = scaler.transform(vec)
     p = float(model.predict_proba(vec_s)[0, 1])
     if mc in ("game_total", "team_total") and row.get("side") == "UNDER":
-        p = 1.0 - p
-    if mc == "h2h" and row.get("home_away") == "away" and sport == "mlb":
         p = 1.0 - p
     odds = row.get("odds")
     implied = (_american_implied_prob(float(odds))
@@ -160,12 +155,7 @@ def score_team_props_batch(
         reg_home = art.get("regressor_home")
         reg_away = art.get("regressor_away")
         # Build a single matrix for the whole group.
-        # For h2h away rows, swap team/opponent features so the model always
-        # sees home team first (matching training layout); flip prob below.
         def _prep(r):
-            if mc == "h2h" and r.get("home_away") == "away" and sport == "mlb":
-                return {**r, "team_features": r.get("opponent_features"),
-                        "opponent_features": r.get("team_features"), "home_away": "home"}
             return r
         mat = np.array(
             [row_to_features(_prep(rows[i]), sport) for i in idx_list],
@@ -177,8 +167,6 @@ def score_team_props_batch(
         for j, i in enumerate(idx_list):
             p = float(probs[j])
             if mc in ("game_total", "team_total") and rows[i].get("side") == "UNDER":
-                p = 1.0 - p
-            if mc == "h2h" and rows[i].get("home_away") == "away" and sport == "mlb":
                 p = 1.0 - p
             odds = rows[i].get("odds")
             implied = (_american_implied_prob(float(odds))
