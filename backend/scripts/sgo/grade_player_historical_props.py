@@ -1,3 +1,4 @@
+# DEPRECATED: use canonicalize_historical_outcomes.py instead
 """
 grade_player_historical_props.py — grade unresolved NBA player prop rows in
 sgo_propvision_full_pipeline_replay by joining to actual BDL box score stats.
@@ -33,6 +34,7 @@ for _env in ("/var/www/app/backend/.env", "/app/backend/.env"):
 from motor.motor_asyncio import AsyncIOMotorClient
 import pymongo
 from pymongo import UpdateOne
+from pymongo.errors import BulkWriteError
 
 REPLAY_COLL          = "sgo_propvision_full_pipeline_replay"
 BDL_COLL             = "bdl_historical_game_logs"
@@ -104,11 +106,11 @@ async def build_hub_index(db) -> Dict[str, int]:
     """normalized_name → bdl_player_id  (keyed by lowercase normalized name)"""
     idx: Dict[str, int] = {}
     async for doc in db[HUB_COLL].find(
-        {"bdl_player_id": {"$exists": True, "$ne": None}},
-        {"normalized_name": 1, "bdl_player_id": 1, "_id": 0},
+        {"bdl_id": {"$exists": True, "$ne": None}},
+        {"normalized_name": 1, "bdl_id": 1, "_id": 0},
     ):
         name = doc.get("normalized_name", "").strip().lower()
-        bdl_id = doc.get("bdl_player_id")
+        bdl_id = doc.get("bdl_id")
         if name and bdl_id is not None:
             idx[name] = int(bdl_id)
     return idx
@@ -118,12 +120,12 @@ async def build_hub_index_by_sgo_id(db) -> Dict[str, int]:
     """sgo_player_id → bdl_player_id  (e.g. 'AUSTIN_REAVES_1_NBA' → 12345)"""
     idx: Dict[str, int] = {}
     async for doc in db[HUB_COLL].find(
-        {"bdl_player_id": {"$exists": True, "$ne": None},
+        {"bdl_id": {"$exists": True, "$ne": None},
          "sgo_player_id": {"$exists": True, "$ne": None}},
-        {"sgo_player_id": 1, "bdl_player_id": 1, "_id": 0},
+        {"sgo_player_id": 1, "bdl_id": 1, "_id": 0},
     ):
         sgo_id = doc.get("sgo_player_id", "").strip()
-        bdl_id = doc.get("bdl_player_id")
+        bdl_id = doc.get("bdl_id")
         if sgo_id and bdl_id is not None:
             idx[sgo_id] = int(bdl_id)
     return idx
@@ -151,7 +153,7 @@ async def build_bdl_index(db) -> Dict[Tuple[int, str], Dict[str, Any]]:
         {"bdl_game_logs": 1, "_id": 0},
     ):
         for entry in hub.get("bdl_game_logs") or []:
-            pid = entry.get("bdl_player_id") or entry.get("player_id")
+            pid = entry.get("bdl_id") or entry.get("player_id")
             dt  = entry.get("date") or entry.get("game_date") or ""
             if pid is not None and dt:
                 idx[(int(pid), str(dt))] = entry
@@ -214,7 +216,8 @@ async def _migrate_prop_features_indexes(db) -> None:
          ("game_date",   pymongo.ASCENDING),
          ("stat_family", pymongo.ASCENDING),
          ("side",        pymongo.ASCENDING),
-         ("line",        pymongo.ASCENDING)],
+         ("line",        pymongo.ASCENDING),
+         ("period_id",   pymongo.ASCENDING)],
         unique=True,
         name="uniq_player_prop_decision",
     )
@@ -245,12 +248,13 @@ async def run_backfill_2024(db, args: argparse.Namespace) -> int:
     total = await db[HISTORICAL_PROPS_COLL].count_documents(query)
     print(f"  [3/3] streaming {total:,} historical prop rows …\n")
 
-    scanned          = 0
-    graded           = 0
-    skipped_no_hub   = 0
-    skipped_no_bdl   = 0
-    skipped_no_stat  = 0
-    skipped_push     = 0
+    scanned            = 0
+    graded             = 0
+    skipped_no_hub     = 0
+    skipped_no_bdl     = 0
+    skipped_no_stat    = 0
+    skipped_push       = 0
+    skipped_duplicates = 0
 
     ops: List[UpdateOne] = []
     now_utc = datetime.now(timezone.utc)
@@ -355,7 +359,18 @@ async def run_backfill_2024(db, args: argparse.Namespace) -> int:
         ))
 
         if len(ops) >= BATCH_SIZE and not args.dry_run:
-            await db[PROP_FEATURES_COLL].bulk_write(ops, ordered=False)
+            try:
+                await db[PROP_FEATURES_COLL].bulk_write(ops, ordered=False)
+            except BulkWriteError as bwe:
+                dup_count = sum(
+                    1 for e in bwe.details.get("writeErrors", [])
+                    if e.get("code") == 11000
+                )
+                non_dup = len(bwe.details.get("writeErrors", [])) - dup_count
+                skipped_duplicates += dup_count
+                if non_dup:
+                    print(f"  [bulk_write] {non_dup} non-duplicate write errors: "
+                          f"{bwe.details.get('writeErrors', [])[:3]}")
             ops = []
 
         if scanned % LOG_EVERY == 0:
@@ -370,7 +385,18 @@ async def run_backfill_2024(db, args: argparse.Namespace) -> int:
             )
 
     if ops and not args.dry_run:
-        await db[PROP_FEATURES_COLL].bulk_write(ops, ordered=False)
+        try:
+            await db[PROP_FEATURES_COLL].bulk_write(ops, ordered=False)
+        except BulkWriteError as bwe:
+            dup_count = sum(
+                1 for e in bwe.details.get("writeErrors", [])
+                if e.get("code") == 11000
+            )
+            non_dup = len(bwe.details.get("writeErrors", [])) - dup_count
+            skipped_duplicates += dup_count
+            if non_dup:
+                print(f"  [bulk_write] {non_dup} non-duplicate write errors: "
+                      f"{bwe.details.get('writeErrors', [])[:3]}")
 
     runtime = time.time() - t0
     print()
@@ -383,6 +409,7 @@ async def run_backfill_2024(db, args: argparse.Namespace) -> int:
     print(f"  skipped — no BDL game log:    {skipped_no_bdl:,}")
     print(f"  skipped — stat not resolved:  {skipped_no_stat:,}")
     print(f"  skipped — push (actual=line): {skipped_push:,}")
+    print(f"  skipped — duplicates:         {skipped_duplicates:,}")
     print(f"  dry_run:                      {args.dry_run}")
     print(f"  runtime:                      {runtime:,.1f}s")
     if not args.dry_run and scanned:
@@ -424,12 +451,13 @@ async def amain(args: argparse.Namespace) -> int:
     total_unresolved = await db[REPLAY_COLL].count_documents(query)
     print(f"  [3/3] streaming {total_unresolved:,} unresolved rows …\n")
 
-    scanned = 0
-    graded  = 0
-    skipped_no_bdl   = 0   # no BDL stats found for (player, date)
-    skipped_no_hub   = 0   # player not in hub index
-    skipped_no_stat  = 0   # stat_family not in STAT_MAP or resolver returned None
-    skipped_push     = 0   # actual == line
+    scanned            = 0
+    graded             = 0
+    skipped_no_bdl     = 0   # no BDL stats found for (player, date)
+    skipped_no_hub     = 0   # player not in hub index
+    skipped_no_stat    = 0   # stat_family not in STAT_MAP or resolver returned None
+    skipped_push       = 0   # actual == line
+    skipped_duplicates = 0
 
     ops: List[UpdateOne] = []
     now_utc = datetime.now(timezone.utc)
@@ -499,7 +527,18 @@ async def amain(args: argparse.Namespace) -> int:
         ))
 
         if len(ops) >= BATCH_SIZE and not args.dry_run:
-            await db[REPLAY_COLL].bulk_write(ops, ordered=False)
+            try:
+                await db[REPLAY_COLL].bulk_write(ops, ordered=False)
+            except BulkWriteError as bwe:
+                dup_count = sum(
+                    1 for e in bwe.details.get("writeErrors", [])
+                    if e.get("code") == 11000
+                )
+                non_dup = len(bwe.details.get("writeErrors", [])) - dup_count
+                skipped_duplicates += dup_count
+                if non_dup:
+                    print(f"  [bulk_write] {non_dup} non-duplicate write errors: "
+                          f"{bwe.details.get('writeErrors', [])[:3]}")
             ops = []
 
         if scanned % LOG_EVERY == 0:
@@ -515,7 +554,18 @@ async def amain(args: argparse.Namespace) -> int:
 
     # flush remainder
     if ops and not args.dry_run:
-        await db[REPLAY_COLL].bulk_write(ops, ordered=False)
+        try:
+            await db[REPLAY_COLL].bulk_write(ops, ordered=False)
+        except BulkWriteError as bwe:
+            dup_count = sum(
+                1 for e in bwe.details.get("writeErrors", [])
+                if e.get("code") == 11000
+            )
+            non_dup = len(bwe.details.get("writeErrors", [])) - dup_count
+            skipped_duplicates += dup_count
+            if non_dup:
+                print(f"  [bulk_write] {non_dup} non-duplicate write errors: "
+                      f"{bwe.details.get('writeErrors', [])[:3]}")
 
     runtime = time.time() - t0
     print()
@@ -528,6 +578,7 @@ async def amain(args: argparse.Namespace) -> int:
     print(f"  skipped — no BDL game log:    {skipped_no_bdl:,}")
     print(f"  skipped — stat not resolved:  {skipped_no_stat:,}")
     print(f"  skipped — push (actual=line): {skipped_push:,}")
+    print(f"  skipped — duplicates:         {skipped_duplicates:,}")
     print(f"  dry_run:                      {args.dry_run}")
     print(f"  runtime:                      {runtime:,.1f}s")
     if not args.dry_run and scanned:

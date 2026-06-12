@@ -53,14 +53,14 @@ for _env in ("/var/www/app/backend/.env", "/app/backend/.env"):
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 import pymongo
 from pymongo import UpdateOne
+from pymongo.errors import BulkWriteError
 
 BUILDER_VERSION = "player_prop_v1"
-SRC_COLL = "sgo_propvision_full_pipeline_replay"
+SRC_COLL = "player_historical_outcomes"
 SRC_FEATURES = "player_model_features"
 DST_COLL = "player_model_prop_features"
 
 SUPPORTED_SPORTS = ("nba", "mlb")
-SPORT_TO_LEAGUE = {"nba": "NBA", "mlb": "MLB"}
 
 # Fields lifted verbatim from each outcome row.
 _OUTCOME_FIELDS = (
@@ -84,14 +84,7 @@ def _parse_american_odds(s: Any) -> Optional[int]:
 
 
 def _best_implied(outcome: Dict[str, Any]) -> Optional[float]:
-    """Cascade: sharp_consensus → consensus → pp_implied.
-    Returns None if all are None."""
-    v = outcome.get("sharp_consensus_probability")
-    if v is not None:
-        return float(v)
-    v = outcome.get("consensus_probability")
-    if v is not None:
-        return float(v)
+    """Read pp_implied_probability directly from source row."""
     v = outcome.get("pp_implied_probability")
     if v is not None:
         return float(v)
@@ -100,10 +93,10 @@ def _best_implied(outcome: Dict[str, Any]) -> Optional[float]:
 
 def stable_key(outcome: Dict[str, Any]) -> Dict[str, Any]:
     """Composite upsert key for one player prop feature doc.
-    Dedup on (event_id, player_id, stat_family, side, line, period_id)."""
+    Must match the unique index: (player_id, game_date, stat_family, side, line, period_id)."""
     return {
-        "event_id":   outcome.get("event_id"),
-        "player_id":  outcome.get("player_id"),
+        "player_id":   outcome.get("player_id"),
+        "game_date":   outcome.get("game_date"),
         "stat_family": outcome.get("stat_family"),
         "side":        outcome.get("side"),
         "line":        outcome.get("line"),
@@ -148,12 +141,13 @@ def assemble_prop_doc(
     # Store the full feature doc for downstream use
     doc["player_features"] = player_features or None
 
-    # Market signal
+    # Market signal — read directly from canonical source row
     implied = _best_implied(outcome)
     doc["implied_probability"] = implied
+    doc["anchor_odds"] = outcome.get("anchor_odds")
     doc["clean_odds"] = (
-        _parse_american_odds(outcome.get("anchor_odds"))
-        or _parse_american_odds(outcome.get("book_odds"))
+        outcome.get("clean_odds")
+        or _parse_american_odds(outcome.get("anchor_odds"))
     )
 
     doc["builder_version"] = BUILDER_VERSION
@@ -179,7 +173,8 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
              ("game_date",   pymongo.ASCENDING),
              ("stat_family", pymongo.ASCENDING),
              ("side",        pymongo.ASCENDING),
-             ("line",        pymongo.ASCENDING)],
+             ("line",        pymongo.ASCENDING),
+             ("period_id",   pymongo.ASCENDING)],
             unique=True,
             name="uniq_player_prop_decision",
         )
@@ -234,14 +229,13 @@ async def build_prop_features_for_sport(
     sport: str, dry_run: bool,
     max_props: int, bulk_chunk: int = 1000,
 ) -> Dict[str, Any]:
-    league_id = SPORT_TO_LEAGUE[sport]
     print(f"\n  [{sport.upper()}] building player prop features → {DST_COLL}")
 
     if not dry_run:
         await _ensure_indexes(db)
 
     n_total = await db[SRC_COLL].count_documents(
-        {"league_id": league_id, "outcome_resolved": True})
+        {"sport": sport, "outcome_resolved": True})
     print(f"  [{sport.upper()}] resolved outcomes: {n_total:,}")
 
     counters = {
@@ -249,6 +243,7 @@ async def build_prop_features_for_sport(
         "features_missing":    0,
         "rows_emitted":        0,
         "rows_written":        0,
+        "duplicates_skipped":  0,
         "dry_run":             dry_run,
     }
     sample_rows: List[Dict] = []
@@ -262,14 +257,30 @@ async def build_prop_features_for_sport(
             counters["rows_emitted"] += len(pending)
             pending.clear()
             return
-        res = await db[DST_COLL].bulk_write(pending, ordered=False)
-        counters["rows_emitted"] += len(pending)
-        counters["rows_written"] += (
-            (res.upserted_count or 0) + (res.modified_count or 0))
+        try:
+            res = await db[DST_COLL].bulk_write(pending, ordered=False)
+            counters["rows_emitted"] += len(pending)
+            counters["rows_written"] += (
+                (res.upserted_count or 0) + (res.modified_count or 0))
+        except BulkWriteError as bwe:
+            dup_count = sum(
+                1 for e in bwe.details.get("writeErrors", [])
+                if e.get("code") == 11000
+            )
+            non_dup = len(bwe.details.get("writeErrors", [])) - dup_count
+            counters["rows_emitted"] += len(pending)
+            counters["rows_written"] += (
+                (bwe.details.get("nUpserted") or 0)
+                + (bwe.details.get("nModified") or 0)
+            )
+            counters["duplicates_skipped"] += dup_count
+            if non_dup:
+                print(f"  [bulk_write] {non_dup} non-duplicate write errors: "
+                      f"{bwe.details.get('writeErrors', [])[:3]}")
         pending.clear()
 
     cursor = db[SRC_COLL].find(
-        {"league_id": league_id, "outcome_resolved": True},
+        {"sport": sport, "outcome_resolved": True},
     ).batch_size(2000)
 
     async for o in cursor:
@@ -323,6 +334,7 @@ def _print_summary(r: Dict[str, Any]) -> None:
     print(f"     rows emitted:          {c['rows_emitted']:,}")
     print(f"     rows written/changed:  {c['rows_written']:,}  "
           f"({'DRY-RUN' if c['dry_run'] else 'live'})")
+    print(f"     duplicates skipped:    {c.get('duplicates_skipped', 0):,}")
     print(f"     cache hits/misses:     "
           f"{c.get('cache_hits',0):,} / {c.get('cache_misses',0):,}")
     if r["sample_rows"]:
@@ -348,7 +360,7 @@ async def amain(args: argparse.Namespace) -> int:
     print(f"  sports={sports}  dry_run={dry_run}  "
           f"max_props={args.max_props}  bulk_chunk={args.bulk_chunk}")
     print(f"  CONTRACT: idempotent upserts to {DST_COLL} keyed by "
-          "(event_id, player_id, stat_family, side, line, period_id).")
+          "(player_id, game_date, stat_family, side, line, period_id).")
 
     mongo = AsyncIOMotorClient(os.environ["MONGO_URL"])
     db = mongo[os.environ["DB_NAME"]]

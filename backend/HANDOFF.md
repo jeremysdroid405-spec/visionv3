@@ -1,5 +1,5 @@
 # HANDOFF
-Generated: 2026-06-11T23:28:58.205492+00:00
+Generated: 2026-06-12T17:49:41.560358+00:00
 
 ## KEY RULES
 - `rescore=False` always
@@ -72,12 +72,12 @@ Generated: 2026-06-11T23:28:58.205492+00:00
 
 | Collection | Count | Min Date | Max Date |
 |------------|-------|----------|----------|
-| team_matchups | 7,176 | 2024-07-01 | 2026-06-19 |
-| team_historical_outcomes | 1,893,834 | 2024-07-05 | 2026-05-30 |
-| team_model_features | 13,648 | 2024-07-05 | 2026-06-11 |
+| team_matchups | 7,179 | 2024-07-01 | 2026-06-19 |
+| team_historical_outcomes | 1,895,083 | 2024-07-05 | 2026-05-30 |
+| team_model_features | 13,708 | 2024-07-05 | 2026-06-12 |
 | team_model_prop_features | 1,798,949 | 2024-07-05 | 2026-05-30 |
-| sgo_propvision_full_pipeline_replay | 1,940,086 | 2024-07-05 | 2026-05-30 |
-| research_grid_results | 398,625 | None | None |
+| sgo_propvision_full_pipeline_replay | 3,121,467 | 2024-07-05 | 2026-05-30 |
+| research_grid_results | 407,985 | None | None |
 | bdl_mlb_game_boxscores | 5,783 | 2024-04-01 | 2026-06-08 |
 | odds_api_team_h2h | 7,427 | 2024-07-01 | 2026-06-11 |
 

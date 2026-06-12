@@ -331,17 +331,18 @@ async def reshape_sport(
             print(f"  [{sport.upper()}] hit --max-props={max_props}; stopping.")
             break
 
-        if not p.get("event_id"):
-            counters["skipped_no_event_id"] += 1
-            continue
         if not p.get("player_id"):
             counters["skipped_no_player_id"] += 1
             continue
 
         ip = p.get("implied_probability")
+        if ip is None:
+            ip = p.get("pp_implied_probability")
         if ip is None or ip < 0.10 or ip > 0.90:
             counters["skipped_implied_filter"] += 1
             continue
+        if p.get("implied_probability") is None:
+            p["implied_probability"] = ip
 
         if p.get("clean_odds") is None:
             counters["skipped_no_clean_odds"] += 1

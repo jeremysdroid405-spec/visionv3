@@ -59,11 +59,10 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 import pymongo
 
 FEATURE_VERSION = "player_v1_priors"
-SRC_COLL = "sgo_pp_research_outcomes"
+SRC_COLL = "player_historical_outcomes"
 DST_COLL = "player_model_features"
 
 SUPPORTED_SPORTS = ("nba", "mlb")
-SPORT_TO_LEAGUE = {"nba": "NBA", "mlb": "MLB"}
 
 
 # ───── pure helpers ─────
@@ -215,7 +214,7 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
 
 
 async def _load_player_outcomes(
-    db: AsyncIOMotorDatabase, *, league_id: str, player_id: str,
+    db: AsyncIOMotorDatabase, *, sport: str, player_id: str,
 ) -> Tuple[Dict[str, List[Dict]], List[str]]:
     """Load all RESOLVED outcomes for one player, return:
       (outcomes_by_family, sorted unique game_dates)
@@ -223,7 +222,7 @@ async def _load_player_outcomes(
     """
     rows: List[Dict[str, Any]] = []
     cursor = db[SRC_COLL].find(
-        {"league_id": league_id, "player_id": player_id,
+        {"sport": sport, "player_id": player_id,
          "outcome_resolved": True},
         projection={
             "_id": 0, "game_date": 1, "stat_family": 1,
@@ -249,10 +248,10 @@ async def _load_player_outcomes(
 
 
 async def _distinct_player_ids(
-    db: AsyncIOMotorDatabase, league_id: str,
+    db: AsyncIOMotorDatabase, sport: str,
 ) -> List[str]:
     ids = await db[SRC_COLL].distinct(
-        "player_id", {"league_id": league_id, "outcome_resolved": True})
+        "player_id", {"sport": sport, "outcome_resolved": True})
     return sorted([p for p in ids if isinstance(p, str) and p])
 
 
@@ -261,10 +260,9 @@ async def build_features_for_sport(
     sport: str, dry_run: bool,
     max_players: int = 5000,
 ) -> Dict[str, Any]:
-    league_id = SPORT_TO_LEAGUE[sport]
     print(f"\n  [{sport.upper()}] building player features → {DST_COLL}")
 
-    players = await _distinct_player_ids(db, league_id)
+    players = await _distinct_player_ids(db, sport)
     if max_players and len(players) > max_players:
         print(f"  [{sport.upper()}] capping at first {max_players} of "
               f"{len(players)} players")
@@ -285,7 +283,7 @@ async def build_features_for_sport(
 
     for player_id in players:
         outcomes_by_family, game_dates = await _load_player_outcomes(
-            db, league_id=league_id, player_id=player_id)
+            db, sport=sport, player_id=player_id)
         if not game_dates:
             continue
         counters["players_processed"] += 1
