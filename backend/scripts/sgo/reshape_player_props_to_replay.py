@@ -76,6 +76,27 @@ DST_COLL = "sgo_propvision_full_pipeline_replay"
 
 SUPPORTED_SPORTS = ("nba", "mlb")
 
+STAT_FAMILY_ALIASES = {
+    "pts":                      "points",
+    "reb":                      "rebounds",
+    "ast":                      "assists",
+    "stl":                      "steals",
+    "blk":                      "blocks",
+    "threes":                   "threes_made",
+    "points+rebounds+assists":  "pra",
+    "points+assists":           "pts_ast",
+    "points+rebounds":          "pts_reb",
+    "rebounds+assists":         "reb_ast",
+    "blocks+steals":            "blocks_steals",
+    "threePointersMade":        "threes_made",
+}
+
+def normalize_stat_family(name: str) -> str:
+    if not name:
+        return name
+    return STAT_FAMILY_ALIASES.get(name, STAT_FAMILY_ALIASES.get(name.lower(), name))
+
+
 _ARTIFACT_ROOTS = [
     Path("/var/www/app/backend/models/player_xgb"),
     Path("/app/backend/models/player_xgb"),
@@ -131,7 +152,7 @@ class _PlayerModelCache:
         # Group row indices by stat_family so each model is called once.
         groups: Dict[str, List[int]] = defaultdict(list)
         for i, row in enumerate(rows):
-            groups[row.get("stat_family") or ""].append(i)
+            groups[normalize_stat_family(row.get("stat_family")) or ""].append(i)
 
         for sf, indices in groups.items():
             artifact = self._get_artifact(sport, sf)
@@ -194,8 +215,8 @@ def assemble_replay_row(
         "player_name_normalized": (
             prop.get("player_name") or "").lower().strip(),
         # bet
-        "stat_family":            prop.get("stat_family"),
-        "market_category":        prop.get("stat_family"),
+        "stat_family":            normalize_stat_family(prop.get("stat_family")),
+        "market_category":        normalize_stat_family(prop.get("stat_family")),
         "side":                   prop.get("side"),
         "line":                   prop.get("line"),
         "period_id":              prop.get("period_id"),

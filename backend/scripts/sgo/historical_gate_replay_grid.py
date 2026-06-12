@@ -21,8 +21,8 @@ Per cell metrics:
 
 Writes:
     research_grid_runs                (1 run header)
-    research_grid_results             (one row per cell)
-    candidate_gate_configs            (top-N per tier × stat_family)
+    player_model_grid_results         (one row per cell)
+    player_model_gate_configs         (top-N per tier × stat_family)
 """
 from __future__ import annotations
 import argparse
@@ -45,9 +45,10 @@ for env_path in ("/var/www/app/backend/.env", "/app/backend/.env"):
 from motor.motor_asyncio import AsyncIOMotorClient
 from services.replay.markets import REPLAY_BOOK_WHITELIST_PHASE1
 
-REPLAY  = "sgo_propvision_full_pipeline_replay"
-RUNS    = "research_grid_runs"
-RESULTS = "research_grid_results"
+REPLAY       = "sgo_propvision_full_pipeline_replay"
+RUNS         = "research_grid_runs"
+RESULTS      = "player_model_grid_results"
+GATE_CONFIGS = "player_model_gate_configs"
 
 VERSION = 1
 METHODOLOGY = "per_tier_per_stat_family"
@@ -348,6 +349,7 @@ async def _run_team(args: argparse.Namespace, db,
             cell = {
                 "run_id": run_id, "version": VERSION,
                 "methodology": methodology, "mode": prop_type,
+                "tier": None,
                 "market_category": cat,
                 **metrics,
             }
@@ -368,7 +370,7 @@ async def _run_team(args: argparse.Namespace, db,
 
     await _flush()
 
-    # Save top-N per market_category to candidate_gate_configs
+    # Save top-N per market_category to player_model_gate_configs
     saved_candidates: List[Dict[str, Any]] = []
     if not args.dry_run:
         for cat, bucket in top_per_market.items():
@@ -378,6 +380,7 @@ async def _run_team(args: argparse.Namespace, db,
                     "league":          args.league,
                     "mode":            prop_type,
                     "methodology":     methodology,
+                    "tier":            None,
                     "market_category": cat,
                     "rank":            rank,
                     "params": {
@@ -391,7 +394,7 @@ async def _run_team(args: argparse.Namespace, db,
                     "created_at": datetime.now(timezone.utc),
                 })
         if saved_candidates:
-            await db["candidate_gate_configs"].insert_many(
+            await db[GATE_CONFIGS].insert_many(
                 saved_candidates, ordered=False)
 
     await db[RUNS].update_one(
@@ -417,8 +420,8 @@ async def _run_team(args: argparse.Namespace, db,
 
     print()
     print(f"  run_id={run_id}")
-    print(f"  → research_grid_results  ({n_cells_total:,} docs)")
-    print(f"  → candidate_gate_configs ({len(saved_candidates)} docs)")
+    print(f"  → player_model_grid_results  ({n_cells_total:,} docs)")
+    print(f"  → player_model_gate_configs  ({len(saved_candidates)} docs)")
     return 0
 
 

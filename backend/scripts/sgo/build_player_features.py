@@ -64,6 +64,26 @@ DST_COLL = "player_model_features"
 
 SUPPORTED_SPORTS = ("nba", "mlb")
 
+STAT_FAMILY_ALIASES = {
+    "pts":                      "points",
+    "reb":                      "rebounds",
+    "ast":                      "assists",
+    "stl":                      "steals",
+    "blk":                      "blocks",
+    "threes":                   "threes_made",
+    "points+rebounds+assists":  "pra",
+    "points+assists":           "pts_ast",
+    "points+rebounds":          "pts_reb",
+    "rebounds+assists":         "reb_ast",
+    "blocks+steals":            "blocks_steals",
+    "threePointersMade":        "threes_made",
+}
+
+def normalize_stat_family(name: str) -> str:
+    if not name:
+        return name
+    return STAT_FAMILY_ALIASES.get(name, STAT_FAMILY_ALIASES.get(name.lower(), name))
+
 
 # ───── pure helpers ─────
 def _num(v: Any) -> Optional[float]:
@@ -238,7 +258,7 @@ async def _load_player_outcomes(
     game_dates: set = set()
     for r in rows:
         game_dates.add(r["game_date"])
-        outcomes_by_family[r.get("stat_family") or "_unknown"].append(r)
+        outcomes_by_family[normalize_stat_family(r.get("stat_family")) or "_unknown"].append(r)
 
     # Sort each family's rows ascending by game_date
     for fam in outcomes_by_family:

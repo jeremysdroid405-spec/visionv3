@@ -58,7 +58,7 @@ KNOWN_ISSUES = [
         "status": "TODO",
         "title": "Run optimizer",
         "detail": "No team optimizer exists. Grid results inspected manually.",
-        "fix": "Adapt historical_gate_replay_grid.py candidate_gate_configs "
+        "fix": "Adapt historical_gate_replay_grid.py player_model_gate_configs "
                "into live router",
     },
 ]
@@ -86,7 +86,7 @@ KEY_COLLECTIONS = [
     ("team_model_features",          "as_of_date"),
     ("team_model_prop_features",     "game_date"),
     ("sgo_propvision_full_pipeline_replay", "game_date"),
-    ("research_grid_results",        "created_at"),
+    ("player_model_grid_results",     "created_at"),
     ("bdl_mlb_game_boxscores",       "game_date"),
     ("odds_api_team_h2h",            "commence_time"),
 ]
@@ -123,7 +123,7 @@ def _roi_str(v: Optional[float]) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _pull_grid_results(db) -> Dict[str, Any]:
-    """Best ROI row per (window, market) from research_grid_results mode=team."""
+    """Best ROI row per (window, market) from player_model_grid_results mode=team."""
     results: Dict[str, Any] = {}
     for label, start, end in GRID_WINDOWS:
         run_docs = await db["research_grid_runs"].find(
@@ -136,7 +136,7 @@ async def _pull_grid_results(db) -> Dict[str, Any]:
             if not run_ids:
                 window_results[mc] = None
                 continue
-            top = await db["research_grid_results"].find(
+            top = await db["player_model_grid_results"].find(
                 {"mode": "team", "market_category": mc,
                  "run_id": {"$in": run_ids}}
             ).sort("roi", -1).limit(1).to_list(1)

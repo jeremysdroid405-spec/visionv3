@@ -166,7 +166,7 @@ def print_architecture() -> None:
        Sweeps TEAM_GRID = {model_probability_min: 10 values,
                             edge_min: 9 values} = 90 cells per market.
        Reads sgo_propvision_full_pipeline_replay (prop_type=team,
-       clean_odds IS NOT NULL).  Writes research_grid_results (mode=team).
+       clean_odds IS NOT NULL).  Writes player_model_grid_results (mode=team).
        Key fix applied: uses min(implieds) not max for vig removal.
        Key fix applied: lines-specific spread cover rates in features.
 
@@ -186,7 +186,7 @@ def print_architecture() -> None:
   bdl_mlb_team_season_stats     BDL season aggregate stats (ERA, OPS, etc.)
   odds_api_team_h2h             Live Odds API h2h lines
   sgo_propvision_full_pipeline_replay  Unified replay collection (player + team)
-  research_grid_results         Grid sweep results (mode=team for team rows)
+  player_model_grid_results     Grid sweep results (mode=team for team rows)
   research_grid_runs            Run metadata (params, date ranges, status)
 
   KNOWN BUGS AND WORKAROUNDS
@@ -358,9 +358,9 @@ async def check_grid_history(db) -> None:
     _section("SECTION 4 — GRID RESULTS HISTORY")
 
     n_runs = await db["research_grid_runs"].count_documents({"mode": "team"})
-    n_results = await db["research_grid_results"].count_documents({"mode": "team"})
+    n_results = await db["player_model_grid_results"].count_documents({"mode": "team"})
     print(f"\n  research_grid_runs (mode=team): {n_runs}")
-    print(f"  research_grid_results (mode=team): {n_results:,}")
+    print(f"  player_model_grid_results (mode=team): {n_results:,}")
 
     date_windows = [
         ("2024 season",    "2024-07-01", "2024-11-01"),
@@ -384,7 +384,7 @@ async def check_grid_history(db) -> None:
         print(f"    succeeded run_ids: {len(run_ids)}")
 
         for mc in markets:
-            top = await db["research_grid_results"].find(
+            top = await db["player_model_grid_results"].find(
                 {"mode": "team", "market_category": mc,
                  "run_id": {"$in": run_ids}}
             ).sort("roi", -1).limit(3).to_list(3)
@@ -655,7 +655,7 @@ def print_known_issues() -> None:
   [TODO]   Optimizer run
            No team-specific optimizer exists. Grid results are inspected
            manually. Next step: adapt historical_gate_replay_grid.py
-           candidate_gate_configs output into the live router.
+           player_model_gate_configs output into the live router.
 
   [TODO]   h2h fix: train HOME-only + swap AWAY features at score time
            See FIX RECIPE above.  After fix, retrain h2h and compare
@@ -767,7 +767,7 @@ def print_baselines() -> None:
     _section("SECTION 8 — CURRENT BASELINES (hardcoded as of 2026-06-09)")
     print("""
   These are the grid results from the most recent successful runs.
-  Compare against live research_grid_results to detect regressions.
+  Compare against live player_model_grid_results to detect regressions.
   All values from mode=team, league=MLB runs.
 
   FORMAT: market | window | best config → n_bets | hit_rate | ROI

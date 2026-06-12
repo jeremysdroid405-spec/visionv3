@@ -62,6 +62,27 @@ DST_COLL = "player_model_prop_features"
 
 SUPPORTED_SPORTS = ("nba", "mlb")
 
+STAT_FAMILY_ALIASES = {
+    "pts":                      "points",
+    "reb":                      "rebounds",
+    "ast":                      "assists",
+    "stl":                      "steals",
+    "blk":                      "blocks",
+    "threes":                   "threes_made",
+    "points+rebounds+assists":  "pra",
+    "points+assists":           "pts_ast",
+    "points+rebounds":          "pts_reb",
+    "rebounds+assists":         "reb_ast",
+    "blocks+steals":            "blocks_steals",
+    "threePointersMade":        "threes_made",
+}
+
+def normalize_stat_family(name: str) -> str:
+    if not name:
+        return name
+    return STAT_FAMILY_ALIASES.get(name, STAT_FAMILY_ALIASES.get(name.lower(), name))
+
+
 # Fields lifted verbatim from each outcome row.
 _OUTCOME_FIELDS = (
     "event_id", "player_id", "player_name", "league_id",
@@ -97,7 +118,7 @@ def stable_key(outcome: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "player_id":   outcome.get("player_id"),
         "game_date":   outcome.get("game_date"),
-        "stat_family": outcome.get("stat_family"),
+        "stat_family": normalize_stat_family(outcome.get("stat_family")),
         "side":        outcome.get("side"),
         "line":        outcome.get("line"),
         "period_id":   outcome.get("period_id"),
@@ -127,7 +148,7 @@ def assemble_prop_doc(
     doc["global_sample_size"] = (player_features or {}).get("sample_size")
 
     # Per-stat-family priors (flat into the doc)
-    fam = outcome.get("stat_family") or "_unknown"
+    fam = normalize_stat_family(outcome.get("stat_family")) or "_unknown"
     sf_data: Dict[str, Any] = {}
     if player_features:
         sf_data = (player_features.get("stat_families") or {}).get(fam) or {}

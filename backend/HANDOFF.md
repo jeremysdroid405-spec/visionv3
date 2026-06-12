@@ -1,5 +1,5 @@
 # HANDOFF
-Generated: 2026-06-12T17:49:41.560358+00:00
+Generated: 2026-06-12T19:19:33.769272+00:00
 
 ## KEY RULES
 - `rescore=False` always
@@ -20,7 +20,7 @@ Generated: 2026-06-12T17:49:41.560358+00:00
 
 ### P3 [TODO] Run optimizer
 **Detail:** No team optimizer exists. Grid results inspected manually.
-**Fix:** Adapt historical_gate_replay_grid.py candidate_gate_configs into live router
+**Fix:** Adapt historical_gate_replay_grid.py player_model_gate_configs into live router
 
 ## MODEL STATUS
 
@@ -45,28 +45,28 @@ Generated: 2026-06-12T17:49:41.560358+00:00
 
 | Market | n | hit% | ROI | prob_min | edge_min | Flag |
 |--------|---|------|-----|----------|----------|------|
-| game_total | 119 | 70.6% | +89.3% | 0.75 | 0.01 |  |
-| spread | 466 | 82.4% | +63.6% | 0.75 | — |  |
-| h2h | 283 | 83.7% | +224.3% | 0.75 | 0.1 |  |
-| team_total | 91 | 91.2% | +52.8% | 0.75 | 0.02 |  |
+| game_total | — | — | — | — | — | NO RUNS |
+| spread | — | — | — | — | — | NO RUNS |
+| h2h | — | — | — | — | — | NO RUNS |
+| team_total | — | — | — | — | — | NO RUNS |
 
 ### 2025 season (2025-04-01 → 2025-10-01)
 
 | Market | n | hit% | ROI | prob_min | edge_min | Flag |
 |--------|---|------|-----|----------|----------|------|
-| game_total | 722 | 81.7% | +167.8% | 0.75 | 0.02 |  |
-| spread | 1210 | 88.6% | +73.3% | 0.75 | — |  |
-| h2h | 683 | 96.6% | +89.1% | 0.75 | 0.1 |  |
-| team_total | 123 | 56.1% | +214.5% | 0.7 | — | SUSPECT |
+| game_total | — | — | — | — | — | NO RUNS |
+| spread | — | — | — | — | — | NO RUNS |
+| h2h | — | — | — | — | — | NO RUNS |
+| team_total | — | — | — | — | — | NO RUNS |
 
 ### 2026 season YTD (2026-04-01 → 2026-06-08)
 
 | Market | n | hit% | ROI | prob_min | edge_min | Flag |
 |--------|---|------|-----|----------|----------|------|
-| game_total | 258 | 68.6% | +121.1% | 0.65 | — |  |
-| spread | 337 | 87.2% | +72.1% | 0.75 | — |  |
-| h2h | 104 | 72.1% | +25.0% | 0.75 | — |  |
-| team_total | 59 | 69.5% | -22.6% | 0.75 | — |  |
+| game_total | — | — | — | — | — | NO RUNS |
+| spread | — | — | — | — | — | NO RUNS |
+| h2h | — | — | — | — | — | NO RUNS |
+| team_total | — | — | — | — | — | NO RUNS |
 
 ## COLLECTION HEALTH
 
@@ -76,8 +76,8 @@ Generated: 2026-06-12T17:49:41.560358+00:00
 | team_historical_outcomes | 1,895,083 | 2024-07-05 | 2026-05-30 |
 | team_model_features | 13,708 | 2024-07-05 | 2026-06-12 |
 | team_model_prop_features | 1,798,949 | 2024-07-05 | 2026-05-30 |
-| sgo_propvision_full_pipeline_replay | 3,121,467 | 2024-07-05 | 2026-05-30 |
-| research_grid_results | 407,985 | None | None |
+| sgo_propvision_full_pipeline_replay | 3,683,572 | 2024-07-05 | 2026-05-30 |
+| player_model_grid_results | 2,600 | None | None |
 | bdl_mlb_game_boxscores | 5,783 | 2024-04-01 | 2026-06-08 |
 | odds_api_team_h2h | 7,427 | 2024-07-01 | 2026-06-11 |
 

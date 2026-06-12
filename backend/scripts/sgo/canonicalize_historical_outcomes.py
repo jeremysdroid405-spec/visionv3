@@ -80,6 +80,35 @@ SPORT_TO_LEAGUE: Dict[str, str] = {
     "ncaab": "NCAAB", "ncaaf": "NCAAF",
 }
 
+# ── stat family alias normalization ───────────────────────────────────────────
+STAT_FAMILY_ALIASES: Dict[str, str] = {
+    "pts":                      "points",
+    "reb":                      "rebounds",
+    "ast":                      "assists",
+    "stl":                      "steals",
+    "blk":                      "blocks",
+    "threes":                   "threes_made",
+    "points+rebounds+assists":  "pra",
+    "points+assists":           "pts_ast",
+    "points+rebounds":          "pts_reb",
+    "rebounds+assists":         "reb_ast",
+    "blocks+steals":            "blocks_steals",
+    "threePointersMade":        "threes_made",
+}
+
+# Lowercase-keyed lookup for case-insensitive matching
+_STAT_FAMILY_ALIAS_LOWER: Dict[str, str] = {
+    k.lower(): v for k, v in STAT_FAMILY_ALIASES.items()
+}
+
+
+def normalize_stat_family(name: str) -> str:
+    """Map alias stat_family names to canonical form; pass-through if not an alias."""
+    if not name:
+        return name
+    return _STAT_FAMILY_ALIAS_LOWER.get(name.lower(), name)
+
+
 # ── stat resolvers: statID from nba_player_historical_props → BDL field ──────
 def _safe(r: Dict, *keys: str) -> Optional[float]:
     for k in keys:
@@ -358,6 +387,8 @@ async def step1a_sgo(db, dry_run: bool) -> None:
 
         # stat_family is already canonical in SGO; stat_id is the raw source field
         stat_family = doc.get("stat_family") or doc.get("stat_id")
+        if stat_family:
+            stat_family = normalize_stat_family(stat_family)
         period_id   = doc.get("period_id") or "game"
         side        = str(doc.get("side") or "").lower()
         line        = doc.get("line")
@@ -496,7 +527,7 @@ async def step1b_historical(
             no_bdl += 1
             continue
 
-        stat_id = str(doc.get("statID") or "")
+        stat_id = normalize_stat_family(str(doc.get("statID") or ""))
         resolver = STAT_RESOLVERS.get(stat_id)
         if resolver is None:
             no_stat += 1
@@ -640,6 +671,36 @@ async def step1c_cleanup_player(db, dry_run: bool) -> None:
         print(f"  [1c] dry_run — would $unset {len(unset_doc)} fields on {count:,} docs", flush=True)
 
 
+# ── Stat family alias sweep — update existing docs in output collections ───────
+async def _apply_alias_updates(db, coll_name: str, dry_run: bool) -> None:
+    """Rename any alias stat_family values to canonical in an output collection."""
+    summary: Dict[str, int] = {}
+    for alias, canonical in STAT_FAMILY_ALIASES.items():
+        if not dry_run:
+            res = await db[coll_name].update_many(
+                {"stat_family": alias},
+                {"$set": {"stat_family": canonical}},
+            )
+            if res.modified_count:
+                summary[alias] = res.modified_count
+        else:
+            count = await db[coll_name].count_documents({"stat_family": alias})
+            if count:
+                summary[alias] = count
+
+    if summary:
+        verb = "would rename" if dry_run else "renamed"
+        print(f"  [stat-alias] {coll_name} — {verb}:", flush=True)
+        for alias, count in summary.items():
+            print(
+                f"    {alias!r} → {STAT_FAMILY_ALIASES[alias]!r}: {count:,} rows",
+                flush=True,
+            )
+        print(f"  [stat-alias] total: {sum(summary.values()):,} rows renamed", flush=True)
+    else:
+        print(f"  [stat-alias] {coll_name} — no alias rows found", flush=True)
+
+
 # ── Step 2: normalize team_historical_outcomes in place ───────────────────────
 async def _prepare_team_indexes(db, dry_run: bool) -> None:
     """Drop schema-conflicting old indexes; create canonical compound indexes."""
@@ -699,6 +760,8 @@ async def step2_normalize_teams(db, dry_run: bool) -> None:
             or doc.get("market_category")  # h2h, spread, game_total, team_total, etc.
             or doc.get("statID")           # fallback: "points"
         )
+        if stat_family:
+            stat_family = normalize_stat_family(stat_family)
 
         period_id = (
             doc.get("period_id")
@@ -971,9 +1034,15 @@ async def amain(args: argparse.Namespace) -> int:
         print("\n  ── 1c: sweep player_historical_outcomes — remove non-canonical fields ──")
         await step1c_cleanup_player(db, args.dry_run)
 
+        print("\n  ── 1d: normalize stat_family aliases in player_historical_outcomes ──")
+        await _apply_alias_updates(db, PLAYER_OUT_COLL, args.dry_run)
+
     if 2 in run_steps:
         print("\n── Step 2: normalize team_historical_outcomes in place ─────────────")
         await step2_normalize_teams(db, args.dry_run)
+
+        print("\n  ── 2b: normalize stat_family aliases in team_historical_outcomes ──")
+        await _apply_alias_updates(db, TEAM_COLL, args.dry_run)
 
     if 3 in run_steps:
         print("\n── Step 3: verify schema compliance ────────────────────────────────")
