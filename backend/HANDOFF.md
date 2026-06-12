@@ -1,5 +1,5 @@
 # HANDOFF
-Generated: 2026-06-11T23:27:30.060789+00:00
+Generated: 2026-06-11T23:28:58.205492+00:00
 
 ## KEY RULES
 - `rescore=False` always

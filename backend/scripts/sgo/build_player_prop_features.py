@@ -164,14 +164,24 @@ def assemble_prop_doc(
 # ───── DB orchestration ─────
 async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     try:
+        # Drop old partial indexes (MongoDB doesn't support $ne: null in partialFilterExpression).
+        for old in ("uniq_player_prop_decision",
+                    "uniq_player_prop_decision_with_event",
+                    "uniq_player_prop_decision_null_event"):
+            try:
+                await db[DST_COLL].drop_index(old)
+            except Exception:
+                pass  # already gone
+
+        # Single unique index covers both backfill rows (no event_id) and SGO rows.
         await db[DST_COLL].create_index(
-            [("event_id",   pymongo.ASCENDING),
-             ("player_id",  pymongo.ASCENDING),
+            [("player_id",   pymongo.ASCENDING),
+             ("game_date",   pymongo.ASCENDING),
              ("stat_family", pymongo.ASCENDING),
              ("side",        pymongo.ASCENDING),
-             ("line",        pymongo.ASCENDING),
-             ("period_id",   pymongo.ASCENDING)],
-            unique=True, name="uniq_player_prop_decision",
+             ("line",        pymongo.ASCENDING)],
+            unique=True,
+            name="uniq_player_prop_decision",
         )
         await db[DST_COLL].create_index(
             [("sport", pymongo.ASCENDING),
